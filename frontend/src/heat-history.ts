@@ -1,6 +1,6 @@
 // The heat card's history (`spotnav/get_heat_history`): one day, month or year of the house's heating, behind the clock
-// in the card's header. The decoded answer and the dialog's body: the heat pump's energy per hour, day or month
-// (coloured by what it cost a kWh), use and cost with hot water split out where the recorder still has the
+// in the card's header. The decoded answer and the dialog's body: the heat pump's cost per hour, day or month
+// (the shadow's saving, at most, hatched on top), use and cost with hot water split out where the recorder still has the
 // 5-minute rows, kWh per degree-day with its monthly trend, comfort, what SpotNav would have moved in shadow, the
 // immersion heater where its power is read and, with Detailed on, the day's hot-water runs one by one. Every figure is
 // the backend's; text is written with `textContent` only.
@@ -16,7 +16,6 @@ import {
   periodBars,
   periodNav,
   periodStart,
-  pricePositions,
   section,
   statusLine,
   type HistoryPeriod,
@@ -34,6 +33,8 @@ export interface HeatBucket {
   cost: number | null;
   degree_days: number | null;
   outdoor_c: number | null;
+  /** What the shadow rule would have saved in the bucket's hours, at most; `null` where it was not evaluated. */
+  shadow_value: number | null;
 }
 
 export interface TrendMonth {
@@ -166,6 +167,7 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
             cost: numberOrNull(item.cost),
             degree_days: numberOrNull(item.degree_days),
             outdoor_c: numberOrNull(item.outdoor_c),
+            shadow_value: numberOrNull(item.shadow_value),
           };
         }),
         degree_days: nullable(source.degree_days, (item) => {
@@ -261,7 +263,7 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
   if (answer.buckets.length === 0 || answer.buckets.every((item) => item.kwh === null)) {
     return null;
   }
-  const prices = pricePositions(answer.buckets.map((item) => (item.cost !== null && item.kwh !== null && item.kwh > 0.05 ? item.cost / item.kwh : null)));
+  const priced = answer.buckets.some((item) => item.cost !== null);
   const bars: PeriodBar[] = answer.buckets.map((item, index) => {
     const words = bucketWords(language, answer.period, item.key, index, answer.buckets.length);
     const parts: string[] = [];
@@ -271,6 +273,9 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
       parts.push(`${words.when}: ${kwh(language, item.kwh)}`);
       if (item.cost !== null) {
         parts.push(money(language, item.cost, answer.money));
+      }
+      if (item.shadow_value !== null && item.cost !== null) {
+        parts.push(translate(language, "hist.heat.barSaving", { saving: money(language, item.shadow_value, answer.money) }));
       }
       if (item.hot_water_kwh !== null) {
         parts.push(translate(language, "hist.heat.barHotWater", { kwh: kwh(language, item.hot_water_kwh) }));
@@ -282,9 +287,25 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
         parts.push(translate(language, "hist.heat.barDegreeDays", { dd: formatFixed(language, item.degree_days, 1) }));
       }
     }
-    return { key: item.key, value: item.kwh, dear: prices[index] ?? null, words: parts.join(" · "), axis: words.axis };
+    if (!priced) {
+      return { key: item.key, value: item.kwh, dear: null, words: parts.join(" · "), axis: words.axis };
+    }
+    return {
+      key: item.key,
+      value: null,
+      dear: null,
+      words: parts.join(" · "),
+      axis: words.axis,
+      money: { cost: item.kwh === null ? null : item.cost, saving: item.cost === null ? null : item.shadow_value },
+    };
   });
-  return periodBars(doc, language, translate(language, "hist.heat.chart"), "kWh", bars, ui, translate(language, "hist.heat.hint"));
+  if (!priced) {
+    return periodBars(doc, language, translate(language, "hist.heat.chart"), "kWh", bars, ui, translate(language, "hist.heat.hint"));
+  }
+  return periodBars(doc, language, translate(language, "hist.heat.chart"), "", bars, ui, translate(language, "hist.heat.hint"), {
+    scaleText: (top) => money(language, top, answer.money),
+    legend: translate(language, "hist.heat.legend"),
+  });
 }
 
 function useSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement {
