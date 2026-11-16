@@ -911,9 +911,9 @@ export const VISUAL_STYLES = `
   }
   .spotnav-button {
     font: inherit;
-    min-height: 36px;
+    min-height: 40px;
     padding: 6px 14px;
-    border-radius: 18px;
+    border-radius: 20px;
     border: 1px solid var(--divider-color, #e0e0e0);
     background: var(--secondary-background-color, transparent);
     color: var(--primary-text-color, #212121);
@@ -1024,9 +1024,9 @@ export const VISUAL_STYLES = `
   }
   .spotnav-choice-button {
     font: inherit;
-    min-height: 36px;
+    min-height: 40px;
     padding: 6px 14px;
-    border-radius: 18px;
+    border-radius: 20px;
     border: 1px solid var(--divider-color, #e0e0e0);
     background: var(--secondary-background-color, transparent);
     color: var(--primary-text-color, #212121);
@@ -2736,13 +2736,13 @@ export const VISUAL_STYLES = `
     gap: 6px;
   }
   .${VISUAL_CLASSES.historyToggleButton} {
-    min-height: 36px;
+    min-height: 40px;
     padding: 4px 12px;
     font: inherit;
     color: var(--primary-text-color, #212121);
     background: transparent;
     border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 18px;
+    border-radius: 20px;
     cursor: pointer;
   }
   .${VISUAL_CLASSES.historyToggleButton}[aria-pressed="true"] {
@@ -2788,7 +2788,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.historyMonthPicker} > select {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 36px;
+    min-height: 40px;
     font: inherit;
     color: var(--primary-text-color, #212121);
     background: var(--secondary-background-color, transparent);
@@ -2797,7 +2797,7 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.historyMonthPicker} > button {
     flex: none;
-    min-width: 36px;
+    min-width: 40px;
     padding: 4px 10px;
     font-size: 1.1rem;
     line-height: 1;

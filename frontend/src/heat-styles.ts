@@ -49,9 +49,9 @@ export const HEAT_STYLES = `
   }
   .${X.settingsButton} {
     flex: none;
-    min-width: 32px;
-    min-height: 32px;
-    padding: 4px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px;
     border: none;
     background: none;
     color: var(--secondary-text-color, #727272);
@@ -142,7 +142,7 @@ export const HEAT_STYLES = `
     margin-top: 10px;
   }
   .${X.mode} {
-    min-height: 34px;
+    min-height: 40px;
     padding: 4px 18px;
     border: 1px solid var(--divider-color, #e0e0e0);
     background: none;
@@ -152,10 +152,10 @@ export const HEAT_STYLES = `
     cursor: pointer;
   }
   .${X.mode}:first-child {
-    border-radius: 17px 0 0 17px;
+    border-radius: 20px 0 0 20px;
   }
   .${X.mode}:last-child {
-    border-radius: 0 17px 17px 0;
+    border-radius: 0 20px 20px 0;
     border-left: none;
   }
   .${X.mode}[aria-pressed="true"] {

@@ -286,7 +286,7 @@ export const HOUSE_STYLES = `
     margin-top: 8px;
   }
   .${H.views} > button {
-    min-height: 30px;
+    min-height: 40px;
     padding: 2px 10px;
     font-size: 0.82rem;
   }
@@ -386,7 +386,7 @@ export const HOUSE_STYLES = `
   .${H.legend} {
     display: flex;
     flex-wrap: wrap;
-    gap: 2px 12px;
+    gap: 0 12px;
     margin: 4px 0 0;
     padding: 0;
     list-style: none;
@@ -402,8 +402,9 @@ export const HOUSE_STYLES = `
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    min-height: 40px;
     margin: 0;
-    padding: 4px 2px;
+    padding: 0 2px;
     border: 0;
     border-radius: 4px;
     background: none;

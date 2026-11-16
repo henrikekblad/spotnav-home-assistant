@@ -464,7 +464,7 @@ export const PERIOD_STYLES = `
   .${C.historyMonthPicker} > input {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 36px;
+    min-height: 40px;
     box-sizing: border-box;
     padding: 0 8px;
     font: inherit;
