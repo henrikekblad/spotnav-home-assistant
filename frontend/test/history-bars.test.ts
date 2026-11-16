@@ -105,7 +105,9 @@ describe("the house history's chart", () => {
     expect(height(reviewed)).toBe(100);
     expect(reviewed.querySelector<HTMLElement>(".spotnav-history-bar-fill")!.style.getPropertyValue("--spotnav-day-dear")).toBe("");
     expect(reviewed.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,00 kr");
-    expect(body.querySelector("[data-part='legend']")!.textContent).toBe("Fyllt: kostnad · Streckat: sparat av batteriet");
+    // A swatch per part the bars hold.
+    const legendParts = (root: HTMLElement): string[] => Array.from(root.querySelectorAll("[data-part='legend'] li")).map((item) => `${item.querySelector("span")!.dataset["part"]}:${item.textContent}`);
+    expect(legendParts(body)).toEqual(["cost:Kostnad", "saving:Sparat av batteriet"]);
     expect(body.querySelector(".spotnav-history-scale")!.textContent).toBe("37 kr");
   });
 
@@ -117,7 +119,8 @@ describe("the house history's chart", () => {
     expect(plain.getAttribute("aria-label")).toBe("mån 2 nov.: kostnad 33 kr, ej utvärderad");
     const none = houseBody(house((answer) => answer.buckets.forEach((item) => (item.battery_saving = null))));
     expect(grows(bar(none, "2026-11-05"))).toEqual({ cost: 3342 });
-    expect(none.querySelector("[data-part='legend']")).not.toBeNull();
+    // Nothing hatched: no hatched entry in the legend.
+    expect(Array.from(none.querySelectorAll("[data-part='legend'] li span[data-part]")).map((swatch) => (swatch as HTMLElement).dataset["part"])).toEqual(["cost"]);
   });
 
   it("shows a saving below zero hatched in the warning colour at the top of the cost", () => {
@@ -125,6 +128,7 @@ describe("the house history's chart", () => {
     const worse = bar(body, "2026-11-05");
     expect(grows(worse)).toEqual({ extra: 342, cost: 3000 });
     expect(worse.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 30 kr, batteriet gjorde det 3,42 kr dyrare");
+    expect(Array.from(body.querySelectorAll("[data-part='legend'] li")).map((item) => item.textContent)).toContain("Dyrare med batteriet");
   });
 
   it("does not claim a saving for the hours of a day: the review is a day's", () => {
@@ -149,7 +153,7 @@ describe("the house history's chart", () => {
   });
 
   it("is in every language", () => {
-    for (const key of ["hist.house.legend", "hist.house.barMoney", "hist.house.barWorse", "hist.house.barUnreviewed", "hist.house.barHourly", "hist.heat.legend", "hist.heat.barSaving"] as const) {
+    for (const key of ["hist.legend.cost", "hist.house.legend.saving", "hist.house.legend.extra", "hist.house.barMoney", "hist.house.barWorse", "hist.house.barUnreviewed", "hist.house.barHourly", "hist.heat.legend.saving", "hist.heat.barSaving"] as const) {
       for (const [language, words] of Object.entries(TRANSLATIONS)) {
         expect(words[key], `${language} ${key}`).toBeTruthy();
       }
@@ -167,7 +171,7 @@ describe("the heat history's chart", () => {
     expect(grows(drawn)["saving"]).toBeCloseTo(item.shadow_value!, 3);
     expect(grows(drawn)["cost"]).toBeCloseTo(item.cost!, 3);
     expect(drawn.getAttribute("aria-label")).toContain("skulle ha sparat högst");
-    expect(body.querySelector("[data-part='legend']")!.textContent).toBe("Fyllt: kostnad · Streckat: skulle ha sparat högst");
+    expect(Array.from(body.querySelectorAll("[data-part='legend'] li")).map((item) => item.textContent)).toEqual(["Kostnad", "Skulle ha sparat högst"]);
   });
 
   it("draws a day the shadow did not evaluate as the cost alone", () => {

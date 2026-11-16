@@ -374,7 +374,9 @@ function houseBars(input: HouseHistoryInput, answer: HouseHistory): HTMLElement 
   });
   return periodBars(doc, language, translate(language, "hist.house.chart"), "", bars, ui, translate(language, "hist.house.hint"), {
     scaleText: (top) => amount(language, top, answer.money),
-    legend: translate(language, "hist.house.legend"),
+    cost: translate(language, "hist.legend.cost"),
+    saving: translate(language, "hist.house.legend.saving"),
+    extra: translate(language, "hist.house.legend.extra"),
   });
 }
 

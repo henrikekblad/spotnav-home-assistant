@@ -68,7 +68,7 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
 
 ### Details
 
-*Details* opens, as far as the site has them:
+*Show details* opens, as far as the site has them:
 
 * **How the flow is counted**: the meters do not say which source fed which use, so the split follows a fixed rule, not a
   measurement: each hour (or quarter hour) the sun goes to the house first, then the car, the battery and the grid, and

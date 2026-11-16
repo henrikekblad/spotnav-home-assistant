@@ -297,6 +297,7 @@ export const VISUAL_CLASSES = {
   historyBarFill: "spotnav-history-bar-fill",
   historyBarPart: "spotnav-history-bar-part",
   historyLegend: "spotnav-history-legend",
+  linkButton: "spotnav-link-button",
   historyAxis: "spotnav-history-axis",
   historyScale: "spotnav-history-scale",
   historyReadout: "spotnav-history-readout",
@@ -2890,8 +2891,43 @@ export const VISUAL_STYLES = `
     box-shadow: inset 0 0 0 1px var(--warning-color, #ffa600);
   }
   .${VISUAL_CLASSES.historyLegend} {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
     margin: 2px 0 0;
+    padding: 0;
+    list-style: none;
     font-size: 0.78rem;
+  }
+  .${VISUAL_CLASSES.historyLegend} > li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .${VISUAL_CLASSES.historyLegend} .${VISUAL_CLASSES.historyBarPart} {
+    flex: none;
+    width: 0.9rem;
+    height: 0.65rem;
+    border-radius: 2px;
+  }
+  /* A text button that reads as a link (show or hide details): no frame, underlined, a finger-sized target. */
+  .${VISUAL_CLASSES.linkButton} {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    margin: 0;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--primary-text-color, #212121);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.linkButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
   }
   .${VISUAL_CLASSES.historyBarFill}[data-price="none"] {
     background: var(--secondary-text-color, #727272);

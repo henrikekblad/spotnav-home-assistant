@@ -304,7 +304,9 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
   }
   return periodBars(doc, language, translate(language, "hist.heat.chart"), "", bars, ui, translate(language, "hist.heat.hint"), {
     scaleText: (top) => money(language, top, answer.money),
-    legend: translate(language, "hist.heat.legend"),
+    cost: translate(language, "hist.legend.cost"),
+    saving: translate(language, "hist.heat.legend.saving"),
+    extra: "",
   });
 }
 

@@ -999,7 +999,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   if (energyFlow !== null) {
     card.append(energyFlow);
   }
-  const toggle = element(doc, "button", `${C.historyToggleButton} ${H.detailsToggle}`, translate(language, input.ui.detailsOpen ? "house.details.close" : "house.details.open"));
+  const toggle = element(doc, "button", `${C.linkButton} ${H.detailsToggle}`, translate(language, input.ui.detailsOpen ? "details.hide" : "details.show"));
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", String(input.ui.detailsOpen));
   const detailsId = `${input.idPrefix}-details`;

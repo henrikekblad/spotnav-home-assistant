@@ -478,9 +478,7 @@ export const HOUSE_STYLES = `
     margin-top: 2px;
   }
   .${H.detailsToggle} {
-    margin-top: 8px;
-    min-height: 32px;
-    padding: 2px 12px;
+    margin-top: 4px;
   }
   .${H.details} {
     margin-top: 8px;
