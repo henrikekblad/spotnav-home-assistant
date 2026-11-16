@@ -73,9 +73,10 @@ describe("the front", () => {
     const villa = answer();
     const card = body(villa);
     expect(card.querySelector(".spotnav-heat-dial-figure")!.textContent).toBe("21,0°");
-    expect(card.querySelector("[data-line='band']")!.textContent).toBe("21,0 °C · 20,5–21,5");
+    expect(card.querySelector("[data-line='band']")!.textContent).toBe("inom 20,5–21,5 °C");
     expect(card.querySelector("[data-measured]")).not.toBeNull();
-    expect(measuredLine("sv", villa)).toBe("20,4 °C · kallast: Toalett NV temperatur · Ute 6,2 °C");
+    // The sensor's "temperatur" left off the room's name; a figure and its unit kept together.
+    expect(measuredLine("sv", villa)).toBe("Inne 20,4\u00a0°C (kallast: Toalett NV) · Ute 6,2\u00a0°C");
     expect(pumpLine("sv", villa)).toBe("Värmepumpen värmer · 1,1 kW");
     expect(wouldLine("sv", villa)).toBe("Skulle sänka till 20,5 °C till 20:00: dyra timmar");
     expect(card.querySelector("[data-line='shadow']")!.textContent).toBe("Temperaturen och Hemma/Borta som du ställer in här följer SpotNav när den börjar styra värmen.");
@@ -95,6 +96,11 @@ describe("the front", () => {
     expect(card.querySelector(".spotnav-heat-band-now")).not.toBeNull();
     const legend = [...card.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
     expect(legend).toEqual(["Sänkt", "Förvärmning", "Natt", "Varmvatten", "Bilen laddar"]);
+    // A tap on an hour says it in words under the band.
+    const readout = card.querySelector("[data-line='band-readout']")!;
+    expect(readout.textContent).toBe("");
+    cells[17]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(readout.textContent).toBe(cells[17]!.querySelector("title")!.textContent);
   });
 
   it("says today's heat and hot water and their cost", () => {
@@ -114,7 +120,7 @@ describe("the front", () => {
       "EffektGuard styr värmepumpen; SpotNav räknar den som huslast och tittar bara på.",
     ]);
     expect(pumpLine("en", pump)).toBe("Heat pump: heating");
-    expect(measuredLine("en", pump)).toBe("No indoor sensor chosen · Outdoors 4.5 °C");
+    expect(measuredLine("en", pump)).toBe("No indoor sensor chosen · Outdoors 4.5\u00a0°C");
     expect(wouldLine("en", pump)).toBe("Would keep 17.5 °C until Fri 20 Nov 14:00 while you are away");
   });
 

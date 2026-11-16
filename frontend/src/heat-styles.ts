@@ -22,6 +22,7 @@ export const HEAT_CLASSES = {
   shadow: "spotnav-heat-shadow",
   band: "spotnav-heat-band",
   bandCell: "spotnav-heat-band-cell",
+  bandReadout: "spotnav-heat-band-readout",
   bandMark: "spotnav-heat-band-mark",
   bandAxis: "spotnav-heat-band-axis",
   bandNow: "spotnav-heat-band-now",
@@ -201,7 +202,11 @@ export const HEAT_STYLES = `
   .${X.bandCell}[data-action="night"] { fill: var(--spotnav-heat-night); }
   .${X.bandCell}[data-action="away"] { fill: var(--spotnav-heat-away); }
   .${X.bandCell}[data-action="return"] { fill: var(--spotnav-heat-return); }
-  .${X.bandCell}[data-action="normal"] { fill: var(--spotnav-heat-normal); }
+  /* An ordinary hour: faint, with a thin outline so the band's hours still show on the card. */
+  .${X.bandCell}[data-action="normal"] { fill: var(--spotnav-heat-normal); stroke: var(--divider-color, #e0e0e0); stroke-width: 1; }
+  .${X.bandCell} { cursor: pointer; }
+  .${X.bandReadout} { margin: 2px 0 0; font-size: 0.85rem; }
+  .${X.bandReadout}:empty { display: none; }
   .${X.bandCell}[data-past="true"] { opacity: 0.45; }
   .${X.bandMark}[data-mark="hot_water"] { fill: var(--spotnav-heat-water); }
   .${X.bandMark}[data-mark="car"] { fill: var(--spotnav-heat-car); }
