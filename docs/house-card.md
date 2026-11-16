@@ -65,6 +65,17 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
   control can earn money in the app's terms and still come out below plain self-consumption here. Until a day has been
   reviewed a line says what the plan expects until the end of its horizon, and the first comparison arrives the night
   after.
+
+  Once a reviewed day has its **perfect plan** the comparison leads with each way's share of it: the best the battery
+  could have done that day in hindsight, with the measured house, sun and car, the same battery and the same mode's
+  rules, against the same day with no battery. The rules that keep it fair:
+  * Every way starts the day at the same measured level, and what is left in the battery at midnight counts at the
+    next day's mean buy price (with fees) less the battery's losses: a price that is known at the time, as the next
+    day's prices come at about 13:00. Until they are in, the day uses its own price and says so.
+  * Only whole days count: a day with under 90 % of its quarter hours measured is an "incomplete day", with no share.
+  * A share is shown only where the perfect plan saves at least 5 kr a day (5 € on a euro site); below that it says
+    "too small a difference to compare". A week or a month sums the savings over its whole days first and then
+    divides, so a charge on one day and the discharge it pays for on the next even out.
 * **Energy today so far**: a diagram of where today's energy came from and where it went (see Details for how it is
   counted), and the heat pump's share of the house where its meter is known.
 
