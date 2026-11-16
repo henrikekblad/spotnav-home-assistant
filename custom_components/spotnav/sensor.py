@@ -37,11 +37,9 @@ from .const import (
 from .entity import AutoSurface, SpotNavAutoEntity, SpotNavChargingEntity, SpotNavSiteEntity
 from .execution.controller import ChargingController
 from .execution.solar_execution import site_solar_surplus
-from .setup_hints import add_charger_hint
 from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, power_max_age_s, PowerIntegrator
 from .runtime import controller_for, price_data
 from .sessions.sensors import session_entities
-from .vehicles.choices import flow_language
 from .site.forecast_shape import standard_forecast
 from .site.site_capacity import site_activity
 from .site.site_capacity_controller import SiteCapacityController
@@ -343,7 +341,6 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
     # localized hint, which say nothing about a moment.
     _unrecorded_attributes = frozenset(
         {
-            "next_step",
             "measurement_mode",
             "current_estimated",
             "membership_conflicts",
@@ -370,18 +367,10 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
     def _build_value(self) -> str:
         return self.controller.result.state
 
-    def _site_members(self) -> list[str]:
-        return list(self.controller.config.get(CONF_CHARGER_ENTRY_IDS) or [])
-
     def _build_attributes(self) -> dict[str, Any]:
         result = self.controller.result
         snapshot = self.controller.evaluation.capability
-        attributes: dict[str, Any] = {}
-        if not any(controller_for(self.hass, charger_id) for charger_id in self._site_members()):
-            # A site with no charger says how to add one, where its own device page shows it.
-            attributes["next_step"] = add_charger_hint(flow_language(self.hass))
         return {
-            **attributes,
             "reason": result.reason,
             # The state in a person's words: `measuring`, `balancing` (load balancing on) or
             # `not_measuring`; the state itself stays `observing` when healthy.

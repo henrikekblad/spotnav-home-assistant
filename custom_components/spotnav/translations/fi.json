@@ -968,10 +968,6 @@
       "title": "Kaksi SpotNav-laturia on sama laturi",
       "description": "**{charger}** ja **{other}** ovat sama fyysinen laturi: niillä on yhteinen laite, mitattu virta, OCPP-liitin tai Easee-laite. Kaksi SpotNav-laturia yhdessä laturissa lähettää sille ristiriitaisia komentoja. Poista toinen niistä: Asetukset → Laitteet ja palvelut → SpotNav → merkinnän valikko → Poista. SpotNav ei koskaan poista kumpaakaan puolestasi."
     },
-    "site_without_chargers": {
-      "title": "Lisää laturi kohteeseen",
-      "description": "Kohteessa **{site}** ei ole vielä laturia. Lisää laturi: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen."
-    },
     "core_decision_failed": {
       "title": "Laturin latauspäätökset epäonnistuivat",
       "description": "SpotNav ei pystynyt tekemään latauspäätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten niinä hetkinä se ei käynnistänyt eikä pysäyttänyt mitään automaattisesti vaan päätti uudelleen seuraavalla kerralla. Itse käynnistämäsi ja pysäyttämäsi lataus toimii edelleen, ja kuormanhallinta suojaa edelleen sulaketta. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
