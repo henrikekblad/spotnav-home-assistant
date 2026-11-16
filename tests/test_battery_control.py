@@ -524,6 +524,37 @@ async def test_the_export_limit_is_taken_beside_spotnav_s_own_battery_control_an
     assert not control.export_inputs(now, control.export_executor.control).sibling_active
 
 
+async def test_a_stop_and_a_restart_hand_the_battery_back_before_the_export_limit(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    control = await _started(hass, site, controller, plan_source=_hold, sell_source=lambda _now: -12.0)
+    now = dt_util.now()
+    for index in range(6):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+
+    def order() -> tuple[int, int]:
+        ids = [data.get("entity_id") for _domain, _service, data in plant.calls]
+        battery = max(index for index, entity_id in enumerate(ids) if entity_id in (SWITCH, MODE, DISCHARGE))
+        return battery, ids.index(EXPORT)
+
+    plant.calls.clear()
+    await control.async_stop()
+    battery_last, export_first = order()
+    assert battery_last < export_first, plant.calls
+    # Again, now as a restart finds both snapshots stored.
+    for index in range(6):
+        await control.async_tick(dt_util.now() + timedelta(hours=1, seconds=10 * index))
+    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    plant.calls.clear()
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    await again.async_start()
+    battery_last, export_first = order()
+    assert battery_last < export_first, plant.calls
+
+
 async def test_the_export_limit_is_never_written_while_shadow_only(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

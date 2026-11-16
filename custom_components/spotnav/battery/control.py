@@ -38,7 +38,7 @@ The order on every path:
   (`commands.EXPORT_CONTROLS`): `curtail_export` while the sell price now is below zero (`sell_source`, by default
   the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the battery or the grid meter
   (`runtime.read_export_facts`), so a site without a battery has it too. Its state is stored beside the battery's
-  (`export`), restored first after a restart, handed back on stop; the two share the day's write cap. While the
+  (`export`), restored after the battery's after a restart and handed back after it on stop; the two share the day's write cap. While the
   battery's executor runs the same plant (its Remote EMS on, also while it hands back) the export instance is told so
   (`sibling_active`) and still takes and keeps the limit; Remote EMS on otherwise is another controller's and hands
   the limit back; it is judged on the site's grid power (`grid_import_kw`).
@@ -316,7 +316,7 @@ class BatteryControl:
         self._load_gate(self._stored.get("gate"))
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
-        await self._async_start_export()
+        # The battery first (a grid charge left standing adds import), then the export limit.
         control = control_for(state.brand) or control_for(self.facts.brand)
         if control is not None:
             self.executor = Executor(
@@ -328,6 +328,7 @@ class BatteryControl:
             self._log(self.executor.restart(dt_util.now()))
             if self.executor.state.phase == "restoring":
                 await self._async_until_handed_back("restart")
+        await self._async_start_export()
         self._started = True
 
     def _load_gate(self, raw: Any) -> None:
@@ -395,10 +396,11 @@ class BatteryControl:
     async def _async_stop(self, reason: str) -> None:
         self.trial = None
         self._end_verification(dt_util.now())
-        if self.export_executor is not None:
-            await self._async_export_until_handed_back(reason)
+        # The battery first (a grid charge adds import; a lower export limit never does), then the export limit.
         if self.executor is not None:
             await self._async_until_handed_back(reason)
+        if self.export_executor is not None:
+            await self._async_export_until_handed_back(reason)
 
     async def async_shutdown(self) -> None:
         """The site unloads or Home Assistant stops: before the rest of the site, the timer ends, a start still
