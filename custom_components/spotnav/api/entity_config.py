@@ -26,7 +26,11 @@ limit and energy register and, for a site charger, the site's main fuse, measure
 per-phase meters, battery power sensor and maximum measurement age), validated by
 `api/entity_fields.py`, the same pure functions the config/options flow calls.
 
-* The charger names everything; the server resolves the site from it as `api/site_settings.py` does.
+* The charger names everything; the server resolves the site from it as `api/site_settings.py` does. Additive:
+  `get_entity_config` and `update_entity_config` take `site_id` in place of `charger_id` (a site with or without a
+  charger, for the shared settings popover): then only the scope "site" exists, and the answer's `charger_id` and
+  `control` are `null`, its `vehicles` empty. An id that names no loaded site is `spotnav_unknown_site` /
+  `spotnav_no_site`.
 * A stale write is a `conflict`: `expected` maps field names to the last-seen values, and the
   current config travels back so the card converges.
 * Failed validation answers `spotnav_invalid_value` with `field_errors` (`{"field", "code"}`);
@@ -103,6 +107,7 @@ from .common import (
     ERROR_UNSUPPORTED_VERSION,
     is_admin,
     lookup_charger,
+    lookup_site,
     send_unsupported_version,
 )
 from .dashboard import (
@@ -217,6 +222,33 @@ def _resolve_charger(hass: HomeAssistant, charger_id: Any) -> ConfigEntry:
     return entry
 
 
+def _resolve_site(hass: HomeAssistant, site_id: Any) -> ConfigEntry:
+    """The loaded site entry, or an `EntityConfigRefusal` with `lookup_site`'s code."""
+    entry, code = lookup_site(hass, site_id)
+    if entry is None:
+        raise EntityConfigRefusal(code or ERROR_NO_SITE)
+    return entry
+
+
+def _site_info(hass: HomeAssistant, site_entry: ConfigEntry) -> dict[str, Any]:
+    return {
+        "name": site_entry.title,
+        "charger_count": len(site_entry.data.get(CONF_CHARGER_ENTRY_IDS) or []),
+        **site_measurement_info(hass, site_entry),
+    }
+
+
+def read_site_entity_config(hass: HomeAssistant, site_entry: ConfigEntry) -> dict[str, Any]:
+    """The config block for a site named by its own id: the site's fields alone, no charger."""
+    return {
+        "charger_id": None,
+        "site": _site_info(hass, site_entry),
+        "fields": site_field_descriptors(hass, site_entry),
+        "vehicles": [],
+        "control": None,
+    }
+
+
 def read_entity_config(hass: HomeAssistant, charger: ConfigEntry) -> dict[str, Any]:
     """The config block both commands answer with, read fresh right now."""
     site_entry = site_binding(hass, charger.entry_id)
@@ -224,11 +256,7 @@ def read_entity_config(hass: HomeAssistant, charger: ConfigEntry) -> dict[str, A
     site: dict[str, Any] | None = None
     if site_entry is not None:
         fields += site_field_descriptors(hass, site_entry)
-        site = {
-            "name": site_entry.title,
-            "charger_count": len(site_entry.data.get(CONF_CHARGER_ENTRY_IDS) or []),
-            **site_measurement_info(hass, site_entry),
-        }
+        site = _site_info(hass, site_entry)
     return {
         "charger_id": charger.entry_id,
         "site": site,
@@ -402,7 +430,9 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
     return True
 
 
-async def async_get_entity_config(hass: HomeAssistant, charger_id: Any) -> dict[str, Any]:
+async def async_get_entity_config(hass: HomeAssistant, charger_id: Any, site_id: Any = None) -> dict[str, Any]:
+    if site_id is not None:
+        return read_site_entity_config(hass, _resolve_site(hass, site_id))
     charger = _resolve_charger(hass, charger_id)
     return read_entity_config(hass, charger)
 
@@ -414,23 +444,35 @@ async def async_update_entity_config(
     scope: Any,
     expected: Any,
     changes: Any,
+    site_id: Any = None,
 ) -> dict[str, Any]:
-    """Resolve, validate, compare-and-set, write at most once, answer with the re-read config."""
-    charger = _resolve_charger(hass, charger_id)
+    """Resolve, validate, compare-and-set, write at most once, answer with the re-read config. With `site_id` the
+    site is named directly and only the scope "site" exists."""
+    site_named = _resolve_site(hass, site_id) if site_id is not None else None
+    charger = None if site_named is not None else _resolve_charger(hass, charger_id)
+
+    def _reread() -> dict[str, Any]:
+        if site_named is not None:
+            return read_site_entity_config(hass, site_named)
+        assert charger is not None
+        return read_entity_config(hass, charger)
 
     def _refuse(code: str, errors: list[FieldError] | None = None) -> EntityConfigRefusal:
-        return EntityConfigRefusal(code, read_entity_config(hass, charger), errors)
+        return EntityConfigRefusal(code, _reread(), errors)
 
     if scope not in _SCOPES or not isinstance(changes, dict) or not changes or not isinstance(expected, dict):
         raise _refuse(ERROR_INVALID_VALUE)
+    if site_named is not None and scope != "site":
+        raise _refuse(ERROR_INVALID_VALUE)
 
     if scope == "site":
-        target = site_binding(hass, charger.entry_id)
+        target = site_named if site_named is not None else site_binding(hass, charger.entry_id)  # type: ignore[union-attr]
         if target is None:
             raise EntityConfigRefusal(ERROR_NO_SITE)
         current = current_site_values(target)
         known = set(site_fixed_fields()) | set(direct_fields()) | set(derived_fields())
     else:
+        assert charger is not None
         target = charger
         current = current_charger_values(charger)
         known = set(CHARGER_FIELDS)
@@ -459,7 +501,7 @@ async def async_update_entity_config(
     elif written and FIELD_HEAT_METER in changes and (site := site_controller_for(hass, target.entry_id)) is not None:
         # The house forecast reads the meter at its refresh: at the next reading, not the next hour.
         site.house_forecast.request_refresh()
-    return read_entity_config(hass, charger)
+    return _reread()
 
 
 async def async_set_vehicle_soc(
@@ -616,6 +658,7 @@ def _version_ok(connection: websocket_api.ActiveConnection, msg: dict[str, Any])
         vol.Required("type"): "spotnav/get_entity_config",
         vol.Optional("api_version"): object,
         vol.Optional("charger_id"): object,
+        vol.Optional("site_id"): object,
     }
 )
 @websocket_api.async_response
@@ -629,7 +672,7 @@ async def websocket_get_entity_config(
         connection.send_result(msg["id"], _failure(ERROR_NOT_ADMIN, None))
         return
     try:
-        config = await async_get_entity_config(hass, msg.get("charger_id"))
+        config = await async_get_entity_config(hass, msg.get("charger_id"), msg.get("site_id"))
     except EntityConfigRefusal as refusal:
         connection.send_result(msg["id"], _failure(refusal.code, refusal.config))
         return
@@ -641,6 +684,7 @@ async def websocket_get_entity_config(
         vol.Required("type"): "spotnav/update_entity_config",
         vol.Optional("api_version"): object,
         vol.Optional("charger_id"): object,
+        vol.Optional("site_id"): object,
         vol.Optional("scope"): object,
         vol.Optional("expected"): object,
         vol.Optional("changes"): object,
@@ -663,6 +707,7 @@ async def websocket_update_entity_config(
             scope=msg.get("scope"),
             expected=msg.get("expected"),
             changes=msg.get("changes"),
+            site_id=msg.get("site_id"),
         )
     except EntityConfigRefusal as refusal:
         connection.send_result(
