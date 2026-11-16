@@ -769,3 +769,28 @@ async def test_no_closings_ahead_while_a_safety_reason_holds(hass: HomeAssistant
     hass.states.async_set(OUTDOOR, "-16.0", {"unit_of_measurement": "°C"})
     await control.async_look(now)
     assert relay.calls == [] and control.closings_ahead(now + MIN) == []
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "state", "attributes"),
+    [
+        ("weather.hemma", "cloudy", {"temperature": -4.0, "temperature_unit": "°F"}),
+        ("sensor.ute_f", "-4.0", {"unit_of_measurement": "°F", "device_class": "temperature"}),
+    ],
+)
+async def test_the_plan_reads_the_outdoor_temperature_like_the_control(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch, entity_id: str, state: str, attributes: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.heat import runtime
+
+    hass.states.async_set(entity_id, state, attributes)
+    _site_, controller, _relay = await _site(hass, freezer, outdoor_sensor=entity_id)
+    seen: list[float | None] = []
+
+    def plan_days(*_args: Any, outdoor_c: float | None = None, **_kw: Any) -> tuple[list[Any], None]:
+        seen.append(outdoor_c)
+        return [], None
+
+    monkeypatch.setattr(runtime, "plan_days", plan_days)
+    await controller.heat_control.shadow._async_plan(controller.demand.now())  # noqa: SLF001
+    assert seen and seen[-1] == pytest.approx(-20.0)

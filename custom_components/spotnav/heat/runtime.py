@@ -609,11 +609,7 @@ class HeatShadow:
         tight, outdoor_by_hour = self.joint_inputs(now)
         outdoor = self.site.house_forecast.outdoor_c()
         if config.outdoor_sensor is not None:
-            state = self.hass.states.get(config.outdoor_sensor)
-            try:
-                outdoor = None if state is None else float(state.state)
-            except ValueError:
-                outdoor = None
+            outdoor = temperature_c(self.hass, config.outdoor_sensor)
         planned, guard = await self.hass.async_add_executor_job(
             partial(
                 plan_days,
