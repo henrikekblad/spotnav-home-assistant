@@ -794,3 +794,40 @@ async def test_the_plan_reads_the_outdoor_temperature_like_the_control(
     monkeypatch.setattr(runtime, "plan_days", plan_days)
     await controller.heat_control.shadow._async_plan(controller.demand.now())  # noqa: SLF001
     assert seen and seen[-1] == pytest.approx(-20.0)
+
+
+async def test_an_automation_that_only_reads_the_relay_does_not_block(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {
+            "automation": [
+                {
+                    "id": "tell",
+                    "alias": "Säg till när reläet slår",
+                    "triggers": [{"trigger": "state", "entity_id": RELAY}],
+                    "actions": [{"action": "input_boolean.turn_on", "target": {"entity_id": "input_boolean.flagga"}}],
+                }
+            ]
+        },
+    )
+    await hass.async_block_till_done()
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.status()["reason"] == "planned"
+
+
+@pytest.mark.parametrize(
+    ("domain", "config"),
+    [
+        ("script", {"vp_dyrt": {"alias": "VP dyrt", "sequence": [{"action": "switch.turn_on", "target": {"entity_id": RELAY}}]}}),
+        ("scene", [{"name": "Natt", "entities": {RELAY: "on"}}]),
+    ],
+)
+async def test_a_script_or_scene_on_the_relay_blocks_control(hass: HomeAssistant, freezer, domain: str, config: Any) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    assert await async_setup_component(hass, domain, {domain: config})
+    await hass.async_block_till_done()
+    await control.async_look(now)
+    assert relay.calls == [] and control.status()["reason"] == "automation"
+    assert control.status()["automation"]["entity_id"].startswith(f"{domain}.")
