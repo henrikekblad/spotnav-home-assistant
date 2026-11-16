@@ -46,6 +46,9 @@ from ..battery.adapters import Match
 FactRole = Literal[
     "outdoor_temp",
     "supply_temp",
+    # The supply temperature the pump's heat curve asks for now: it falls at once when a lowering input closes, so
+    # the heat control's check reads it where the pump reports it (`heat/relay_control.py`).
+    "calc_supply_temp",
     "return_temp",
     "room_temp",
     "hot_water_temp",
@@ -130,6 +133,7 @@ NIBE_F: Final = Adapter(
         "outdoor_temp": (_dash("40004"),),
         # BT2 supply S1 on a pump with its own circuit, BT25 external supply on an SMO (which has no 40008).
         "supply_temp": (_dash("40008"), _dash("40071")),
+        "calc_supply_temp": (_dash("43009"),),
         "return_temp": (_dash("40012"),),
         "room_temp": (_dash("40033"),),
         "hot_water_temp": (_dash("40013"),),
@@ -188,6 +192,7 @@ MYUPLINK: Final = Adapter(
     facts={
         "outdoor_temp": (_dash("40004"),),
         "supply_temp": (_dash("40008"), _dash("40071")),
+        "calc_supply_temp": (_dash("43009"),),
         "return_temp": (_dash("40012"), _dash("40152")),
         "room_temp": (_dash("40033"),),
         "hot_water_temp": (_dash("40013"), _dash("40014")),
