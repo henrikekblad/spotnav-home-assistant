@@ -104,6 +104,48 @@ better than it would be, and a quarter hour where the meters were lost counts no
 If your battery runs its own optimiser (Sigen AI mode, for example), that is the point: the plan is a benchmark of what
 SpotNav would have done, and the review shows which way earned more.
 
+## Keep SpotNav's records
+
+SpotNav keeps what it decided and measured only for a while: the battery plan's quarter hours for three days, the forecasts
+and their outcomes for 14, the nightly reviews for 30. To keep a day for good, or to try a changed plan on it later, call the
+action **SpotNav: Export a day's records** (`spotnav.export_day`, administrators and automations only). It writes one JSON
+file per site and day to `spotnav_archive/<site id>/<date>.json` in Home Assistant's configuration folder (the folder is
+made; the same day again overwrites its file) and answers with the path and what it holds.
+
+* **Fields:** `site` (the site's entry or device; leave it out with one site) and `date` (the local day; yesterday by
+  default). Today can be exported too: the file then says `"complete": false`.
+* **What is in it** (`schema` 1; instants in UTC, the day's time zone in `tz`, the units in `units`): each forecast of the
+  day with when it was made and what came, and each kind's review; the day's prices (spot, and buy and sell with your fees
+  as they are now, the markup and the sell adjustment); the battery plan's quarter hours (the meters, the charge level and
+  each mode's planned action) and the day's review with its baselines; the house's hours (import, house, cars, heat where a
+  meter is, outdoor temperature); the settings the plan read; the shadow logs of the switched load and the export limit;
+  and the chargers' plug-ins that day. A typical day is 50-60 kB.
+* **A day no longer kept** exports what is left: `missing` names each part that has nothing and why (`not_kept`,
+  `none_recorded`, `not_reviewed_yet`, `no_battery`, `no_prices`, `no_switched_load`).
+
+Nothing runs unless the action is called. To keep every day, call it each night, after the review:
+
+```yaml
+alias: Keep SpotNav's records
+triggers:
+  - trigger: time
+    at: "03:30:00"
+actions:
+  - action: spotnav.export_day
+mode: single
+```
+
+With more than one site, add one action per site with `data: {site: <the site's entry id>}`.
+
+Two tools in the integration's repository read the files:
+
+* `tools/spotnav_archive_to_influx.py <file> --url http://<influxdb>:8181 --db spotnav --token-file <file>` writes the day
+  to InfluxDB 3 (forecasts by kind and lead time, prices, the review per mode and each forecast's error). It needs only the
+  Python in Home Assistant's container, so a `shell_command` can run it after the export; the token is read from a file or
+  `INFLUXDB3_AUTH_TOKEN` and never printed. Writing a day again overwrites its points.
+* `.venv/bin/python tools/replay_day.py <file>` re-runs the battery plan on the day with today's planner and prints its
+  saving beside the recorded one (`--once` plans once at midnight, `--hindsight` on the measured house and sun).
+
 ## When something else controls the battery
 
 SpotNav notices a planner (Predbat, EMHASS), an aggregator integration (such as CheckWatt) or a battery whose behaviour looks

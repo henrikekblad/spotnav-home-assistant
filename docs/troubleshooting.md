@@ -111,6 +111,9 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   own sample that waits for its end (`pending_sample`), whether it is trusted, whether a target's need uses it
   (`used`), how many samples were discarded as unbelievable (`discarded`), and the start of the stretch
   being measured (`stretch_start`: level, when and the count then).
+- `day_records` per site: the last three completed days as the action `spotnav.export_day` writes them (see
+  [Keep SpotNav's records](battery-plan.md#keep-spotnavs-records)), newest first, without the chargers' plug-ins
+  (they are under `sessions`). About 50-60 kB a day.
 - `yield_stepping`, `solar_surplus` and `hybrid` in the site's diagnostics, per charger (version 7):
   the last yield-stepping verdict, the solar surplus state and the hybrid state, which the *Capacity
   state* sensor carried as attributes up to 1.14.3.
