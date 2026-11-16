@@ -11,9 +11,10 @@ written here.
      degree_days: {base_c, outdoor: {entity_id, source} | null, sum, days, kwh, kwh_per_degree_day,
                    trend: [{month, kwh, degree_days, kwh_per_degree_day}]} | null,
      comfort: {low_c, sensors, coldest: {entity_id, name, mean_c, min_c} | null, hours, hours_below} | null,
-     shadow: {days, lowered_hours, moved_kwh, value} | null,
+     shadow: {days, lowered_hours, moved_kwh, value, kept_days, lower_share, rebound, blocks} | null,
      immersion: {hours, kwh} | null,
-     runs: [{start, end, kwh, cause: "draw" | "standby" | null}]}
+     runs: [{start, end, kwh, cause: "draw" | "standby" | null}],
+     review: the day's review (`heat/review.py`, a day only) | null}
 
 * **Use** (`energy`, `buckets`): the heat pump meter's energy (the recorder's hourly statistics of it, kept for good,
   `site/heat_meter.py`), each hour at its buy price with every fee as the battery plan prices it (the area's held day
@@ -35,12 +36,14 @@ written here.
   room over the period (the lowest mean) with its mean and its lowest reading, and the hours whose coldest hourly
   mean was below the comfort band's low edge (`low_c`, the target as set now less the band). Every chosen sensor
   counts here; the card's live exclusion of a room warmed by a stove or the sun is not made afresh for the past.
-* **What SpotNav would have saved** (`shadow`): the shadow rule (`heat/shadow_rule.band`) run again on each past day
-  of the period with that day's prices and the settings as they are now, against the meter's hours: the heat used
-  in the hours it would have lowered (`moved_kwh`) and what it would have been worth to buy that heat in the hour it
-  comes back instead (the preheat hour before a lowered run, else the hour after it): `value`. Shadow and an upper
-  bound: it assumes all of it comes back (no energy saved) and that the house would have held the band; the real
-  figure needs the heat control running (`plans/v3_heating_plan.md` section 7).
+* **What SpotNav would have saved** (`shadow`): SpotNav's own plan on each past day of the period: the hours as it
+  planned them when each began (`kept_days` of `days`, kept by the heat shadow, `heat/runtime.py`), else the plan
+  (`heat/shadow_rule.band`) run again with that day's prices and the settings as they are now. Against the meter's
+  hours, with the lowered block's effect as learned from the relay's measured closings (`lower_share`, `rebound`,
+  `blocks`; `heat/relay_effect.py`, a cautious prior until there are some): the heat a lowered hour takes away
+  (`moved_kwh`: `lower_share` of the hour's heat) at its price, less the share that comes back (`rebound`) bought in
+  the preheat hour before the run, else over the hours after it: `value`. Shadow: the house holding the band is
+  assumed; the review (`review`) shows the comfort the relay really gave.
 * **Immersion heater** (`immersion`): where the heat pump's integration has its power (`heat/facts.py` role
   `immersion_power`), the hours it ran (hourly mean above `IMMERSION_ON_KW`) and its energy; `null` without.
 * **Hot-water runs** (`runs`, a day only): each run of the day (`meter_split.hot_water_runs`) with what most likely
@@ -74,12 +77,13 @@ from ..site.history_period import (
 )
 from .config import BAND_C, HeatConfig
 from .meter_split import HotWaterRun, split_day
+from .relay_effect import AFTER, Effect
 from .shadow_rule import ACTION_LOWER, ACTION_PREHEAT, band, day_hours
 
 HEAT_HISTORY_API_VERSION: Final = 1
 HISTORY_KEYS: Final = (
     "api_version", "site_id", "time_zone", "generated_at", "period", "date", "end", "today", "complete", "money",
-    "meter", "energy", "buckets", "degree_days", "comfort", "shadow", "immersion", "runs",
+    "meter", "energy", "buckets", "degree_days", "comfort", "shadow", "immersion", "runs", "review",
 )
 #: The degree-day base (°C): the outdoor temperature above which a house needs no heating.
 BASE_C: Final = 17.0
@@ -124,6 +128,11 @@ class HeatHistoryInputs:
     indoor: Mapping[str, tuple[str, Mapping[datetime, tuple[float, float]]]] = field(default_factory=dict)
     #: The immersion heater's hourly mean power (kW, UTC hour starts); `None` without its power reading.
     immersion: Mapping[datetime, float] | None = None
+    #: SpotNav's plan as kept per day (`heat/runtime.py`): `{day: {hour start: action}}`.
+    kept: Mapping[date, Mapping[datetime, str]] = field(default_factory=dict)
+    effect: Effect = field(default_factory=Effect)
+    #: The heat shadow's day reviews (`heat/review.py`) by day.
+    reviews: Mapping[date, Mapping[str, Any]] = field(default_factory=dict)
 
 
 def _r(value: float, digits: int = 2) -> float:
@@ -244,15 +253,18 @@ def shadow_saving(
     outdoor_by_day: Mapping[date, float],
     tz: str,
     by_hour: dict[datetime, float] | None = None,
+    *,
+    kept: Mapping[date, Mapping[datetime, str]] | None = None,
+    effect: Effect | None = None,
 ) -> dict[str, Any] | None:
-    """What the shadow rule would have moved and what that was worth (see the module); `None` without a day that has
+    """What SpotNav's plan would have moved and what that was worth (see the module); `None` without a day that has
     its prices and its meter hours. `by_hour`, when given, is filled with each evaluated day's hours and what the
     lowered ones were worth (0 for the others)."""
     zone = time_zones.require_zone(tz)
+    effect = effect or Effect()
     # The household's own night and away are no saving SpotNav chose: the rule is run on the band alone.
     rule = replace(config, mode="home", away_until=None)
-    counted = 0
-    lowered_hours = 0
+    counted = kept_days = lowered_hours = 0
     moved = 0.0
     value = 0.0
     for day in days:
@@ -265,9 +277,14 @@ def shadow_saving(
         counted += 1
         if by_hour is not None:
             by_hour.update({hour: 0.0 for hour in hours})
-        end = hours[-1] + timedelta(hours=1)
-        banded, _guard = band(rule, hours, day_prices, end, zone, outdoor_c=outdoor_by_day.get(day))
-        actions = {item.start: item.action for item in banded}
+        planned = (kept or {}).get(day)
+        if planned:
+            kept_days += 1
+            actions = dict(planned)
+        else:
+            end = hours[-1] + timedelta(hours=1)
+            banded, _guard = band(rule, hours, day_prices, end, zone, outdoor_c=outdoor_by_day.get(day))
+            actions = {item.start: item.action for item in banded}
         run: list[datetime] = []
         for hour in [*hours, None]:
             if hour is not None and actions.get(hour) == ACTION_LOWER:
@@ -275,12 +292,14 @@ def shadow_saving(
                 continue
             if run:
                 before = run[0] - timedelta(hours=1)
-                after = run[-1] + timedelta(hours=1)
-                back = before if actions.get(before) == ACTION_PREHEAT else after
-                if back in day_prices:
+                after = [run[-1] + timedelta(hours=1 + offset) for offset in range(int(AFTER.total_seconds() // 3600))]
+                back_hours = [before] if actions.get(before) == ACTION_PREHEAT else [h for h in after if h in prices]
+                if back_hours:
+                    back_price = sum(prices[h] for h in back_hours) / len(back_hours)
                     for lowered in run:
-                        moved += heat_hours[lowered]
-                        worth = heat_hours[lowered] * (day_prices[lowered] - day_prices[back])
+                        taken = effect.lower_share * heat_hours[lowered]
+                        moved += taken
+                        worth = taken * (day_prices[lowered] - effect.rebound * back_price)
                         value += worth
                         if by_hour is not None:
                             by_hour[lowered] = worth
@@ -288,7 +307,14 @@ def shadow_saving(
                 run = []
     if counted == 0:
         return None
-    return {"days": counted, "lowered_hours": lowered_hours, "moved_kwh": _r(moved, 3), "value": _r(value)}
+    return {
+        "days": counted,
+        "lowered_hours": lowered_hours,
+        "moved_kwh": _r(moved, 3),
+        "value": _r(value),
+        "kept_days": kept_days,
+        **{key: item for key, item in effect.as_dict().items()},
+    }
 
 
 def comfort_block(inputs: HeatHistoryInputs, start: datetime, end: datetime) -> dict[str, Any] | None:
@@ -369,7 +395,17 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
     shadow = (
         None
         if inputs.meter is None
-        else shadow_saving(inputs.config, [day for day in days if day < today], inputs.heat_hours, priced, outdoor_by_day, tz, shadow_hours)
+        else shadow_saving(
+            inputs.config,
+            [day for day in days if day < today],
+            inputs.heat_hours,
+            priced,
+            outdoor_by_day,
+            tz,
+            shadow_hours,
+            kept=inputs.kept,
+            effect=inputs.effect,
+        )
     )
     for moment, worth in shadow_hours.items():
         bucket = buckets.get(bucket_key(period, moment, tz))
@@ -452,4 +488,5 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         "shadow": shadow,
         "immersion": immersion,
         "runs": runs,
+        "review": dict(inputs.reviews[period.first]) if period.kind == PERIOD_DAY and period.first in inputs.reviews else None,
     }

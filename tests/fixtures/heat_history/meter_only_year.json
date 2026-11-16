@@ -98,7 +98,7 @@
       "key": "2026-11",
       "kwh": 598.04,
       "outdoor_c": null,
-      "shadow_value": 12699.0
+      "shadow_value": 6349.5
     },
     {
       "cost": null,
@@ -136,12 +136,17 @@
     "minor": "öre"
   },
   "period": "year",
+  "review": null,
   "runs": [],
   "shadow": {
+    "blocks": 0,
     "days": 15,
+    "kept_days": 0,
+    "lower_share": 0.5,
     "lowered_hours": 45,
-    "moved_kwh": 74.7,
-    "value": 12699.0
+    "moved_kwh": 37.35,
+    "rebound": 1.0,
+    "value": 6349.5
   },
   "site_id": "site_villa",
   "time_zone": "Europe/Stockholm",
