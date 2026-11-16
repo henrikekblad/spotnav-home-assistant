@@ -679,3 +679,35 @@ async def test_a_frozen_meter_gives_no_power(hass: HomeAssistant, freezer) -> No
     control._levels, control._levels_hour = Levels(0.4, 1.1), (now + 4 * H).replace(minute=0, second=0, microsecond=0)  # noqa: SLF001
     sample = await control.async_sample(now + 4 * H)
     assert sample.kw is None and sample.state is None
+
+
+async def test_an_unavailable_relay_is_not_written_and_opened_once_it_reads(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    # The integration restarts: the relay reads unavailable for a few minutes. Nothing is written, no pause.
+    relay.ignore = True
+    hass.states.async_set(RELAY, "unavailable")
+    await control.async_look(now + MIN)
+    await control.async_look(now + 4 * MIN)
+    assert relay.calls == ["on"] and control.paused_until is None
+    assert control.status()["reason"] == "relay_unavailable"
+    # Back, closed: opened at the first readable look.
+    relay.ignore = False
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 5 * MIN)
+    await control.async_look(now + 6 * MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off" and not control.held and control.paused_until is None
+
+
+async def test_a_closing_pending_while_the_relay_is_unavailable_starts_no_pause(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    hass.states.async_set(RELAY, "unavailable")
+    await control.async_look(now + READ_BACK + MIN)
+    assert relay.calls == ["on"] and control.paused_until is None and control.pending is None
+    # Back open: nothing more to do.
+    relay.ignore = False
+    hass.states.async_set(RELAY, "off")
+    await control.async_look(now + READ_BACK + 2 * MIN)
+    assert relay.calls == ["on"] and not control.held and control.paused_until is None

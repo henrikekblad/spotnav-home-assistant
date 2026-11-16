@@ -15,6 +15,8 @@ first contact only. Nothing is written without it. The rules and the check are p
    closed by someone else (`relay_closed`).
 3. **A write is read back**: the relay must show it within `READ_BACK`; a write that raised or was not seen pauses
    control for the day (`no_read_back`) after an opening (tried again every `RETRY_OPEN` while SpotNav may hold it).
+   A relay that does not read (`relay_unavailable`) is not written and starts no pause: what SpotNav may hold is
+   opened at its first readable look.
 4. **Never fight another writer**: a change SpotNav did not make (the relay opened while SpotNav held it, or closed
    while it was open), read on every look for `FOREIGN_CONFIRM`, gives the relay up (nothing written) and pauses
    control until the next local day (`foreign_change`). A closed reading within `OWN_WINDOW` of SpotNav's own write
@@ -352,7 +354,7 @@ class HeatControl:
                 self._end_lowering(now)
             if self.held:
                 if self.pending is None or now - self.pending.at > READ_BACK:
-                    await self._async_give_back(now, "relay_changed")
+                    await self._async_give_back(now, "relay_changed", unreadable_too=True)
                 if self.held:
                     return
             self.pending, self._expect = None, None
@@ -375,6 +377,13 @@ class HeatControl:
         if self.pending is not None:
             if read == self.pending.closed:
                 self._confirm(self.pending, now)
+            elif now - self.pending.at > READ_BACK and read is None:
+                # Not seen because the relay does not read (its integration not up yet, a blip): no pause; what
+                # SpotNav may hold is opened at the first readable look.
+                self._log(now, "not_read_back", why=WAIT_RELAY_UNAVAILABLE)
+                self.pending = None
+                if self.held:
+                    self._reopen = True
             elif now - self.pending.at > READ_BACK:
                 if not self.pending.closed and self._own_reopen_at is not None and self.pending.at >= self._own_reopen_at and read is True:
                     # SpotNav opened what it took for its own late closing once; still closed: someone else's.
@@ -397,12 +406,16 @@ class HeatControl:
             return
 
         if read is None:
+            # Nothing is written to a relay that does not read, and no pause starts: it is opened at the first
+            # readable look where SpotNav may hold it.
             self._set(STATE_WAITING, WAIT_RELAY_UNAVAILABLE)
+            self.check.abort(WAIT_RELAY_UNAVAILABLE)
             if self.held:
-                await self._async_give_back(now, "relay_unavailable")
+                self._reopen = True
             return
         if self._reopen:
-            # Held at the last stop: opened before anything else (a relay found open was reset meanwhile).
+            # Held at the last stop, or while the relay did not read: opened before anything else (a relay found
+            # open was reset meanwhile).
             if self.held and read is True:
                 await self._async_give_back(now, "restart")
                 return
@@ -687,10 +700,14 @@ class HeatControl:
                 self.pending, self._retry_open_at = None, None
                 self._end_lowering(now)
 
-    async def _async_give_back(self, now: datetime, why: str) -> None:
+    async def _async_give_back(self, now: datetime, why: str, *, unreadable_too: bool = False) -> None:
         """Open the relay SpotNav holds (no write otherwise), and end a running check. A write not read back within
-        `READ_BACK` is given up: the opening is written all the same."""
+        `READ_BACK` is given up: the opening is written all the same. A relay that does not read is not written
+        (opened at its first readable look) unless `unreadable_too` (one no longer chosen)."""
         self.check.abort(why)
+        if not unreadable_too and self.held and self.relay is not None and self._read(self.relay) is None:
+            self._reopen = True
+            return
         if self.pending is not None and now - self.pending.at > READ_BACK:
             if not self.pending.closed:
                 self._open_failures += 1
