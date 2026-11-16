@@ -656,7 +656,7 @@ class BatteryControl:
                 self._end_verification(now)
             await self._async_release(now, "ai_takeover_withdrawn")
         elif trial is not None and not trial.export:
-            await self._async_battery_step(now, (trial.action, trial.rate_kw, trial.until), allowed=True)
+            await self._async_battery_step(now, self._trial_slot(now, trial, options), allowed=True)
         elif self.verification is not None and not self.verification.done:
             if options.writes:
                 await self._async_verify(now)
@@ -1013,9 +1013,10 @@ class BatteryControl:
         else:
             if self._executor() is None:
                 raise TrialRefused("no_battery_control")
+            self.facts = self._read_facts()
             rate = 0.0
             if action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
-                rate = abs(power_kw) if power_kw is not None else TEST_CHARGE_KW
+                rate = self._bounded_rate(action, abs(power_kw) if power_kw is not None else TEST_CHARGE_KW)
             if action == ACTION_GRID_CHARGE:
                 cap = self._grid_charge_cap_kw(now, options)
                 if cap is not None and cap < gate.MIN_RATE_KW:
@@ -1034,6 +1035,26 @@ class BatteryControl:
             "phase": None if executor is None else executor.state.phase,
             "events": list(self.log)[-6:],
         }
+
+    def _bounded_rate(self, action: str, rate_kw: float) -> float:
+        """A test action's power within the battery's own rating (`max_charge_kw`, `max_discharge_kw`) when known."""
+        rating = (
+            self.facts.max_charge_kw if action == ACTION_GRID_CHARGE
+            else self.facts.max_discharge_kw if action == ACTION_EXPORT_DISCHARGE else None
+        )
+        return rate_kw if rating is None or rating <= 0 else min(rate_kw, rating)
+
+    def _trial_slot(self, now: datetime, trial: Trial, options: gate.Options) -> tuple[str, float, datetime | None]:
+        """The test action for this look: its power within the rating and, for a grid charge, the HA-down cap as the
+        site reads now (the house's peak changes by the hour, the chargers' currents at any time); plain
+        self-consumption while the cap leaves no grid charge."""
+        rate = self._bounded_rate(trial.action, trial.rate_kw)
+        if trial.action == ACTION_GRID_CHARGE:
+            cap = self._grid_charge_cap_kw(now, options)
+            if cap is not None and cap < gate.MIN_RATE_KW:
+                return (ACTION_SELF_CONSUME, 0.0, trial.until)
+            rate = rate if cap is None else min(rate, cap)
+        return (trial.action, round(rate, 3), trial.until)
 
     @staticmethod
     def _trial_allowed(trial: Trial, options: gate.Options) -> bool:

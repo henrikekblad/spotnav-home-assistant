@@ -1184,6 +1184,27 @@ async def test_the_test_action_ends_by_itself_and_hands_back(
     assert any(row["kind"] == "trial_ended" for row in control.log)
 
 
+async def test_the_test_action_s_grid_charge_follows_the_cap_at_each_look_and_its_power_the_rating(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=lambda _now: None)
+    _options(hass, site, allow_sell=True)
+    await control.async_trial("grid_charge", 3.0, 30, force=False)
+    now = await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
+    assert hass.states.get(MODE).state == "Command Charging (Grid First)" and hass.states.get(CHARGE).state == "3"
+    # A car starts at 5 A: the cap leaves no grid charge, and the test action stops charging.
+    monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 5.0)
+    await _looks(control, now, 6)
+    assert control.trial is not None and hass.states.get(SWITCH).state == "off"
+    await control.async_trial("stop", None, 1, force=False)
+    # The power asked for is bounded by the battery's own rating.
+    rating = control.facts.max_discharge_kw
+    assert rating is not None
+    answer = await control.async_trial("export_discharge", rating + 30.0, 5, force=False)
+    assert answer["trial"]["rate_kw"] == pytest.approx(rating)
+
+
 async def test_the_test_action_is_refused_while_the_opt_in_is_off_even_forced(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
