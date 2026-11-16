@@ -1063,10 +1063,13 @@ class BatteryControl:
         return value
 
     def _held_cars_have_room(self, now: datetime, held: list[str]) -> bool:
-        """Whether every charger load balancing holds back has a departure with room (`gate.departure_has_room`)."""
+        """Whether every charger load balancing holds back has a departure with room (`gate.departure_has_room`): its
+        remaining energy need against the time left at its planned power. The need is what its plan still expects
+        before the departure plus what the running window is already behind (`import_target_shortfall_kwh`), as the
+        site's import target reckons a departure (`SiteCapacityController._target_shortfall`)."""
         if not held:
             return False
-        from ..runtime import controller_for  # noqa: PLC0415 - the charger side imports the site
+        from ..runtime import controller_for, preview_for  # noqa: PLC0415 - the charger side imports the site
         from ..site.import_target import member_w, plan_remaining_kwh  # noqa: PLC0415
 
         for charger_entry_id in held:
@@ -1084,6 +1087,9 @@ class BatteryControl:
             else:
                 power_kw = plan.power_kw if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
             need = plan_remaining_kwh(windows, power_kw, now, departure)
+            preview = preview_for(self.hass, charger_entry_id)
+            if preview is not None:
+                need += max(preview.import_target_shortfall_kwh(), 0.0)
             if not gate.departure_has_room(departure, now, need, power_kw):
                 return False
         return True

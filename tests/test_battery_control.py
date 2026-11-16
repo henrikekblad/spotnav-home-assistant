@@ -1225,3 +1225,40 @@ async def test_the_battery_yields_to_a_held_car_unless_the_car_s_departure_has_r
     room["value"] = True
     inputs = control.inputs(dt_util.now(), control.executor.control)
     assert inputs.car_held and not inputs.car_first, "a car whose departure has room backs off first"
+
+
+@pytest.mark.parametrize(
+    ("departure_h", "windows_h", "behind_kwh", "room"),
+    [
+        # 22 kWh planned in two hours at 11 kW, ten hours to go: room to spare.
+        (10.0, (1.0, 3.0), 0.0, True),
+        # 27.5 kWh due within three hours: no room.
+        (3.0, (0.0, 2.5), 0.0, False),
+        # One hour planned (11 kWh) five hours out has room, unless the running window is 30 kWh behind already.
+        (5.0, (1.0, 2.0), 0.0, True),
+        (5.0, (1.0, 2.0), 30.0, False),
+    ],
+)
+async def test_a_held_car_has_room_by_its_remaining_need_against_the_time_to_its_departure(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], departure_h: float,
+    windows_h: tuple[float, float], behind_kwh: float, room: bool,
+) -> None:
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from custom_components.spotnav import runtime  # noqa: PLC0415
+
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller)
+    now = dt_util.now()
+    start, end = (now + timedelta(hours=windows_h[0]), now + timedelta(hours=windows_h[1]))
+    plan = SimpleNamespace(
+        departure=(now + timedelta(hours=departure_h)).isoformat(), auto_owned=True, windows=[(start, end)],
+        energy_kwh=11.0 * (windows_h[1] - windows_h[0]), power_kw=11.0, phases=3, amps=16,
+    )
+    monkeypatch.setattr(runtime, "controller_for", lambda _hass, _entry_id: SimpleNamespace(plan=plan))
+    monkeypatch.setattr(
+        runtime, "preview_for", lambda _hass, _entry_id: SimpleNamespace(import_target_shortfall_kwh=lambda: behind_kwh)
+    )
+    assert control._held_cars_have_room(now, ["charger"]) is room
+    assert control._held_cars_have_room(now, []) is False
+
