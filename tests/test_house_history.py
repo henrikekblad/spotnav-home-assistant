@@ -284,6 +284,28 @@ def test_reviews_outside_the_period_and_without_figures() -> None:
     assert block["sun_gave"] is None and block["against_nothing"] is None
 
 
+def test_a_bucket_carries_the_battery_money_of_its_reviewed_days() -> None:
+    buckets = house_history(month_inputs())["buckets"]
+    by_key = {bucket["key"]: bucket for bucket in buckets}
+    assert by_key["2026-11-05"]["battery_saving"] == pytest.approx(400.0) and by_key["2026-11-05"]["battery_days"] == 1
+    assert by_key["2026-11-02"]["battery_saving"] is None and by_key["2026-11-02"]["battery_days"] == 0
+    # A reviewed day that made the battery dearer is kept negative.
+    worse = house_history(month_inputs(reviews=[review(date(2026, 11, 5), no_battery_cost=2900.0)]))["buckets"]
+    assert {bucket["key"]: bucket for bucket in worse}["2026-11-05"]["battery_saving"] == pytest.approx(-100.0)
+
+
+def test_a_year_bucket_sums_the_month_and_the_hours_of_a_day_have_none() -> None:
+    year = period_of(PERIOD_YEAR, date(2026, 1, 1))
+    start, _end = utc_bounds(year, TZ)
+    first = house_history(month_inputs(period=year, periods=[], reviews=[review(date(2026, 11, 3)), review(date(2026, 11, 4)), review(date(2026, 10, 30))]))
+    by_key = {bucket["key"]: bucket for bucket in first["buckets"]}
+    assert by_key["2026-11"]["battery_saving"] == pytest.approx(800.0) and by_key["2026-11"]["battery_days"] == 2
+    assert by_key["2026-10"]["battery_days"] == 1 and by_key["2026-01"]["battery_saving"] is None
+    day = period_of(PERIOD_DAY, date(2026, 11, 15))
+    hourly = house_history(month_inputs(period=day, reviews=[review(date(2026, 11, 15))]))["buckets"]
+    assert all(bucket["battery_saving"] is None and bucket["battery_days"] == 0 for bucket in hourly)
+
+
 def test_forecast_errors_are_the_mean_over_the_period() -> None:
     forecast = house_history(month_inputs())["forecast"]
     assert forecast["house"] == {"mae": 0.5, "days": 2}

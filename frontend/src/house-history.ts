@@ -1,6 +1,6 @@
 // The house card's history (`spotnav/get_house_history`): one day, month or year of the house, behind the clock in the
-// card's header. The decoded answer and the dialog's body: the bars of the period (the house's use per hour, day or
-// month, coloured by what its import cost), the energy flow summed from the backend's per-period flows, the money
+// card's header. The decoded answer and the dialog's body: the bars of the period (what the house cost per hour, day or
+// month, with the battery's saving hatched on top), the energy flow summed from the backend's per-period flows, the money
 // (what the period cost, the battery against no battery, what the sun gave) and, with Detailed on, the battery's
 // modes side by side, the forecasts' errors and each reviewed day. Every figure is the backend's; text is written
 // with `textContent` only.
@@ -18,7 +18,6 @@ import {
   periodBars,
   periodNav,
   periodStart,
-  pricePositions,
   section,
   statusLine,
   type HistoryPeriod,
@@ -41,6 +40,9 @@ export interface HouseBucket {
   use: number;
   cost: number | null;
   periods: number;
+  /** The battery's money over the bucket's reviewed days (negative: it made it dearer), `null` with none. */
+  battery_saving: number | null;
+  battery_days: number;
 }
 
 export interface HouseCost {
@@ -165,6 +167,8 @@ function bucket(value: unknown): HouseBucket {
     use: number(source.use),
     cost: numberOrNull(source.cost),
     periods: count(source.periods),
+    battery_saving: numberOrNull(source.battery_saving),
+    battery_days: count(source.battery_days),
   };
 }
 
@@ -321,23 +325,57 @@ function houseBars(input: HouseHistoryInput, answer: HouseHistory): HTMLElement 
   if (answer.buckets.length === 0 || answer.buckets.every((item) => item.periods === 0)) {
     return null;
   }
-  const prices = pricePositions(answer.buckets.map((item) => (item.cost !== null && item.grid_in > 0.05 ? item.cost / item.grid_in : null)));
+  // Without a price in the period there is no money to draw: the energy, in one colour.
+  if (answer.buckets.every((item) => item.cost === null)) {
+    const bars: PeriodBar[] = answer.buckets.map((item, index) => {
+      const words = bucketWords(language, answer.period, item.key, index, answer.buckets.length);
+      const figures =
+        item.periods === 0
+          ? translate(language, "hist.house.barNone", { when: words.when })
+          : translate(language, "hist.house.barNoCost", { when: words.when, use: kwh(language, item.use), bought: kwh(language, item.grid_in) });
+      return { key: item.key, value: item.periods === 0 ? null : item.use, dear: null, words: figures, axis: words.axis };
+    });
+    return periodBars(doc, language, translate(language, "hist.house.chart"), "kWh", bars, ui, translate(language, "hist.house.hint"));
+  }
   const bars: PeriodBar[] = answer.buckets.map((item, index) => {
     const words = bucketWords(language, answer.period, item.key, index, answer.buckets.length);
     let figures: string;
+    const saving = item.cost === null ? null : item.battery_saving;
     if (item.periods === 0) {
       figures = translate(language, "hist.house.barNone", { when: words.when });
-    } else {
-      figures = translate(language, item.cost === null ? "hist.house.barNoCost" : "hist.house.bar", {
+    } else if (item.cost === null) {
+      figures = translate(language, "hist.house.barNoCost", { when: words.when, use: kwh(language, item.use), bought: kwh(language, item.grid_in) });
+    } else if (saving === null) {
+      figures = translate(language, answer.period === "day" ? "hist.house.barHourly" : "hist.house.barUnreviewed", {
         when: words.when,
-        use: kwh(language, item.use),
-        bought: kwh(language, item.grid_in),
-        cost: item.cost === null ? "" : amount(language, item.cost, answer.money),
+        cost: amount(language, item.cost, answer.money),
       });
+    } else {
+      figures = translate(language, saving < 0 ? "hist.house.barWorse" : "hist.house.barMoney", {
+        when: words.when,
+        cost: amount(language, item.cost, answer.money),
+        without: amount(language, item.cost + saving, answer.money),
+        saving: amount(language, saving, answer.money),
+        extra: amount(language, -saving, answer.money),
+      });
+      // A year's month may be reviewed on some of its days only: say how many.
+      if (answer.period === "year") {
+        figures += ` (${translate(language, "hist.days", { days: String(item.battery_days) })})`;
+      }
     }
-    return { key: item.key, value: item.periods === 0 ? null : item.use, dear: prices[index] ?? null, words: figures, axis: words.axis };
+    return {
+      key: item.key,
+      value: null,
+      dear: null,
+      words: figures,
+      axis: words.axis,
+      money: { cost: item.periods === 0 ? null : item.cost, saving },
+    };
   });
-  return periodBars(doc, language, translate(language, "hist.house.chart"), "kWh", bars, ui, translate(language, "hist.house.hint"));
+  return periodBars(doc, language, translate(language, "hist.house.chart"), "", bars, ui, translate(language, "hist.house.hint"), {
+    scaleText: (top) => amount(language, top, answer.money),
+    legend: translate(language, "hist.house.legend"),
+  });
 }
 
 function flowSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {

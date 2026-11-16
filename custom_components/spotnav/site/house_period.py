@@ -6,7 +6,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
     {api_version: 1, site_id, time_zone, generated_at, period: "day" | "month" | "year", date (the period's first
      day), end (the first day after it), today, complete, money: {currency, major_unit, minor_unit} | null,
      energy_flow: (as `spotnav/get_house`'s, `site/energy_flow.py`) | null,
-     buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods}],
+     buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods,
+                battery_saving, battery_days}],
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
@@ -20,6 +21,10 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   A bucket is an hour of a day, a day of a month or a month of a year (`site/history_period.py`): the meters as read
   (`grid_in`, `grid_out`, `solar`, `battery_in`, `battery_out`) and the uses as the flow allocates them (`house` the
   balance, `heat`, `car`; where the meters disagree the flow takes the shortfall off them), `use` their sum. `null` without the dashboard's grid meter.
+  A bucket's `battery_saving` is the battery's money over the reviewed days in it (the review's `battery_saving`,
+  what the day cost against the same day with no battery; negative: the battery made it dearer), over
+  `battery_days` of them; `null` and 0 where no day of the bucket is reviewed, and always for the hours of a day (the
+  review is a whole day's). The card's bar is `cost` filled and `cost + battery_saving` whole.
 * **Cost** (`cost`): each period's import at its buy price with every fee and its export at its sell price, as the
   battery plan prices a quarter hour (`battery/plan_shadow.price_slots`: the area's held day prices with the fees as
   they are set now, so a corrected fee corrects the history). An hour read by the hour is priced at the mean of its
@@ -51,7 +56,7 @@ from ..battery.plan_model import MODES
 from ..battery.plan_shadow import KIND_BATTERY, DayReview, PriceSlot
 from .energy_flow import EnergyHour, allocate_hour, energy_flow
 from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED
-from .history_period import Period, bucket_key, bucket_keys, local_date
+from .history_period import PERIOD_DAY, Period, bucket_key, bucket_keys, local_date, midnight_utc
 
 HOUSE_HISTORY_API_VERSION: Final = 1
 HISTORY_KEYS: Final = (
@@ -84,6 +89,8 @@ BUCKET_KEYS: Final = (
     "use",
     "cost",
     "periods",
+    "battery_saving",
+    "battery_days",
 )
 #: The forecast log's kinds the history scores, by the answer's name.
 FORECAST_KINDS: Final = (
@@ -165,6 +172,8 @@ def _empty_bucket(key: str) -> dict[str, Any]:
         "use": 0.0,
         "cost": None,
         "periods": 0,
+        "battery_saving": None,
+        "battery_days": 0,
     }
 
 
@@ -215,6 +224,17 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             kwh_in += item.grid_in
             kwh_out += item.grid_out
             priced += 1
+    if period.kind != PERIOD_DAY:
+        seen: set[date] = set()
+        for review in inputs.reviews or ():
+            saving = review.battery_saving
+            if saving is None or review.day in seen or not period.contains(review.day):
+                continue
+            seen.add(review.day)
+            target = buckets.get(bucket_key(period, midnight_utc(review.day, tz) + timedelta(hours=12), tz))
+            if target is not None:
+                _add(target, "battery_saving", saving)
+                target["battery_days"] += 1
     rows = []
     for bucket in buckets.values():
         rows.append({key: (_r(value, 3) if isinstance(value, float) else value) for key, value in bucket.items()})

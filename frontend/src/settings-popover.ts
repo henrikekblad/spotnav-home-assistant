@@ -17,6 +17,7 @@ import {
   chooseSitePriceSource,
   dismissSetupItem,
   findRegion,
+  getCardInfo,
   getDebugBundle,
   getHeat,
   getSiteEntityConfig,
@@ -32,7 +33,9 @@ import {
   updateSiteSettingsBySite,
   type SiteTarget,
 } from "./api";
+import { clientBlock, decodeCardInfo, servedHashFromBundle } from "./card-identity";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
+import { sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
 import {
   decodeEntityAnswer,
@@ -685,6 +688,15 @@ export class SettingsPopover {
       repaint: () => this.paint(),
       onChanged: (what) => input.onChanged?.(what),
     });
+  }
+
+  /** The card bundle hash the backend serves (`get_card_info`), `null` when it cannot be read. */
+  private async servedCardHash(hass: HomeAssistantLike): Promise<string | null> {
+    try {
+      return decodeCardInfo(await getCardInfo(hass))?.cardBundleHash ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private isAdmin(): boolean {
@@ -1488,8 +1500,28 @@ export class SettingsPopover {
     button.addEventListener("click", () => void this.downloadDebug(button));
     const actions = element(doc, "div", C.settingsSupportActions);
     actions.append(button);
+    if (this.isAdmin()) {
+      const send = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "sendDebug.open")) as HTMLButtonElement;
+      send.type = "button";
+      send.dataset["debug"] = "send";
+      send.addEventListener("click", () => this.openSendDebug());
+      actions.append(send);
+    }
     section.append(actions);
     return section;
+  }
+
+  /** "Send debug info" in the popover's dialog; the command is the installation's, so it needs no charger. */
+  private openSendDebug(): void {
+    this.openEditor(translate(this.language, "sendDebug.title"), (handlers) =>
+      sendDebugEditor(this.input.doc, this.language, this.input.idPrefix, async (message, email) => {
+        const hass = this.input.hass();
+        if (hass === null || !this.isAdmin()) {
+          return { error: sendFailureText(this.language, "unauthorized") };
+        }
+        return await sendDebugReport(hass, this.language, this.input.doc.defaultView?.navigator?.userAgent ?? null, await this.servedCardHash(hass), message, email);
+      }, handlers),
+    );
   }
 
   private async downloadDebug(button: HTMLButtonElement): Promise<void> {
@@ -1501,7 +1533,9 @@ export class SettingsPopover {
     try {
       const answer = decodeDebugAnswer(await getDebugBundle(hass));
       if (answer !== null && answer.ok) {
-        saveDebugBundle(this.input.doc, answer.bundle, new Date());
+        // The card running here next to what the backend serves, as the charger card's download adds it.
+        const served = servedHashFromBundle(answer.bundle);
+        saveDebugBundle(this.input.doc, { ...answer.bundle, client: clientBlock(this.input.doc.defaultView?.navigator?.userAgent ?? null, served) }, new Date());
       }
     } catch {
       // The button comes back; the bundle is asked for again on the next press.

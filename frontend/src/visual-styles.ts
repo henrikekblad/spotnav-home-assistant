@@ -292,6 +292,8 @@ export const VISUAL_CLASSES = {
   historyBars: "spotnav-history-bars",
   historyBar: "spotnav-history-bar",
   historyBarFill: "spotnav-history-bar-fill",
+  historyBarPart: "spotnav-history-bar-part",
+  historyLegend: "spotnav-history-legend",
   historyAxis: "spotnav-history-axis",
   historyScale: "spotnav-history-scale",
   historyReadout: "spotnav-history-readout",
@@ -2786,6 +2788,44 @@ export const VISUAL_STYLES = `
       var(--spotnav-expensive, #c62828) var(--spotnav-day-dear, 0%),
       var(--spotnav-cheap, #2e7d32)
     );
+  }
+  /* A money bar: the filled cost with, above it, the hatched saving. The hatch is a diagonal stripe in the text colour
+     over a translucent fill, so it reads on a light and a dark card alike; a saving below zero hatches in the warning
+     colour. */
+  .${VISUAL_CLASSES.historyBarFill}[data-money="true"] {
+    display: flex;
+    flex-direction: column;
+    background: none;
+    overflow: hidden;
+  }
+  .${VISUAL_CLASSES.historyBarPart} {
+    display: block;
+    min-height: 1px;
+    flex-basis: 0;
+    flex-shrink: 0;
+  }
+  .${VISUAL_CLASSES.historyBarPart}[data-part="cost"] {
+    background: var(--spotnav-history-cost, var(--primary-color, #03a9f4));
+  }
+  .${VISUAL_CLASSES.historyBarPart}[data-part="saving"] {
+    background:
+      repeating-linear-gradient(
+        -45deg,
+        var(--spotnav-history-cost, var(--primary-color, #03a9f4)) 0 2px,
+        transparent 2px 5px
+      ),
+      color-mix(in srgb, var(--spotnav-history-cost, var(--primary-color, #03a9f4)) 18%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spotnav-history-cost, var(--primary-color, #03a9f4)) 55%, transparent);
+  }
+  .${VISUAL_CLASSES.historyBarPart}[data-part="extra"] {
+    background:
+      repeating-linear-gradient(-45deg, var(--warning-color, #ffa600) 0 2px, transparent 2px 5px),
+      color-mix(in srgb, var(--warning-color, #ffa600) 22%, transparent);
+    box-shadow: inset 0 0 0 1px var(--warning-color, #ffa600);
+  }
+  .${VISUAL_CLASSES.historyLegend} {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
   }
   .${VISUAL_CLASSES.historyBarFill}[data-price="none"] {
     background: var(--secondary-text-color, #727272);

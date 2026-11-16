@@ -263,28 +263,59 @@ export function periodNav(doc: Document, language: Language, ui: PeriodUi, today
   return nav;
 }
 
-/** One bar of the period's chart: its height, its colour's position between cheap (0) and dear (1) or none, and its
- * figures in words. */
+/** One bar of the period's chart: its height and colour's position between cheap (0) and dear (1) or none, or, with
+ * `money`, its cost and saving; and its figures in words. */
 export interface PeriodBar {
   key: string;
   value: number | null;
   dear: number | null;
   words: string;
   axis: string;
+  /** A money bar (house and heat history): the cost filled, `saving` hatched with it (`null`: no figure). With this
+   * the bar's height is money and `value` and `dear` are not used. */
+  money?: { cost: number | null; saving: number | null };
 }
 
-/** Each bar's position between the cheapest (0) and dearest (1) of `prices` (minor per kWh), `null` without one. */
-export function pricePositions(prices: Array<number | null>): Array<number | null> {
-  const known = prices.filter((price): price is number => price !== null);
-  const low = Math.min(...known);
-  const high = Math.max(...known);
-  return prices.map((price) => (price === null ? null : high > low ? (price - low) / (high - low) : 0));
+/** A money bar's parts, in the same unit as `cost` and `saving`:
+ * - `solid`: the filled part, what it cost;
+ * - `hatch`: the hatched part on top, what the saving adds (the cost without the saving is the whole bar);
+ * - `warn`: a saving below zero (it made it dearer): the top of the cost itself, hatched in the warning colour, so the
+ *   bar is never taller than what was paid and the extra is plain to see;
+ * - `whole`: their sum, the bar's height. */
+export interface MoneyParts {
+  solid: number;
+  hatch: number;
+  warn: number;
+  whole: number;
+}
+
+export function moneyParts(cost: number | null, saving: number | null): MoneyParts {
+  const paid = Math.max(0, cost ?? 0);
+  if (cost === null || saving === null) {
+    return { solid: paid, hatch: 0, warn: 0, whole: paid };
+  }
+  const without = cost + saving;
+  if (without >= paid) {
+    return { solid: paid, hatch: without - paid, warn: 0, whole: without };
+  }
+  const solid = Math.max(0, without);
+  return { solid, hatch: 0, warn: paid - solid, whole: paid };
 }
 
 /** The bars in the charger history's look: hover, focus or a tap shows a bar's figures under the chart. */
-export function periodBars(doc: Document, language: Language, label: string, unit: string, bars: PeriodBar[], ui: PeriodUi, hint: string): HTMLElement {
+export function periodBars(
+  doc: Document,
+  language: Language,
+  label: string,
+  unit: string,
+  bars: PeriodBar[],
+  ui: PeriodUi,
+  hint: string,
+  /** Money bars: the scale's text for the tallest bar (in the bars' own unit) and the one-line legend under it. */
+  moneyKey?: { scaleText: (top: number) => string; legend: string },
+): HTMLElement {
   const wrap = element(doc, "div", C.historyChart);
-  const top = Math.max(0, ...bars.map((bar) => bar.value ?? 0));
+  const top = Math.max(0, ...bars.map((bar) => (bar.money === undefined ? bar.value ?? 0 : moneyParts(bar.money.cost, bar.money.saving).whole)));
   const readout = element(doc, "p", `${C.muted} ${C.historyReadout}`);
   readout.setAttribute("aria-live", "polite");
   const buttons: HTMLButtonElement[] = [];
@@ -301,7 +332,24 @@ export function periodBars(doc: Document, language: Language, label: string, uni
     button.dataset["bar"] = bar.key;
     button.setAttribute("aria-label", bar.words);
     const fill = element(doc, "span", C.historyBarFill);
-    if (bar.value !== null && bar.value > 0 && top > 0) {
+    if (bar.money !== undefined) {
+      const parts = moneyParts(bar.money.cost, bar.money.saving);
+      if (parts.whole > 0 && top > 0) {
+        fill.dataset["money"] = "true";
+        fill.style.height = `${Math.max(4, (parts.whole / top) * 100)}%`;
+        // From the top: the saving (hatched), the extra cost (hatched, warning), the filled cost.
+        for (const [kind, size] of [["saving", parts.hatch], ["extra", parts.warn], ["cost", parts.solid]] as const) {
+          if (size > 0) {
+            const piece = element(doc, "span", C.historyBarPart);
+            piece.dataset["part"] = kind;
+            piece.style.flexGrow = String(size);
+            fill.append(piece);
+          }
+        }
+      } else {
+        fill.dataset["empty"] = "true";
+      }
+    } else if (bar.value !== null && bar.value > 0 && top > 0) {
       fill.style.height = `${Math.max(4, (bar.value / top) * 100)}%`;
       if (bar.dear === null) {
         fill.dataset["price"] = "none";
@@ -327,9 +375,15 @@ export function periodBars(doc: Document, language: Language, label: string, uni
   for (const bar of bars) {
     axis.append(element(doc, "span", undefined, bar.axis));
   }
-  const scale = element(doc, "span", `${C.muted} ${C.historyScale}`, `${formatFixed(language, top, top >= 10 ? 0 : 1)} ${unit}`);
+  const scale = element(doc, "span", `${C.muted} ${C.historyScale}`, moneyKey !== undefined ? moneyKey.scaleText(top) : `${formatFixed(language, top, top >= 10 ? 0 : 1)} ${unit}`);
   scale.setAttribute("aria-hidden", "true");
-  wrap.append(scale, plot, axis, readout);
+  wrap.append(scale, plot, axis);
+  if (moneyKey !== undefined) {
+    const legend = element(doc, "p", `${C.muted} ${C.historyLegend}`, moneyKey.legend);
+    legend.dataset["part"] = "legend";
+    wrap.append(legend);
+  }
+  wrap.append(readout);
   show(bars.find((bar) => bar.key === ui.selected) ?? null);
   return wrap;
 }

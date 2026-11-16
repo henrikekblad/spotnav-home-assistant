@@ -2,8 +2,10 @@
   "api_version": 1,
   "buckets": [
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 595.2,
@@ -16,8 +18,10 @@
       "use": 595.2
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 537.6,
@@ -30,8 +34,10 @@
       "use": 537.6
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 595.2,
@@ -44,8 +50,10 @@
       "use": 595.2
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 576.0,
@@ -58,8 +66,10 @@
       "use": 576.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 595.2,
@@ -72,8 +82,10 @@
       "use": 595.2
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 576.0,
@@ -86,8 +98,10 @@
       "use": 576.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 595.2,
@@ -100,8 +114,10 @@
       "use": 595.2
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 595.2,
@@ -114,8 +130,10 @@
       "use": 595.2
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 576.0,
@@ -128,8 +146,10 @@
       "use": 576.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": 3120.0,
       "grid_in": 595.2,
@@ -142,8 +162,10 @@
       "use": 595.2
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": 46800.0,
       "grid_in": 288.0,
@@ -156,8 +178,10 @@
       "use": 288.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,

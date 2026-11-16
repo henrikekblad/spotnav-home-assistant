@@ -178,6 +178,19 @@ def test_shadow_would_have_moved_the_dear_evening() -> None:
     assert shadow["value"] == pytest.approx(shadow["moved_kwh"] * 170.0, rel=0.01)
 
 
+def test_buckets_carry_their_share_of_the_shadow_value() -> None:
+    answer = heat_history(month_inputs())
+    by_key = {bucket["key"]: bucket for bucket in answer["buckets"]}
+    shares = [bucket["shadow_value"] for bucket in answer["buckets"] if bucket["shadow_value"] is not None]
+    assert len(shares) == 15 and sum(shares) == pytest.approx(answer["shadow"]["value"], abs=0.1)
+    assert by_key["2026-11-10"]["shadow_value"] > 0
+    assert by_key["2026-11-20"]["shadow_value"] is None  # a day to come is not evaluated
+    year = heat_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 1, 1))))
+    november = next(bucket for bucket in year["buckets"] if bucket["key"] == "2026-11")
+    assert november["shadow_value"] == pytest.approx(answer["shadow"]["value"], abs=0.1)
+    assert next(bucket for bucket in year["buckets"] if bucket["key"] == "2026-01")["shadow_value"] is None
+
+
 def test_immersion_hours_and_energy() -> None:
     immersion = heat_history(month_inputs())["immersion"]
     assert immersion == {"hours": 3, "kwh": 6.0}

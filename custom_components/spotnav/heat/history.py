@@ -7,7 +7,7 @@ written here.
      money: {currency, major, minor} | null,
      meter: {entity_id, name} | null,
      energy: {total_kwh, hours, hot_water_kwh, split_days, days, cost, priced_hours} | null,
-     buckets: [{key, kwh, hot_water_kwh, cost, degree_days, outdoor_c}],
+     buckets: [{key, kwh, hot_water_kwh, cost, degree_days, outdoor_c, shadow_value}],
      degree_days: {base_c, outdoor: {entity_id, source} | null, sum, days, kwh, kwh_per_degree_day,
                    trend: [{month, kwh, degree_days, kwh_per_degree_day}]} | null,
      comfort: {low_c, sensors, coldest: {entity_id, name, mean_c, min_c} | null, hours, hours_below} | null,
@@ -20,7 +20,9 @@ written here.
   prices, the fees as set now): `cost` over `priced_hours` of `hours`. Hot water is split out per day only where the
   recorder still has the day's 5-minute rows (`heat/meter_split.py`, the levels learned on the day itself):
   `hot_water_kwh` over `split_days` of `days`, `null` with none. A bucket is an hour of a day, a day of a month or a
-  month of a year (`site/history_period.py`).
+  month of a year (`site/history_period.py`). A bucket's `shadow_value` is the part of the shadow's `value` that falls
+  in its hours (the lowered hour's, the saving counted where the heat was used), `null` where no day of the bucket was
+  evaluated: the card's hatched upper bound on top of the bucket's cost.
 * **Degree-days** (`degree_days`): per local day `max(0, BASE_C - the day's mean outdoor temperature)`, the mean of
   its hourly means (a day with fewer than `MIN_DAY_HOURS` of them has none). The weather-neutral figure is the meter's
   whole energy (hot water included: older days have no split) over the days that have both, per degree-day:
@@ -241,9 +243,11 @@ def shadow_saving(
     prices: Mapping[datetime, float],
     outdoor_by_day: Mapping[date, float],
     tz: str,
+    by_hour: dict[datetime, float] | None = None,
 ) -> dict[str, Any] | None:
     """What the shadow rule would have moved and what that was worth (see the module); `None` without a day that has
-    its prices and its meter hours."""
+    its prices and its meter hours. `by_hour`, when given, is filled with each evaluated day's hours and what the
+    lowered ones were worth (0 for the others)."""
     zone = time_zones.require_zone(tz)
     # The household's own night and away are no saving SpotNav chose: the rule is run on the band alone.
     rule = replace(config, mode="home", away_until=None)
@@ -259,6 +263,8 @@ def shadow_saving(
         if len(day_prices) < len(hours):
             continue
         counted += 1
+        if by_hour is not None:
+            by_hour.update({hour: 0.0 for hour in hours})
         end = hours[-1] + timedelta(hours=1)
         banded, _guard = band(rule, hours, day_prices, end, zone, outdoor_c=outdoor_by_day.get(day))
         actions = {item.start: item.action for item in banded}
@@ -274,7 +280,10 @@ def shadow_saving(
                 if back in day_prices:
                     for lowered in run:
                         moved += heat_hours[lowered]
-                        value += heat_hours[lowered] * (day_prices[lowered] - day_prices[back])
+                        worth = heat_hours[lowered] * (day_prices[lowered] - day_prices[back])
+                        value += worth
+                        if by_hour is not None:
+                            by_hour[lowered] = worth
                         lowered_hours += 1
                 run = []
     if counted == 0:
@@ -327,7 +336,7 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
     kwh_by_day = day_kwh(inputs.heat_hours, tz)
     complete = _complete_days(inputs.heat_hours, tz, today)
 
-    buckets = {key: {"key": key, "kwh": None, "hot_water_kwh": None, "cost": None, "degree_days": None, "outdoor_c": None} for key in bucket_keys(period, tz)}
+    buckets = {key: {"key": key, "kwh": None, "hot_water_kwh": None, "cost": None, "degree_days": None, "outdoor_c": None, "shadow_value": None} for key in bucket_keys(period, tz)}
     cost = 0.0
     priced_hours = 0
     for moment, kwh in in_period.items():
@@ -356,6 +365,16 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
                     buckets[key]["degree_days"] = (buckets[key]["degree_days"] or 0.0) + degree_days(outdoor_by_day[day])
     for key, values in outdoor_groups.items():
         buckets[key]["outdoor_c"] = sum(values) / len(values)
+    shadow_hours: dict[datetime, float] = {}
+    shadow = (
+        None
+        if inputs.meter is None
+        else shadow_saving(inputs.config, [day for day in days if day < today], inputs.heat_hours, priced, outdoor_by_day, tz, shadow_hours)
+    )
+    for moment, worth in shadow_hours.items():
+        bucket = buckets.get(bucket_key(period, moment, tz))
+        if bucket is not None:
+            bucket["shadow_value"] = (bucket["shadow_value"] or 0.0) + worth
     rows = [{key: (_r(value, 3) if isinstance(value, float) else value) for key, value in bucket.items()} for bucket in buckets.values()]
 
     energy = None
@@ -430,9 +449,7 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         "buckets": rows if inputs.meter is not None else [],
         "degree_days": degree,
         "comfort": comfort_block(inputs, start, end),
-        "shadow": None
-        if inputs.meter is None
-        else shadow_saving(inputs.config, [day for day in days if day < today], inputs.heat_hours, priced, outdoor_by_day, tz),
+        "shadow": shadow,
         "immersion": immersion,
         "runs": runs,
     }
