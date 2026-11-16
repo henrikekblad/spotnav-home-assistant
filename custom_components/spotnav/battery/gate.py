@@ -13,9 +13,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`).
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
   import limit acts under Remote EMS. Until then, and whenever that limit does not read at most the fuse, a grid
-  charge is capped so that it, the chargers' last currents and a house peak on one phase keep every phase under the
-  fuse while Home Assistant is down (`grid_charge_cap_kw`; Sigenergy has no dead-man: a command stays until
-  something writes it).
+  charge is capped so that it, the chargers' last currents and the house's peak keep every phase under the fuse
+  while Home Assistant is down (`grid_charge_cap_kw`; Sigenergy has no dead-man: a command stays until something
+  writes it). The house's peak is each phase's own, learned from the site's meter (`site/phase_peaks.py`), once
+  two weeks of it are kept; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -88,6 +89,8 @@ SUITABLE_HEADROOM_A: Final = 4.0
 #: A re-verification after a firmware or integration change waits for an evening (local hours, end excluded).
 EVENING_HOURS: Final = (17, 22)
 
+#: The phases a learned house peak is kept for (`site/phase_peaks.py`).
+_PHASE_NAMES: Final = ("L1", "L2", "L3")
 #: The house's normal peak when its forecast has no p90 for the hour (kW), for the grid charge cap.
 HOUSE_PEAK_DEFAULT_KW: Final = 4.0
 #: A grid charge below this is not worth running (kW), as the executor's `MIN_RATE_KW`.
@@ -344,10 +347,23 @@ def import_limit_holds(import_limit_kw: float | None, main_fuse_a: float | None,
     )
 
 
+def _learned_peaks(house_phase_peaks_a: Mapping[str, float] | None) -> list[float] | None:
+    """The learned per-phase peaks when each of the three phases has a usable one, else `None` (the conservative
+    rule): a phase missing is never taken as a phase without load."""
+    if not house_phase_peaks_a or set(house_phase_peaks_a) != set(_PHASE_NAMES):
+        return None
+    peaks: list[float] = []
+    for value in house_phase_peaks_a.values():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None
+        peaks.append(max(float(value), 0.0))
+    return peaks
+
+
 def grid_charge_cap_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
-    import_limit_acts: bool = False,
+    import_limit_acts: bool = False, house_phase_peaks_a: Mapping[str, float] | None = None,
 ) -> float | None:
     """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
     stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
@@ -366,10 +382,15 @@ def grid_charge_cap_kw(
     ):
         return 0.0
     volts = phase_volts(volts_between_phases)
-    peak = HOUSE_PEAK_DEFAULT_KW
-    if house_peak_kw is not None and math.isfinite(house_peak_kw):
-        peak = max(peak, house_peak_kw)
-    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - peak * 1000.0 / volts
+    learned = _learned_peaks(house_phase_peaks_a)
+    if learned is not None:
+        house_a = max(learned)
+    else:
+        peak = HOUSE_PEAK_DEFAULT_KW
+        if house_peak_kw is not None and math.isfinite(house_peak_kw):
+            peak = max(peak, house_peak_kw)
+        house_a = peak * 1000.0 / volts
+    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - house_a
     phases = min(max(int(plant_phases), 1), 3)
     return max(room_a, 0.0) * phases * volts / 1000.0
 

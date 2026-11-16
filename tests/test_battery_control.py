@@ -1001,6 +1001,46 @@ async def test_the_chargers_last_currents_count_against_the_grid_charge_cap(
     )
 
 
+async def test_the_learned_per_phase_house_peaks_replace_the_one_phase_rule_after_two_weeks(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.site.phase_peaks import DAY_MINUTES, MARGIN_A, READY_DAYS, HourMark
+
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = BatteryControl(hass, controller)
+    control.facts = control._read_facts()
+    now = dt_util.now()
+    volts = 400.0 / 3 ** 0.5
+    # Nothing learned yet: 4 kW on one phase leaves no grid charge worth running on 20 A.
+    assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW
+    cap = control.status()["grid_charge_cap"]
+    assert cap["rule"] == "conservative" and cap["cap_kw"] < gate.MIN_RATE_KW and cap["main_fuse_a"] == 20.0
+    assert cap["learned"]["ready"] is False
+    # Two weeks of counted hours: L3 at most 9 A.
+    hour = int(now.timestamp() // 3600)
+    marks = controller.phase_peaks.peaks.hours
+    for day in range(READY_DAYS):
+        for offset in range(DAY_MINUTES // 30 + 1):
+            marks[hour - 24 * day - offset - 1] = HourMark(house_a=(5.0, 3.0, 9.0), minutes=30, total_all=17.0,
+                                                           total_counted=17.0)
+    expected = (20.0 - 2.0 - (9.0 + MARGIN_A)) * 3 * volts / 1000
+    assert control._grid_charge_cap_kw(now, control.options()) == pytest.approx(expected)
+    cap = control.status()["grid_charge_cap"]
+    assert cap["rule"] == "learned" and cap["cap_kw"] == pytest.approx(expected, abs=0.01)
+    assert cap["learned"]["peaks_a"] == {"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 9.0 + MARGIN_A}
+    assert control.snapshot()["status"]["grid_charge_cap"]["learned"]["days_counted"] == READY_DAYS
+
+
+async def test_the_site_samples_its_house_per_phase_without_raising(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    start = dt_util.utcnow().timestamp()
+    for second in range(0, 240, 10):
+        controller.phase_peaks.sample(controller, start + second)
+    assert not controller.phase_peaks._failed
+
+
 async def test_selling_from_the_battery_is_off_by_default(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

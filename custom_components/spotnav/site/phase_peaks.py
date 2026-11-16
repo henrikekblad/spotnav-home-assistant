@@ -1,0 +1,585 @@
+"""The house's own current per phase, learned: its hourly peaks of the last `WINDOW_DAYS` days (SpotNav 3.0).
+
+What it is for: the home battery's grid charge cap (`battery/gate.py` `grid_charge_cap_kw`), which must keep every
+phase under the main fuse even if Home Assistant stops while a grid charge runs (Sigenergy has no dead-man: the
+command stays). Without a per-phase history the cap takes the house's peak as `max(p90, 4 kW)` all on one phase,
+which on a 20 A fuse leaves no grid charge at all. With one, each phase's own learned peak counts.
+
+**What is measured** (`SitePhasePeaks.sample`, every `SAMPLE_S` from what the site already holds; no recorder query,
+no service call): per phase, the site meter's current, signed as load balancing takes it (its magnitude, negative
+where the phase's active power is known to export), less each charger's own measured current on that phase, less
+the home battery's share:
+
+* **The battery.** Its split over the phases is not known (a SigenStor can deliver unbalanced), so only a sample
+  with the battery's power within `BATTERY_BAND_W` (0.5 kW) of zero counts per phase, and there it is counted the way
+  that makes the house largest: its whole discharge on every phase, none of its charge. A phase then never reads
+  less than the house drew; it reads at most 0.5 kW / 230 V = 2.2 A more. Wider, the error grows with the battery's
+  power and a large charge would read as house. A battery configured on the site whose power cannot be read live
+  counts nothing; a site without one counts it as 0.
+* **The chargers.** A charger's reading counts while it is fresh (reported within the site's maximum age); a stale
+  one (an OCPP charger repeats its last current all night after a pause) counts 0, so the car is then counted in the
+  house (larger, never smaller). A single-phase charger takes its largest reading on its chosen phase; one whose phase
+  is not known ("Automatic") makes a sample not count while it draws. A minute with a charger's current changing by
+  more than `CHARGER_STEP_A`, and the minutes on either side of it, do not count (a charger's report lags the meter:
+  a car starting would read as the house for those seconds).
+* **The measurement.** Only a sample on the site's usable measurement counts (the site `observing`, every phase
+  read): a stale or missing phase is no sample.
+
+**Kept** per clock hour (UTC): per phase the largest 1-minute mean (a minute counts with at least `MIN_SAMPLES`
+samples, every one of them counting), the minutes counted, and two figures for the bias below; `WINDOW_DAYS` days,
+in the site's own store (bounded, read as untrusted: anything malformed is dropped).
+
+**What the cap uses** (`learned`): once `READY_DAYS` days in the window each have at least `DAY_MINUTES` counted
+minutes, per phase **the largest hourly peak in the whole window** (not a quantile: the minutes that count are biased
+toward the battery standing idle, mostly night, so the rarest peaks are the ones to keep; a 1-minute mean already
+leaves out a motor's start), scaled up by the **bias factor** and plus `MARGIN_A`. The bias factor is how much larger
+the house's whole load (its current summed over the phases, known exactly whatever the battery's split) got in every
+minute than in the minutes that counted (at least 1): a house whose battery covers its evening peaks has those peaks
+reckoned at that ratio. Before that the conservative rule stays. Loads that back off by themselves (a heat pump's own
+load monitor shedding its immersion heater) never peak on the meter, so they are left out as they should be.
+
+The sun: on a hybrid inverter the sun's power reaches the meter through the plant, so it hides house load in the
+meter's reading while it shines. It only ever lowers what is seen, and the largest peaks come from the hours without
+it, which every day has.
+
+The heat pump's meter: where its sensor has per-phase siblings (`<sensor>_l1` .. `_l3`, power), their hourly peaks
+are kept beside the house's, for the diagnostics only.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+import logging
+import math
+from typing import TYPE_CHECKING, Any, Final
+
+from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S, DOMAIN
+from .site_capacity import PHASES
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+    from .site_capacity_controller import SiteCapacityController
+
+_LOGGER = logging.getLogger(__name__)
+
+#: How often a sample is taken (s), and how many of a minute's must count for it to count.
+SAMPLE_S: Final = 10.0
+MIN_SAMPLES: Final = 4
+#: The battery's power within which a sample counts per phase (W; see the module).
+BATTERY_BAND_W: Final = 500.0
+#: A charger whose current changes by more than this within a minute makes it, and its neighbours, not count (A).
+CHARGER_STEP_A: Final = 1.0
+#: A single-phase charger of unknown phase draws from this current on (A).
+DRAWING_A: Final = 1.0
+#: The window kept (days), the days with counted minutes before the learned peaks count, and the minutes a day needs.
+WINDOW_DAYS: Final = 28
+READY_DAYS: Final = 14
+DAY_MINUTES: Final = 120
+#: Added to each phase's learned peak (A).
+MARGIN_A: Final = 2.0
+#: A phase's current is read as at most this (A): anything beyond is a broken reading, not kept.
+MAX_A: Final = 1000.0
+
+_HOUR_S: Final = 3600
+_MINUTE_S: Final = 60
+
+Triple = tuple[float, float, float]
+
+
+def _finite(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) and abs(number) <= MAX_A else None
+
+
+def _triple(value: Any) -> Triple | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    numbers = [_finite(item) for item in value]
+    if any(number is None for number in numbers):
+        return None
+    return (numbers[0], numbers[1], numbers[2])  # type: ignore[return-value]
+
+
+def _max_triple(first: Triple | None, second: Triple | None) -> Triple | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return (max(first[0], second[0]), max(first[1], second[1]), max(first[2], second[2]))
+
+
+def _max(first: float | None, second: float | None) -> float | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return max(first, second)
+
+
+@dataclass(frozen=True, slots=True)
+class Reading:
+    """One sample's inputs, already read: the meter's current per phase (signed: + import, - export; `None` when the
+    measurement is not usable), what the chargers draw per phase (A; `None` while one draws on an unknown phase),
+    each charger's readings (for the change check), the battery's power (W, + charging; `None` when it cannot be
+    read; 0 on a site without one), the phase voltage (V) and the heat pump's per-phase power (W, diagnostics)."""
+
+    site_a: Triple | None
+    chargers_a: Triple | None
+    charger_readings: tuple[float, ...]
+    battery_w: float | None
+    phase_volts: float
+    heat_w: Triple | None = None
+
+
+def house_phase_a(reading: Reading) -> Triple | None:
+    """The house's current per phase in this sample (see the module), `None` when the sample does not count per
+    phase: the measurement, a charger's phase or the battery's power unknown, or the battery outside the band."""
+    if reading.site_a is None or reading.chargers_a is None or reading.battery_w is None or reading.phase_volts <= 0:
+        return None
+    if abs(reading.battery_w) > BATTERY_BAND_W:
+        return None
+    discharge_a = max(-reading.battery_w, 0.0) / reading.phase_volts
+    return (
+        reading.site_a[0] - reading.chargers_a[0] + discharge_a,
+        reading.site_a[1] - reading.chargers_a[1] + discharge_a,
+        reading.site_a[2] - reading.chargers_a[2] + discharge_a,
+    )
+
+
+def house_sum_a(reading: Reading) -> float | None:
+    """The house's whole load as current summed over the phases (A), whatever the battery does: the meter's sum less
+    the chargers' less the battery's power. `None` when any of them is unknown."""
+    if reading.site_a is None or reading.chargers_a is None or reading.battery_w is None or reading.phase_volts <= 0:
+        return None
+    return sum(reading.site_a) - sum(reading.chargers_a) - reading.battery_w / reading.phase_volts
+
+
+@dataclass(slots=True)
+class _Minute:
+    """One minute being taken."""
+
+    minute: int
+    samples: int = 0
+    house: list[float] | None = None
+    house_ok: bool = True
+    total: float = 0.0
+    total_ok: bool = True
+    low: tuple[float, ...] | None = None
+    high: tuple[float, ...] | None = None
+    heat: list[float] | None = None
+    heat_samples: int = 0
+    unsettled: bool = False
+
+    def add(self, reading: Reading) -> None:
+        self.samples += 1
+        house = house_phase_a(reading)
+        if house is None:
+            self.house_ok = False
+        elif self.house_ok:
+            self.house = list(house) if self.house is None else [a + b for a, b in zip(self.house, house, strict=True)]
+        total = house_sum_a(reading)
+        if total is None:
+            self.total_ok = False
+        else:
+            self.total += total
+        readings = reading.charger_readings
+        if self.low is None or self.high is None:
+            self.low = self.high = readings
+        elif len(self.low) != len(readings):
+            self.unsettled = True  # the site's chargers changed within the minute
+        else:
+            self.low = tuple(min(a, b) for a, b in zip(self.low, readings, strict=True))
+            self.high = tuple(max(a, b) for a, b in zip(self.high, readings, strict=True))
+        if reading.heat_w is not None:
+            self.heat_samples += 1
+            self.heat = list(reading.heat_w) if self.heat is None else [
+                a + b for a, b in zip(self.heat, reading.heat_w, strict=True)
+            ]
+
+    @property
+    def settled(self) -> bool:
+        """Enough samples, and no charger's current changed by more than `CHARGER_STEP_A`."""
+        if self.unsettled or self.samples < MIN_SAMPLES or self.low is None or self.high is None:
+            return False
+        return all(high - low <= CHARGER_STEP_A for low, high in zip(self.low, self.high, strict=True))
+
+    def house_mean(self) -> Triple | None:
+        if not self.house_ok or self.house is None or self.samples < MIN_SAMPLES:
+            return None
+        return (self.house[0] / self.samples, self.house[1] / self.samples, self.house[2] / self.samples)
+
+    def total_mean(self) -> float | None:
+        if not self.total_ok or self.samples < MIN_SAMPLES:
+            return None
+        return self.total / self.samples
+
+    def heat_mean(self) -> Triple | None:
+        if self.heat is None or self.heat_samples < MIN_SAMPLES:
+            return None
+        return (self.heat[0] / self.heat_samples, self.heat[1] / self.heat_samples, self.heat[2] / self.heat_samples)
+
+
+@dataclass(slots=True)
+class HourMark:
+    """One clock hour's high-water marks: per phase the largest counted minute (A), the minutes counted, the house's
+    whole load's largest minute among every minute (`total_all`) and among the counted ones (`total_counted`), and the
+    heat pump's per-phase peak (kW)."""
+
+    house_a: Triple | None = None
+    minutes: int = 0
+    total_all: float | None = None
+    total_counted: float | None = None
+    heat_kw: Triple | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        def rounded(values: Triple | None, digits: int = 2) -> list[float] | None:
+            return None if values is None else [round(value, digits) for value in values]
+
+        return {
+            "a": rounded(self.house_a),
+            "n": self.minutes,
+            "all": None if self.total_all is None else round(self.total_all, 2),
+            "counted": None if self.total_counted is None else round(self.total_counted, 2),
+            "heat": rounded(self.heat_kw, 3),
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> HourMark | None:
+        if not isinstance(raw, Mapping):
+            return None
+        minutes = raw.get("n")
+        if isinstance(minutes, bool) or not isinstance(minutes, int) or not 0 <= minutes <= 60:
+            return None
+        house = _triple(raw.get("a"))
+        if minutes and house is None:
+            return None
+        return cls(
+            house_a=house if minutes else None,
+            minutes=minutes,
+            total_all=_finite(raw.get("all")),
+            total_counted=_finite(raw.get("counted")),
+            heat_kw=_triple(raw.get("heat")),
+        )
+
+
+def _heat_w(heat_kw: Triple | None) -> Triple | None:
+    return None if heat_kw is None else (heat_kw[0] * 1000.0, heat_kw[1] * 1000.0, heat_kw[2] * 1000.0)
+
+
+@dataclass(frozen=True, slots=True)
+class Learned:
+    """What the window says (`PhasePeaks.learned`)."""
+
+    #: Whether the learned peaks count (`READY_DAYS` days with `DAY_MINUTES` counted minutes).
+    ready: bool
+    #: Per phase the largest hourly peak in the window (A), `None` while no minute counted.
+    raw_a: Triple | None
+    #: The bias factor (at least 1) and the per-phase peaks the cap uses (A): raw x factor + `MARGIN_A`.
+    factor: float
+    peaks_a: Triple | None
+    days: int
+    hours: int
+    minutes: int
+    heat_w: Triple | None
+
+    def as_dict(self) -> dict[str, Any]:
+        def per_phase(values: Triple | None, digits: int = 1) -> dict[str, float] | None:
+            return None if values is None else {
+                phase: round(value, digits) for phase, value in zip(PHASES, values, strict=True)
+            }
+
+        return {
+            "ready": self.ready,
+            "raw_a": per_phase(self.raw_a),
+            "factor": round(self.factor, 3),
+            "margin_a": MARGIN_A,
+            "peaks_a": per_phase(self.peaks_a),
+            "days_counted": self.days,
+            "days_needed": READY_DAYS,
+            "hours": self.hours,
+            "minutes": self.minutes,
+            "heat_peak_w": per_phase(self.heat_w, 0),
+        }
+
+    def phase_peaks(self) -> dict[str, float] | None:
+        """The per-phase peaks the cap uses, by phase name, `None` until `ready`."""
+        if not self.ready or self.peaks_a is None:
+            return None
+        return dict(zip(PHASES, self.peaks_a, strict=True))
+
+
+class PhasePeaks:
+    """The hourly marks of the last `WINDOW_DAYS` days and the minute being taken (pure; times are epoch seconds)."""
+
+    def __init__(self) -> None:
+        self.hours: dict[int, HourMark] = {}
+        self._minute: _Minute | None = None
+        #: The last closed minutes, newest last (a minute counts once both its neighbours are known settled).
+        self._closed: deque[_Minute] = deque(maxlen=3)
+
+    def add(self, now: float, reading: Reading) -> bool:
+        """One sample at `now`; whether a mark changed (a minute was counted)."""
+        minute = int(now // _MINUTE_S)
+        changed = False
+        current = self._minute
+        if current is not None and current.minute != minute:
+            changed = self._close(current)
+            current = None
+        if current is None:
+            current = self._minute = _Minute(minute)
+        current.add(reading)
+        return changed
+
+    def _close(self, minute: _Minute) -> bool:
+        """`minute` is over: the minute before it is now judged (its neighbours known)."""
+        closed = self._closed
+        if closed and closed[-1].minute != minute.minute - 1:
+            closed.clear()  # a gap: the minutes before it have no known next one, and are not counted
+        closed.append(minute)
+        changed = False
+        if len(closed) >= 2:
+            middle = closed[-2]
+            before = closed[-3] if len(closed) == 3 else None
+            neighbours_settled = minute.settled and (before is not None and before.settled)
+            changed = self._count(middle, settled=neighbours_settled and middle.settled)
+        self._prune(minute.minute * _MINUTE_S)
+        return changed
+
+    def _count(self, minute: _Minute, *, settled: bool) -> bool:
+        hour = minute.minute * _MINUTE_S // _HOUR_S
+        mark = self.hours.get(hour)
+        if mark is None:
+            mark = self.hours[hour] = HourMark()
+        heat = minute.heat_mean()
+        if heat is not None:
+            mark.heat_kw = _max_triple(mark.heat_kw, (heat[0] / 1000.0, heat[1] / 1000.0, heat[2] / 1000.0))
+        if not settled:
+            return heat is not None
+        total = minute.total_mean()
+        if total is not None:
+            mark.total_all = _max(mark.total_all, total)
+        house = minute.house_mean()
+        if house is not None:
+            mark.house_a = _max_triple(mark.house_a, house)
+            mark.minutes += 1
+            if total is not None:
+                mark.total_counted = _max(mark.total_counted, total)
+        return True
+
+    def _prune(self, now: float) -> None:
+        oldest = int(now // _HOUR_S) - WINDOW_DAYS * 24
+        for hour in [hour for hour in self.hours if hour < oldest]:
+            del self.hours[hour]
+
+    def learned(self, now: float) -> Learned:
+        """The window's peaks (see the module)."""
+        oldest = int(now // _HOUR_S) - WINDOW_DAYS * 24
+        raw: Triple | None = None
+        heat: Triple | None = None
+        total_all: float | None = None
+        total_counted: float | None = None
+        days: dict[int, int] = {}
+        hours = minutes = 0
+        for hour, mark in self.hours.items():
+            if hour < oldest:
+                continue
+            heat = _max_triple(heat, mark.heat_kw)
+            total_all = _max(total_all, mark.total_all)
+            if mark.minutes <= 0 or mark.house_a is None:
+                continue
+            raw = _max_triple(raw, mark.house_a)
+            total_counted = _max(total_counted, mark.total_counted)
+            hours += 1
+            minutes += mark.minutes
+            days[hour // 24] = days.get(hour // 24, 0) + mark.minutes
+        factor = 1.0
+        if total_all is not None and total_counted is not None:
+            factor = max(1.0, total_all / max(total_counted, 1.0))
+        peaks = None if raw is None else tuple(max(value, 0.0) * factor + MARGIN_A for value in raw)
+        day_count = sum(1 for counted in days.values() if counted >= DAY_MINUTES)
+        return Learned(
+            ready=raw is not None and day_count >= READY_DAYS,
+            raw_a=raw,
+            factor=factor,
+            peaks_a=peaks,  # type: ignore[arg-type]
+            days=day_count,
+            hours=hours,
+            minutes=minutes,
+            heat_w=_heat_w(heat),
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"hours": {str(hour): mark.as_dict() for hour, mark in sorted(self.hours.items())}}
+
+    def load(self, raw: Any, now: float) -> None:
+        """The stored marks, read as untrusted: an hour key that is no whole hour of the window, or a mark that does
+        not read, is dropped. Marks taken since the start are kept over stored ones of the same hour."""
+        hours = raw.get("hours") if isinstance(raw, Mapping) else None
+        if not isinstance(hours, Mapping):
+            return
+        newest = int(now // _HOUR_S)
+        oldest = newest - WINDOW_DAYS * 24
+        for key, value in list(hours.items())[: WINDOW_DAYS * 24 + 48]:
+            try:
+                hour = int(key)
+            except (TypeError, ValueError):
+                continue
+            if not oldest <= hour <= newest or hour in self.hours:
+                continue
+            mark = HourMark.from_dict(value)
+            if mark is not None:
+                self.hours[hour] = mark
+
+
+# ---------------------------------------------------------------------------------------------- the site's shell
+
+
+def store_key(entry_id: str) -> str:
+    return f"{DOMAIN}.phase_peaks.{entry_id}"
+
+
+def _charger_draw(
+    site: SiteCapacityController, charger_entry_id: str, max_age_s: float, now: float
+) -> tuple[Triple | None, tuple[float, ...]]:
+    """What one charger draws per phase now (A; `None` when it draws on a phase not known) and its readings."""
+    measured = site.charger_measured_current(charger_entry_id)
+    if measured is None:
+        return (0.0, 0.0, 0.0), ()
+    values: list[float] = []
+    for phase in PHASES:
+        value = measured.get(phase)
+        ages = [age for age in (value.age_s, value.report_age_s) if age is not None]
+        fresh = value.value is not None and value.problem is None and ages and min(ages) <= max_age_s
+        values.append(max(float(value.value), 0.0) if fresh else 0.0)  # type: ignore[arg-type]
+    readings = tuple(values)
+    phases, phase = site.reckoned_phases(charger_entry_id)
+    if phases == 3:
+        return (values[0], values[1], values[2]), readings
+    largest = max(values)
+    if phase not in PHASES:
+        return (None if largest >= DRAWING_A else (0.0, 0.0, 0.0)), readings
+    return tuple(largest if name == phase else 0.0 for name in PHASES), readings  # type: ignore[return-value]
+
+
+def _heat_phase_w(site: SiteCapacityController) -> Triple | None:
+    """The heat pump's meter's per-phase power (W) where its sensor has `_l1` .. `_l3` siblings, else `None`."""
+    from homeassistant.const import UnitOfPower  # noqa: PLC0415 - kept beside its only use
+
+    meter = getattr(getattr(getattr(site, "house_forecast", None), "heat", None), "meter", None)
+    entity_id = getattr(meter, "entity_id", None)
+    if not isinstance(entity_id, str) or getattr(meter, "kind", None) != "power":
+        return None
+    values: list[float] = []
+    for suffix in ("_l1", "_l2", "_l3"):
+        state = site.hass.states.get(f"{entity_id}{suffix}")
+        if state is None:
+            return None
+        value = _finite_any(state.state)
+        if value is None:
+            return None
+        unit = state.attributes.get("unit_of_measurement")
+        values.append(value * 1000.0 if unit == UnitOfPower.KILO_WATT else value)
+    return (values[0], values[1], values[2])
+
+
+def _finite_any(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def read_site(site: SiteCapacityController, now: float) -> Reading:
+    """One sample's inputs from what the site holds now."""
+    from ..battery.gate import phase_volts  # noqa: PLC0415 - the battery package imports the site
+    from ..planning.grid_voltage import stored_voltage_between_phases_v  # noqa: PLC0415
+
+    result = site.result
+    site_a: Triple | None = None
+    if result.state == "observing":
+        values: list[float] = []
+        for phase in PHASES:
+            magnitude = result.measured_phase_current_a.get(phase)
+            if magnitude is None or not math.isfinite(magnitude):
+                break
+            power = result.phase_signed_active_power_w.get(phase)
+            values.append(-abs(magnitude) if power is not None and power < 0 else abs(magnitude))
+        else:
+            site_a = (values[0], values[1], values[2])
+    max_age_s = float(site.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+    chargers: list[float] | None = [0.0, 0.0, 0.0]
+    readings: list[float] = []
+    for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        draw, own = _charger_draw(site, charger_entry_id, max_age_s, now)
+        readings.extend(own)
+        if draw is None or chargers is None:
+            chargers = None
+            continue
+        chargers = [a + b for a, b in zip(chargers, draw, strict=True)]
+    configured, battery_w = site.battery_live_w()
+    return Reading(
+        site_a=site_a,
+        chargers_a=None if chargers is None else (chargers[0], chargers[1], chargers[2]),
+        charger_readings=tuple(readings),
+        battery_w=battery_w if configured else 0.0,
+        phase_volts=phase_volts(stored_voltage_between_phases_v(site.config)),
+        heat_w=_heat_phase_w(site),
+    )
+
+
+class SitePhasePeaks:
+    """One site's learned per-phase house peaks, kept in its own store (see the module)."""
+
+    def __init__(self, hass: HomeAssistant | None = None, entry_id: str | None = None) -> None:
+        from ..debug_day import DayStore  # noqa: PLC0415 - Home Assistant's storage, kept out of the pure part
+
+        self.peaks = PhasePeaks()
+        self._store = None if hass is None or entry_id is None else DayStore(hass, store_key(entry_id), self._data)
+        self._failed = False
+
+    def _data(self) -> dict[str, Any]:
+        return self.peaks.as_dict()
+
+    async def async_load(self, now: float) -> None:
+        if self._store is None:
+            return
+        stored = await self._store.async_load()
+        try:
+            self.peaks.load(stored, now)
+        except Exception:  # noqa: BLE001 - a broken store starts again; the conservative rule counts meanwhile
+            _LOGGER.debug("SpotNav phase peaks: the kept marks could not be read", exc_info=True)
+
+    def sample(self, site: SiteCapacityController, now: float) -> None:
+        """One sample of `site` now. Never raises."""
+        try:
+            if self.peaks.add(now, read_site(site, now)) and self._store is not None:
+                self._store.changed()
+        except Exception:  # noqa: BLE001 - a measurement must never disturb the site
+            if not self._failed:
+                self._failed = True
+                _LOGGER.warning("SpotNav site: the house's per-phase peaks could not be sampled", exc_info=True)
+
+    def learned(self, now: float) -> Learned:
+        return self.peaks.learned(now)
+
+    async def async_close(self) -> None:
+        if self._store is not None:
+            await self._store.async_close()
+
+    @staticmethod
+    async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
+        from ..debug_day import DayStore  # noqa: PLC0415
+
+        await DayStore.async_remove(hass, store_key(entry_id))
+
+
+__all__: Sequence[str] = (
+    "BATTERY_BAND_W", "DAY_MINUTES", "Learned", "MARGIN_A", "PhasePeaks", "READY_DAYS", "Reading", "SitePhasePeaks",
+    "WINDOW_DAYS", "house_phase_a", "house_sum_a",
+)

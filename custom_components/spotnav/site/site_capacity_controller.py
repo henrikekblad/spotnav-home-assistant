@@ -70,6 +70,7 @@ from ..const import (
     SOLAR_PRIORITY_BATTERY_FIRST,
     SOLAR_PRIORITY_CAR_FIRST,
 )
+from .phase_peaks import SAMPLE_S as PHASE_PEAKS_SAMPLE_S, SitePhasePeaks
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .house_forecast import SiteHouseForecast
@@ -690,6 +691,10 @@ class SiteCapacityController:
         # The last 24 hours, one row a minute (`site/site_history.py`), for the debug bundle only.
         self._history = SiteHistory(hass, entry_id)
         self._history_cancel: Callable[[], None] | None = None
+        # The house's own current per phase, its hourly peaks of the last weeks (`site/phase_peaks.py`), for the home
+        # battery's grid charge cap; sampled every `PHASE_PEAKS_SAMPLE_S` from what the site already holds.
+        self.phase_peaks = SitePhasePeaks(hass, entry_id)
+        self._phase_peaks_cancel: Callable[[], None] | None = None
         # Each clock hour's mean import, for a demand charge and the import target (`site/demand_tracker.py`). Its
         # clock is the electricity price's area's (`_demand_zone`), resolved again at most every
         # `_DEMAND_ZONE_TTL_S`. Only the import target reads it for a decision (`_hold_to_import_target`).
@@ -868,10 +873,18 @@ class SiteCapacityController:
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
         )
+        await self.phase_peaks.async_load(dt_util.utcnow().timestamp())
+        self._phase_peaks_cancel = async_track_time_interval(
+            self.hass, self._async_sample_phase_peaks, timedelta(seconds=PHASE_PEAKS_SAMPLE_S)
+        )
 
     @callback
     def _async_sample_history(self, _now: datetime) -> None:
         self._history.sample(self)
+
+    @callback
+    def _async_sample_phase_peaks(self, _now: datetime) -> None:
+        self.phase_peaks.sample(self, dt_util.utcnow().timestamp())
 
     @property
     def history_samples(self) -> dict[str, Any]:
@@ -891,6 +904,9 @@ class SiteCapacityController:
         if self._history_cancel is not None:
             self._history_cancel()
             self._history_cancel = None
+        if self._phase_peaks_cancel is not None:
+            self._phase_peaks_cancel()
+            self._phase_peaks_cancel = None
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -905,6 +921,7 @@ class SiteCapacityController:
         self._controller_listener_cancels.clear()
         parts: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
             ("history", self._history.async_close),
+            ("phase peaks", self.phase_peaks.async_close),
             ("demand", self.demand.async_close),
             ("battery", self.battery_shadow.async_shutdown),
             ("switched load", self.switch_load.async_shutdown),
@@ -5296,6 +5313,10 @@ class SiteCapacityController:
         if battery.value is None or not self.solar_accepts(battery, self.battery_entity_ids()):
             return True, None
         return True, float(battery.value)
+
+    def battery_live_w(self) -> tuple[bool, float | None]:
+        """`_battery_live_w`, for the house's per-phase peaks (`site/phase_peaks.py`)."""
+        return self._battery_live_w()
 
     def has_battery_reading(self) -> bool:
         """Whether the site is set up with a home battery's power reading: its house load is then the house's whole
