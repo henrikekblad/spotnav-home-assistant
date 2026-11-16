@@ -1470,6 +1470,17 @@ class SiteCapacityController:
         """
         return [dict(entry) for entry in self._decision_log]
 
+    def charger_allowed_a(self, charger_entry_id: str) -> float | None:
+        """What this charger may draw per phase if nothing writes it again (A): what load balancing last wrote to it,
+        else what SpotNav asked of it or its current limit reads (`resolve_current`); `None` when neither is known.
+        A charger keeps its last current when Home Assistant stops (the home battery's HA-down grid charge cap)."""
+        damper = self._dampers.get(charger_entry_id)
+        if damper is not None and damper.last_written_a is not None:
+            return float(damper.last_written_a)
+        charger = controller_for(self.hass, charger_entry_id)
+        amps = None if charger is None else charger.resolve_current().amps
+        return None if amps is None else float(amps)
+
     def load_balancing_limit(self, charger_entry_id: str) -> tuple[float | None, str | None]:
         """`(limit_a, cause)` while active control holds this charger below what it asked for, else
         `(None, None)`. `limit_a` is the current it was last given; `cause` is the battery sharing

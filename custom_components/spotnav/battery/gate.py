@@ -9,10 +9,13 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   logs what it would do. It stays on until the owner's on-site tests are done (plan `v3_battery_control_optin.md`).
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
-* `battery_control_allow_sell` (default off): the plan may discharge the battery to the grid (`export_discharge`).
+* `battery_control_allow_sell` (default off): the plan may discharge the battery to the grid (`export_discharge`),
+  capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`).
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
-  import limit acts under Remote EMS. Until then a grid charge is capped so that it and a normal house peak stay under
-  the fuse while Home Assistant is down (Sigenergy has no dead-man: a command stays until something writes it).
+  import limit acts under Remote EMS. Until then, and whenever that limit does not read at most the fuse, a grid
+  charge is capped so that it, the chargers' last currents and a house peak on one phase keep every phase under the
+  fuse while Home Assistant is down (`grid_charge_cap_kw`; Sigenergy has no dead-man: a command stays until
+  something writes it).
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -150,6 +153,11 @@ def firmware_key(firmware: str | None, integration: str | None, version: str | N
     return f"{firmware or 'unknown'} | {integration or 'unknown'} {version or 'unknown'}"
 
 
+def firmware_known(key: str) -> bool:
+    """Whether a report key (`firmware_key`) names a firmware that was read."""
+    return not key.startswith("unknown |")
+
+
 # --- the report ------------------------------------------------------------------------------------------------------
 
 
@@ -222,18 +230,26 @@ def failed_mode(report: Mapping[str, Any] | None) -> str | None:
 
 
 def modes_to_run(report: Mapping[str, Any] | None) -> tuple[str, ...]:
-    """The battery modes a next run tries: those still pending (normal ends every run by itself)."""
+    """The battery modes a next run tries: those still pending (normal ends every run by itself). When only normal is
+    left, hold runs again, so that the hand-back normal judges is one of something written."""
     modes = _modes(report)
-    return tuple(name for name in BATTERY_MODES if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
+    pending = tuple(name for name in BATTERY_MODES if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
+    if not pending and mode_verdict((modes.get(MODE_NORMAL) or {}).get("outcome")) == "pending":
+        return ("hold",)
+    return pending
 
 
 def needs_run(report: Mapping[str, Any] | None) -> bool:
-    """Whether the routine has anything left to try for this key."""
+    """Whether the routine has anything left to try for this key: never after `MAX_ATTEMPTS` runs, also once hold
+    and normal passed (each run writes to the plant; a mode still pending then stays off)."""
     status = report_status(report)
     if status == "failed":
         return False
     if status == "none":
         return True
+    attempts = (report or {}).get("attempts")
+    if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
+        return False
     return bool(modes_to_run(report)) or mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
 
 
@@ -314,17 +330,70 @@ def fuse_kw(main_fuse_a: float | None, volts_between_phases: float, margin_a: fl
     return max(main_fuse_a - margin_a, 0.0) * math.sqrt(3.0) * volts_between_phases / 1000.0
 
 
-def grid_charge_cap_kw(fuse: float | None, house_peak_kw: float | None, *, import_limit_acts: bool) -> float | None:
-    """The most a grid charge may be commanded at (kW), so that it and a normal house peak (the house forecast's p90
-    for the hour, `HOUSE_PEAK_DEFAULT_KW` without one) stay under the fuse even if Home Assistant stops while it
-    runs; `None` (no cap of this kind) once the plant's own import limit is shown to act. With the fuse unknown no
-    grid charge may run (0)."""
-    if import_limit_acts:
+def phase_volts(volts_between_phases: float) -> float:
+    """One phase's voltage to neutral."""
+    return volts_between_phases / math.sqrt(3.0)
+
+
+def import_limit_holds(import_limit_kw: float | None, main_fuse_a: float | None, volts_between_phases: float) -> bool:
+    """Whether the plant's own grid import limit reads a value at or below the fuse (as three-phase kW)."""
+    fuse = fuse_kw(main_fuse_a, volts_between_phases, 0.0)
+    return (
+        fuse is not None and import_limit_kw is not None and math.isfinite(import_limit_kw)
+        and 0.0 <= import_limit_kw <= fuse + 1e-6
+    )
+
+
+def grid_charge_cap_kw(
+    main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
+    house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
+    import_limit_acts: bool = False,
+) -> float | None:
+    """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
+    stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
+
+    Reckoned in amps on the worst phase: the fuse, less `margin_a`, less what the site's chargers may draw now
+    (`cars_a`, each at its last current, all counted on that phase), less the house's peak (the larger of the house
+    forecast's p90 for the hour and `HOUSE_PEAK_DEFAULT_KW`) all on that one phase; the battery's charge takes
+    `1 / plant_phases` of its power on each phase (Sigenergy's three-phase plants balance it). `None` (no cap of this
+    kind) only while the person's on-site test showed the plant's own import limit acts (`import_limit_acts`) and that
+    limit reads at most the fuse (`import_limit_holds`). With the fuse unknown no grid charge may run (0)."""
+    if import_limit_acts and import_limit_holds(import_limit_kw, main_fuse_a, volts_between_phases):
         return None
-    if fuse is None:
+    if (
+        main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0
+        or not math.isfinite(cars_a)
+    ):
         return 0.0
-    peak = HOUSE_PEAK_DEFAULT_KW if house_peak_kw is None or not math.isfinite(house_peak_kw) else max(house_peak_kw, 0.0)
-    return max(fuse - peak, 0.0)
+    volts = phase_volts(volts_between_phases)
+    peak = HOUSE_PEAK_DEFAULT_KW
+    if house_peak_kw is not None and math.isfinite(house_peak_kw):
+        peak = max(peak, house_peak_kw)
+    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - peak * 1000.0 / volts
+    phases = min(max(int(plant_phases), 1), 3)
+    return max(room_a, 0.0) * phases * volts / 1000.0
+
+
+def export_discharge_cap_kw(
+    main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float,
+    phase_export_a: Iterable[float] | None, battery_share_a: float, plant_phases: int,
+) -> float:
+    """The most a discharge to the grid may be commanded at (kW), so that it and the sun's export keep every phase
+    under the fuse: the fuse, less `margin_a`, less the worst phase's export now (`phase_export_a`, A, each phase's
+    export, 0 where it imports) without the battery's own part of it (`battery_share_a`, A per phase, what SpotNav's
+    running discharge to the grid carries now), spread over the plant's phases. 0 with the fuse or a phase unknown."""
+    if (
+        main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0
+        or phase_export_a is None
+    ):
+        return 0.0
+    exports = list(phase_export_a)
+    if not exports or not all(math.isfinite(value) for value in exports):
+        return 0.0
+    volts = phase_volts(volts_between_phases)
+    sun_a = max(max(value - max(battery_share_a, 0.0), 0.0) for value in exports)
+    phases = min(max(int(plant_phases), 1), 3)
+    return max(main_fuse_a - margin_a - sun_a, 0.0) * phases * volts / 1000.0
 
 
 # --- what control runs ---------------------------------------------------------------------------------------------
@@ -341,9 +410,12 @@ def merged_action(plan: Slot | None, hold_requested: bool) -> Slot | None:
     return plan
 
 
-def restricted(slot: Slot | None, allowed: Iterable[str], cap_kw: float | None) -> tuple[Slot | None, str | None]:
+def restricted(
+    slot: Slot | None, allowed: Iterable[str], cap_kw: float | None, export_cap_kw: float | None = None
+) -> tuple[Slot | None, str | None]:
     """The slot control may run (an action the report does not allow becomes plain self-consumption; a grid charge
-    is capped, `restricted`'s second value says why it changed)."""
+    is capped by `cap_kw`, a discharge to the grid by `export_cap_kw`; `restricted`'s second value says why it
+    changed)."""
     if slot is None:
         return None, None
     action, rate, end = slot
@@ -351,10 +423,12 @@ def restricted(slot: Slot | None, allowed: Iterable[str], cap_kw: float | None) 
         return slot, None
     if action not in allowed:
         return (ACTION_SELF_CONSUME, 0.0, end), f"not_verified:{action}"
-    if action == ACTION_GRID_CHARGE and cap_kw is not None and abs(rate) > cap_kw:
-        if cap_kw < MIN_RATE_KW:
-            return (ACTION_SELF_CONSUME, 0.0, end), "grid_charge_cap"
-        return (action, cap_kw, end), "grid_charge_cap"
+    for capped, cap, why in ((ACTION_GRID_CHARGE, cap_kw, "grid_charge_cap"),
+                             (ACTION_EXPORT_DISCHARGE, export_cap_kw, "export_fuse_cap")):
+        if action == capped and cap is not None and abs(rate) > cap:
+            if cap < MIN_RATE_KW:
+                return (ACTION_SELF_CONSUME, 0.0, end), why
+            return (action, cap, end), why
     return slot, None
 
 

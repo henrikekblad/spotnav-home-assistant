@@ -7,6 +7,7 @@ entry starts is stopped by `entry.async_on_unload` where it is started; live obj
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from functools import partial
@@ -147,6 +148,8 @@ from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capaci
 
 
 _LOGGER = logging.getLogger(__name__)
+#: The longest Home Assistant's stop waits for every site's home battery to be handed back (s).
+BATTERY_STOP_TOTAL_S = 45.0
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -238,16 +241,33 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
     Settings and installed plans are left alone; stopping Home Assistant is not an instruction to
     stop charging. A site's controller is shut down as its unload would (no entry is unloaded): its timers and
     listeners end, and no apply pass of it reaches a charger while Home Assistant stops.
+
+    The chargers' sessions are saved first, then every site's home battery is handed back at once, all of them
+    within `BATTERY_STOP_TOTAL_S` (a hand-back not finished is finished at the next start), so a slow plant
+    neither costs the sessions nor holds Home Assistant's stop.
     """
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        site = site_data(hass, entry.entry_id)
-        if site is not None:
-            await site.controller.async_shutdown()
     loaded = [
         data
         for entry in hass.config_entries.async_entries(DOMAIN)
         if (data := charger_data(hass, entry.entry_id)) is not None
     ]
+    for data in loaded:
+        try:
+            await data.controller.async_flush_session()
+        except Exception:  # noqa: BLE001 - saved again below; the battery's hand-back must still run
+            _LOGGER.warning("SpotNav: saving a charge session at stop failed", exc_info=True)
+    sites = [
+        site for entry in hass.config_entries.async_entries(DOMAIN) if (site := site_data(hass, entry.entry_id)) is not None
+    ]
+    try:
+        async with asyncio.timeout(BATTERY_STOP_TOTAL_S):
+            await asyncio.gather(
+                *(site.controller.battery_control.async_shutdown() for site in sites), return_exceptions=True
+            )
+    except TimeoutError:
+        _LOGGER.warning("SpotNav: the home batteries' hand-back did not finish at stop; it is finished at the next start")
+    for site in sites:
+        await site.controller.async_shutdown()
     for data in loaded:
         if data.executor is not None:
             await data.executor.async_shutdown()
@@ -897,7 +917,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SiteHouseForecast.async_remove_stored(hass, entry.entry_id)
         await SiteCapacityController.async_remove_released(hass, entry.entry_id)
         await BatteryShadow.async_remove_stored(hass, entry.entry_id)
-        await BatteryControl.async_remove_stored(hass, entry.entry_id)
+        await BatteryControl.async_remove_stored(hass, entry.entry_id, dict(entry.data))
         await SwitchLoadShadow.async_remove_stored(hass, entry.entry_id)
         await SiteSolarCorrection.async_remove_stored(hass, entry.entry_id)
         return

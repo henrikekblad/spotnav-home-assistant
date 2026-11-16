@@ -49,7 +49,8 @@ from .commands import ACTION_CURTAIL_EXPORT, EXPORT_CONTROLS, BrandControl, cont
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .executor import ExecInputs, RoleRead, preview, role_reads
 from .export_curtail import CurtailLook, CurtailShadow, curtails
-from .facts import BatteryFacts, EntityFact, battery_facts, with_outside_control
+from .adapters import Match
+from .facts import BatteryFacts, EntityFact, battery_facts, find_entity, with_outside_control
 from .hold import HoldDecision, HoldInputs, HoldMemory, requested_action, restart, step
 from .ledger import Ledger
 from .monitor import Monitor
@@ -156,6 +157,24 @@ def read_role_reads(hass: HomeAssistant, config: dict[str, Any], control: BrandC
     entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
     entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform]
     return role_reads(control, entities, _entity_fact(battery_entry, hass))
+
+
+def read_plant_entity(hass: HomeAssistant, config: dict[str, Any], match: Match | None) -> str | None:
+    """The state of the battery integration's entity `match` names (`facts.find_entity`), `None` when there is none
+    or it reads nothing."""
+    if match is None:
+        return None
+    registry = er.async_get(hass)
+    entity_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
+    battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
+    if battery_entry is None or battery_entry.config_entry_id is None:
+        return None
+    entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
+    entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform]
+    found = find_entity(match, entities, _entity_fact(battery_entry, hass))
+    if found is None or found.disabled or found.state in (None, "", "unavailable", "unknown"):
+        return None
+    return found.state
 
 
 def _export_anchor(hass: HomeAssistant, config: dict[str, Any]) -> er.RegistryEntry | None:
