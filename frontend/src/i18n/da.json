@@ -1266,7 +1266,7 @@
   "house.estimate.rated_learned": "nominel effekt (den højeste set hidtil)",
   "house.today": "Batteriet har tjent {amount} i dag",
   "house.todayHint": "Samme mål som batteriets app.",
-  "house.todayCost": "Eludgift {amount}",
+  "house.todayCost": "Udgift til el {amount}",
   "house.todaySold": "solgt solstrøm {amount}",
   "house.now": "Nu",
   "house.views": "Diagramvisning",
@@ -1360,7 +1360,7 @@
   "heat.pump.unknown": "Varmepumpen: ingen måling",
   "heat.would.lower": "Ville sænke til {temp} til {until}: dyre timer",
   "heat.would.preheat": "Ville forvarme til {temp} til {until}: billigt før dyre timer",
-  "heat.would.night": "Ville holde køligere nat, {temp} til {until}",
+  "heat.would.night": "Ville holde det køligere om natten, {temp} til {until}",
   "heat.would.away": "Ville holde {temp} til {until}, mens I er ude",
   "heat.would.return": "Ville varme op til hjemkomsten: {temp} til {until}",
   "heat.would.normal": "Ville holde {temp} til {until}",
@@ -1562,7 +1562,7 @@
   "hist.house.noEnergy": "Ingen energi blev målt i perioden.",
   "hist.house.noMeters": "Energipanelet har ingen netmåler, så energien kan ikke vises: tilføj nettets import under Indstillinger → Dashboards → Energi.",
   "hist.house.money": "Penge",
-  "hist.house.cost": "Eludgift",
+  "hist.house.cost": "Udgift til el",
   "hist.house.costParts": "Købte {kwhIn} for {bought}, solgte {kwhOut} for {sold}, til priserne med dagens afgifter.",
   "hist.house.costPartial": "Der er priser for {share} af perioden; resten er ikke med i udgiften.",
   "hist.house.saved.battery": "Batteriet sparede",
@@ -1630,7 +1630,7 @@
   "hist.heat.shadow": "Hvad SpotNav ville have gjort",
   "hist.heat.shadowValue": "Ville have sparet højst",
   "hist.heat.shadowLine": "Ville have flyttet {kwh} ud af {hours} dyre timer over {days} døgn.",
-  "hist.heat.shadowNote": "Reglen kørt igen på hvert døgns priser med dagens indstillinger. En øvre grænse: den antager, at al den varme købes tilbage i den billigere time, og at huset holder båndet.",
+  "hist.heat.shadowNote": "Reglen kørt igen på hvert døgns priser med dagens indstillinger. En øvre grænse: den antager, at al den varme købes tilbage i den billigere time, og at huset holder sig inden for temperaturintervallet.",
   "hist.heat.shadowNone": "Vises, når der er mindst ét helt døgn med priser og målinger.",
   "hist.heat.runs": "Varmtvandskørsler",
   "hist.heat.causeDraw": "efter tapning",
@@ -1638,5 +1638,5 @@
   "hist.heat.causeUnknown": "årsag ukendt",
   "hist.heat.runsNote": "Vurderet ud fra energien alene (ingen tankføler): en kørsel klart over den sædvanlige lille er en tapning, omtrent lige så stor er tanken, der er kølet af uden tapning.",
   "hist.heat.noRuns": "Ingen varmtvandskørsel fundet denne dag.",
-  "hist.heat.footnote": "Udgifter er til gemte priser med dagens afgifter. Test: SpotNav styrer ikke varmen endnu."
+  "hist.heat.footnote": "Udgifterne er beregnet med gemte priser og dagens afgifter. Test: SpotNav styrer ikke varmen endnu."
 }
