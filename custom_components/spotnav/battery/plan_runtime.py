@@ -709,6 +709,14 @@ class BatteryPlanShadow:
             tuple((doc.day, doc.interval_count, doc.retrieved, doc.published) for doc in documents),
         )
 
+    def buy_slots(self, now: datetime) -> list[PriceSlot]:
+        """The price slots with every fee as the plan reads them, from the prices held (nothing is fetched); empty
+        without prices or fees. The heat card's shadow rule and cost read them."""
+        try:
+            return self._read_prices(now)[1]
+        except _NoPlan:
+            return []
+
     def _read_prices(self, now: datetime) -> tuple[str, list[PriceSlot]]:
         """The area and its price slots with the fees, as a charger's plan prices them; `_NoPlan` without them."""
         from ..planning.planner import PlannerInputError  # noqa: PLC0415

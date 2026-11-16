@@ -17,6 +17,12 @@ level it lifted the target to (`month_peak_kw`).
 a villa on 13 November 2026 at 17:20 with a week of reviewed forecasts, a small array and a 40 kWh battery running its
 own optimiser, planned beside it in shadow; `house_learning.json` a house alone whose forecast is two days old.
 
+`heat_card/*` are `spotnav/get_heat`'s answers, written by the pure view (`tests/test_heat_view.py`): `villa.json` a
+villa on 16 November 2026 at 17:20 with three indoor sensors, three electric floor zones and an air-to-air heat pump,
+the heat pump's meter split into heat and hot water, and the cooler night on (an administrator's answer, with the
+settings' choices); `network_pump.json` a NIBE on its local integration whose own price control runs, away until
+Friday (a household member's answer, with the notes).
+
 `target_suggestion/pilot.json` is `spotnav/suggest_import_target`'s answer for the pilot's site from a month of fake
 statistics (`tests/test_target_suggestion_api.py`); `webhook/suggest_import_target_success.json` the webhook's.
 
