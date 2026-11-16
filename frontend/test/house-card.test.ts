@@ -150,10 +150,26 @@ describe("the body", () => {
     expect(Array.from(card.querySelectorAll(".spotnav-house-legend li")).map((item) => item.textContent)).toEqual(["House"]);
   });
 
+  it("says what test means when its chip is tapped, in place or through the card", () => {
+    const card = body(answer(), {}, "sv");
+    const chip = card.querySelector<HTMLButtonElement>("button[data-action='test']")!;
+    const explain = card.querySelector<HTMLElement>("[data-line='test-explain']")!;
+    expect(chip.textContent).toBe("Test · styr inget än");
+    expect(chip.getAttribute("aria-controls")).toBe(explain.id);
+    expect(explain.hidden).toBe(true);
+    chip.click();
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+    expect(explain.hidden).toBe(false);
+    const onTest = vi.fn();
+    body(answer(), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onTest } as never).querySelector<HTMLButtonElement>("button[data-action='test']")!.click();
+    expect(onTest).toHaveBeenCalledWith(true);
+    expect(body(answer(), { testOpen: true }, "sv").querySelector<HTMLElement>("[data-line='test-explain']")!.hidden).toBe(false);
+  });
+
   it("opens the details on a tap: the modes side by side, the days and the sources", () => {
     const handlers = { onDetails: vi.fn(), onSelect: vi.fn() };
     const closed = body(answer(), {}, "en", handlers);
-    const toggle = closed.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    const toggle = closed.querySelector<HTMLButtonElement>("button.spotnav-house-details-toggle")!;
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     toggle.click();
     expect(handlers.onDetails).toHaveBeenCalledWith(true);

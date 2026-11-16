@@ -11,6 +11,8 @@ export const HOUSE_CLASSES = {
   head: "spotnav-house-head",
   title: "spotnav-house-title",
   chip: "spotnav-house-chip",
+  chipButton: "spotnav-house-chip-button",
+  testExplain: "spotnav-house-test-explain",
   sub: "spotnav-house-sub",
   surface: "spotnav-house-surface",
   chart: "spotnav-house-chart",
@@ -207,6 +209,27 @@ export const HOUSE_STYLES = `
     color: var(--secondary-text-color, #727272);
     font-size: 0.75rem;
     white-space: nowrap;
+  }
+  /* The test chip is a button: tapping it shows what test means. */
+  .${H.chipButton} {
+    position: relative;
+    background: none;
+    font-family: inherit;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  /* A finger-sized target around the small chip. */
+  .${H.chipButton}::after {
+    content: "";
+    position: absolute;
+    inset: -10px -4px;
+  }
+  .${H.chipButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${H.testExplain} {
+    margin: 6px 0 0;
   }
   .${H.sub} {
     margin: 2px 0 0;

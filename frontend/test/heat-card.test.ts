@@ -78,7 +78,8 @@ describe("the front", () => {
     expect(measuredLine("sv", villa)).toBe("20,4 °C · kallast: Toalett NV temperatur · Ute 6,2 °C");
     expect(pumpLine("sv", villa)).toBe("Värmepumpen värmer · 1,1 kW");
     expect(wouldLine("sv", villa)).toBe("Skulle sänka till 20,5 °C till 20:00: dyra timmar");
-    expect(card.querySelector("[data-line='shadow']")!.textContent).toBe("Skuggläge: inget styrs än");
+    expect(card.querySelector("[data-line='shadow']")!.textContent).toBe("Temperaturen och Hemma/Borta som du ställer in här följer SpotNav när den börjar styra värmen.");
+    expect(card.querySelector("button[data-action='test']")!.textContent).toBe("Test · styr inget än");
     expect(card.querySelector("button[data-mode='home']")!.getAttribute("aria-pressed")).toBe("true");
     expect(card.querySelector("button[data-action='settings']")).not.toBeNull();
   });
@@ -114,7 +115,7 @@ describe("the front", () => {
     ]);
     expect(pumpLine("en", pump)).toBe("Heat pump: heating");
     expect(measuredLine("en", pump)).toBe("No indoor sensor chosen · Outdoors 4.5 °C");
-    expect(wouldLine("en", pump)).toBe("Away: 17.5 °C until Fri 20 Nov 14:00");
+    expect(wouldLine("en", pump)).toBe("Would keep 17.5 °C until Fri 20 Nov 14:00 while you are away");
   });
 
   it("keeps every language's words", () => {

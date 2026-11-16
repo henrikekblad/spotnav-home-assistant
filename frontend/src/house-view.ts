@@ -7,7 +7,7 @@ import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, ty
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
 import { renderFlow } from "./house-flow";
 import { hiddenIn, type HiddenSeries } from "./house-series";
-import { settingsGearButton } from "./heat-view";
+import { settingsGearButton, testChip } from "./heat-view";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { historyHeaderButton } from "./period-history";
 import { HOUSE_CLASSES as H } from "./house-styles";
@@ -30,6 +30,8 @@ export interface HouseUi {
   view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
   selected: number | null;
+  /** The header's test chip opened to its explanation. */
+  testOpen?: boolean;
 }
 
 export interface HouseHandlers {
@@ -42,6 +44,8 @@ export interface HouseHandlers {
   onHistory?(opener: HTMLElement): void;
   /** An administrator's settings gear: the shared settings popover. Without it the card has no gear. */
   onSettings?(): void;
+  /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
+  onTest?(open: boolean): void;
 }
 
 export interface HouseRenderInput {
@@ -268,9 +272,13 @@ export function reviewLine(language: Language, answer: HouseAnswer): string {
 
 // ------------------------------------------------------------------------------------------------ parts
 
-function header(doc: Document, language: Language, answer: HouseAnswer | null, onSettings?: () => void, onHistory?: (opener: HTMLElement) => void): HTMLElement {
+function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElement {
+  const { doc, language, handlers } = input;
+  const onSettings = handlers.onSettings?.bind(handlers);
+  const onHistory = handlers.onHistory?.bind(handlers);
   const head = element(doc, "div", H.head);
-  head.append(element(doc, "h2", H.title, translate(language, "house.title")), element(doc, "span", H.chip, translate(language, "house.preview")));
+  const test = testChip(doc, language, "house.test.explain", input.ui.testOpen === true, `${input.idPrefix}-test`, handlers.onTest?.bind(handlers));
+  head.append(element(doc, "h2", H.title, translate(language, "house.title")), test.chip);
   if (onHistory !== undefined) {
     const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory(button));
     head.append(button);
@@ -279,7 +287,7 @@ function header(doc: Document, language: Language, answer: HouseAnswer | null, o
     head.append(settingsGearButton(doc, translate(language, "popover.open"), onSettings));
   }
   const wrap = element(doc, "div");
-  wrap.append(head);
+  wrap.append(head, test.explain);
   const battery = answer?.battery ?? null;
   if (battery !== null) {
     const words = [];
@@ -894,7 +902,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const card = element(doc, "div", `${C.card} ${H.card}`);
   card.dataset["state"] = state.kind;
   if (state.kind !== "ready") {
-    card.append(header(doc, language, null, input.handlers.onSettings?.bind(input.handlers), input.handlers.onHistory?.bind(input.handlers)));
+    card.append(header(input, null));
     const key: TranslationKey =
       state.kind === "unconfigured" ? "house.unconfigured" : state.kind === "loading" ? "house.loading" : state.sentenceKey;
     const line = element(doc, "p", C.muted, translate(language, key));
@@ -909,7 +917,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     return card;
   }
   const answer = state.answer;
-  card.append(header(doc, language, answer, input.handlers.onSettings?.bind(input.handlers), input.handlers.onHistory?.bind(input.handlers)));
+  card.append(header(input, answer));
   if (answer.day !== null && !answer.day.has_data) {
     const none = element(doc, "p", `${C.muted} ${H.line}`, translate(language, "house.day.noData"));
     none.setAttribute("role", "status");

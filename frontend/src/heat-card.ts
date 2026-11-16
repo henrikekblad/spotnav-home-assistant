@@ -380,6 +380,11 @@ export class SpotnavHeatCard extends HTMLElement {
           onAway: () => this.showAway(),
           onSettings: () => this.showSettings(),
           onHistory: (opener) => this.showHistory(opener),
+          onTest: (open) => {
+            this.ui = { ...this.ui, testOpen: open };
+            this.render();
+            (this.root.querySelector("button[data-action='test']") as HTMLElement | null)?.focus();
+          },
         },
       }),
     );
