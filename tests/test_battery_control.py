@@ -803,6 +803,30 @@ async def test_with_the_acknowledgement_ai_mode_is_taken_over_and_turning_off_le
     assert control.status()["notes"] == []
 
 
+async def test_withdrawing_the_acknowledgement_hands_an_ai_mode_takeover_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    hass.states.async_set(WORK_MODE, "ai_mode")
+    control = await _started(hass, site, controller, plan_source=_hold)
+    _options(hass, site, ai_takeover_ack=True)
+    now = await _looks(control, dt_util.now(), 6)
+    assert control.took_from_ai and hass.states.get(DISCHARGE).state == "0"
+    status = await control.async_update_options({gate.CONF_AI_TAKEOVER_ACK: False})
+    now = await _looks(control, now, 6)
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    status = control.status()
+    assert [note["code"] for note in status["notes"]] == ["ai_mode_back"]
+    assert "ai_takeover_ack" in status["needs"] and status["line"] == "watching:ai_mode"
+    # Not taken again from Maximum Self Consumption; once AI mode is back, only watched.
+    plant.calls.clear()
+    now = await _looks(control, now + timedelta(minutes=10), 6)
+    assert plant.calls == []
+    hass.states.async_set(WORK_MODE, "ai_mode")
+    await _looks(control, now, 3)
+    assert plant.calls == [] and not control.took_from_ai and control.status()["notes"] == []
+
+
 async def test_back_to_shadow_only_after_an_ai_mode_takeover_leaves_the_reminder(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

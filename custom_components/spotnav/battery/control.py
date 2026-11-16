@@ -551,11 +551,20 @@ class BatteryControl:
         self.facts = self._read_facts()
         self._transitions(options, now)
         trial = self.trial
-        if trial is not None and (now >= trial.until or not self._trial_allowed(trial, options)):
+        withdrawn = self._takeover_withdrawn(options)
+        if trial is not None and (
+            now >= trial.until or not self._trial_allowed(trial, options) or (withdrawn and not trial.export)
+        ):
             self._log([{"at": now.isoformat(), "kind": "trial_ended", "reason": trial.action}])
             self.trial = trial = None
         # The battery.
-        if trial is not None and not trial.export:
+        if withdrawn:
+            # The person withdrew the acknowledgement after SpotNav took the plant over from AI mode: handed back,
+            # and nothing more until AI mode is seen again or the acknowledgement is given again.
+            if self.verification is not None and not self.verification.done:
+                self._end_verification(now)
+            await self._async_release(now, "ai_takeover_withdrawn")
+        elif trial is not None and not trial.export:
             await self._async_battery_step(now, (trial.action, trial.rate_kw, trial.until), allowed=True)
         elif self.verification is not None and not self.verification.done:
             if options.writes:
@@ -583,11 +592,17 @@ class BatteryControl:
         self._note_stopped(now)
         await self._async_save()
 
+    def _takeover_withdrawn(self, options: gate.Options) -> bool:
+        return self.took_from_ai and not options.ai_takeover_ack
+
     def _note_stopped(self, now: datetime) -> None:
         """Control stopped running (out of on or verifying, a test action ended) on a plant SpotNav took over from its
         own optimiser: the reminder to set AI mode again, whatever the path (turned off, back to shadow only, a failed
         check, a firmware change, the acknowledgement withdrawn)."""
-        running = self.trial is not None or self.state() in ("on", "verifying")
+        options = self.options()
+        running = not self._takeover_withdrawn(options) and (
+            self.trial is not None or self.state(options) in ("on", "verifying")
+        )
         if self._running and not running and self.took_from_ai:
             self._add_note(NOTE_AI_MODE_BACK, now)
         self._running = running
@@ -1418,7 +1433,7 @@ class BatteryControl:
         management = facts.management
         if management.state == "externally_controlled":
             needs.append(f"outside_control:{management.reason}")
-        elif taken_over(facts, control):
+        elif taken_over(facts, control) or self._takeover_withdrawn(self.options()):
             if not self.options().ai_takeover_ack:
                 needs.append("ai_takeover_ack")
         elif management.state == "self_managed" and not (self.acting()):
