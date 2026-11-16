@@ -129,6 +129,8 @@ STARTUP_WAIT_S: Final = 120.0
 STARTUP_LOOK_S: Final = 5.0
 #: The longest test action (min).
 TRIAL_MAX_MIN: Final = 120
+#: Looks in a row that may fail while SpotNav holds the plant before it hands back on the fewest reads.
+FAILED_LOOKS_HAND_BACK: Final = 3
 #: The service each role's method writes with (a service role names its own, `Role.services`).
 _METHOD_SERVICES: Final = {
     "number": ("set_value",), "select": ("select_option",), "switch": ("turn_on", "turn_off"), "button": ("press",),
@@ -148,6 +150,16 @@ _UNSET: Final = object()
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_control.{entry_id}"
+
+
+def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]:
+    """Each control the executor wrote, read by its stored entity (no registry lookup)."""
+    reads: dict[str, RoleRead] = {}
+    for name, entity_id in executor.state.entities.items():
+        state = hass.states.get(entity_id)
+        reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                               found=state is not None, enabled=state is not None, device_id=executor.state.device_id)
+    return reads
 
 
 class ControlNotReachable(RuntimeError):
@@ -228,6 +240,8 @@ class BatteryControl:
         self._look_task: asyncio.Task[None] | None = None
         self._timer_cancel: Callable[[], None] | None = None
         self._look_failures: set[str] = set()
+        #: Looks that failed in a row (`FAILED_LOOKS_HAND_BACK`).
+        self._failed_looks = 0
         #: The house's p90 for the running hour (`_house_peak_kw`), read once an hour.
         self._peak: tuple[datetime, float | None] | None = None
         battery_shadow = getattr(site, "battery_shadow", None)
@@ -460,10 +474,41 @@ class BatteryControl:
         if self._closed or not self._started:
             return
         async with self._lock:
+            now = now or dt_util.now()
             try:
-                await self._async_look(now or dt_util.now())
+                await self._async_look(now)
             except Exception:  # noqa: BLE001 - the battery control must never disturb the site; it looks again
                 self._look_failed("look")
+                self._failed_looks += 1
+                if self._failed_looks >= FAILED_LOOKS_HAND_BACK:
+                    await self._async_hand_back_after_failures(now)
+            else:
+                self._failed_looks = 0
+
+    async def _async_hand_back_after_failures(self, now: datetime) -> None:
+        """Looks keep failing while SpotNav may hold the plant: hand back what it holds on the fewest reads (one
+        step per look), so a part that keeps raising cannot leave a command standing."""
+        if not self._holds_anything():
+            return
+        self.trial = None
+        with contextlib.suppress(Exception):
+            self._end_verification(now)
+        try:
+            if self.executor is not None and self._holding(self.executor):
+                await self._async_step(
+                    self.executor, self._minimal_inputs(now, self.executor, "look_failed"), allowed=False
+                )
+            if self.export_executor is not None and self._holding(self.export_executor):
+                await self._async_export_raw(now, self.export_executor, None, stopping="look_failed", allowed=False)
+        except Exception:  # noqa: BLE001 - tried again at the next failed look
+            self._look_failed("hand_back_after_failures")
+
+    @staticmethod
+    def _holding(executor: Executor) -> bool:
+        return executor.state.phase in ("active", "restoring") or executor.state.holds_snapshot
+
+    def _holds_anything(self) -> bool:
+        return any(executor is not None and self._holding(executor) for executor in (self.executor, self.export_executor))
 
     def _look_failed(self, kind: str) -> None:
         if kind in self._look_failures:
@@ -541,7 +586,7 @@ class BatteryControl:
         executor = self.executor
         if executor is None or (executor.state.phase in ("idle", "blocked") and not executor.state.holds_snapshot):
             return
-        await self._async_step(executor, self.inputs(now, executor.control, stopping=reason, slot=None), allowed=False)
+        await self._async_step(executor, self._hand_back_inputs(now, executor, reason), allowed=False)
 
     async def _async_export_release(self, now: datetime, reason: str) -> None:
         executor = self.export_executor
@@ -588,7 +633,11 @@ class BatteryControl:
     async def _async_export_raw(
         self, now: datetime, executor: Executor, action: str | None, *, stopping: str | None, allowed: bool
     ) -> StepResult:
-        result = executor.step(self.export_inputs(now, executor.control, stopping=stopping, action=action))
+        if stopping is not None or not allowed:
+            inputs = self._export_hand_back_inputs(now, executor, stopping)
+        else:
+            inputs = self.export_inputs(now, executor.control, stopping=stopping, action=action)
+        result = executor.step(inputs)
         self._log(result.events)
         if result.persist_first:
             await self._async_save()
@@ -749,13 +798,24 @@ class BatteryControl:
         self.hass.config_entries.async_update_entry(entry, data={**entry.data, **changes})
         after = self.options()
         _LOGGER.info("SpotNav battery control: options %s", after.as_dict())
+        # The entry is written: nothing below may raise into the caller (the plant is handed back at the next look
+        # if this hand-back fails).
         if self._started and not self._closed:
             trial = self.trial
-            if (before.writes and not after.writes) or (trial is not None and not self._trial_allowed(trial, after)):
-                # A test action ends with the options that no longer allow it, forced or not.
-                await self.async_stop("disabled" if not after.enabled else "shadow_only")
+            try:
+                if (before.writes and not after.writes) or (
+                    trial is not None and not self._trial_allowed(trial, after)
+                ):
+                    # A test action ends with the options that no longer allow it, forced or not.
+                    await self.async_stop("disabled" if not after.enabled else "shadow_only")
+            except Exception:  # noqa: BLE001
+                self._look_failed("options_stop")
             await self.async_look()
-        return self.status()
+        try:
+            return self.status()
+        except Exception:  # noqa: BLE001
+            self._look_failed("status")
+            return {"options": after.as_dict(), "state": self.state(after)}
 
     # ---- the owner's test action
 
@@ -1042,21 +1102,21 @@ class BatteryControl:
         self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
-        grid_import_kw = self._grid_import_kw()
+        try:
+            grid_import_kw = self._grid_import_kw()
+        except Exception:  # noqa: BLE001 - unknown: the grid charge then counts none of its own import back
+            self._look_failed("grid_import")
+            grid_import_kw = None
         # What the house needs beyond the sun now (kW): the grid's import less what the battery takes from it, for
         # judging a discharge to the house.
         house_deficit_kw = (
             None if grid_import_kw is None or facts.power_kw is None else max(grid_import_kw - facts.power_kw, 0.0)
         )
         config = self.site.config
-        held = [
-            charger for charger in config.get(CONF_CHARGER_ENTRY_IDS) or []
-            if self.site.load_balancing_limit(charger)[0] is not None
-        ]
         options = self.options()
         if slot is _UNSET:
             slot = self._control_slot(now, options)
-        car_first = config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) == SOLAR_PRIORITY_CAR_FIRST
+        car_first, car_held = self._shedding(now, config)
         return ExecInputs(
             now=now,
             facts=facts,
@@ -1071,14 +1131,83 @@ class BatteryControl:
             grid_import_kw=grid_import_kw,
             # The fast shedding order (`gate.battery_yields`): the battery's grid charge before the car, the car
             # first when its departure has room; "battery first" backs the car off first.
-            car_first=gate.battery_yields(car_first, bool(held) and car_first and self._held_cars_have_room(now, held)),
-            car_held=bool(held),
+            car_first=car_first,
+            car_held=car_held,
             house_deficit_kw=house_deficit_kw,
             stopping=stopping,
             failed=self._failed,
             other_writes_today=self._export_writes_today(now),
             takeover=options.ai_takeover_ack,
         )
+
+    def _shedding(self, now: datetime, config: dict[str, Any]) -> tuple[bool, bool]:
+        """`(car_first, car_held)` for the executor: whether the battery's grid charge yields to a held car, and
+        whether load balancing holds one back now. When the chargers cannot be read: the battery yields and no car
+        counts as held (the cautious side: the grid charge never takes the car's room)."""
+        try:
+            held = [
+                charger for charger in config.get(CONF_CHARGER_ENTRY_IDS) or []
+                if self.site.load_balancing_limit(charger)[0] is not None
+            ]
+        except Exception:  # noqa: BLE001 - a part of the site that raises must not stop the battery's look
+            self._look_failed("held_cars")
+            return True, False
+        car_first = config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) == SOLAR_PRIORITY_CAR_FIRST
+        room = False
+        if held and car_first:
+            try:
+                room = self._held_cars_have_room(now, held)
+            except Exception:  # noqa: BLE001 - no room known: the car is not shed first
+                self._look_failed("held_cars_room")
+        return gate.battery_yields(car_first, room), bool(held)
+
+    def _hand_back_inputs(self, now: datetime, executor: Executor, stopping: str | None) -> ExecInputs:
+        """The battery's look for a hand-back: the full one, or the fewest reads when a part of it raises (a hand-back
+        must never wait for the rest of the site)."""
+        try:
+            return self.inputs(now, executor.control, stopping=stopping, slot=None)
+        except Exception:  # noqa: BLE001 - handed back on what can still be read
+            self._look_failed("hand_back_inputs")
+            return self._minimal_inputs(now, executor, stopping)
+
+    def _minimal_inputs(self, now: datetime, executor: Executor, stopping: str | None) -> ExecInputs:
+        """The fewest reads a hand-back needs: the battery's facts (the last ones when they cannot be read), the
+        controls' states and the reason; the site's measurement counts as unknown."""
+        try:
+            power_kw, age_s = self._battery_power()
+        except Exception:  # noqa: BLE001
+            power_kw, age_s = None, None
+        try:
+            self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        except Exception:  # noqa: BLE001
+            facts = self.facts
+        try:
+            reads = self._reads(executor.control)
+        except Exception:  # noqa: BLE001
+            reads = stored_reads(self.hass, executor)
+        try:
+            takeover = self.options().ai_takeover_ack
+        except Exception:  # noqa: BLE001
+            takeover = False
+        return ExecInputs(
+            now=now, facts=facts, reads=reads, battery_age_s=age_s, measurement_ok=False, stopping=stopping,
+            failed=self._failed, takeover=takeover,
+        )
+
+    def _export_hand_back_inputs(self, now: datetime, executor: Executor, stopping: str | None) -> ExecInputs:
+        """The export limit's look for a hand-back (no sell price needed), the fewest reads when a part raises."""
+        try:
+            return self.export_inputs(now, executor.control, stopping=stopping, action=ACTION_SELF_CONSUME)
+        except Exception:  # noqa: BLE001 - handed back on what can still be read
+            self._look_failed("export_hand_back_inputs")
+        try:
+            facts, reads, _control = read_export_facts(self.hass, self.site.config)
+            facts = self._with_outside(facts)
+        except Exception:  # noqa: BLE001
+            facts, reads = BatteryFacts(brand=executor.state.brand), {}
+        reads = {**stored_reads(self.hass, executor), **reads}
+        return ExecInputs(now=now, facts=facts, reads=reads, measurement_ok=False, stopping=stopping,
+                          failed=self._export_failed)
 
     def _export_writes_today(self, now: datetime) -> int:
         executor = self.export_executor
@@ -1114,9 +1243,7 @@ class BatteryControl:
         stopping: str | None = reason
         while True:
             now = dt_util.now()
-            result = await self._async_step(
-                executor, self.inputs(now, executor.control, stopping=stopping, slot=None), allowed=False
-            )
+            result = await self._async_step(executor, self._hand_back_inputs(now, executor, stopping), allowed=False)
             stopping = None if executor.state.phase == "restoring" else stopping
             if executor.state.phase in ("idle", "blocked") or loop.time() >= deadline:
                 return

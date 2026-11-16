@@ -637,6 +637,66 @@ async def test_a_firmware_change_hands_back_and_checks_again_at_the_next_suitabl
     assert control.state() == "verifying" and control.status()["line"] == "checking_after_update"
 
 
+# --- a part of the site that raises ---------------------------------------------------------------------------------
+
+
+async def test_a_held_car_read_that_raises_neither_stops_the_look_nor_blocks_the_hand_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await _looks(control, dt_util.now(), 6)
+    assert control.executor.state.phase == "active"
+
+    def boom(self, charger):
+        raise RuntimeError("site read failed")
+
+    monkeypatch.setattr(type(controller), "load_balancing_limit", boom)
+    inputs = control.inputs(dt_util.now(), control.executor.control)
+    assert inputs.car_first and not inputs.car_held, "the cautious defaults"
+    await _looks(control, dt_util.now() + timedelta(minutes=2), 3)
+    assert control._failed_looks == 0 and control.executor.state.phase == "active"
+    status = await control.async_update_options({gate.CONF_ENABLED: False})
+    assert status["state"] == "off"
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+
+
+async def test_a_stop_hands_back_on_the_fewest_reads_when_the_look_s_inputs_raise(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await _looks(control, dt_util.now(), 6)
+    assert control.executor.state.phase == "active"
+
+    def boom(self, now, control, **kwargs):
+        raise RuntimeError("site read failed")
+
+    monkeypatch.setattr(BatteryControl, "inputs", boom)
+    await control.async_update_options({gate.CONF_ENABLED: False})  # does not raise
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    assert control.executor.state.phase == "idle" and not control.executor.state.holds_snapshot
+
+
+async def test_looks_that_keep_failing_hand_the_plant_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    now = await _looks(control, dt_util.now(), 6)
+    assert control.executor.state.phase == "active"
+
+    def boom(self, now, options):
+        raise RuntimeError("plan read failed")
+
+    monkeypatch.setattr(BatteryControl, "_control_slot", boom)
+    now = await _looks(control, now, control_module.FAILED_LOOKS_HAND_BACK - 1)
+    assert hass.states.get(DISCHARGE).state == "0", "a failure or two is waited out"
+    await _looks(control, now, 6)
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    assert not control.executor.state.holds_snapshot
+
+
 # --- the owner's answers --------------------------------------------------------------------------------------------
 
 
