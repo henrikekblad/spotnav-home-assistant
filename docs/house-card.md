@@ -38,10 +38,11 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
 
 ## What you see
 
-* **The top**: the battery's charge level with the chosen mode, then today's headline: what the electricity bought so
-  far cost ("Today: 63 kr on electricity"). Under it, what the battery has earned (each kWh it gave back, over what that
-  energy cost to store: the *arbitrage* of [the battery plan](battery-plan.md)) and, when there is some, the sun sold. On a
-  site without a battery there is no battery line.
+* **The top**: the battery's charge level with the chosen mode, then today's headline: what the battery has earned so far
+  ("The battery has earned 26 kr today"): each kWh it gave back, over what that energy cost to store (the *arbitrage* of
+  [the battery plan](battery-plan.md)). That is the same measure the battery's own app shows, and the card says so right
+  under it. Below that, what the electricity bought cost and, when there is some, the sun sold. On a site without a battery
+  there is no battery line.
 * **The chart** covers 12 hours back and 24 ahead, with two views you can switch between:
   * *Energy*: bars for the house's load per hour (measured before now, forecast after), an area for the sun, and a
     line for the battery's charge level, dashed where it is planned.
@@ -56,9 +57,12 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
   to the grid or holds its charge).
 * **Past days**: browse earlier days with *Previous day*, *Next day* and *Choose a day*; a day
   nothing was measured on says so.
-* **What the battery would have saved**: over the last reviewed days, each of SpotNav's modes (the chosen one marked) and
-  the battery as it really ran, each against only storing your own sun (Self-consumption). Until a day has been reviewed
-  a line says what the plan expects until the end of its horizon, and the first comparison arrives the night after.
+* **The comparison**, titled with what it compares against ("Compared with the battery only storing your own sun, last 7
+  days"): each of SpotNav's modes (the chosen one marked) and the battery's own control, named where the battery runs its
+  maker's optimiser ("Sigenergy AI"), over the last reviewed days. It is not the battery app's measure: a battery's own
+  control can earn money in the app's terms and still come out below plain self-consumption here. Until a day has been
+  reviewed a line says what the plan expects until the end of its horizon, and the first comparison arrives the night
+  after.
 * **Energy today so far**: a diagram of where today's energy came from and where it went (see Details for how it is
   counted), and the heat pump's share of the house where its meter is known.
 

@@ -105,7 +105,8 @@ function priceUnit(answer: HouseAnswer): string {
   return `${answer.money?.minor_unit ?? ""}/kWh`.replace(/^\//, "");
 }
 
-/** Today's headline: what the electricity bought so far cost ("I dag: 63 kr i elkostnad"). */
+/** Today's headline, the figure the battery's own app shows: what each kWh the battery gave back earned over its
+ * stored cost (the backend's `arbitrage`; "Batteriet har tjänat 26 kr i dag"). */
 export function todayLine(language: Language, answer: HouseAnswer): string | null {
   const today = answer.today;
   if (today === null) {
@@ -114,18 +115,18 @@ export function todayLine(language: Language, answer: HouseAnswer): string | nul
   const past = answer.day !== null && !answer.day.today;
   return translate(language, past ? "house.dayMoney" : "house.today", {
     day: past ? dateLabel(language, answer.day!.date) : "",
-    cost: amount(language, today.bought, answer.money),
+    amount: amount(language, today.arbitrage, answer.money),
   });
 }
 
-/** Under the headline: what each kWh the battery gave back earned over its stored cost (the backend's `arbitrage`),
- * and the sun sold when it came to at least half a unit ("Batteriet har tjänat 26 kr · sålt solel 4 kr"). */
+/** Under the headline: what the electricity bought cost, and the sun sold when it came to at least half a unit
+ * ("Elkostnad 63 kr · sålt solel 4 kr"). */
 export function todayDetail(language: Language, answer: HouseAnswer): string | null {
   const today = answer.today;
   if (today === null) {
     return null;
   }
-  const parts = [translate(language, "house.todayBattery", { amount: amount(language, today.arbitrage, answer.money) })];
+  const parts = [translate(language, "house.todayCost", { amount: amount(language, today.bought, answer.money) })];
   if (Math.abs(today.sold) >= 50) {
     parts.push(translate(language, "house.todaySold", { amount: amount(language, today.sold, answer.money) }));
   }
@@ -327,7 +328,10 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
     if (today !== null) {
       const line = element(doc, "p", H.today, today);
       line.dataset["line"] = "today";
-      wrap.append(line);
+      // Said once, right under it: this one is the battery app's own measure; the comparison below is not.
+      const hint = element(doc, "p", `${C.muted} ${H.todayDetail}`, translate(language, "house.todayHint"));
+      hint.dataset["line"] = "today-hint";
+      wrap.append(line, hint);
       const detail = todayDetail(language, answer!);
       if (detail !== null) {
         const sub = element(doc, "p", `${C.muted} ${H.todayDetail}`, detail);
@@ -339,16 +343,17 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
   return wrap;
 }
 
-/** What the battery would have saved, in the main body: each of SpotNav's modes over the reviewed nights and the
- * battery as it really ran, against only storing its own sun (self-consumption, the zero line and so not a row), the
- * chosen mode marked, a short bar each so the order shows at a glance. */
+/** The comparison in the main body, its baseline in its title: each of SpotNav's modes over the reviewed nights and
+ * the battery's own control (its optimiser named where known), against the battery only storing its own sun
+ * (self-consumption, the zero line and so not a row), the chosen mode marked, a short bar each so the order shows. */
 function compareBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
   const battery = answer.battery;
   if (battery === null) {
     return null;
   }
   const rows: Array<{ key: string; name: string; value: number | null; days: number; inForce: boolean }> = [];
-  const ownName = translate(language, "house.compare.own");
+  const optimiser = battery.management === "self_managed" ? OPTIMISER_NAMES[battery.brand ?? ""] : undefined;
+  const ownName = `${translate(language, "house.compare.own")}${optimiser === undefined ? "" : ` (${optimiser})`}`;
   let heading: string;
   if (answer.day !== null && !answer.day.today) {
     // A past day: its own review, or plainly none.
@@ -406,9 +411,12 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
     line.append(name, track, value);
     grid.append(line);
   }
-  section.append(grid, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.compare.note", { mode: modeName(language, "self_consumption") })));
+  section.append(grid);
   return section;
 }
+
+/** The battery maker's own optimiser by brand, named where the battery runs it. */
+const OPTIMISER_NAMES: Record<string, string> = { sigenergy: "Sigenergy AI" };
 
 /** The modes the comparison shows: self-consumption is what they are measured against. */
 const SAVING_MODES = MODES.filter((mode) => mode !== "self_consumption");
