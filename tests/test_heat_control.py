@@ -140,7 +140,7 @@ async def test_a_planned_lowering_is_switched_read_back_and_counted_ahead(hass: 
     await control.async_look(now + 2 * H)
     assert relay.calls == ["on", "off"] and not control.held
     assert control.executed_minutes([now, now + H, now + 2 * H], now + 3 * H) == {now: 60, now + H: 60, now + 2 * H: 0}
-    assert control.lowered_today(now + 3 * H) == 2 * H
+    assert control.lowered_24h(now + 3 * H) == 2 * H
 
 
 async def test_a_lowering_lasts_at_least_45_minutes(hass: HomeAssistant, freezer) -> None:
@@ -731,3 +731,16 @@ async def test_the_check_counts_toward_the_days_writes(hass: HomeAssistant, free
     control.writes[control._day(now)] = 5  # noqa: SLF001
     await _looks(control, now, 10)
     assert relay.calls == [] and control.check.phase == "wait"
+
+
+async def test_the_lowered_hours_cap_is_a_rolling_day(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    zone = control._midnight(now.date()).tzinfo  # noqa: SLF001
+    midnight = control._midnight((now.astimezone(zone) + timedelta(days=1)).date())  # noqa: SLF001
+    # Six hours lowered up to just before midnight: two hours after it, no new lowering yet.
+    control.lowerings = [[midnight - 6 * H + MIN, midnight]]
+    control.last_end = midnight
+    later = midnight + 2 * H
+    _plan(control, later, 0, 1)
+    await control.async_look(later)
+    assert relay.calls == [] and control.status()["reason"] in ("day_cap", "too_short")

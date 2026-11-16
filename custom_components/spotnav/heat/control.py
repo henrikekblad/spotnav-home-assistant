@@ -26,7 +26,7 @@ first contact only. Nothing is written without it. The rules and the check are p
    meter's power now and its levels (read again every hour from its 5-minute rows) or the pump's calculated supply
    (`heat/facts.py`); without either nothing can be judged (`no_signal`). A failed check stops control
    (`check_failed`) until the switch is turned off and on again.
-6. **Control**: `relay_control.decide` on the heat shadow's plan, with SpotNav's lowerings of the day, its writes and
+6. **Control**: `relay_control.decide` on the heat shadow's plan, with SpotNav's lowerings of the last 24 hours, its writes and
    the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`; a sensor that
    has not reported for `runtime.STALE_AFTER` does not read), outdoors at or below -15 °C (the lowest of the chosen
    sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)
@@ -494,7 +494,7 @@ class HeatControl:
                 plan_until=planned_run_end(self.shadow.plan, now),
                 held_since=self.held_since if self.held else None,
                 last_end=self.last_end,
-                lowered_today=self.lowered_today(now),
+                lowered_24h=self.lowered_24h(now),
                 writes_today=self.writes.get(self._day(now), 0),
                 safety=safety,
             )
@@ -745,9 +745,9 @@ class HeatControl:
         zone = time_zones.require_zone(self.shadow.tz)
         return datetime(day.year, day.month, day.day, tzinfo=zone)
 
-    def lowered_today(self, now: datetime) -> timedelta:
-        start = self._midnight(now.astimezone(time_zones.require_zone(self.shadow.tz)).date())
-        return lowered_within([(item[0], item[1]) for item in self.lowerings], start, now)  # type: ignore[misc]
+    def lowered_24h(self, now: datetime) -> timedelta:
+        """SpotNav's lowered time over the last 24 hours (a rolling day, not the local one)."""
+        return lowered_within([(item[0], item[1]) for item in self.lowerings], now - timedelta(days=1), now)  # type: ignore[misc]
 
     def executed_minutes(self, hours: list[datetime], now: datetime) -> dict[datetime, int]:
         """Per hour: the minutes SpotNav held the relay closed (up to now)."""

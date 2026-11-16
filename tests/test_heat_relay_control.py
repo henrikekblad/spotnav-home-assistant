@@ -35,7 +35,7 @@ def plan(*lowered: int) -> list[BandHour]:
 
 def situation(now: datetime, **extra: object) -> Situation:
     base: dict[str, object] = dict(
-        now=now, plan_until=None, held_since=None, last_end=None, lowered_today=timedelta(0), writes_today=0
+        now=now, plan_until=None, held_since=None, last_end=None, lowered_24h=timedelta(0), writes_today=0
     )
     base.update(extra)
     return Situation(**base)  # type: ignore[arg-type]
@@ -67,9 +67,9 @@ def test_at_most_three_hours_in_a_row_then_an_hour_back_to_normal() -> None:
 
 
 def test_at_most_six_hours_a_day_and_a_cap_on_writes() -> None:
-    assert decide(situation(T0, plan_until=T0 + 2 * H, lowered_today=timedelta(hours=5, minutes=30))).reason == "too_short"
-    assert decide(situation(T0, plan_until=T0 + 2 * H, lowered_today=timedelta(hours=5))).until == T0 + H
-    assert decide(situation(T0 + 50 * MIN, plan_until=T0 + 2 * H, held_since=T0, lowered_today=timedelta(hours=6))).reason == "day_cap"
+    assert decide(situation(T0, plan_until=T0 + 2 * H, lowered_24h=timedelta(hours=5, minutes=30))).reason == "too_short"
+    assert decide(situation(T0, plan_until=T0 + 2 * H, lowered_24h=timedelta(hours=5))).until == T0 + H
+    assert decide(situation(T0 + 50 * MIN, plan_until=T0 + 2 * H, held_since=T0, lowered_24h=timedelta(hours=6))).reason == "day_cap"
     assert decide(situation(T0, plan_until=T0 + 2 * H, writes_today=MAX_WRITES_DAY - 1)).reason == "write_cap"
     # The cap never keeps a lowering from ending.
     assert decide(situation(T0 + H, plan_until=None, held_since=T0, writes_today=MAX_WRITES_DAY)).closed is False

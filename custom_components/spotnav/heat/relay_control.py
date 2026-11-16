@@ -9,9 +9,10 @@ The relay path only (and SG Ready's first contact): **closed** lowers the pump's
 planned lowered run: `planned_run_end`):
 
 * A lowering starts only where the plan lowers the running hour and its run ahead leaves at least `MIN_LOWER` (no
-  quarter blips), at least `MIN_NORMAL` after SpotNav's last lowering ended, while the day's lowered time leaves
-  `MIN_LOWER` under `MAX_DAY`, and the day's writes leave room for its end too (`MAX_WRITES_DAY`).
-* A lowering lasts at least `MIN_LOWER` and at most `MAX_RUN` in a row, never past `MAX_DAY` for the day; it ends
+  quarter blips), at least `MIN_NORMAL` after SpotNav's last lowering ended, while the lowered time of the last 24
+  hours (a rolling day) leaves `MIN_LOWER` under `MAX_DAY`, and the day's writes leave room for its end too
+  (`MAX_WRITES_DAY`).
+* A lowering lasts at least `MIN_LOWER` and at most `MAX_RUN` in a row, never past `MAX_DAY` in 24 hours; it ends
   when the plan stops lowering once `MIN_LOWER` has passed.
 * A safety reason ends a lowering at once, also before `MIN_LOWER`, and starts none: outdoors at or below
   `NO_LOWER_AT_C` (`too_cold`), a counted room below the comfort band (`room_cold`), data that is not good
@@ -124,8 +125,8 @@ class Situation:
     held_since: datetime | None
     #: When SpotNav's last lowering ended.
     last_end: datetime | None
-    #: SpotNav's lowered time today, the running lowering's part included.
-    lowered_today: timedelta
+    #: SpotNav's lowered time over the last 24 hours, the running lowering's part included.
+    lowered_24h: timedelta
     writes_today: int
     #: A reason that ends any lowering at once and starts none (`SAFETY_*`; `settling` starts none only).
     safety: str | None = None
@@ -141,7 +142,7 @@ class Decision:
 
 def decide(s: Situation) -> Decision:
     """Whether the relay is to be closed now, and why (see the module)."""
-    day_left = max(timedelta(0), MAX_DAY - s.lowered_today)
+    day_left = max(timedelta(0), MAX_DAY - s.lowered_24h)
     if s.held_since is not None:
         if s.safety is not None and s.safety != SAFETY_SETTLING:
             return Decision(False, s.safety)
