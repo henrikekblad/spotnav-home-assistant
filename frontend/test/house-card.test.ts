@@ -132,7 +132,10 @@ describe("the body", () => {
     expect(svg.querySelectorAll(".spotnav-house-heat-bar")).toHaveLength(36);
     expect(svg.querySelectorAll(".spotnav-house-heat-forecast")).toHaveLength(24);
     expect(svg.querySelector(".spotnav-house-sun-area")).not.toBeNull();
-    expect(svg.querySelectorAll(".spotnav-house-soc")).toHaveLength(2);
+    // The battery's level has its own labelled axis in the price view only: never on the kW axis.
+    expect(svg.querySelector(".spotnav-house-soc")).toBeNull();
+    expect(card.querySelector("button[data-legend='battery']")).toBeNull();
+    expect(body(answer(), { view: "price" }).querySelectorAll("svg .spotnav-house-soc")).toHaveLength(2);
     // The plan's tints belong to the price view only.
     expect(svg.querySelector(".spotnav-house-band")).toBeNull();
     expect(svg.querySelector(".spotnav-now")?.getAttribute("display")).toBeNull();
@@ -214,13 +217,13 @@ describe("the body", () => {
     document.body.append(card);
     const surface = card.querySelector<HTMLElement>(".spotnav-house-surface")!;
     const readout = card.querySelector(".spotnav-readout")!;
-    expect(readout.textContent).toBe(translate("en", "house.hint"));
+    expect(readout.textContent).toBe(translate("en", "house.hint.energy"));
     surface.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     // From the running hour on.
     expect(handlers.onSelect).toHaveBeenLastCalledWith(12);
     expect(readout.textContent).toMatch(/^17:00–18:00 · house/);
     surface.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    expect(readout.textContent).toBe(translate("en", "house.hint"));
+    expect(readout.textContent).toBe(translate("en", "house.hint.energy"));
   });
 
   it("is worded in every language", () => {
@@ -317,7 +320,7 @@ describe("the legend", () => {
   });
 
   it("keeps the grid charging and selling tints and their legend items to the price view", () => {
-    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast", "Sun", "Car", "Battery 0–100 % (dashed: plan)"]);
+    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast was", "Sun", "Car"]);
     expect(legendOf(body(answer(), { view: "price" }))).toEqual([
       "Buy price",
       "Sell price",
@@ -336,7 +339,7 @@ describe("the legend", () => {
     const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>(".spotnav-house-legend button"));
     expect(buttons.every((button) => button.type === "button" && button.hasAttribute("aria-pressed"))).toBe(true);
     const pressed = Object.fromEntries(buttons.map((button) => [button.dataset["legend"], button.getAttribute("aria-pressed")]));
-    expect(pressed).toEqual({ house: "true", heat: "true", forecast: "true", sun: "true", car: "false", battery: "true" });
+    expect(pressed).toEqual({ house: "true", heat: "true", forecast: "true", sun: "true", car: "false" });
     card.querySelector<HTMLButtonElement>("button[data-legend='sun']")!.click();
     expect(onLegend).toHaveBeenLastCalledWith("energy", ["car", "sun"]);
     card.querySelector<HTMLButtonElement>("button[data-legend='car']")!.click();
@@ -357,7 +360,7 @@ describe("the legend", () => {
     const past = value.hours[2]!;
     expect(hourFigures("en", value, past, NOW, "energy", new Set(hidden.energy))).toBe("07:00–08:00 · house 1.9 kW");
     const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>(".spotnav-house-legend button"));
-    expect(buttons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(5);
+    expect(buttons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(4);
     // Hiding the house itself leaves the rest (the forecast ticks, the heat) standing.
     const noHouse = body(value, { hidden: { energy: ["house", "car"] } }).querySelector("svg")!;
     expect(noHouse.querySelector(".spotnav-house-bar")).toBeNull();
@@ -456,7 +459,7 @@ describe("the legend in the card element", () => {
     });
     expect(readHiddenSeries()).toEqual({});
     expect(() => writeHiddenSeries("energy", [])).not.toThrow();
-    expect(legendOf(body(answer(), { hidden: readHiddenSeries() })).length).toBe(6);
+    expect(legendOf(body(answer(), { hidden: readHiddenSeries() })).length).toBe(5);
   });
 });
 

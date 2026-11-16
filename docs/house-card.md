@@ -44,12 +44,12 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
   under it. Below that, what the electricity bought cost and, when there is some, the sun sold. On a site without a battery
   there is no battery line.
 * **The chart** covers 12 hours back and 24 ahead, with two views you can switch between:
-  * *Energy*: bars for the house's load per hour (measured before now, forecast after), an area for the sun, and a
-    line for the battery's charge level, dashed where it is planned.
+  * *Energy*: bars for the house's load per hour (measured before now, forecast after in a lighter shade) and an area
+    for the sun. Over a past bar a short line shows what the forecast was for that hour.
   * *Price & battery*: the buying price (every fee included) and the selling price per hour, with the battery's level on
-    the right axis.
+    its own 0–100 % axis on the right, dashed where it is planned.
 
-  Both views tint the hours where the plan charges the battery from the grid (violet) and, more lightly, where it sells to
+  The price view tints the hours where the plan charges the battery from the grid (violet) and, more lightly, where it sells to
   the grid.
 
   Tap an hour for its figures: the house in kW (measured, with the forecast beside it), the sun in kWh (expected for hours

@@ -1,6 +1,7 @@
 // The house card's one chart, as SVG, from 12 hours back to 24 hours ahead on one real-time axis, in one of two
-// views (like the battery app's two charts): "energy", the house's load per hour, the sun and the battery's level;
-// "price", the buy and sell price per hour (left axis, minor unit per kWh) with the battery's level (right axis).
+// views (like the battery app's two charts): "energy", the house's load per hour and the sun (one kW axis, nothing
+// else on it); "price", the buy and sell price per hour (left axis, minor unit per kWh) with the battery's level on its
+// own labelled 0-100 % axis (right).
 // The price view tints the hours the plan charges from the grid (violet) and sells to the grid (teal); both mark now
 // ("Nu"). A viewer may hide any series from the legend (`hidden`, see `house-series.ts`): it is left out and the kW axis
 // rescales to what is shown.
@@ -13,8 +14,9 @@
 //   part of the hour, the car's the right) so neither hides the other; hidden until toggled on in the legend.
 // * The sun: a soft area, the production in the past and the corrected forecast ahead (the raw one where there is
 //   none); the raw forecast as a dotted line over all of it, since the Hybrid strategy reads that one.
-// * The battery: its charge level on its own scale (0-100 % over the plot's height), measured in the past and as the
-//   plan expects it ahead (dashed); the hours the plan charges from the grid are tinted, the hours it sells lightly.
+// * The battery (price view only, where its axis is labelled): its charge level on 0-100 % over the plot's height,
+//   measured in the past and as the plan expects it ahead (dashed); the hours the plan charges from the grid are
+//   tinted, the hours it sells lightly.
 // * The now line at the running hour's present, and a dashed selection line at a chosen hour.
 //
 // The geometry is the price chart's (`chart.ts`): its metrics and nice steps for the kW axis, `rangeAxis` and
@@ -386,7 +388,7 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
 
   // The battery: measured, then planned (from the last measured point on, so the two lines meet).
   const hasSoc = hours.some((hour) => hour.soc_pct !== null || (hour.soc_plan_pct !== null && hour.startMs + HOUR_MS > nowMs));
-  if (hasSoc && shown_("battery")) {
+  if (view === "price" && hasSoc && shown_("battery")) {
     const end = (hour: HouseHour): number => x(hour.startMs + HOUR_MS);
     const measured = hours.map((hour) => (hour.soc_pct === null ? null : { x: end(hour), y: socY(hour.soc_pct) }));
     let lastMeasured: { x: number; y: number } | null = null;

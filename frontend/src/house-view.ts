@@ -529,12 +529,12 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
       item("car", "house.legend.car");
     }
   }
-  if (answer.battery !== null) {
+  if (answer.battery !== null && view === "price") {
     item("battery", "house.legend.battery");
-    if (view === "price" && answer.hours.some((hour) => hour.battery_action === "grid_charge")) {
+    if ( answer.hours.some((hour) => hour.battery_action === "grid_charge")) {
       item("charge", "house.legend.charge");
     }
-    if (view === "price" && answer.hours.some((hour) => hour.battery_action === "export_discharge")) {
+    if (answer.hours.some((hour) => hour.battery_action === "export_discharge")) {
       item("sell", "house.legend.sell");
     }
   }
@@ -581,7 +581,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     selected = index;
     chart.select(index);
     const hour = index === null ? undefined : answer.hours[index];
-    readout.textContent = hour === undefined ? translate(language, "house.hint") : hourFigures(language, answer, hour, nowMs, view, hidden);
+    readout.textContent = hour === undefined ? translate(language, view === "energy" ? "house.hint.energy" : "house.hint") : hourFigures(language, answer, hour, nowMs, view, hidden);
   };
   const indexAt = (event: PointerEvent | MouseEvent): number | null => {
     const box = chart.element.getBoundingClientRect();

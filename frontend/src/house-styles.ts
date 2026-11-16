@@ -341,8 +341,9 @@ export const HOUSE_STYLES = `
     fill: var(--spotnav-house-colour);
     opacity: 0.85;
   }
+  /* The forecast ahead: lighter than the measured bars, yet plain to see on a light and a dark card. */
   .${H.barForecast} {
-    opacity: 0.32;
+    opacity: 0.55;
   }
   .${H.carBar} {
     fill: var(--spotnav-flow-car);
@@ -353,7 +354,7 @@ export const HOUSE_STYLES = `
     opacity: 0.9;
   }
   .${H.heatBar}.${H.heatForecast} {
-    opacity: 0.38;
+    opacity: 0.55;
   }
   .${H.forecastTick} {
     stroke: var(--primary-text-color, #212121);
