@@ -370,7 +370,7 @@ each with its own private webhook secret. Treat webhook ids as secrets. See
 
 ## Change these choices later
 
-- **A charger's entities.** Open the charger's card, then **Card settings**, then **Charger
+- **A charger's entities.** Open the charger's card, then **Settings**, then **Charger
   entities, Change charger entities**. Administrators can also use **Configure** on the charger's
   entry under **Settings, Devices & services, SpotNav**, which shows **Charge control**, **Charging
   current (optional)**, the energy meter and **Set the charger current**.

@@ -107,6 +107,16 @@ describe("the house history", () => {
     expect(decodeHouseHistory({ ...read("house_history/villa_month.json"), later: 1 }).ok).toBe(true);
   });
 
+  it("names one day count for the savings, and a row's own only where it has fewer days", () => {
+    const answer = house("house_history/villa_month.json");
+    answer.review!.battery_days = 1;
+    const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const money = body.querySelector("[data-part='money']")!;
+    expect(money.querySelector("[data-row='battery']")?.textContent).toMatch(/52 kr på 1 dygn$/);
+    expect(money.querySelector("[data-row='sun']")?.textContent).not.toContain("dygn");
+    expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
+  });
+
   it("shows a month: a bar a day, the flow, the money; no forward step past today", () => {
     const answer = house("house_history/villa_month.json");
     const on = handlers();
@@ -116,9 +126,9 @@ describe("the house history", () => {
     expect(body.querySelector<HTMLSelectElement>("select[data-pick='month']")!.value).toBe("2026-11-01");
     expect(body.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
     const money = body.querySelector("[data-part='money']")!;
-    expect(money.querySelector("[data-row='cost']")?.textContent).toMatch(/^Vad perioden kostade/);
-    expect(money.querySelector("[data-row='battery']")?.textContent).toContain("52 kr");
-    expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Batteriets pengar är från 13 av 15 granskade dygn.");
+    expect(money.querySelector("[data-row='cost']")?.textContent).toMatch(/^Elkostnad/);
+    expect(money.querySelector("[data-row='battery']")?.textContent).toMatch(/^Batteriet sparade.*52 kr/);
+    expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
     expect(body.querySelector("[data-part='modes']")).toBeNull();
     body.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
     expect(on.onPeriod).toHaveBeenCalledWith("month", "2026-10-01");
@@ -134,7 +144,7 @@ describe("the house history", () => {
     expect(body.querySelectorAll(".spotnav-history-bar")).toHaveLength(24);
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.value).toBe("2026-11-15");
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.max).toBe("2026-11-16");
-    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,00 kr");
+    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,0 kr");
     // Self-consumption is the zero the others are measured against, not a row.
     expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")).toBeNull();
     expect(body.querySelector("[data-part='modes'] [data-row='own']")?.textContent).toContain("Batteriets egen styrning");
@@ -142,7 +152,9 @@ describe("the house history", () => {
     // A day has no day-by-day list.
     expect(body.querySelector("[data-part='days']")).toBeNull();
     const month = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: house("house_history/villa_month.json") }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    expect(month.querySelectorAll("[data-part='days'] li")).toHaveLength(13);
+    // A table: a row a day, a column a figure.
+    expect(month.querySelectorAll("[data-part='days'] tbody tr")).toHaveLength(13);
+    expect(month.querySelectorAll("[data-part='days'] tbody tr:first-child td")).toHaveLength(4);
   });
 
   it("says what is missing: no meters, no prices, no review", () => {
@@ -187,6 +199,12 @@ describe("the heat history", () => {
     expect(degree.querySelector("[data-row='per-degree-day']")?.textContent).toContain("3,07 kWh/graddag");
     expect(degree.querySelectorAll(".spotnav-history-bar")).toHaveLength(12);
     expect(body.querySelector("[data-part='comfort'] [data-row='coldest']")?.textContent).toContain("Övervåning");
+    expect(body.querySelector("[data-part='comfort'] [data-row='coldest-figure']")?.textContent).toMatch(/^medel .* · lägst /);
+    // The split note only while days are missing from it.
+    expect(body.querySelector("[data-line='split-days']")).not.toBeNull();
+    const whole = { ...answer, energy: { ...answer.energy!, split_days: answer.energy!.days } };
+    const complete = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: whole }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(complete.querySelector("[data-line='split-days']")).toBeNull();
     expect(body.querySelector("[data-part='comfort'] [data-row='below']")?.textContent).toContain("112 av 374");
     expect(body.querySelector("[data-part='shadow'] [data-row='value']")?.textContent).toContain("127 kr");
     expect(body.querySelector("[data-part='use'] [data-row='immersion']")?.textContent).toContain("3 h");

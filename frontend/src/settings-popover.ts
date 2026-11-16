@@ -994,7 +994,7 @@ export class SettingsPopover {
     const doc = this.input.doc;
     const wrap = element(doc, "section", C.settingsSection);
     wrap.dataset["section"] = "setup";
-    wrap.append(sectionHeading(doc, "site", translate(this.language, "setup.heading")));
+    wrap.append(sectionHeading(doc, "setup", translate(this.language, "setup.heading")));
     wrap.append(
       setupSection(doc, {
         language: this.language,
@@ -1558,7 +1558,8 @@ export class SettingsPopover {
       ...this.numberRow("main_fuse_a", translate(language, "entity.field.mainFuse"), "A", null),
       ...this.numberRow("import_target_kw", translate(language, "site.importTarget"), "kW", translate(language, "settings.value.off"), translate(language, "site.importTarget.help")),
     );
-    const label = translate(language, "popover.site.meters");
+    // The same label as the charging card's site row: it is how the site is measured, not a device.
+    const label = translate(language, "entity.field.measurementMode");
     const value = modeLabel(language, config.site.measurement.mode);
     section.append(
       ...settingRow(doc, {

@@ -184,7 +184,9 @@ describe("the demand charge in the Electricity price section", () => {
   it("lists each component with its month beneath, after the fees", async () => {
     const { element } = await open(PILOT, { language: "sv" });
     const keys = rowKeys(element, "market");
-    expect(keys.slice(-3)).toEqual(["demand_0", "demand_1", "demand_add"]);
+    // After the fees that are set; the fees that are off wait under More fees.
+    expect(keys.filter((key) => key!.startsWith("demand"))).toEqual(["demand_0", "demand_1", "demand_add"]);
+    expect(keys.indexOf("demand_0")).toBeGreaterThan(keys.indexOf("transfer"));
     const help = section(element, "market").querySelector("[data-help='demand_0_1']")!;
     expect(help.textContent).toContain("Den här månaden: 7,0 kW");
   });

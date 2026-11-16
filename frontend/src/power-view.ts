@@ -5,7 +5,7 @@
 // tagged with the part's number; the site's import target is a dashed line across; a day the target held or paused a
 // charger has a small mark under its bar. Where the month's peak lifted the target (a demand-charge part's free level),
 // a thin solid line stands at that level over the days and hours it applied to. A day or hour read from Home
-// Assistant's statistics is hatched and the legend says so. A tap on a day shows its hours the same way (for a month whose hours are
+// Assistant's statistics is paler and the legend says so. A tap on a day shows its hours the same way (for a month whose hours are
 // still kept; an older month keeps its days only). Hover, focus or a tap shows the figures in the readout under the
 // chart, as the charge history's day chart does. Nothing is recomputed: every figure is the backend's.
 

@@ -200,6 +200,9 @@ class BatteryInputs:
     production: Mapping[datetime, float] = field(default_factory=dict)
     #: The stored energy's running value and each day's money split (`battery/stored_value.py`).
     stored: StoredValue | None = None
+    #: Whether SpotNav controls the battery (`BatteryControl.state`: `off`, `shadow_only`, `verifying`, `waiting`,
+    #: `on` or `failed`), so the card says "Test" only while it does not; `None` where the control is not read.
+    control: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -550,6 +553,7 @@ def _battery_block(battery: BatteryInputs, log: ForecastLog) -> dict[str, Any]:
         "soc_pct": _round(battery.soc_pct, 1),
         "usable_kwh": _round(battery.usable_kwh, 2),
         "management": battery.management,
+        "control": battery.control,
         "status": battery.status,
         "reason": battery.reason,
         "mode": battery.mode,

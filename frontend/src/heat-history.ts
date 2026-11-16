@@ -6,7 +6,7 @@
 // the backend's; text is written with `textContent` only.
 
 import { clock, formatFixed, formatNumber, type FormatContext } from "./format";
-import { HEAT_HISTORY_API_VERSION } from "./heat-model";
+import { HEAT_HISTORY_API_VERSION, roomName } from "./heat-model";
 import { bucketWords, isoDay, periodKind } from "./house-history";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -304,7 +304,9 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
   }
   return periodBars(doc, language, translate(language, "hist.heat.chart"), "", bars, ui, translate(language, "hist.heat.hint"), {
     scaleText: (top) => money(language, top, answer.money),
-    legend: translate(language, "hist.heat.legend"),
+    cost: translate(language, "hist.legend.cost"),
+    saving: translate(language, "hist.heat.legend.saving"),
+    extra: "",
   });
 }
 
@@ -322,10 +324,11 @@ function useSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement {
   }
   block.append(figureRow(doc, translate(language, "hist.heat.total"), kwh(language, energy.total_kwh), "total"));
   if (energy.hot_water_kwh !== null) {
-    block.append(
-      figureRow(doc, translate(language, "hist.heat.hotWater"), kwh(language, energy.hot_water_kwh), "hot-water"),
-      note(doc, translate(language, "hist.heat.splitDays", { days: String(energy.split_days), total: String(energy.days) })),
-    );
+    block.append(figureRow(doc, translate(language, "hist.heat.hotWater"), kwh(language, energy.hot_water_kwh), "hot-water"));
+    // Said only when some days are missing from the split.
+    if (energy.split_days < energy.days) {
+      block.append(note(doc, translate(language, "hist.heat.splitDays", { days: String(energy.split_days), total: String(energy.days) }), "split-days"));
+    }
   } else {
     block.append(note(doc, translate(language, "hist.heat.noSplit"), "no-split"));
   }
@@ -425,11 +428,13 @@ function comfortSection(input: HeatHistoryInput, answer: HeatHistory): HTMLEleme
     return block;
   }
   block.append(
+    // The room on its own row and its figures under it, so neither breaks mid-figure on a phone.
+    figureRow(doc, translate(language, "hist.heat.coldest"), roomName(comfort.coldest.name), "coldest"),
     figureRow(
       doc,
-      translate(language, "hist.heat.coldest", { name: comfort.coldest.name }),
+      "",
       translate(language, "hist.heat.coldestFigure", { mean: celsius(language, comfort.coldest.mean_c), min: celsius(language, comfort.coldest.min_c) }),
-      "coldest",
+      "coldest-figure",
     ),
     figureRow(
       doc,

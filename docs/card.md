@@ -33,7 +33,7 @@ The header shows the charger's name and three icons.
   marked available or unavailable for this charger. An item that is unavailable here cannot be
   switched on from the card. The list is taken from what the integration reports for the charger.
 - **Charge history** (the clock icon) opens [the charge history](#charge-history).
-- **Card settings** (the gear icon) opens [the settings popover](#the-settings-popover). It is shown to a
+- **Settings** (the gear icon) opens [the settings popover](#the-settings-popover). It is shown to a
   user who is not an administrator only when the popover holds something they may change.
 
 When something needs attention, a banner says so: a notice in a neutral colour, or a message in
@@ -254,7 +254,7 @@ shows the site's whole import, not only this charger's:
   (see [the month's peak lifts the target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)):
   over each day from the one it was set, at the level that applied to that day's highest hour, and in a day's hours
   only over the hours a part counts. The legend names it (*The month's peak 6.7 kW*).
-- **Days from Home Assistant's statistics** are hatched, and the legend and a note under it say so (see
+- **Days from Home Assistant's statistics** are paler, and the legend and a note under it say so (see
   [earlier months](site-and-load-balancing.md#earlier-months-from-home-assistants-statistics)).
 - **A tapped day** shows its hours the same way, an hour with gaps in the reading paler; *Whole month* goes back.
   Hover or focus a bar for its figures, for example *Tue 15 Sep: highest 5.9 kW at 19:00 · house 2.3 kW, car
@@ -266,7 +266,7 @@ three months back, where they hold the site's grid power.
 
 ## The settings popover
 
-The gear icon opens **Card settings**, built fresh each time you open it. The plan and the strategy
+The gear icon opens **Settings**, built fresh each time you open it. The plan and the strategy
 have their own cells on the card; everything else is here, in sections headed by what they are about
 (**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Home battery** (when SpotNav finds one),
 **Heating**, **Notifications**, **Display**, **Support**). **Electricity price**, **Solar**, **Home battery** and
@@ -284,15 +284,16 @@ SpotNav makes it from your Home Assistant country and location when the first ch
 new charger already has an area (see [first-run defaults](setup.md#first-run-defaults)).
 
 The section shows, under its heading, which electricity price this charger uses and how many chargers
-use it ("Electricity price SE4 · used by all 2 chargers"; with one charger only its name), and, when more
+use it ("Electricity price SE4 · used by all 2 chargers"; nothing with one charger, where the area says it), and, when more
 than one uses it, that a change here applies to every charger using it. Below are the area and the VAT,
 energy tax and grid fee as the plan applies them. Tapping the area or a tax opens the editor. *Grid fee in
 high-load hours* and *High-load hours* open the same dialog, with the fee and its hours together, one *Save* and
 *Remove the high-load fee* (see [a grid fee higher in high-load hours](prices.md#a-grid-fee-that-is-a-percentage-of-spot-or-higher-in-high-load-hours)). Below the fees, *Supplier markup*
-(on each bought kWh, without VAT) and *Sold kWh: extra or deduction* (as it is paid out, without VAT; a deduction
+(on each bought kWh, without VAT) and *Extra for sold power* (as it is paid out, without VAT; a deduction
 is a negative figure) are off until set (see [the supplier's markup](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)). The sold-kWh
 row shows only on a price used by a site with a home battery, solar production, a solar forecast or a separate export
-meter, or where it already has a figure.
+meter, or where it already has a figure. Fees that are off (the percentage of spot, the high-load fee, the supplier's
+two figures, the demand charge) are folded under *More fees*, so the list holds what you pay.
 
 ![The electricity price settings](images/card-settings-price.png)
 

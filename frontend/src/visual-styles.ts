@@ -297,6 +297,8 @@ export const VISUAL_CLASSES = {
   historyBarFill: "spotnav-history-bar-fill",
   historyBarPart: "spotnav-history-bar-part",
   historyLegend: "spotnav-history-legend",
+  linkButton: "spotnav-link-button",
+  settingsMore: "spotnav-settings-more",
   historyAxis: "spotnav-history-axis",
   historyScale: "spotnav-history-scale",
   historyReadout: "spotnav-history-readout",
@@ -790,8 +792,14 @@ export const VISUAL_STYLES = `
    * targets.
    */
   /* For a label that must exist for assistive technology and not be seen: the standard clip rectangle. */
+  /* Out of sight but read aloud: a 1 px box, so a long hidden text never widens the page. */
   .spotnav-visually-hidden {
     position: absolute;
+    max-width: 1px;
+    max-height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
@@ -845,7 +853,6 @@ export const VISUAL_STYLES = `
   .spotnav-bar-caption {
     font-size: 0.68rem;
     line-height: 1.1;
-    opacity: 0.8;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -904,9 +911,9 @@ export const VISUAL_STYLES = `
   }
   .spotnav-button {
     font: inherit;
-    min-height: 36px;
+    min-height: 40px;
     padding: 6px 14px;
-    border-radius: 18px;
+    border-radius: 20px;
     border: 1px solid var(--divider-color, #e0e0e0);
     background: var(--secondary-background-color, transparent);
     color: var(--primary-text-color, #212121);
@@ -932,7 +939,7 @@ export const VISUAL_STYLES = `
    */
   .spotnav-planner-button {
     border-color: var(--primary-color, #03a9f4);
-    color: var(--primary-color, #03a9f4);
+    color: var(--primary-text-color, #212121);
     font-weight: 500;
   }
   .spotnav-strategy-button {
@@ -1011,15 +1018,15 @@ export const VISUAL_STYLES = `
   .spotnav-strategy-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     align-items: flex-start;
     margin-top: 8px;
   }
   .spotnav-choice-button {
     font: inherit;
-    min-height: 36px;
+    min-height: 40px;
     padding: 6px 14px;
-    border-radius: 18px;
+    border-radius: 20px;
     border: 1px solid var(--divider-color, #e0e0e0);
     background: var(--secondary-background-color, transparent);
     color: var(--primary-text-color, #212121);
@@ -1037,6 +1044,15 @@ export const VISUAL_STYLES = `
   .spotnav-choice-button:disabled {
     opacity: 0.55;
     cursor: default;
+  }
+  /* The strategy in force: an outline in the primary colour and a check mark, never pale like one not to be had. */
+  .spotnav-strategy-row > .spotnav-choice-button[aria-pressed="true"] {
+    opacity: 1;
+    border: 2px solid var(--primary-color, #03a9f4);
+    font-weight: 500;
+  }
+  .spotnav-strategy-row > .spotnav-choice-button[aria-pressed="true"]::before {
+    content: "✓ ";
   }
   /**
    * "Which car is plugged in?": a question that decides the plan, so it stands out from the status. The same-area
@@ -1395,9 +1411,6 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.connectionLine} {
     flex: none;
     white-space: nowrap;
-  }
-  .${VISUAL_CLASSES.vehicleLineAge} {
-    opacity: 0.8;
   }
   /* The line's parts wrap inside a clipped box whose inner row starts one separator to the left: a part that
      starts a row has its leading "·" in the clipped strip, so no row starts with a lone dot. */
@@ -1766,11 +1779,13 @@ export const VISUAL_STYLES = `
     gap: 10px;
     min-width: 0;
   }
+  /* The day's dearest and cheapest price as text: the price colours mixed a third toward the text colour, darker on a
+   * light card and lighter on a dark one, so both read at 4.5:1. */
   .${VISUAL_CLASSES.summaryMax} {
-    color: var(--spotnav-expensive, #c62828);
+    color: color-mix(in srgb, var(--spotnav-expensive, #c62828) 65%, var(--primary-text-color, #212121));
   }
   .${VISUAL_CLASSES.summaryMin} {
-    color: var(--spotnav-cheap, #2e7d32);
+    color: color-mix(in srgb, var(--spotnav-cheap, #2e7d32) 65%, var(--primary-text-color, #212121));
   }
   .${VISUAL_CLASSES.summary}[role="button"] {
     cursor: pointer;
@@ -2720,13 +2735,13 @@ export const VISUAL_STYLES = `
     gap: 6px;
   }
   .${VISUAL_CLASSES.historyToggleButton} {
-    min-height: 36px;
+    min-height: 40px;
     padding: 4px 12px;
     font: inherit;
     color: var(--primary-text-color, #212121);
     background: transparent;
     border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 18px;
+    border-radius: 20px;
     cursor: pointer;
   }
   .${VISUAL_CLASSES.historyToggleButton}[aria-pressed="true"] {
@@ -2772,7 +2787,7 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.historyMonthPicker} > select {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 36px;
+    min-height: 40px;
     font: inherit;
     color: var(--primary-text-color, #212121);
     background: var(--secondary-background-color, transparent);
@@ -2781,7 +2796,7 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.historyMonthPicker} > button {
     flex: none;
-    min-width: 36px;
+    min-width: 40px;
     padding: 4px 10px;
     font-size: 1.1rem;
     line-height: 1;
@@ -2884,8 +2899,58 @@ export const VISUAL_STYLES = `
     box-shadow: inset 0 0 0 1px var(--warning-color, #ffa600);
   }
   .${VISUAL_CLASSES.historyLegend} {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
     margin: 2px 0 0;
+    padding: 0;
+    list-style: none;
     font-size: 0.78rem;
+  }
+  .${VISUAL_CLASSES.historyLegend} > li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .${VISUAL_CLASSES.historyLegend} .${VISUAL_CLASSES.historyBarPart} {
+    flex: none;
+    width: 0.9rem;
+    height: 0.65rem;
+    border-radius: 2px;
+  }
+  /* A text button that reads as a link (show or hide details): no frame, underlined, a finger-sized target. */
+  .${VISUAL_CLASSES.linkButton} {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    margin: 0;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--primary-text-color, #212121);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  /* Settings that are off, folded under one link ("More fees"); a row opened from it is a normal row. */
+  .${VISUAL_CLASSES.settingsMore} > summary {
+    list-style: none;
+    color: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.settingsMore} > summary::-webkit-details-marker {
+    display: none;
+  }
+  .${VISUAL_CLASSES.settingsMore} > summary::after {
+    content: " ▾";
+    text-decoration: none;
+  }
+  .${VISUAL_CLASSES.settingsMore}[open] > summary::after {
+    content: " ▴";
+  }
+  .${VISUAL_CLASSES.linkButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
   }
   .${VISUAL_CLASSES.historyBarFill}[data-price="none"] {
     background: var(--secondary-text-color, #727272);
@@ -2990,24 +3055,13 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.powerStack}[data-incomplete="true"] {
     opacity: 0.45;
   }
-  /* A day or hour from Home Assistant's statistics: hatched in the card's own background over its colours. */
-  .${VISUAL_CLASSES.powerStack}[data-imported="true"]::after,
-  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerImportedSwatch} {
-    background-image: repeating-linear-gradient(
-      135deg,
-      var(--ha-card-background, var(--card-background-color, #ffffff)) 0 1.5px,
-      transparent 1.5px 4px
-    );
-  }
-  .${VISUAL_CLASSES.powerStack}[data-imported="true"]::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
+  /* A day or hour from Home Assistant's statistics: its colours paler. Hatching means saved money in the cards' charts,
+   * nothing else. */
+  .${VISUAL_CLASSES.powerStack}[data-imported="true"] {
+    opacity: 0.6;
   }
   .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerImportedSwatch} {
-    background-color: color-mix(in srgb, var(--primary-color, #03a9f4) 50%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+    background-color: color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--ha-card-background, var(--card-background-color, #ffffff)));
   }
   /* The month's peak where it lifted the target: a thin solid line in the warning colour, across each bar it held
    * for (the bars' gaps bridged), distinct from the target's dashed line. */

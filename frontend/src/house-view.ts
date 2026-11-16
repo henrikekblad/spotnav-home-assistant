@@ -97,7 +97,8 @@ export function amount(language: Language, minor: number, money: HouseAnswer["mo
   if (money === null || money.major_unit === null) {
     return `${formatNumber(language, minor, 0)}${money?.minor_unit ? ` ${money.minor_unit}` : ""}`;
   }
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${money.major_unit}`;
+  // Whole units from 10 (and nothing at all), one decimal below: "25 kr", "4,0 kr", "0,8 kr", "0 kr".
+  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${money.major_unit}`;
 }
 
 /** The price's unit per kWh, the area's minor unit ("öre/kWh"). */
@@ -299,8 +300,15 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
   const onSettings = handlers.onSettings?.bind(handlers);
   const onHistory = handlers.onHistory?.bind(handlers);
   const head = element(doc, "div", H.head);
+  // "Test" while SpotNav does not control the battery (off, test only, still checking it); once control is on and
+  // checked, a quiet chip that says so instead.
+  const controlling = answer?.battery?.control === "on";
   const test = testChip(doc, language, "house.test.explain", input.ui.testOpen === true, `${input.idPrefix}-test`, handlers.onTest?.bind(handlers));
-  head.append(element(doc, "h2", H.title, translate(language, "house.title")), test.chip);
+  const chip = controlling ? element(doc, "span", H.chip, translate(language, "house.controlling")) : test.chip;
+  if (controlling) {
+    chip.dataset["line"] = "controlling";
+  }
+  head.append(element(doc, "h2", H.title, translate(language, "house.title")), chip);
   if (onHistory !== undefined) {
     const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory(button));
     head.append(button);
@@ -309,7 +317,10 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
     head.append(settingsGearButton(doc, translate(language, "popover.open"), onSettings));
   }
   const wrap = element(doc, "div");
-  wrap.append(head, test.explain);
+  wrap.append(head);
+  if (!controlling) {
+    wrap.append(test.explain);
+  }
   const battery = answer?.battery ?? null;
   if (battery !== null) {
     const words = [];
@@ -529,12 +540,12 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
       item("car", "house.legend.car");
     }
   }
-  if (answer.battery !== null) {
+  if (answer.battery !== null && view === "price") {
     item("battery", "house.legend.battery");
-    if (view === "price" && answer.hours.some((hour) => hour.battery_action === "grid_charge")) {
+    if ( answer.hours.some((hour) => hour.battery_action === "grid_charge")) {
       item("charge", "house.legend.charge");
     }
-    if (view === "price" && answer.hours.some((hour) => hour.battery_action === "export_discharge")) {
+    if (answer.hours.some((hour) => hour.battery_action === "export_discharge")) {
       item("sell", "house.legend.sell");
     }
   }
@@ -581,7 +592,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     selected = index;
     chart.select(index);
     const hour = index === null ? undefined : answer.hours[index];
-    readout.textContent = hour === undefined ? translate(language, "house.hint") : hourFigures(language, answer, hour, nowMs, view, hidden);
+    readout.textContent = hour === undefined ? translate(language, view === "energy" ? "house.hint.energy" : "house.hint") : hourFigures(language, answer, hour, nowMs, view, hidden);
   };
   const indexAt = (event: PointerEvent | MouseEvent): number | null => {
     const box = chart.element.getBoundingClientRect();
@@ -931,7 +942,12 @@ function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, wo
   section.append(list);
   const notes: string[] = [];
   if (battery !== null) {
-    notes.push(translate(language, battery.management === "self_managed" ? "house.note.selfManaged" : "house.note.shadow"));
+    notes.push(
+      translate(
+        language,
+        battery.control === "on" ? "house.note.controlling" : battery.management === "self_managed" ? "house.note.selfManaged" : "house.note.shadow",
+      ),
+    );
     const assumed = battery.estimates.map((code) => ESTIMATE_KEYS[code]).filter((key): key is TranslationKey => key !== undefined);
     if (assumed.length > 0) {
       notes.push(translate(language, "house.note.assumed", { list: assumed.map((key) => translate(language, key)).join(", ") }));
@@ -999,7 +1015,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   if (energyFlow !== null) {
     card.append(energyFlow);
   }
-  const toggle = element(doc, "button", `${C.historyToggleButton} ${H.detailsToggle}`, translate(language, input.ui.detailsOpen ? "house.details.close" : "house.details.open"));
+  const toggle = element(doc, "button", `${C.linkButton} ${H.detailsToggle}`, translate(language, input.ui.detailsOpen ? "details.hide" : "details.show"));
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", String(input.ui.detailsOpen));
   const detailsId = `${input.idPrefix}-details`;

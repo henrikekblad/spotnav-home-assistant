@@ -252,10 +252,11 @@ export function periodNav(doc: Document, language: Language, ui: PeriodUi, today
     picker,
     step(nextKey, "›", after, after <= today, "forward"),
   );
-  const detailed = element(doc, "button", `${C.historyToggleButton} spotnav-period-detailed`, translate(language, "hist.detailed"));
+  // Shown as a link, not a fourth period: the same words as the house card's details.
+  const detailed = element(doc, "button", `${C.linkButton} spotnav-period-detailed`, translate(language, ui.detailed ? "details.hide" : "details.show"));
   detailed.type = "button";
   detailed.dataset["detailed"] = "toggle";
-  detailed.setAttribute("aria-pressed", String(ui.detailed));
+  detailed.setAttribute("aria-expanded", String(ui.detailed));
   detailed.addEventListener("click", () => handlers.onDetailed(!ui.detailed));
   const top = element(doc, "div", "spotnav-period-top");
   top.append(tabs, detailed);
@@ -311,8 +312,8 @@ export function periodBars(
   bars: PeriodBar[],
   ui: PeriodUi,
   hint: string,
-  /** Money bars: the scale's text for the tallest bar (in the bars' own unit) and the one-line legend under it. */
-  moneyKey?: { scaleText: (top: number) => string; legend: string },
+  /** Money bars: the scale's text for the tallest bar (in the bars' own unit) and the legend's words for each part. */
+  moneyKey?: { scaleText: (top: number) => string; cost: string; saving: string; extra: string },
 ): HTMLElement {
   const wrap = element(doc, "div", C.historyChart);
   const top = Math.max(0, ...bars.map((bar) => (bar.money === undefined ? bar.value ?? 0 : moneyParts(bar.money.cost, bar.money.saving).whole)));
@@ -379,9 +380,28 @@ export function periodBars(
   scale.setAttribute("aria-hidden", "true");
   wrap.append(scale, plot, axis);
   if (moneyKey !== undefined) {
-    const legend = element(doc, "p", `${C.muted} ${C.historyLegend}`, moneyKey.legend);
+    // A swatch per part the bars hold: the hatched saving and the warning's extra only where a bar has one.
+    const shown = bars.map((bar) => (bar.money === undefined ? null : moneyParts(bar.money.cost, bar.money.saving)));
+    const legend = element(doc, "ul", `${C.muted} ${C.historyLegend}`);
     legend.dataset["part"] = "legend";
-    wrap.append(legend);
+    for (const [part, words, present] of [
+      ["cost", moneyKey.cost, shown.some((parts) => parts !== null && parts.solid > 0)],
+      ["saving", moneyKey.saving, shown.some((parts) => parts !== null && parts.hatch > 0)],
+      ["extra", moneyKey.extra, shown.some((parts) => parts !== null && parts.warn > 0)],
+    ] as const) {
+      if (!present || words === "") {
+        continue;
+      }
+      const item = element(doc, "li");
+      const swatch = element(doc, "span", C.historyBarPart);
+      swatch.dataset["part"] = part;
+      swatch.setAttribute("aria-hidden", "true");
+      item.append(swatch, element(doc, "span", undefined, words));
+      legend.append(item);
+    }
+    if (legend.childElementCount > 0) {
+      wrap.append(legend);
+    }
   }
   wrap.append(readout);
   show(bars.find((bar) => bar.key === ui.selected) ?? null);
@@ -444,7 +464,7 @@ export const PERIOD_STYLES = `
   .${C.historyMonthPicker} > input {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 36px;
+    min-height: 40px;
     box-sizing: border-box;
     padding: 0 8px;
     font: inherit;

@@ -38,8 +38,7 @@ A battery from any other brand has no adapter in SpotNav yet and gets no plan: t
 
 It also reads:
 
-* the prices with every fee SpotNav adds as the buying price, and the spot price plus the price's *Sold kWh: extra or
-  deduction* as the selling price (0 until you set it, no VAT; see [Prices](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)),
+* the prices with every fee SpotNav adds as the buying price, and the spot price plus the price's *Extra for sold power* as the selling price (0 until you set it, no VAT; see [Prices](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)),
 * the house's expected load ([Forecasts](forecasts.md)),
 * the solar forecast as SpotNav corrects it, once the correction has learnt, else the raw forecast,
 * the charging plans already made for your cars, as a fixed load,

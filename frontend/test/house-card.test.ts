@@ -85,14 +85,14 @@ describe("the lines", () => {
     const value = answer();
     expect(savingLine("en", value)).toBe("Last 7 days: SpotNav's plan 51 kr · the battery itself 45 kr, against plain self-consumption");
     expect(savingLine("sv", value)).toBe("Senaste 7 dygnen: SpotNavs plan 51 kr · batteriet självt 45 kr, mot ren egenförbrukning");
-    expect(amount("sv", 812.4, value.money)).toBe("8,12 kr");
+    expect(amount("sv", 812.4, value.money)).toBe("8,1 kr");
   });
 
   it("before a day was reviewed, say what the plan expects; without a battery, say nothing", () => {
     const value = answer();
     const waiting: HouseAnswer = { ...value, battery: { ...value.battery!, review: null } };
     expect(savingLine("sv", waiting)).toBe(
-      "Planen räknar med 8,12 kr bättre än ren egenförbrukning till lör 14 23:00. Första dygnets jämförelse kommer natten efter.",
+      "Planen räknar med 8,1 kr bättre än ren egenförbrukning till lör 14 23:00. Första dygnets jämförelse kommer natten efter.",
     );
     expect(savingLine("en", { ...waiting, battery: { ...waiting.battery!, status: "no_plan", reason: "no_prices" } })).toBe(
       translate("en", "house.saving.noPlan"),
@@ -132,7 +132,10 @@ describe("the body", () => {
     expect(svg.querySelectorAll(".spotnav-house-heat-bar")).toHaveLength(36);
     expect(svg.querySelectorAll(".spotnav-house-heat-forecast")).toHaveLength(24);
     expect(svg.querySelector(".spotnav-house-sun-area")).not.toBeNull();
-    expect(svg.querySelectorAll(".spotnav-house-soc")).toHaveLength(2);
+    // The battery's level has its own labelled axis in the price view only: never on the kW axis.
+    expect(svg.querySelector(".spotnav-house-soc")).toBeNull();
+    expect(card.querySelector("button[data-legend='battery']")).toBeNull();
+    expect(body(answer(), { view: "price" }).querySelectorAll("svg .spotnav-house-soc")).toHaveLength(2);
     // The plan's tints belong to the price view only.
     expect(svg.querySelector(".spotnav-house-band")).toBeNull();
     expect(svg.querySelector(".spotnav-now")?.getAttribute("display")).toBeNull();
@@ -167,6 +170,24 @@ describe("the body", () => {
     expect(body(answer(), { testOpen: true }, "sv").querySelector<HTMLElement>("[data-line='test-explain']")!.hidden).toBe(false);
   });
 
+  it("says Test only while SpotNav does not control the battery, and a quiet chip once it does", () => {
+    for (const control of ["off", "shadow_only", "verifying", "waiting", "failed", null]) {
+      const value = answer();
+      value.battery = { ...value.battery!, control };
+      const card = body(value, {}, "sv");
+      expect(card.querySelector("button[data-action='test']"), String(control)).not.toBeNull();
+      expect(card.querySelector("[data-line='controlling']")).toBeNull();
+    }
+    const on = answer();
+    on.battery = { ...on.battery!, control: "on" };
+    const card = body(on, { detailsOpen: true }, "sv");
+    expect(card.querySelector("button[data-action='test']")).toBeNull();
+    expect(card.querySelector("[data-line='test-explain']")).toBeNull();
+    expect(card.querySelector("[data-line='controlling']")!.textContent).toBe("Styr batteriet");
+    expect(card.textContent).toContain("SpotNav styr batteriet efter planen.");
+    expect(card.textContent).not.toContain("SpotNav planerar batteriet men styr det inte än.");
+  });
+
   it("opens the details on a tap: the modes side by side, the days and the sources", () => {
     const handlers = { onDetails: vi.fn(), onSelect: vi.fn() };
     const closed = body(answer(), {}, "en", handlers);
@@ -179,9 +200,9 @@ describe("the body", () => {
     expect(tables).toHaveLength(2);
     const modes = Array.from(tables[0]!.querySelectorAll("tbody tr")).map((row) => Array.from(row.children).map((cell) => cell.textContent));
     expect(modes).toEqual([
-      ["Egenförbrukning", "0,00 kr", "–"],
-      ["Balanserad (vald)", "8,12 kr", "51 kr"],
-      ["Max vinst", "9,05 kr", "51 kr"],
+      ["Egenförbrukning", "0 kr", "–"],
+      ["Balanserad (vald)", "8,1 kr", "51 kr"],
+      ["Max vinst", "9,1 kr", "51 kr"],
       ["Batteriets egen optimerare", "–", "45 kr"],
     ]);
     expect(tables[1]!.querySelectorAll("tbody tr")).toHaveLength(7);
@@ -214,13 +235,13 @@ describe("the body", () => {
     document.body.append(card);
     const surface = card.querySelector<HTMLElement>(".spotnav-house-surface")!;
     const readout = card.querySelector(".spotnav-readout")!;
-    expect(readout.textContent).toBe(translate("en", "house.hint"));
+    expect(readout.textContent).toBe(translate("en", "house.hint.energy"));
     surface.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     // From the running hour on.
     expect(handlers.onSelect).toHaveBeenLastCalledWith(12);
     expect(readout.textContent).toMatch(/^17:00–18:00 · house/);
     surface.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    expect(readout.textContent).toBe(translate("en", "house.hint"));
+    expect(readout.textContent).toBe(translate("en", "house.hint.energy"));
   });
 
   it("is worded in every language", () => {
@@ -257,7 +278,7 @@ describe("the battery app's views, calm", () => {
     expect(todayLine("sv", answer("house/house_learning.json"))).toBeNull();
     expect(todayDetail("sv", answer())).toBe("Elkostnad 38 kr");
     const value = answer();
-    expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,20 kr");
+    expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,2 kr");
     const card = body(answer(), {}, "sv");
     expect(card.querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag");
     expect(card.querySelector("[data-line='today-hint']")?.textContent).toBe("Samma mått som batteriets app.");
@@ -317,7 +338,7 @@ describe("the legend", () => {
   });
 
   it("keeps the grid charging and selling tints and their legend items to the price view", () => {
-    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast", "Sun", "Car", "Battery 0–100 % (dashed: plan)"]);
+    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast was", "Sun", "Car"]);
     expect(legendOf(body(answer(), { view: "price" }))).toEqual([
       "Buy price",
       "Sell price",
@@ -336,7 +357,7 @@ describe("the legend", () => {
     const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>(".spotnav-house-legend button"));
     expect(buttons.every((button) => button.type === "button" && button.hasAttribute("aria-pressed"))).toBe(true);
     const pressed = Object.fromEntries(buttons.map((button) => [button.dataset["legend"], button.getAttribute("aria-pressed")]));
-    expect(pressed).toEqual({ house: "true", heat: "true", forecast: "true", sun: "true", car: "false", battery: "true" });
+    expect(pressed).toEqual({ house: "true", heat: "true", forecast: "true", sun: "true", car: "false" });
     card.querySelector<HTMLButtonElement>("button[data-legend='sun']")!.click();
     expect(onLegend).toHaveBeenLastCalledWith("energy", ["car", "sun"]);
     card.querySelector<HTMLButtonElement>("button[data-legend='car']")!.click();
@@ -357,7 +378,7 @@ describe("the legend", () => {
     const past = value.hours[2]!;
     expect(hourFigures("en", value, past, NOW, "energy", new Set(hidden.energy))).toBe("07:00–08:00 · house 1.9 kW");
     const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>(".spotnav-house-legend button"));
-    expect(buttons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(5);
+    expect(buttons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(4);
     // Hiding the house itself leaves the rest (the forecast ticks, the heat) standing.
     const noHouse = body(value, { hidden: { energy: ["house", "car"] } }).querySelector("svg")!;
     expect(noHouse.querySelector(".spotnav-house-bar")).toBeNull();
@@ -456,7 +477,7 @@ describe("the legend in the card element", () => {
     });
     expect(readHiddenSeries()).toEqual({});
     expect(() => writeHiddenSeries("energy", [])).not.toThrow();
-    expect(legendOf(body(answer(), { hidden: readHiddenSeries() })).length).toBe(6);
+    expect(legendOf(body(answer(), { hidden: readHiddenSeries() })).length).toBe(5);
   });
 });
 
@@ -498,7 +519,7 @@ describe("the day in the battery app's terms", () => {
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Batteriappens mått, tors 12 nov/);
     expect(part.querySelector("[data-row='battery']")?.textContent).toContain("Batteriet mot inget batteri");
     expect(part.querySelector("[data-row='battery']")?.textContent).toContain("11 kr");
-    expect(part.querySelector("[data-row='sun']")?.textContent).toContain("8,20 kr");
+    expect(part.querySelector("[data-row='sun']")?.textContent).toContain("8,2 kr");
     expect(part.querySelector("[data-row='both']")?.textContent).toMatch(/19,50 kr|20 kr/);
     expect(part.textContent).toContain("samma dygn utan batteri");
     expect(part.querySelector("[data-line='baselines-coverage']")).toBeNull();

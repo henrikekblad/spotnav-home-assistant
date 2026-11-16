@@ -162,14 +162,18 @@ describe("the popover's price and solar sections", () => {
       const { section, popover } = await open(card);
       expect([...popover().children].map((node) => (node as HTMLElement).dataset["section"])).toContain("solar");
       const price = section("price");
-      expect(price.querySelector("[data-price-source]")!.textContent).toBe("Elpris SE4");
+      // One price for the site: its name would only repeat the area.
+      expect(price.querySelector("[data-price-source]")).toBeNull();
+      // The fees that are set first; the ones that are off folded under More fees.
       expect(rowKeys(price)).toEqual([
-        "area", "vat", "tax", "transfer", "transfer_percent", "transfer_high",
-        "supplier_markup", "sell_adjustment", "demand_add",
+        "area", "vat", "tax", "transfer", "transfer_percent",
+        "supplier_markup", "sell_adjustment", "transfer_high", "demand_add",
       ]);
+      expect(rowKeys(price.querySelector<HTMLElement>("[data-more='fees']")!)).toEqual(["transfer_high", "demand_add"]);
+      expect(price.querySelector("[data-more='fees'] > summary")!.textContent).toBe("Fler avgifter");
       expect(price.querySelector("[data-row='area']")!.textContent).toContain("SE4");
       expect(price.querySelector("[data-row='supplier_markup']")!.textContent).toBe("Påslag från elhandlaren4,5 öre/kWh");
-      expect(price.querySelector("[data-row='sell_adjustment']")!.textContent).toBe("Såld kWh: tillägg eller avdrag−2 öre/kWh");
+      expect(price.querySelector("[data-row='sell_adjustment']")!.textContent).toBe("Påslag för såld el−2 öre/kWh");
       expect(section("solar").querySelector("[data-row='solar_forecast']")!.textContent).toContain("Forecast.Solar Tak");
     });
   }

@@ -300,6 +300,7 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
             soc_pct=48.3,
             usable_kwh=40.3,
             management="self_managed",
+            control="off",
             status="planned",
             mode="balanced",
             made_at=now - timedelta(minutes=20),

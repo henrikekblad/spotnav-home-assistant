@@ -27,7 +27,7 @@ delete the file and restart Home Assistant. To keep both, copy the file to anoth
 
 In Home Assistant, go to **Settings**, **Automations & scenes**, **Blueprints**, choose one of the
 *SpotNav:* blueprints and **Create automation**, pick your entities and save. As an administrator you
-can also start from the card: **Card settings**, **Support**, **Automations** lists them all, with how many
+can also start from the card: **Settings**, **Support**, **Automations** lists them all, with how many
 automations already use each (which opens those automations), and **Create automation** opens the
 Blueprints page. Home Assistant has no link that opens a new automation from a given blueprint, so the
 last step, **Create automation** on the blueprint, is taken there.

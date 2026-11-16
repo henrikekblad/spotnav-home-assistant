@@ -4,6 +4,7 @@ the site's own id, the house's measured hours in it, and the refusals."""
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -338,3 +339,17 @@ async def test_today_is_read_by_the_quarter_and_only_the_open_hour_again(hass: H
     now_box[0] = midnight + timedelta(minutes=5, seconds=40)
     first = await house_api.async_energy_flow(hass, controller, now_box[0])
     assert first["hours"] == 1 and first["through"] == (midnight + timedelta(minutes=5)).isoformat()
+
+
+def test_control_state_says_whether_spotnav_controls_the_battery() -> None:
+    """The house answer's `battery.control`: the control's own state, `None` without one or when it cannot be read."""
+    from custom_components.spotnav.api.house import _control_state
+
+    assert _control_state(SimpleNamespace()) is None
+    assert _control_state(SimpleNamespace(battery_control=SimpleNamespace(state=lambda: "on"))) == "on"
+    assert _control_state(SimpleNamespace(battery_control=SimpleNamespace(state=lambda: "shadow_only"))) == "shadow_only"
+
+    def broken() -> str:
+        raise RuntimeError("unreadable")
+
+    assert _control_state(SimpleNamespace(battery_control=SimpleNamespace(state=broken))) is None

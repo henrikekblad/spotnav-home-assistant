@@ -2,6 +2,7 @@
   "api_version": 1,
   "battery": {
     "brand": "sigenergy",
+    "control": "off",
     "estimates": [
       "min_soc_assumed"
     ],

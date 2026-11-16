@@ -466,6 +466,10 @@ describe("the strategy dialog", () => {
     expect(rows.map((row) => row.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"]);
     expect(text(element)).toContain(translate("en", "strategy.reason.solar"));
     expect(text(element)).toContain(translate("en", "strategy.reason.hybrid"));
+    // Each strategy says in one line what it does.
+    for (const id of ["cheapest", "solar", "hybrid"] as const) {
+      expect(text(element)).toContain(translate("en", `strategy.describe.${id}`));
+    }
 
     // A disabled row cannot be pressed, so no path from this dialog reaches the backend at all.
     for (const row of rows) {

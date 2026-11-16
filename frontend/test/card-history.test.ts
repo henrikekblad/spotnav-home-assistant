@@ -70,7 +70,7 @@ describe("the History button", () => {
     const labels = Array.from(shadow(element).querySelectorAll(".spotnav-header > .spotnav-header-actions > button")).map((node) =>
       node.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Laddhistorik", "Kortinställningar"]);
+    expect(labels).toEqual(["Laddhistorik", "Inställningar"]);
   });
 
   it("opens the dialog at once, asks for the history once, and fills it from the answer", async () => {

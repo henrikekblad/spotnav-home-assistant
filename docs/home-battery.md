@@ -30,7 +30,7 @@ stop export when selling costs money. **It is off by default, and in this releas
 even switched on, it only logs what it would do until the tests are done (the line under the switch says "Test:
 SpotNav controls nothing yet and only logs what it would do").** The switch is in the
 settings popover's **Home battery** section, shown when SpotNav finds a battery: from the house card's gear, the heat
-card's gear or the charging card's **Card settings** (administrators only). The section also has:
+card's gear or the charging card's **Settings** (administrators only). The section also has:
 
 * one line under the switch saying what control does now (off, test mode, checking, waiting for a suitable moment and
   why, on, stopped, or only watching while the AI mode is not yet accepted);

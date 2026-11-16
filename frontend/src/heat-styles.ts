@@ -22,6 +22,7 @@ export const HEAT_CLASSES = {
   shadow: "spotnav-heat-shadow",
   band: "spotnav-heat-band",
   bandCell: "spotnav-heat-band-cell",
+  bandReadout: "spotnav-heat-band-readout",
   bandMark: "spotnav-heat-band-mark",
   bandAxis: "spotnav-heat-band-axis",
   bandNow: "spotnav-heat-band-now",
@@ -37,9 +38,9 @@ const X = HEAT_CLASSES;
 
 export const HEAT_STYLES = `
   .${X.card} {
-    --spotnav-heat-colour: var(--spotnav-heat, #e0453a);
+    --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
     --spotnav-heat-lower: var(--spotnav-heat-lower-colour, #2f80c8);
-    --spotnav-heat-preheat: var(--spotnav-heat-preheat-colour, #e0453a);
+    --spotnav-heat-preheat: var(--spotnav-heat-preheat-colour, var(--spotnav-heat-colour));
     --spotnav-heat-night: var(--spotnav-heat-night-colour, #7b61d1);
     --spotnav-heat-away: var(--spotnav-heat-away-colour, #8a8f98);
     --spotnav-heat-return: var(--spotnav-heat-return-colour, #e8890c);
@@ -49,9 +50,9 @@ export const HEAT_STYLES = `
   }
   .${X.settingsButton} {
     flex: none;
-    min-width: 32px;
-    min-height: 32px;
-    padding: 4px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px;
     border: none;
     background: none;
     color: var(--secondary-text-color, #727272);
@@ -142,7 +143,7 @@ export const HEAT_STYLES = `
     margin-top: 10px;
   }
   .${X.mode} {
-    min-height: 34px;
+    min-height: 40px;
     padding: 4px 18px;
     border: 1px solid var(--divider-color, #e0e0e0);
     background: none;
@@ -152,10 +153,10 @@ export const HEAT_STYLES = `
     cursor: pointer;
   }
   .${X.mode}:first-child {
-    border-radius: 17px 0 0 17px;
+    border-radius: 20px 0 0 20px;
   }
   .${X.mode}:last-child {
-    border-radius: 0 17px 17px 0;
+    border-radius: 0 20px 20px 0;
     border-left: none;
   }
   .${X.mode}[aria-pressed="true"] {
@@ -201,7 +202,11 @@ export const HEAT_STYLES = `
   .${X.bandCell}[data-action="night"] { fill: var(--spotnav-heat-night); }
   .${X.bandCell}[data-action="away"] { fill: var(--spotnav-heat-away); }
   .${X.bandCell}[data-action="return"] { fill: var(--spotnav-heat-return); }
-  .${X.bandCell}[data-action="normal"] { fill: var(--spotnav-heat-normal); }
+  /* An ordinary hour: faint, with a thin outline so the band's hours still show on the card. */
+  .${X.bandCell}[data-action="normal"] { fill: var(--spotnav-heat-normal); stroke: var(--divider-color, #e0e0e0); stroke-width: 1; }
+  .${X.bandCell} { cursor: pointer; }
+  .${X.bandReadout} { margin: 2px 0 0; font-size: 0.85rem; }
+  .${X.bandReadout}:empty { display: none; }
   .${X.bandCell}[data-past="true"] { opacity: 0.45; }
   .${X.bandMark}[data-mark="hot_water"] { fill: var(--spotnav-heat-water); }
   .${X.bandMark}[data-mark="car"] { fill: var(--spotnav-heat-car); }

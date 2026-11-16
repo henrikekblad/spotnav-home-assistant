@@ -6,7 +6,7 @@
 
 import { historyHeaderButton } from "./period-history";
 import { clock, dateLabel, formatFixed, hourLabel, type FormatContext } from "./format";
-import type { HeatAnswer, HeatBandHour, HeatChoice } from "./heat-model";
+import { roomName, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -307,8 +307,8 @@ function dial(doc: Document, language: Language, answer: HeatAnswer, target: num
   const figure = svg(doc, "text", { x: DIAL.cx, y: DIAL.cy + 8, class: X.dialFigure });
   figure.textContent = `${formatFixed(language, target, 1)}°`;
   const sub = svg(doc, "text", { x: DIAL.cx, y: DIAL.cy + 32, class: X.dialSub });
+  // The big figure is the target; the line under it says what it keeps, so the same number is not said twice.
   sub.textContent = translate(language, "heat.dial.band", {
-    target: degrees(language, target),
     low: formatFixed(language, low, 1),
     high: formatFixed(language, high, 1),
   });
@@ -329,7 +329,8 @@ function dial(doc: Document, language: Language, answer: HeatAnswer, target: num
   return block;
 }
 
-/** "20,4 °C · kallast: Toalett NV" (the coldest of several), with the outdoor reading after it. */
+/** "Inne 20,4 °C (kallast: Toalett NV)" (the coldest of several), with the outdoor reading after it. A figure and its
+ * unit never part at a line break. */
 export function measuredLine(language: Language, answer: HeatAnswer): string {
   const indoor = answer.indoor;
   const parts: string[] = [];
@@ -339,13 +340,13 @@ export function measuredLine(language: Language, answer: HeatAnswer): string {
     const counted = indoor.sensors.filter((sensor) => sensor.value_c !== null).length;
     parts.push(
       translate(language, counted > 1 ? "heat.measuredColdest" : "heat.measured", {
-        value: degrees(language, indoor.value_c),
-        room: indoor.coldest_name ?? indoor.coldest ?? "",
+        value: degrees(language, indoor.value_c).replace(" ", "\u00a0"),
+        room: roomName(indoor.coldest_name ?? indoor.coldest ?? ""),
       }),
     );
   }
   if (answer.outdoor?.value_c !== null && answer.outdoor !== null) {
-    parts.push(translate(language, "heat.outdoor", { value: degrees(language, answer.outdoor.value_c!) }));
+    parts.push(translate(language, "heat.outdoor", { value: degrees(language, answer.outdoor.value_c!).replace(" ", "\u00a0") }));
   }
   return parts.join(" · ");
 }
@@ -435,6 +436,9 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
   const drawWidth = Math.max(200, Math.round(width));
   const height = 52;
   const picture = svg(doc, "svg", { viewBox: `0 0 ${drawWidth} ${height}`, class: X.band, role: "img" });
+  const readout = element(doc, "p", `${C.muted} ${X.bandReadout}`);
+  readout.setAttribute("aria-live", "polite");
+  readout.dataset["line"] = "band-readout";
   picture.setAttribute("aria-label", translate(language, "heat.band.title"));
   if (hours.length > 0) {
     const cell = drawWidth / hours.length;
@@ -451,6 +455,12 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
         temp: degrees(language, hour.target_c),
       });
       rect.append(title);
+      // A tap or the pointer shows the hour in words under the band: a tooltip alone never shows on a phone.
+      const say = (): void => {
+        readout.textContent = title.textContent;
+      };
+      rect.addEventListener("click", say);
+      rect.addEventListener("mouseenter", say);
       picture.append(rect);
       if (hour.car) {
         const mark = svg(doc, "rect", { x: (x + 1).toFixed(2), y: 24, width: Math.max(1, cell - 2).toFixed(2), height: 4, rx: 1, class: X.bandMark });
@@ -477,7 +487,7 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
     }
   }
   const heading = element(doc, "p", `${H.line} ${C.muted}`, `${translate(language, "heat.band.title")} · ${dateLabel(language, answer.band.date)}`);
-  block.append(heading, picture);
+  block.append(heading, picture, readout);
   const shown = new Set(hours.map((hour) => hour.action));
   const legend = element(doc, "ul", X.legend);
   for (const action of BAND_ACTIONS) {
@@ -650,34 +660,34 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     : sensors.length <= 2
       ? sensors.map((id) => nameOf(names, id, id)).join(", ")
       : translate(language, "heat.settings.indoorCount", { count: String(sensors.length) });
-  row("indoor", translate(language, "heat.settings.indoor"), indoorValue, translate(language, "heat.settings.indoorHelp"));
+  // Each row's help is in its own editor, so the section is a short list; only a row that cannot be opened keeps it.
+  row("indoor", translate(language, "heat.settings.indoor"), indoorValue);
   row(
     "outdoor",
     translate(language, "heat.settings.outdoor"),
     config.outdoor_sensor === null ? translate(language, "heat.settings.outdoorAuto") : nameOf(names, config.outdoor_sensor, none),
-    config.outdoor_sensor === null ? translate(language, "heat.settings.outdoorHelp") : undefined,
   );
   const meter = answer.meter;
+  const meterEditable = meter?.setting_offered === true && answer.choices?.meter !== null && answer.choices !== null;
   row(
     "meter",
     translate(language, "heat.settings.meter"),
     meter?.entity_id ? nameOf(names, meter.entity_id, none) : translate(language, "heat.settings.meterNone"),
-    translate(language, "heat.settings.meterHelp"),
-    meter?.setting_offered === true && answer.choices?.meter !== null && answer.choices !== null,
+    meterEditable ? undefined : translate(language, "heat.settings.meterHelp"),
+    meterEditable,
   );
-  row("path", translate(language, "heat.settings.path"), translate(language, `heat.path.${config.control_path}` as TranslationKey), translate(language, "heat.settings.pathHelp"));
+  row("path", translate(language, "heat.settings.path"), translate(language, `heat.path.${config.control_path}` as TranslationKey));
   if (config.control_path !== "none") {
     row("control", translate(language, "heat.settings.control"), nameOf(names, config.control_entity, none));
   }
   if (config.control_path === "sg_ready") {
     row("controlB", translate(language, "heat.settings.controlB"), nameOf(names, config.control_entity_b, none));
   }
-  row("hotWater", translate(language, "heat.settings.hotWater"), nameOf(names, config.hot_water_entity, none), translate(language, "heat.settings.hotWaterHelp"));
+  row("hotWater", translate(language, "heat.settings.hotWater"), nameOf(names, config.hot_water_entity, none));
   row(
     "zones",
     translate(language, "heat.settings.zones"),
     config.zones.length === 0 ? translate(language, "heat.settings.zonesNone") : String(config.zones.length),
-    translate(language, "heat.settings.zonesHelp"),
   );
   for (const zone of config.zones) {
     const shown = answer.zones.find((item) => item.entity_id === zone.entity_id);
@@ -697,7 +707,6 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     night.on
       ? translate(language, "heat.settings.nightValue", { delta: degrees(language, night.delta_c), start: night.start, end: night.end })
       : translate(language, "settings.value.off"),
-    translate(language, "heat.settings.nightHelp"),
   );
   return section;
 }
