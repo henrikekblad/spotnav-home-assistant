@@ -33,7 +33,7 @@ The header shows the charger's name and three icons.
   marked available or unavailable for this charger. An item that is unavailable here cannot be
   switched on from the card. The list is taken from what the integration reports for the charger.
 - **Charge history** (the clock icon) opens [the charge history](#charge-history).
-- **Card settings** (the gear icon) opens [the settings popover](#the-settings-popover). It is shown to a
+- **Settings** (the gear icon) opens [the settings popover](#the-settings-popover). It is shown to a
   user who is not an administrator only when the popover holds something they may change.
 
 When something needs attention, a banner says so: a notice in a neutral colour, or a message in
@@ -266,7 +266,7 @@ three months back, where they hold the site's grid power.
 
 ## The settings popover
 
-The gear icon opens **Card settings**, built fresh each time you open it. The plan and the strategy
+The gear icon opens **Settings**, built fresh each time you open it. The plan and the strategy
 have their own cells on the card; everything else is here, in sections headed by what they are about
 (**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Home battery** (when SpotNav finds one),
 **Heating**, **Notifications**, **Display**, **Support**). **Electricity price**, **Solar**, **Home battery** and

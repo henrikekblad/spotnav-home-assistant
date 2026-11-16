@@ -20,7 +20,7 @@ It reads one read-only answer from SpotNav every five minutes.
 ## Settings
 
 An administrator sees a gear in the card's header. It opens the **settings popover**, the same one the heat card's gear
-and the charging card's **Card settings** share, for the card's site. Its sections follow what the site has:
+and the charging card's **Settings** share, for the card's site. Its sections follow what the site has:
 
 * **Get started**: what is left for the site: add a charger (answer **Not needed** for a home without one), an
   electricity price, the grid meter's sign, a solar forecast, the home battery, heating.

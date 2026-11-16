@@ -38,6 +38,8 @@ const ICON_PATHS = {
       "M18.9 6C18.7 5.4 18.2 5 17.5 5h-11c-.7 0-1.2.4-1.4 1L3 12v8c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-1h12v1c0 .6.4 1 1 1h1c.6 0 1-.4 1-1v-8zM6.5 16a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm11 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM5 11l1.5-4.5h11L19 11z",
   },
   site: { stroke: "M3 11 12 4l9 7v9h-6v-6H9v6H3z" },
+  /* Get started: a flag, so it is not taken for the site. */
+  setup: { stroke: "M5 21V4M5 4h12l-2.5 4L17 12H5" },
   solar: {
     stroke:
       "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4",

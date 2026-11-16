@@ -301,9 +301,9 @@ function answerFrom(name: string, vehicle: Record<string, unknown> | null): Reco
 describe("the Settings page's vehicles", () => {
   it("names the charger in the heading", async () => {
     const { element } = await openSettings(twoVehicles(), { entities: entityConfig() });
-    expect(dlg(element).textContent).toContain("Card settings · Wallbox");
+    expect(dlg(element).textContent).toContain("Settings · Wallbox");
     const swedish = await openSettings(twoVehicles(), { language: "sv", entities: entityConfig() });
-    expect(dlg(swedish.element).textContent).toContain("Kortinställningar · Wallbox");
+    expect(dlg(swedish.element).textContent).toContain("Inställningar · Wallbox");
   });
 
   it("shows one Car section with a tab per car, the planned car's first, and edits nothing inline", async () => {
