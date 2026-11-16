@@ -272,6 +272,22 @@ def allowed_actions(report: Mapping[str, Any] | None, options: Options) -> froze
     return frozenset(allowed)
 
 
+def hold_variant(report: Mapping[str, Any] | None) -> str | None:
+    """The hold variant that passed (`verify.py`), `None` when hold has not passed or the brand has one hold."""
+    row = _modes(report).get("hold")
+    if not isinstance(row, Mapping) or mode_verdict(row.get("outcome")) != "pass":
+        return None
+    variant = row.get("variant")
+    return variant if isinstance(variant, str) else None
+
+
+def variants_tried(report: Mapping[str, Any] | None) -> tuple[Mapping[str, Any], ...]:
+    """The hold variants an earlier run tried, with their outcomes (a next run starts after those that failed)."""
+    row = _modes(report).get("hold")
+    rows = row.get("variants") if isinstance(row, Mapping) else None
+    return tuple(item for item in rows if isinstance(item, Mapping)) if isinstance(rows, list) else ()
+
+
 def keep_reports(reports: Mapping[str, Any], key: str, report: Mapping[str, Any], *, most: int) -> dict[str, Any]:
     """The reports by key with this one put in (the newest last), at most `most`, the oldest dropped first."""
     kept = {name: value for name, value in reports.items() if name != key and isinstance(value, Mapping)}

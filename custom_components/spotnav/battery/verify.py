@@ -18,6 +18,14 @@ taken, the fuse, a stale reading, a management change; the routine then stops, b
 circumstances normal still judges that hand-back) or, for normal, `restored` (only after this run wrote something;
 `not_judgeable:nothing_written` otherwise).
 
+**Hold variants** (`commands.HoldVariant`, Sigenergy's `msc_no_discharge` then `pv_first`): hold is tried with the
+brand's first variant; when that fails (`VARIANT_RETRY`: ignored, partial, or an abort that shows the plant did not do
+as told, such as a hold that charges from the grid) the battery is handed back, the block that finding left is lifted,
+and hold is tried again with the next variant, never two at once. The hold row records the variant judged
+(`variant`) and every one tried (`variants`); a later run starts after the variants that failed, and control runs the
+one that passed (`gate.hold_variant`). A hold reading is judged with the site's grid power too (`monitor.judge`): no
+discharge while the house draws, no grid charge, and the sun still stored.
+
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
 + import), judged as a hold judges the battery's: the export must stop. It can be judged only while the site exports
@@ -51,6 +59,14 @@ TEST_CHARGE_KW: Final = 2.0
 COMMAND_TIMEOUT_S: Final = 300.0
 #: Reports kept, one per firmware string.
 MAX_REPORTS: Final = 10
+#: Hold outcomes after which the next hold variant is tried: the plant did not do as this variant told it. Not a
+#: change by someone else, a restore that failed or a control that is missing: those end the run as before.
+VARIANT_RETRY: Final = (
+    "ignored", "partial", "aborted:no_effect", "aborted:not_obeyed", "aborted:write_not_taken",
+    "aborted:command_timeout",
+)
+#: Blocks the executor is left with after such a finding, lifted to try the next variant.
+_VARIANT_BLOCKS: Final = ("no_effect", "not_obeyed", "write_not_taken")
 
 #: The modes, in order: (name, the plan action commanded).
 MODES: Final[tuple[tuple[str, str], ...]] = (
@@ -78,6 +94,8 @@ class Sample:
     age_s: float | None
     soc_pct: float | None = None
     house_deficit_kw: float | None = None
+    #: The site's grid power (kW, + import): a hold is judged against it too (`monitor.judge`).
+    grid_kw: float | None = None
 
 
 @dataclass(slots=True)
@@ -90,9 +108,15 @@ class ModeResult:
     taken_at: datetime | None = None
     outcome: str | None = None
     readings: list[dict[str, Any]] = field(default_factory=list)
+    #: A hold's variant judged in this row, and every variant tried with its outcome (`[{variant, outcome}]`).
+    variant: str | None = None
+    variants: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        extra: dict[str, Any] = {}
+        if self.variant is not None:
+            extra = {"variant": self.variant, "variants": [dict(row) for row in self.variants]}
+        return extra | {
             "mode": self.mode,
             "action": self.action,
             "rate_kw": self.rate_kw,
@@ -109,7 +133,7 @@ class Verification:
 
     def __init__(
         self, executor: Executor, now: datetime, *, firmware: str | None, charge_kw: float = TEST_CHARGE_KW,
-        modes: tuple[str, ...] | None = None,
+        modes: tuple[str, ...] | None = None, tried: tuple[Mapping[str, Any], ...] = (),
     ) -> None:
         self.executor = executor
         self.firmware = firmware or "unknown"
@@ -130,6 +154,15 @@ class Verification:
             ModeResult(name, action) for name, action in table
             if modes is None or name in modes or action == ACTION_SELF_CONSUME
         ]
+        # The hold variants still to try: those an earlier run (`tried`, from the report's hold row) did not fail.
+        failed = {str(row.get("variant")) for row in tried if mode_verdict(row.get("outcome")) == "fail"}
+        self.variants: list[str] = [name for name in executor.control.variant_names() if name not in failed]
+        for result in self.results:
+            if result.action == ACTION_HOLD and executor.control.hold_variants:
+                result.variants = [dict(row) for row in tried if str(row.get("variant")) in failed]
+                result.variant = self.variants[0] if self.variants else None
+        #: After a hand-back, hold runs again with the next variant (not the next mode).
+        self.retry_variant = False
 
     @property
     def done(self) -> bool:
@@ -145,6 +178,9 @@ class Verification:
         if result is None or self.stage == "hand_back":
             return ACTION_SELF_CONSUME, 0.0
         if result.commanded_at is None:
+            if result.action == ACTION_HOLD and result.variant is not None and not self.executor.use_variant(result.variant):
+                # Only while the executor holds nothing; the next look tries again.
+                return ACTION_SELF_CONSUME, 0.0
             result.commanded_at = now
             result.before_kw = sample.power_kw
             if result.action == ACTION_GRID_CHARGE:
@@ -174,6 +210,7 @@ class Verification:
             if hand_back is not None and str(hand_back["reason"]).startswith("no_effect"):
                 # The executor's own monitor saw no effect first: that is this mode's answer, not a reason to stop.
                 result.outcome = "ignored"
+                self._variant_failed(now, result)
                 self._enter(now, "hand_back")
                 return
             if hand_back is not None or (not_started is not None and state.phase != "active"):
@@ -207,11 +244,17 @@ class Verification:
             return
         if self.stage == "hand_back" and state.phase in ("idle", "blocked") and not state.holds_snapshot and not step.ops:
             if state.phase == "blocked":
-                if not str(state.blocked).startswith("no_effect"):
+                lifted = _VARIANT_BLOCKS if self.retry_variant else ("no_effect",)
+                if not str(state.blocked).startswith(lifted):
+                    self.retry_variant = False
                     self._abort(now, f"aborted:{state.blocked}")
                     return
-                # The block is the routine's own finding; it is lifted to try the next mode.
+                # The block is the routine's own finding; it is lifted to try the next mode (or variant).
                 self.executor.reset()
+            if self.retry_variant:
+                self.retry_variant = False
+                self._enter(now, "command")
+                return
             self._next(now)
 
     def _read(self, now: datetime, result: ModeResult, sample: Sample, capability: Capability) -> None:
@@ -247,7 +290,8 @@ class Verification:
             self._enter(now, "hand_back")
             return
         assert expected is not None and sample.power_kw is not None
-        verdict = judge(command, expected, sample.power_kw)
+        grid = sample.grid_kw if kind == "hold" and result.action == ACTION_HOLD else None
+        verdict = judge(command, expected, sample.power_kw, grid, sample.soc_pct)
         result.readings.append(
             {"at": now.isoformat(), "power_kw": round(sample.power_kw, 3), "soc_pct": sample.soc_pct,
              "expected_kw": round(expected, 3), "verdict": verdict}
@@ -256,7 +300,29 @@ class Verification:
             return
         verdicts = {row["verdict"] for row in result.readings}
         result.outcome = "obeyed" if verdicts == {"ok"} else "ignored" if verdicts == {"no_effect"} else "partial"
+        self._variant_failed(now, result)
         self._enter(now, "hand_back")
+
+    def _variant_failed(self, now: datetime, result: ModeResult) -> bool:
+        """A hold variant that failed (`VARIANT_RETRY`) is recorded; with another left, hold is tried again with it
+        once the battery is handed back. Whether it will be."""
+        outcome = result.outcome or ""
+        if result.action != ACTION_HOLD or result.variant is None or not outcome.startswith(VARIANT_RETRY):
+            if result.variant is not None and result.outcome is not None:
+                result.variants.append({"variant": result.variant, "outcome": result.outcome})
+            return False
+        result.variants.append({"variant": result.variant, "outcome": outcome})
+        if result.variant in self.variants:
+            self.variants.remove(result.variant)
+        if not self.variants:
+            return False
+        result.variant = self.variants[0]
+        result.commanded_at = result.taken_at = None
+        result.before_kw = None
+        result.outcome = None
+        result.readings = []
+        self.retry_variant = True
+        return True
 
     def _enter(self, now: datetime, stage: Stage) -> None:
         self.stage = stage
@@ -267,6 +333,10 @@ class Verification:
         result = self.current
         if result is not None:
             result.outcome = outcome
+            if self._variant_failed(now, result):
+                # Handed back (the executor's own hand-back, or the routine's normal), then the next variant.
+                self._enter(now, "hand_back")
+                return
         # The executor hands the battery back by itself; no further mode is commanded. An abort for the moment's
         # circumstances (`gate.mode_verdict` pending: the fuse, a stale reading) still lets normal judge that
         # hand-back; one that shows the plant does not do as told ends the run.

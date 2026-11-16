@@ -743,10 +743,19 @@ class BatteryControl:
     async def _async_battery_step(
         self, now: datetime, slot: tuple[str, float, datetime | None] | None, *, allowed: bool
     ) -> StepResult | None:
-        executor = self._executor()
+        executor = self._control_executor()
         if executor is None:
             return None
         return await self._async_step(executor, self.inputs(now, executor.control, slot=slot), allowed=allowed)
+
+    def _control_executor(self) -> Executor | None:
+        """The executor for control and trials, running the hold variant the verification passed (once it holds
+        nothing; `Executor.use_variant`)."""
+        executor = self._executor()
+        variant = gate.hold_variant(self.report())
+        if executor is not None and variant is not None:
+            executor.use_variant(variant)
+        return executor
 
     async def async_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
         """One look of control as it runs the plan: refused unless control is on (the routine passed)."""
@@ -754,7 +763,7 @@ class BatteryControl:
         self._require(self.state(options) == "on", "Battery control")
         now = now or dt_util.now()
         await self.async_export_tick(now, stopping=stopping)
-        executor = self._executor()
+        executor = self._control_executor()
         if executor is None:
             return None
         slot = None if stopping is not None else self._control_slot(now, options)
@@ -831,7 +840,8 @@ class BatteryControl:
         self._verify_attempt = (attempt if isinstance(attempt, int) else 0) + 1
         self._verify_key = key
         self.verification = Verification(
-            executor, now, firmware=self.facts.firmware, modes=None if previous is None else gate.modes_to_run(previous)
+            executor, now, firmware=self.facts.firmware, modes=None if previous is None else gate.modes_to_run(previous),
+            tried=gate.variants_tried(previous),
         )
         # The attempt counts from its start: a restart in the middle neither forgets it nor runs again at once.
         self._keep_report(key, gate.merge_report(
@@ -869,7 +879,10 @@ class BatteryControl:
         if verification is None or executor is None:
             return None
         inputs = self.inputs(now, executor.control, slot=None)
-        sample = Sample(inputs.facts.power_kw, inputs.battery_age_s, inputs.facts.soc_pct, inputs.house_deficit_kw)
+        sample = Sample(
+            inputs.facts.power_kw, inputs.battery_age_s, inputs.facts.soc_pct, inputs.house_deficit_kw,
+            inputs.grid_import_kw if inputs.measurement_ok else None,
+        )
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
         if action == ACTION_GRID_CHARGE:
             cap = self._grid_charge_cap_kw(now, self.options())
