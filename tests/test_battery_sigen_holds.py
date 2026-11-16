@@ -5,6 +5,7 @@ verification trying the variants in order, and the hand-back after either."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 import pytest
 
@@ -19,6 +20,7 @@ from custom_components.spotnav.battery.commands import (
 )
 from custom_components.spotnav.battery.executor import (
     HOLD_CHARGE_S,
+    MANAGEMENT_BLOCK_S,
     PEAK_RECOVER_S,
     ExecState,
     Executor,
@@ -282,6 +284,18 @@ def test_a_hold_that_stores_the_sun_is_never_handed_back_for_charging_even_while
     # The sun charges the battery 3 kW while a car draws 11 kW from the grid.
     _now, results = run(executor, battery, now, _looks(4 * HOLD_CHARGE_S), "hold", power_kw=3.0, grid_import_kw=11.0)
     assert events(results, "hand_back") == [] and executor.state.phase == "active"
+
+
+def test_the_block_of_an_idle_hold_that_charged_clears_by_itself() -> None:
+    executor = Executor(PV_FIRST_CONTROL)
+    battery = ChargingHold(PV_FIRST_CONTROL, dict(SIGENERGY_STATES))
+    now, _ = run(executor, battery, T0, _looks(HOLD_CHARGE_S) + 12, "hold")
+    assert executor.state.phase == "blocked" and executor.state.blocked == "not_obeyed:hold:charging"
+    _now, results = run(executor, battery, now, 1, "hold")
+    assert events(results, "unblocked") == [] and executor.state.phase == "blocked"
+    _now, results = run(executor, battery, now + timedelta(seconds=MANAGEMENT_BLOCK_S), 1, "self_consume")
+    assert events(results, "unblocked")[0]["reason"] == "not_obeyed:hold:charging"
+    assert executor.state.phase == "idle"
 
 
 def test_the_monitor_judges_an_idle_hold_on_the_batterys_own_power() -> None:

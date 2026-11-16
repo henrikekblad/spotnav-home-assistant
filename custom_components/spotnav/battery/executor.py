@@ -63,8 +63,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   Sigenergy's mode 4 with the charge limit at 0) a battery that charges more than `HOLD_CHARGE_KW` for
   `HOLD_CHARGE_S` did not take the hold: mode 4 is a charge at the charge limit, from the grid once the sun is short,
   so it is handed back and the control blocked (`not_obeyed:hold:charging`), judged on the battery's own power (no
-  grid reading needed), and its verification fails that variant. A hold that stores the sun has no such
-  guard.
+  grid reading needed), and its verification fails that variant. The block clears by itself after
+  `MANAGEMENT_BLOCK_S`, as a management change's does. A hold that stores the sun has no such guard.
 * **Hold variants** (`BrandControl.hold_variants`): a brand may have more than one way to hold; the executor runs
   one (`ExecState.variant`, stored so a restart hands back with that variant's order) and changes it only while it
   holds nothing (`use_variant`). Every variant writes only the brand's roles, all of them in the snapshot, so the
@@ -163,11 +163,14 @@ BLOCKED_RESTORE_S: Final = 900.0
 
 Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
-#: Hand-back reasons that block the control until it is reset (the cap until the next day, a management change
-#: after `MANAGEMENT_BLOCK_S`).
+#: Hand-back reasons that block the control until it is reset (the cap until the next day; `_SELF_CLEARING` after
+#: `MANAGEMENT_BLOCK_S`).
 _BLOCKING_PREFIXES: Final = (
     "write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed", "not_obeyed",
 )
+#: Blocks that clear by themselves `MANAGEMENT_BLOCK_S` after the hand-back: a management change, and an idle hold
+#: that charged (the plant may take it another day; a block until reset would stop control for good).
+_SELF_CLEARING: Final = ("management_changed", f"not_obeyed:{ACTION_HOLD}:charging")
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
@@ -654,7 +657,7 @@ class Executor:
                 self.state = replace(self.state, phase="idle", blocked=None)
         state = self.state
         if (
-            state.phase == "blocked" and (state.blocked or "").startswith("management_changed")
+            state.phase == "blocked" and (state.blocked or "").startswith(_SELF_CLEARING)
             and not state.holds_snapshot and state.released_at is not None
             and (now - state.released_at).total_seconds() >= MANAGEMENT_BLOCK_S
         ):
