@@ -88,9 +88,9 @@ describe("the popover from the house card", () => {
     vi.useRealTimers();
   });
 
-  function fakeHass(options: { admin?: boolean; heat?: Record<string, unknown> } = {}) {
+  function fakeHass(options: { admin?: boolean; heat?: Record<string, unknown>; battery?: string } = {}) {
     const messages: Record<string, unknown>[] = [];
-    let battery = read("battery_control", "needs_ack.json");
+    let battery = read("battery_control", options.battery ?? "needs_ack.json");
     const hass = {
       language: "sv",
       locale: { language: "sv" },
@@ -122,7 +122,7 @@ describe("the popover from the house card", () => {
     return { hass, messages };
   }
 
-  async function mount(options: { admin?: boolean; heat?: Record<string, unknown> } = {}) {
+  async function mount(options: { admin?: boolean; heat?: Record<string, unknown>; battery?: string } = {}) {
     const { hass, messages } = fakeHass(options);
     const element = document.createElement(HOUSE_CARD_ELEMENT) as SpotnavHouseCard;
     element.setConfig({ type: "custom:spotnav-house-card", site: "site_villa" });
@@ -163,7 +163,7 @@ describe("the popover from the house card", () => {
     });
   });
 
-  it("shows the battery's line, checklist, report and the sell toggle, and turns the switch on", async () => {
+  it("shows the battery's line, checklist and report, and turns the switch off", async () => {
     const { root, messages } = await mount();
     const popover = await open(root);
     const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
@@ -174,18 +174,59 @@ describe("the popover from the house card", () => {
     expect(battery.querySelector("[data-row='battery_mode_hold']")!.textContent).toBe("HållaGodkänd");
     expect(battery.querySelector("[data-row='battery_mode_discharge_house']")!.textContent).toBe("Täcka husetInte bedömd ännu");
     expect(battery.textContent).toContain("SpotNav får: hålla, ladda från nätet.");
-    expect(battery.querySelector("[data-row='battery_control_allow_sell']")!.textContent).toBe("Tillåt försäljning från batterietAv");
     expect(battery.textContent).not.toContain("shadow_only");
+    expect(battery.querySelector("[data-row='battery_control_allow_sell']")).toBeNull();
+    expect(battery.textContent).not.toContain("Tillåt försäljning från batteriet");
 
-    battery.querySelector<HTMLButtonElement>("button[data-edit='battery_control_allow_sell']")!.click();
+    expect(battery.querySelector("[data-battery-mode-shadow]")).toBeNull();
+    battery.querySelector<HTMLButtonElement>("button[data-edit='battery_control_enabled']")!.click();
     const form = root.querySelector<HTMLFormElement>("form[data-value-editor]")!;
-    form.querySelector<HTMLInputElement>("input[value='on']")!.click();
+    form.querySelector<HTMLInputElement>("input[value='off']")!.click();
     form.requestSubmit();
     await vi.advanceTimersByTimeAsync(0);
     expect(messages.filter((message) => message["changes"] !== undefined)).toEqual([
-      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { battery_control_allow_sell: true } },
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { battery_control_enabled: false } },
     ]);
-    expect(root.querySelector("[data-row='battery_control_allow_sell']")!.textContent).toBe("Tillåt försäljning från batterietPå");
+    expect(root.querySelector("[data-row='battery_control_enabled']")!.textContent).toContain("Av");
+  });
+
+  it("offers the battery mode with a help line each, says what it does while control is off, and writes the choice", async () => {
+    const { root, messages } = await mount({ battery: "checking.json" });
+    const popover = await open(root);
+    const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
+    const row = battery.querySelector("[data-row='battery_mode']")!;
+    expect(row.textContent).toBe("LägeBalanserad");
+    expect(battery.querySelector("[data-help='battery_mode']")!.textContent).toBe(
+      "Laddar också från nätet när det är billigt och används när det är dyrt. Säljer inte.",
+    );
+    expect(battery.querySelector("[data-battery-mode-shadow]")!.textContent).toBe(
+      "Utan styrning flyttar valet bara vilken rad som är markerad som gäller i jämförelsen.",
+    );
+    battery.querySelector<HTMLButtonElement>("button[data-edit='battery_mode']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-value-editor]")!;
+    expect(
+      [...form.querySelectorAll<HTMLInputElement>("input[type='radio']")].map((radio) => [radio.value, radio.checked]),
+    ).toEqual([["self_consumption", false], ["balanced", true], ["max_profit", false]]);
+    expect(form.textContent).toContain("Batteriet laddas av solen och täcker huset. Ingen handel med nätet.");
+    expect(form.textContent).toContain("Som Balanserad, men får också sälja till nätet när det lönar sig, med slitaget inräknat.");
+    form.querySelector<HTMLInputElement>("input[value='max_profit']")!.click();
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["changes"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { battery_mode: "max_profit" } },
+    ]);
+    expect(root.querySelector("[data-row='battery_mode']")!.textContent).toContain("Max vinst");
+  });
+
+  it("has the mode's words and no sell row in every language", () => {
+    for (const language of Object.keys(TRANSLATIONS) as Array<keyof typeof TRANSLATIONS>) {
+      const words = TRANSLATIONS[language] as Record<string, string>;
+      const mode = ["battery.modeLabel", "battery.modeShadow", "battery.modeHelp.self_consumption", "battery.modeHelp.balanced", "battery.modeHelp.max_profit"].map((key) => words[key]);
+      expect(mode.every((word) => typeof word === "string" && word.length > 3)).toBe(true);
+      expect(new Set(mode).size).toBe(mode.length);
+      expect(words["battery.sell"]).toBeUndefined();
+      expect(words["battery.sellHelp"]).toBeUndefined();
+    }
   });
 
   it("explains the AI-mode takeover in the owner's words and writes the acknowledgement", async () => {
