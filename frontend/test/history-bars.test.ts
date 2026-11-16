@@ -162,7 +162,7 @@ describe("the house history's chart", () => {
 });
 
 describe("the heat history's chart", () => {
-  it("draws the cost filled and the shadow's upper bound hatched, labelled as such", () => {
+  it("draws the cost filled and what SpotNav's plan would have saved hatched, labelled as such", () => {
     const answer = heat();
     const item = answer.buckets.find((candidate) => candidate.shadow_value !== null && candidate.cost !== null)!;
     const body = heatBody(answer);
@@ -170,8 +170,8 @@ describe("the heat history's chart", () => {
     expect(Object.keys(grows(drawn))).toEqual(["saving", "cost"]);
     expect(grows(drawn)["saving"]).toBeCloseTo(item.shadow_value!, 3);
     expect(grows(drawn)["cost"]).toBeCloseTo(item.cost!, 3);
-    expect(drawn.getAttribute("aria-label")).toContain("skulle ha sparat högst");
-    expect(Array.from(body.querySelectorAll("[data-part='legend'] li")).map((item) => item.textContent)).toEqual(["Kostnad", "Skulle ha sparat högst"]);
+    expect(drawn.getAttribute("aria-label")).toContain("skulle ha sparat ");
+    expect(Array.from(body.querySelectorAll("[data-part='legend'] li")).map((item) => item.textContent)).toEqual(["Kostnad", "Skulle ha sparat"]);
   });
 
   it("draws a day the shadow did not evaluate as the cost alone", () => {

@@ -25,6 +25,8 @@ from custom_components.spotnav.heat.history import (
     run_causes,
 )
 from custom_components.spotnav.heat.meter_split import HotWaterRun
+from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
+from custom_components.spotnav.heat.review import review_day
 from custom_components.spotnav.site.history_period import PERIOD_DAY, PERIOD_MONTH, PERIOD_YEAR, period_of, utc_bounds
 
 TZ = "Europe/Stockholm"
@@ -178,6 +180,35 @@ def test_shadow_would_have_moved_the_dear_evening() -> None:
     assert shadow["value"] == pytest.approx(shadow["moved_kwh"] * 170.0, rel=0.01)
 
 
+def kept_days(days: range) -> dict[date, dict[datetime, str]]:
+    """SpotNav's plan as kept: lowered 16-18 local (one hour earlier than the rule would), normal otherwise."""
+    out: dict[date, dict[datetime, str]] = {}
+    for day in days:
+        start, _ = utc_bounds(period_of(PERIOD_DAY, date(2026, 11, day)), TZ)
+        out[date(2026, 11, day)] = {start + timedelta(hours=h): ("lower" if h in (16, 17, 18) else "normal") for h in range(24)}
+    return out
+
+
+def test_shadow_follows_the_kept_plan_and_the_learned_effect() -> None:
+    effect = Effect(0.4, 0.5, 9)
+    shadow = heat_history(month_inputs(kept=kept_days(range(12, 16)), effect=effect))["shadow"]
+    assert shadow["days"] == 15 and shadow["kept_days"] == 4
+    assert (shadow["lower_share"], shadow["rebound"], shadow["blocks"]) == (0.4, 0.5, 9)
+    # The prior: half the heat taken away, all of it back.
+    prior = heat_history(month_inputs())["shadow"]
+    assert (prior["lower_share"], prior["rebound"], prior["blocks"], prior["kept_days"]) == (0.5, 1.0, 0, 0)
+    # A kept day lowered 16-18 local: 16:00 is a cheap hour (90), so lowering there is worth less than the rule's.
+    alone = heat_history(month_inputs(kept=kept_days(range(1, 16)), effect=Effect(0.5, 1.0, 0)))["shadow"]
+    assert alone["value"] < prior["value"]
+
+
+def test_the_days_review_is_shown_on_its_day() -> None:
+    review = {"date": "2026-11-15", "relay": {"hours": 3.0}}
+    day = heat_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 15)), reviews={date(2026, 11, 15): review}))
+    assert day["review"] == review
+    assert heat_history(month_inputs(reviews={date(2026, 11, 15): review}))["review"] is None
+
+
 def test_buckets_carry_their_share_of_the_shadow_value() -> None:
     answer = heat_history(month_inputs())
     by_key = {bucket["key"]: bucket for bucket in answer["buckets"]}
@@ -273,11 +304,32 @@ def test_outdoor_source_order() -> None:
     assert outdoor_source(CONFIG, _Controller(_Forecast("weather", None, {NOW: (1.0, None)})), None) is None
 
 
+def fixture_review() -> dict[str, Any]:
+    """The 15th as the heat shadow reviewed it: the blueprint lowered 17-20 local, SpotNav would have lowered 16-19."""
+    start, _ = utc_bounds(period_of(PERIOD_DAY, date(2026, 11, 15)), TZ)
+    day = [start + timedelta(hours=h) for h in range(24)]
+    prices = hour_prices(slots(start, start + timedelta(hours=24)))
+    coldest = {start + timedelta(minutes=5 * i): (20.3 if 18 * 12 <= i < 18 * 12 + 6 else 20.7) for i in range(27 * 12)}
+    return review_day(
+        date(2026, 11, 15),
+        day,
+        prices=prices,
+        heat_kwh={hour: heat_kwh(hour) for hour in day},
+        relay=[(day[17], day[20])],
+        plan_lowered=[day[16], day[17], day[18]],
+        measured=[BlockResult(day[17], day[20], 1.6, 0.9, 2.1)],
+        effect=Effect(0.46, 0.82, 7),
+        coldest=coldest,
+        low_c=20.5,
+    )
+
+
 def test_contract_fixtures() -> None:
-    _fixture("villa_month.json", heat_history(month_inputs()))
+    shadow = {"kept": kept_days(range(12, 16)), "effect": Effect(0.46, 0.82, 7), "reviews": {date(2026, 11, 15): fixture_review()}}
+    _fixture("villa_month.json", heat_history(month_inputs(**shadow)))
     _fixture(
         "villa_day.json",
-        heat_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 15)))),
+        heat_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 15)), **shadow)),
     )
     _fixture(
         "meter_only_year.json",

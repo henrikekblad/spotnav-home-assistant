@@ -11,6 +11,8 @@
         "past": true,
         "price": 80.0,
         "reason": "night",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-15T23:00:00+00:00",
         "target_c": 20.0
       },
@@ -21,6 +23,8 @@
         "past": true,
         "price": 78.0,
         "reason": "night",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T00:00:00+00:00",
         "target_c": 20.0
       },
@@ -31,6 +35,8 @@
         "past": true,
         "price": 76.0,
         "reason": "night",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T01:00:00+00:00",
         "target_c": 20.0
       },
@@ -41,6 +47,8 @@
         "past": true,
         "price": 75.0,
         "reason": "night",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T02:00:00+00:00",
         "target_c": 20.0
       },
@@ -51,6 +59,8 @@
         "past": true,
         "price": 77.0,
         "reason": "night",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T03:00:00+00:00",
         "target_c": 20.0
       },
@@ -61,6 +71,8 @@
         "past": true,
         "price": 85.0,
         "reason": "night",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T04:00:00+00:00",
         "target_c": 20.0
       },
@@ -71,6 +83,8 @@
         "past": true,
         "price": 120.0,
         "reason": "cheap_before_dear",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T05:00:00+00:00",
         "target_c": 21.5
       },
@@ -81,6 +95,8 @@
         "past": true,
         "price": 190.0,
         "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": 60,
         "start": "2026-11-16T06:00:00+00:00",
         "target_c": 20.5
       },
@@ -91,6 +107,8 @@
         "past": true,
         "price": 210.0,
         "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": 60,
         "start": "2026-11-16T07:00:00+00:00",
         "target_c": 20.5
       },
@@ -101,6 +119,8 @@
         "past": true,
         "price": 160.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T08:00:00+00:00",
         "target_c": 21.0
       },
@@ -111,6 +131,8 @@
         "past": true,
         "price": 120.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T09:00:00+00:00",
         "target_c": 21.0
       },
@@ -121,6 +143,8 @@
         "past": true,
         "price": 110.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T10:00:00+00:00",
         "target_c": 21.0
       },
@@ -131,6 +155,8 @@
         "past": true,
         "price": 105.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T11:00:00+00:00",
         "target_c": 21.0
       },
@@ -141,6 +167,8 @@
         "past": true,
         "price": 100.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T12:00:00+00:00",
         "target_c": 21.0
       },
@@ -151,28 +179,34 @@
         "past": true,
         "price": 105.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T13:00:00+00:00",
         "target_c": 21.0
       },
       {
-        "action": "normal",
+        "action": "lower",
         "car": false,
         "hot_water": false,
         "past": true,
         "price": 130.0,
-        "reason": "normal",
+        "reason": "tight_hour",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T14:00:00+00:00",
-        "target_c": 21.0
+        "target_c": 20.5
       },
       {
-        "action": "preheat",
+        "action": "lower",
         "car": false,
         "hot_water": false,
         "past": true,
         "price": 180.0,
-        "reason": "cheap_before_dear",
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": 60,
         "start": "2026-11-16T15:00:00+00:00",
-        "target_c": 21.5
+        "target_c": 20.5
       },
       {
         "action": "lower",
@@ -181,6 +215,8 @@
         "past": false,
         "price": 240.0,
         "reason": "dear_hour",
+        "relay_expected": true,
+        "relay_min": 60,
         "start": "2026-11-16T16:00:00+00:00",
         "target_c": 20.5
       },
@@ -191,17 +227,9 @@
         "past": false,
         "price": 260.0,
         "reason": "dear_hour",
+        "relay_expected": true,
+        "relay_min": 60,
         "start": "2026-11-16T17:00:00+00:00",
-        "target_c": 20.5
-      },
-      {
-        "action": "lower",
-        "car": false,
-        "hot_water": false,
-        "past": false,
-        "price": 220.0,
-        "reason": "dear_hour",
-        "start": "2026-11-16T18:00:00+00:00",
         "target_c": 20.5
       },
       {
@@ -209,10 +237,24 @@
         "car": false,
         "hot_water": false,
         "past": false,
-        "price": 150.0,
+        "price": 220.0,
         "reason": "normal",
-        "start": "2026-11-16T19:00:00+00:00",
+        "relay_expected": false,
+        "relay_min": 0,
+        "start": "2026-11-16T18:00:00+00:00",
         "target_c": 21.0
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 150.0,
+        "reason": "tight_hour",
+        "relay_expected": false,
+        "relay_min": 0,
+        "start": "2026-11-16T19:00:00+00:00",
+        "target_c": 20.5
       },
       {
         "action": "normal",
@@ -221,6 +263,8 @@
         "past": false,
         "price": 110.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T20:00:00+00:00",
         "target_c": 21.0
       },
@@ -231,6 +275,8 @@
         "past": false,
         "price": 95.0,
         "reason": "normal",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T21:00:00+00:00",
         "target_c": 21.0
       },
@@ -241,6 +287,8 @@
         "past": false,
         "price": 85.0,
         "reason": "night",
+        "relay_expected": false,
+        "relay_min": 0,
         "start": "2026-11-16T22:00:00+00:00",
         "target_c": 20.0
       }
@@ -268,7 +316,7 @@
       {
         "entity_id": "sensor.toalett_nv_temperatur",
         "name": "Toalett NV temperatur",
-        "value": "20.4 °C"
+        "value": "20.6 °C"
       },
       {
         "entity_id": "sensor.garage_temperatur",
@@ -346,9 +394,9 @@
   },
   "config": {
     "away_until": null,
-    "control_entity": null,
+    "control_entity": "switch.larm_utgang_1",
     "control_entity_b": null,
-    "control_path": "none",
+    "control_path": "relay",
     "heat_meter_entity": "sensor.varme_effekt",
     "hot_water_entity": null,
     "indoor_sensors": [
@@ -385,8 +433,8 @@
     ]
   },
   "indoor": {
-    "coldest": "sensor.toalett_nv_temperatur",
-    "coldest_name": "Toalett NV temperatur",
+    "coldest": "sensor.ovanvaning_temperatur",
+    "coldest_name": "Ovanvåning temperatur",
     "sensors": [
       {
         "entity_id": "sensor.inomhus_kok_temperatur",
@@ -407,10 +455,10 @@
         "name": "Toalett NV temperatur",
         "rise_c": -0.1,
         "status": "ok",
-        "value_c": 20.4
+        "value_c": 20.6
       }
     ],
-    "value_c": 20.4
+    "value_c": 20.5
   },
   "meter": {
     "baseline_kw": 1.12,
@@ -423,7 +471,28 @@
     "state": "heating",
     "status": "found"
   },
-  "notes": [],
+  "notes": [
+    {
+      "code": "automation_steers",
+      "params": {
+        "entity_id": "automation.golvvarme_borvarde_efter_elpris_och_larm",
+        "name": "Golvvärme – börvärde efter elpris och larm",
+        "relay": false,
+        "targets": [
+          "Golvvärme toalett nedervåning"
+        ]
+      }
+    },
+    {
+      "code": "automation_steers",
+      "params": {
+        "entity_id": "automation.varmepanna_sank_varmekurvan_nar_elen_ar_dyr",
+        "name": "Värmepanna: sänk värmekurvan när elen är dyr",
+        "relay": true,
+        "targets": []
+      }
+    }
+  ],
   "now": "2026-11-16T16:20:00+00:00",
   "outdoor": {
     "entity_id": "sensor.utomhus_garage_temperatur",
@@ -432,6 +501,51 @@
     "value_c": 6.2
   },
   "pump": null,
+  "relay": {
+    "automation": {
+      "entity_id": "automation.varmepanna_sank_varmekurvan_nar_elen_ar_dyr",
+      "name": "Värmepanna: sänk värmekurvan när elen är dyr"
+    },
+    "closed": true,
+    "effect": {
+      "blocks": 7,
+      "lower_share": 0.46,
+      "rebound": 0.82
+    },
+    "entity_id": "switch.larm_utgang_1",
+    "name": "Larm utgång 1",
+    "since": "2026-11-16T15:00:00+00:00",
+    "source": "blueprint"
+  },
+  "review": {
+    "date": "2026-11-15",
+    "day": {
+      "coldest_min_c": 20.4,
+      "minutes_below": 20
+    },
+    "effect": {
+      "blocks": 7,
+      "lower_share": 0.46,
+      "rebound": 0.82
+    },
+    "low_c": 20.5,
+    "plan": {
+      "coldest_min_c": 20.4,
+      "hours": 5.0,
+      "minutes_below": 20,
+      "overlap_hours": 2.0,
+      "saved_kwh": 0.464,
+      "value": 318.58
+    },
+    "relay": {
+      "coldest_min_c": 20.4,
+      "hours": 3.0,
+      "measured": 1,
+      "minutes_below": 20,
+      "saved_kwh": 0.3,
+      "value": 158.0
+    }
+  },
   "shadow": true,
   "site_id": "site_villa",
   "status": {
@@ -443,7 +557,7 @@
       "action": "lower",
       "reason": "dear_hour",
       "target_c": 20.5,
-      "until": "2026-11-16T19:00:00+00:00"
+      "until": "2026-11-16T18:00:00+00:00"
     }
   },
   "time_zone": "Europe/Stockholm",

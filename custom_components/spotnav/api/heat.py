@@ -8,8 +8,10 @@ what Home Assistant holds: the settings, the chosen sensors' states and their la
 (`heat/rooms.py`, read again every `ROOM_REFRESH_S`), the zones' climate entities and a power sensor on each one's
 device, the heat pump's facts (`heat/detect.py`), the heat pump meter's 5-minute rows of the last day
 (`heat/meter_split.py`, read again once per new 5-minute row), the prices with their fees as the battery plan holds
-them, the cars' measured hours and installed plans. The day band is the shadow rule's (`heat/shadow_rule.py`); each
-change of what it would do now is logged once (`ShadowLog`, in the diagnostics). Refusals as `spotnav/get_house`.
+them, the cars' measured hours and installed plans, and the site's heat shadow (`heat/runtime.py`: the relay, its
+closings and learned effect, the joint plan's tight hours, the hours kept as planned, yesterday's review, the
+automations that reference the relay or a zone). The day band is SpotNav's plan (`heat/shadow_rule.py`); the heat
+shadow logs each change of what it would do now (in the diagnostics). Refusals as `spotnav/get_house`.
 
 `spotnav/update_heat` (API v1):
 
@@ -36,7 +38,6 @@ from __future__ import annotations
 
 import logging
 import math
-from collections import deque
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final
@@ -64,7 +65,18 @@ from ..heat.detect import other_controllers, read_heat_pumps
 from ..heat.facts import HeatPumpFacts
 from ..heat.meter_split import levels, split_day
 from ..heat.rooms import WINDOW, Indoor, SensorReading, indoor
-from ..heat.view import HEAT_API_VERSION, KIND_AIR, KIND_FLOOR, HeatViewInputs, MeterInputs, Outdoor, ZoneReading, heat_view
+from ..heat.shadow_rule import day_hours
+from ..heat.view import (
+    HEAT_API_VERSION,
+    KIND_AIR,
+    KIND_FLOOR,
+    HeatViewInputs,
+    MeterInputs,
+    Outdoor,
+    RelayInputs,
+    ZoneReading,
+    heat_view,
+)
 from ..pricing.price_source import site_price_source
 from ..runtime import site_controller_for
 from ..site.heat_meter import (
@@ -84,8 +96,6 @@ from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 _LOGGER = logging.getLogger(__name__)
 
 _CACHE: Final = f"{DOMAIN}_heat_reads"
-_SHADOW_LOG: Final = f"{DOMAIN}_heat_shadow_log"
-SHADOW_LOG_SIZE: Final = 96
 #: The indoor sensors' history is read again after this many seconds.
 ROOM_REFRESH_S: Final = 120
 #: An indoor sensor is offered when it reads within this band now (°C).
@@ -253,14 +263,16 @@ def websocket_update_heat(hass: HomeAssistant, connection: websocket_api.ActiveC
 
 
 def heat_settings_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
-    """The diagnostics block: the settings as stored and read (entity ids only, no states), and what the shadow rule
-    would have done, each change once (`ShadowLog`)."""
-    logs: dict[str, ShadowLog] = hass.data.get(_SHADOW_LOG, {})
-    log = logs.get(entry.entry_id)
+    """The diagnostics block: the settings as stored and read (entity ids only, no states), what SpotNav's plan would
+    have done, each change once, and the heat shadow (`heat/runtime.py`: the relay, its learned effect, the plan,
+    the kept days and their reviews)."""
+    controller = site_controller_for(hass, entry.entry_id)
+    shadow = getattr(controller, "heat_shadow", None)
     return {
         "stored": entry.data.get(CONF_HEAT),
         "read": config_block(entry),
-        "shadow_log": [] if log is None else log.as_list(),
+        "shadow_log": [] if shadow is None else shadow.log.as_list(),
+        "shadow": None if shadow is None else shadow.diagnostics(),
     }
 
 
@@ -511,6 +523,25 @@ def _car_hours(hass: HomeAssistant, controller: Any, measured: Mapping[datetime,
     return frozenset(hours)
 
 
+def relay_inputs(hass: HomeAssistant, shadow: Any, now: datetime, day_start: datetime, zone_info: Any) -> RelayInputs | None:
+    """The relay's part of the answer from the heat shadow (`heat/runtime.py`), `None` without a relay."""
+    if shadow.relay_id is None:
+        return None
+    closed, since = shadow._relay_now()  # noqa: SLF001 - the shadow's own read of the relay now
+    source, automation = shadow.relay_source()
+    hours = day_hours(day_start, zone_info)
+    return RelayInputs(
+        entity_id=shadow.relay_id,
+        name=_name(hass, shadow.relay_id),
+        closed=closed,
+        since=since,
+        source=source,
+        automation=None if automation is None else (automation.entity_id, automation.name),
+        minutes=shadow.relay_minutes(hours, now),
+        effect=shadow.effect,
+    )
+
+
 def _choice(hass: HomeAssistant, entity_id: str, **extra: Any) -> dict[str, Any]:
     state = hass.states.get(entity_id)
     value = None
@@ -615,6 +646,18 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
     slots = controller.battery_shadow.plan.buy_slots(now)
     source = site_price_source(hass, site.entry_id)
     area = None if source is None else source.area
+    shadow = getattr(controller, "heat_shadow", None)
+    relay, tight, outdoor_by_hour, kept, review = None, frozenset(), {}, {}, None
+    automations: tuple[Any, ...] = ()
+    if shadow is not None:
+        try:
+            relay = relay_inputs(hass, shadow, now, day_start, zone_info)
+            tight, outdoor_by_hour = shadow.joint_inputs(now)
+            kept = shadow.kept_actions(local.date())
+            review = shadow.review_of(local.date() - timedelta(days=1))
+            automations = tuple(shadow.automations)
+        except Exception:  # noqa: BLE001 - the heat shadow is extra: the card shows the rest
+            _LOGGER.debug("SpotNav heat: the heat shadow could not be read", exc_info=True)
     answer = heat_view(
         HeatViewInputs(
             site_id=site.entry_id,
@@ -633,34 +676,16 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             money=None if area is None else (area.currency, area.major_unit, area.minor_unit),
             car_hours=_car_hours(hass, controller, measured_car),
             choices=heat_choices(hass, config, pump, meter) if writable else None,
+            tight=tight,
+            outdoor_by_hour=outdoor_by_hour,
+            kept=kept,
+            relay=relay,
+            automations=automations,
+            names={entity_id: _name(hass, entity_id) for item in automations for entity_id in item.targets},
+            review=review,
         )
     )
-    shadow_log(hass, site.entry_id).record(now, answer["status"]["would"])
     return answer
-
-
-class ShadowLog:
-    """What the shadow rule would do, each change once, newest last, bounded: the review reads it later."""
-
-    def __init__(self) -> None:
-        self.entries: deque[dict[str, Any]] = deque(maxlen=SHADOW_LOG_SIZE)
-
-    def record(self, now: datetime, would: Mapping[str, Any] | None) -> None:
-        key = None if would is None else (would.get("action"), would.get("target_c"), would.get("until"))
-        last = self.entries[-1] if self.entries else None
-        if last is not None and last.get("key") == key:
-            return
-        entry = {"at": now.isoformat(), "key": key, **({} if would is None else dict(would))}
-        self.entries.append(entry)
-        _LOGGER.debug("SpotNav heat (shadow): would %s", "keep the pump's own curve" if would is None else would)
-
-    def as_list(self) -> list[dict[str, Any]]:
-        return [{k: v for k, v in entry.items() if k != "key"} for entry in self.entries]
-
-
-def shadow_log(hass: HomeAssistant, site_entry_id: str) -> ShadowLog:
-    logs: dict[str, ShadowLog] = hass.data.setdefault(_SHADOW_LOG, {})
-    return logs.setdefault(site_entry_id, ShadowLog())
 
 
 @websocket_api.websocket_command(

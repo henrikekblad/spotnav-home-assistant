@@ -8,7 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { HEAT_CARD_ELEMENT, instantToLocal, localToInstant, parseHeatConfig, SpotnavHeatCard, writeError } from "../src/heat-card";
 import { decodeHeat, decodeHeatWrite, type HeatAnswer } from "../src/heat-model";
-import { heatBody, heatSettingsSection, measuredLine, noteLines, pumpLine, todayLine, wouldLine, type HeatState } from "../src/heat-view";
+import { heatBody, heatSettingsSection, measuredLine, noteLines, pumpLine, relayLine, reviewLines, todayLine, wouldLine, type HeatState } from "../src/heat-view";
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard, HEAT_PICKER_ENTRY } from "../src/index";
@@ -76,9 +76,9 @@ describe("the front", () => {
     expect(card.querySelector("[data-line='band']")!.textContent).toBe("inom 20,5–21,5 °C");
     expect(card.querySelector("[data-measured]")).not.toBeNull();
     // The sensor's "temperatur" left off the room's name; a figure and its unit kept together.
-    expect(measuredLine("sv", villa)).toBe("Inne 20,4\u00a0°C (kallast: Toalett NV) · Ute 6,2\u00a0°C");
+    expect(measuredLine("sv", villa)).toBe("Inne 20,5\u00a0°C (kallast: Ovanvåning) · Ute 6,2\u00a0°C");
     expect(pumpLine("sv", villa)).toBe("Värmepumpen värmer · 1,1 kW");
-    expect(wouldLine("sv", villa)).toBe("Skulle sänka till 20,5 °C till 20:00: dyra timmar");
+    expect(wouldLine("sv", villa)).toBe("Skulle sänka till 20,5 °C till 19:00: dyra timmar");
     expect(card.querySelector("[data-line='shadow']")!.textContent).toBe("Temperaturen och Hemma/Borta som du ställer in här följer SpotNav när den börjar styra värmen.");
     expect(card.querySelector("button[data-action='test']")!.textContent).toBe("Test · styr inget än");
     expect(card.querySelector("button[data-mode='home']")!.getAttribute("aria-pressed")).toBe("true");
@@ -95,7 +95,11 @@ describe("the front", () => {
     expect(card.querySelectorAll("[data-mark='car']")).toHaveLength(4);
     expect(card.querySelector(".spotnav-heat-band-now")).not.toBeNull();
     const legend = [...card.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
-    expect(legend).toEqual(["Sänkt", "Förvärmning", "Natt", "Varmvatten", "Bilen laddar"]);
+    expect(legend).toEqual(["Sänkt", "Förvärmning", "Natt", "Reläet sänkte", "Reläet väntas sänka", "Varmvatten", "Bilen laddar"]);
+    // The relay's row under SpotNav's plan: closed 07-09 and since 16:00, expected until 19:00.
+    expect(card.querySelectorAll("[data-mark='relay']")).toHaveLength(3);
+    expect(card.querySelectorAll("[data-mark='relay_expected']")).toHaveLength(2);
+    expect(cells[17]!.querySelector("title")!.textContent).toBe("17:00: Sänkt, 20,5 °C · reläet väntas sänka 60 min");
     // A tap on an hour says it in words under the band.
     const readout = card.querySelector("[data-line='band-readout']")!;
     expect(readout.textContent).toBe("");
@@ -124,6 +128,39 @@ describe("the front", () => {
     expect(wouldLine("en", pump)).toBe("Would keep 17.5 °C until Fri 20 Nov 14:00 while you are away");
   });
 
+  it("says what the relay does beside SpotNav's plan, yesterday's review and the automations that steer", () => {
+    const villa = answer();
+    const card = body(villa);
+    expect(relayLine("sv", villa, NOW)).toBe("Reläet sänker värmen sedan 16:00, väntas öppna 19:00");
+    expect(card.querySelector("[data-line='relay']")!.textContent).toBe("Reläet sänker värmen sedan 16:00, väntas öppna 19:00");
+    // Open, with a closing ahead: when it is expected.
+    const hours = villa.band.hours.map((hour, index) =>
+      index === 21 ? { ...hour, relay_min: 60, relay_expected: true } : index >= 16 && index <= 18 ? { ...hour, relay_min: 0, relay_expected: false } : hour,
+    );
+    const open = { ...villa, relay: { ...villa.relay!, closed: false }, band: { ...villa.band, hours } };
+    expect(relayLine("sv", open, NOW)).toBe("Reläet väntas sänka värmen 21:00–22:00");
+    expect(relayLine("sv", { ...villa, relay: null }, NOW)).toBeNull();
+    expect(reviewLines("sv", villa).map((line) => line.text)).toEqual([
+      "I går sänkte reläet 3 h: 1,58 kr · kallast 20,4\u00a0°C · 20 min under 20,5\u00a0°C",
+      "SpotNavs plan 5 h: 3,19 kr · kallast 20,4\u00a0°C · 20 min under 20,5\u00a0°C · 2 h samma som reläet",
+    ]);
+    expect(card.querySelector("[data-line='review-plan']")).not.toBeNull();
+    expect(noteLines("sv", villa).map((note) => note.text)).toEqual([
+      "Automationen 'Golvvärme – börvärde efter elpris och larm' styr också Golvvärme toalett nedervåning: stäng av den när SpotNav ska styra.",
+      "Automationen 'Värmepanna: sänk värmekurvan när elen är dyr' styr reläet: stäng av den när SpotNav ska styra värmen.",
+    ]);
+  });
+
+  it("refuses a relay or review with a key too many or missing, deep down", () => {
+    const raw = read("villa.json");
+    const relay = raw["relay"] as Record<string, unknown>;
+    expect(decodeHeat({ ...raw, relay: { ...relay, effect: { ...(relay["effect"] as object), extra: 1 } } }).ok).toBe(false);
+    const review = raw["review"] as Record<string, unknown>;
+    const { overlap_hours: _overlap, ...plan } = review["plan"] as Record<string, unknown>;
+    expect(decodeHeat({ ...raw, review: { ...review, plan } }).ok).toBe(false);
+    expect(decodeHeat({ ...raw, relay: null, review: null }).ok).toBe(true);
+  });
+
   it("keeps every language's words", () => {
     for (const language of ["en", "sv"] as const) {
       expect(body(answer(), language).textContent).not.toContain("heat.");
@@ -140,7 +177,8 @@ describe("the settings section", () => {
       ["indoor", "Inomhusgivare3 valda"],
       ["outdoor", "UtegivareAutomatisk"],
       ["meter", "Värmepumpens mätareElmätare värme (Nibe + panna) Effekt"],
-      ["path", "StyrningIngen än"],
+      ["path", "StyrningRelä (sänkning)"],
+      ["control", "StyrutgångLarm utgång 1"],
       ["hotWater", "VarmvattenIngen"],
       ["zones", "Zoner4"],
       ["zone:climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåning0 °C"],

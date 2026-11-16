@@ -407,10 +407,91 @@ export function wouldLine(language: Language, answer: HeatAnswer): string | null
   if (!actions.includes(would.action)) {
     return null;
   }
-  return translate(language, `heat.would.${would.action}` as TranslationKey, {
+  const key = would.action === "lower" && would.reason === "tight_hour" ? "heat.would.lowerTight" : `heat.would.${would.action}`;
+  return translate(language, key as TranslationKey, {
     temp: degrees(language, would.target_c),
     until: would.until === null ? "" : whenLabel(language, answer, Date.parse(would.until)),
   });
+}
+
+/** The relay's run of hours from `index` on, by the band's minutes: when it ends (ms). */
+function relayRunEnd(hours: HeatBandHour[], index: number): number {
+  let end = hours[index]!.startMs + (hours[index]!.relay_min ?? 0) * 60_000;
+  for (let next = index + 1; next < hours.length && (hours[next]!.relay_min ?? 0) > 0; next += 1) {
+    end = hours[next]!.startMs + (hours[next]!.relay_min ?? 0) * 60_000;
+  }
+  return end;
+}
+
+/**
+ * What the heat pump's relay does, whoever closes it ("Reläet sänker värmen sedan 16:00, öppnar 19:00"), or when it is
+ * expected to lower next ("Reläet väntas sänka värmen 16:00–19:00"); `null` without a relay or anything to say.
+ */
+export function relayLine(language: Language, answer: HeatAnswer, nowMs: number): string | null {
+  const relay = answer.relay;
+  if (relay === null) {
+    return null;
+  }
+  const hours = answer.band.hours;
+  const current = hours.findIndex((hour) => hour.startMs <= nowMs && nowMs < hour.startMs + HOUR_MS);
+  if (relay.closed === true) {
+    const since = relay.since === null ? null : whenLabel(language, answer, Date.parse(relay.since));
+    const ahead = current >= 0 && hours[current]!.relay_expected ? relayRunEnd(hours, current) : null;
+    if (ahead !== null && ahead > nowMs) {
+      return translate(language, "heat.relay.closedUntil", { since: since ?? "", until: whenLabel(language, answer, ahead) });
+    }
+    return translate(language, "heat.relay.closed", { since: since ?? "" });
+  }
+  const next = hours.findIndex((hour, index) => index > current && hour.relay_expected && (hour.relay_min ?? 0) > 0);
+  if (next < 0 || current < 0) {
+    return null;
+  }
+  const first = hours[next]!;
+  // A closing that begins in its hour runs to the hour's end: it began its minutes before that.
+  const from = first.startMs + (60 - Math.min(60, first.relay_min ?? 0)) * 60_000;
+  return translate(language, "heat.relay.next", {
+    from: whenLabel(language, answer, from),
+    to: whenLabel(language, answer, relayRunEnd(hours, next)),
+  });
+}
+
+function hoursWord(language: Language, hours: number): string {
+  return `${formatFixed(language, hours, Number.isInteger(hours) ? 0 : 1)} h`;
+}
+
+/**
+ * Yesterday's review in two lines: what the relay really did and what SpotNav's plan would have done, each with what it
+ * saved and the coldest room ("I går sänkte reläet 3 h: 3,60 kr · kallast 20,3 °C · 30 min under 20,5 °C").
+ */
+export function reviewLines(language: Language, answer: HeatAnswer): { key: string; text: string }[] {
+  const review = answer.review;
+  if (review === null) {
+    return [];
+  }
+  const money = answer.today?.money ?? null;
+  const comfort = (part: { coldest_min_c: number | null; minutes_below: number }): string[] => {
+    const out: string[] = [];
+    if (part.coldest_min_c !== null) {
+      out.push(translate(language, "heat.review.coldest", { temp: degrees(language, part.coldest_min_c).replace(" ", "\u00a0") }));
+      if (part.minutes_below > 0) {
+        out.push(translate(language, "heat.review.below", { minutes: String(part.minutes_below), low: degrees(language, review.low_c).replace(" ", "\u00a0") }));
+      }
+    }
+    return out;
+  };
+  const relay = review.relay.hours > 0
+    ? [translate(language, "heat.review.relay", { hours: hoursWord(language, review.relay.hours), value: amount(language, review.relay.value, money) }), ...comfort(review.relay)]
+    : [translate(language, "heat.review.relayNone")];
+  const plan = review.plan.hours > 0
+    ? [translate(language, "heat.review.plan", { hours: hoursWord(language, review.plan.hours), value: amount(language, review.plan.value, money) }), ...comfort(review.plan)]
+    : [translate(language, "heat.review.planNone")];
+  if (review.plan.hours > 0 && review.plan.overlap_hours > 0) {
+    plan.push(translate(language, "heat.review.overlap", { hours: hoursWord(language, review.plan.overlap_hours) }));
+  }
+  return [
+    { key: "review-relay", text: relay.join(" · ") },
+    { key: "review-plan", text: plan.join(" · ") },
+  ];
 }
 
 // ------------------------------------------------------------------------------------------------ the band
@@ -434,7 +515,10 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
   const hours = answer.band.hours;
   const ctx = context(language, answer);
   const drawWidth = Math.max(200, Math.round(width));
-  const height = 52;
+  // With a relay, a thin row under SpotNav's plan shows what the relay did (and is expected to do).
+  const withRelay = answer.relay !== null;
+  const shift = withRelay ? 9 : 0;
+  const height = 52 + shift;
   const picture = svg(doc, "svg", { viewBox: `0 0 ${drawWidth} ${height}`, class: X.band, role: "img" });
   const readout = element(doc, "p", `${C.muted} ${X.bandReadout}`);
   readout.setAttribute("aria-live", "polite");
@@ -454,6 +538,9 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
         action: words === "" ? degrees(language, hour.target_c) : words,
         temp: degrees(language, hour.target_c),
       });
+      if (hour.relay_min !== null && hour.relay_min > 0) {
+        title.textContent += ` · ${translate(language, hour.relay_expected ? "heat.band.relayHourExpected" : "heat.band.relayHour", { minutes: String(hour.relay_min) })}`;
+      }
       rect.append(title);
       // A tap or the pointer shows the hour in words under the band: a tooltip alone never shows on a phone.
       const say = (): void => {
@@ -462,13 +549,19 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
       rect.addEventListener("click", say);
       rect.addEventListener("mouseenter", say);
       picture.append(rect);
+      if (hour.relay_min !== null && hour.relay_min > 0) {
+        const share = Math.min(60, hour.relay_min) / 60;
+        const mark = svg(doc, "rect", { x: (x + 0.5).toFixed(2), y: 23, width: Math.max(1, (cell - 1) * share).toFixed(2), height: 6, rx: 1, class: X.bandRelay });
+        mark.dataset["mark"] = hour.relay_expected ? "relay_expected" : "relay";
+        picture.append(mark);
+      }
       if (hour.car) {
-        const mark = svg(doc, "rect", { x: (x + 1).toFixed(2), y: 24, width: Math.max(1, cell - 2).toFixed(2), height: 4, rx: 1, class: X.bandMark });
+        const mark = svg(doc, "rect", { x: (x + 1).toFixed(2), y: 24 + shift, width: Math.max(1, cell - 2).toFixed(2), height: 4, rx: 1, class: X.bandMark });
         mark.dataset["mark"] = "car";
         picture.append(mark);
       }
       if (hour.hot_water) {
-        const mark = svg(doc, "circle", { cx: (x + cell / 2).toFixed(2), cy: 34, r: 3, class: X.bandMark });
+        const mark = svg(doc, "circle", { cx: (x + cell / 2).toFixed(2), cy: 34 + shift, r: 3, class: X.bandMark });
         mark.dataset["mark"] = "hot_water";
         picture.append(mark);
       }
@@ -483,10 +576,11 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
     const last = hours[hours.length - 1]!.startMs + HOUR_MS;
     if (nowMs >= first && nowMs < last) {
       const x = ((nowMs - first) / (last - first)) * drawWidth;
-      picture.append(svg(doc, "line", { x1: x.toFixed(2), x2: x.toFixed(2), y1: -2, y2: 40, class: X.bandNow }));
+      picture.append(svg(doc, "line", { x1: x.toFixed(2), x2: x.toFixed(2), y1: -2, y2: 40 + shift, class: X.bandNow }));
     }
   }
-  const heading = element(doc, "p", `${H.line} ${C.muted}`, `${translate(language, "heat.band.title")} · ${dateLabel(language, answer.band.date)}`);
+  const title = `${translate(language, "heat.band.title")} · ${dateLabel(language, answer.band.date)}`;
+  const heading = element(doc, "p", `${H.line} ${C.muted}`, withRelay ? `${title} · ${translate(language, "heat.band.planAndRelay")}` : title);
   block.append(heading, picture, readout);
   const shown = new Set(hours.map((hour) => hour.action));
   const legend = element(doc, "ul", X.legend);
@@ -495,6 +589,12 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
       continue;
     }
     legend.append(legendItem(doc, action, actionWord(language, action)));
+  }
+  if (hours.some((hour) => (hour.relay_min ?? 0) > 0 && !hour.relay_expected)) {
+    legend.append(legendItem(doc, "relay", translate(language, "heat.band.relay")));
+  }
+  if (hours.some((hour) => (hour.relay_min ?? 0) > 0 && hour.relay_expected)) {
+    legend.append(legendItem(doc, "relay_expected", translate(language, "heat.band.relayExpected")));
   }
   if (hours.some((hour) => hour.hot_water)) {
     legend.append(legendItem(doc, "hot_water", translate(language, "heat.band.hotWater")));
@@ -558,6 +658,11 @@ export function noteLines(language: Language, answer: HeatAnswer): { code: strin
     } else if (note.code === "other_controller") {
       const names = Array.isArray(params["names"]) ? (params["names"] as unknown[]).map((name) => OTHER_CONTROLLERS[String(name)] ?? String(name)) : [];
       out.push({ code: note.code, text: translate(language, "heat.note.other_controller", { names: names.join(", ") }) });
+    } else if (note.code === "automation_steers") {
+      const name = String(params["name"] ?? "");
+      const targets = Array.isArray(params["targets"]) ? (params["targets"] as unknown[]).map(String) : [];
+      const key: TranslationKey = params["relay"] === true ? "heat.note.automation_relay" : "heat.note.automation_zone";
+      out.push({ code: note.code, text: translate(language, key, { name, targets: targets.join(", ") }) });
     }
   }
   return out;
@@ -605,11 +710,22 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
     line.dataset["line"] = "would";
     card.append(line);
   }
+  const relay = relayLine(language, answer, input.nowMs);
+  if (relay !== null) {
+    const line = element(doc, "p", X.status, relay);
+    line.dataset["line"] = "relay";
+    card.append(line);
+  }
   card.append(bandBlock(doc, language, answer, input.width, input.nowMs));
   const today = todayLine(language, answer);
   if (today !== null) {
     const line = element(doc, "p", H.line, today);
     line.dataset["line"] = "today";
+    card.append(line);
+  }
+  for (const review of reviewLines(language, answer)) {
+    const line = element(doc, "p", `${H.line} ${C.muted}`, review.text);
+    line.dataset["line"] = review.key;
     card.append(line);
   }
   for (const note of noteLines(language, answer)) {

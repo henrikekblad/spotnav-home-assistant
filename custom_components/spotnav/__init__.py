@@ -134,6 +134,7 @@ from .battery.control import BatteryControl
 from .battery.runtime import BatteryShadow
 from .loads.runtime import SwitchLoadShadow
 from .site.solar_correction_shadow import SiteSolarCorrection
+from .heat.runtime import HeatShadow
 from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
 from .site.site_history import charger_alone_values, SiteHistory
 from .site.phase_peaks import SitePhasePeaks
@@ -932,6 +933,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await BatteryControl.async_remove_stored(hass, entry.entry_id, dict(entry.data))
         await SwitchLoadShadow.async_remove_stored(hass, entry.entry_id)
         await SiteSolarCorrection.async_remove_stored(hass, entry.entry_id)
+        await HeatShadow.async_remove_stored(hass, entry.entry_id)
         return
     # The charger is given back as SpotNav found it, as far as SpotNav knows: the current it had before SpotNav,
     # and a stop of SpotNav's own undone. Read before the stores below go (it is kept in the controller's).

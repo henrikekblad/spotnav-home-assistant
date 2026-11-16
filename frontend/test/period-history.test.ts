@@ -206,7 +206,8 @@ describe("the heat history", () => {
     const complete = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: whole }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(complete.querySelector("[data-line='split-days']")).toBeNull();
     expect(body.querySelector("[data-part='comfort'] [data-row='below']")?.textContent).toContain("112 av 374");
-    expect(body.querySelector("[data-part='shadow'] [data-row='value']")?.textContent).toContain("127 kr");
+    expect(body.querySelector("[data-part='shadow'] [data-row='value']")?.textContent).toContain("52 kr");
+    expect(body.querySelector("[data-part='shadow'] [data-line='effect']")?.textContent).toBe("Lärt av 7 uppmätta sänkningar av reläet.");
     expect(body.querySelector("[data-part='use'] [data-row='immersion']")?.textContent).toContain("3 h");
     expect(body.querySelector("[data-part='runs']")).toBeNull();
   });
@@ -216,6 +217,19 @@ describe("the heat history", () => {
     const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "day", detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     const runs = Array.from(body.querySelectorAll("[data-part='runs'] li")).map((row) => row.textContent);
     expect(runs).toEqual(["03:00–03:10" + "0,3 kWh · stilleståndsförlust", "06:15–06:40" + "1,2 kWh · efter tappning", "07:25–07:45" + "0,9 kWh · efter tappning"]);
+  });
+
+  it("shows a day's review: the relay's real lowering beside SpotNav's plan, even without Detailed", () => {
+    const answer = heat("heat_history/villa_day.json");
+    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const review = body.querySelector("[data-part='review']")!;
+    expect(review.querySelector("[data-row='review-relay']")?.textContent).toBe("Reläet sänkte 3 h3,36 kr");
+    expect(review.querySelector("[data-row='review-plan']")?.textContent).toBe("SpotNav skulle ha sänkt 3 h1,28 kr");
+    expect(review.querySelector("[data-row='review-relay-comfort']")?.textContent).toContain("kallast 20,3");
+    // A month has no review of its own.
+    const month = heat("heat_history/villa_month.json");
+    const monthBody = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: month }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(monthBody.querySelector("[data-part='review']")).toBeNull();
   });
 
   it("says what is missing without a meter, an outdoor temperature or rooms", () => {

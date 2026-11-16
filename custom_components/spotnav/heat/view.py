@@ -12,13 +12,25 @@
      meter: {status, entity_id, name, source, setting_offered, candidates, kw_now, state, baseline_kw} | null,
      today: {date, total_kwh, heat_kwh, hot_water_kwh, runs: [{start, end, kwh}], baseline_kw, cost, money} | null,
      status: {pump_state, pump_state_source, kw, would: {action, target_c, until, reason} | null, guard},
-     band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car}], hot_water_pick} | null,
+     band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car, relay_min, relay_expected}],
+            hot_water_pick} | null,
      notes: [{code, params}],
-     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter} | null (administrators only)}
+     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter} | null (administrators only),
+     relay: {entity_id, name, closed, since, source, automation: {entity_id, name} | null,
+             effect: {lower_share, rebound, blocks}} | null,
+     review: yesterday's review (`heat/review.py`) | null}
+
+The band is SpotNav's own plan (`heat/shadow_rule.band`, joint with the cars, the battery and the import cap: the
+`tight` hours); an hour already begun shows what was planned when it began (`kept`). Beside it each hour says how many
+minutes the heat pump's relay was closed (`relay_min`, `null` without a relay in the settings), or is expected to be
+(`relay_expected`: the SpotNav blueprint's closings ahead, or a closing now running its course): what really steers
+the heat while SpotNav only watches.
 
 `notes` are only what the household can act on, one each (plan section 15): `pump_price_control` (the pump's own
 price control is on; `{label, where}`), `readings_disabled` (readings SpotNav needs are turned off in the integration;
-`{entities, device_id}`), `other_controller` (another optimiser steers the pump; `{names}`). A thing the household
+`{entities, device_id}`), `other_controller` (another optimiser steers the pump; `{names}`), `automation_steers` (an
+enabled automation of the household's references the relay or a zone, `heat/automations.py`; `{entity_id, name,
+targets: [names], relay}`, `relay` when the relay is among them: one note per automation). A thing the household
 cannot change (no writable control path) is no note: `pump.capabilities` says it.
 """
 
@@ -34,14 +46,18 @@ from .config import BAND_C, MODE_AWAY, HeatConfig
 from .facts import MISSING_DISABLED, HeatPumpFacts
 from .meter_split import DaySplit, Levels, state_now
 from .rooms import Indoor
-from .shadow_rule import ACTION_NORMAL, band, day_hours, would_do
+from .automations import SteeringAutomation
+from .relay_effect import Effect
+from .shadow_rule import ACTION_LOWER, ACTION_NORMAL, ACTION_PREHEAT, BandHour, band, day_hours, would_do
 
 HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
-    "zones", "pump", "meter", "today", "status", "band", "notes", "choices",
+    "zones", "pump", "meter", "today", "status", "band", "notes", "choices", "relay", "review",
 )
-BAND_HOUR_KEYS: Final = ("start", "action", "target_c", "reason", "price", "past", "hot_water", "car")
+BAND_HOUR_KEYS: Final = (
+    "start", "action", "target_c", "reason", "price", "past", "hot_water", "car", "relay_min", "relay_expected",
+)
 
 KIND_FLOOR: Final = "floor"
 KIND_AIR: Final = "air"
@@ -91,6 +107,22 @@ class MeterInputs:
 
 
 @dataclass(frozen=True, slots=True)
+class RelayInputs:
+    """The heat pump's relay as the heat shadow sees it (`heat/runtime.py`)."""
+
+    entity_id: str
+    name: str
+    closed: bool | None
+    since: datetime | None
+    #: `blueprint` (the SpotNav blueprint drives it) or `unknown`.
+    source: str | None
+    automation: tuple[str, str] | None
+    #: Per hour of the day: the minutes closed (or expected to be) and whether expected.
+    minutes: Mapping[datetime, tuple[int, bool]]
+    effect: Effect
+
+
+@dataclass(frozen=True, slots=True)
 class HeatViewInputs:
     site_id: str
     now: datetime
@@ -110,6 +142,16 @@ class HeatViewInputs:
     #: The hours a car charged (measured) or is planned to charge (UTC hour starts).
     car_hours: frozenset[datetime] = frozenset()
     choices: Mapping[str, Any] | None = None
+    #: The joint plan's hours at the import cap and the outdoor forecast (°C), both by UTC hour start.
+    tight: frozenset[datetime] = frozenset()
+    outdoor_by_hour: Mapping[datetime, float] = field(default_factory=dict)
+    #: Today's hours as planned when each began: `{hour start: (action, reason)}`.
+    kept: Mapping[datetime, tuple[str, str]] = field(default_factory=dict)
+    relay: RelayInputs | None = None
+    automations: Sequence[SteeringAutomation] = ()
+    #: Names of the entities the automations reference.
+    names: Mapping[str, str] = field(default_factory=dict)
+    review: Mapping[str, Any] | None = None
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -122,6 +164,9 @@ def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[dat
             sums.setdefault(hour, []).append(price)
             moment += timedelta(minutes=15)
     return {hour: sum(values) / len(values) for hour, values in sums.items()}
+
+
+hour_prices_of = _hour_prices
 
 
 def _price_at(prices: Sequence[tuple[datetime, datetime, float]], moment: datetime) -> float | None:
@@ -160,7 +205,13 @@ def _pump(facts: HeatPumpFacts) -> dict[str, Any]:
     }
 
 
-def notes(pump: HeatPumpFacts | None, other_controllers: Sequence[str]) -> list[dict[str, Any]]:
+def notes(
+    pump: HeatPumpFacts | None,
+    other_controllers: Sequence[str],
+    automations: Sequence[SteeringAutomation] = (),
+    relay: str | None = None,
+    names: Mapping[str, str] | None = None,
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if pump is not None and pump.price_control.state == "active":
         out.append({"code": "pump_price_control", "params": {"label": pump.label, "where": PRICE_CONTROL_WHERE.get(pump.brand, "")}})
@@ -170,7 +221,27 @@ def notes(pump: HeatPumpFacts | None, other_controllers: Sequence[str]) -> list[
             out.append({"code": "readings_disabled", "params": {"entities": disabled, "device_id": pump.device_id}})
     if other_controllers:
         out.append({"code": "other_controller", "params": {"names": list(other_controllers)}})
+    for automation in automations:
+        targets = [target for target in automation.targets if target != relay]
+        out.append(
+            {
+                "code": "automation_steers",
+                "params": {
+                    "entity_id": automation.entity_id,
+                    "name": automation.name,
+                    "targets": [(names or {}).get(target, target) for target in targets],
+                    "relay": relay is not None and relay in automation.targets,
+                },
+            }
+        )
     return out
+
+
+def _kept_hour(hour: BandHour, kept: tuple[str, str], target: float) -> BandHour:
+    """An hour already begun as it was planned then (its aim from its action, as the rule sets it)."""
+    action, reason = kept
+    aim = {ACTION_LOWER: target - BAND_C, ACTION_PREHEAT: target + BAND_C}.get(action, hour.target_c)
+    return BandHour(hour.start, action, aim, reason, hour.price)
 
 
 def _round(value: float | None, digits: int = 2) -> float | None:
@@ -186,10 +257,23 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
     hour_prices = _hour_prices(inputs.prices)
     outdoor_c = None if inputs.outdoor is None else inputs.outdoor.value_c
     band_hours, guard = band(
-        config, hours, hour_prices, now, zone_info, outdoor_c=outdoor_c, coldest_c=inputs.indoor.value_c
+        config,
+        hours,
+        hour_prices,
+        now,
+        zone_info,
+        outdoor_c=outdoor_c,
+        coldest_c=inputs.indoor.value_c,
+        tight=inputs.tight,
+        outdoor_by_hour=inputs.outdoor_by_hour,
     )
-    would = would_do(band_hours, now, config, zone_info)
     current = now.replace(minute=0, second=0, microsecond=0)
+    band_hours = [
+        _kept_hour(hour, inputs.kept[hour.start], config.target_c) if hour.start < current and hour.start in inputs.kept else hour
+        for hour in band_hours
+    ]
+    would = would_do(band_hours, now, config, zone_info)
+    relay = inputs.relay
 
     meter = inputs.meter
     split = None if meter is None else meter.split
@@ -209,6 +293,8 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
                 "past": hour.start < current,
                 "hot_water": hour.start in run_hours or hour.start == hot_water_pick,
                 "car": hour.start in inputs.car_hours,
+                "relay_min": None if relay is None else relay.minutes.get(hour.start, (0, False))[0],
+                "relay_expected": relay is not None and relay.minutes.get(hour.start, (0, False))[1],
             }
             for hour in band_hours
         ],
@@ -300,7 +386,21 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
             "guard": guard,
         },
         "band": band_block,
-        "notes": notes(inputs.pump, inputs.other_controllers),
+        "notes": notes(
+            inputs.pump, inputs.other_controllers, inputs.automations, None if relay is None else relay.entity_id, inputs.names
+        ),
         "choices": None if not inputs.writable or inputs.choices is None else dict(inputs.choices),
+        "relay": None
+        if relay is None
+        else {
+            "entity_id": relay.entity_id,
+            "name": relay.name,
+            "closed": relay.closed,
+            "since": None if relay.since is None else relay.since.isoformat(),
+            "source": relay.source,
+            "automation": None if relay.automation is None else {"entity_id": relay.automation[0], "name": relay.automation[1]},
+            "effect": relay.effect.as_dict(),
+        },
+        "review": None if inputs.review is None else dict(inputs.review),
     }
 

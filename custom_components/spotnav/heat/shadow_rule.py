@@ -1,29 +1,36 @@
-"""The heat card's day band in shadow (plan `plans/v3_heat_card.md`): what SpotNav would aim the house at, hour by
-hour, from a simple rule, until the joint plan takes heat in (plan `plans/v3_heating_plan.md` steps 3 and 7).
-Nothing is written anywhere: the band is shown and logged, and reviewed later.
+"""SpotNav's own heat plan in shadow, hour by hour (plans `plans/v3_heat_card.md`, `plans/v3_heating_plan.md` steps 2
+and 3): what SpotNav would aim the house at, in the joint plan with the cars, the battery and the import cap. Nothing
+is written anywhere: the plan is shown, logged, kept per hour and reviewed beside what the relay really did.
 
 Pure. Per local hour of the day, one action and the temperature it aims at:
 
 * `away` (the target less 3 °C, never below 16 °C) until `return` the `RETURN_HOURS` before the return time (the
   target again, so the house is warm when the household is back);
 * `night` (the target less the cooler night's degrees) in the cooler night's hours, when it is on;
-* `lower` (the comfort band's low edge, the target less 0.5 °C) in the day's dearest hours: price at or above the
-  day's `DEAR_QUANTILE` and at least `DEAR_OVER_MEDIAN` × its median, at most `MAX_LOWERED_RUN` hours in a row with
-  an hour back to normal after, at most `MAX_LOWERED_DAY` a day (plan section 5's fixed guards), dearest first;
+* `lower` (the comfort band's low edge, the target less 0.5 °C) in the hours worth lowering, at most
+  `MAX_LOWERED_RUN` hours in a row with at least an hour back to normal between, at most `MAX_LOWERED_DAY` a day
+  (plan section 5's fixed guards). Worth lowering: a **tight** hour first (`REASON_TIGHT`: the joint plan's load,
+  the house, the cars' plans and the battery's grid charge, reaches the import cap, the main fuse less its margin
+  or the import target's held level, within what lowering the heat frees, so lowering makes room; only in the
+  day's dearer half, since in a cheap hour the heat would come back dearer after it), then the day's
+  **dearest** hours (`REASON_DEAR`: price at or above the day's `DEAR_QUANTILE` and at least `DEAR_OVER_MEDIAN` x its
+  median), dearest first;
 * `preheat` (the band's high edge, the target plus 0.5 °C) the hour before a lowered run, when that hour is at most
   `PREHEAT_SHARE` of the run's mean price (the heat bought there is worth carrying);
 * `normal` (the target) otherwise.
 
 Guards that keep the house at `normal` instead of `lower` (and say why): no prices (`no_prices`), outdoors at or
-below `NO_LOWER_BELOW_C` (`too_cold`), the coldest room already below the target less `ROOM_COLD_C`
-(`room_cold`, for the running hour on). The night and away keep their own aims under the guards: they are what the
-household asked for, not a saving SpotNav chose.
+below `NO_LOWER_BELOW_C` now (`too_cold`, the whole day) or forecast for the hour (that hour), the coldest counted room
+already below the comfort band (the target less the band, `room_cold`, for the running hour and the next
+`ROOM_COLD_HOURS - 1`: the plan is made again every hour on the reading then, so one cold evening reading does not
+decide the rest of the day). The night and away
+keep their own aims under the guards: they are what the household asked for, not a saving SpotNav chose.
 """
 
 from __future__ import annotations
 
 import statistics
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final
@@ -38,7 +45,9 @@ MAX_LOWERED_DAY: Final = 6
 PREHEAT_SHARE: Final = 0.85
 RETURN_HOURS: Final = 2
 NO_LOWER_BELOW_C: Final = -15.0
-ROOM_COLD_C: Final = 1.0
+#: The coldest counted room below the target less this: no lowering (the comfort band's low edge).
+ROOM_COLD_C: Final = BAND_C
+ROOM_COLD_HOURS: Final = 2
 
 ACTION_NORMAL: Final = "normal"
 ACTION_LOWER: Final = "lower"
@@ -48,6 +57,7 @@ ACTION_AWAY: Final = "away"
 ACTION_RETURN: Final = "return"
 
 REASON_DEAR: Final = "dear_hour"
+REASON_TIGHT: Final = "tight_hour"
 REASON_CHEAP_BEFORE: Final = "cheap_before_dear"
 REASON_NIGHT: Final = "night"
 REASON_AWAY: Final = "away"
@@ -113,8 +123,11 @@ def _quantile(values: Sequence[float], share: float) -> float:
     return ordered[min(len(ordered) - 1, int(len(ordered) * share))]
 
 
-def dear_hours(prices: Mapping[datetime, float], blocked: set[datetime]) -> set[datetime]:
-    """The hours the rule lowers in (see the module), never one in `blocked`."""
+def dear_hours(
+    prices: Mapping[datetime, float], blocked: set[datetime], tight: Iterable[datetime] = ()
+) -> set[datetime]:
+    """The hours the rule lowers in (see the module), never one in `blocked`: the tight hours first, then the dear
+    ones, dearest first."""
     if len(prices) < 6:
         return set()
     values = list(prices.values())
@@ -122,8 +135,12 @@ def dear_hours(prices: Mapping[datetime, float], blocked: set[datetime]) -> set[
     bar = max(_quantile(values, DEAR_QUANTILE), median * DEAR_OVER_MEDIAN if median > 0 else median)
     starts = sorted(prices)
     index = {start: i for i, start in enumerate(starts)}
+    # A tight hour in the cheap half of the day is left alone: the heat would come back dearer after it, and the
+    # load there is what the cheap hour is for (a battery's grid charge, the car's night).
+    pressed = {start for start in tight if start in prices and prices[start] >= median}
+    candidates = [s for s in starts if (prices[s] >= bar or s in pressed) and s not in blocked]
     chosen: set[datetime] = set()
-    for start in sorted((s for s in starts if prices[s] >= bar and s not in blocked), key=lambda s: (-prices[s], s)):
+    for start in sorted(candidates, key=lambda s: (s not in pressed, -prices[s], s)):
         if len(chosen) >= MAX_LOWERED_DAY:
             break
         trial = chosen | {start}
@@ -164,8 +181,11 @@ def band(
     *,
     outdoor_c: float | None = None,
     coldest_c: float | None = None,
+    tight: Iterable[datetime] = (),
+    outdoor_by_hour: Mapping[datetime, float] | None = None,
 ) -> tuple[list[BandHour], str | None]:
-    """The day's band (see the module) and the guard that stood lowering down (`None` when none did)."""
+    """The day's band (see the module) and the guard that stood lowering down (`None` when none did). `tight` are the
+    hours whose joint load reaches the import cap, `outdoor_by_hour` the outdoor forecast (°C, UTC hour starts)."""
     target = config.target_c
     away_end = config.away_end()
     current = now.replace(minute=0, second=0, microsecond=0)
@@ -187,10 +207,15 @@ def band(
     elif outdoor_c is not None and outdoor_c <= NO_LOWER_BELOW_C:
         guard = REASON_TOO_COLD
     blocked = set(fixed)
+    cold_hours = {
+        start for start in hours if outdoor_by_hour is not None and outdoor_by_hour.get(start, 99.0) <= NO_LOWER_BELOW_C
+    }
+    blocked |= cold_hours
     if guard is None and coldest_c is not None and coldest_c < target - ROOM_COLD_C:
         guard = REASON_ROOM_COLD
-        blocked |= {start for start in hours if start >= current}
-    lowered = set() if guard in (REASON_NO_PRICES, REASON_TOO_COLD) else dear_hours(day_prices, blocked)
+        blocked |= {start for start in hours if current <= start < current + timedelta(hours=ROOM_COLD_HOURS)}
+    pressed = frozenset(start for start in tight if start in day_prices and day_prices[start] >= statistics.median(day_prices.values()))
+    lowered = set() if guard in (REASON_NO_PRICES, REASON_TOO_COLD) else dear_hours(day_prices, blocked, pressed)
 
     preheat: set[datetime] = set()
     starts = sorted(hours)
@@ -206,9 +231,11 @@ def band(
         if start in fixed:
             action, aim, reason = fixed[start]
         elif start in lowered:
-            action, aim, reason = ACTION_LOWER, target - BAND_C, REASON_DEAR
+            action, aim, reason = ACTION_LOWER, target - BAND_C, REASON_TIGHT if start in pressed else REASON_DEAR
         elif start in preheat:
             action, aim, reason = ACTION_PREHEAT, target + BAND_C, REASON_CHEAP_BEFORE
+        elif start in cold_hours and start >= current:
+            action, aim, reason = ACTION_NORMAL, target, REASON_TOO_COLD
         else:
             action, aim, reason = ACTION_NORMAL, target, guard if guard is not None and start >= current else REASON_NORMAL
         out.append(BandHour(start, action, aim, reason, price))

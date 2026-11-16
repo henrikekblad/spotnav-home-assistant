@@ -18,9 +18,12 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from custom_components.spotnav.api.heat import config_block
+from custom_components.spotnav.heat.automations import SteeringAutomation
 from custom_components.spotnav.heat.config import HeatConfig, Night, Zone
 from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts, PriceControl
 from custom_components.spotnav.heat.meter_split import levels, split_day
+from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
+from custom_components.spotnav.heat.review import review_day
 from custom_components.spotnav.heat.rooms import SensorReading, indoor
 from custom_components.spotnav.heat.view import (
     BAND_HOUR_KEYS,
@@ -28,6 +31,7 @@ from custom_components.spotnav.heat.view import (
     HeatViewInputs,
     MeterInputs,
     Outdoor,
+    RelayInputs,
     ZoneReading,
     heat_view,
 )
@@ -67,6 +71,58 @@ def _choice(entity_id: str, name: str, value: str | None, **extra: Any) -> dict[
     return {"entity_id": entity_id, "name": name, "value": value, **extra}
 
 
+def villa_relay() -> RelayInputs:
+    """The blueprint closed the relay 07:00-09:00 and since 16:00; it is expected to open at 19:00."""
+    minutes = {MIDNIGHT + timedelta(hours=h): (60, False) for h in (7, 8, 16)}
+    minutes[MIDNIGHT + timedelta(hours=17)] = (60, True)
+    minutes[MIDNIGHT + timedelta(hours=18)] = (60, True)
+    return RelayInputs(
+        entity_id="switch.larm_utgang_1",
+        name="Larm utgång 1",
+        closed=True,
+        since=MIDNIGHT + timedelta(hours=16),
+        source="blueprint",
+        automation=("automation.varmepanna_sank_varmekurvan_nar_elen_ar_dyr", "Värmepanna: sänk värmekurvan när elen är dyr"),
+        minutes=minutes,
+        effect=Effect(0.46, 0.82, 7),
+    )
+
+
+def villa_automations() -> tuple[SteeringAutomation, ...]:
+    return (
+        SteeringAutomation(
+            "automation.golvvarme_borvarde_efter_elpris_och_larm",
+            "Golvvärme – börvärde efter elpris och larm",
+            ("climate.golvvarme_toalett_nere",),
+        ),
+        SteeringAutomation(
+            "automation.varmepanna_sank_varmekurvan_nar_elen_ar_dyr",
+            "Värmepanna: sänk värmekurvan när elen är dyr",
+            ("switch.larm_utgang_1",),
+        ),
+    )
+
+
+def villa_review() -> dict[str, Any]:
+    """Yesterday: the blueprint lowered 16-19, SpotNav would have lowered 7-9 and 17-19."""
+    yesterday = MIDNIGHT - timedelta(days=1)
+    hours = [yesterday + timedelta(hours=h) for h in range(24)]
+    prices = dict(zip(hours, map(float, PRICES), strict=True))
+    coldest = {yesterday + timedelta(minutes=5 * i): (20.4 if 17 * 12 <= i < 17 * 12 + 4 else 20.8) for i in range(27 * 12)}
+    return review_day(
+        (NOW - timedelta(days=1)).astimezone(ZONE).date(),
+        hours,
+        prices=prices,
+        heat_kwh={hour: 1.1 for hour in hours},
+        relay=[(hours[16], hours[19])],
+        plan_lowered=[hours[7], hours[8], hours[17], hours[18], hours[19]],
+        measured=[BlockResult(hours[16], hours[19], 1.15, 0.6, 1.6)],
+        effect=Effect(0.46, 0.82, 7),
+        coldest=coldest,
+        low_c=20.5,
+    )
+
+
 def villa_answer() -> dict[str, Any]:
     config = HeatConfig(
         target_c=21.0,
@@ -78,6 +134,8 @@ def villa_answer() -> dict[str, Any]:
             Zone("climate.golvvarme_tvattstuga", -1.0),
             Zone("climate.ovanvaning", -0.5),
         ),
+        control_path="relay",
+        control_entity="switch.larm_utgang_1",
     )
     entry = _Entry({"heat": config.as_dict(), "heat_meter_entity": "sensor.varme_effekt"})
     # The last day of 5-minute rows: yesterday evening and today until now, the same shape each day.
@@ -88,14 +146,14 @@ def villa_answer() -> dict[str, Any]:
     sensors = [
         SensorReading("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", 21.3, ((NOW - timedelta(minutes=40), 21.2),)),
         SensorReading("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", 20.5, ((NOW - timedelta(minutes=40), 20.5),)),
-        SensorReading("sensor.toalett_nv_temperatur", "Toalett NV temperatur", 20.4, ((NOW - timedelta(minutes=40), 20.5),)),
+        SensorReading("sensor.toalett_nv_temperatur", "Toalett NV temperatur", 20.6, ((NOW - timedelta(minutes=40), 20.7),)),
     ]
     car = frozenset(MIDNIGHT + timedelta(hours=h) for h in (1, 2, 3, 4))
     choices = {
         "indoor": [
             _choice("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", "21.3 °C"),
             _choice("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", "20.5 °C"),
-            _choice("sensor.toalett_nv_temperatur", "Toalett NV temperatur", "20.4 °C"),
+            _choice("sensor.toalett_nv_temperatur", "Toalett NV temperatur", "20.6 °C"),
             _choice("sensor.garage_temperatur", "Garage temperatur", "13.5 °C"),
         ],
         "outdoor": [
@@ -147,6 +205,17 @@ def villa_answer() -> dict[str, Any]:
             money=("SEK", "kr", "öre"),
             car_hours=car,
             choices=choices,
+            tight=frozenset({MIDNIGHT + timedelta(hours=20)}),
+            kept={
+                MIDNIGHT + timedelta(hours=7): ("lower", "dear_hour"),
+                MIDNIGHT + timedelta(hours=8): ("lower", "dear_hour"),
+                MIDNIGHT + timedelta(hours=15): ("lower", "tight_hour"),
+                MIDNIGHT + timedelta(hours=16): ("lower", "dear_hour"),
+            },
+            relay=villa_relay(),
+            automations=villa_automations(),
+            names={"climate.golvvarme_toalett_nere": "Golvvärme toalett nedervåning"},
+            review=villa_review(),
         )
     )
 
@@ -196,11 +265,25 @@ def test_the_villa() -> None:
     assert tuple(answer) == HEAT_KEYS
     assert all(tuple(hour) == BAND_HOUR_KEYS for hour in answer["band"]["hours"])
     assert answer["comfort"] == {"target_c": 21.0, "low_c": 20.5, "high_c": 21.5, "mode": "home", "away_until": None, "aim_c": 20.5}
-    assert (answer["indoor"]["value_c"], answer["indoor"]["coldest"]) == (20.4, "sensor.toalett_nv_temperatur")
-    # 17:20 lies in the evening's dearest hours: lowered to the band's low edge until 20:00.
+    assert (answer["indoor"]["value_c"], answer["indoor"]["coldest"]) == (20.5, "sensor.ovanvaning_temperatur")
+    # 17:20 lies in the evening's dearest hours: lowered to the band's low edge until 19:00 (three in a row at most).
     would = answer["status"]["would"]
     assert (would["action"], would["reason"]) == ("lower", "dear_hour")
-    assert would["until"] == (MIDNIGHT + timedelta(hours=20)).isoformat()
+    assert would["until"] == (MIDNIGHT + timedelta(hours=19)).isoformat()
+    band_hours = answer["band"]["hours"]
+    # 20:00 is tight in the joint plan (the car at the import cap): lowered after an hour back to normal.
+    assert [band_hours[h]["action"] for h in (18, 19, 20)] == ["lower", "normal", "lower"]
+    assert band_hours[20]["reason"] == "tight_hour"
+    # 15:00 is past: it shows what was planned when it began, not the plan made now.
+    assert (band_hours[15]["action"], band_hours[15]["reason"], band_hours[15]["target_c"]) == ("lower", "tight_hour", 20.5)
+    # The relay beside the plan: closed 07-09 and since 16:00, expected to open at 19:00.
+    assert [band_hours[h]["relay_min"] for h in (7, 8, 9, 16, 17, 18, 19)] == [60, 60, 0, 60, 60, 60, 0]
+    assert [band_hours[h]["relay_expected"] for h in (16, 17, 18)] == [False, True, True]
+    assert answer["relay"]["source"] == "blueprint" and answer["relay"]["closed"] is True
+    assert answer["relay"]["effect"] == {"lower_share": 0.46, "rebound": 0.82, "blocks": 7}
+    review = answer["review"]
+    assert review["relay"]["measured"] == 1 and review["plan"]["overlap_hours"] == 2.0
+    assert review["day"] == {"coldest_min_c": 20.4, "minutes_below": 20}
     assert answer["status"]["pump_state"] == "heating" and answer["status"]["pump_state_source"] == "meter"
     actions = [hour["action"] for hour in answer["band"]["hours"]]
     assert actions[0] == "night" and actions[23] == "night"
@@ -211,7 +294,11 @@ def test_the_villa() -> None:
     assert today["hot_water_kwh"] > 1.5 and today["cost"] > 0 and today["money"]["minor"] == "öre"
     # The zones aim at the house's aim plus their own offset.
     assert [zone["aim_c"] for zone in answer["zones"]] == [20.5, 20.5, 19.5, 20.0]
-    assert answer["notes"] == [] and answer["pump"] is None
+    # One note per automation that references a chosen relay or zone; the relay's own blueprint says so.
+    assert [note["code"] for note in answer["notes"]] == ["automation_steers", "automation_steers"]
+    assert answer["notes"][0]["params"]["targets"] == ["Golvvärme toalett nedervåning"]
+    assert answer["notes"][0]["params"]["relay"] is False and answer["notes"][1]["params"]["relay"] is True
+    assert answer["pump"] is None
     _write_or_compare("villa.json", answer)
 
 
@@ -225,4 +312,6 @@ def test_the_network_pump_and_its_notes() -> None:
     assert answer["status"]["pump_state"] == "heating" and answer["status"]["pump_state_source"] == "pump"
     assert answer["status"]["would"]["action"] == "away"
     assert answer["comfort"]["aim_c"] == 17.5 and answer["today"] is None and answer["meter"] is None
+    assert answer["relay"] is None and answer["review"] is None
+    assert all(hour["relay_min"] is None and hour["relay_expected"] is False for hour in answer["band"]["hours"])
     _write_or_compare("network_pump.json", answer)

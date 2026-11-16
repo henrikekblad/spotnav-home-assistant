@@ -131,6 +131,7 @@ from .measurement_problem import measurement_problem, MeasurementProblem, UNHEAL
 from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
+from ..heat.runtime import HeatShadow
 from .solar_correction_shadow import SiteSolarCorrection
 from .measurement_source import (
     combine_power_pair,
@@ -810,6 +811,10 @@ class SiteCapacityController:
         # The sun's forecast corrected per site in shadow (`site/solar_correction_shadow.py`): logged and reviewed
         # beside the raw one, read by nothing that plans.
         self.solar_correction = SiteSolarCorrection(hass, self)
+        # The heat pump's relay known to the plan and SpotNav's own heat plan in shadow (`heat/runtime.py`): the
+        # relay's lowered hours change what the plans count on; nothing is ever written to a heating device.
+        self.heat_shadow = HeatShadow(hass, self)
+        self.house_forecast.heat_delta = self.heat_shadow.forecast_delta
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -869,6 +874,7 @@ class SiteCapacityController:
         self.battery_control.async_launch(self.hass.config_entries.async_get_entry(self.entry_id))
         await self.switch_load.async_start()
         await self.solar_correction.async_start()
+        await self.heat_shadow.async_start()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -927,6 +933,7 @@ class SiteCapacityController:
             ("switched load", self.switch_load.async_shutdown),
             ("house forecast", self.house_forecast.async_close),
             ("solar correction", self.solar_correction.async_shutdown),
+            ("heat shadow", self.heat_shadow.async_shutdown),
             ("grid sign", self._async_save_grid_sign),
         )
         for name, close in parts:

@@ -152,7 +152,7 @@
       "key": "2026-11-15T16:00:00+01:00",
       "kwh": 1.42,
       "outdoor_c": 6.0,
-      "shadow_value": 0.0
+      "shadow_value": -37.624
     },
     {
       "cost": 431.6,
@@ -161,7 +161,7 @@
       "key": "2026-11-15T17:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 282.2
+      "shadow_value": 85.829
     },
     {
       "cost": 431.6,
@@ -170,7 +170,7 @@
       "key": "2026-11-15T18:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 282.2
+      "shadow_value": 85.829
     },
     {
       "cost": 431.6,
@@ -179,7 +179,7 @@
       "key": "2026-11-15T19:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 282.2
+      "shadow_value": 0.0
     },
     {
       "cost": 232.4,
@@ -269,6 +269,35 @@
     "minor": "öre"
   },
   "period": "day",
+  "review": {
+    "date": "2026-11-15",
+    "day": {
+      "coldest_min_c": 20.3,
+      "minutes_below": 30
+    },
+    "effect": {
+      "blocks": 7,
+      "lower_share": 0.46,
+      "rebound": 0.82
+    },
+    "low_c": 20.5,
+    "plan": {
+      "coldest_min_c": 20.3,
+      "hours": 3.0,
+      "minutes_below": 30,
+      "overlap_hours": 2.0,
+      "saved_kwh": 0.383,
+      "value": 127.83
+    },
+    "relay": {
+      "coldest_min_c": 20.3,
+      "hours": 3.0,
+      "measured": 1,
+      "minutes_below": 30,
+      "saved_kwh": 0.6,
+      "value": 336.0
+    }
+  },
   "runs": [
     {
       "cause": "standby",
@@ -290,10 +319,14 @@
     }
   ],
   "shadow": {
+    "blocks": 7,
     "days": 1,
+    "kept_days": 1,
+    "lower_share": 0.46,
     "lowered_hours": 3,
-    "moved_kwh": 4.98,
-    "value": 846.6
+    "moved_kwh": 2.18,
+    "rebound": 0.82,
+    "value": 134.03
   },
   "site_id": "site_villa",
   "time_zone": "Europe/Stockholm",

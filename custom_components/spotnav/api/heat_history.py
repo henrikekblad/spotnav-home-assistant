@@ -26,6 +26,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import callback, HomeAssistant
 
 from ..heat.detect import read_heat_pumps
+from ..heat.relay_effect import Effect
 from ..heat.history import (
     HEAT_HISTORY_API_VERSION,
     OUTDOOR_HOUSE_FORECAST,
@@ -156,7 +157,8 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
     mark: Any = today if complete else (five_slot(now) if period.kind == PERIOD_DAY else hour_start(now, tz))
     cache: dict[tuple[Any, ...], tuple[Any, dict[str, Any]]] = hass.data.setdefault(_CACHE, {})
     config = stored_config(site)
-    key = (site.entry_id, period.kind, period.first, repr(config))
+    shadow_mark = getattr(getattr(controller, "heat_shadow", None), "effect", None)
+    key = (site.entry_id, period.kind, period.first, repr(config), repr(shadow_mark))
     held = cache.get(key)
     if held is not None and held[0] == mark:
         return held[1]
@@ -215,6 +217,20 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
     source = site_price_source(hass, site.entry_id)
     area = None if source is None else source.area
     state = None if meter.entity_id is None else hass.states.get(meter.entity_id)
+    shadow = getattr(controller, "heat_shadow", None)
+    kept: dict[date, dict[datetime, str]] = {}
+    reviews: dict[date, dict[str, Any]] = {}
+    effect = Effect()
+    if shadow is not None:
+        effect = shadow.effect
+        for day in period.days():
+            actions = shadow.kept_actions(day)
+            # A day kept whole only: a part-kept day (SpotNav started mid-day) is planned again whole.
+            if len(actions) >= 23:
+                kept[day] = {hour: action for hour, (action, _reason) in actions.items()}
+            review = shadow.review_of(day)
+            if review is not None:
+                reviews[day] = review
     answer = heat_history(
         HeatHistoryInputs(
             site_id=site.entry_id,
@@ -233,6 +249,9 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             outdoor_source=outdoor_from,
             indoor=indoor,
             immersion=immersion,
+            kept=kept,
+            effect=effect,
+            reviews=reviews,
         )
     )
     cache.pop(key, None)
