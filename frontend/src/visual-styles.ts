@@ -2996,24 +2996,13 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.powerStack}[data-incomplete="true"] {
     opacity: 0.45;
   }
-  /* A day or hour from Home Assistant's statistics: hatched in the card's own background over its colours. */
-  .${VISUAL_CLASSES.powerStack}[data-imported="true"]::after,
-  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerImportedSwatch} {
-    background-image: repeating-linear-gradient(
-      135deg,
-      var(--ha-card-background, var(--card-background-color, #ffffff)) 0 1.5px,
-      transparent 1.5px 4px
-    );
-  }
-  .${VISUAL_CLASSES.powerStack}[data-imported="true"]::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
+  /* A day or hour from Home Assistant's statistics: its colours paler. Hatching means saved money in the cards' charts,
+   * nothing else. */
+  .${VISUAL_CLASSES.powerStack}[data-imported="true"] {
+    opacity: 0.6;
   }
   .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerImportedSwatch} {
-    background-color: color-mix(in srgb, var(--primary-color, #03a9f4) 50%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+    background-color: color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--ha-card-background, var(--card-background-color, #ffffff)));
   }
   /* The month's peak where it lifted the target: a thin solid line in the warning colour, across each bar it held
    * for (the bars' gaps bridged), distinct from the target's dashed line. */

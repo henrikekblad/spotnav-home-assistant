@@ -569,7 +569,7 @@ most hours.* **Use** fills the field; nothing is saved until *Save*.
 Once, when a site first measures, the hours before SpotNav measured are filled from the same statistics, three
 months back: the running month's and the month before's as hours, older months as day summaries. An hour's import is
 the grid's mean (never below zero), the house's part as above where the chargers are known. They are marked as from
-Home Assistant's statistics (hatched in the [Power view](card.md#power), and `imported` in the API), with no holds or
+Home Assistant's statistics (paler in the [Power view](card.md#power), and `imported` in the API), with no holds or
 pauses and never as incomplete; an hour the statistics lack is simply missing. An hour SpotNav measured itself is
 never overwritten: nothing at or after its first measured hour is filled. The demand-charge parts' counted peaks and
 figures count them, only approximately what the meter billed. **Only complete hours of the running month may lift

@@ -254,7 +254,7 @@ shows the site's whole import, not only this charger's:
   (see [the month's peak lifts the target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)):
   over each day from the one it was set, at the level that applied to that day's highest hour, and in a day's hours
   only over the hours a part counts. The legend names it (*The month's peak 6.7 kW*).
-- **Days from Home Assistant's statistics** are hatched, and the legend and a note under it say so (see
+- **Days from Home Assistant's statistics** are paler, and the legend and a note under it say so (see
   [earlier months](site-and-load-balancing.md#earlier-months-from-home-assistants-statistics)).
 - **A tapped day** shows its hours the same way, an hour with gaps in the reading paler; *Whole month* goes back.
   Hover or focus a bar for its figures, for example *Tue 15 Sep: highest 5.9 kW at 19:00 · house 2.3 kW, car

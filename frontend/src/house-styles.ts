@@ -1,8 +1,9 @@
 // The house card's own classes and styles, on top of the charging card's (`visual-styles.ts`), which the house card
 // loads too: the card's frame, the chart's gridlines, axis text and now line, the muted text and the toggle button
-// are the same. The series have a colour each, as custom properties a theme may set: the house in the theme's
-// primary colour, the sun in amber, the battery in teal and the grid in blue-violet (as in the energy flow), selling
-// in raspberry; each keeps 3:1 against a light and a dark card.
+// are the same. The series have a colour each, as custom properties a theme may set, the same hue as the entity's block
+// in the energy flow (a deeper step, for bars on the card): the house in purple, the heat in coral, the sun in amber,
+// the battery in teal and the grid in blue-violet, selling in raspberry; each keeps 3:1 against a light and a dark
+// card. Red and green stay the price's own (dear and cheap).
 
 import { CHART_DENSITY, PLAN_BAND_STYLE } from "./visual-styles";
 
@@ -75,7 +76,7 @@ export const HOUSE_STYLES = `
   /* The colours, also in the history dialog, which lives outside the card. */
   .${H.card},
   .spotnav-history-body {
-    --spotnav-house-colour: var(--spotnav-house, var(--primary-color, #03a9f4));
+    --spotnav-house-colour: var(--spotnav-house, #8f63d8);
     --spotnav-sun-colour: var(--spotnav-sun, #e8a200);
     --spotnav-battery-colour: var(--spotnav-battery, #129c90);
     --spotnav-sell-colour: var(--spotnav-sell, #c2185b);
@@ -85,7 +86,7 @@ export const HOUSE_STYLES = `
     --spotnav-flow-grid: var(--spotnav-flow-grid-colour, #8c9cf5);
     --spotnav-flow-house: var(--spotnav-flow-house-colour, #b98cf0);
     --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
-    --spotnav-heat-colour: var(--spotnav-heat, #e0453a);
+    --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
     --spotnav-flow-heat: var(--spotnav-flow-heat-colour, #ff8f87);
     --spotnav-flow-other: #b0bec5;
   }

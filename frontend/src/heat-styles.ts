@@ -37,9 +37,9 @@ const X = HEAT_CLASSES;
 
 export const HEAT_STYLES = `
   .${X.card} {
-    --spotnav-heat-colour: var(--spotnav-heat, #e0453a);
+    --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
     --spotnav-heat-lower: var(--spotnav-heat-lower-colour, #2f80c8);
-    --spotnav-heat-preheat: var(--spotnav-heat-preheat-colour, #e0453a);
+    --spotnav-heat-preheat: var(--spotnav-heat-preheat-colour, var(--spotnav-heat-colour));
     --spotnav-heat-night: var(--spotnav-heat-night-colour, #7b61d1);
     --spotnav-heat-away: var(--spotnav-heat-away-colour, #8a8f98);
     --spotnav-heat-return: var(--spotnav-heat-return-colour, #e8890c);
