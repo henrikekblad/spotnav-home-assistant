@@ -34,7 +34,6 @@ import {
   getDashboard,
   getCardInfo,
   getDebugBundle,
-  sendDebugInfo,
   getBlueprints,
   getEntityConfig,
   getPowerMonth,
@@ -85,7 +84,7 @@ import {
 } from "./entity-config";
 import { decodeBlueprintUse, type BlueprintUse } from "./automations";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
-import { decodeSendAnswer, sendFailureText, type SendOutcome } from "./send-debug";
+import { sendDebugReport, sendFailureText, type SendOutcome } from "./send-debug";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
 import {
@@ -1693,18 +1692,7 @@ export class SpotnavCard extends HTMLElement {
     if (!this.connected || hass === null || !this.isAdmin) {
       return { error: sendFailureText(language, "unauthorized") };
     }
-    const client = clientBlock(this.ownerDocument.defaultView?.navigator?.userAgent ?? null, this.servedCardHash);
-    let raw: unknown;
-    try {
-      raw = await sendDebugInfo(hass, { message, email, client: { ...client } });
-    } catch (error) {
-      return { error: sendFailureText(language, error instanceof SpotnavApiError ? error.code : null) };
-    }
-    const answer = decodeSendAnswer(raw);
-    if (answer === null) {
-      return { error: sendFailureText(language, null) };
-    }
-    return answer.ok ? { ref: answer.ref } : { error: sendFailureText(language, answer.code, answer.retryAfterS) };
+    return await sendDebugReport(hass, language, this.ownerDocument.defaultView?.navigator?.userAgent ?? null, this.servedCardHash, message, email);
   }
 
   /**

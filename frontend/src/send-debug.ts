@@ -6,7 +6,10 @@
 // The card never builds or reads the bundle here: `spotnav/send_debug_info` builds the same redacted bundle the
 // download saves, and sends it itself.
 
+import { sendDebugInfo, SpotnavApiError } from "./api";
+import { clientBlock } from "./card-identity";
 import { translate, type Language, type TranslationKey } from "./i18n";
+import type { HomeAssistantLike } from "./types";
 import { DEBUG_API_VERSION } from "./types";
 import { shell, type EditorHandlers } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -91,6 +94,32 @@ const FAILURE_KEYS: Record<string, TranslationKey> = {
 export type SendOutcome = { ref: string } | { error: string };
 
 export type SendDebug = (message: string, email: string | null) => Promise<SendOutcome>;
+
+/**
+ * One send for any card: the backend builds the redacted bundle and sends it (the command needs no charger or site),
+ * the card adds its own `client` block. Any failure is the sentence the dialog shows.
+ */
+export async function sendDebugReport(
+  hass: HomeAssistantLike,
+  language: Language,
+  userAgent: string | null | undefined,
+  servedCardHash: string | null,
+  message: string,
+  email: string | null,
+): Promise<SendOutcome> {
+  const client = clientBlock(userAgent, servedCardHash);
+  let raw: unknown;
+  try {
+    raw = await sendDebugInfo(hass, { message, email, client: { ...client } });
+  } catch (error) {
+    return { error: sendFailureText(language, error instanceof SpotnavApiError ? error.code : null) };
+  }
+  const answer = decodeSendAnswer(raw);
+  if (answer === null) {
+    return { error: sendFailureText(language, null) };
+  }
+  return answer.ok ? { ref: answer.ref } : { error: sendFailureText(language, answer.code, answer.retryAfterS) };
+}
 
 function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
   const node = doc.createElement(tag);
