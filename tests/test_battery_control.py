@@ -1038,6 +1038,43 @@ async def test_the_plant_s_changes_count_as_spotnav_s_own_for_a_while_after_a_ha
     assert not controller.battery_shadow.spotnav_acting()
 
 
+async def test_home_assistant_s_stop_saves_the_sessions_first_and_bounds_the_batteries_hand_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    import custom_components.spotnav as integration  # noqa: PLC0415
+    from custom_components.spotnav.runtime import charger_data  # noqa: PLC0415
+
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, own=True)
+    await hass.async_block_till_done()
+    order: list[str] = []
+    chargers = [data for entry in hass.config_entries.async_entries("spotnav")
+                if (data := charger_data(hass, entry.entry_id)) is not None]
+    assert chargers
+    for data in chargers:
+        flush = data.controller.async_flush_session
+
+        async def flushed(flush=flush) -> None:
+            order.append("session")
+            await flush()
+
+        monkeypatch.setattr(data.controller, "async_flush_session", flushed)
+
+    async def slow_hand_back() -> None:
+        # A plant that never answers; the site's own shutdown after it finds the hand-back done.
+        order.append("battery")
+        if order.count("battery") == 1:
+            await asyncio.sleep(3600)
+
+    monkeypatch.setattr(controller.battery_control, "async_shutdown", slow_hand_back)
+    monkeypatch.setattr(integration, "BATTERY_STOP_TOTAL_S", 0.05)
+    async with asyncio.timeout(5):
+        await integration._async_stop(hass)
+    first = order.index("battery")
+    assert first > 0 and set(order[:first]) == {"session"}, order
+    assert controller._closed
+    await BatteryControl.async_shutdown(controller.battery_control)
+
+
 async def test_after_a_restart_the_restore_runs_before_the_first_look(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

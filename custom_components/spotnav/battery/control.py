@@ -256,6 +256,7 @@ class BatteryControl:
         self._lock = asyncio.Lock()
         self._started = False
         self._closed = False
+        self._shut_down = False
         self._start_task: asyncio.Task[None] | None = None
         self._look_task: asyncio.Task[None] | None = None
         self._timer_cancel: Callable[[], None] | None = None
@@ -412,7 +413,11 @@ class BatteryControl:
     async def async_shutdown(self) -> None:
         """The site unloads or Home Assistant stops: before the rest of the site, the timer ends, a start still
         waiting is cancelled (its snapshot stays stored for the next start), a look in progress ends, then the
-        hand-back runs, bounded."""
+        hand-back runs, bounded. Once only: a second call (the site's own shutdown after Home Assistant's stop handed
+        every battery back) returns at once."""
+        if self._shut_down:
+            return
+        self._shut_down = True
         self._closed = True
         if self._timer_cancel is not None:
             self._timer_cancel()
