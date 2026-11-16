@@ -2763,10 +2763,14 @@ var ta="start",_i="stop",cs="resume",na="pause";var a_="normal",vu="vehicle_not_
     gap: 8px;
     font-size: 0.9rem;
   }
+  .spotnav-period-row > span:first-child {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
   .spotnav-period-figure {
+    flex: 0 1 auto;
     font-variant-numeric: tabular-nums;
     text-align: right;
-    white-space: nowrap;
   }
   .spotnav-period-runs {
     margin: 0;
@@ -3016,7 +3020,9 @@ var ta="start",_i="stop",cs="resume",na="pause";var a_="normal",vu="vehicle_not_
     }
   }
 `;var Y={card:"spotnav-house",head:"spotnav-house-head",title:"spotnav-house-title",chip:"spotnav-house-chip",sub:"spotnav-house-sub",surface:"spotnav-house-surface",chart:"spotnav-house-chart",bands:"spotnav-house-bands",band:"spotnav-house-band",bars:"spotnav-house-bars",bar:"spotnav-house-bar",barForecast:"spotnav-house-bar-forecast",forecastTick:"spotnav-house-forecast-tick",carBar:"spotnav-house-car-bar",heatBar:"spotnav-house-heat-bar",heatForecast:"spotnav-house-heat-forecast",sunArea:"spotnav-house-sun-area",sunRaw:"spotnav-house-sun-raw",soc:"spotnav-house-soc",socPlan:"spotnav-house-soc-plan",legend:"spotnav-house-legend",legendItem:"spotnav-house-legend-item",legendButton:"spotnav-house-legend-button",swatch:"spotnav-house-swatch",line:"spotnav-house-line",detailsToggle:"spotnav-house-details-toggle",details:"spotnav-house-details",section:"spotnav-house-section",heading:"spotnav-house-heading",table:"spotnav-house-table",facts:"spotnav-house-facts",note:"spotnav-house-note",priceBuy:"spotnav-house-price-buy",priceSell:"spotnav-house-price-sell",nowLabel:"spotnav-house-now-label",views:"spotnav-house-views",today:"spotnav-house-today",flow:"spotnav-house-flow",flowRow:"spotnav-house-flow-row",flowLabel:"spotnav-house-flow-label",flowBar:"spotnav-house-flow-bar",flowPart:"spotnav-house-flow-part",flowKey:"spotnav-house-flow-key",flowChart:"spotnav-house-flow-chart",readout:"spotnav-house-readout",compare:"spotnav-house-compare",compareHead:"spotnav-house-compare-head",compareGrid:"spotnav-house-compare-grid",compareRow:"spotnav-house-compare-row",compareName:"spotnav-house-compare-name",compareTrack:"spotnav-house-compare-track",compareFill:"spotnav-house-compare-fill",compareValue:"spotnav-house-compare-value",base:"spotnav-house-base",baseRow:"spotnav-house-base-row",baseValue:"spotnav-house-base-value",baseNote:"spotnav-house-base-note"},W=Y,Rl=`
-  .${W.card} {
+  /* The colours, also in the history dialog, which lives outside the card. */
+  .${W.card},
+  .spotnav-history-body {
     --spotnav-house-colour: var(--spotnav-house, var(--primary-color, #03a9f4));
     --spotnav-sun-colour: var(--spotnav-sun, #e8a200);
     --spotnav-battery-colour: var(--spotnav-battery, #129c90);
