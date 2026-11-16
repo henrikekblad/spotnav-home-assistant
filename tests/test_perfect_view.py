@@ -54,3 +54,27 @@ def test_a_mode_that_did_not_run_has_no_share() -> None:
     block = perfect_block([review(date(2026, 11, 3), facit=made)])
     assert block["shares"]["max_profit"] is None and block["work"]["max_profit"] is None
     assert block["savings"]["max_profit"] is None
+
+
+def test_a_partial_day_is_left_out_of_every_figure_and_counted_apart() -> None:
+    whole = review(date(2026, 11, 3), facit=facit_for(date(2026, 11, 3), 1000.0, 600.0, 900.0, 800.0))
+    partial = review(date(2026, 11, 4), facit=facit_for(date(2026, 11, 4), 5000.0, 0.0, 900.0, 800.0, measured=80))
+    block = perfect_block([whole, partial])
+    assert block["days"] == 1 and block["partial"] == 1
+    assert block["saving"] == 1000.0 and block["shares"]["own"] == 60.0 and block["savings"]["own"] == 600.0
+    # A partial day alone: no share, said to be incomplete.
+    alone = perfect_block([partial])
+    assert alone["days"] == 0 and alone["partial"] == 1 and alone["saving"] is None
+    assert all(value is None for value in alone["shares"].values())
+
+
+def test_a_period_is_compared_only_where_the_perfect_plan_saved_five_kronor_a_day() -> None:
+    # Three days at 4 kr each: summed (12 kr) but under 5 kr a day, too small a difference to compare.
+    small = [review(date(2026, 11, d), facit=facit_for(date(2026, 11, d), 400.0, 300.0, 350.0, 350.0)) for d in (3, 4, 5)]
+    block = perfect_block(small)
+    assert block["days"] == 3 and block["saving"] == 1200.0
+    assert block["shares"]["own"] is None and block["savings"]["own"] == 900.0
+    # One good day lifts the period over 5 kr a day: the savings are summed first, then divided.
+    good = review(date(2026, 11, 6), facit=facit_for(date(2026, 11, 6), 2000.0, 1500.0, 1800.0, 1700.0))
+    block = perfect_block([*small, good])
+    assert block["shares"]["own"] == round(2400 / 3200 * 100, 1)

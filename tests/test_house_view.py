@@ -168,11 +168,14 @@ def battery_plan(now: datetime) -> tuple[PlannedSlot, ...]:
     return tuple(slots)
 
 
-def facit_for(day: date, perfect: float, own: float, balanced: float, max_profit: float, *, provisional: bool = False) -> Facit:
-    """A day against its perfect plan (`battery/hindsight.py`), the savings against no battery in öre."""
+def facit_for(
+    day: date, perfect: float, own: float, balanced: float, max_profit: float, *, provisional: bool = False, measured: int = 96
+) -> Facit:
+    """A day against its perfect plan (`battery/hindsight.py`), the savings against no battery in öre; [measured] of its
+    96 quarter hours (under 90 %: a partial day, no share)."""
 
     def way(saving: float, against: float, discharged: float, switches: int, grid: float, sold: float) -> Candidate:
-        share, clamped = share_of(saving, against)
+        share, clamped = share_of(saving, against) if measured >= 87 else (None, False)
         work = Work(discharged, discharged / 40.3, switches, grid, sold)
         return Candidate(saving, against, share, clamped, work)
 
@@ -180,9 +183,11 @@ def facit_for(day: date, perfect: float, own: float, balanced: float, max_profit
     return Facit(
         computed_at=datetime.combine(day + timedelta(days=1), datetime.min.time(), timezone.utc) + timedelta(hours=13),
         end_value=118.0 if provisional else 141.5,
-        basis="day_median" if provisional else "ahead",
+        basis="day_median" if provisional else "next_day",
         mode="balanced",
         no_battery_cost=4700.0,
+        quarters=96,
+        measured=measured,
         perfect={"balanced": way(perfect, perfect, 18.0, 2, 14.0, 0.0), "max_profit": way(best, best, 24.0, 3, 16.0, 6.0)},
         candidates={
             "own": way(own, perfect, 16.5, 4, 9.0, 0.4),

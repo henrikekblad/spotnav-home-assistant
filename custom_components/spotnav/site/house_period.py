@@ -11,7 +11,7 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
-              by_day: [{date, battery_saving, plan_saving, own_saving, own_share, plan_share}],
+              by_day: [{date, battery_saving, plan_saving, own_saving, own_share, plan_share, share_note}],
               perfect: (`site/perfect_view.py`) | null} | null,
      forecast: {house, sun, sun_corrected, soc: {mae, days} | null} }
 
@@ -39,7 +39,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   self-consumption, each mode planned beside it. Each sum says over how many days (`*_days`); `days` against
   `period_days` (the period's days up to yesterday) says how much of the period was reviewed; `by_day` has each
   reviewed day (the front's month calendar moved here) with its share of its perfect plan in hindsight (`own_share`,
-  `plan_share`); `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
+  `plan_share`; `share_note` says why a day with a perfect plan has none: `partial`, under 90 % of it measured, or
+  `small`, the perfect plan saved under 5 kr); `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
   over the period, where the day boundary washes out). `null` without a battery or with no reviewed day.
 * **The forecasts** (`forecast`): the mean of each forecast's daily mean absolute error over the period's reviewed
   days (the forecast log keeps 30 days of reviews), with the days counted; `null` per forecast without one.
@@ -309,14 +310,24 @@ def review_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
     }
 
 
+#: Why a day with a perfect plan has no share: under 90 % of it measured, or too small a difference to compare.
+SHARE_PARTIAL: Final = "partial"
+SHARE_SMALL: Final = "small"
+
+
 def _day_shares(review: DayReview) -> dict[str, Any]:
-    """A day's share of its perfect plan: what really happened and the site's mode; `None` without a perfect plan."""
+    """A day's share of its perfect plan: what really happened and the site's mode, and why there is none (`None`
+    without a perfect plan)."""
     facit = review.facit
     own = None if facit is None else facit.candidates.get("own")
     plan = None if facit is None or review.mode is None else facit.candidates.get(review.mode)
+    note = None
+    if facit is not None and facit.saving is not None:
+        note = SHARE_PARTIAL if not facit.whole else SHARE_SMALL if own is not None and own.share is None else None
     return {
         "own_share": None if own is None or own.share is None else round(own.share, 1),
         "plan_share": None if plan is None or plan.share is None else round(plan.share, 1),
+        "share_note": note,
     }
 
 

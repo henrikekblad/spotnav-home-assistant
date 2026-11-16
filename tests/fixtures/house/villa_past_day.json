@@ -39,6 +39,7 @@
         "clamped": [],
         "days": 7,
         "mode": "balanced",
+        "partial": 0,
         "provisional": 1,
         "saving": 8120.0,
         "savings": {
@@ -223,6 +224,7 @@
       "clamped": [],
       "days": 1,
       "mode": "balanced",
+      "partial": 0,
       "provisional": 1,
       "saving": 1115.0,
       "savings": {

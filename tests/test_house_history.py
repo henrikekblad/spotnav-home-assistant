@@ -177,7 +177,12 @@ def month_inputs(**extra: Any) -> HouseHistoryInputs:
         reviews=[
             review(
                 date(2026, 11, day),
-                facit=None if day < 6 else facit_for(date(2026, 11, day), 900.0 + 20 * day, 700.0 + 15 * day, 820.0, 760.0, provisional=day == 15),
+                # The 7th is partial (no share); on the 9th the perfect plan saved under 5 kr (too small to compare).
+                facit=None
+                if day < 6
+                else facit_for(date(2026, 11, 9), 420.0, 300.0, 380.0, 360.0)
+                if day == 9
+                else facit_for(date(2026, 11, day), 900.0 + 20 * day, 700.0 + 15 * day, 820.0, 760.0, provisional=day == 15, measured=80 if day == 7 else 96),
                 cell_temperature=None if day < 8 else CellTemperature(19.5 + day * 0.2, 23.0 + day * 0.3, 15 if day == 12 else 0, 1440),
             )
             for day in range(3, 16)
@@ -331,6 +336,18 @@ def test_archived_reviews_are_read_from_exported_days(tmp_path: Path) -> None:
     assert list(found) == [date(2026, 9, 3)]
     assert found[date(2026, 9, 3)].battery_saving == pytest.approx(400.0)
     assert read_archived_reviews(tmp_path / "missing", [date(2026, 9, 3)]) == {}
+
+
+def test_a_day_without_a_share_says_why_and_the_month_counts_whole_days() -> None:
+    review = house_history(month_inputs())["review"]
+    notes = {row["date"]: row["share_note"] for row in review["by_day"]}
+    assert notes["2026-11-07"] == "partial" and notes["2026-11-09"] == "small" and notes["2026-11-05"] is None
+    assert notes["2026-11-10"] is None
+    shares = {row["date"]: row["own_share"] for row in review["by_day"]}
+    assert shares["2026-11-07"] is None and shares["2026-11-09"] is None and shares["2026-11-10"] is not None
+    perfect = review["perfect"]
+    # Days 6 to 15 have a perfect plan; the 7th is partial and left out, the 9th counts in the sums.
+    assert perfect["days"] == 9 and perfect["partial"] == 1 and perfect["shares"]["own"] is not None
 
 
 # ------------------------------------------------------------------------------------------------ fixtures

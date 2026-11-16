@@ -544,7 +544,8 @@
         "own_saving": 50.0,
         "own_share": 77.1,
         "plan_saving": 150.0,
-        "plan_share": 68.3
+        "plan_share": 68.3,
+        "share_note": null
       }
     ],
     "days": 1,
@@ -569,6 +570,7 @@
       "clamped": [],
       "days": 1,
       "mode": "balanced",
+      "partial": 0,
       "provisional": 1,
       "saving": 1200.0,
       "savings": {
