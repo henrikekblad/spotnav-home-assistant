@@ -376,6 +376,7 @@ class BatteryControl:
             _LOGGER.warning("The battery control state could not be read")
             stored = None
         self._stored = dict(stored) if isinstance(stored, dict) else {}
+        self._migrate_mode()
         reports = self._stored.get("reports")
         self.reports = dict(reports) if isinstance(reports, dict) else {}
         self._load_gate(self._stored.get("gate"))
@@ -534,6 +535,14 @@ class BatteryControl:
         """The site's options, from its entry as stored now (a settings write needs no reload)."""
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
         return gate.Options.from_config(entry.data if entry is not None else self.site.config)
+
+    def _migrate_mode(self) -> None:
+        """Once: a site that allowed selling and never chose a mode gets Max profit stored (the legacy option is read
+        for this one release only)."""
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        mode = None if entry is None else gate.legacy_mode(entry.data)
+        if entry is not None and mode is not None:
+            self.hass.config_entries.async_update_entry(entry, data={**entry.data, gate.CONF_MODE: mode})
 
     def _integration_version(self, domain: str | None) -> str | None:
         if not domain:
@@ -960,11 +969,12 @@ class BatteryControl:
 
     # ---- the settings
 
-    async def async_update_options(self, changes: dict[str, bool]) -> dict[str, Any]:
-        """Write some of the site's options (`gate.DEFAULTS`' keys, booleans) to its entry, without a reload, and act
+    async def async_update_options(self, changes: dict[str, Any]) -> dict[str, Any]:
+        """Write some of the site's options (`gate.WRITABLE`: booleans, and the battery mode) to its entry, without a
+        reload; a changed mode re-plans at once (the comparison's \"in force\" row moves with it); act
         on them at once: turned off or back to shadow only, the plant is handed back before this returns; turned on,
         the next look starts the routine. Answers the status."""
-        unknown = [key for key, value in changes.items() if key not in gate.DEFAULTS or not isinstance(value, bool)]
+        unknown = [key for key, value in changes.items() if not gate.valid_change(key, value)]
         if unknown:
             raise ValueError(f"not a battery control option: {', '.join(sorted(unknown))}")
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
@@ -976,6 +986,8 @@ class BatteryControl:
             self.hass.config_entries.async_update_entry(entry, data={**entry.data, **changes})
             after = self.options()
             _LOGGER.info("SpotNav battery control: options %s", after.as_dict())
+            if before.mode != after.mode:
+                self.site.battery_shadow.plan.mode_changed(dt_util.now())
             # The entry is written: nothing below may raise into the caller (the plant is handed back at the next
             # look if this hand-back fails).
             if self._started and not self._closed:

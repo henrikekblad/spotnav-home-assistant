@@ -120,6 +120,7 @@ from .plan_shadow import (
     usable_buckets,
 )
 from .review_baselines import sun_by_quarter
+from . import gate
 from .learned import LearnedBattery, with_learned
 from .stored_value import StoredValue
 
@@ -147,7 +148,7 @@ budget_clock = time.monotonic
 SELL_CREDIT_KEY: Final = "sell_credit_minor_per_kwh"
 #: The site's battery mode (`plan_model.MODES`), read from the site's entry under this key; Balanced when unset or
 #: unknown. No setting offers it yet.
-MODE_KEY: Final = "battery_mode"
+MODE_KEY: Final = gate.CONF_MODE
 #: Estimate markers of the modes: the mode key held something unknown; the currency has no wear figure.
 EST_MODE_UNKNOWN: Final = "battery_mode_unknown"
 EST_WEAR_CURRENCY: Final = "wear_currency_unknown"
@@ -797,6 +798,16 @@ class BatteryPlanShadow:
                 self._site_mode(),
             ),
         }
+
+    def mode_changed(self, now: datetime) -> None:
+        """The site's mode was written: plan again at once, not at the next check."""
+        if not self._loaded or self._closed or self._facts.battery_entity_id is None:
+            return
+        try:
+            self._checked_at = now
+            self._check(now, self._facts)
+        except Exception:  # noqa: BLE001 - the plan must never disturb the site
+            _LOGGER.debug("SpotNav battery plan: the mode change could not start a plan", exc_info=True)
 
     def _check(self, now: datetime, facts: BatteryFacts) -> None:
         keys = self._keys(now, facts)

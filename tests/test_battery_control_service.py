@@ -8,6 +8,7 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
+import voluptuous as vol
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.util import dt as dt_util
@@ -98,4 +99,44 @@ async def test_the_settings_service_and_the_card_command_write_the_options_witho
     })
     result = (await client.receive_json())["result"]
     assert result["ok"] and result["status"]["options"][gate.CONF_AI_TAKEOVER_ACK] is True
+    assert plant.calls == []
+
+
+async def test_the_battery_mode_is_written_validated_and_the_legacy_sell_option_is_not_writable(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], hass_admin_user: Any,
+    hass_read_only_user: Any, hass_ws_client: Any,
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, own=True)
+    await hass.async_block_till_done()
+    client = await hass_ws_client(hass)
+
+    async def ask(changes: dict[str, Any], msg_id: int) -> dict[str, Any]:
+        await client.send_json(
+            {"id": msg_id, "type": "spotnav/battery_control", "api_version": 1, "site_id": site.entry_id,
+             "changes": changes}
+        )
+        return (await client.receive_json())["result"]
+
+    assert (await ask({"battery_mode": "export"}, 1))["error"] == "spotnav_invalid_value"
+    assert (await ask({"battery_mode": True}, 2))["error"] == "spotnav_invalid_value"
+    assert (await ask({"battery_control_allow_sell": True}, 3))["error"] == "spotnav_invalid_value"
+    assert gate.CONF_MODE not in site.data
+    result = await ask({"battery_mode": "max_profit"}, 4)
+    assert result["ok"] and result["status"]["options"]["battery_mode"] == "max_profit"
+    assert result["status"]["options"]["battery_control_allow_sell"] is True, "derived, for one release"
+    assert site.data[gate.CONF_MODE] == "max_profit" and site_controller_for(hass, site.entry_id) is controller
+    result = await ask({"battery_mode": "self_consumption"}, 5)
+    assert result["status"]["options"]["battery_mode"] == "self_consumption"
+    assert controller.battery_control.options().mode == "self_consumption"
+    assert controller.battery_shadow.snapshot()["plan"]["mode"] in ("balanced", "self_consumption", "max_profit")
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN, "battery_control_settings", {"battery_control_allow_sell": True}, blocking=True,
+            context=Context(user_id=hass_admin_user.id),
+        )
+    answer = await hass.services.async_call(
+        DOMAIN, "battery_control_settings", {"battery_mode": "balanced"}, blocking=True,
+        context=Context(user_id=hass_admin_user.id), return_response=True,
+    )
+    assert answer["options"]["battery_mode"] == "balanced"
     assert plant.calls == []

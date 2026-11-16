@@ -9,8 +9,11 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   logs what it would do. It stays on until the owner's on-site tests are done (plan `v3_battery_control_optin.md`).
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
-* `battery_control_allow_sell` (default off): the plan may discharge the battery to the grid (`export_discharge`),
-  capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`).
+* `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
+  what the battery is for. Only Max profit lets the plan discharge the battery to the grid (`export_discharge`),
+  capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`). It replaces
+  `battery_control_allow_sell`, which is read for one release only, as the source of a one-time migration
+  (`legacy_mode`) and is no longer written.
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
   import limit acts under Remote EMS. Until then, and whenever that limit does not read at most the fuse, a grid
   charge is capped so that it, the chargers' last currents and the house's peak keep every phase under the fuse
@@ -24,7 +27,7 @@ fail; anything else (`not_judgeable:*`, an abort for the moment's circumstances:
 is pending and tried again at a later suitable moment (`modes_to_run`, `suitable`), at most `MAX_ATTEMPTS` runs.
 **The report decides which actions are allowed** (`allowed_actions`): hold and normal must pass for any control; a
 grid charge only if `charge` passed, a discharge for the house only if `discharge_house` passed, a discharge to the
-grid only with `battery_control_allow_sell` on top of that. The export limit needs no routine of its own: it starts
+grid only in the Max profit mode on top of that. The export limit needs no routine of its own: it starts
 on its live check (the executor's monitor hands it back and blocks it when the export does not stop).
 
 The fast shedding order on the fuse (`battery_yields`): heat loads first (when the site has them, later), then the
@@ -44,6 +47,9 @@ from typing import Any, Final, Literal
 
 from .commands import ACTION_CURTAIL_EXPORT
 from .plan_model import (
+    DEFAULT_MODE,
+    MODE_MAX_PROFIT,
+    MODES,
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
     ACTION_GRID_CHARGE,
@@ -55,16 +61,20 @@ from .shadow import parse_aware_datetime
 CONF_ENABLED: Final = "battery_control_enabled"
 CONF_SHADOW_ONLY: Final = "battery_control_shadow_only"
 CONF_AI_TAKEOVER_ACK: Final = "battery_control_ai_takeover_ack"
+#: The legacy option (read for one release as the migration's source, never written).
 CONF_ALLOW_SELL: Final = "battery_control_allow_sell"
+#: The site's battery mode (the plan's `plan_runtime.MODE_KEY`).
+CONF_MODE: Final = "battery_mode"
 CONF_IMPORT_LIMIT_ACTS: Final = "battery_control_import_limit_acts"
 #: Every option and its default.
 DEFAULTS: Final[Mapping[str, bool]] = {
     CONF_ENABLED: False,
     CONF_SHADOW_ONLY: True,
     CONF_AI_TAKEOVER_ACK: False,
-    CONF_ALLOW_SELL: False,
     CONF_IMPORT_LIMIT_ACTS: False,
 }
+#: The keys a write may set: the booleans above and the mode.
+WRITABLE: Final = (*DEFAULTS, CONF_MODE)
 
 #: The battery's modes the routine judges, and normal (the hand-back's check).
 BATTERY_MODES: Final = ("hold", "charge", "discharge_house")
@@ -112,6 +122,20 @@ def _flag(value: Any, default: bool) -> bool:
     return value if isinstance(value, bool) else default
 
 
+def valid_change(key: str, value: Any) -> bool:
+    """Whether a write may set this key to this value: a boolean for an option, one of `MODES` for the mode."""
+    if key == CONF_MODE:
+        return isinstance(value, str) and value in MODES
+    return key in DEFAULTS and isinstance(value, bool)
+
+
+def legacy_mode(config: Mapping[str, Any]) -> str | None:
+    """The mode to store once for a site that never chose one but had selling allowed, else `None`."""
+    if CONF_MODE not in config and config.get(CONF_ALLOW_SELL) is True:
+        return MODE_MAX_PROFIT
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class Options:
     """The site's battery control options (see the module)."""
@@ -119,7 +143,7 @@ class Options:
     enabled: bool = False
     shadow_only: bool = True
     ai_takeover_ack: bool = False
-    allow_sell: bool = False
+    mode: str = DEFAULT_MODE
     import_limit_acts: bool = False
 
     @classmethod
@@ -129,20 +153,35 @@ class Options:
             enabled=_flag(config.get(CONF_ENABLED), False),
             shadow_only=_flag(config.get(CONF_SHADOW_ONLY), True),
             ai_takeover_ack=_flag(config.get(CONF_AI_TAKEOVER_ACK), False),
-            allow_sell=_flag(config.get(CONF_ALLOW_SELL), False),
+            mode=_mode(config),
             import_limit_acts=_flag(config.get(CONF_IMPORT_LIMIT_ACTS), False),
         )
+
+    @property
+    def allow_sell(self) -> bool:
+        """Selling from the battery is the Max profit mode's."""
+        return self.mode == MODE_MAX_PROFIT
 
     @property
     def writes(self) -> bool:
         """Whether anything may be written at all (the routine, control, the export limit)."""
         return self.enabled and not self.shadow_only
 
-    def as_dict(self) -> dict[str, bool]:
+    def as_dict(self) -> dict[str, bool | str]:
+        """The payload's options. `battery_control_allow_sell` stays for one release, derived from the mode (the
+        payload only grows); the card reads `battery_mode`."""
         return {
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
-            CONF_ALLOW_SELL: self.allow_sell, CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts,
+            CONF_ALLOW_SELL: self.allow_sell, CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_MODE: self.mode,
         }
+
+
+def _mode(config: Mapping[str, Any]) -> str:
+    """The stored mode; a site that never chose one follows its legacy sell option; anything unknown is Balanced."""
+    value = config.get(CONF_MODE)
+    if value is None:
+        return legacy_mode(config) or DEFAULT_MODE
+    return value if isinstance(value, str) and value in MODES else DEFAULT_MODE
 
 
 def parse_time(value: Any) -> datetime | None:

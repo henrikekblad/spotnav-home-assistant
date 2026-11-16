@@ -166,6 +166,10 @@ def _options(hass: HomeAssistant, site: MockConfigEntry, **flags: bool) -> None:
     )
 
 
+def _mode(hass: HomeAssistant, site: MockConfigEntry, mode: str) -> None:
+    hass.config_entries.async_update_entry(site, data={**site.data, gate.CONF_MODE: mode})
+
+
 def _passed(control: BatteryControl, **outcomes: str) -> None:
     """A passed verification report for the plant's firmware as the control reads it now."""
     control.facts = control._read_facts()
@@ -954,7 +958,7 @@ async def test_a_discharge_to_the_grid_keeps_the_sun_s_export_and_its_own_under_
     export = {"a": [15.0, 3.0, 3.0]}
     monkeypatch.setattr(BatteryControl, "_phase_export_a", lambda self, volts: export["a"])
     control = await _started(hass, site, controller, plan_source=lambda _now: ("export_discharge", 20.0, None))
-    _options(hass, site, allow_sell=True)
+    _mode(hass, site, "max_profit")
     await _looks(control, dt_util.now(), 6)
     # 25 A less the 2 A margin less the sun's 15 A on L1 leaves 8 A a phase: 5.543 kW balanced.
     volts = 400.0 / 3 ** 0.5
@@ -1049,7 +1053,7 @@ async def test_selling_from_the_battery_is_off_by_default(
     now = await _looks(control, dt_util.now(), 4)
     assert plant.calls == []
     assert [row["reason"] for row in control.log if row["kind"] == "restricted"] == ["not_verified:export_discharge"]
-    _options(hass, site, allow_sell=True)
+    _mode(hass, site, "max_profit")
     await _looks(control, now, 6)
     assert hass.states.get(MODE).state == "Command Discharging (PV First)" and hass.states.get(DISCHARGE).state == "4"
 
@@ -1253,7 +1257,7 @@ async def test_the_test_action_s_grid_charge_follows_the_cap_at_each_look_and_it
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = await _started(hass, site, controller, plan_source=lambda _now: None)
-    _options(hass, site, allow_sell=True)
+    _mode(hass, site, "max_profit")
     await control.async_trial("grid_charge", 3.0, 30, force=False)
     now = await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
     assert hass.states.get(MODE).state == "Command Charging (Grid First)" and hass.states.get(CHARGE).state == "3"
@@ -1511,3 +1515,30 @@ async def test_the_shadow_shows_the_hold_variant_the_verification_passed(
         ("charge_limit", 0.0), ("remote_ems", True), ("control_mode", "Command Charging (PV First)")
     ]
     assert controller.battery_shadow.inputs(now).variant == "pv_first"
+
+
+async def test_a_stored_allow_sell_becomes_the_max_profit_mode_once_and_a_chosen_mode_is_left_alone(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
+    _options(hass, site, allow_sell=True)
+    assert gate.CONF_MODE not in site.data
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    assert site.data[gate.CONF_MODE] == "max_profit" and control.options().mode == "max_profit"
+    await control.async_update_options({gate.CONF_MODE: "balanced"})
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    await again.async_start()
+    assert site.data[gate.CONF_MODE] == "balanced", "migrated once; the legacy option is never read again"
+    assert again.options().mode == "balanced" and not again.options().allow_sell
+    assert "battery_mode" in control.status()["options"]
+
+
+async def test_only_max_profit_lets_control_run_the_selling_action(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    for mode, sells in (("self_consumption", False), ("balanced", False), ("max_profit", True)):
+        await control.async_update_options({gate.CONF_MODE: mode})
+        assert ("export_discharge" in control.status()["allowed_actions"]) is sells
