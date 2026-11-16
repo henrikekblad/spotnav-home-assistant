@@ -12,6 +12,9 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 
 type Money = HouseAnswer["money"];
 
+/** A day's share needs the perfect plan to save at least this much (minor units: `hindsight.MIN_PERFECT_SAVING`). */
+const MIN_PERFECT_SAVING = 500;
+
 function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
   const created = doc.createElement(tag);
   if (className !== undefined) {
@@ -23,9 +26,14 @@ function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, c
   return created;
 }
 
-/** Whether there is a perfect plan to show. */
+/** Whether there is a perfect plan to show: a whole day's, or only incomplete days (which say so). */
 export function hasPerfect(perfect: PerfectFigures | null | undefined): perfect is PerfectFigures {
-  return perfect !== null && perfect !== undefined && perfect.days > 0 && perfect.saving !== null;
+  return perfect !== null && perfect !== undefined && ((perfect.days > 0 && perfect.saving !== null) || perfect.partial > 0);
+}
+
+/** Whether only incomplete days are behind it: no share to show. */
+export function onlyPartial(perfect: PerfectFigures): boolean {
+  return perfect.days === 0 || perfect.saving === null;
 }
 
 function share(language: Language, value: number): string {
@@ -38,6 +46,14 @@ function money(language: Language, minor: number, unit: Money): string {
   }
   const major = minor / 100;
   return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${unit.major_unit}`;
+}
+
+/** A round sum in the major unit ("5 kr"), else in minor units. */
+function wholeMoney(language: Language, minor: number, unit: Money): string {
+  if (unit === null || unit.major_unit === null) {
+    return money(language, minor, unit);
+  }
+  return `${formatNumber(language, minor / 100, 0)} ${unit.major_unit}`;
 }
 
 /** A way's name: the battery's own control (its optimiser where known), or SpotNav and the mode. */
@@ -67,9 +83,12 @@ export function perfectHeadline(language: Language, perfect: PerfectFigures, own
   return way === null ? null : translate(language, "perfect.headlineOne", { name: wayName(language, way, ownName), share: share(language, value!) });
 }
 
-/** The share rows (a bar each, 0-100 %), the chosen mode marked. */
+/** The share rows (a bar each, 0-100 %), the chosen mode marked; none over incomplete days alone. */
 export function perfectRows(doc: Document, language: Language, perfect: PerfectFigures, ownName: string, inForce: string | null): HTMLElement {
   const grid = element(doc, "div", H.compareGrid);
+  if (onlyPartial(perfect)) {
+    return grid;
+  }
   for (const way of order(perfect.mode)) {
     const value = perfect.shares[way];
     const ran = perfect.savings[way] !== null;
@@ -99,8 +118,8 @@ export function perfectRows(doc: Document, language: Language, perfect: PerfectF
   return grid;
 }
 
-/** The plain notes under the shares: what perfect is, a single day's midnight, the days still on their own value, a
- * share clamped. */
+/** The plain notes under the shares: an incomplete day, what perfect is, a single day's midnight, the days still on
+ * their own value, the incomplete days left out, a share clamped. */
 export function perfectNotes(doc: Document, language: Language, perfect: PerfectFigures, ownName: string, singleDay: boolean): HTMLElement[] {
   const notes: HTMLElement[] = [];
   const add = (key: string, text: string): void => {
@@ -108,6 +127,13 @@ export function perfectNotes(doc: Document, language: Language, perfect: Perfect
     line.dataset["line"] = key;
     notes.push(line);
   };
+  if (onlyPartial(perfect)) {
+    add(
+      "perfect-partial",
+      singleDay ? translate(language, "perfect.partialDay") : translate(language, `perfect.partialOnly.${pluralForm(language, perfect.partial)}`, { days: String(perfect.partial) }),
+    );
+    return notes;
+  }
   add("perfect-explain", translate(language, "perfect.explain"));
   if (singleDay) {
     add("perfect-midnight", translate(language, "perfect.midnight"));
@@ -117,6 +143,9 @@ export function perfectNotes(doc: Document, language: Language, perfect: Perfect
       "perfect-provisional",
       singleDay ? translate(language, "perfect.provisionalDay") : translate(language, `perfect.provisional.${pluralForm(language, perfect.provisional)}`, { days: numberWord(language, perfect.provisional) }),
     );
+  }
+  if (perfect.partial > 0) {
+    add("perfect-partial", translate(language, `perfect.partial.${pluralForm(language, perfect.partial)}`, { days: String(perfect.partial) }));
   }
   const clamped = perfect.clamped.filter((way): way is PerfectWay => (PERFECT_WAYS as readonly string[]).includes(way));
   if (clamped.length > 0) {
@@ -160,7 +189,7 @@ export function perfectDetails(doc: Document, language: Language, perfect: Perfe
       body.append(row);
     }
     table.append(head, body);
-    section.append(table, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "perfect.money.note")));
+    section.append(table, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "perfect.money.note", { amount: wholeMoney(language, MIN_PERFECT_SAVING, money_) })));
   }
   const worked = [...ways, "perfect" as const].filter((way) => perfect.work[way] !== null);
   if (worked.length > 0) {

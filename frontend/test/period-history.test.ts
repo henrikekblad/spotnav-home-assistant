@@ -158,6 +158,9 @@ describe("the house history", () => {
     expect(month.querySelectorAll("[data-part='days'] tbody tr:first-child td")).toHaveLength(5);
     expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-03'] td:last-child")?.textContent).toBe("–");
     expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-06'] td:last-child")?.textContent).toBe("78 %");
+    // A day under 90 % measured, and one whose perfect plan saved under 5 kr, say why they have no share.
+    expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-07'] td:last-child")?.textContent).toBe("ofullständigt dygn");
+    expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-09'] td:last-child")?.textContent).toBe("för liten skillnad");
   });
 
   it("opens a month with the shares of the perfect plan, summed so the day boundary washes out", () => {
@@ -168,6 +171,7 @@ describe("the house history", () => {
     expect(part.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning 77 % av perfekt · SpotNav Balanserad 74 %");
     expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, med samma regler.");
     expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
+    expect(part.querySelector("[data-line='perfect-partial']")?.textContent).toBe("1 ofullständigt dygn räknas inte med.");
     // It comes before the money; the money behind it and the work only with Detailed on.
     const parts = Array.from(body.querySelectorAll<HTMLElement>("[data-part]")).map((item) => item.dataset["part"]);
     expect(parts.indexOf("perfect")).toBeLessThan(parts.indexOf("money"));

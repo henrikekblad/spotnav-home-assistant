@@ -65,6 +65,8 @@ export interface HouseReviewDay {
   /** The day's share of its perfect plan: the battery's own and the site's mode; `null` without one. */
   own_share: number | null;
   plan_share: number | null;
+  /** Why a day with a perfect plan has no share: under 90 % measured, or too small a difference to compare. */
+  share_note: "partial" | "small" | null;
 }
 
 export interface HouseReview {
@@ -195,6 +197,11 @@ function cost(value: unknown): HouseCost | null {
   };
 }
 
+/** A day's `share_note`: a known reason, else none (a newer backend's word is not shown as a reason). */
+function shareNote(value: unknown): HouseReviewDay["share_note"] {
+  return value === "partial" || value === "small" ? value : value === null ? null : (text(value), null);
+}
+
 function review(value: unknown): HouseReview | null {
   if (value === null) {
     return null;
@@ -229,6 +236,7 @@ function review(value: unknown): HouseReview | null {
         own_saving: number(item.own_saving),
         own_share: "own_share" in item ? numberOrNull(item.own_share) : null,
         plan_share: "plan_share" in item ? numberOrNull(item.plan_share) : null,
+        share_note: "share_note" in item ? shareNote(item.share_note) : null,
       };
     }),
     perfect: "perfect" in source ? decodePerfect(source.perfect) : null,
@@ -584,7 +592,8 @@ function daysSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
       row.append(element(doc, "td", undefined, value === null ? "–" : amount(language, value, answer.money)));
     }
     if (shares) {
-      row.append(element(doc, "td", undefined, day.own_share === null ? "–" : `${formatNumber(language, day.own_share, 0)} %`));
+      const cell = day.own_share !== null ? `${formatNumber(language, day.own_share, 0)} %` : day.share_note === null ? "–" : translate(language, `hist.house.share.${day.share_note}`);
+      row.append(element(doc, "td", day.own_share === null && day.share_note !== null ? C.muted : undefined, cell));
     }
     rows.append(row);
   }

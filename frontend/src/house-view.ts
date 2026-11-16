@@ -462,7 +462,7 @@ function perfectBlock(doc: Document, language: Language, answer: HouseAnswer): H
   section.dataset["view"] = "perfect";
   const heading = past
     ? translate(language, "perfect.headingDay", { day: dateLabel(language, answer.day!.date) })
-    : translate(language, `perfect.heading.${pluralForm(language, perfect.days)}`, { days: String(perfect.days) });
+    : translate(language, `perfect.heading.${pluralForm(language, perfect.days + perfect.partial)}`, { days: String(perfect.days + perfect.partial) });
   section.append(element(doc, "p", `${C.muted} ${H.compareHead}`, heading));
   const headline = perfectHeadline(language, perfect, ownName);
   if (headline !== null) {

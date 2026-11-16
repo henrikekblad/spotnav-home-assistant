@@ -85,12 +85,15 @@ export interface BatteryWork {
 }
 
 /** Days against their perfect plans in hindsight (`site/perfect_view.py`): the perfect plan's saving against no
- * battery, each way's share of it (0-100, `null` where it did not run or there was nothing to gain), the kr behind the
- * shares, the battery's work and the cells' temperature. */
+ * battery over the whole days, each way's share of it (0-100, `null` where it did not run or the difference was too
+ * small to compare), the kr behind the shares, the battery's work and the cells' temperature. */
 export interface PerfectFigures {
+  /** Whole days (at least 90 % measured): only they count. */
   days: number;
-  /** Days that counted the energy left at midnight at the day's own value (the next days' prices not held yet). */
+  /** Days that counted the energy left at midnight at the day's own value (the next day's prices not held yet). */
   provisional: number;
+  /** Incomplete days, left out. */
+  partial: number;
   mode: string | null;
   saving: number | null;
   shares: Record<PerfectWay, number | null>;
@@ -599,6 +602,7 @@ export function decodePerfect(value: unknown): PerfectFigures | null {
   return {
     days: count(source.days),
     provisional: count(source.provisional),
+    partial: count(source.partial),
     mode: textOrNull(source.mode),
     saving: numberOrNull(source.saving),
     shares: perWay(shares, numberOrNull),
