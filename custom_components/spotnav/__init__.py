@@ -31,6 +31,7 @@ from .api.identification import async_setup_identification_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.import_target import async_setup_import_target_api
 from .api.detected import async_setup_detected_api
+from .api.heat import async_setup_heat_api
 from .api.house import async_setup_house_api, forget_cached_flow
 from .api.power_month import async_setup_power_month_api
 from .api.target_suggestion import async_setup_target_suggestion_api
@@ -201,6 +202,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_import_target_api(hass)
     async_setup_power_month_api(hass)
     async_setup_house_api(hass)
+    async_setup_heat_api(hass)
     async_setup_detected_api(hass)
     async_setup_target_suggestion_api(hass)
     async_setup_camera_api(hass)
