@@ -46,6 +46,13 @@ export class FakeHass implements HomeAssistantLike {
   readonly suggestMessages: Record<string, unknown>[] = [];
   suggestHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
+  /**
+   * The shared site sections' reads (`spotnav/get_site_settings_view`, `spotnav/get_heat`, `spotnav/battery_control`),
+   * read when the Settings popover opens, on their own line too; the default never answers.
+   */
+  readonly siteMessages: Record<string, unknown>[] = [];
+  siteHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
   }
@@ -71,6 +78,10 @@ export class FakeHass implements HomeAssistantLike {
     if (message["type"] === "spotnav/suggest_import_target") {
       this.suggestMessages.push(message);
       return (this.suggestHandler === null ? new Promise<unknown>(() => undefined) : this.suggestHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/get_site_settings_view" || message["type"] === "spotnav/get_heat" || message["type"] === "spotnav/battery_control") {
+      this.siteMessages.push(message);
+      return (this.siteHandler === null ? new Promise<unknown>(() => undefined) : this.siteHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_card_info") {
       this.cardInfoMessages.push(message);
