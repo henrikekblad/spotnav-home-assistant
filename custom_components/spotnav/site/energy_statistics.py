@@ -158,6 +158,30 @@ async def async_soc_statistics(
     return await get_instance(hass).async_add_executor_job(read)
 
 
+async def async_mean_max_statistics(
+    hass: HomeAssistant, entity_id: str, start: datetime, end: datetime
+) -> tuple[list[tuple[datetime, float | None, float | None]], int]:
+    """A measured sensor's `(start, mean, max)` per 5 minutes in `[start, end)`, else per hour where the 5-minute
+    statistics are gone (kept 10 days by default), with the period's minutes; in the recorder's executor."""
+    from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
+    from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
+
+    def rows(period: str) -> list[tuple[datetime, float | None, float | None]]:
+        found = statistics_during_period(hass, start, end, {entity_id}, period, None, {"mean", "max"})
+        out = []
+        for row in found.get(entity_id) or []:
+            moment = _row_start(row)
+            if moment is not None:
+                out.append((moment, row.get("mean"), row.get("max")))
+        return out
+
+    def read() -> tuple[list[tuple[datetime, float | None, float | None]], int]:
+        short = rows("5minute")
+        return (short, 5) if short else (rows("hour"), 60)
+
+    return await get_instance(hass).async_add_executor_job(read)
+
+
 async def async_energy_prefs(hass: HomeAssistant) -> Any:
     """The Energy dashboard's preferences; `None` while the Energy integration is not loaded."""
     if "energy" not in hass.config.components:

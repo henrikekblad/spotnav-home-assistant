@@ -767,3 +767,62 @@ async def test_a_battery_without_a_size_is_planned_once_its_size_is_learnt_and_i
     reloaded = site_controller_for(hass, site.entry_id)
     assert reloaded is not None and reloaded is not controller
     assert reloaded.battery_shadow.plan.learned.capacity_kwh == pytest.approx(10.0, abs=0.1)
+
+
+async def test_the_day_is_held_against_its_perfect_plan_once_reviewed_and_again_with_the_next_days_prices(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    plan = controller.battery_shadow.plan
+    from custom_components.spotnav import time_zones
+    from custom_components.spotnav.site import energy_statistics
+
+    zone = time_zones.require_zone(controller.demand.tracker.tz)
+    yesterday = now.astimezone(zone).date() - timedelta(days=1)
+    start = datetime.combine(yesterday, datetime.min.time(), zone).astimezone(dt_util.UTC)
+    end = start + timedelta(days=1)
+    reads: list[str] = []
+
+    async def statistics(_hass: Any, entity_id: str, first: datetime, last: datetime):
+        reads.append(entity_id)
+        return [(first + timedelta(minutes=5 * i), 31.0 if i < 12 else 20.0, 32.0) for i in range(288)], 5
+
+    monkeypatch.setattr(energy_statistics, "async_mean_max_statistics", statistics)
+    ahead: list[PriceSlot] = []
+    monkeypatch.setattr(BatteryPlanShadow, "_prices_after", lambda self, day: list(ahead))
+    # Yesterday: an idle battery at 44.6 %, 1 kW from the grid; cheap until 06:00, dear after.
+    moment = start
+    while moment < end:
+        price = 20.0 if (moment - start) < timedelta(hours=6) else 300.0
+        bucket = plan.actuals.open(moment, price=PriceSlot(moment, moment + BUCKET, price, price - 60), cap_kw=None, ran=None)
+        bucket.import_kwh, bucket.covered_s = 0.25, 900.0
+        bucket.soc_start = bucket.soc_end = 44.6
+        bucket.ran_action = ACTION_SELF_CONSUME
+        moment += BUCKET
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(seconds=1))
+    await hass.async_block_till_done()
+
+    [review] = plan.reviews
+    assert review.facit is not None
+    # The next two days' prices are not held: the energy left is valued at the day's own end value, said to be.
+    assert review.facit.basis == "day_median" and review.facit.end_value == pytest.approx(review.end_value)
+    assert review.facit.saving is not None and review.facit.saving > 0
+    assert review.facit.candidates["own"].share is not None
+    assert review.cell_temperature is not None and review.cell_temperature.minutes_above == 60
+    assert reads == ["sensor.sigen_plant_ess_average_cell_temperature"]
+    stored = plan.as_dict()["reviews"][0]
+    assert stored["facit"]["basis"] == "day_median" and stored["cell_temperature"]["max_c"] == 32.0
+
+    # The next two days' prices come: worked out again on them, once.
+    ahead.extend(PriceSlot(end + timedelta(hours=h), end + timedelta(hours=h + 1), 500.0, 440.0) for h in range(48))
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(minutes=16))
+    await hass.async_block_till_done()
+    [review] = plan.reviews
+    assert review.facit is not None and review.facit.basis == "ahead"
+    assert review.facit.end_value == pytest.approx(500.0 * 0.9)
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(minutes=32))
+    await hass.async_block_till_done()
+    assert len(reads) == 2
