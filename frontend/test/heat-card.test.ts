@@ -135,15 +135,17 @@ describe("the settings section", () => {
       ["path", "StyrningIngen än"],
       ["hotWater", "VarmvattenIngen"],
       ["zones", "Zoner4"],
-      ["zone:climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåning · Golvvärme0 °C"],
-      ["zone:climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåning · Golvvärme0 °C"],
-      ["zone:climate.golvvarme_tvattstuga", "Golvvärme tvättstuga · Golvvärme−1,0 °C"],
-      ["zone:climate.ovanvaning", "Värmepump ovanvåning · Luft-luft−0,5 °C"],
+      ["zone:climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåning0 °C"],
+      ["zone:climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåning0 °C"],
+      ["zone:climate.golvvarme_tvattstuga", "Golvvärme tvättstuga−1,0 °C"],
+      ["zone:climate.ovanvaning", "Värmepump ovanvåning−0,5 °C"],
       ["night", "Svalare natt−1,0 °C 23:00–06:00"],
     ]);
     section.querySelector<HTMLButtonElement>("button[data-edit='zone:climate.ovanvaning']")!.click();
     expect(edits).toEqual(["zone:climate.ovanvaning"]);
-    expect(section.querySelector("[data-help='zone:climate.ovanvaning']")!.textContent).toContain("aldrig av eller på");
+    expect(section.querySelector("[data-help='zone:climate.ovanvaning']")!.textContent).toBe(
+      "Luft-luftvärmepump: SpotNav ändrar bara börvärdet, slår aldrig av eller på.",
+    );
   });
 });
 

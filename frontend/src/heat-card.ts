@@ -376,7 +376,7 @@ export class SpotnavHeatCard extends HTMLElement {
     const language = this.cardLanguage();
     this.page = { kind: "settings" };
     const body = heatSettingsSection(this.ownerDocument, language, answer, (key) => this.showEditor(key, true));
-    this.ensureDialog().show({ title: translate(language, "heat.settings.title"), body });
+    this.ensureDialog().show({ title: translate(language, "heat.settings.open"), body });
   }
 
   showEditor(key: HeatSettingKey | "away", back: boolean): void {

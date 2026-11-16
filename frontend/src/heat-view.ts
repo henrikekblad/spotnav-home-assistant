@@ -629,8 +629,13 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
   for (const zone of config.zones) {
     const shown = answer.zones.find((item) => item.entity_id === zone.entity_id);
     const kind = shown?.kind ?? answer.choices?.zones.find((item) => item.entity_id === zone.entity_id)?.kind ?? "floor";
-    const label = `${nameOf(names, zone.entity_id, zone.entity_id)} · ${translate(language, kind === "air" ? "heat.zone.air" : "heat.zone.floor")}`;
-    row(`zone:${zone.entity_id}`, label, signedDegrees(language, zone.offset_c), kind === "air" ? translate(language, "heat.settings.airHelp") : undefined);
+    // An air-to-air heat pump says so under its row; a floor thermostat's own name says what it is.
+    row(
+      `zone:${zone.entity_id}`,
+      nameOf(names, zone.entity_id, zone.entity_id),
+      signedDegrees(language, zone.offset_c),
+      kind === "air" ? translate(language, "heat.settings.airHelp") : undefined,
+    );
   }
   const night = config.night;
   row(
