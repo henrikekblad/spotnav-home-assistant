@@ -1,8 +1,10 @@
 """Shadow mode: each part that would control more than the charger first only logs what it would have written.
 
-A part is `shadow` (it decides and logs, writes nothing) or `on` (it writes). In this release a part cannot be
-turned on: `ON_REACHABLE` is off, a stored `on` loads as `shadow`, and nothing offers a way to turn it on.
-"All back to shadow" puts every part back in one step.
+A part is `shadow` (it decides and logs, writes nothing) or `on` (it writes). In this release a part of the book
+cannot be turned on: `ON_REACHABLE` is off, a stored `on` loads as `shadow`, and nothing offers a way to turn it on.
+"All back to shadow" puts every part back in one step. The battery and export-limit control does not use the book's
+states: it writes only behind its site's own gate (`gate.py`, `control.py`), and the hold for the car reaches it as a
+request (`runtime.BatteryShadow.hold_requested`).
 
 The hold for the car (`PART_HOLD_FOR_CAR`) decides when to hold; what it would write is the executor's action
 `hold` (`executor.preview`), the same write route a later opt-in will turn on, so the shadow log shows exactly the
@@ -41,7 +43,8 @@ PART_EXPORT_CURTAIL: Final = "export_curtail"
 #: Every part, in the order they were added.
 PARTS: Final[tuple[str, ...]] = (PART_HOLD_FOR_CAR, PART_SWITCH_LOAD, PART_EXPORT_CURTAIL)
 
-#: Whether a part may be turned on at all. Off in this release: everything runs in shadow.
+#: Whether a part of the book may be turned on at all. Off in this release: the book's parts run in shadow (the
+#: battery control has its own per-site gate, `gate.py`).
 ON_REACHABLE: Final = False
 
 LOG_MAX_ENTRIES: Final = 200

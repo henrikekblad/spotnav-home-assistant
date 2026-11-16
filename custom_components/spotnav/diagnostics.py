@@ -330,6 +330,10 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # shadow part's decisions (what it would have written, or why not) and the kWh the battery gave the car.
         # Nothing is written to the battery.
         "battery": None if controller is None else _part_snapshot(controller.battery_shadow.snapshot),
+        # SpotNav's battery and export-limit control (`battery/control.py`) behind the site's gate: its options, state
+        # and line, the verification report per firmware key and the actions it allows, the routine's progress, what
+        # is missing, the notes, the executors' state, ledger and monitor, and the log (writes, refusals, would-do).
+        "battery_control": None if controller is None else _part_snapshot(controller.battery_control.snapshot),
         # The heat pumps found by their integration (`heat/detect.py`): per pump its readings, which are missing and
         # why, its own price control (then SpotNav only watches) and the control paths it offers. Read only:
         # nothing is written to a heat pump.

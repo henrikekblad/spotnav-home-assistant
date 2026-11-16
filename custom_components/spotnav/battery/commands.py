@@ -1,4 +1,5 @@
-"""What SpotNav would write to a home battery for each of the plan's actions, per brand: built, not reachable.
+"""What SpotNav writes to a home battery for each of the plan's actions, per brand (behind the site's gate,
+`gate.py`).
 
 Each brand's control is a set of **roles** (the entities it writes or reads back) and, per plan action, the
 **state** those roles must be in: a value per role, or `SNAPSHOT` for "the value found before SpotNav first wrote".

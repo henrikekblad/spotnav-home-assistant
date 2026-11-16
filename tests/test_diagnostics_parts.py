@@ -33,3 +33,18 @@ async def test_a_failing_part_snapshot_leaves_only_its_block_empty(
 
     assert diagnostics["battery"] is None and diagnostics["switch_load"] is None
     assert diagnostics["solar_correction"] is None and diagnostics["entry_type"] == "site"
+
+
+async def test_the_site_s_battery_control_is_in_the_diagnostics_off_and_shadow_only_by_default(
+    hass: HomeAssistant,
+) -> None:
+    _charger, site = await setup_charger_and_site(hass)
+    assert site is not None
+    await hass.async_block_till_done()
+
+    block = (await async_get_config_entry_diagnostics(hass, site))["battery_control"]
+
+    assert block["status"]["state"] == "off" and block["status"]["line"] == "off"
+    assert block["status"]["options"]["battery_control_shadow_only"] is True
+    assert block["status"]["options"]["battery_control_enabled"] is False
+    assert block["reports"] == {} and block["executor"] is None
