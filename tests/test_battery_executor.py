@@ -786,7 +786,8 @@ def test_huawei_charges_through_its_forcible_charge_service_and_stops_it_on_the_
     assert written(results) == [("forcible", "charge:3000")]
     assert battery.writes[0].device_id == "DEVICE"
     now, results = run(executor, battery, now, 4, "hold")
-    assert written(results) == [("discharge_power", 0.0), ("forcible", "stop")]
+    # The grid charge is stopped first, then the hold set.
+    assert written(results) == [("forcible", "stop"), ("discharge_power", 0.0)]
     _now, results = run(executor, battery, now, 6, "self_consume")
     assert battery.states == HUAWEI_STATES
 

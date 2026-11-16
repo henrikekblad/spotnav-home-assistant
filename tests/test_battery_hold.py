@@ -304,3 +304,13 @@ def test_a_blinking_management_reading_does_not_release_a_hold_the_executor_judg
     memory, decisions = _run(memory, blink)
 
     assert decisions == [] and memory.held
+
+
+def test_the_hold_shows_the_variant_control_would_run() -> None:
+    late = T0 + timedelta(seconds=ARM_S)
+    _memory, [decision] = _run(HoldMemory(), _inputs(T0, variant="pv_first"), _inputs(late, variant="pv_first"))
+    assert decision.action == "would_write" and decision.entity_id == "number.sigenergy_charge_limit"
+    assert decision.value == {
+        "charge_limit": 0.0, "remote_ems": True, "control_mode": "Command Charging (PV First)"
+    }
+    assert [row["role"] for row in decision.detail["restore"]][0] == "control_mode"

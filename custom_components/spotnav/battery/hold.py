@@ -91,6 +91,8 @@ class HoldInputs:
     #: The person acknowledged that SpotNav may take the plant over from its own optimiser (Sigenergy's AI mode,
     #: `executor.ExecInputs.takeover`).
     takeover: bool = False
+    #: The hold variant control would run (`gate.hold_variant_to_run`; `None`: the brand's first).
+    variant: str | None = None
 
 
 def _natives(raw: Any) -> dict[str, Native]:
@@ -200,10 +202,10 @@ def _fresh(inputs: HoldInputs) -> bool:
     return inputs.facts.power_kw is not None and age is not None and age <= BATTERY_MAX_AGE_S
 
 
-def _main_role(brand: str | None, reads: Mapping[str, RoleRead]) -> str | None:
+def _main_role(brand: str | None, reads: Mapping[str, RoleRead], variant: str | None = None) -> str | None:
     """The first role, in the brand's order, that the hold sets to a value of its own (Sigenergy: the discharge
-    limit), as found."""
-    control = control_for(brand)
+    limit, or the charge limit in mode 4), as found."""
+    control = control_for(brand, variant)
     if control is None:
         return None
     wanted = control.wanted(ACTION_HOLD, 0.0)
@@ -214,7 +216,7 @@ def _main_role(brand: str | None, reads: Mapping[str, RoleRead]) -> str | None:
 
 def _main(inputs: HoldInputs) -> tuple[str | None, str | None]:
     """The main role's entity and state."""
-    name = _main_role(inputs.facts.brand, inputs.reads)
+    name = _main_role(inputs.facts.brand, inputs.reads, inputs.variant)
     read = None if name is None else inputs.reads[name]
     return (None, None) if read is None else (read.entity_id, read.state)
 
@@ -236,7 +238,7 @@ def _exec_inputs(inputs: HoldInputs) -> ExecInputs:
 def would_hold(inputs: HoldInputs, writes_today: int = 0) -> Preview:
     """What the executor would write for a hold now (`executor.preview`); `no_brand_control` for a brand it has no
     commands for."""
-    control = control_for(inputs.facts.brand)
+    control = control_for(inputs.facts.brand, inputs.variant)
     if control is None:
         return Preview("no_brand_control")
     return preview(control, _exec_inputs(inputs), writes_today=writes_today)
@@ -415,7 +417,7 @@ def _note(memory: HoldMemory, action: HoldAction, reason: str, inputs: HoldInput
     if reason in memory.noted:
         return memory, None
     detail = _detail(inputs)
-    control = control_for(inputs.facts.brand)
+    control = control_for(inputs.facts.brand, inputs.variant)
     if control is not None:
         detail["would_write"] = control.wanted(ACTION_HOLD, 0.0)
     entity_id, read = _main(inputs)

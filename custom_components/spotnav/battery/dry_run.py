@@ -96,14 +96,19 @@ class HoldDryRun:
             return "possible"
         return "not_possible:no_reading"
 
-    def decided(self, decision: HoldDecision, facts: BatteryFacts, now: datetime) -> tuple[HoldDecision, list[ShadowEntry]]:
-        """The hold decided: the decision with what the dry runs add to it, and their own log entries."""
+    def decided(
+        self, decision: HoldDecision, facts: BatteryFacts, now: datetime, variant: str | None = None
+    ) -> tuple[HoldDecision, list[ShadowEntry]]:
+        """The hold decided: the decision with what the dry runs add to it, and their own log entries (`variant`: the
+        hold variant control would run)."""
         if decision.action == "would_write":
             writes = decision.detail.get("writes") or []
             roles = {str(write.get("role")): self._adopt(facts, write, now) for write in writes if isinstance(write, Mapping)}
             failing = [f"{verdict}:{role}" for role, verdict in roles.items() if verdict not in _FINE]
             read_back = failing[0] if failing else "possible" if roles else "not_possible:no_entity"
-            event = self.monitor.start(Command("hold", now, 0.0, before_kw=facts.power_kw, written=False))
+            control = control_for(facts.brand, variant)
+            idle = control is not None and control.hold_idle()
+            event = self.monitor.start(Command("hold", now, 0.0, before_kw=facts.power_kw, written=False, idle=idle))
             detail = decision.detail | {"read_back": read_back, "read_back_roles": roles}
             return replace(decision, detail=detail), _judged(event)
         if decision.action == "would_restore":

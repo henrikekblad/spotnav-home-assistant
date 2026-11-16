@@ -327,6 +327,7 @@ class BatteryControl:
             # judges a plant in AI mode as control would.
             battery_shadow.spotnav_acting = self.acting
             battery_shadow.takeover = lambda: self.options().ai_takeover_ack
+            battery_shadow.hold_variant = self.hold_variant
 
     # ---- life
 
@@ -743,10 +744,27 @@ class BatteryControl:
     async def _async_battery_step(
         self, now: datetime, slot: tuple[str, float, datetime | None] | None, *, allowed: bool
     ) -> StepResult | None:
-        executor = self._executor()
+        executor = self._control_executor()
         if executor is None:
             return None
         return await self._async_step(executor, self.inputs(now, executor.control, slot=slot), allowed=allowed)
+
+    def hold_variant(self) -> str | None:
+        """The hold variant control runs on this firmware (`gate.hold_variant_to_run`); `None` for a brand with one
+        hold. The shadow and its previews show the same."""
+        control = control_for(self.facts.brand)
+        names = () if control is None else control.variant_names()
+        return (gate.hold_variant_to_run(self.report(), names) or names[0]) if names else None
+
+    def _control_executor(self) -> Executor | None:
+        """The executor for control and trials, running the hold variant the verification passed, else the first not
+        recorded as failed, else the brand's first (once it holds nothing; `Executor.use_variant`). A test hold is
+        refused when every variant failed (`async_trial`)."""
+        executor = self._executor()
+        if executor is not None and executor.control.hold_variants:
+            names = executor.control.variant_names()
+            executor.use_variant(gate.hold_variant_to_run(self.report(), names) or names[0])
+        return executor
 
     async def async_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
         """One look of control as it runs the plan: refused unless control is on (the routine passed)."""
@@ -754,7 +772,7 @@ class BatteryControl:
         self._require(self.state(options) == "on", "Battery control")
         now = now or dt_util.now()
         await self.async_export_tick(now, stopping=stopping)
-        executor = self._executor()
+        executor = self._control_executor()
         if executor is None:
             return None
         slot = None if stopping is not None else self._control_slot(now, options)
@@ -831,7 +849,8 @@ class BatteryControl:
         self._verify_attempt = (attempt if isinstance(attempt, int) else 0) + 1
         self._verify_key = key
         self.verification = Verification(
-            executor, now, firmware=self.facts.firmware, modes=None if previous is None else gate.modes_to_run(previous)
+            executor, now, firmware=self.facts.firmware, modes=None if previous is None else gate.modes_to_run(previous),
+            tried=gate.variants_tried(previous),
         )
         # The attempt counts from its start: a restart in the middle neither forgets it nor runs again at once.
         self._keep_report(key, gate.merge_report(
@@ -869,7 +888,10 @@ class BatteryControl:
         if verification is None or executor is None:
             return None
         inputs = self.inputs(now, executor.control, slot=None)
-        sample = Sample(inputs.facts.power_kw, inputs.battery_age_s, inputs.facts.soc_pct, inputs.house_deficit_kw)
+        sample = Sample(
+            inputs.facts.power_kw, inputs.battery_age_s, inputs.facts.soc_pct, inputs.house_deficit_kw,
+            inputs.grid_import_kw if inputs.measurement_ok else None,
+        )
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
         if action == ACTION_GRID_CHARGE:
             cap = self._grid_charge_cap_kw(now, self.options())
@@ -1012,8 +1034,13 @@ class BatteryControl:
                 raise TrialRefused("no_export_control")
             rate = 0.0
         else:
-            if self._executor() is None:
+            executor = self._executor()
+            if executor is None:
                 raise TrialRefused("no_battery_control")
+            names = executor.control.variant_names()
+            if action == ACTION_HOLD and names and gate.hold_variant_to_run(self.report(), names) is None:
+                # Every way to hold failed on this firmware: not even a forced test runs one again.
+                raise TrialRefused("hold_variants_failed")
             self.facts = self._read_facts()
             rate = 0.0
             if action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
@@ -1072,7 +1099,7 @@ class BatteryControl:
 
     def _shadow_look(self, now: datetime, options: gate.Options) -> None:
         """While shadow only: what control would do now (`executor.preview`), logged when it changes."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.brand, self.hold_variant())
         if control is None:
             return
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
