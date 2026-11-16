@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
-import { blockHeights, flowHeight, MIN_BAND, MIN_NODE } from "../src/house-flow";
+import { blockHeights, flowHeight, flowLabels, MIN_BAND, MIN_NODE } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { amount, hourFigures, houseBody, reviewLine, savingLine, todayDetail, todayLine, type HouseState, type HouseUi } from "../src/house-view";
@@ -659,7 +659,8 @@ describe("today's energy flow", () => {
     expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät", "76,9 kWh", "83 %"]);
     expect(grid.querySelector(".spotnav-house-flow-pill")).not.toBeNull();
     const sun = svgRoot.querySelector(".spotnav-house-flow-node[data-role='solar']")!;
-    expect(Array.from(sun.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Sol", "7,5 kWh · 8 %"]);
+    // A short block puts its share in the name's pill and the energy alone under it.
+    expect(Array.from(sun.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Sol · 8 %", "7,5 kWh"]);
     const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
     expect(battery.textContent).toContain("nu 48 %");
     expect(svgRoot.getAttribute("aria-label")).toMatch(/^Sol 7,5 kWh \(8 %\), Batteri 8,6 kWh/);
@@ -670,7 +671,7 @@ describe("today's energy flow", () => {
     expect(notes.querySelector("h3")?.textContent).toBe("Så räknas flödet");
     expect(notes.textContent).toContain("varje timme går solen");
     const heat = svgRoot.querySelector(".spotnav-house-flow-node[data-role='heat']")!;
-    expect(heat.querySelector("text")?.textContent).toBe("Värme");
+    expect(heat.querySelector("text")?.textContent).toBe("Värme · 14 %");
     // One hour lacked the heat pump's figure: said so.
     expect(notes.textContent).toContain("Värmepumpens mätare kunde inte läsas varje timme");
     // The details do not repeat it as bars.
@@ -708,6 +709,18 @@ describe("today's energy flow", () => {
     expect(today.textContent).toContain("Dagens energiflöde visas när de första fem minuterna är inne.");
     const past = { ...value, day: { ...value.day!, today: false }, energy_flow: empty };
     expect(body(past).querySelector("[data-part='energy-flow']")).toBeNull();
+  });
+
+  it("keeps a month's or a year's figures narrow: no decimal from 100 kWh, a smaller figure from 1 000 kWh", () => {
+    const labels = flowLabels("sv", 1000);
+    expect(labels.kwh(99.94)).toBe("99,9 kWh");
+    expect(labels.kwh(183.4)).toBe("183 kWh");
+    expect(labels.kwh(2037)).toBe("2\u00a0037 kWh");
+    const value = answer();
+    const flow = value.energy_flow!;
+    const big = { ...flow, nodes: flow.nodes.map((node) => ({ ...node, kwh: node.kwh * 100 })), links: flow.links.map((link) => ({ ...link, kwh: link.kwh * 100 })) };
+    const svgRoot = body({ ...value, energy_flow: big }, {}, "sv").querySelector("[data-part='energy-flow'] svg")!;
+    expect(svgRoot.querySelector(".spotnav-house-flow-node[data-role='grid'][data-side='source'] .spotnav-house-flow-value-long")?.textContent).toBe("7\u00a0689 kWh");
   });
 
   it("says it is on its way in today's first minutes, before the first 5-minute row", () => {

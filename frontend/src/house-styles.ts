@@ -186,6 +186,10 @@ export const HOUSE_STYLES = `
     font-size: 15px;
     font-weight: 700;
   }
+  .${H.flowChart} .spotnav-house-flow-value-long {
+    font-size: 13px;
+    font-weight: 700;
+  }
   .${H.flowChart} .spotnav-house-flow-share {
     font-size: 11px;
   }
