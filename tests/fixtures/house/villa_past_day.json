@@ -350,6 +350,7 @@
         "soc_pct": null
       }
     ],
+    "step_min": 60,
     "through": "2026-11-12T16:00:00+00:00"
   },
   "flow": null,

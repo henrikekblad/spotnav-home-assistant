@@ -3,17 +3,21 @@ on the other, and how much went from each source to each use.
 
 Pure: the shell (`api/house.py`) reads the hours (`EnergyHour`) and hands them over; nothing is read or written here.
 
-**What is measured** per completed local hour of today: the sun's production, the grid's import and export and the
-home battery's charge and discharge, each from the Energy dashboard's hourly statistics (`site/energy_statistics.py`),
-and the cars' energy (the site's chargers' energy registers, else what the battery plan measured in the hour). The
+**What is measured** per period of the day (`EnergyHour`): the sun's production, the grid's import and export and the
+home battery's charge and discharge, each from the Energy dashboard's statistics (`site/energy_statistics.py`), and
+the cars' energy (the site's chargers' energy registers, else what the battery plan measured in the period). A day
+within the recorder's short-term statistics (5-minute rows, kept `keep_days`) is read by the quarter hour
+(`quarter_hours`: the sum of a quarter's three 5-minute rows; the running quarter counts its finished ones), so the
+flow follows the day every five minutes; an older day, and a finished hour whose quarters are not all there, by the
+hour (`energy_hours`). The
 house is the balance: `sun + import + discharge - export - charge - cars - heat`, never below 0 (when the meters
 disagree and it would be, the missing energy is taken off the uses in the order export, battery charge, cars, heat).
 **Heat** is the heat pump's own use, where its meter is found or set (`site/heat_meter.py`, the recorder's hourly
 statistics of it): a use of its own, split out of the house; an hour without its figure leaves it in the house.
 
 **What is not measured** is which source fed which use: no meter says whether the sun or the grid charged the
-battery. The flows are allocated by one rule, hour by hour so a sunny midday hour and a night of grid charging do not
-mix:
+battery. The flows are allocated by one rule, period by period (quarter hour or hour) so a sunny midday quarter and a
+night of grid charging do not mix:
 
 1. **The sun** goes to the house, then heat, then the cars, then the battery, then the grid (export).
 2. **The battery's discharge** goes first to whatever export the sun left (the grid never exports, so the rest of the
@@ -28,7 +32,10 @@ So every node balances: a source's figure is the sum of its flows, and so is a u
 **Shape** (`energy_flow`): `nodes` and `links` are lists with a `role` and a `side`, not fixed fields, so a source or a
 use can be added without a contract break. A node is left out when the site has nothing to measure it with (no solar
 statistics: no sun node; no battery statistics: neither battery node; no heat meter: no heat node); a use with no
-energy today stays in with 0. `heat_hours` counts the hours that had the heat figure.
+energy today stays in with 0. `hours` counts the periods allocated, `car_hours` and `heat_hours` those that had the
+cars' and the heat figure, `step_min` is the period (15 for a day read by the quarter hour, else 60) and `through`
+the end of the last one. A day with no period yet (today's first minutes) is an empty flow: `hours` 0, every node 0,
+no links, `through` the day's start (`energy_flow`'s `since`).
 A bidirectional charger (V2H/V2G, Sigenergy's DC charger) would add the car as a source: `role` `car` on the `source`
 side, measured by the charger's export register into `EnergyHour.car_out`, allocated after the battery by the
 battery's rule (export first, then the house); `ALLOCATION` holds the order and is where it would go.
@@ -53,7 +60,7 @@ SIDE_USE: Final = "use"
 
 NODE_KEYS: Final = ("id", "side", "role", "kwh", "soc_pct")
 LINK_KEYS: Final = ("from", "to", "kwh")
-FLOW_KEYS: Final = ("date", "through", "hours", "car_hours", "heat_hours", "nodes", "links")
+FLOW_KEYS: Final = ("date", "through", "hours", "car_hours", "heat_hours", "nodes", "links", "step_min")
 
 #: Each source's uses in the order it fills them (see the module); the sources are taken in this order. A car that
 #: gives energy back (V2H) would be a source here after the battery: `(ROLE_CAR, (ROLE_GRID, ROLE_HOUSE))`.
@@ -67,13 +74,20 @@ USES: Final = (ROLE_BATTERY, ROLE_HOUSE, ROLE_HEAT, ROLE_CAR, ROLE_GRID)
 SHORTFALL_ORDER: Final = (ROLE_GRID, ROLE_BATTERY, ROLE_CAR, ROLE_HEAT)
 #: Smaller flows (kWh) are left out of `links`.
 MIN_LINK_KWH: Final = 0.005
+#: The recorder's short-term statistics period, and the quarter hour the flow is allocated by.
+FIVE_MIN: Final = timedelta(minutes=5)
+QUARTER: Final = timedelta(minutes=15)
+#: A quarter that ended less than this long ago may still miss its last 5-minute row (the recorder compiles each a few
+#: seconds after its end): it is taken as running, with the rows it has.
+SETTLE: Final = timedelta(minutes=1)
 
 
 @dataclass(frozen=True, slots=True)
 class EnergyHour:
-    """One completed local hour (kWh). `solar` / `battery_*` are `None` on a site without that statistic; `car` is
-    `None` when the cars' energy could not be read for the hour (it is then in the house), and so is `heat` (the heat
-    pump's meter) without its figure."""
+    """One period (kWh): a completed local hour, a quarter hour, or the running quarter's finished 5-minute rows
+    (`minutes`). `solar` / `battery_*` are `None` on a site without that statistic; `car` is `None` when the cars'
+    energy could not be read for the period (it is then in the house), and so is `heat` (the heat pump's meter)
+    without its figure."""
 
     start: datetime
     grid_in: float
@@ -83,6 +97,11 @@ class EnergyHour:
     battery_out: float | None = None
     car: float | None = None
     heat: float | None = None
+    minutes: int = 60
+
+    @property
+    def end(self) -> datetime:
+        return self.start + timedelta(minutes=self.minutes)
 
 
 def node_id(side: str, role: str) -> str:
@@ -132,9 +151,12 @@ def energy_flow(
     has_battery: bool,
     soc_pct: float | None = None,
     has_heat: bool = False,
+    step_min: int = 60,
+    since: datetime | None = None,
 ) -> dict[str, Any] | None:
-    """The `energy_flow` block (`FLOW_KEYS`) for today's completed hours; `None` without any."""
-    if not hours:
+    """The `energy_flow` block (`FLOW_KEYS`) for the day's periods; without any, `None`, or the empty flow from
+    `since` on (today's first minutes, see the module)."""
+    if not hours and since is None:
         return None
     totals: dict[tuple[str, str], float] = {}
     for hour in hours:
@@ -165,15 +187,17 @@ def energy_flow(
         for use in USES
         if (kwh := totals.get((src, use), 0.0)) >= MIN_LINK_KWH
     ]
-    last = max(hour.start for hour in hours)
+    through = max((hour.end for hour in hours), default=since)
+    assert through is not None
     return {
         "date": day.isoformat(),
-        "through": (last + timedelta(hours=1)).isoformat(),
+        "through": through.isoformat(),
         "hours": len(hours),
         "car_hours": sum(1 for hour in hours if hour.car is not None),
         "heat_hours": sum(1 for hour in hours if hour.heat is not None),
         "nodes": nodes,
         "links": links,
+        "step_min": step_min,
     }
 
 
@@ -210,3 +234,116 @@ def energy_hours(
             )
         )
     return out
+
+
+@dataclass(frozen=True, slots=True)
+class FlowSeries:
+    """The energy (kWh) per period start of each meter the flow reads (`None`: the site has no such meter; `car`
+    and `heat` may lack a period). For `quarter_hours` the periods are the recorder's 5-minute rows, except
+    `car_quarters`: the battery plan's measure of the cars per quarter hour (kWh over the whole quarter), used where
+    the chargers have no register."""
+
+    grid_in: Mapping[datetime, float]
+    grid_out: Mapping[datetime, float] | None = None
+    solar: Mapping[datetime, float] | None = None
+    battery_in: Mapping[datetime, float] | None = None
+    battery_out: Mapping[datetime, float] | None = None
+    car: Mapping[datetime, float] | None = None
+    heat: Mapping[datetime, float] | None = None
+    car_quarters: Mapping[datetime, float] | None = None
+
+    def needed(self) -> list[Mapping[datetime, float]]:
+        return [
+            s for s in (self.grid_in, self.grid_out, self.solar, self.battery_in, self.battery_out) if s is not None
+        ]
+
+
+def _sum(series: Mapping[datetime, float] | None, slots: Sequence[datetime]) -> float | None:
+    if series is None or any(slot not in series for slot in slots):
+        return None
+    return sum(series[slot] for slot in slots)
+
+
+def quarter_hours(
+    starts: Sequence[datetime], five: FlowSeries, now: datetime
+) -> tuple[list[EnergyHour], list[datetime]]:
+    """The quarter hours of the hours `starts` (UTC hour starts) from 5-minute rows, and the finished hours that could
+    not be built whole (some quarter lacks a row of a needed meter: read them by the hour instead).
+
+    A quarter that ended (`SETTLE` before `now`) needs its three rows from every needed meter; the running quarter
+    (and one just ended) is the run of its first rows every needed meter has, `minutes` long, and ends the day's
+    quarters (none of it yet: nothing). An open hour's gap ends its quarters too. The cars' and heat's figure is the
+    sum of the same rows where their series has them all, else `None`; the battery plan's quarter (`car_quarters`)
+    counts its share of the quarter's minutes."""
+    settled = now - SETTLE
+    needed = five.needed()
+    out: list[EnergyHour] = []
+    missing: list[datetime] = []
+    for hour in starts:
+        built: list[EnergyHour] = []
+        whole = True
+        running = False
+        for index in range(4):
+            quarter = hour + index * QUARTER
+            if quarter >= now:
+                running = True
+                break
+            slots = [quarter + k * FIVE_MIN for k in range(3)]
+            if quarter + QUARTER > settled:
+                running = True
+                taken = []
+                for slot in slots:
+                    if slot + FIVE_MIN > now or not all(slot in series for series in needed):
+                        break
+                    taken.append(slot)
+                slots = taken
+                if not slots:
+                    break
+            elif not all(slot in series for series in needed for slot in slots):
+                whole = False
+                break
+            car = _sum(five.car, slots)
+            if car is None and five.car is None and five.car_quarters is not None and quarter in five.car_quarters:
+                car = five.car_quarters[quarter] * len(slots) / 3
+            built.append(
+                EnergyHour(
+                    start=quarter,
+                    minutes=5 * len(slots),
+                    grid_in=_sum(five.grid_in, slots) or 0.0,
+                    grid_out=_sum(five.grid_out, slots) or 0.0,
+                    solar=_sum(five.solar, slots),
+                    battery_in=_sum(five.battery_in, slots),
+                    battery_out=_sum(five.battery_out, slots),
+                    car=car,
+                    heat=_sum(five.heat, slots),
+                )
+            )
+            if running:
+                break
+        if whole:
+            out.extend(built)
+        elif hour + timedelta(hours=1) <= settled:
+            missing.append(hour)
+        else:
+            # The open hour: its quarters up to the gap.
+            out.extend(built)
+        if running:
+            break
+    return out, missing
+
+
+def hour_figures(periods: Sequence[EnergyHour], field: str, tz_hour: Any) -> dict[datetime, float]:
+    """A figure (`car` or `heat`) per hour start (`tz_hour(moment)` gives it) from the periods that cover the hour
+    whole, each with the figure; hours partly covered or without it are left out."""
+    sums: dict[datetime, float] = {}
+    minutes: dict[datetime, int] = {}
+    unread: set[datetime] = set()
+    for period in periods:
+        start = tz_hour(period.start)
+        value = getattr(period, field)
+        if value is None:
+            unread.add(start)
+            continue
+        sums[start] = sums.get(start, 0.0) + value
+        minutes[start] = minutes.get(start, 0) + period.minutes
+    return {start: kwh for start, kwh in sums.items() if minutes[start] == 60 and start not in unread}
