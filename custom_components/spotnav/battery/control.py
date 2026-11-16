@@ -14,7 +14,8 @@ The order on every path:
 * **Start** (`async_launch`, a background task, never awaited in the site's setup: the restore may wait up to
   `STARTUP_WAIT_S` for the controls' integration): load the stored state; a stored snapshot (SpotNav wrote and HA
   stopped before handing back) is restored before anything else, after waiting for its controls' entities and
-  services to load. Only then does the look timer (`TICK_S`) start.
+  services to load. Only then does the look timer (`TICK_S`) start. A start that raises is tried again
+  (`START_RETRY_S`, doubling); an unload while it has not finished still hands back what its executors hold.
 * **Each look** (`async_look`, never raises): the owner's test action (`async_trial`) if one runs; else the
   verification routine if one runs; else the plan's running slot merged with the hold for the car
   (`gate.merged_action`), restricted to the allowed actions and the grid charge cap (`gate.restricted`), when
@@ -128,6 +129,9 @@ MAX_REPORTS: Final = 10
 #: how often it looks.
 STARTUP_WAIT_S: Final = 120.0
 STARTUP_LOOK_S: Final = 5.0
+#: A start that raised is tried again after this long, doubled each time up to the most (s).
+START_RETRY_S: Final = 30.0
+START_RETRY_MAX_S: Final = 600.0
 #: The longest test action (min).
 TRIAL_MAX_MIN: Final = 120
 #: Looks in a row that may fail while SpotNav holds the plant before it hands back on the fewest reads.
@@ -273,11 +277,20 @@ class BatteryControl:
         )
 
     async def _async_start_then_look(self) -> None:
-        try:
-            await self.async_start()
-        except Exception:  # noqa: BLE001 - the site must run on; the stored state is restored at the next start
-            _LOGGER.warning("SpotNav battery control: the start failed", exc_info=True)
-            return
+        delay = START_RETRY_S
+        while True:
+            try:
+                await self.async_start()
+                break
+            except Exception:  # noqa: BLE001 - the site must run on; the start is tried again (a stored snapshot
+                # must be handed back)
+                self._look_failed("start")
+            if self._closed:
+                return
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, START_RETRY_MAX_S)
+            if self._closed:
+                return
         if self._closed:
             return
         self._timer_cancel = async_track_time_interval(self.hass, self._on_timer, timedelta(seconds=TICK_S))
@@ -407,7 +420,8 @@ class BatteryControl:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
-        if self._started:
+        if self._started or self._holds_anything():
+            # Also when the start did not finish: an executor it made from the store may hold a snapshot.
             try:
                 async with asyncio.timeout(HAND_BACK_DEADLINE_S * 2 + 5.0):
                     await self.async_stop("unload")

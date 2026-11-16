@@ -922,6 +922,53 @@ async def test_after_a_restart_the_restore_runs_before_the_first_look(
     await again.async_shutdown()
 
 
+async def test_a_start_that_raises_is_tried_again_and_hands_the_plant_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await _looks(control, dt_util.now(), 6)
+    assert control.executor.state.phase == "active" and hass.states.get(SWITCH).state == "on"
+    monkeypatch.setattr(control_module, "START_RETRY_S", 0.01)
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    calls = {"n": 0}
+    original = BatteryControl._read_facts
+
+    def flaky(self):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("registry not ready")
+        return original(self)
+
+    monkeypatch.setattr(BatteryControl, "_read_facts", flaky)
+    again.async_launch(site)
+    for _ in range(50):
+        await asyncio.sleep(0.02)
+        if again._timer_cancel is not None:
+            break
+    assert again._started and again._timer_cancel is not None and calls["n"] >= 2
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    await again.async_shutdown()
+
+
+async def test_an_unload_before_the_start_finished_still_hands_back_what_it_holds(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await _looks(control, dt_util.now(), 6)
+    assert control.executor.state.phase == "active"
+    # The restore waits for a control that never loads; the site unloads meanwhile.
+    hass.states.async_set(MODE, "PCS Remote Control", {"restored": True})
+    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    again.async_launch(site)
+    await asyncio.sleep(0.05)
+    assert not again._started and again.executor is not None and again.executor.state.holds_snapshot
+    await again.async_shutdown()
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+
+
 # --- the owner's test action and settings --------------------------------------------------------------------------
 
 
