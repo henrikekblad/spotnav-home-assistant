@@ -1439,7 +1439,6 @@
   "popover.failed": "The settings could not be read.",
   "popover.price.area": "Price area",
   "popover.price.none": "None",
-  "popover.price.help": "The price area and fees are changed on the electricity price's entry in Home Assistant.",
   "popover.price.noneHelp": "Add an electricity price to the SpotNav integration, so SpotNav knows what each hour costs.",
   "popover.site.meters": "Meters",
   "popover.site.readOnly": "Only an administrator can see the site's settings.",

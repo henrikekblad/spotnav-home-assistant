@@ -1439,7 +1439,6 @@
   "popover.failed": "Asetuksia ei voitu lukea.",
   "popover.price.area": "Hinta-alue",
   "popover.price.none": "Ei mitään",
-  "popover.price.help": "Hinta-alue ja maksut muutetaan sähkön hinnan merkinnässä Home Assistantissa.",
   "popover.price.noneHelp": "Lisää sähkön hinta SpotNav-integraatioon, niin SpotNav tietää, mitä kukin tunti maksaa.",
   "popover.site.meters": "Mittarit",
   "popover.site.readOnly": "Vain ylläpitäjä näkee kohteen asetukset.",

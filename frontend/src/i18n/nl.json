@@ -1439,7 +1439,6 @@
   "popover.failed": "De instellingen konden niet worden gelezen.",
   "popover.price.area": "Prijsgebied",
   "popover.price.none": "Geen",
-  "popover.price.help": "Prijsgebied en kosten wijzig je bij het item van de stroomprijs in Home Assistant.",
   "popover.price.noneHelp": "Voeg een stroomprijs toe aan de SpotNav-integratie, zodat SpotNav weet wat elk uur kost.",
   "popover.site.meters": "Meters",
   "popover.site.readOnly": "Alleen een beheerder kan de instellingen van de locatie zien.",

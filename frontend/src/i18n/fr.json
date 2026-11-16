@@ -1439,7 +1439,6 @@
   "popover.failed": "Les paramètres n’ont pas pu être lus.",
   "popover.price.area": "Zone de prix",
   "popover.price.none": "Aucune",
-  "popover.price.help": "La zone de prix et les frais se modifient dans l’entrée du prix de l’électricité dans Home Assistant.",
   "popover.price.noneHelp": "Ajoutez un prix de l’électricité à l’intégration SpotNav pour que SpotNav sache ce que coûte chaque heure.",
   "popover.site.meters": "Compteurs",
   "popover.site.readOnly": "Seul un administrateur peut voir les paramètres du site.",

@@ -1439,7 +1439,6 @@
   "popover.failed": "Inställningarna gick inte att läsa.",
   "popover.price.area": "Elområde",
   "popover.price.none": "Inget",
-  "popover.price.help": "Elområde och avgifter ändras på elprisets post i Home Assistant.",
   "popover.price.noneHelp": "Lägg till ett elpris i SpotNav-integrationen, så vet SpotNav vad varje timme kostar.",
   "popover.site.meters": "Mätare",
   "popover.site.readOnly": "Bara en administratör kan se anläggningens inställningar.",

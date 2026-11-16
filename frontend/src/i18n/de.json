@@ -1439,7 +1439,6 @@
   "popover.failed": "Die Einstellungen konnten nicht gelesen werden.",
   "popover.price.area": "Preiszone",
   "popover.price.none": "Keine",
-  "popover.price.help": "Preiszone und Gebühren werden im Eintrag des Strompreises in Home Assistant geändert.",
   "popover.price.noneHelp": "Füge der SpotNav-Integration einen Strompreis hinzu, damit SpotNav weiß, was jede Stunde kostet.",
   "popover.site.meters": "Zähler",
   "popover.site.readOnly": "Nur ein Administrator kann die Einstellungen des Standorts sehen.",
