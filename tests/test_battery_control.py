@@ -1020,6 +1020,24 @@ async def test_the_site_starts_its_battery_control_in_the_background_and_unload_
     assert hass.states.get(CHARGE).state == "20.6"
 
 
+async def test_the_plant_s_changes_count_as_spotnav_s_own_for_a_while_after_a_hand_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    controller.battery_shadow.spotnav_acting = control.acting
+    await _looks(control, dt_util.now(), 6)
+    assert controller.battery_shadow.spotnav_acting()
+    await control.async_stop()
+    assert control.executor.state.phase == "idle"
+    # The work-mode sensor may show the hand-back a poll late: still SpotNav's own.
+    assert controller.battery_shadow.spotnav_acting()
+    released = control.executor.state.released_at
+    later = released + timedelta(seconds=control_module.ACTING_GRACE_S + 1)
+    monkeypatch.setattr(control_module.dt_util, "now", lambda: later)
+    assert not controller.battery_shadow.spotnav_acting()
+
+
 async def test_after_a_restart_the_restore_runs_before_the_first_look(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

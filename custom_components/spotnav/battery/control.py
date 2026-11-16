@@ -134,6 +134,9 @@ STARTUP_LOOK_S: Final = 5.0
 #: A start that raised is tried again after this long, doubled each time up to the most (s).
 START_RETRY_S: Final = 30.0
 START_RETRY_MAX_S: Final = 600.0
+#: How long after a hand-back the plant's changes still count as SpotNav's own (s): the outside-control watch
+#: (`acting`) must not take a sensor that shows the hand-back late for someone else's change.
+ACTING_GRACE_S: Final = 300.0
 #: The longest test action (min).
 TRIAL_MAX_MIN: Final = 120
 #: Looks in a row that may fail while SpotNav holds the plant before it hands back on the fewest reads.
@@ -1113,11 +1116,18 @@ class BatteryControl:
         return facts if battery_shadow is None else battery_shadow.with_outside(facts)
 
     def acting(self) -> bool:
-        """Whether this path acts on the battery or the export limit now (its writes are no one else's)."""
-        return any(
-            executor is not None and executor.state.phase in ("active", "restoring")
-            for executor in (self.executor, self.export_executor)
-        )
+        """Whether this path acts on the battery or the export limit now (its writes are no one else's), and for
+        `ACTING_GRACE_S` after a hand-back: a plant's sensors can show SpotNav's own last writes a poll or two late."""
+        now = dt_util.now()
+        for executor in (self.executor, self.export_executor):
+            if executor is None:
+                continue
+            state = executor.state
+            if state.phase in ("active", "restoring"):
+                return True
+            if state.released_at is not None and 0 <= (now - state.released_at).total_seconds() < ACTING_GRACE_S:
+                return True
+        return False
 
     def _export_executor(self) -> Executor | None:
         if self.export_executor is None:
