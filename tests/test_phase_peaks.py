@@ -13,11 +13,14 @@ from custom_components.spotnav.site.phase_peaks import (
     BATTERY_BAND_W,
     DAY_MINUTES,
     MARGIN_A,
+    PLANT_MISMATCH_A,
     READY_DAYS,
     WINDOW_DAYS,
     PhasePeaks,
     Reading,
     SitePhasePeaks,
+    exact_phase_a,
+    house_phase,
     house_phase_a,
     house_sum_a,
     store_key,
@@ -29,9 +32,9 @@ T0 = 1_800_000_000 - 1_800_000_000 % 86400
 
 
 def _reading(site=(5.0, 3.0, 8.0), chargers=(0.0, 0.0, 0.0), battery_w: float | None = 0.0,
-             readings: tuple[float, ...] = (), heat=None) -> Reading:
+             readings: tuple[float, ...] = (), heat=None, plant=None) -> Reading:
     return Reading(site_a=site, chargers_a=chargers, charger_readings=readings, battery_w=battery_w,
-                   phase_volts=VOLTS, heat_w=heat)
+                   phase_volts=VOLTS, heat_w=heat, plant_w=plant)
 
 
 def _feed(peaks: PhasePeaks, start: float, minutes: int, reading=None, *, each=None) -> float:
@@ -216,6 +219,132 @@ def test_a_phase_that_only_ever_exports_never_lowers_the_peak_below_the_margin()
     assert peaks.learned(now).phase_peaks()["L1"] == pytest.approx(MARGIN_A)
 
 
+# --- the plant's own per-phase power (exact) --------------------------------------------------------------------------
+
+
+def test_the_plant_s_output_per_phase_is_added_back_exactly_whatever_the_battery_does() -> None:
+    # A 3.5 kW discharge, far outside the band, all of it as the plant's output, unbalanced: 2.3 kW on L1, 1.15 kW on
+    # L3. The meter reads what the house draws beyond it; the car is taken off.
+    reading = _reading(site=(1.0, 4.0, 15.0), chargers=(0.0, 0.0, 10.0), battery_w=-3500.0,
+                       plant=(10.0 * VOLTS, 0.0, 5.0 * VOLTS))
+    assert house_phase_a(reading) is None  # the band would not count it
+    assert exact_phase_a(reading) == pytest.approx((11.0, 4.0, 10.0))
+    assert house_phase(reading) == (pytest.approx((11.0, 4.0, 10.0)), True)
+    assert house_sum_a(reading) == pytest.approx(25.0)
+
+
+def test_a_grid_charge_draws_through_the_plant_and_is_taken_off_its_phases() -> None:
+    # The battery charging from the grid: the plant draws (negative), so the meter's import holds it as well.
+    reading = _reading(site=(20.0, 20.0, 20.0), battery_w=9000.0, plant=(-15.0 * VOLTS, -12.0 * VOLTS, -12.0 * VOLTS))
+    assert exact_phase_a(reading) == pytest.approx((5.0, 8.0, 8.0))
+
+
+def test_the_sun_through_a_hybrid_inverter_is_part_of_the_plant_s_output() -> None:
+    # Midday: the sun gives 6.9 kW, the battery charges 2.3 kW of it, the plant puts out 4.6 kW (2 kW per phase on
+    # L1 and L2, 0.6 kW on L3); the house uses some, the rest is exported. The battery's power alone (charging)
+    # would hide the house; the plant's output gives it back.
+    plant = (2000.0, 2000.0, 600.0)
+    reading = _reading(site=(-6.0, -2.0, 0.5), battery_w=2300.0, plant=plant)
+    assert exact_phase_a(reading) == pytest.approx((2000.0 / VOLTS - 6.0, 2000.0 / VOLTS - 2.0, 600.0 / VOLTS + 0.5))
+    assert house_sum_a(reading) == pytest.approx(sum(plant) / VOLTS - 7.5)
+
+
+def test_the_owner_s_unbalanced_reading_with_the_grid_held_at_zero_is_the_plant_s_split() -> None:
+    # 2026-11-16 13:44 on the owner's plant: the battery covers the house per phase, the grid sensor reads 0 on each,
+    # and the plant's phases read 0.203, 0.079 and 0.972 kW (the heat pump's own meter 0.97 kW on L3). The band rule
+    # (were the 1.36 kW discharge inside it) would put the whole discharge on every phase.
+    reading = _reading(site=(0.0, 0.0, 0.0), battery_w=-1359.0, plant=(203.0, 79.0, 972.0))
+    assert exact_phase_a(reading) == pytest.approx((203.0 / VOLTS, 79.0 / VOLTS, 972.0 / VOLTS))
+
+
+def test_a_phase_reading_far_below_zero_is_no_exact_sample() -> None:
+    # The plant puts out 3 kW on L1 by its reading while the meter imports 20 A there: the plant's phases are not the
+    # meter's (or a reading is wrong). The sample falls to the band (outside it here: nothing counts).
+    wrong = _reading(site=(-20.0, 20.0, 0.0), battery_w=-3000.0, plant=(0.0, 3000.0, 0.0))
+    assert exact_phase_a(wrong) is None and house_phase(wrong) == (None, False)
+    # Just above the line still counts (a house with its own sun on another inverter may read a little below 0).
+    near = _reading(site=(-PLANT_MISMATCH_A + 0.1, 5.0, 5.0), plant=(0.0, 0.0, 0.0))
+    assert exact_phase_a(near) is not None
+
+
+def test_without_the_plant_s_reading_the_band_rule_counts_as_before() -> None:
+    reading = _reading(site=(5.0, 5.0, 5.0), battery_w=-230.0)
+    assert exact_phase_a(reading) is None
+    assert house_phase(reading) == (pytest.approx((6.0, 6.0, 6.0)), False)
+    # Nor without the measurement or a charger's phase.
+    assert exact_phase_a(_reading(site=None, plant=(0.0, 0.0, 0.0))) is None
+    assert exact_phase_a(_reading(chargers=None, plant=(0.0, 0.0, 0.0))) is None
+
+
+def test_exact_minutes_count_with_the_battery_busy_and_need_no_bias_factor() -> None:
+    peaks = PhasePeaks()
+    # Two weeks of the battery covering the house all day (3 kW out, never in the band): the band counts nothing.
+    busy = _reading(site=(0.0, 0.0, 0.0), battery_w=-3000.0, plant=(5.0 * VOLTS, 3.0 * VOLTS, 5.0 * VOLTS))
+    now = _days(peaks, READY_DAYS, reading=busy)
+    learned = peaks.learned(now)
+    assert learned.ready and learned.basis == "exact"
+    # The quiet minutes that close each day count by the band (no plant reading there), with a large bias factor:
+    # once the exact minutes suffice, neither counts.
+    assert learned.exact_days == READY_DAYS and learned.factor > 1.0
+    assert learned.phase_peaks() == pytest.approx({"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 5.0 + MARGIN_A})
+
+
+def test_band_and_exact_minutes_together_take_the_larger_per_phase_until_the_exact_ones_suffice() -> None:
+    peaks = PhasePeaks()
+    # A week by the band (16 A summed), then a 24 A evening the band misses: factor 1.5 on the band's peaks.
+    now = _days(peaks, 7)
+    _close(peaks, _feed(peaks, now + 18 * 3600, 5, _reading(site=(1.0, 1.0, 1.0), battery_w=-21.0 * VOLTS)))
+    # Then the plant's per-phase power is there: a week of exact minutes, 12 A on L2.
+    exact = _reading(site=(2.0, 12.0, 2.0), battery_w=-1000.0, plant=(0.0, 0.0, 0.0))
+    now = _days(peaks, 7, reading=exact, start=now + 86400)
+    learned = peaks.learned(now)
+    assert learned.ready and learned.basis == "mixed"
+    assert learned.factor == pytest.approx(24.0 / 16.0)
+    assert learned.phase_peaks() == pytest.approx({
+        "L1": 5.0 * 1.5 + MARGIN_A, "L2": 12.0 + MARGIN_A, "L3": 8.0 * 1.5 + MARGIN_A,
+    })
+    # Two weeks of exact minutes: the band's (scaled) peaks no longer count.
+    now = _days(peaks, READY_DAYS - 7, reading=exact, start=now)
+    learned = peaks.learned(now)
+    assert learned.basis == "exact" and learned.exact_days == READY_DAYS
+    assert learned.phase_peaks() == pytest.approx({"L1": 2.0 + MARGIN_A, "L2": 12.0 + MARGIN_A, "L3": 2.0 + MARGIN_A})
+
+
+def test_a_minute_with_one_sample_by_the_band_is_counted_by_the_band() -> None:
+    peaks = PhasePeaks()
+    exact = _reading(site=(4.0, 4.0, 4.0), plant=(0.0, 0.0, 0.0))
+    band = _reading(site=(4.0, 4.0, 4.0))
+    # The plant's reading went stale for one sample of the minute: the minute counts by the band (scaled).
+    now = _feed(peaks, T0, 3, each=lambda index: exact)
+    for second in range(0, 60, 10):
+        peaks.add(now + second, band if second == 30 else exact)
+    _close(peaks, now + 60)
+    marks = [mark for mark in peaks.hours.values()]
+    assert sum(mark.minutes for mark in marks) == 1
+    assert sum(mark.exact_minutes for mark in marks) >= 1
+
+
+def test_exact_marks_survive_the_store_and_old_marks_without_them_still_read() -> None:
+    peaks = PhasePeaks()
+    now = _days(peaks, 2, reading=_reading(plant=(0.0, 0.0, 0.0), battery_w=-2000.0))
+    stored = json.loads(json.dumps(peaks.as_dict()))
+    again = PhasePeaks()
+    again.load(stored, now)
+    assert again.learned(now) == peaks.learned(now)
+    assert again.learned(now).exact_minutes > 0
+    hour = int(now // 3600) - 1
+    old = PhasePeaks()
+    old.load({"hours": {
+        str(hour): {"a": [1.0, 2.0, 3.0], "n": 5},  # kept before the exact minutes
+        str(hour - 1): {"a": None, "n": 0, "xa": [1.0, 2.0, 3.0], "xn": 5},
+        str(hour - 2): {"a": None, "n": 0, "xa": None, "xn": 5},  # exact minutes without a peak
+        str(hour - 3): {"a": [1.0, 2.0, 3.0], "n": 40, "xa": [1.0, 2.0, 3.0], "xn": 30},  # more than an hour
+        str(hour - 4): {"a": None, "n": 0, "xa": [1.0, 2.0, 3.0], "xn": True},
+    }}, now)
+    assert sorted(old.hours) == [hour - 1, hour]
+    assert old.hours[hour].exact_minutes == 0 and old.hours[hour - 1].exact_a == (1.0, 2.0, 3.0)
+
+
 # --- the store ------------------------------------------------------------------------------------------------------
 
 
@@ -325,8 +454,14 @@ def test_the_cap_never_goes_below_zero() -> None:
 # --- what the site holds ----------------------------------------------------------------------------------------------
 
 
+#: The time the plant's readings are taken against in the site's tests (epoch seconds).
+PLANT_NOW = 1_800_000_000.0
+
+
 def _fake_site(*, state="observing", currents=(10.0, 6.0, 4.0), powers=(2000.0, None, -900.0),
-               charger=None, phases=(3, None), battery=(True, -100.0), heat=None):
+               charger=None, phases=(3, None), battery=(True, -100.0), heat=None, plant=None, plant_sign=1.0):
+    """`plant`: per phase (state, unit, age in s) of the plant's per-phase power entities, named in the battery's
+    facts; `None` for a battery whose facts name none."""
     from types import SimpleNamespace
 
     from custom_components.spotnav.site.site_capacity import DirectPhaseMeasurement, PhaseValue
@@ -344,7 +479,18 @@ def _fake_site(*, state="observing", currents=(10.0, 6.0, 4.0), powers=(2000.0, 
     if heat is not None:
         for suffix, value in zip(("_l1", "_l2", "_l3"), heat, strict=True):
             states[f"sensor.heat{suffix}"] = SimpleNamespace(state=str(value), attributes={"unit_of_measurement": "W"})
+    plant_ids = None
+    if plant is not None:
+        from datetime import UTC, datetime
+
+        plant_ids = tuple(f"sensor.plant_phase_{name}" for name in "abc")
+        for entity_id, (value, unit, age) in zip(plant_ids, plant, strict=True):
+            states[entity_id] = SimpleNamespace(
+                state=value, attributes={"unit_of_measurement": unit},
+                last_reported=datetime.fromtimestamp(PLANT_NOW - age, UTC),
+            )
     return SimpleNamespace(
+        battery_shadow=SimpleNamespace(facts=SimpleNamespace(plant_phase_entities=plant_ids, plant_phase_sign=plant_sign)),
         result=result,
         config={"charger_entry_ids": ["c1"], "max_age_s": 120.0},
         charger_measured_current=lambda _id: measured,
@@ -385,3 +531,46 @@ def test_the_site_s_reading_without_a_usable_measurement_a_battery_or_a_charger_
     assert read_site(_fake_site(charger=one, phases=(1, None)), 0.0).chargers_a is None
     idle = ((0.0, 5.0), (0.0, 5.0), (0.2, 5.0))
     assert read_site(_fake_site(charger=idle, phases=(1, None)), 0.0).chargers_a == (0.0, 0.0, 0.0)
+
+
+def test_the_site_s_reading_takes_the_plant_s_fresh_per_phase_power_as_output() -> None:
+    from custom_components.spotnav.site.phase_peaks import read_site
+
+    plant = (("0.203", "kW", 2.0), ("79", "W", 4.0), ("0.972", "kW", 1.0))
+    reading = read_site(_fake_site(plant=plant), PLANT_NOW)
+    assert reading.plant_w == pytest.approx((203.0, 79.0, 972.0))
+    # A brand stating its output negative is turned round.
+    turned = read_site(_fake_site(plant=plant, plant_sign=-1.0), PLANT_NOW)
+    assert turned.plant_w == pytest.approx((-203.0, -79.0, -972.0))
+
+
+@pytest.mark.parametrize("phase_c", [
+    ("0.972", "kW", 500.0),  # stale: older than the site's maximum age (120 s)
+    ("unknown", "kW", 1.0),
+    ("unavailable", "kW", 1.0),
+    ("0.972", "kWh", 1.0),  # not a power
+    ("0.972", "kW", -30.0),  # reported in the future
+])
+def test_the_site_s_reading_without_all_three_phases_fresh_has_no_plant_power(phase_c) -> None:
+    from custom_components.spotnav.site.phase_peaks import read_site
+
+    plant = (("0.2", "kW", 2.0), ("0.1", "kW", 2.0), phase_c)
+    reading = read_site(_fake_site(plant=plant), PLANT_NOW)
+    # No value is made up: the sample falls to the battery's band.
+    assert reading.plant_w is None
+    assert house_phase(reading)[1] is False
+
+
+def test_the_site_s_reading_without_the_plant_s_entities_has_no_plant_power() -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.site.phase_peaks import read_site
+
+    assert read_site(_fake_site(), PLANT_NOW).plant_w is None
+    site = _fake_site()
+    del site.battery_shadow
+    assert read_site(site, PLANT_NOW).plant_w is None
+    site.battery_shadow = SimpleNamespace(facts=SimpleNamespace(
+        plant_phase_entities=("sensor.a", "sensor.b", "sensor.c"), plant_phase_sign=1.0,
+    ))
+    assert read_site(site, PLANT_NOW).plant_w is None  # the entities have no state
