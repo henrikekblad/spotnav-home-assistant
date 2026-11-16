@@ -154,7 +154,37 @@ describe("the house history", () => {
     const month = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: house("house_history/villa_month.json") }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     // A table: a row a day, a column a figure.
     expect(month.querySelectorAll("[data-part='days'] tbody tr")).toHaveLength(13);
-    expect(month.querySelectorAll("[data-part='days'] tbody tr:first-child td")).toHaveLength(4);
+    // A column a figure, and the battery's own share of its perfect plan (none before the first perfect plan).
+    expect(month.querySelectorAll("[data-part='days'] tbody tr:first-child td")).toHaveLength(5);
+    expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-03'] td:last-child")?.textContent).toBe("–");
+    expect(month.querySelector("[data-part='days'] tr[data-date='2026-11-06'] td:last-child")?.textContent).toBe("78 %");
+  });
+
+  it("opens a month with the shares of the perfect plan, summed so the day boundary washes out", () => {
+    const answer = house("house_history/villa_month.json");
+    const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const part = body.querySelector("[data-part='perfect']")!;
+    expect(part.querySelector("h4")?.textContent).toBe("Andel av perfekt");
+    expect(part.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning 77 % av perfekt · SpotNav Balanserad 74 %");
+    expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, med samma regler.");
+    expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
+    // It comes before the money; the money behind it and the work only with Detailed on.
+    const parts = Array.from(body.querySelectorAll<HTMLElement>("[data-part]")).map((item) => item.dataset["part"]);
+    expect(parts.indexOf("perfect")).toBeLessThan(parts.indexOf("money"));
+    expect(body.querySelector("[data-part='perfect-details']")).toBeNull();
+    const detailed = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const details = detailed.querySelector("[data-part='perfect-details']")!;
+    expect(details.querySelectorAll("table")).toHaveLength(2);
+    expect(details.querySelector("[data-line='cell-temperature']")?.textContent).toBe("Battericeller: medel 21,8 °C, högst 27,5 °C, 15 min över 30 °C (åtta dygn).");
+  });
+
+  it("says on a single day that what was left at midnight counted", () => {
+    const answer = house("house_history/villa_day.json");
+    const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(body.querySelector("[data-part='perfect'] [data-line='perfect-midnight']")?.textContent).toBe("Räknat med det som fanns kvar i batteriet vid midnatt.");
+    // An answer before the perfect plan has none.
+    const old = { ...answer, review: { ...answer.review!, perfect: null } };
+    expect(houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: old }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" }).querySelector("[data-part='perfect']")).toBeNull();
   });
 
   it("says what is missing: no meters, no prices, no review", () => {

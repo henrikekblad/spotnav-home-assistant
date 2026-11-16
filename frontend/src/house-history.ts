@@ -7,7 +7,8 @@
 
 import { dateLabel, formatFixed, formatNumber } from "./format";
 import { renderFlow } from "./house-flow";
-import { decodeEnergyFlow, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow } from "./house-model";
+import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow, type PerfectFigures } from "./house-model";
+import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { amount } from "./house-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -61,6 +62,9 @@ export interface HouseReviewDay {
   battery_saving: number | null;
   plan_saving: number;
   own_saving: number;
+  /** The day's share of its perfect plan: the battery's own and the site's mode; `null` without one. */
+  own_share: number | null;
+  plan_share: number | null;
 }
 
 export interface HouseReview {
@@ -79,6 +83,8 @@ export interface HouseReview {
   modes: Record<string, { saving: number | null; days: number }>;
   mode: string | null;
   by_day: HouseReviewDay[];
+  /** The period's days against their perfect plans (`site/perfect_view.py`); `null` without one. */
+  perfect: PerfectFigures | null;
 }
 
 export interface ForecastError {
@@ -221,8 +227,11 @@ function review(value: unknown): HouseReview | null {
         battery_saving: numberOrNull(item.battery_saving),
         plan_saving: number(item.plan_saving),
         own_saving: number(item.own_saving),
+        own_share: "own_share" in item ? numberOrNull(item.own_share) : null,
+        plan_share: "plan_share" in item ? numberOrNull(item.plan_share) : null,
       };
     }),
+    perfect: "perfect" in source ? decodePerfect(source.perfect) : null,
   };
 }
 
@@ -496,6 +505,35 @@ function modesSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
   return block;
 }
 
+/** The period's shares of the perfect plan: the headline the history opens its money with (summed over the period,
+ * where the day boundary washes out; a single day says it counted what was left at midnight). */
+function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
+  const perfect = answer.review?.perfect ?? null;
+  if (!hasPerfect(perfect)) {
+    return null;
+  }
+  const { doc, language } = input;
+  const ownName = translate(language, "house.compare.own");
+  const block = section(doc, translate(language, "perfect.headingPeriod"), "perfect");
+  const headline = perfectHeadline(language, perfect, ownName);
+  if (headline !== null) {
+    const line = element(doc, "p", H.perfectHead, headline);
+    line.dataset["line"] = "perfect-headline";
+    block.append(line);
+  }
+  block.append(perfectRows(doc, language, perfect, ownName, answer.review?.mode ?? null), ...perfectNotes(doc, language, perfect, ownName, answer.period === "day"));
+  return block;
+}
+
+/** With Detailed on: the money behind the shares, the battery's work and the cells' temperature. */
+function perfectDetailsSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
+  const perfect = answer.review?.perfect ?? null;
+  if (perfect === null || ((perfect.days === 0 || perfect.saving === null) && perfect.temperature === null)) {
+    return null;
+  }
+  return perfectDetails(input.doc, input.language, perfect, answer.money, translate(input.language, "house.compare.own"));
+}
+
 function forecastSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement {
   const { doc, language } = input;
   const block = section(doc, translate(language, "hist.forecast.heading"), "forecast");
@@ -528,8 +566,12 @@ function daysSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
   // A table, as the house card's own "Day by day": a figure never breaks over two lines on a phone.
   const table = element(doc, "table", H.table);
   const headRow = element(doc, "tr");
+  const shares = reviewed.by_day.some((day) => day.own_share !== null);
   for (const key of ["house.days.date", "hist.house.col.battery", "hist.house.col.plan", "hist.house.col.own"] as const) {
     headRow.append(element(doc, "th", undefined, translate(language, key)));
+  }
+  if (shares) {
+    headRow.append(element(doc, "th", undefined, translate(language, "hist.house.col.share")));
   }
   const head = element(doc, "thead");
   head.append(headRow);
@@ -540,6 +582,9 @@ function daysSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
     row.append(element(doc, "td", undefined, dateLabel(language, day.date)));
     for (const value of [day.battery_saving, day.plan_saving, day.own_saving]) {
       row.append(element(doc, "td", undefined, value === null ? "–" : amount(language, value, answer.money)));
+    }
+    if (shares) {
+      row.append(element(doc, "td", undefined, day.own_share === null ? "–" : `${formatNumber(language, day.own_share, 0)} %`));
     }
     rows.append(row);
   }
@@ -574,13 +619,13 @@ export function houseHistoryBody(input: HouseHistoryInput): HTMLElement {
   if (shownAnswer.energy_flow === null && shownAnswer.buckets.length === 0) {
     period.append(note(doc, translate(language, "hist.house.noMeters"), "no-meters"));
   }
-  for (const part of [houseBars(input, shownAnswer), flowSection(input, shownAnswer), moneySection(input, shownAnswer)]) {
+  for (const part of [houseBars(input, shownAnswer), perfectSection(input, shownAnswer), flowSection(input, shownAnswer), moneySection(input, shownAnswer)]) {
     if (part !== null) {
       period.append(part);
     }
   }
   if (ui.detailed) {
-    for (const part of [modesSection(input, shownAnswer), forecastSection(input, shownAnswer), daysSection(input, shownAnswer)]) {
+    for (const part of [modesSection(input, shownAnswer), perfectDetailsSection(input, shownAnswer), forecastSection(input, shownAnswer), daysSection(input, shownAnswer)]) {
       if (part !== null) {
         period.append(part);
       }
