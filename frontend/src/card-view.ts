@@ -588,6 +588,13 @@ export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "no
 
 /** The strategy rows whose availability hangs on the site's solar setup. */
 const SOLAR_SETUP_ROWS: ReadonlySet<string> = new Set(["solar", "hybrid"]);
+
+/** Each strategy's one line under its name in the strategy dialog. */
+const STRATEGY_DESCRIBE_KEYS: Readonly<Record<string, TranslationKey>> = {
+  cheapest: "strategy.describe.cheapest",
+  solar: "strategy.describe.solar",
+  hybrid: "strategy.describe.hybrid",
+};
 /** The reason code of a solar strategy held back because a direct site lacks the meter's total grid power. */
 const STRATEGY_NEEDS_TOTAL_POWER = "needs_total_grid_power";
 
@@ -2605,6 +2612,11 @@ export function createCardView(input: CardViewInput): CardView {
         });
       }
       item.append(button);
+      // What the strategy does, in one line under its name.
+      const describe = STRATEGY_DESCRIBE_KEYS[row.id];
+      if (describe !== undefined) {
+        item.append(element(doc, "span", C.strategyReason, translate(model.language, describe)));
+      }
       if (row.reason !== null) {
         item.append(element(doc, "span", C.strategyReason, row.reason));
         // A solar strategy held back for lack of solar settings points an administrator at the card that sets them.

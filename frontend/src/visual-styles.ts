@@ -1018,7 +1018,7 @@ export const VISUAL_STYLES = `
   .spotnav-strategy-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
     align-items: flex-start;
     margin-top: 8px;
   }
@@ -1044,6 +1044,15 @@ export const VISUAL_STYLES = `
   .spotnav-choice-button:disabled {
     opacity: 0.55;
     cursor: default;
+  }
+  /* The strategy in force: an outline in the primary colour and a check mark, never pale like one not to be had. */
+  .spotnav-strategy-row > .spotnav-choice-button[aria-pressed="true"] {
+    opacity: 1;
+    border: 2px solid var(--primary-color, #03a9f4);
+    font-weight: 500;
+  }
+  .spotnav-strategy-row > .spotnav-choice-button[aria-pressed="true"]::before {
+    content: "✓ ";
   }
   /**
    * "Which car is plugged in?": a question that decides the plan, so it stands out from the status. The same-area
