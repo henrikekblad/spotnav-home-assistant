@@ -221,18 +221,26 @@ async def async_price_entry_from_settings(
 def choose_price_entry(hass: HomeAssistant, charger_id: str, price_entry_id: str) -> None:
     """The charger's site points at the price entry and every charger on it follows (their own pointers are
     dropped); a charger without a site points at it itself."""
-    before = {entry.data.get(CONF_PRICE_ENTRY_ID) for entry in hass.config_entries.async_entries(DOMAIN)}
     site = site_for_charger(hass, charger_id)
-    changed = False
-    if site is None:
-        charger = hass.config_entries.async_get_entry(charger_id)
-        changed = charger is not None and _write_pointer(hass, charger, price_entry_id)
-    else:
-        changed = _write_pointer(hass, site, price_entry_id)
-        for member_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
-            member = hass.config_entries.async_get_entry(member_id)
-            if member is not None and _write_pointer(hass, member, None):
-                changed = True
+    if site is not None:
+        choose_site_price_entry(hass, site, price_entry_id)
+        return
+    before = {entry.data.get(CONF_PRICE_ENTRY_ID) for entry in hass.config_entries.async_entries(DOMAIN)}
+    charger = hass.config_entries.async_get_entry(charger_id)
+    if charger is not None and _write_pointer(hass, charger, price_entry_id):
+        _announce(hass, {price_entry_id, *before})
+
+
+@callback
+def choose_site_price_entry(hass: HomeAssistant, site: ConfigEntry, price_entry_id: str) -> None:
+    """The site points at the price entry and every charger on it follows (their own pointers are dropped); a site
+    without chargers just points at it."""
+    before = {entry.data.get(CONF_PRICE_ENTRY_ID) for entry in hass.config_entries.async_entries(DOMAIN)}
+    changed = _write_pointer(hass, site, price_entry_id)
+    for member_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+        member = hass.config_entries.async_get_entry(member_id)
+        if member is not None and _write_pointer(hass, member, None):
+            changed = True
     if changed:
         _announce(hass, {price_entry_id, *before})
 
