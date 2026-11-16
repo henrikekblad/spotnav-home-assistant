@@ -143,8 +143,9 @@ def test_degree_days_and_the_trend_across_new_year() -> None:
     assert [row["month"] for row in trend][0] == "2025-12" and trend[-1]["month"] == "2026-11"
     assert len(trend) == 12
     july = next(row for row in trend if row["month"] == "2026-07")
-    # A warm July has hardly any degree-days: no figure rather than a jump.
+    # A warm July and August have hardly any degree-days: no figure rather than a jump.
     assert july["degree_days"] < 5 and july["kwh_per_degree_day"] is None
+    assert next(row for row in trend if row["month"] == "2026-08")["kwh_per_degree_day"] is None
     january = next(row for row in trend if row["month"] == "2026-01")
     assert january["kwh_per_degree_day"] == pytest.approx(2.88 + 2.4 / (BASE_C + 2.5), rel=0.01)
     assert trend_start(period_of(PERIOD_YEAR, date(2027, 1, 1))) == date(2027, 1, 1)

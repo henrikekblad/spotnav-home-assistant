@@ -24,7 +24,7 @@ written here.
 * **Degree-days** (`degree_days`): per local day `max(0, BASE_C - the day's mean outdoor temperature)`, the mean of
   its hourly means (a day with fewer than `MIN_DAY_HOURS` of them has none). The weather-neutral figure is the meter's
   whole energy (hot water included: older days have no split) over the days that have both, per degree-day:
-  `kwh_per_degree_day`, `null` below `MIN_DEGREE_DAYS`. `trend` has the twelve months up to the period's last (a day:
+  `kwh_per_degree_day`, `null` below `MIN_DEGREE_DAYS` (a day: `MIN_DAY_DEGREE_DAYS`). `trend` has the twelve months up to the period's last (a day:
   none), each month's own figure, so a new heat pump, insulation or windows show as a step. The outdoor
   temperature is the heat card's own (`api/heat.read_outdoor`): a sensor's long-term statistics, or, where the
   outdoor figure is a weather entity (which has none), the hours the house forecast recorded (`source`
@@ -83,8 +83,10 @@ HISTORY_KEYS: Final = (
 BASE_C: Final = 17.0
 #: A day needs this many hourly outdoor means for its degree-days.
 MIN_DAY_HOURS: Final = 18
-#: Fewer degree-days than this: no kWh per degree-day (a mild spell would make it jump).
-MIN_DEGREE_DAYS: Final = 5.0
+#: Fewer degree-days than this: no kWh per degree-day (in a mild month hot water is most of the energy and the figure
+#: would jump); a single day needs fewer.
+MIN_DEGREE_DAYS: Final = 30.0
+MIN_DAY_DEGREE_DAYS: Final = 5.0
 TREND_MONTHS: Final = 12
 IMMERSION_ON_KW: Final = 0.05
 DRAW_FACTOR: Final = 1.4
@@ -166,8 +168,8 @@ def day_kwh(heat_hours: Mapping[datetime, float], tz: str) -> dict[date, float]:
     return out
 
 
-def _per_degree_day(kwh: float, dd: float) -> float | None:
-    return _r(kwh / dd, 3) if dd >= MIN_DEGREE_DAYS else None
+def _per_degree_day(kwh: float, dd: float, least: float = MIN_DEGREE_DAYS) -> float | None:
+    return _r(kwh / dd, 3) if dd >= least else None
 
 
 def degree_day_figures(
@@ -394,7 +396,9 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
             "sum": _r(dd, 1),
             "days": counted,
             "kwh": _r(kwh, 3),
-            "kwh_per_degree_day": _per_degree_day(kwh, dd) if counted else None,
+            "kwh_per_degree_day": _per_degree_day(kwh, dd, MIN_DAY_DEGREE_DAYS if period.kind == PERIOD_DAY else MIN_DEGREE_DAYS)
+            if counted
+            else None,
             "trend": trend,
         }
 

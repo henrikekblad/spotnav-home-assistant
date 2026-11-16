@@ -327,7 +327,7 @@
         "days": 31,
         "degree_days": 15.4,
         "kwh": 141.12,
-        "kwh_per_degree_day": 9.154,
+        "kwh_per_degree_day": null,
         "month": "2026-08"
       },
       {
