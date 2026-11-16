@@ -24,6 +24,7 @@ export const HEAT_CLASSES = {
   bandCell: "spotnav-heat-band-cell",
   bandReadout: "spotnav-heat-band-readout",
   bandMark: "spotnav-heat-band-mark",
+  bandRelay: "spotnav-heat-band-relay",
   bandAxis: "spotnav-heat-band-axis",
   bandNow: "spotnav-heat-band-now",
   legend: "spotnav-heat-legend",
@@ -47,6 +48,8 @@ export const HEAT_STYLES = `
     --spotnav-heat-normal: color-mix(in srgb, var(--secondary-text-color, #727272) 22%, transparent);
     --spotnav-heat-water: var(--spotnav-heat-water-colour, #1e88e5);
     --spotnav-heat-car: var(--spotnav-flow-car-colour, #f08c3a);
+    /* The relay that really lowers the heat now (the blueprint or anyone): teal, apart from the plan's blue. */
+    --spotnav-heat-relay: var(--spotnav-heat-relay-colour, #14808f);
   }
   .${X.settingsButton} {
     flex: none;
@@ -210,6 +213,9 @@ export const HEAT_STYLES = `
   .${X.bandCell}[data-past="true"] { opacity: 0.45; }
   .${X.bandMark}[data-mark="hot_water"] { fill: var(--spotnav-heat-water); }
   .${X.bandMark}[data-mark="car"] { fill: var(--spotnav-heat-car); }
+  /* What the relay did (solid) and is expected to do (outlined), under SpotNav's plan. */
+  .${X.bandRelay}[data-mark="relay"] { fill: var(--spotnav-heat-relay); }
+  .${X.bandRelay}[data-mark="relay_expected"] { fill: none; stroke: var(--spotnav-heat-relay); stroke-width: 1.5; }
   .${X.bandAxis} {
     fill: var(--secondary-text-color, #727272);
     font-size: 10px;
@@ -246,6 +252,8 @@ export const HEAT_STYLES = `
   .${X.swatch}[data-action="return"] { background: var(--spotnav-heat-return); }
   .${X.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water); border-radius: 50%; }
   .${X.swatch}[data-action="car"] { background: var(--spotnav-heat-car); }
+  .${X.swatch}[data-action="relay"] { background: var(--spotnav-heat-relay); height: 6px; }
+  .${X.swatch}[data-action="relay_expected"] { border: 1.5px solid var(--spotnav-heat-relay); height: 6px; box-sizing: border-box; }
   .${X.error} {
     margin: 6px 0 0;
     text-align: center;
@@ -267,7 +275,7 @@ export const HEAT_STYLES = `
     color: var(--primary-text-color, #212121);
   }
   @media (forced-colors: active) {
-    .${X.bandCell}, .${X.bandMark}, .${X.dialValue}, .${X.swatch} {
+    .${X.bandCell}, .${X.bandMark}, .${X.bandRelay}, .${X.dialValue}, .${X.swatch} {
       fill: CanvasText;
       stroke: CanvasText;
       background: CanvasText;

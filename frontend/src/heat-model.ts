@@ -66,6 +66,17 @@ const CONFIG = O({
 const CHOICE = O({ entity_id: "string", name: "string", value: N("string") });
 const ZONE_CHOICE = O({ entity_id: "string", name: "string", value: N("string"), kind: "string" });
 const RUN = O({ start: "string", end: "string", kwh: "number" });
+const EFFECT = O({ lower_share: "number", rebound: "number", blocks: "number" });
+const COMFORT = { coldest_min_c: N("number"), minutes_below: "number" } as const;
+/** A day's review (`heat/review.py`): the relay's real lowering and SpotNav's plan, money and comfort. */
+export const REVIEW = O({
+  date: "string",
+  low_c: "number",
+  effect: EFFECT,
+  day: N(O({ coldest_min_c: "number", minutes_below: "number" })),
+  relay: O({ hours: "number", value: "number", saved_kwh: "number", measured: "number", ...COMFORT }),
+  plan: O({ hours: "number", value: "number", saved_kwh: "number", overlap_hours: "number", ...COMFORT }),
+});
 
 const ANSWER = O({
   api_version: "number",
@@ -160,6 +171,8 @@ const ANSWER = O({
         past: "boolean",
         hot_water: "boolean",
         car: "boolean",
+        relay_min: N("number"),
+        relay_expected: "boolean",
       }),
     ),
     hot_water_pick: N("string"),
@@ -177,6 +190,18 @@ const ANSWER = O({
       meter: N(A(CHOICE)),
     }),
   ),
+  relay: N(
+    O({
+      entity_id: "string",
+      name: "string",
+      closed: N("boolean"),
+      since: N("string"),
+      source: N("string"),
+      automation: N(O({ entity_id: "string", name: "string" })),
+      effect: EFFECT,
+    }),
+  ),
+  review: N(REVIEW),
 });
 
 const WRITE = O({
@@ -226,6 +251,39 @@ export interface HeatBandHour {
   past: boolean;
   hot_water: boolean;
   car: boolean;
+  /** Minutes the heat pump's relay was (or is expected to be) closed in the hour; `null` without a relay. */
+  relay_min: number | null;
+  relay_expected: boolean;
+}
+
+export interface HeatEffect {
+  lower_share: number;
+  rebound: number;
+  blocks: number;
+}
+
+export interface HeatReviewComfort {
+  coldest_min_c: number | null;
+  minutes_below: number;
+}
+
+export interface HeatReview {
+  date: string;
+  low_c: number;
+  effect: HeatEffect;
+  day: { coldest_min_c: number; minutes_below: number } | null;
+  relay: HeatReviewComfort & { hours: number; value: number; saved_kwh: number; measured: number };
+  plan: HeatReviewComfort & { hours: number; value: number; saved_kwh: number; overlap_hours: number };
+}
+
+export interface HeatRelay {
+  entity_id: string;
+  name: string;
+  closed: boolean | null;
+  since: string | null;
+  source: string | null;
+  automation: { entity_id: string; name: string } | null;
+  effect: HeatEffect;
 }
 
 export interface HeatZone {
@@ -315,6 +373,8 @@ export interface HeatAnswer {
     hot_water: HeatChoice[];
     meter: HeatChoice[] | null;
   } | null;
+  relay: HeatRelay | null;
+  review: HeatReview | null;
 }
 
 export interface HeatWriteAnswer {

@@ -1,12 +1,13 @@
 // The heat card's history (`spotnav/get_heat_history`): one day, month or year of the house's heating, behind the clock
 // in the card's header. The decoded answer and the dialog's body: the heat pump's cost per hour, day or month
 // (the shadow's saving, at most, hatched on top), use and cost with hot water split out where the recorder still has the
-// 5-minute rows, kWh per degree-day with its monthly trend, comfort, what SpotNav would have moved in shadow, the
-// immersion heater where its power is read and, with Detailed on, the day's hot-water runs one by one. Every figure is
+// 5-minute rows, kWh per degree-day with its monthly trend, comfort, what SpotNav's plan would have saved in shadow, a
+// day's review (the relay's real lowering beside SpotNav's plan), the immersion heater where its power is read and,
+// with Detailed on, the day's hot-water runs one by one. Every figure is
 // the backend's; text is written with `textContent` only.
 
 import { clock, formatFixed, formatNumber, type FormatContext } from "./format";
-import { HEAT_HISTORY_API_VERSION, roomName } from "./heat-model";
+import { fits, HEAT_HISTORY_API_VERSION, REVIEW, roomName, type HeatReview } from "./heat-model";
 import { bucketWords, isoDay, periodKind } from "./house-history";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -74,9 +75,22 @@ export interface HeatHistory {
     trend: TrendMonth[];
   } | null;
   comfort: { low_c: number; sensors: number; coldest: { entity_id: string; name: string; mean_c: number; min_c: number } | null; hours: number; hours_below: number } | null;
-  shadow: { days: number; lowered_hours: number; moved_kwh: number; value: number } | null;
+  shadow: {
+    days: number;
+    lowered_hours: number;
+    moved_kwh: number;
+    value: number;
+    /** Days counted on SpotNav's plan as kept hour by hour (the rest planned again). */
+    kept_days: number;
+    /** The lowering's learned effect: the share of the heat taken away, the share coming back, the blocks measured. */
+    lower_share: number;
+    rebound: number;
+    blocks: number;
+  } | null;
   immersion: { hours: number; kwh: number } | null;
   runs: HeatRun[];
+  /** The day's review (a day only): the relay's real lowering beside SpotNav's plan. */
+  review: HeatReview | null;
 }
 
 export type HeatHistoryDecode = { ok: true; value: HeatHistory } | { ok: false; failure: "unsupported" | "malformed" };
@@ -204,8 +218,13 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
           lowered_hours: count(item.lowered_hours),
           moved_kwh: number(item.moved_kwh),
           value: number(item.value),
+          kept_days: count(item.kept_days),
+          lower_share: number(item.lower_share),
+          rebound: number(item.rebound),
+          blocks: count(item.blocks),
         })),
         immersion: nullable(source.immersion, (item) => ({ hours: count(item.hours), kwh: number(item.kwh) })),
+        review: source.review === null ? null : fits(source.review, REVIEW) ? (source.review as HeatReview) : bad(),
         runs: list(source.runs).map((raw): HeatRun => {
           const item = record(raw);
           const cause = item.cause;
@@ -457,6 +476,7 @@ function shadowSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElemen
     block.append(note(doc, translate(language, "hist.heat.shadowNone"), "no-shadow"));
     return block;
   }
+  const percent = (share: number): string => `${formatFixed(language, share * 100, 0)} %`;
   block.append(
     figureRow(doc, translate(language, "hist.heat.shadowValue"), money(language, shadow.value, answer.money), "value"),
     note(
@@ -467,7 +487,58 @@ function shadowSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElemen
         days: String(shadow.days),
       }),
     ),
-    note(doc, translate(language, "hist.heat.shadowNote")),
+    note(
+      doc,
+      translate(language, "hist.heat.shadowNote", {
+        kept: String(shadow.kept_days),
+        days: String(shadow.days),
+        share: percent(shadow.lower_share),
+        rebound: percent(shadow.rebound),
+      }),
+    ),
+    note(
+      doc,
+      shadow.blocks > 0
+        ? translate(language, "hist.heat.shadowLearned", { blocks: String(shadow.blocks) })
+        : translate(language, "hist.heat.shadowPrior"),
+      "effect",
+    ),
+  );
+  return block;
+}
+
+/** The day's review: the relay's real lowering and SpotNav's plan, money and the coldest room, side by side. */
+function reviewSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
+  const review = answer.review;
+  if (answer.period !== "day" || review === null) {
+    return null;
+  }
+  const { doc, language } = input;
+  const block = section(doc, translate(language, "hist.heat.review"), "review");
+  const hours = (value: number): string => `${formatFixed(language, value, Number.isInteger(value) ? 0 : 1)} h`;
+  const comfort = (part: { coldest_min_c: number | null; minutes_below: number }): string =>
+    part.coldest_min_c === null
+      ? translate(language, "hist.heat.reviewNoRooms")
+      : translate(language, "hist.heat.reviewComfort", { min: celsius(language, part.coldest_min_c), minutes: String(part.minutes_below) });
+  block.append(
+    figureRow(
+      doc,
+      translate(language, "hist.heat.reviewRelay", { hours: hours(review.relay.hours) }),
+      money(language, review.relay.value, answer.money),
+      "review-relay",
+    ),
+    figureRow(doc, "", comfort(review.relay), "review-relay-comfort"),
+    figureRow(
+      doc,
+      translate(language, "hist.heat.reviewPlan", { hours: hours(review.plan.hours) }),
+      money(language, review.plan.value, answer.money),
+      "review-plan",
+    ),
+    figureRow(doc, "", comfort(review.plan), "review-plan-comfort"),
+    note(
+      doc,
+      translate(language, "hist.heat.reviewNote", { low: celsius(language, review.low_c), overlap: hours(review.plan.overlap_hours) }),
+    ),
   );
   return block;
 }
@@ -532,6 +603,7 @@ export function heatHistoryBody(input: HeatHistoryInput): HTMLElement {
     ui.detailed ? degreeSection(input, shownAnswer) : null,
     ui.detailed ? comfortSection(input, shownAnswer) : null,
     ui.detailed ? shadowSection(input, shownAnswer) : null,
+    reviewSection(input, shownAnswer),
     ui.detailed ? runsSection(input, shownAnswer) : null,
   ]) {
     if (part !== null) {
