@@ -2,8 +2,10 @@
   "api_version": 1,
   "buckets": [
     {
+      "battery_days": 0,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": null,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -16,8 +18,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 0,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": null,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -30,8 +34,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -44,8 +50,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -58,8 +66,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -72,8 +82,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -86,8 +98,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -100,8 +114,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -114,8 +130,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -128,8 +146,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -142,8 +162,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -156,8 +178,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -170,8 +194,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -184,8 +210,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -198,8 +226,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 1,
       "battery_in": 2.0,
       "battery_out": 2.4,
+      "battery_saving": 400.0,
       "car": 0.0,
       "cost": 3342.0,
       "grid_in": 21.4,
@@ -212,8 +242,10 @@
       "use": 27.0
     },
     {
+      "battery_days": 0,
       "battery_in": 2.0,
       "battery_out": 0.0,
+      "battery_saving": null,
       "car": 0.0,
       "cost": 1992.0,
       "grid_in": 13.6,
@@ -226,8 +258,10 @@
       "use": 16.8
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -240,8 +274,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -254,8 +290,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -268,8 +306,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -282,8 +322,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -296,8 +338,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -310,8 +354,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -324,8 +370,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -338,8 +386,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -352,8 +402,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -366,8 +418,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -380,8 +434,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -394,8 +450,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
@@ -408,8 +466,10 @@
       "use": 0.0
     },
     {
+      "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
+      "battery_saving": null,
       "car": 0.0,
       "cost": null,
       "grid_in": 0.0,
