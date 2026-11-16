@@ -34,7 +34,9 @@ from .api.manual_action import async_setup_manual_action_api
 from .api.import_target import async_setup_import_target_api
 from .api.detected import async_setup_detected_api
 from .api.heat import async_setup_heat_api, forget_cached_heat
+from .api.heat_history import async_setup_heat_history_api, forget_cached_heat_history
 from .api.house import async_setup_house_api, forget_cached_flow
+from .api.house_history import async_setup_house_history_api, forget_cached_history
 from .api.power_month import async_setup_power_month_api
 from .api.target_suggestion import async_setup_target_suggestion_api
 from .api.own_mode import async_setup_own_mode_api
@@ -209,6 +211,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_power_month_api(hass)
     async_setup_house_api(hass)
     async_setup_heat_api(hass)
+    async_setup_house_history_api(hass)
+    async_setup_heat_history_api(hass)
     async_setup_detected_api(hass)
     async_setup_target_suggestion_api(hass)
     async_setup_camera_api(hass)
@@ -840,6 +844,8 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     entry.async_on_unload(controller.async_shutdown)
     entry.async_on_unload(partial(forget_cached_flow, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_heat, hass, entry.entry_id))
+    entry.async_on_unload(partial(forget_cached_history, hass, entry.entry_id))
+    entry.async_on_unload(partial(forget_cached_heat_history, hass, entry.entry_id))
     await controller.async_initialize()
     # Entry load order is not guaranteed: rebind every member charger's solar coordinator now
     # that this controller exists (also covers this site reloading).
