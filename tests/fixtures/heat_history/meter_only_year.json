@@ -1,0 +1,137 @@
+{
+  "api_version": 1,
+  "buckets": [
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-01",
+      "kwh": 1815.0,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-02",
+      "kwh": 1559.16,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-03",
+      "kwh": 1456.58,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-04",
+      "kwh": 1066.56,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-05",
+      "kwh": 655.92,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-06",
+      "kwh": 288.96,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-07",
+      "kwh": 75.12,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-08",
+      "kwh": 141.12,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-09",
+      "kwh": 459.84,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-10",
+      "kwh": 833.5,
+      "outdoor_c": null
+    },
+    {
+      "cost": 87640.6,
+      "degree_days": null,
+      "hot_water_kwh": 16.8,
+      "key": "2026-11",
+      "kwh": 598.04,
+      "outdoor_c": null
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-12",
+      "kwh": null,
+      "outdoor_c": null
+    }
+  ],
+  "comfort": null,
+  "complete": false,
+  "date": "2026-01-01",
+  "degree_days": null,
+  "end": "2027-01-01",
+  "energy": {
+    "cost": 87640.6,
+    "days": 320,
+    "hot_water_kwh": 16.8,
+    "hours": 7670,
+    "priced_hours": 374,
+    "split_days": 7,
+    "total_kwh": 8949.8
+  },
+  "generated_at": "2026-11-16T13:20:00+00:00",
+  "immersion": null,
+  "meter": {
+    "entity_id": "sensor.varme_effekt",
+    "name": "Elmätare värme"
+  },
+  "money": {
+    "currency": "SEK",
+    "major": "kr",
+    "minor": "öre"
+  },
+  "period": "year",
+  "runs": [],
+  "shadow": {
+    "days": 15,
+    "lowered_hours": 45,
+    "moved_kwh": 74.7,
+    "value": 12699.0
+  },
+  "site_id": "site_villa",
+  "time_zone": "Europe/Stockholm",
+  "today": "2026-11-16"
+}
