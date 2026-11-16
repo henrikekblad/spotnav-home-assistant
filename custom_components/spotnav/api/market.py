@@ -19,10 +19,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback, HomeAssistant
 
 from ..pricing.price_repository import CatalogueSnapshot
-from ..pricing.price_source import price_source_for
+from ..pricing.price_source import price_source_for, site_price_source
 from ..pricing.relay_contract import AreaEntry
 from ..runtime import domain_data
-from .common import send_unsupported_version
+from .common import ERROR_NO_SITE, lookup_site, send_unsupported_version
 from .dashboard import DashboardFailure, resolve_charger_request
 from .settings import included_components
 
@@ -111,7 +111,17 @@ def market_options_payload(
 async def async_market_options(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """One charger's market choices, from the bundled area list. No timer, listener or download is created."""
     source = price_source_for(hass, entry.entry_id)
-    configured_area = None if source is None else source.area_id
+    return _market_options(hass, None if source is None else source.area_id)
+
+
+async def async_site_market_options(hass: HomeAssistant, site: ConfigEntry) -> dict[str, Any]:
+    """A site's market choices: the same list, with the area of the electricity price the site reads
+    (`site_price_source`) as the stored choice, `null` while no price applies to the site."""
+    source = site_price_source(hass, site.entry_id)
+    return _market_options(hass, None if source is None else source.area_id)
+
+
+def _market_options(hass: HomeAssistant, configured_area: str | None) -> dict[str, Any]:
     manager = domain_data(hass).price_refresh
     snapshot = None if manager is None else manager.catalogue_snapshot()
     if snapshot is None:
@@ -127,7 +137,9 @@ async def async_market_options(hass: HomeAssistant, entry: ConfigEntry) -> dict[
         # Version is judged in the handler so a wrong or missing one gets this contract's stable
         # code, not voluptuous' generic error.
         vol.Optional("api_version"): object,
-        "charger_id": str,
+        # One of the two: a charger, or (a home with or without chargers) a site.
+        vol.Optional("charger_id"): str,
+        vol.Optional("site_id"): str,
     }
 )
 @websocket_api.async_response
@@ -136,13 +148,21 @@ async def websocket_get_market_options(
 ) -> None:
     """Read the catalogue's area choices and their suggestions. Every authenticated user may read.
 
-    Charger scope resolves by the same rules as the dashboard and settings commands.
+    Charger scope resolves by the same rules as the dashboard and settings commands; `site_id` in its place reads
+    the site's electricity price (`spotnav_unknown_site`, `spotnav_no_site` otherwise).
     """
     version = msg.get("api_version")
     # The version type is judged exactly: JSON `1.0` and `True` compare equal to `1` but are not
     # versions this contract speaks; only an integer equal to the supported version passes.
     if type(version) is not int or version != MARKET_API_VERSION:
         send_unsupported_version(connection, msg, MARKET_API_VERSION)
+        return
+    if "site_id" in msg:
+        site, code = lookup_site(hass, msg["site_id"])
+        if site is None:
+            connection.send_error(msg["id"], code or ERROR_NO_SITE, "That site is not available")
+            return
+        connection.send_result(msg["id"], await async_site_market_options(hass, site))
         return
     charger = resolve_charger_request(hass, msg)
     if isinstance(charger, DashboardFailure):
