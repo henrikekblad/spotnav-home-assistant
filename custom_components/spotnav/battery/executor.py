@@ -53,9 +53,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   bounds either, then the full hand-back follows. If the headroom is not back at or above
   `PEAK_COVER_A` within `PEAK_RECOVER_S` (or later stays under it that long), the battery is handed back in full.
   Under `RESTORE_HEADROOM_A` it is handed back at once, as before, and every hand-back of a hold or a grid charge
-  writes the `peak_first` roles first (a grid charge: the mode that stops it). A hand-back for the fuse writes all
-  its roles in one look, without waiting for each read-back (each is still read back, and one not confirmed is
-  retried as any restore); other hand-backs keep one write at a time. The cover's write is never held back
+  writes the `peak_first` roles first (a grid charge: the mode that stops it), as does a change of action away from a
+  grid charge (`ExecState.lead`): no limit is loosened while the plant still charges from the grid. A hand-back
+  for the fuse writes all its roles in one look, without waiting for each read-back (each is still read back, and
+  one not confirmed is retried as any restore); other hand-backs keep one write at a time. The cover's write is never held back
   by the day's write cap. A covered hold holds again only after `PEAK_REHOLD_S`, and only when the start rule
   allows it (the headroom keeps `HEADROOM_MARGIN_A` once the battery stops covering); otherwise it stays covered
   until the plan changes the action.
@@ -308,6 +309,9 @@ class ExecState:
     variant: str | None = None
     #: Since when an idle hold's battery has charged (`HOLD_CHARGE_S`); not stored.
     charging_since: datetime | None = None
+    #: Roles written before the brand's enter order after a change of action: the grid charge's stop
+    #: (`BrandControl.peak_first`), so no limit is loosened while the plant still charges from the grid; not stored.
+    lead: tuple[str, ...] = ()
 
     @property
     def holds_snapshot(self) -> bool:
@@ -1099,10 +1103,20 @@ class Executor:
             target=self._wanted(action, rate, restore_values), snapshot=snapshot, restore_values=restore_values,
             entities=entities, device_id=device_id, snapshot_at=now, entered_at=now, rate_changed_at=now,
             watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None, written=(),
-            covered_at=None, peak_low_since=None,
+            covered_at=None, peak_low_since=None, lead=(),
         )
         self._watch(inputs, action, rate)
         return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot)]
+
+    def _lead(self, previous: str | None) -> tuple[str, ...]:
+        """The roles a change of action away from `previous` writes first: a grid charge's stop (its `peak_first`
+        roles; Sigenergy: the control mode), so a limit the next action loosens never acts in the grid charge's mode
+        (the charge limit back at the rating in Command Charging would charge from the grid at full power). A button
+        is never moved ahead of the values it sends."""
+        if previous != ACTION_GRID_CHARGE:
+            return ()
+        first = self.control.peak_first.get(previous, ())
+        return tuple(name for name in first if self.control.role(name).method != "button")
 
     def _watch(self, inputs: ExecInputs, action: str, rate: float) -> None:
         """The monitor watches the new command; a discharge for the house only when the house's deficit is known."""
@@ -1130,6 +1144,7 @@ class Executor:
             self.state = replace(
                 state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values),
                 sent=(), renew=(), rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
+                lead=self._lead(state.action),
             )
             self._watch(inputs, action, rate)
             return [_event(now, "change", action, rate_kw=rate)]
@@ -1245,7 +1260,10 @@ class Executor:
     def _next_role(self, state: ExecState, inputs: ExecInputs) -> str | None:
         """The first role, in the brand's order, that does not read what it should (or must be renewed)."""
         restoring = state.phase == "restoring"
-        order = restore_order(self.control, state.action) if restoring else self.control.enter_order
+        if restoring:
+            order = restore_order(self.control, state.action)
+        else:
+            order = (*state.lead, *(name for name in self.control.enter_order if name not in state.lead))
         for name in order:
             if name not in state.target or name in state.given_up or name in state.unrestored or name in state.in_flight:
                 continue

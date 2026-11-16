@@ -218,6 +218,47 @@ def test_the_preview_of_a_pv_first_hold_names_its_writes_and_hand_back() -> None
     assert [op.role for op in seen.restores][0] == "control_mode"
 
 
+# --- leaving a grid charge -------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("variant", "then"), [
+    ("msc_no_discharge", [("control_mode", MSC), ("charge_limit", 10.0), ("discharge_limit", 0.0)]),
+    ("pv_first", [("control_mode", PV_FIRST), ("charge_limit", 0.0)]),
+])
+def test_a_grid_charge_that_turns_into_a_hold_writes_the_mode_before_any_limit(variant, then) -> None:
+    control = control_for("sigenergy", variant)
+    executor, battery = Executor(control), FakeBattery(control, dict(SIGENERGY_STATES))
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 3.0, grid_import_kw=4.0)
+    assert executor.state.phase == "active" and battery.states["control_mode"] == "Command Charging (Grid First)"
+    _now, results = run(executor, battery, now, 8, "hold", grid_import_kw=4.0)
+    # Never the charge limit back at the rating while the plant is still in Command Charging (Grid First).
+    assert written(results) == then
+
+
+def test_a_grid_charge_that_turns_into_an_export_discharge_writes_the_mode_first() -> None:
+    executor, battery = Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 3.0)
+    _now, results = run(executor, battery, now, 8, "export_discharge", 2.0)
+    assert written(results)[0] == ("control_mode", "Command Discharging (PV First)")
+    assert [role for role, _value in written(results)][1:] == ["charge_limit", "discharge_limit"]
+
+
+def test_a_grid_charge_handed_back_to_self_consumption_writes_the_mode_first() -> None:
+    for control in (SIGENERGY_CONTROL, PV_FIRST_CONTROL):
+        executor, battery = Executor(control), FakeBattery(control, dict(SIGENERGY_STATES))
+        now, _ = run(executor, battery, T0, 8, "grid_charge", 3.0)
+        _now, results = run(executor, battery, now, 8, "self_consume")
+        assert written(results) == [("control_mode", MSC), ("remote_ems", False), ("charge_limit", 10.0)]
+        assert battery.states == dict(SIGENERGY_STATES) | {"charge_limit": "10"}
+
+
+def test_a_hold_that_turns_into_a_grid_charge_keeps_the_brands_order() -> None:
+    executor, battery = _pv_first()
+    now = _held(executor, battery)
+    _now, results = run(executor, battery, now, 8, "grid_charge", 3.0)
+    assert written(results) == [("charge_limit", 3.0), ("control_mode", "Command Charging (Grid First)")]
+
+
 # --- an idle hold never charges --------------------------------------------------------------------------------
 
 
