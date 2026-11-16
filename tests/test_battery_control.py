@@ -1406,3 +1406,32 @@ async def test_a_held_car_has_room_by_its_remaining_need_against_the_time_to_its
     assert control._held_cars_have_room(now, ["charger"]) is room
     assert control._held_cars_have_room(now, []) is False
 
+
+
+async def test_control_runs_the_hold_variant_the_verification_passed_and_a_restart_hands_it_back_mode_first(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    key = control.firmware_key()
+    control.reports[key]["modes"]["hold"] |= {
+        "variant": "pv_first",
+        "variants": [{"variant": "msc_no_discharge", "outcome": "ignored"}, {"variant": "pv_first", "outcome": "obeyed"}],
+    }
+    now = dt_util.now()
+    for index in range(6):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    calls = [(data.get("value"), data.get("option")) for _domain, service, data in plant.calls if service != "turn_on"]
+    # The charge limit at the plant's rating, then mode 4.
+    assert calls == [
+        (20.6, None), (None, "Command Charging (PV First)")
+    ]
+    assert plant.calls[0][2]["entity_id"] == CHARGE and hass.states.get(DISCHARGE).state == "23.04"
+    assert control.executor.state.variant == "pv_first"
+
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    plant.calls.clear()
+    await again.async_start()
+    # The mode first (back to Maximum Self Consumption), then Remote EMS off; the charge limit keeps the rating.
+    assert plant.calls[0][2].get("option") == "Maximum Self Consumption"
+    assert hass.states.get(SWITCH).state == "off" and again.executor.state.phase == "idle"
