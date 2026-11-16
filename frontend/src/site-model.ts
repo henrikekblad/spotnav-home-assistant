@@ -5,6 +5,19 @@
 // they are (the card reads only the report's mode outcomes, defensively).
 
 import { A, fits, N, O, type Spec } from "./heat-model";
+import type { AreaOverride } from "./types";
+import {
+  decodeFiscal,
+  decodeGridTariff,
+  decodeSite,
+  priceProviderOrNull,
+  priceSourceOrNull,
+  type Fiscal,
+  type GridTariffBlock,
+  type PriceProvider,
+  type PriceSourceBlock,
+  type Site,
+} from "./validate";
 
 export const SITE_VIEW_API_VERSION = 1;
 export const BATTERY_CONTROL_API_VERSION = 1;
@@ -31,6 +44,32 @@ export interface SiteView {
   price: { entry_id: string; title: string | null; area_id: string; area_name: string | null } | null;
   battery: { found: boolean };
   setup: { items: SiteSetupItem[] };
+  /** The price section's model, `null` exactly where `price` is (no electricity price applies to the site). */
+  price_settings: SitePriceSettings | null;
+  /** The site's own `site` block (solar forecast sources, load balancing), `null` while the site is not running. */
+  site: Site | null;
+}
+
+/** The area's facts the price section words its rows with; `null` while the area list does not name the area. */
+export interface SiteMarket {
+  area_id: string;
+  area_name: string | null;
+  countries: string[] | null;
+  timezone: string | null;
+  currency: string | null;
+  major_unit: string | null;
+  minor_unit: string | null;
+}
+
+/** The dashboard's price blocks, read for the site (`api/site_view.py:price_settings_block`). */
+export interface SitePriceSettings {
+  market: SiteMarket;
+  fiscal: Fiscal | null;
+  /** The price entry's stored row, which `spotnav/update_price` writes. */
+  fees: AreaOverride;
+  provider: PriceProvider | null;
+  price_source: PriceSourceBlock;
+  grid_tariff: GridTariffBlock;
 }
 
 export interface BatteryOptions {
@@ -97,6 +136,31 @@ const SITE_VIEW = O({
   price: N(O({ entry_id: "string", title: N("string"), area_id: "string", area_name: N("string") })),
   battery: O({ found: "boolean" }),
   setup: O({ items: A("any") }),
+  price_settings: N(
+    O({
+      market: O({
+        area_id: "string",
+        area_name: N("string"),
+        countries: N(A("string")),
+        timezone: N("string"),
+        currency: N("string"),
+        major_unit: N("string"),
+        minor_unit: N("string"),
+      }),
+      // Each read by the dashboard's own decoder below.
+      fiscal: "any",
+      fees: O({
+        area_id: "string",
+        vat: O({ enabled: "boolean", value: N("number") }),
+        tax: O({ enabled: "boolean", value: N("number") }),
+        transfer: O({ enabled: "boolean", value: N("number") }),
+      }),
+      provider: "any",
+      price_source: "any",
+      grid_tariff: "any",
+    }),
+  ),
+  site: "any",
 });
 
 const OPTIONS = O({
@@ -165,10 +229,50 @@ export function decodeSiteList(raw: unknown): Decoded<{ api_version: number; sit
 
 export function decodeSiteView(raw: unknown): Decoded<SiteView> {
   const decoded = versioned<SiteView>(raw, SITE_VIEW_API_VERSION, SITE_VIEW);
-  if (decoded.ok && !decoded.value.setup.items.every((item) => fits(item, PLAIN_ITEM) || fits(item, WRITING_ITEM))) {
+  if (!decoded.ok) {
+    return decoded;
+  }
+  if (!decoded.value.setup.items.every((item) => fits(item, PLAIN_ITEM) || fits(item, WRITING_ITEM))) {
     return { ok: false, failure: "malformed" };
   }
-  return decoded;
+  const price = decodePriceSettings(decoded.value.price_settings);
+  const site = decodeSiteBlock(decoded.value.site);
+  if (price === undefined || site === undefined || (price === null) !== (decoded.value.price === null)) {
+    return { ok: false, failure: "malformed" };
+  }
+  return { ok: true, value: { ...decoded.value, price_settings: price, site } };
+}
+
+/** The price settings through the dashboard's decoders, strictly: `undefined` for anything that does not fit. */
+function decodePriceSettings(raw: SitePriceSettings | null): SitePriceSettings | null | undefined {
+  if (raw === null) {
+    return null;
+  }
+  const block = raw as unknown as Record<string, unknown>;
+  const fiscal = block["fiscal"] === null ? null : decodeFiscal(block["fiscal"]);
+  const provider = block["provider"] === null ? null : priceProviderOrNull(block["provider"]);
+  const source = priceSourceOrNull(block);
+  let tariff: GridTariffBlock;
+  try {
+    tariff = decodeGridTariff(block["grid_tariff"]);
+  } catch {
+    return undefined;
+  }
+  if ((block["fiscal"] !== null && fiscal === null) || (block["provider"] !== null && provider === null) || source === null) {
+    return undefined;
+  }
+  return { ...raw, fiscal, provider, price_source: source, grid_tariff: tariff };
+}
+
+function decodeSiteBlock(raw: unknown): Site | null | undefined {
+  if (raw === null) {
+    return null;
+  }
+  try {
+    return typeof raw === "object" ? decodeSite(raw as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function decodeBatteryControl(raw: unknown): Decoded<BatteryAnswer> {

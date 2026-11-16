@@ -891,7 +891,7 @@ function decodeCharger(source: Record<string, unknown>): DashboardCharger {
  * Display-only here (the editor reads the canonical record), so an unreadable fiscal section
  * degrades to "no figures" instead of refusing the dashboard.
  */
-function decodeFiscal(raw: unknown): Fiscal | null {
+export function decodeFiscal(raw: unknown): Fiscal | null {
   if (!isRecord(raw)) {
     return null;
   }
@@ -2032,7 +2032,7 @@ function setupOrNull(root: Record<string, unknown>): SetupBlock | null {
 }
 
 /** The `price_source` block, or `null` when it is missing or unreadable: the price section shows no source. */
-function priceSourceOrNull(root: Record<string, unknown>): PriceSourceBlock | null {
+export function priceSourceOrNull(root: Record<string, unknown>): PriceSourceBlock | null {
   const value = root.price_source;
   if (!isRecord(value)) {
     return null;
