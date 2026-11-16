@@ -50,7 +50,7 @@ describe("decoding the site's answers", () => {
 
 describe("the battery's words", () => {
   it("words each line, need and outcome", () => {
-    expect(batteryLine("sv", "shadow_only")).toBe("Testläge: SpotNav loggar vad den skulle göra och skriver inget till batteriet.");
+    expect(batteryLine("sv", "shadow_only")).toBe("Test: SpotNav styr inget än och loggar bara vad den skulle göra.");
     expect(batteryLine("sv", "waiting:car_charging")).toBe(
       "Väntar på ett lämpligt tillfälle för kontrollen. Den väntar tills bilen slutar ladda.",
     );
@@ -168,7 +168,7 @@ describe("the popover from the house card", () => {
     const popover = await open(root);
     const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
     expect(battery.querySelector("[data-help='battery_control_enabled']")!.textContent).toBe(
-      "Bevakar bara: batteriet ligger kvar i AI-läget tills du godkänner övertagandet.",
+      "Styr inget än: batteriet ligger kvar i AI-läget tills du godkänner övertagandet.",
     );
     expect(battery.querySelector("[data-need='ai_takeover_ack']")!.textContent).toContain("Godkänn att SpotNav tar över");
     expect(battery.querySelector("[data-row='battery_mode_hold']")!.textContent).toBe("HållaGodkänd");
@@ -190,6 +190,23 @@ describe("the popover from the house card", () => {
     expect(root.querySelector("[data-row='battery_control_enabled']")!.textContent).toContain("Av");
   });
 
+  it("puts what is left in numbered steps: the disabled controls as one step with the device's page, then the takeover", async () => {
+    const { root } = await mount({ battery: "live.json" });
+    const popover = await open(root);
+    const box = popover.querySelector<HTMLElement>("[data-section='battery'] [data-battery-needs]")!;
+    expect(box.querySelector(".spotnav-battery-needs-heading")!.textContent).toBe("2 saker kvar innan SpotNav kan styra batteriet");
+    const steps = [...box.querySelectorAll<HTMLElement>("ol > li")];
+    expect(steps.map((step) => step.dataset["need"])).toEqual(["control_disabled", "ai_takeover_ack"]);
+    expect(steps[0]!.textContent).toContain(
+      "Slå på 3 avstängda inställningar på batteriets enhet i Home Assistant: Remote EMS, Control mode och Charge limit.",
+    );
+    const pushed: string[] = [];
+    window.addEventListener("location-changed", () => pushed.push(window.location.pathname), { once: true });
+    steps[0]!.querySelector<HTMLButtonElement>("button[data-action='open-battery-device']")!.click();
+    expect(pushed).toEqual(["/config/devices/device/0f4c2b7e9a1d4c3e8b6a5f2d1c0e9b8a"]);
+    expect(steps[1]!.querySelector("button[data-edit='battery_control_ai_takeover_ack']")).not.toBeNull();
+  });
+
   it("offers the battery mode with a help line each, says what it does while control is off, and writes the choice", async () => {
     const { root, messages } = await mount({ battery: "checking.json" });
     const popover = await open(root);
@@ -200,7 +217,7 @@ describe("the popover from the house card", () => {
       "Laddar också från nätet när det är billigt och används när det är dyrt. Säljer inte.",
     );
     expect(battery.querySelector("[data-battery-mode-shadow]")!.textContent).toBe(
-      "Utan styrning flyttar valet bara vilken rad som är markerad som gäller i jämförelsen.",
+      "Medan SpotNav inte styr batteriet flyttar valet bara vilken rad som är markerad som vald i jämförelsen.",
     );
     battery.querySelector<HTMLButtonElement>("button[data-edit='battery_mode']")!.click();
     const form = root.querySelector<HTMLFormElement>("form[data-value-editor]")!;

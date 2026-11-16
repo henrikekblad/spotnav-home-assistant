@@ -11,6 +11,8 @@ export const HOUSE_CLASSES = {
   head: "spotnav-house-head",
   title: "spotnav-house-title",
   chip: "spotnav-house-chip",
+  chipButton: "spotnav-house-chip-button",
+  testExplain: "spotnav-house-test-explain",
   sub: "spotnav-house-sub",
   surface: "spotnav-house-surface",
   chart: "spotnav-house-chart",
@@ -44,6 +46,7 @@ export const HOUSE_CLASSES = {
   nowLabel: "spotnav-house-now-label",
   views: "spotnav-house-views",
   today: "spotnav-house-today",
+  todayDetail: "spotnav-house-today-detail",
   flow: "spotnav-house-flow",
   flowRow: "spotnav-house-flow-row",
   flowLabel: "spotnav-house-flow-label",
@@ -183,6 +186,10 @@ export const HOUSE_STYLES = `
     font-size: 15px;
     font-weight: 700;
   }
+  .${H.flowChart} .spotnav-house-flow-value-long {
+    font-size: 13px;
+    font-weight: 700;
+  }
   .${H.flowChart} .spotnav-house-flow-share {
     font-size: 11px;
   }
@@ -207,6 +214,27 @@ export const HOUSE_STYLES = `
     color: var(--secondary-text-color, #727272);
     font-size: 0.75rem;
     white-space: nowrap;
+  }
+  /* The test chip is a button: tapping it shows what test means. */
+  .${H.chipButton} {
+    position: relative;
+    background: none;
+    font-family: inherit;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+  /* A finger-sized target around the small chip. */
+  .${H.chipButton}::after {
+    content: "";
+    position: absolute;
+    inset: -10px -4px;
+  }
+  .${H.chipButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${H.testExplain} {
+    margin: 6px 0 0;
   }
   .${H.sub} {
     margin: 2px 0 0;
@@ -261,9 +289,16 @@ export const HOUSE_STYLES = `
     padding: 2px 10px;
     font-size: 0.82rem;
   }
+  /* The day's headline: what the electricity cost so far, with the battery's earnings under it. */
   .${H.today} {
-    margin: 4px 0 0;
-    font-size: 0.88rem;
+    margin: 6px 0 0;
+    font-size: 1.25rem;
+    font-weight: 500;
+    line-height: 1.3;
+    overflow-wrap: break-word;
+  }
+  .${H.todayDetail} {
+    margin: 2px 0 0;
     overflow-wrap: break-word;
   }
   .${H.flowRow} {

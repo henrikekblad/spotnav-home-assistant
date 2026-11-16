@@ -1679,6 +1679,19 @@ class BatteryControl:
             needs.append(f"self_managed:{management.reason}")
         return needs
 
+    def _settings_device(self) -> str | None:
+        """The device that holds the first control the person must enable (`control_disabled`), so the card can open
+        its page; `None` when none is disabled."""
+        control = control_for(self.facts.brand)
+        if control is None:
+            return None
+        reads = read_role_reads(self.hass, self.site.config, control)
+        for role in control.roles:
+            read = reads.get(role.name)
+            if read is not None and read.found and role.method != "service" and not read.enabled:
+                return read.device_id
+        return None
+
     def _line(self, options: gate.Options) -> str:
         """The one line under the switch, as a stable code (the card words it)."""
         state = self.state(options)
@@ -1721,6 +1734,7 @@ class BatteryControl:
             },
             "waiting_for": self.waiting_for,
             "needs": self._needs(),
+            "device_id": self._settings_device(),
             "notes": [dict(note) for note in self.notes],
             "trial": None if self.trial is None else self.trial.as_dict(),
             "grid_charge_cap": self._cap_status(dt_util.now(), options),

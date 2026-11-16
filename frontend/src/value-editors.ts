@@ -102,14 +102,15 @@ export interface SettingRowInput {
 }
 
 /**
- * One value row: the label on the left, the value right-aligned at the same size; in the accent colour and a
- * button when it can be changed, in the normal colour otherwise. Returns the row and its help line.
+ * One value row: the label on the left, the value right-aligned at the same size. When it can be changed the value
+ * is a button that covers the whole row (`data-tappable`), with a chevron. Returns the row and its help line.
  */
 export function settingRow(doc: Document, input: SettingRowInput): HTMLElement[] {
   const row = element(doc, "div", C.settingRow);
   row.dataset["row"] = input.key;
   row.append(element(doc, "span", C.settingRowLabel, input.label));
   if (input.onTap !== undefined) {
+    row.dataset["tappable"] = "true";
     const button = element(doc, "button", `${C.settingRowValue} ${C.settingRowEditable}`, input.value) as HTMLButtonElement;
     button.type = "button";
     button.dataset["edit"] = input.key;

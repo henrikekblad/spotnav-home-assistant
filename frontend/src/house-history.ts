@@ -468,20 +468,22 @@ function modesSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
   }
   const { doc, language } = input;
   const block = section(doc, translate(language, "hist.house.modes"), "modes");
-  for (const mode of MODES) {
+  // Self-consumption is what the others are measured against, so it is not a row of its own.
+  for (const mode of MODES.filter((item) => item !== "self_consumption")) {
     const figures = reviewed.modes[mode];
-    const reference = mode === "self_consumption";
-    let figure = reference ? translate(language, "house.compare.reference") : translate(language, "house.compare.none");
-    if (!reference && figures !== undefined && figures.saving !== null) {
+    let figure = translate(language, "house.compare.none");
+    if (figures !== undefined && figures.saving !== null) {
       figure = amount(language, figures.saving, answer.money);
       if (figures.days < reviewed.days) {
         figure += ` (${translate(language, "hist.days", { days: String(figures.days) })})`;
       }
     }
-    const name = translate(language, `house.mode.${mode}`) + (mode === reviewed.mode ? ` · ${translate(language, "house.compare.inForce")}` : "");
-    block.append(figureRow(doc, name, figure, mode, reference || figures?.saving == null));
+    const name =
+      translate(language, "house.compare.spotnav", { mode: translate(language, `house.mode.${mode}`) }) +
+      (mode === reviewed.mode ? ` · ${translate(language, "house.compare.inForce")}` : "");
+    block.append(figureRow(doc, name, figure, mode, figures?.saving == null));
   }
-  block.append(figureRow(doc, translate(language, "house.modes.own"), amount(language, reviewed.own_saving, answer.money), "own"));
+  block.append(figureRow(doc, translate(language, "house.compare.own"), amount(language, reviewed.own_saving, answer.money), "own"));
   block.append(note(doc, translate(language, "hist.house.modesNote")));
   return block;
 }

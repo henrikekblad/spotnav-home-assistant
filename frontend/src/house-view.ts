@@ -7,7 +7,7 @@ import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, ty
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
 import { renderFlow } from "./house-flow";
 import { hiddenIn, type HiddenSeries } from "./house-series";
-import { settingsGearButton } from "./heat-view";
+import { settingsGearButton, testChip } from "./heat-view";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { historyHeaderButton } from "./period-history";
 import { HOUSE_CLASSES as H } from "./house-styles";
@@ -30,6 +30,8 @@ export interface HouseUi {
   view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
   selected: number | null;
+  /** The header's test chip opened to its explanation. */
+  testOpen?: boolean;
 }
 
 export interface HouseHandlers {
@@ -42,6 +44,8 @@ export interface HouseHandlers {
   onHistory?(opener: HTMLElement): void;
   /** An administrator's settings gear: the shared settings popover. Without it the card has no gear. */
   onSettings?(): void;
+  /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
+  onTest?(open: boolean): void;
 }
 
 export interface HouseRenderInput {
@@ -101,7 +105,8 @@ function priceUnit(answer: HouseAnswer): string {
   return `${answer.money?.minor_unit ?? ""}/kWh`.replace(/^\//, "");
 }
 
-/** Today's money so far in one line, as the battery's app splits it, with the mode in force. */
+/** Today's headline, the figure the battery's own app shows: what each kWh the battery gave back earned over its
+ * stored cost (the backend's `arbitrage`; "Batteriet har tjänat 26 kr i dag"). */
 export function todayLine(language: Language, answer: HouseAnswer): string | null {
   const today = answer.today;
   if (today === null) {
@@ -110,11 +115,32 @@ export function todayLine(language: Language, answer: HouseAnswer): string | nul
   const past = answer.day !== null && !answer.day.today;
   return translate(language, past ? "house.dayMoney" : "house.today", {
     day: past ? dateLabel(language, answer.day!.date) : "",
-    sold: amount(language, today.sold, answer.money),
-    arbitrage: amount(language, today.arbitrage, answer.money),
-    bought: amount(language, today.bought, answer.money),
-    mode: modeName(language, today.mode),
+    amount: amount(language, today.arbitrage, answer.money),
   });
+}
+
+/** Under the headline: what the electricity bought cost, and the sun sold when it came to at least half a unit
+ * ("Elkostnad 63 kr · sålt solel 4 kr"). */
+export function todayDetail(language: Language, answer: HouseAnswer): string | null {
+  const today = answer.today;
+  if (today === null) {
+    return null;
+  }
+  const parts = [translate(language, "house.todayCost", { amount: amount(language, today.bought, answer.money) })];
+  if (Math.abs(today.sold) >= 50) {
+    parts.push(translate(language, "house.todaySold", { amount: amount(language, today.sold, answer.money) }));
+  }
+  return parts.join(" · ");
+}
+
+/** A signed saving: whole units from one up, one decimal below ("+25 kr", "−4 kr", "+0,4 kr"). */
+function signedAmount(language: Language, minor: number, money: HouseAnswer["money"]): string {
+  if (money === null || money.major_unit === null) {
+    return `${minor > 0 ? "+" : ""}${amount(language, minor, money)}`;
+  }
+  const major = minor / 100;
+  const shown = formatFixed(language, major, Math.abs(major) >= 1 ? 0 : 1);
+  return `${major > 0 ? "+" : ""}${shown} ${money.major_unit}`;
 }
 
 function context(language: Language, answer: HouseAnswer): FormatContext {
@@ -268,9 +294,13 @@ export function reviewLine(language: Language, answer: HouseAnswer): string {
 
 // ------------------------------------------------------------------------------------------------ parts
 
-function header(doc: Document, language: Language, answer: HouseAnswer | null, onSettings?: () => void, onHistory?: (opener: HTMLElement) => void): HTMLElement {
+function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElement {
+  const { doc, language, handlers } = input;
+  const onSettings = handlers.onSettings?.bind(handlers);
+  const onHistory = handlers.onHistory?.bind(handlers);
   const head = element(doc, "div", H.head);
-  head.append(element(doc, "h2", H.title, translate(language, "house.title")), element(doc, "span", H.chip, translate(language, "house.preview")));
+  const test = testChip(doc, language, "house.test.explain", input.ui.testOpen === true, `${input.idPrefix}-test`, handlers.onTest?.bind(handlers));
+  head.append(element(doc, "h2", H.title, translate(language, "house.title")), test.chip);
   if (onHistory !== undefined) {
     const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory(button));
     head.append(button);
@@ -279,7 +309,7 @@ function header(doc: Document, language: Language, answer: HouseAnswer | null, o
     head.append(settingsGearButton(doc, translate(language, "popover.open"), onSettings));
   }
   const wrap = element(doc, "div");
-  wrap.append(head);
+  wrap.append(head, test.explain);
   const battery = answer?.battery ?? null;
   if (battery !== null) {
     const words = [];
@@ -292,44 +322,53 @@ function header(doc: Document, language: Language, answer: HouseAnswer | null, o
     } else if (battery.soc_pct !== null) {
       words.push(translate(language, "house.sub.soc", { pct: pct(language, battery.soc_pct) }));
     }
-    if (answer?.today === null) {
-      words.push(translate(language, "house.sub.mode", { mode: modeName(language, battery.mode) }));
-    }
+    words.push(translate(language, "house.sub.mode", { mode: modeName(language, answer?.today?.mode ?? battery.mode) }));
     wrap.append(element(doc, "p", `${C.muted} ${H.sub}`, words.join(" · ")));
     const today = answer === null ? null : todayLine(language, answer);
     if (today !== null) {
       const line = element(doc, "p", H.today, today);
       line.dataset["line"] = "today";
-      wrap.append(line);
+      // Said once, right under it: this one is the battery app's own measure; the comparison below is not.
+      const hint = element(doc, "p", `${C.muted} ${H.todayDetail}`, translate(language, "house.todayHint"));
+      hint.dataset["line"] = "today-hint";
+      wrap.append(line, hint);
+      const detail = todayDetail(language, answer!);
+      if (detail !== null) {
+        const sub = element(doc, "p", `${C.muted} ${H.todayDetail}`, detail);
+        sub.dataset["line"] = "today-detail";
+        wrap.append(sub);
+      }
     }
   }
   return wrap;
 }
 
-/** The battery's modes side by side in the main body: each mode's reviewed nights and the battery's own way, against
- * plain self-consumption, the mode in force marked, a short bar each so the order shows at a glance. */
+/** The comparison in the main body, its baseline in its title: each of SpotNav's modes over the reviewed nights and
+ * the battery's own control (its optimiser named where known), against the battery only storing its own sun
+ * (self-consumption, the zero line and so not a row), the chosen mode marked, a short bar each so the order shows. */
 function compareBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
   const battery = answer.battery;
   if (battery === null) {
     return null;
   }
   const rows: Array<{ key: string; name: string; value: number | null; days: number; inForce: boolean }> = [];
-  const ownName = translate(language, battery.management === "self_managed" ? "house.modes.ownOptimiser" : "house.modes.own");
+  const optimiser = battery.management === "self_managed" ? OPTIMISER_NAMES[battery.brand ?? ""] : undefined;
+  const ownName = `${translate(language, "house.compare.own")}${optimiser === undefined ? "" : ` (${optimiser})`}`;
   let heading: string;
   if (answer.day !== null && !answer.day.today) {
     // A past day: its own review, or plainly none.
     const review = answer.day_review;
-    for (const mode of MODES) {
+    for (const mode of SAVING_MODES) {
       const value = review?.modes[mode] ?? null;
-      rows.push({ key: mode, name: modeName(language, mode), value, days: value === null ? 0 : 1, inForce: review !== null && mode === review.mode });
+      rows.push({ key: mode, name: spotnavMode(language, mode), value, days: value === null ? 0 : 1, inForce: review !== null && mode === review.mode });
     }
     rows.push({ key: "own", name: ownName, value: review === null ? null : review.own_saving, days: review === null ? 0 : 1, inForce: false });
     heading = review === null ? translate(language, "house.compare.headingNone") : translate(language, "house.compare.headingDay", { day: dateLabel(language, review.date) });
   } else {
-    for (const mode of MODES) {
+    for (const mode of SAVING_MODES) {
       const figures = battery.modes[mode];
       if (figures !== undefined) {
-        rows.push({ key: mode, name: modeName(language, mode), value: figures.reviewed_days > 0 ? figures.reviewed_saving : null, days: figures.reviewed_days, inForce: mode === battery.mode });
+        rows.push({ key: mode, name: spotnavMode(language, mode), value: figures.reviewed_days > 0 ? figures.reviewed_saving : null, days: figures.reviewed_days, inForce: mode === battery.mode });
       }
     }
     if (rows.length === 0) {
@@ -351,21 +390,19 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
     if (row.inForce) {
       name.append(" ", element(doc, "span", H.chip, translate(language, "house.compare.inForce")));
     }
-    // Plain self-consumption is what the others are measured against: its own figure is the reference.
-    const reference = row.key === "self_consumption";
     const track = element(doc, "span", H.compareTrack);
     track.setAttribute("aria-hidden", "true");
-    if (!reference && row.value !== null && row.value !== 0) {
+    if (row.value !== null && row.value !== 0) {
       const fill = element(doc, "span", H.compareFill);
       fill.style.width = `${Math.round((Math.abs(row.value) / largest) * 100)}%`;
       fill.dataset["sign"] = row.value < 0 ? "minus" : "plus";
       track.append(fill);
     }
-    let figure = reference ? translate(language, "house.compare.reference") : row.value === null ? translate(language, "house.compare.none") : amount(language, row.value, answer.money);
-    if (!reference && row.value !== null && row.days < days) {
+    let figure = row.value === null ? translate(language, "house.compare.none") : signedAmount(language, row.value, answer.money);
+    if (row.value !== null && row.days < days) {
       figure += ` (${translate(language, `house.compare.days.${pluralForm(language, row.days)}`, { days: String(row.days) })})`;
     }
-    const value = element(doc, "span", row.value === null || reference ? `${H.compareValue} ${C.muted}` : H.compareValue, figure);
+    const value = element(doc, "span", row.value === null ? `${H.compareValue} ${C.muted}` : H.compareValue, figure);
     const line = element(doc, "div", H.compareRow);
     line.dataset["row"] = row.key;
     if (row.inForce) {
@@ -376,6 +413,16 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
   }
   section.append(grid);
   return section;
+}
+
+/** The battery maker's own optimiser by brand, named where the battery runs it. */
+const OPTIMISER_NAMES: Record<string, string> = { sigenergy: "Sigenergy AI" };
+
+/** The modes the comparison shows: self-consumption is what they are measured against. */
+const SAVING_MODES = MODES.filter((mode) => mode !== "self_consumption");
+
+function spotnavMode(language: Language, mode: BatteryMode): string {
+  return translate(language, "house.compare.spotnav", { mode: modeName(language, mode) });
 }
 
 /** The day (or the week) in the battery app's terms: what the battery saved against no battery at all, what the sun
@@ -686,8 +733,21 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
     const through = clock(context(language, answer), Date.parse(flow.through));
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: through })));
   }
+  section.append(diagram);
+  return section;
+}
+
+/** How the energy flow is counted, in the details: the fixed rule the split follows and where the car or the heat pump
+ * could not be read; `null` without a drawn flow (`drawn`: the front has its diagram). */
+function flowNotes(doc: Document, language: Language, answer: HouseAnswer, drawn: boolean): HTMLElement | null {
+  const flow = answer.energy_flow;
+  if (flow === null || !drawn) {
+    return null;
+  }
+  const section = element(doc, "section", H.section);
+  section.dataset["part"] = "flow-notes";
   section.append(
-    diagram,
+    element(doc, "h3", H.heading, translate(language, "house.flow.how")),
     element(doc, "p", `${C.muted} ${H.note}`, translate(language, flow.step_min < 60 ? "house.flow.ruleQuarter" : "house.flow.rule")),
   );
   if (flow.car_hours < flow.hours && flow.nodes.some((node) => node.role === "car")) {
@@ -894,7 +954,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const card = element(doc, "div", `${C.card} ${H.card}`);
   card.dataset["state"] = state.kind;
   if (state.kind !== "ready") {
-    card.append(header(doc, language, null, input.handlers.onSettings?.bind(input.handlers), input.handlers.onHistory?.bind(input.handlers)));
+    card.append(header(input, null));
     const key: TranslationKey =
       state.kind === "unconfigured" ? "house.unconfigured" : state.kind === "loading" ? "house.loading" : state.sentenceKey;
     const line = element(doc, "p", C.muted, translate(language, key));
@@ -909,7 +969,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     return card;
   }
   const answer = state.answer;
-  card.append(header(doc, language, answer, input.handlers.onSettings?.bind(input.handlers), input.handlers.onHistory?.bind(input.handlers)));
+  card.append(header(input, answer));
   if (answer.day !== null && !answer.day.has_data) {
     const none = element(doc, "p", `${C.muted} ${H.line}`, translate(language, "house.day.noData"));
     none.setAttribute("role", "status");
@@ -921,10 +981,6 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const comparison = compareBlock(doc, language, answer);
   if (comparison !== null) {
     card.append(comparison);
-  }
-  const baselines = baselinesBlock(doc, language, answer);
-  if (baselines !== null) {
-    card.append(baselines);
   }
   // The week's sentence is the comparison's own once a night was reviewed; before, the line says what is to come.
   const saving = comparison !== null && answer.battery?.review !== null ? null : savingLine(language, answer);
@@ -939,9 +995,6 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     line.dataset["line"] = "heat";
     card.append(line);
   }
-  const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
-  review.dataset["line"] = "review";
-  card.append(review);
   const energyFlow = energyFlowBlock(input, answer);
   if (energyFlow !== null) {
     card.append(energyFlow);
@@ -956,9 +1009,13 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   if (input.ui.detailsOpen) {
     const details = element(doc, "div", H.details);
     details.id = detailsId;
+    const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
+    review.dataset["line"] = "review";
     for (const part of [
-      energyFlow === null ? flowBlock(doc, language, answer.flow) : null,
+      energyFlow === null ? flowBlock(doc, language, answer.flow) : flowNotes(doc, language, answer, energyFlow.querySelector("svg") !== null),
+      baselinesBlock(doc, language, answer),
       modesTable(doc, language, answer),
+      review,
       daysTable(doc, language, answer),
       sourcesBlock(doc, language, answer, input.entityWords),
     ]) {

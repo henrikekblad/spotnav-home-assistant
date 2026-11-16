@@ -381,13 +381,21 @@ function degreeSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElemen
     block.append(note(doc, translate(language, "hist.heat.noOutdoor"), "no-outdoor"));
     return block;
   }
+  if (degree.kwh_per_degree_day === null) {
+    // No figure yet: one line on when there will be one, not the arithmetic of none.
+    block.append(note(doc, translate(language, "hist.heat.tooFewLine"), "too-few"));
+    const trend = trendChart(input, answer);
+    if (trend !== null) {
+      block.append(element(doc, "h4", C.historyTileHeading, translate(language, "hist.heat.trend")), trend);
+    }
+    return block;
+  }
   block.append(
     figureRow(
       doc,
       translate(language, "hist.heat.perDegreeDay"),
-      degree.kwh_per_degree_day === null ? translate(language, "hist.heat.tooFew") : `${formatFixed(language, degree.kwh_per_degree_day, 2)} ${translate(language, "hist.heat.perDegreeDayUnit")}`,
+      `${formatFixed(language, degree.kwh_per_degree_day, 2)} ${translate(language, "hist.heat.perDegreeDayUnit")}`,
       "per-degree-day",
-      degree.kwh_per_degree_day === null,
     ),
     note(
       doc,
@@ -513,11 +521,12 @@ export function heatHistoryBody(input: HeatHistoryInput): HTMLElement {
     period.setAttribute("aria-busy", "true");
   }
   for (const part of [
+    // By default the bars, the use and what it cost; the rest with Detailed.
     heatBars(input, shownAnswer),
     useSection(input, shownAnswer),
-    degreeSection(input, shownAnswer),
-    comfortSection(input, shownAnswer),
-    shadowSection(input, shownAnswer),
+    ui.detailed ? degreeSection(input, shownAnswer) : null,
+    ui.detailed ? comfortSection(input, shownAnswer) : null,
+    ui.detailed ? shadowSection(input, shownAnswer) : null,
     ui.detailed ? runsSection(input, shownAnswer) : null,
   ]) {
     if (part !== null) {

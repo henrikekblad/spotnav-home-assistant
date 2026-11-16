@@ -33,6 +33,7 @@
     "verification": null,
     "waiting_for": null,
     "needs": ["ai_takeover_ack"],
+    "device_id": null,
     "notes": [],
     "trial": null,
     "grid_charge_cap": {

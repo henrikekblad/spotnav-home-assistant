@@ -1542,3 +1542,18 @@ async def test_only_max_profit_lets_control_run_the_selling_action(
     for mode, sells in (("self_consumption", False), ("balanced", False), ("max_profit", True)):
         await control.async_update_options({gate.CONF_MODE: mode})
         assert ("export_discharge" in control.status()["allowed_actions"]) is sells
+
+
+async def test_the_status_names_the_device_that_holds_a_disabled_control(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """The card opens the battery's device page from the checklist: the device of the first control to enable."""
+    _site_entry, controller, _plant_calls = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    assert control.status()["device_id"] is None
+    registry = er.async_get(hass)
+    registry.async_update_entity(SWITCH, disabled_by=er.RegistryEntryDisabler.USER)
+    status = control.status()
+    assert any(need.startswith("control_disabled:") for need in status["needs"])
+    assert status["device_id"] == registry.async_get(SWITCH).device_id is not None

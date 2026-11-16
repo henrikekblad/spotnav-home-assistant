@@ -118,7 +118,8 @@ export interface FlowLabels {
 
 export function flowLabels(language: Language, total: number, past = false): FlowLabels {
   return {
-    kwh: (value) => `${formatFixed(language, value, 1)} kWh`,
+    // No decimal from 100 kWh up, so a month's or a year's figures fit a narrow block.
+    kwh: (value) => `${formatFixed(language, value, value >= 100 ? 0 : 1)} kWh`,
     share: (part) => (total > 0 ? `${formatNumber(language, (part / total) * 100, 0)} %` : "–"),
     soc: (value) => translate(language, past ? "house.flow.socEnd" : "house.flow.socNow", { pct: `${formatNumber(language, value, 0)} %` }),
   };
@@ -230,18 +231,18 @@ export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, 
         created.textContent = words;
         group.append(created);
       };
-      // The name in its own lighter pill at the top; in a short block the pill and one line (kWh · share) are
-      // centred, in a tall one the pill sits a margin from the top, the kWh big below it and the share a margin from
-      // the bottom.
+      // The name in its own lighter pill at the top; in a short block the pill (name · share) and the kWh under it
+      // are centred, in a tall one the pill sits a margin from the top, the kWh big below it (smaller from 1 000 kWh)
+      // and the share a margin from the bottom.
       const short = h < TALL_NODE;
       const top = short ? y + (h - (PILL_H + 4 + 12)) / 2 : y + PAD;
       const pill = svg(doc, "rect", { x: x + PAD, y: top.toFixed(1), width: nodeW - 2 * PAD, height: PILL_H, rx: PILL_H / 2, class: "spotnav-house-flow-pill" });
       group.append(pill);
-      text("name", name, x + nodeW / 2, top + PILL_H - 5, "middle");
+      text("name", short ? `${name} · ${labels.share(node.kwh)}` : name, x + nodeW / 2, top + PILL_H - 5, "middle");
       if (short) {
-        text("share", `${labels.kwh(node.kwh)} · ${labels.share(node.kwh)}`, x + PAD + 1, top + PILL_H + 4 + 10);
+        text("share", labels.kwh(node.kwh), x + PAD + 1, top + PILL_H + 4 + 10);
       } else {
-        text("value", labels.kwh(node.kwh), x + PAD + 1, top + PILL_H + 19);
+        text(node.kwh >= 1000 ? "value-long" : "value", labels.kwh(node.kwh), x + PAD + 1, top + PILL_H + 19);
         const bottom = y + h - PAD - 1;
         if (node.soc_pct === null) {
           text("share", labels.share(node.kwh), x + PAD + 1, bottom);

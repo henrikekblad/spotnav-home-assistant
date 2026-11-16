@@ -9,10 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
-import { blockHeights, flowHeight, MIN_BAND, MIN_NODE } from "../src/house-flow";
+import { blockHeights, flowHeight, flowLabels, MIN_BAND, MIN_NODE } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { amount, hourFigures, houseBody, reviewLine, savingLine, todayLine, type HouseState, type HouseUi } from "../src/house-view";
+import { amount, hourFigures, houseBody, reviewLine, savingLine, todayDetail, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -138,7 +138,8 @@ describe("the body", () => {
     expect(svg.querySelector(".spotnav-now")?.getAttribute("display")).toBeNull();
     expect(card.querySelector("[data-line='saving']")).toBeNull();
     expect(card.querySelector("[data-part='modes']")?.textContent).toContain("51 kr");
-    expect(card.querySelector("[data-line='review']")?.textContent).toContain("±0.09 kW");
+    // The forecasts' errors are in the details, not on the front.
+    expect(card.querySelector("[data-line='review']")).toBeNull();
     expect(card.querySelector(".spotnav-house-details")).toBeNull();
   });
 
@@ -150,10 +151,26 @@ describe("the body", () => {
     expect(Array.from(card.querySelectorAll(".spotnav-house-legend li")).map((item) => item.textContent)).toEqual(["House"]);
   });
 
+  it("says what test means when its chip is tapped, in place or through the card", () => {
+    const card = body(answer(), {}, "sv");
+    const chip = card.querySelector<HTMLButtonElement>("button[data-action='test']")!;
+    const explain = card.querySelector<HTMLElement>("[data-line='test-explain']")!;
+    expect(chip.textContent).toBe("Test · styr inget än");
+    expect(chip.getAttribute("aria-controls")).toBe(explain.id);
+    expect(explain.hidden).toBe(true);
+    chip.click();
+    expect(chip.getAttribute("aria-expanded")).toBe("true");
+    expect(explain.hidden).toBe(false);
+    const onTest = vi.fn();
+    body(answer(), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onTest } as never).querySelector<HTMLButtonElement>("button[data-action='test']")!.click();
+    expect(onTest).toHaveBeenCalledWith(true);
+    expect(body(answer(), { testOpen: true }, "sv").querySelector<HTMLElement>("[data-line='test-explain']")!.hidden).toBe(false);
+  });
+
   it("opens the details on a tap: the modes side by side, the days and the sources", () => {
     const handlers = { onDetails: vi.fn(), onSelect: vi.fn() };
     const closed = body(answer(), {}, "en", handlers);
-    const toggle = closed.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    const toggle = closed.querySelector<HTMLButtonElement>("button.spotnav-house-details-toggle")!;
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     toggle.click();
     expect(handlers.onDetails).toHaveBeenCalledWith(true);
@@ -163,11 +180,12 @@ describe("the body", () => {
     const modes = Array.from(tables[0]!.querySelectorAll("tbody tr")).map((row) => Array.from(row.children).map((cell) => cell.textContent));
     expect(modes).toEqual([
       ["Egenförbrukning", "0,00 kr", "–"],
-      ["Balanserad (gäller)", "8,12 kr", "51 kr"],
+      ["Balanserad (vald)", "8,12 kr", "51 kr"],
       ["Max vinst", "9,05 kr", "51 kr"],
       ["Batteriets egen optimerare", "–", "45 kr"],
     ]);
     expect(tables[1]!.querySelectorAll("tbody tr")).toHaveLength(7);
+    expect(open.querySelector("[data-line='review']")?.textContent).toContain("±0,09 kW");
     const sources = Array.from(open.querySelectorAll(".spotnav-house-facts li")).map((item) => item.textContent);
     expect(sources).toContain("Utetemperatur: sensor.nibe_bt1_outdoor_temperature");
     expect(sources).toContain("Solprognos: Forecast.Solar");
@@ -234,12 +252,17 @@ describe("the body", () => {
 });
 
 describe("the battery app's views, calm", () => {
-  it("say today's money in one line, split as the battery's app does, with the mode in force", () => {
-    expect(todayLine("sv", answer())).toBe("I dag: sålt 0,04 kr · arbitrage 11 kr · köpt 38 kr · läge Balanserad");
+  it("head the card with what the battery has earned, the battery app's measure, the cost under it and the mode beside the level", () => {
+    expect(todayLine("sv", answer())).toBe("Batteriet har tjänat 11 kr i dag");
     expect(todayLine("sv", answer("house/house_learning.json"))).toBeNull();
+    expect(todayDetail("sv", answer())).toBe("Elkostnad 38 kr");
+    const value = answer();
+    expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,20 kr");
     const card = body(answer(), {}, "sv");
-    expect(card.querySelector("[data-line='today']")?.textContent).toContain("arbitrage");
-    expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe("Batteri 48 %");
+    expect(card.querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag");
+    expect(card.querySelector("[data-line='today-hint']")?.textContent).toBe("Samma mått som batteriets app.");
+    expect(card.querySelector("[data-line='today-detail']")?.textContent).toBe("Elkostnad 38 kr");
+    expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe("Batteri 48 % · läge Balanserad");
   });
 
   it("switch the chart between energy and price with the battery, the price view drawing both prices and no bars", () => {
@@ -438,17 +461,19 @@ describe("the legend in the card element", () => {
 });
 
 describe("the modes side by side in the body", () => {
-  it("compare every mode and the battery itself against plain self-consumption, the mode in force marked", () => {
+  it("show what the battery would have saved: SpotNav's modes and the battery as it ran, the chosen mode marked", () => {
     const value = answer();
     const card = body(value, {}, "sv");
     const part = card.querySelector("[data-part='modes']")!;
-    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Mot ren egenförbrukning, senaste 7 dygnen");
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Jämfört med om batteriet bara lagrat egen sol, senaste 7 dygnen");
     const rows = Array.from(part.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
-    expect(rows.map((row) => row.dataset["row"])).toEqual(["self_consumption", "balanced", "max_profit", "own"]);
+    expect(rows.map((row) => row.dataset["row"])).toEqual(["balanced", "max_profit", "own"]);
     expect(rows.filter((row) => row.dataset["inForce"] === "true").map((row) => row.dataset["row"])).toEqual([value.battery!.mode]);
-    expect(rows.find((row) => row.dataset["inForce"])?.textContent).toContain("gäller");
-    expect(rows[3]!.textContent).toContain("45 kr");
-    expect(rows[0]!.textContent).toContain("referens");
+    expect(rows.find((row) => row.dataset["inForce"])?.textContent).toBe("SpotNav Balanserad vald+51 kr");
+    // The battery runs Sigenergy's own optimiser: the row names it.
+    expect(rows[2]!.textContent).toBe("Batteriets egen styrning (Sigenergy AI)+45 kr");
+    const free = body({ ...value, battery: { ...value.battery!, management: "free" } }, {}, "sv");
+    expect(free.querySelector("[data-part='modes'] [data-row='own']")?.textContent).toBe("Batteriets egen styrning+45 kr");
   });
 
   it("say plainly when a mode has no full day reviewed yet", () => {
@@ -469,7 +494,7 @@ describe("the day in the battery app's terms", () => {
 
   it("shows the three figures with what each is compared with on a past day", () => {
     const past = answer("house/villa_past_day.json");
-    const part = body(past, {}, "sv", handlers).querySelector("[data-part='baselines']")!;
+    const part = body(past, { detailsOpen: true }, "sv", handlers).querySelector("[data-part='baselines']")!;
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Batteriappens mått, tors 12 nov/);
     expect(part.querySelector("[data-row='battery']")?.textContent).toContain("Batteriet mot inget batteri");
     expect(part.querySelector("[data-row='battery']")?.textContent).toContain("11 kr");
@@ -482,12 +507,12 @@ describe("the day in the battery app's terms", () => {
   it("says how much of a partial day the figures cover and leaves out what is not known", () => {
     const past = answer("house/villa_past_day.json");
     const review = { ...past.day_review!, covered_quarters: 60, sun_quarters: 40, against_nothing: null, sun_gave: null };
-    const part = body({ ...past, day_review: review }, {}, "sv", handlers).querySelector("[data-part='baselines']")!;
+    const part = body({ ...past, day_review: review }, { detailsOpen: true }, "sv", handlers).querySelector("[data-part='baselines']")!;
     expect(part.querySelector("[data-line='baselines-coverage']")?.textContent).toBe("60 av dygnets 96 kvartar är mätta.");
     expect(part.querySelector("[data-row='sun']")).toBeNull();
     expect(part.querySelector("[data-row='both']")).toBeNull();
     const sunKnown = { ...past.day_review!, covered_quarters: 96, sun_quarters: 40 };
-    const partial = body({ ...past, day_review: sunKnown }, {}, "sv", handlers).querySelector("[data-line='baselines-coverage']");
+    const partial = body({ ...past, day_review: sunKnown }, { detailsOpen: true }, "sv", handlers).querySelector("[data-line='baselines-coverage']");
     expect(partial?.textContent).toBe("Solens produktion är känd för 40 av 96.");
   });
 
@@ -499,7 +524,9 @@ describe("the day in the battery app's terms", () => {
   });
 
   it("sums the reviewed days on today", () => {
-    const part = body(answer(), {}, "sv").querySelector("[data-part='baselines']")!;
+    // Not on the front: under the details.
+    expect(body(answer(), {}, "sv").querySelector("[data-part='baselines']")).toBeNull();
+    const part = body(answer(), { detailsOpen: true }, "sv").querySelector("[data-part='baselines']")!;
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Batteriappens mått, senaste 7 dygnen");
     expect(part.querySelector("[data-row='battery']")?.textContent).toContain("80 kr");
     expect(part.querySelector("[data-row='sun']")?.textContent).toContain("52 kr");
@@ -530,10 +557,10 @@ describe("the modes on a past day", () => {
     const past = answer("house/villa_past_day.json");
     const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), } as never);
     const part = card.querySelector("[data-part='modes']")!;
-    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Mot ren egenförbrukning, tors 12 nov/);
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Jämfört med om batteriet bara lagrat egen sol, tors 12 nov/);
     const rows = Array.from(part.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
-    expect(rows.find((row) => row.dataset["row"] === "balanced")?.textContent).toContain("7,00 kr");
-    expect(rows.find((row) => row.dataset["row"] === "own")?.textContent).toContain("6,30 kr");
+    expect(rows.find((row) => row.dataset["row"] === "balanced")?.textContent).toContain("+7 kr");
+    expect(rows.find((row) => row.dataset["row"] === "own")?.textContent).toContain("+6 kr");
     expect(rows.find((row) => row.dataset["inForce"])?.dataset["row"]).toBe(past.day_review!.mode);
     expect(part.textContent).not.toContain("dygn)");
   });
@@ -542,7 +569,7 @@ describe("the modes on a past day", () => {
     const past = answer("house/villa_past_day.json");
     const card = body({ ...past, day_review: null }, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), } as never);
     const part = card.querySelector("[data-part='modes']")!;
-    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Mot ren egenförbrukning: inget fullt dygn än");
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Jämfört med om batteriet bara lagrat egen sol: inget fullt dygn än");
     expect(part.querySelector("[data-row='balanced']")?.textContent).toContain("inget fullt dygn");
     expect(translate("fi", "house.compare.headingDay", { day: "d" })).not.toBe("house.compare.headingDay");
   });
@@ -560,12 +587,12 @@ describe("a past day's answer", () => {
     expect(past.day).toEqual({ date: "2026-11-12", today: false, first: "2026-10-31", has_data: true });
     expect(past.hours).toHaveLength(24);
     const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn() } as never);
-    expect(card.querySelector("[data-line='today']")?.textContent).toMatch(/^tors 12 nov\.?: sålt/);
+    expect(card.querySelector("[data-line='today']")?.textContent).toMatch(/^tors 12 nov\.?: batteriet tjänade/);
     expect(card.querySelector("[data-part='energy-flow'] h3")?.textContent).toMatch(/^Energi tors 12 nov/);
     expect(card.textContent).not.toContain("Hela timmar fram till");
     expect(card.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")?.textContent).toContain("slut 32 %");
     const endSoc = [...past.hours].reverse().find((hour) => hour.soc_pct !== null)!.soc_pct!;
-    expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe(`Batteri ${Math.round(endSoc)} % vid dagens slut`);
+    expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe(`Batteri ${Math.round(endSoc)} % vid dagens slut · läge Balanserad`);
     expect(translate("en", "house.sub.socDayEnd", { pct: "41 %" })).toBe("Battery 41 % at the end of the day");
   });
 
@@ -578,8 +605,8 @@ describe("a past day's answer", () => {
 
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.heading.other", "house.compare.headingNone", "house.compare.inForce", "house.compare.none", "house.compare.reference", "house.compare.days.other"] as const) {
-        expect(translate(language, key, { day: "d", days: "2", sold: "", arbitrage: "", bought: "", mode: "" })).not.toBe(key);
+      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.heading.other", "house.compare.headingNone", "house.compare.inForce", "house.compare.none", "house.compare.spotnav", "house.compare.own", "house.todayHint", "house.todayCost", "house.compare.days.other"] as const) {
+        expect(translate(language, key, { day: "d", days: "2", amount: "", mode: "" })).not.toBe(key);
       }
     }
   });
@@ -632,17 +659,21 @@ describe("today's energy flow", () => {
     expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät", "76,9 kWh", "83 %"]);
     expect(grid.querySelector(".spotnav-house-flow-pill")).not.toBeNull();
     const sun = svgRoot.querySelector(".spotnav-house-flow-node[data-role='solar']")!;
-    expect(Array.from(sun.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Sol", "7,5 kWh · 8 %"]);
+    // A short block puts its share in the name's pill and the energy alone under it.
+    expect(Array.from(sun.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Sol · 8 %", "7,5 kWh"]);
     const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
     expect(battery.textContent).toContain("nu 48 %");
     expect(svgRoot.getAttribute("aria-label")).toMatch(/^Sol 7,5 kWh \(8 %\), Batteri 8,6 kWh/);
     expect(section.textContent).toContain("Fram till 17:00.");
-    // A flow allocated by the hour says so; by the quarter hour, that.
-    expect(section.textContent).toContain("varje timme går solen");
+    // A flow allocated by the hour says so in the details; by the quarter hour, that.
+    expect(section.textContent).not.toContain("varje timme går solen");
+    const notes = body(answer(), { detailsOpen: true }, "sv").querySelector("[data-part='flow-notes']")!;
+    expect(notes.querySelector("h3")?.textContent).toBe("Så räknas flödet");
+    expect(notes.textContent).toContain("varje timme går solen");
     const heat = svgRoot.querySelector(".spotnav-house-flow-node[data-role='heat']")!;
-    expect(heat.querySelector("text")?.textContent).toBe("Värme");
+    expect(heat.querySelector("text")?.textContent).toBe("Värme · 14 %");
     // One hour lacked the heat pump's figure: said so.
-    expect(section.textContent).toContain("Värmepumpens mätare kunde inte läsas varje timme");
+    expect(notes.textContent).toContain("Värmepumpens mätare kunde inte läsas varje timme");
     // The details do not repeat it as bars.
     expect(body(answer(), { detailsOpen: true }, "sv").querySelector(".spotnav-house-flow-key")).toBeNull();
   });
@@ -680,6 +711,18 @@ describe("today's energy flow", () => {
     expect(body(past).querySelector("[data-part='energy-flow']")).toBeNull();
   });
 
+  it("keeps a month's or a year's figures narrow: no decimal from 100 kWh, a smaller figure from 1 000 kWh", () => {
+    const labels = flowLabels("sv", 1000);
+    expect(labels.kwh(99.94)).toBe("99,9 kWh");
+    expect(labels.kwh(183.4)).toBe("183 kWh");
+    expect(labels.kwh(2037)).toBe("2\u00a0037 kWh");
+    const value = answer();
+    const flow = value.energy_flow!;
+    const big = { ...flow, nodes: flow.nodes.map((node) => ({ ...node, kwh: node.kwh * 100 })), links: flow.links.map((link) => ({ ...link, kwh: link.kwh * 100 })) };
+    const svgRoot = body({ ...value, energy_flow: big }, {}, "sv").querySelector("[data-part='energy-flow'] svg")!;
+    expect(svgRoot.querySelector(".spotnav-house-flow-node[data-role='grid'][data-side='source'] .spotnav-house-flow-value-long")?.textContent).toBe("7\u00a0689 kWh");
+  });
+
   it("says it is on its way in today's first minutes, before the first 5-minute row", () => {
     const value = answer();
     const flow = value.energy_flow!;
@@ -692,9 +735,9 @@ describe("today's energy flow", () => {
   it("follows the day by the quarter hour: says how far it reaches and the quarter rule", () => {
     const value = answer();
     const flow = { ...value.energy_flow!, step_min: 15, through: "2026-11-13T16:15:00+00:00" };
-    const section = body({ ...value, energy_flow: flow }, {}, "sv").querySelector("[data-part='energy-flow']")!;
-    expect(section.textContent).toContain("Fram till 17:15.");
-    expect(section.textContent).toContain("varje kvart går solen");
+    const card = body({ ...value, energy_flow: flow }, { detailsOpen: true }, "sv");
+    expect(card.querySelector("[data-part='energy-flow']")!.textContent).toContain("Fram till 17:15.");
+    expect(card.querySelector("[data-part='flow-notes']")!.textContent).toContain("varje kvart går solen");
     const raw = JSON.parse(JSON.stringify(read("house/villa_battery_sun.json")));
     delete raw.energy_flow.step_min;
     const older = decodeHouse(raw);

@@ -305,7 +305,7 @@ export class SpotnavHouseCard extends HTMLElement {
             this.ui = { ...this.ui, detailsOpen: open };
             this.render();
             if (focused) {
-              (this.root.querySelector("[aria-expanded]") as HTMLElement | null)?.focus();
+              (this.root.querySelector(".spotnav-house-details-toggle") as HTMLElement | null)?.focus();
             }
           },
           onView: (view) => {
@@ -327,6 +327,11 @@ export class SpotnavHouseCard extends HTMLElement {
           },
           onSelect: (index) => {
             this.ui = { ...this.ui, selected: index };
+          },
+          onTest: (open) => {
+            this.ui = { ...this.ui, testOpen: open };
+            this.render();
+            (this.root.querySelector("button[data-action='test']") as HTMLElement | null)?.focus();
           },
           ...(admin ? { onSettings: () => this.showSettings() } : {}),
           onHistory: (opener) => this.showHistory(opener),

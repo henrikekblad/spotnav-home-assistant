@@ -135,7 +135,9 @@ describe("the house history", () => {
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.value).toBe("2026-11-15");
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.max).toBe("2026-11-16");
     expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,00 kr");
-    expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")?.textContent).toContain("referens");
+    // Self-consumption is the zero the others are measured against, not a row.
+    expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")).toBeNull();
+    expect(body.querySelector("[data-part='modes'] [data-row='own']")?.textContent).toContain("Batteriets egen styrning");
     expect(body.querySelector("[data-part='forecast'] [data-row='house']")?.textContent).toBe("Husets last±0,42 kW (1 d)");
     // A day has no day-by-day list.
     expect(body.querySelector("[data-part='days']")).toBeNull();
@@ -172,9 +174,14 @@ describe("the heat history", () => {
     expect(decodeHeatHistory({ ...read("heat_history/villa_day.json"), runs: [{ start: "x", end: "y", kwh: 1, cause: null }] }).ok).toBe(false);
   });
 
-  it("shows a month's use, degree-days with the trend, comfort and the shadow", () => {
+  it("shows a month's use and cost by default, and degree-days with the trend, comfort and the shadow with Detailed", () => {
     const answer = heat("heat_history/villa_month.json");
-    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const plain = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(plain.querySelector("[data-part='use'] [data-row='cost']")).not.toBeNull();
+    for (const part of ["degree-days", "comfort", "shadow", "runs"]) {
+      expect(plain.querySelector(`[data-part='${part}']`), part).toBeNull();
+    }
+    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(body.querySelector("[data-part='use'] [data-row='hot-water']")?.textContent).toContain("16,8 kWh");
     const degree = body.querySelector("[data-part='degree-days']")!;
     expect(degree.querySelector("[data-row='per-degree-day']")?.textContent).toContain("3,07 kWh/graddag");
@@ -196,10 +203,18 @@ describe("the heat history", () => {
   it("says what is missing without a meter, an outdoor temperature or rooms", () => {
     const answer = heat("heat_history/meter_only_year.json");
     const bare = { ...answer, meter: null, energy: null, buckets: [], shadow: null };
-    const body = heatHistoryBody({ doc: document, language: "en", state: { kind: "ready", answer: bare }, ui: ui({ period: "year" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const body = heatHistoryBody({ doc: document, language: "en", state: { kind: "ready", answer: bare }, ui: ui({ period: "year", detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(body.querySelector("[data-line='no-meter']")).not.toBeNull();
     expect(body.querySelector("[data-line='no-outdoor']")).not.toBeNull();
     expect(body.querySelector("[data-line='no-rooms']")).not.toBeNull();
+    // Too few degree-days: one line on when there will be a figure.
+    const month = heat("heat_history/villa_month.json");
+    const few = { ...month, degree_days: { ...month.degree_days!, kwh_per_degree_day: null } };
+    const fewBody = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: few }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const degree = fewBody.querySelector("[data-part='degree-days']")!;
+    expect(degree.querySelector("[data-line='too-few']")?.textContent).toBe("Graddagar visas när det finns ett par kalla dygn att räkna på.");
+    expect(degree.querySelector("[data-row='per-degree-day']")).toBeNull();
+    expect(degree.textContent).not.toContain("graddagar under");
   });
 
   it("opens from the heat card's clock, reads the running month and then a day with its runs", async () => {
@@ -232,8 +247,9 @@ describe("the heat history", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(messages.at(-1)).toEqual({ type: "spotnav/get_heat_history", api_version: 1, site_id: "site_villa", period: "month" });
     const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
-    expect(dialog.querySelector("[data-part='degree-days']")).not.toBeNull();
+    expect(dialog.querySelector("[data-part='degree-days']")).toBeNull();
     dialog.querySelector<HTMLButtonElement>("button[data-detailed]")!.click();
+    expect(dialog.querySelector("[data-part='degree-days']")).not.toBeNull();
     dialog.querySelector<HTMLButtonElement>("button[data-period='day']")!.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(messages.at(-1)).toMatchObject({ type: "spotnav/get_heat_history", period: "day" });

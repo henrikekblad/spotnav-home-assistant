@@ -1,8 +1,8 @@
 # The house card (preview)
 
 A second card in the same bundle as the charging card, about the whole house: its load, the sun and the home battery.
-It is a **preview in shadow**: it shows what SpotNav forecasts and what its battery plan would do, and it never writes to
-anything. The charging card stays about the car; the house card is where a home without a charger starts.
+It is in **test**: the chip in its header says "Test · not controlling yet" (tap it for two sentences on what that
+means). It shows what SpotNav forecasts and what its battery plan would do, and it never writes to anything. The charging card stays about the car; the house card is where a home without a charger starts.
 
 ## Add it
 
@@ -38,9 +38,11 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
 
 ## What you see
 
-* **The top**: the battery's charge level, and today's money split the way a battery's own app does: *sold*, *arbitrage*,
-  *bought*, with the mode in force ([the battery plan](battery-plan.md)). On a site without a battery there is no battery
-  line.
+* **The top**: the battery's charge level with the chosen mode, then today's headline: what the battery has earned so far
+  ("The battery has earned 26 kr today"): each kWh it gave back, over what that energy cost to store (the *arbitrage* of
+  [the battery plan](battery-plan.md)). That is the same measure the battery's own app shows, and the card says so right
+  under it. Below that, what the electricity bought cost and, when there is some, the sun sold. On a site without a battery
+  there is no battery line.
 * **The chart** covers 12 hours back and 24 ahead, with two views you can switch between:
   * *Energy*: bars for the house's load per hour (measured before now, forecast after), an area for the sun, and a
     line for the battery's charge level, dashed where it is planned.
@@ -55,15 +57,30 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
   to the grid or holds its charge).
 * **Past days**: browse earlier days with *Previous day*, *Next day* and *Choose a day*; a day
   nothing was measured on says so.
-* **The money line**: the last reviewed days, SpotNav's plan against the battery's own way, each measured against plain
-  self-consumption. Until a day has been reviewed it says what the plan expects until the end of its horizon, and the
-  first comparison arrives the night after.
-* **The battery app's measure** (under the comparison): the same day in the terms the battery's own app uses, which are
-  not the comparison's. Two baselines, no setting:
+* **The comparison**, titled with what it compares against ("Compared with the battery only storing your own sun, last 7
+  days"): each of SpotNav's modes (the chosen one marked) and the battery's own control, named where the battery runs its
+  maker's optimiser ("Sigenergy AI"), over the last reviewed days. It is not the battery app's measure: a battery's own
+  control can earn money in the app's terms and still come out below plain self-consumption here. Until a day has been
+  reviewed a line says what the plan expects until the end of its horizon, and the first comparison arrives the night
+  after.
+* **Energy today so far**: a diagram of where today's energy came from and where it went (see Details for how it is
+  counted), and the heat pump's share of the house where its meter is known.
+
+### Details
+
+*Details* opens, as far as the site has them:
+
+* **How the flow is counted**: the meters do not say which source fed which use, so the split follows a fixed rule, not a
+  measurement: each hour (or quarter hour) the sun goes to the house first, then the car, the battery and the grid, and
+  the battery covers the house before the grid does. Where the car or the heat pump's meter could not be read every hour,
+  it says so. (Without the diagram, *Energy today so far* is shown here as two bars instead; the sun counts only the hours
+  Home Assistant has already compiled.)
+* **The battery app's measure**: the same day in the terms the battery's own app uses, which are not the comparison's.
+  Two baselines, no setting:
   * *Battery against no battery*: what the day really cost (bought at the buy price, less sold at the sell price) against
     the same day with no battery at all: the house and the car on the grid, the sun still there. A positive figure is
     money the battery saved. This is the one to hold up against the battery app's own figure. The energy the battery holds
-    at the end of the day is not counted in it, which the comparison above does count: a battery that emptied itself looks
+    at the end of the day is not counted in it, which the comparison on the front does count: a battery that emptied itself looks
     better here than there.
   * *What the sun gave*: the day with the sun and no battery against the same day with no sun and no battery (the sun used
     in the house at the buy price, the sold sun at the sell price). The sun's production comes from the Energy dashboard's
@@ -75,18 +92,9 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
 * **The forecast line**: how far off the forecasts were over the last week: the house in kW, the sun in kWh (with the
   corrected figure beside it where there is one) and the battery's level in points. Before the first whole day has been
   reviewed it says so.
-
-### Details
-
-*Details* opens, as far as the site has them:
-
-* **Energy today so far**: where today's energy came from (sun, battery, grid) and where it went (battery, use, grid). The
-  sun counts only the hours Home Assistant has already compiled. The meters do not say which source fed which use, so
-  the split follows a fixed rule, not a measurement: each hour the sun goes to the house first, then the car, the battery
-  and the grid, and the battery covers the house before the grid does.
 * **Saved per day**: the month's reviewed days, the plan beside the battery's own way, and the month's arbitrage.
 * **Battery modes side by side**: for Self-consumption, Balanced and Max profit, what each is planned to save ahead and what
-  it would have saved over the reviewed days, with the mode in force marked, and the battery's own way (or its own optimiser)
+  it would have saved over the reviewed days, with the chosen mode marked, and the battery's own way (or its own optimiser)
   for comparison. All are against plain self-consumption on the same measured load and sun.
 * **Day by day**: each reviewed day's mean forecast error and saving.
 * **Sources**: the weather entity, outdoor temperature, holiday calendar and solar forecast the forecasts read, whether
@@ -96,7 +104,7 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
   smaller while the battery covers the house.
 
 The card says plainly when the battery runs its own optimiser ("SpotNav plans beside it only to compare, and writes nothing
-to it") and when it is in shadow ("SpotNav plans the battery but writes nothing to it").
+to it") and when it is in test ("Test: SpotNav plans the battery but does not control it yet").
 
 Money is in the price area's minor unit (öre, cent) as the plan counts it. Nothing here controls a charger or a battery. The
 forecasts behind the card are described in [Forecasts](forecasts.md).

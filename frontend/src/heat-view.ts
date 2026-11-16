@@ -30,6 +30,8 @@ export interface HeatUi {
   pendingTarget: number | null;
   /** A sentence under the dial after a refused write. */
   error: string | null;
+  /** The header's test chip opened to its explanation. */
+  testOpen?: boolean;
 }
 
 export interface HeatHandlers {
@@ -39,6 +41,8 @@ export interface HeatHandlers {
   onSettings(): void;
   /** The clock in the header: the history dialog (`history-dialog.ts`). Without it the card has no clock. */
   onHistory?(opener: HTMLElement): void;
+  /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
+  onTest?(open: boolean): void;
 }
 
 export interface HeatRenderInput {
@@ -201,9 +205,43 @@ export function settingsGearButton(doc: Document, label: string, onClick: () => 
   return button;
 }
 
-function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null): HTMLElement {
+/**
+ * The header's "Test · not controlling yet" chip (the heat and house cards): a button that shows or hides two sentences
+ * on what test means. Returns the chip and the explanation, which the caller places under the header.
+ */
+export function testChip(
+  doc: Document,
+  language: Language,
+  explainKey: TranslationKey,
+  open: boolean,
+  id: string,
+  onToggle?: (open: boolean) => void,
+): { chip: HTMLButtonElement; explain: HTMLElement } {
+  const chip = element(doc, "button", `${H.chip} ${H.chipButton}`, translate(language, "house.preview")) as HTMLButtonElement;
+  chip.type = "button";
+  chip.dataset["action"] = "test";
+  chip.setAttribute("aria-expanded", String(open));
+  chip.setAttribute("aria-controls", id);
+  const explain = element(doc, "p", `${C.muted} ${H.note} ${H.testExplain}`, translate(language, explainKey));
+  explain.id = id;
+  explain.dataset["line"] = "test-explain";
+  explain.hidden = !open;
+  chip.addEventListener("click", () => {
+    const next = chip.getAttribute("aria-expanded") !== "true";
+    if (onToggle !== undefined) {
+      onToggle(next);
+      return;
+    }
+    chip.setAttribute("aria-expanded", String(next));
+    explain.hidden = !next;
+  });
+  return { chip, explain };
+}
+
+function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null, testOpen = false): HTMLElement[] {
   const head = element(doc, "div", H.head);
-  head.append(element(doc, "h2", H.title, translate(language, "heat.title")), element(doc, "span", H.chip, translate(language, "house.preview")));
+  const test = testChip(doc, language, "heat.test.explain", testOpen, "spotnav-heat-test", handlers?.onTest?.bind(handlers));
+  head.append(element(doc, "h2", H.title, translate(language, "heat.title")), test.chip);
   const onHistory = handlers?.onHistory;
   if (answer !== null && onHistory !== undefined) {
     const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory.call(handlers, button));
@@ -213,7 +251,7 @@ function header(doc: Document, language: Language, answer: HeatAnswer | null, ha
     const button = settingsGearButton(doc, translate(language, "heat.settings.open"), () => handlers.onSettings());
     head.append(button);
   }
-  return head;
+  return [head, test.explain];
 }
 
 // ------------------------------------------------------------------------------------------------ the dial
@@ -522,7 +560,7 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
   const card = element(doc, "div", `${C.card} ${H.card} ${X.card}`);
   card.dataset["state"] = state.kind;
   if (state.kind !== "ready") {
-    card.append(header(doc, language, null, null));
+    card.append(...header(doc, language, null, null));
     const key: TranslationKey = state.kind === "unconfigured" ? "heat.unconfigured" : state.kind === "loading" ? "heat.loading" : state.sentenceKey;
     const line = element(doc, "p", C.muted, translate(language, key));
     line.setAttribute("role", "status");
@@ -534,11 +572,17 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
   }
   const answer = state.answer;
   const target = input.ui.pendingTarget ?? answer.comfort.target_c;
-  card.append(header(doc, language, answer, input.handlers));
+  card.append(...header(doc, language, answer, input.handlers, input.ui.testOpen === true));
   card.append(dial(doc, language, answer, target, input.ui, input.handlers));
   const measured = element(doc, "p", X.measured, measuredLine(language, answer));
   measured.dataset["line"] = "measured";
   card.append(measured, ...modes(doc, language, answer, input.handlers));
+  if (answer.shadow) {
+    // While nothing is controlled, what the dial and home or away are for: what SpotNav follows once it controls.
+    const line = element(doc, "p", `${X.shadow} ${C.muted}`, translate(language, "heat.shadow"));
+    line.dataset["line"] = "shadow";
+    card.append(line);
+  }
   const pump = pumpLine(language, answer);
   if (pump !== null) {
     const line = element(doc, "p", X.status, pump);
@@ -549,11 +593,6 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
   if (would !== null) {
     const line = element(doc, "p", X.status, would);
     line.dataset["line"] = "would";
-    card.append(line);
-  }
-  if (answer.shadow) {
-    const line = element(doc, "p", `${X.shadow} ${C.muted}`, translate(language, "heat.shadow"));
-    line.dataset["line"] = "shadow";
     card.append(line);
   }
   card.append(bandBlock(doc, language, answer, input.width, input.nowMs));

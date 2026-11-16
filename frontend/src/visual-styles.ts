@@ -82,6 +82,9 @@ export const VISUAL_CLASSES = {
   settingRowValue: "spotnav-setting-row-value",
   settingRowEditable: "spotnav-setting-row-editable",
   settingRowHelp: "spotnav-setting-row-help",
+  batteryNeeds: "spotnav-battery-needs",
+  batteryNeedsHeading: "spotnav-battery-needs-heading",
+  batteryNeedAction: "spotnav-battery-need-action",
   settingRowSuggestion: "spotnav-setting-row-suggestion",
   cameraStage: "spotnav-camera-stage",
   cameraImage: "spotnav-camera-image",
@@ -1995,8 +1998,9 @@ export const VISUAL_STYLES = `
     margin-right: 6px;
   }
   /*
-   * A value row in the app's compact style: the label left, the value right-aligned at the same size; a
-   * changeable value is a button in the accent colour, a read-only one in the normal text colour.
+   * A value row in the app's compact style: the label left, the value right-aligned at the same size. A
+   * changeable row is one finger-sized button: the value's button covers the whole row, a chevron says it opens,
+   * and the value stays in the normal text colour (the accent on white is too faint to read).
    */
   .${VISUAL_CLASSES.settingRow} {
     display: flex;
@@ -2007,15 +2011,24 @@ export const VISUAL_STYLES = `
     min-width: 0;
     padding: 3px 0;
   }
+  .${VISUAL_CLASSES.settingRow}[data-tappable] {
+    position: relative;
+    align-items: center;
+    min-height: 44px;
+    padding: 4px 0;
+    box-sizing: border-box;
+    border-top: 1px solid var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.settingRow}[data-tappable]:has(> .${VISUAL_CLASSES.settingRowEditable}:focus-visible) {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
   .${VISUAL_CLASSES.settingRowLabel} {
     flex: 0 1 auto;
     min-width: 0;
     color: var(--secondary-text-color, #727272);
     overflow-wrap: break-word;
-  }
-  /* The price area's value is also the area dialog's trigger: right-aligned like every other value. */
-  .${VISUAL_CLASSES.settingRowValue}.${VISUAL_CLASSES.settingsTrigger} {
-    display: block;
   }
   .${VISUAL_CLASSES.settingRowValue} {
     flex: 1 1 auto;
@@ -2027,15 +2040,62 @@ export const VISUAL_STYLES = `
     overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.settingRowEditable} {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
     background: none;
     border: 0;
     padding: 0;
     cursor: pointer;
-    color: var(--primary-color, #03a9f4);
+    color: var(--primary-text-color, #212121);
+  }
+  .${VISUAL_CLASSES.settingRowEditable}:focus-visible {
+    outline: none;
+  }
+  /* The whole row is the button's target. */
+  .${VISUAL_CLASSES.settingRowEditable}::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .${VISUAL_CLASSES.settingRowEditable}::after {
+    content: "";
+    flex: none;
+    width: 0.45em;
+    height: 0.45em;
+    margin-right: 4px;
+    border-top: 2px solid var(--secondary-text-color, #727272);
+    border-right: 2px solid var(--secondary-text-color, #727272);
+    transform: rotate(45deg);
   }
   .${VISUAL_CLASSES.settingRowEditable}:disabled {
     cursor: default;
-    color: var(--primary-text-color, #212121);
+  }
+  .${VISUAL_CLASSES.settingRowEditable}:disabled::after {
+    visibility: hidden;
+  }
+  /* What is left before battery control can run: numbered steps in a box, each with its own button. */
+  .${VISUAL_CLASSES.batteryNeeds} {
+    margin: 8px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+  }
+  .${VISUAL_CLASSES.batteryNeedsHeading} {
+    margin: 0 0 6px;
+    font-weight: 500;
+  }
+  .${VISUAL_CLASSES.batteryNeeds} ol {
+    margin: 0;
+    padding-left: 1.4em;
+  }
+  .${VISUAL_CLASSES.batteryNeeds} li + li {
+    margin-top: 10px;
+  }
+  .${VISUAL_CLASSES.batteryNeedAction} {
+    display: block;
+    margin-top: 6px;
   }
   .${VISUAL_CLASSES.settingRowHelp} {
     margin: 0 0 4px;
