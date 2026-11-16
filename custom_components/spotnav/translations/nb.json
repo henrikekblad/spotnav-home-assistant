@@ -1170,9 +1170,9 @@
           "name": "AI-modus overtakelse lest",
           "description": "Personen har lest at SpotNav tar over anlegget fra Sigenergys AI-modus."
         },
-        "battery_control_allow_sell": {
-          "name": "Tillat salg",
-          "description": "Planen kan lade ut batteriet til nettet."
+        "battery_mode": {
+          "name": "Batterimodus",
+          "description": "Hva batteriet skal brukes til. Bare Maks fortjeneste kan selge til nettet."
         },
         "battery_control_import_limit_acts": {
           "name": "Importgrensen virker",

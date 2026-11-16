@@ -1170,9 +1170,9 @@
           "name": "AI-läge övertagande läst",
           "description": "Personen har läst att SpotNav tar över anläggningen från Sigenergys AI-läge."
         },
-        "battery_control_allow_sell": {
-          "name": "Tillåt försäljning",
-          "description": "Planen får ladda ur batteriet till nätet."
+        "battery_mode": {
+          "name": "Batteriläge",
+          "description": "Vad batteriet är till för. Bara Max vinst får sälja till nätet."
         },
         "battery_control_import_limit_acts": {
           "name": "Importgränsen verkar",

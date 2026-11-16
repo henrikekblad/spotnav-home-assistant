@@ -1170,9 +1170,9 @@
           "name": "Toma del modo IA leída",
           "description": "La persona leyó que SpotNav toma la instalación desde el modo IA de Sigenergy."
         },
-        "battery_control_allow_sell": {
-          "name": "Permitir vender",
-          "description": "El plan puede descargar la batería a la red."
+        "battery_mode": {
+          "name": "Modo de la batería",
+          "description": "Para qué sirve la batería. Solo Máximo beneficio puede vender a la red."
         },
         "battery_control_import_limit_acts": {
           "name": "El límite de importación actúa",

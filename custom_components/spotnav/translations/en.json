@@ -1170,9 +1170,9 @@
           "name": "AI mode takeover read",
           "description": "The person read that SpotNav takes the plant over from Sigenergy's AI mode."
         },
-        "battery_control_allow_sell": {
-          "name": "Allow selling",
-          "description": "The plan may discharge the battery to the grid."
+        "battery_mode": {
+          "name": "Battery mode",
+          "description": "What the battery is for. Only Max profit may sell to the grid."
         },
         "battery_control_import_limit_acts": {
           "name": "Import limit acts",

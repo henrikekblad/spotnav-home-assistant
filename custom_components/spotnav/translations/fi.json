@@ -1170,9 +1170,9 @@
           "name": "AI-tilan haltuunotto luettu",
           "description": "Henkilö on lukenut, että SpotNav ottaa laitteiston Sigenergyn AI-tilasta."
         },
-        "battery_control_allow_sell": {
-          "name": "Salli myynti",
-          "description": "Suunnitelma saa purkaa akkua verkkoon."
+        "battery_mode": {
+          "name": "Akun tila",
+          "description": "Mihin akkua käytetään. Vain Suurin voitto saa myydä verkkoon."
         },
         "battery_control_import_limit_acts": {
           "name": "Tuontiraja toimii",

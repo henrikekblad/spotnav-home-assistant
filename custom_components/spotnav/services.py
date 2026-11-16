@@ -47,6 +47,7 @@ from . import time_zones
 from .api.battery_control import async_setup_battery_control_api
 from .battery import gate
 from .battery.control import TRIAL_MAX_MIN, TrialRefused
+from .battery.plan_model import MODES
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .day_export import archive_path, write_record
 from .day_record import day_record
@@ -364,6 +365,7 @@ BATTERY_CONTROL_TEST_SCHEMA = vol.Schema(
 
 BATTERY_CONTROL_SETTINGS_SCHEMA = vol.Schema(
     {vol.Optional("site"): cv.string} | {vol.Optional(key): cv.boolean for key in gate.DEFAULTS}
+    | {vol.Optional(gate.CONF_MODE): vol.In(MODES)}
 )
 
 
@@ -392,7 +394,7 @@ async def _async_battery_control_settings(hass: HomeAssistant, call: ServiceCall
     """Write a site's battery control options (as the card's switch will) and answer its status."""
     entry = _export_site(hass, call.data.get("site"))
     controller = site_controller_for(hass, entry.entry_id)
-    changes = {key: value for key, value in call.data.items() if key in gate.DEFAULTS}
+    changes = {key: value for key, value in call.data.items() if key in gate.WRITABLE}
     if not changes:
         raise _battery_refusal("no_change")
     return await controller.battery_control.async_update_options(changes)

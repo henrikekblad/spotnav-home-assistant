@@ -1170,9 +1170,9 @@
           "name": "AI-tilstand overtagelse læst",
           "description": "Personen har læst, at SpotNav overtager anlægget fra Sigenergys AI-tilstand."
         },
-        "battery_control_allow_sell": {
-          "name": "Tillad salg",
-          "description": "Planen må aflade batteriet til nettet."
+        "battery_mode": {
+          "name": "Batteritilstand",
+          "description": "Hvad batteriet bruges til. Kun Maks. gevinst må sælge til nettet."
         },
         "battery_control_import_limit_acts": {
           "name": "Importgrænsen virker",
