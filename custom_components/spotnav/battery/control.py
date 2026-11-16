@@ -180,6 +180,61 @@ def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]
     return reads
 
 
+async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> bool:
+    """One write as a service call; `False` when it raised (the executor counts it as not taken)."""
+    domain, service, data = service_call(
+        op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
+        services=executor.control.role(op.role).services, watchdog_s=watchdog_s,
+    )
+    try:
+        await hass.services.async_call(domain, service, data, blocking=True)
+    except Exception as err:  # noqa: BLE001 - any error (a Modbus library's too) is a write not taken
+        _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, err)
+        return False
+    return True
+
+
+async def async_hand_back_stored(
+    hass: HomeAssistant, config: dict[str, Any], data: dict[str, Any], *, deadline_s: float | None = None
+) -> bool:
+    """Hand back the snapshots a stored state holds (the battery's, then the export limit's) without a site: only
+    restores, on the plant's own reads. `data` is updated in place; answers whether anything is still held."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + (HAND_BACK_DEADLINE_S if deadline_s is None else deadline_s)
+    held = False
+    for key in ("battery", "export"):
+        part = data if key == "battery" else data.get("export")
+        if not isinstance(part, dict):
+            continue
+        state = ExecState.from_dict(part.get("state"))
+        control = (control_for if key == "battery" else export_control_for)(state.brand)
+        if control is None or not state.holds_snapshot:
+            continue
+        executor = Executor(control, Ledger.from_dict(part.get("ledger")), Monitor.from_dict(part.get("monitor")), state)
+        executor.restart(dt_util.now())
+        failed: tuple[str, ...] = ()
+        while executor.state.phase == "restoring" and loop.time() < deadline:
+            if key == "battery":
+                facts = read_battery_facts(hass, config, None)
+                reads = {**stored_reads(hass, executor), **read_role_reads(hass, config, control)}
+            else:
+                facts, reads, _control = read_export_facts(hass, config)
+                reads = {**stored_reads(hass, executor), **reads}
+            result = executor.step(ExecInputs(
+                now=dt_util.now(), facts=facts, reads=reads, measurement_ok=False, stopping="removed", failed=failed,
+            ))
+            failed = tuple([
+                op.role for op in result.ops if op.restore and not await _async_call(hass, op, executor, WATCHDOG_S)
+            ])
+            if executor.state.phase != "restoring":
+                break
+            await asyncio.sleep(0 if result.ops else HAND_BACK_LOOK_S)
+        part |= {"state": executor.state.as_dict(), "ledger": executor.ledger.as_dict(),
+                 "monitor": executor.monitor.as_dict()}
+        held = held or executor.state.holds_snapshot
+    return held
+
+
 class ControlNotReachable(RuntimeError):
     """A look or a write was asked for that the site's gate does not allow now."""
 
@@ -447,8 +502,29 @@ class BatteryControl:
             await self._async_save()
 
     @staticmethod
-    async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
-        await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+    async def async_remove_stored(hass: HomeAssistant, entry_id: str, config: dict[str, Any] | None = None) -> None:
+        """The site entry is deleted: a snapshot still stored (its unload's hand-back did not finish) is handed back
+        first, on the site's `config`; the store goes only once nothing is held, else it is kept and a warning
+        logged (its restore values are not thrown away)."""
+        store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(entry_id))
+        try:
+            stored = await store.async_load()
+        except Exception:  # noqa: BLE001 - a broken store holds nothing that can be handed back
+            stored = None
+        data = dict(stored) if isinstance(stored, dict) else {}
+        try:
+            held = await async_hand_back_stored(hass, config or {}, data)
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning("SpotNav battery control: the hand-back of a removed site failed", exc_info=True)
+            held = True
+        if held:
+            _LOGGER.warning(
+                "SpotNav battery control: the removed site's home battery could not be handed back; its stored"
+                " state (%s) is kept", store_key(entry_id),
+            )
+            await store.async_save(data)
+            return
+        await store.async_remove()
 
     # ---- the gate
 

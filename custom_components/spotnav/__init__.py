@@ -917,7 +917,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SiteHouseForecast.async_remove_stored(hass, entry.entry_id)
         await SiteCapacityController.async_remove_released(hass, entry.entry_id)
         await BatteryShadow.async_remove_stored(hass, entry.entry_id)
-        await BatteryControl.async_remove_stored(hass, entry.entry_id)
+        await BatteryControl.async_remove_stored(hass, entry.entry_id, dict(entry.data))
         await SwitchLoadShadow.async_remove_stored(hass, entry.entry_id)
         await SiteSolarCorrection.async_remove_stored(hass, entry.entry_id)
         return

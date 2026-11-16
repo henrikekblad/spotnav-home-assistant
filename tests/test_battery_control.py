@@ -1075,6 +1075,28 @@ async def test_home_assistant_s_stop_saves_the_sessions_first_and_bounds_the_bat
     await BatteryControl.async_shutdown(controller.battery_control)
 
 
+async def test_removing_the_site_hands_a_stored_snapshot_back_before_the_store_goes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    control = await _started(hass, site, controller, plan_source=_hold, sell_source=lambda _now: -12.0)
+    await _looks(control, dt_util.now(), 6)
+    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(EXPORT).state == "0"
+    key = store_key(site.entry_id)
+    # The unload's hand-back did not finish (the plant did not answer): the snapshots are stored.
+    plant.raises = True
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.05)
+    await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
+    assert key in hass_storage, "kept while the plant could not be handed back"
+    assert hass_storage[key]["data"]["state"]["snapshot"]
+    plant.raises = False
+    await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    assert hass.states.get(EXPORT).state == "11.5"
+    assert key not in hass_storage
+
+
 async def test_after_a_restart_the_restore_runs_before_the_first_look(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
