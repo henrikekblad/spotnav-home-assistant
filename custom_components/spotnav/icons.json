@@ -190,6 +190,12 @@
     },
     "export_day": {
       "service": "mdi:archive-arrow-down"
+    },
+    "battery_control_test": {
+      "service": "mdi:battery-sync"
+    },
+    "battery_control_settings": {
+      "service": "mdi:battery-lock"
     }
   }
 }

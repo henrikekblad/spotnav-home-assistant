@@ -1086,6 +1086,9 @@
     },
     "export_write_failed": {
       "message": "Døgnets data kunne ikke skrives til {path}."
+    },
+    "battery_control_refused": {
+      "message": "Batteristyringen afviste: {reason}."
     }
   },
   "services": {
@@ -1122,6 +1125,62 @@
         "date": {
           "name": "Dato",
           "description": "Det lokale døgn, der skal eksporteres (standard: i går)."
+        }
+      }
+    },
+    "battery_control_test": {
+      "name": "Test hjemmebatteristyringen (ejer)",
+      "description": "Kun til ejerens test på stedet: kør én handling gennem SpotNavs batteristyring med alle sikkerhedsregler i nogle minutter, og giv derefter batteriet tilbage. Afvises mens stedet kun skyggekører, medmindre Tving test er slået til. Kun administratorer.",
+      "fields": {
+        "site": {
+          "name": "Sted",
+          "description": "Stedet. Udelad når der kun er ét."
+        },
+        "action": {
+          "name": "Handling",
+          "description": "hold, grid_charge, discharge_house, export_discharge, curtail_export eller stop for at afslutte en kørende test."
+        },
+        "power": {
+          "name": "Effekt",
+          "description": "kW for grid_charge og export_discharge (standard 2)."
+        },
+        "minutes": {
+          "name": "Minutter",
+          "description": "Hvor længe handlingen kører, før batteriet gives tilbage (standard 15, højst 120)."
+        },
+        "force_test": {
+          "name": "Tving test",
+          "description": "Kør også mens stedet kun skyggekører (test på stedet)."
+        }
+      }
+    },
+    "battery_control_settings": {
+      "name": "Indstillinger for hjemmebatteristyring (ejer)",
+      "description": "Til ejerens test på stedet, indtil kortet har kontakten: skriv stedets indstillinger for batteristyring. Slås styringen fra, gives batteriet først tilbage. Kun administratorer.",
+      "fields": {
+        "site": {
+          "name": "Sted",
+          "description": "Stedet. Udelad når der kun er ét."
+        },
+        "battery_control_enabled": {
+          "name": "Styring til",
+          "description": "Lad SpotNav styre batteriet, når kontrollen er bestået."
+        },
+        "battery_control_shadow_only": {
+          "name": "Kun skyggekørsel",
+          "description": "Skriv intet, log kun hvad der ville blive gjort (til som standard)."
+        },
+        "battery_control_ai_takeover_ack": {
+          "name": "AI-tilstand overtagelse læst",
+          "description": "Personen har læst, at SpotNav overtager anlægget fra Sigenergys AI-tilstand."
+        },
+        "battery_control_allow_sell": {
+          "name": "Tillad salg",
+          "description": "Planen må aflade batteriet til nettet."
+        },
+        "battery_control_import_limit_acts": {
+          "name": "Importgrænsen virker",
+          "description": "Testen på stedet viste, at anlæggets importgrænse virker under Remote EMS."
         }
       }
     }

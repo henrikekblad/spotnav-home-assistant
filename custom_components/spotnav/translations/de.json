@@ -1086,6 +1086,9 @@
     },
     "export_write_failed": {
       "message": "Die Tagesdaten konnten nicht nach {path} geschrieben werden."
+    },
+    "battery_control_refused": {
+      "message": "Die Batteriesteuerung hat abgelehnt: {reason}."
     }
   },
   "services": {
@@ -1122,6 +1125,62 @@
         "date": {
           "name": "Datum",
           "description": "Der zu exportierende lokale Tag (Standard: gestern)."
+        }
+      }
+    },
+    "battery_control_test": {
+      "name": "Heimbatteriesteuerung testen (Eigentümer)",
+      "description": "Nur für die Tests des Eigentümers vor Ort: eine Aktion mit allen Sicherheitsregeln einige Minuten lang über die Batteriesteuerung von SpotNav ausführen und die Batterie danach zurückgeben. Abgelehnt, solange der Standort nur im Schattenbetrieb läuft, außer Test erzwingen ist gesetzt. Nur Administratoren.",
+      "fields": {
+        "site": {
+          "name": "Standort",
+          "description": "Der Standort. Weglassen, wenn es nur einen gibt."
+        },
+        "action": {
+          "name": "Aktion",
+          "description": "hold, grid_charge, discharge_house, export_discharge, curtail_export oder stop, um einen laufenden Test zu beenden."
+        },
+        "power": {
+          "name": "Leistung",
+          "description": "kW für grid_charge und export_discharge (Standard 2)."
+        },
+        "minutes": {
+          "name": "Minuten",
+          "description": "Wie lange die Aktion läuft, bevor die Batterie zurückgegeben wird (Standard 15, höchstens 120)."
+        },
+        "force_test": {
+          "name": "Test erzwingen",
+          "description": "Auch im Schattenbetrieb ausführen (Tests vor Ort)."
+        }
+      }
+    },
+    "battery_control_settings": {
+      "name": "Einstellungen der Heimbatteriesteuerung (Eigentümer)",
+      "description": "Für die Tests des Eigentümers vor Ort, bis die Karte den Schalter hat: die Einstellungen der Batteriesteuerung des Standorts schreiben. Beim Ausschalten wird die Batterie zuerst zurückgegeben. Nur Administratoren.",
+      "fields": {
+        "site": {
+          "name": "Standort",
+          "description": "Der Standort. Weglassen, wenn es nur einen gibt."
+        },
+        "battery_control_enabled": {
+          "name": "Steuerung an",
+          "description": "SpotNav die Batterie steuern lassen, sobald die Prüfung bestanden ist."
+        },
+        "battery_control_shadow_only": {
+          "name": "Nur Schattenbetrieb",
+          "description": "Nichts schreiben, nur protokollieren, was getan würde (standardmäßig an)."
+        },
+        "battery_control_ai_takeover_ack": {
+          "name": "Übernahme aus dem KI-Modus gelesen",
+          "description": "Die Person hat gelesen, dass SpotNav die Anlage aus dem KI-Modus von Sigenergy übernimmt."
+        },
+        "battery_control_allow_sell": {
+          "name": "Verkauf erlauben",
+          "description": "Der Plan darf die Batterie ins Netz entladen."
+        },
+        "battery_control_import_limit_acts": {
+          "name": "Importgrenze wirkt",
+          "description": "Der Test vor Ort hat gezeigt, dass die Importgrenze der Anlage unter Remote EMS wirkt."
         }
       }
     }

@@ -210,3 +210,119 @@ export_day:
       required: false
       selector:
         date:
+
+battery_control_test:
+  name: Test the home battery control (owner)
+  description: >
+    For the owner's on-site tests only: run one action through SpotNav's
+    battery control, with every safety rule, for some minutes, then hand the
+    battery back. Refused while the site is shadow only unless Force test is
+    set. Administrators only.
+  fields:
+    site:
+      name: Site
+      description: >
+        The site. Leave it out when there is only one.
+      required: false
+      selector:
+        config_entry:
+          integration: spotnav
+    action:
+      name: Action
+      description: >
+        hold, grid_charge, discharge_house, export_discharge, curtail_export,
+        or stop to end a running test.
+      required: true
+      selector:
+        select:
+          options:
+            - hold
+            - grid_charge
+            - discharge_house
+            - export_discharge
+            - curtail_export
+            - stop
+    power:
+      name: Power
+      description: >
+        kW for grid_charge and export_discharge (default 2).
+      required: false
+      selector:
+        number:
+          min: 0.1
+          max: 100
+          step: 0.1
+          unit_of_measurement: kW
+    minutes:
+      name: Minutes
+      description: >
+        How long the action runs before it is handed back (default 15, at
+        most 120).
+      required: false
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 120
+          unit_of_measurement: min
+    force_test:
+      name: Force test
+      description: >
+        Run even while the site is shadow only (on-site tests).
+      required: false
+      default: false
+      selector:
+        boolean:
+
+battery_control_settings:
+  name: Home battery control settings (owner)
+  description: >
+    For the owner's on-site tests until the card has the switch: write the
+    site's battery control options. Turning control off hands the battery
+    back first. Administrators only.
+  fields:
+    site:
+      name: Site
+      description: >
+        The site. Leave it out when there is only one.
+      required: false
+      selector:
+        config_entry:
+          integration: spotnav
+    battery_control_enabled:
+      name: Control on
+      description: >
+        Let SpotNav run the battery once its check passed.
+      required: false
+      selector:
+        boolean:
+    battery_control_shadow_only:
+      name: Shadow only
+      description: >
+        Write nothing, only log what would be done (on by default).
+      required: false
+      selector:
+        boolean:
+    battery_control_ai_takeover_ack:
+      name: AI mode takeover read
+      description: >
+        The person read that SpotNav takes the plant over from Sigenergy's AI
+        mode.
+      required: false
+      selector:
+        boolean:
+    battery_control_allow_sell:
+      name: Allow selling
+      description: >
+        The plan may discharge the battery to the grid.
+      required: false
+      selector:
+        boolean:
+    battery_control_import_limit_acts:
+      name: Import limit acts
+      description: >
+        The on-site test showed that the plant's import limit acts under
+        Remote EMS.
+      required: false
+      selector:
+        boolean:

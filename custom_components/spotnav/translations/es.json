@@ -1086,6 +1086,9 @@
     },
     "export_write_failed": {
       "message": "Los datos del día no se pudieron escribir en {path}."
+    },
+    "battery_control_refused": {
+      "message": "El control de la batería se negó: {reason}."
     }
   },
   "services": {
@@ -1122,6 +1125,62 @@
         "date": {
           "name": "Fecha",
           "description": "El día local que se exporta (por defecto: ayer)."
+        }
+      }
+    },
+    "battery_control_test": {
+      "name": "Probar el control de la batería (propietario)",
+      "description": "Solo para las pruebas del propietario en el sitio: ejecuta una acción a través del control de batería de SpotNav, con todas las reglas de seguridad, durante unos minutos y luego devuelve la batería. Se rechaza mientras el sitio esté solo en modo sombra, salvo que Forzar prueba esté activado. Solo administradores.",
+      "fields": {
+        "site": {
+          "name": "Sitio",
+          "description": "El sitio. Omítelo si solo hay uno."
+        },
+        "action": {
+          "name": "Acción",
+          "description": "hold, grid_charge, discharge_house, export_discharge, curtail_export o stop para terminar una prueba en curso."
+        },
+        "power": {
+          "name": "Potencia",
+          "description": "kW para grid_charge y export_discharge (2 por defecto)."
+        },
+        "minutes": {
+          "name": "Minutos",
+          "description": "Cuánto dura la acción antes de devolver la batería (15 por defecto, 120 como máximo)."
+        },
+        "force_test": {
+          "name": "Forzar prueba",
+          "description": "Ejecutar también en modo solo sombra (pruebas en el sitio)."
+        }
+      }
+    },
+    "battery_control_settings": {
+      "name": "Ajustes del control de la batería (propietario)",
+      "description": "Para las pruebas del propietario en el sitio hasta que la tarjeta tenga el interruptor: escribe los ajustes de control de batería del sitio. Al desactivar el control, primero se devuelve la batería. Solo administradores.",
+      "fields": {
+        "site": {
+          "name": "Sitio",
+          "description": "El sitio. Omítelo si solo hay uno."
+        },
+        "battery_control_enabled": {
+          "name": "Control activado",
+          "description": "Dejar que SpotNav controle la batería una vez superada la comprobación."
+        },
+        "battery_control_shadow_only": {
+          "name": "Solo sombra",
+          "description": "No escribir nada, solo registrar lo que se haría (activado por defecto)."
+        },
+        "battery_control_ai_takeover_ack": {
+          "name": "Toma del modo IA leída",
+          "description": "La persona leyó que SpotNav toma la instalación desde el modo IA de Sigenergy."
+        },
+        "battery_control_allow_sell": {
+          "name": "Permitir vender",
+          "description": "El plan puede descargar la batería a la red."
+        },
+        "battery_control_import_limit_acts": {
+          "name": "El límite de importación actúa",
+          "description": "La prueba en el sitio mostró que el límite de importación de la instalación actúa bajo Remote EMS."
         }
       }
     }

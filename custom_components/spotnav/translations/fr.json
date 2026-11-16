@@ -1086,6 +1086,9 @@
     },
     "export_write_failed": {
       "message": "Les données de la journée n'ont pas pu être écrites dans {path}."
+    },
+    "battery_control_refused": {
+      "message": "Le pilotage de la batterie a refusé : {reason}."
     }
   },
   "services": {
@@ -1122,6 +1125,62 @@
         "date": {
           "name": "Date",
           "description": "La journée locale à exporter (par défaut : hier)."
+        }
+      }
+    },
+    "battery_control_test": {
+      "name": "Tester le pilotage de la batterie (propriétaire)",
+      "description": "Uniquement pour les tests du propriétaire sur place : exécuter une action par le pilotage de batterie de SpotNav, avec toutes les règles de sécurité, pendant quelques minutes, puis rendre la batterie. Refusé tant que le site est en mode ombre seul, sauf si Forcer le test est activé. Administrateurs uniquement.",
+      "fields": {
+        "site": {
+          "name": "Site",
+          "description": "Le site. À omettre s'il n'y en a qu'un."
+        },
+        "action": {
+          "name": "Action",
+          "description": "hold, grid_charge, discharge_house, export_discharge, curtail_export ou stop pour arrêter un test en cours."
+        },
+        "power": {
+          "name": "Puissance",
+          "description": "kW pour grid_charge et export_discharge (2 par défaut)."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "Durée de l'action avant que la batterie soit rendue (15 par défaut, 120 au plus)."
+        },
+        "force_test": {
+          "name": "Forcer le test",
+          "description": "Exécuter même en mode ombre seul (tests sur place)."
+        }
+      }
+    },
+    "battery_control_settings": {
+      "name": "Réglages du pilotage de la batterie (propriétaire)",
+      "description": "Pour les tests du propriétaire sur place, en attendant l'interrupteur dans la carte : écrire les réglages de pilotage de la batterie du site. Désactiver le pilotage rend d'abord la batterie. Administrateurs uniquement.",
+      "fields": {
+        "site": {
+          "name": "Site",
+          "description": "Le site. À omettre s'il n'y en a qu'un."
+        },
+        "battery_control_enabled": {
+          "name": "Pilotage activé",
+          "description": "Laisser SpotNav piloter la batterie une fois la vérification réussie."
+        },
+        "battery_control_shadow_only": {
+          "name": "Ombre seulement",
+          "description": "Ne rien écrire, seulement journaliser ce qui serait fait (activé par défaut)."
+        },
+        "battery_control_ai_takeover_ack": {
+          "name": "Reprise du mode IA lue",
+          "description": "La personne a lu que SpotNav reprend l'installation depuis le mode IA de Sigenergy."
+        },
+        "battery_control_allow_sell": {
+          "name": "Autoriser la vente",
+          "description": "Le plan peut décharger la batterie vers le réseau."
+        },
+        "battery_control_import_limit_acts": {
+          "name": "La limite d'import agit",
+          "description": "Le test sur place a montré que la limite d'import de l'installation agit sous Remote EMS."
         }
       }
     }

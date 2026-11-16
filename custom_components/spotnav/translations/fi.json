@@ -1086,6 +1086,9 @@
     },
     "export_write_failed": {
       "message": "Vuorokauden tietoja ei voitu kirjoittaa kohteeseen {path}."
+    },
+    "battery_control_refused": {
+      "message": "Akunohjaus kieltäytyi: {reason}."
     }
   },
   "services": {
@@ -1122,6 +1125,62 @@
         "date": {
           "name": "Päivä",
           "description": "Vietävä paikallinen vuorokausi (oletus: eilen)."
+        }
+      }
+    },
+    "battery_control_test": {
+      "name": "Testaa kotiakun ohjausta (omistaja)",
+      "description": "Vain omistajan paikan päällä tekemiin testeihin: aja yksi toiminto SpotNavin akunohjauksen läpi kaikilla turvasäännöillä muutaman minuutin ajan ja palauta sitten akku. Estetty, kun kohde on vain varjoajossa, ellei Pakota testi ole päällä. Vain ylläpitäjät.",
+      "fields": {
+        "site": {
+          "name": "Kohde",
+          "description": "Kohde. Jätä pois, kun niitä on vain yksi."
+        },
+        "action": {
+          "name": "Toiminto",
+          "description": "hold, grid_charge, discharge_house, export_discharge, curtail_export tai stop käynnissä olevan testin lopettamiseksi."
+        },
+        "power": {
+          "name": "Teho",
+          "description": "kW toiminnoille grid_charge ja export_discharge (oletus 2)."
+        },
+        "minutes": {
+          "name": "Minuutit",
+          "description": "Kuinka kauan toiminto kestää ennen akun palauttamista (oletus 15, enintään 120)."
+        },
+        "force_test": {
+          "name": "Pakota testi",
+          "description": "Aja myös, kun kohde on vain varjoajossa (paikan päällä tehtävät testit)."
+        }
+      }
+    },
+    "battery_control_settings": {
+      "name": "Kotiakun ohjauksen asetukset (omistaja)",
+      "description": "Omistajan paikan päällä tekemiin testeihin, kunnes kortissa on kytkin: kirjoita kohteen akunohjauksen asetukset. Ohjauksen sammuttaminen palauttaa ensin akun. Vain ylläpitäjät.",
+      "fields": {
+        "site": {
+          "name": "Kohde",
+          "description": "Kohde. Jätä pois, kun niitä on vain yksi."
+        },
+        "battery_control_enabled": {
+          "name": "Ohjaus päällä",
+          "description": "Anna SpotNavin ohjata akkua, kun tarkistus on hyväksytty."
+        },
+        "battery_control_shadow_only": {
+          "name": "Vain varjoajo",
+          "description": "Älä kirjoita mitään, kirjaa vain mitä tehtäisiin (oletuksena päällä)."
+        },
+        "battery_control_ai_takeover_ack": {
+          "name": "AI-tilan haltuunotto luettu",
+          "description": "Henkilö on lukenut, että SpotNav ottaa laitteiston Sigenergyn AI-tilasta."
+        },
+        "battery_control_allow_sell": {
+          "name": "Salli myynti",
+          "description": "Suunnitelma saa purkaa akkua verkkoon."
+        },
+        "battery_control_import_limit_acts": {
+          "name": "Tuontiraja toimii",
+          "description": "Paikan päällä tehty testi osoitti, että laitteiston tuontiraja toimii Remote EMS -tilassa."
         }
       }
     }
