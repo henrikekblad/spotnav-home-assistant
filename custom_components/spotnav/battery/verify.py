@@ -1,5 +1,5 @@
-"""The battery's verification routine: does this battery, on this firmware, do what each command asks? Built, not
-callable yet.
+"""The battery's verification routine: does this battery, on this firmware, do what each command asks? The gate of
+SpotNav's battery control (`control.py`, `gate.py`): control is on only once it passed.
 
 Modelled on evcc's `evcc meter verifybatterymodes` (evcc `docs/features/battery.mdx`, docs commit 6c5bcd7 of
 2026-11-03; `plans/research_integrations/evcc_gap_2026-11-13.md` §2.1) and on the self-test of
@@ -104,7 +104,10 @@ class ModeResult:
 class Verification:
     """One run of the routine on one battery; drive it with `command` before and `after` after each executor step."""
 
-    def __init__(self, executor: Executor, now: datetime, *, firmware: str | None, charge_kw: float = TEST_CHARGE_KW) -> None:
+    def __init__(
+        self, executor: Executor, now: datetime, *, firmware: str | None, charge_kw: float = TEST_CHARGE_KW,
+        modes: tuple[str, ...] | None = None,
+    ) -> None:
         self.executor = executor
         self.firmware = firmware or "unknown"
         self.brand = executor.control.brand
@@ -115,8 +118,13 @@ class Verification:
         self.stage: Stage = "command"
         self.stage_at = now
         self.last_reading_at: datetime | None = None
-        modes = EXPORT_MODES if executor.control.kind == "export" else MODES
-        self.results: list[ModeResult] = [ModeResult(name, action) for name, action in modes]
+        # `modes` runs only those (a later run retries the modes an earlier one could not judge); normal, the
+        # hand-back's check, always ends a run.
+        table = EXPORT_MODES if executor.control.kind == "export" else MODES
+        self.results: list[ModeResult] = [
+            ModeResult(name, action) for name, action in table
+            if modes is None or name in modes or action == ACTION_SELF_CONSUME
+        ]
 
     @property
     def done(self) -> bool:

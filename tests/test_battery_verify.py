@@ -12,9 +12,12 @@ from custom_components.spotnav.battery.verify import MAX_REPORTS, Sample, Verifi
 from tests.battery_control_fakes import SIGENERGY_STATES, SOLAREDGE_STATES, T0, TICK, FakeBattery, inputs
 
 
-def _verify(executor: Executor, battery: FakeBattery, *, looks: int = 400, house_kw: float = 2.0) -> Verification:
+def _verify(
+    executor: Executor, battery: FakeBattery, *, looks: int = 400, house_kw: float = 2.0,
+    modes: tuple[str, ...] | None = None,
+) -> Verification:
     now = T0
-    verification = Verification(executor, now, firmware="V100R001C21SPC117")
+    verification = Verification(executor, now, firmware="V100R001C21SPC117", modes=modes)
     failed: tuple[str, ...] = ()
     capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
     for _ in range(looks):
@@ -84,6 +87,14 @@ def test_a_mode_the_battery_cannot_show_now_is_not_judgeable() -> None:
     assert outcomes["hold"] == "not_judgeable:battery_not_discharging"
     assert outcomes["charge"] == "obeyed" and outcomes["normal"] == "restored"
     assert battery.states == SOLAREDGE_STATES
+
+
+def test_a_later_run_tries_only_the_modes_left_and_always_ends_with_the_hand_back_check() -> None:
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    executor = Executor(SIGENERGY_CONTROL)
+    verification = _verify(executor, battery, modes=("charge",))
+    assert _outcomes(verification) == {"charge": "obeyed", "normal": "restored"}
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
 
 
 def test_reports_are_kept_per_firmware_and_bounded() -> None:
