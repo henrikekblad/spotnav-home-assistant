@@ -1,8 +1,8 @@
 # The house card (preview)
 
 A second card in the same bundle as the charging card, about the whole house: its load, the sun and the home battery.
-It is a **preview in shadow**: it shows what SpotNav forecasts and what its battery plan would do, and it never writes to
-anything. The charging card stays about the car; the house card is where a home without a charger starts.
+It is in **test**: the chip in its header says "Test · not controlling yet" (tap it for two sentences on what that
+means). It shows what SpotNav forecasts and what its battery plan would do, and it never writes to anything. The charging card stays about the car; the house card is where a home without a charger starts.
 
 ## Add it
 
@@ -96,7 +96,7 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
   smaller while the battery covers the house.
 
 The card says plainly when the battery runs its own optimiser ("SpotNav plans beside it only to compare, and writes nothing
-to it") and when it is in shadow ("SpotNav plans the battery but writes nothing to it").
+to it") and when it is in test ("Test: SpotNav plans the battery but does not control it yet").
 
 Money is in the price area's minor unit (öre, cent) as the plan counts it. Nothing here controls a charger or a battery. The
 forecasts behind the card are described in [Forecasts](forecasts.md).
