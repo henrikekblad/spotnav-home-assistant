@@ -183,3 +183,117 @@ def test_heat_is_split_out_of_the_house_where_the_meter_reads() -> None:
     starts = [H0 + timedelta(hours=i) for i in range(2)]
     read = energy_hours(starts, {starts[0]: 1.0, starts[1]: 2.0}, None, None, None, None, None, {starts[1]: 0.7})
     assert [item.heat for item in read] == [None, 0.7]
+
+
+# ------------------------------------------------------------------------------------------------ by the quarter hour
+
+NOON = datetime(2026, 11, 13, 11, tzinfo=timezone.utc)
+
+
+def five_rows(start: datetime, values: list[float]) -> dict[datetime, float]:
+    """5-minute rows from `start` on."""
+    return {start + i * timedelta(minutes=5): value for i, value in enumerate(values)}
+
+
+def test_a_sun_quarter_and_a_grid_charge_quarter_in_one_hour_stay_apart() -> None:
+    """Quarter 1 the sun is exported, quarter 2 the grid charges the battery: by the hour the two would net into the
+    sun charging the battery; by the quarter each keeps its own source."""
+    from custom_components.spotnav.site.energy_flow import FlowSeries, quarter_hours
+
+    q = [0.0] * 12
+    sun = list(q)
+    export = list(q)
+    grid = list(q)
+    charge = list(q)
+    for i in range(3):
+        sun[i] = export[i] = 1 / 3
+        grid[3 + i] = charge[3 + i] = 1 / 3
+    five = FlowSeries(
+        grid_in=five_rows(NOON, grid),
+        grid_out=five_rows(NOON, export),
+        solar=five_rows(NOON, sun),
+        battery_in=five_rows(NOON, charge),
+        battery_out=five_rows(NOON, q),
+        car=five_rows(NOON, q),
+    )
+    periods, missing = quarter_hours([NOON], five, NOON + timedelta(hours=2))
+    assert missing == [] and [p.minutes for p in periods] == [15, 15, 15, 15]
+    flow = energy_flow(periods, day=DAY, has_solar=True, has_battery=True, step_min=15)
+    links = {(link["from"], link["to"]): link["kwh"] for link in flow["links"]}
+    assert links == {("source.solar", "use.grid"): 1.0, ("source.grid", "use.battery"): 1.0}
+    assert flow["step_min"] == 15 and flow["through"] == (NOON + timedelta(hours=1)).isoformat()
+    # The same hour by the hour mixes them: the sun is taken into the battery and the rest is netted out.
+    whole = EnergyHour(start=NOON, grid_in=1.0, grid_out=1.0, solar=1.0, battery_in=1.0, battery_out=0.0, car=0.0)
+    close(allocate_hour(whole), {("solar", "battery"): 1.0})
+
+
+def test_the_running_quarter_counts_its_finished_rows() -> None:
+    from custom_components.spotnav.site.energy_flow import FlowSeries, quarter_hours
+
+    rows = five_rows(NOON, [0.1, 0.2, 0.3, 0.4])  # 11:00-11:20
+    five = FlowSeries(grid_in=rows, grid_out=rows, car=five_rows(NOON, [0.05, 0.05, 0.05]))
+    periods, missing = quarter_hours([NOON], five, NOON + timedelta(minutes=21))
+    assert missing == []
+    assert [(p.start, p.minutes) for p in periods] == [(NOON, 15), (NOON + timedelta(minutes=15), 5)]
+    assert abs(periods[0].grid_in - 0.6) < 1e-9 and abs(periods[1].grid_in - 0.4) < 1e-9
+    # The cars' register has the first quarter whole, not the running one: that one counts them in the house.
+    assert abs(periods[0].car - 0.15) < 1e-9 and periods[1].car is None
+    flow = energy_flow(periods, day=DAY, has_solar=False, has_battery=False, step_min=15)
+    assert flow["through"] == (NOON + timedelta(minutes=20)).isoformat() and flow["hours"] == 2
+    # Just after a quarter's end the recorder may not have its last row yet: the quarter runs with the rows it has.
+    early, _ = quarter_hours([NOON], FlowSeries(grid_in=five_rows(NOON, [0.1, 0.2])), NOON + timedelta(minutes=15, seconds=5))
+    assert [(p.start, p.minutes) for p in early] == [(NOON, 10)]
+    # The battery plan's quarter (no register) counts its share of the running quarter.
+    planned = FlowSeries(grid_in=rows, car_quarters={NOON + timedelta(minutes=15): 0.9})
+    running = quarter_hours([NOON], planned, NOON + timedelta(minutes=21))[0]
+    assert abs(running[1].car - 0.3) < 1e-9
+
+
+def test_a_finished_hour_missing_a_row_is_read_by_the_hour() -> None:
+    from custom_components.spotnav.site.energy_flow import FlowSeries, quarter_hours
+
+    hours = [NOON, NOON + timedelta(hours=1)]
+    grid = five_rows(NOON, [0.1] * 24)
+    export = dict(grid)
+    del export[NOON + timedelta(minutes=35)]
+    periods, missing = quarter_hours(hours, FlowSeries(grid_in=grid, grid_out=export), NOON + timedelta(hours=3))
+    assert missing == [NOON] and [p.start for p in periods] == [NOON + timedelta(hours=1, minutes=15 * i) for i in range(4)]
+
+
+def test_todays_first_minutes_are_an_empty_flow() -> None:
+    from custom_components.spotnav.site.energy_flow import FlowSeries, quarter_hours
+
+    midnight = datetime(2026, 11, 12, 23, tzinfo=timezone.utc)
+    periods, missing = quarter_hours([midnight], FlowSeries(grid_in={}), midnight + timedelta(minutes=3))
+    assert periods == [] and missing == []
+    flow = energy_flow(periods, day=DAY, has_solar=True, has_battery=True, step_min=15, since=midnight)
+    assert tuple(flow) == FLOW_KEYS
+    assert (flow["hours"], flow["links"], flow["through"]) == (0, [], midnight.isoformat())
+    assert all(node["kwh"] == 0 for node in flow["nodes"])
+    assert energy_flow([], day=DAY, has_solar=True, has_battery=True) is None
+
+
+def test_the_hours_of_the_cars_and_heat_from_quarters() -> None:
+    from custom_components.spotnav.site.energy_flow import hour_figures
+
+    def floor(moment: datetime) -> datetime:
+        return moment.replace(minute=0)
+
+    whole = [EnergyHour(start=NOON + timedelta(minutes=15 * i), grid_in=1.0, grid_out=0.0, car=0.5, minutes=15) for i in range(4)]
+    part = [EnergyHour(start=NOON + timedelta(hours=1), grid_in=1.0, grid_out=0.0, car=0.5, minutes=15)]
+    unread = [
+        EnergyHour(start=NOON + timedelta(hours=2, minutes=15 * i), grid_in=1.0, grid_out=0.0, car=None if i else 1.0, minutes=15)
+        for i in range(4)
+    ]
+    by_hour = [EnergyHour(start=NOON + timedelta(hours=3), grid_in=1.0, grid_out=0.0, car=2.0)]
+    assert hour_figures([*whole, *part, *unread, *by_hour], "car", floor) == {NOON: 2.0, NOON + timedelta(hours=3): 2.0}
+
+
+def test_the_short_term_window_decides_the_reading() -> None:
+    from custom_components.spotnav.api.house import reads_quarters
+
+    now = datetime(2026, 11, 16, 9, 7, tzinfo=timezone.utc)
+    assert reads_quarters(now - timedelta(days=10), now, 10)
+    assert not reads_quarters(now - timedelta(days=10, seconds=1), now, 10)
+    assert reads_quarters(now - timedelta(days=3), now, 3) and not reads_quarters(now - timedelta(days=4), now, 3)
+    assert not reads_quarters(now, now, None)
