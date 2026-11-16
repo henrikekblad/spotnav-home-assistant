@@ -35,7 +35,9 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
 * **Home battery**, when SpotNav finds one: the battery control switch, what is missing, the check and allowing sales
   ([home batteries](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)).
 * **Heating**, always: one line "Nothing found" until a heat pump, a heat meter or a thermostat is found; tap it to add a
-  water heater on a relay. Otherwise the [heat settings](heat-pumps.md) in full.
+  water heater on a relay. Otherwise the [heat settings](heat-pumps.md) in full: on the relay path the **Styr värmen**
+  switch with its line ([SpotNav's own heat control](heat-pumps.md#spotnavs-own-heat-control-relay-off-by-default)),
+  the sensors with each indoor sensor's offset, the control path, hot water, the zones and the cooler night.
 * **Support**: download the debug info.
 
 ## What you see
