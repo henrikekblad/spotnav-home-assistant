@@ -1,5 +1,5 @@
 """What every wire contract shares: stable refusal codes, who may write, and how a charger id
-resolves to a loaded charger entry. One definition each, so no contract answers the same bad
+resolves to a loaded charger entry and a site id to a site entry. One definition each, so no contract answers the same bad
 request differently.
 """
 
@@ -11,7 +11,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_PRICE, ENTRY_TYPE_SITE
+from ..const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_PRICE, ENTRY_TYPE_SITE
 
 
 #: Stable WebSocket error codes. Consumers switch on these, never on a message.
@@ -21,6 +21,8 @@ ERROR_UNKNOWN_CHARGER: Final = "spotnav_unknown_charger"
 ERROR_SITE_NOT_CHARGER: Final = "spotnav_site_not_charger"
 ERROR_CHARGER_UNLOADED: Final = "spotnav_charger_unloaded"
 ERROR_NOT_ADMIN: Final = "spotnav_not_admin"
+ERROR_UNKNOWN_SITE: Final = "spotnav_unknown_site"
+ERROR_NO_SITE: Final = "spotnav_no_site"
 
 
 def unsupported_version_text(speaks: int) -> str:
@@ -60,3 +62,28 @@ def lookup_charger(
     if require_loaded and entry.state is not ConfigEntryState.LOADED:
         return None, ERROR_CHARGER_UNLOADED
     return entry, None
+
+
+def lookup_site(
+    hass: HomeAssistant, site_id: Any, *, require_loaded: bool = True
+) -> tuple[ConfigEntry | None, str | None]:
+    """The site entry for an id, or the stable code that says why there is none: an id that names no SpotNav site
+    (a charger, a price, another integration's entry) is unknown; a known but unloaded site has none loaded."""
+    if not isinstance(site_id, str) or not site_id:
+        return None, ERROR_UNKNOWN_SITE
+    entry = hass.config_entries.async_get_entry(site_id)
+    if entry is None or entry.domain != DOMAIN or entry.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_SITE:
+        return None, ERROR_UNKNOWN_SITE
+    if require_loaded and entry.state is not ConfigEntryState.LOADED:
+        return None, ERROR_NO_SITE
+    return entry, None
+
+
+def site_of_charger(hass: HomeAssistant, charger_entry_id: str) -> ConfigEntry | None:
+    """The site entry that lists this charger, loaded or not (configured membership)."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE and charger_entry_id in (
+            entry.data.get(CONF_CHARGER_ENTRY_IDS) or []
+        ):
+            return entry
+    return None
