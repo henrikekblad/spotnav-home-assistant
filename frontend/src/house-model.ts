@@ -72,6 +72,34 @@ export interface ModeFigures {
 export const MODES = ["self_consumption", "balanced", "max_profit"] as const;
 export type BatteryMode = (typeof MODES)[number];
 
+/** The ways compared with the perfect plan: what really happened (`own`), self-consumption and SpotNav's modes. */
+export const PERFECT_WAYS = ["own", "self_consumption", "balanced", "max_profit"] as const;
+export type PerfectWay = (typeof PERFECT_WAYS)[number];
+
+export interface BatteryWork {
+  discharged_kwh: number;
+  cycles: number;
+  switches: number;
+  grid_charge_kwh: number;
+  to_grid_kwh: number;
+}
+
+/** Days against their perfect plans in hindsight (`site/perfect_view.py`): the perfect plan's saving against no
+ * battery, each way's share of it (0-100, `null` where it did not run or there was nothing to gain), the kr behind the
+ * shares, the battery's work and the cells' temperature. */
+export interface PerfectFigures {
+  days: number;
+  /** Days that counted the energy left at midnight at the day's own value (the next days' prices not held yet). */
+  provisional: number;
+  mode: string | null;
+  saving: number | null;
+  shares: Record<PerfectWay, number | null>;
+  savings: Record<PerfectWay, number | null>;
+  clamped: string[];
+  work: Record<PerfectWay | "perfect", BatteryWork | null>;
+  temperature: { days: number; mean_c: number; max_c: number; minutes_above: number } | null;
+}
+
 export interface BatteryView {
   brand: string | null;
   label: string | null;
@@ -98,6 +126,8 @@ export interface BatteryView {
      * `null` from a backend before them. */
     battery_saving: number | null;
     sun_gave: number | null;
+    /** The same days against their perfect plans; `null` before the first one and from an older backend. */
+    perfect: PerfectFigures | null;
   } | null;
   soc_review: Score | null;
   estimates: string[];
@@ -193,6 +223,8 @@ export interface DayReviewFigures {
   covered_quarters: number;
   day_quarters: number;
   sun_quarters: number;
+  /** The day against its perfect plan; `null` without one and from an older backend. */
+  perfect: PerfectFigures | null;
 }
 
 export interface CalendarDay {
@@ -413,6 +445,7 @@ function battery(value: unknown): BatteryView | null {
             self_consumption_net: number(review.self_consumption_net),
             battery_saving: additive(review, "battery_saving", numberOrNull, null),
             sun_gave: additive(review, "sun_gave", numberOrNull, null),
+            perfect: additive(review, "perfect", decodePerfect, null),
           },
     soc_review: score(source.soc_review),
     estimates: list(source.estimates).map(text),
@@ -533,6 +566,54 @@ function dayReview(value: unknown): DayReviewFigures | null {
     covered_quarters: additive(source, "covered_quarters", count, 0),
     day_quarters: additive(source, "day_quarters", count, 0),
     sun_quarters: additive(source, "sun_quarters", count, 0),
+    perfect: additive(source, "perfect", decodePerfect, null),
+  };
+}
+
+function work(value: unknown): BatteryWork | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  return {
+    discharged_kwh: number(source.discharged_kwh),
+    cycles: number(source.cycles),
+    switches: count(source.switches),
+    grid_charge_kwh: number(source.grid_charge_kwh),
+    to_grid_kwh: number(source.to_grid_kwh),
+  };
+}
+
+/** `site/perfect_view.py`'s block, strictly: every way's key present. */
+export function decodePerfect(value: unknown): PerfectFigures | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  const shares = record(source.shares);
+  const savings = record(source.savings);
+  const works = record(source.work);
+  const temperature = source.temperature === null ? null : record(source.temperature);
+  const perWay = <T>(from: Record<string, unknown>, read: (raw: unknown) => T): Record<PerfectWay, T> =>
+    Object.fromEntries(PERFECT_WAYS.map((way) => [way, read(way in from ? from[way] : bad())])) as Record<PerfectWay, T>;
+  return {
+    days: count(source.days),
+    provisional: count(source.provisional),
+    mode: textOrNull(source.mode),
+    saving: numberOrNull(source.saving),
+    shares: perWay(shares, numberOrNull),
+    savings: perWay(savings, numberOrNull),
+    clamped: list(source.clamped).map(text),
+    work: { ...perWay(works, work), perfect: work("perfect" in works ? works.perfect : bad()) },
+    temperature:
+      temperature === null
+        ? null
+        : {
+            days: count(temperature.days),
+            mean_c: number(temperature.mean_c),
+            max_c: number(temperature.max_c),
+            minutes_above: count(temperature.minutes_above),
+          },
   };
 }
 

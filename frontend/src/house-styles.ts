@@ -68,6 +68,7 @@ export const HOUSE_CLASSES = {
   baseRow: "spotnav-house-base-row",
   baseValue: "spotnav-house-base-value",
   baseNote: "spotnav-house-base-note",
+  perfectHead: "spotnav-house-perfect-head",
 } as const;
 
 const H = HOUSE_CLASSES;
@@ -149,6 +150,12 @@ export const HOUSE_STYLES = `
   .${H.baseNote} {
     margin: 0;
     font-size: 0.78rem;
+  }
+  .${H.perfectHead} {
+    margin: 0 0 4px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    overflow-wrap: break-word;
   }
   .${H.readout} {
     height: auto;
