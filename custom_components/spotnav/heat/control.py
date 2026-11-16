@@ -25,8 +25,10 @@ first contact only. Nothing is written without it. The rules and the check are p
    (`heat/facts.py`); without either nothing can be judged (`no_signal`). A failed check stops control
    (`check_failed`) until the switch is turned off and on again.
 6. **Control**: `relay_control.decide` on the heat shadow's plan, with SpotNav's lowerings of the day, its writes and
-   the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`), outdoors at or below -15 °C, the coldest
-   counted room (its offset counted) below the band, SG Ready's second contact on or unreadable.
+   the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`; a sensor that
+   has not reported for `runtime.STALE_AFTER` does not read), outdoors at or below -15 °C (the lowest of the chosen
+   sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)
+   below the band, SG Ready's second contact on or unreadable.
 
 **Every exit opens the relay** SpotNav holds (open = the pump's normal curve): the switch off, a block, a pause, a
 safety reason, a changed relay entity, unload and Home Assistant's stop (`async_shutdown`, bounded); what could not be
@@ -41,7 +43,7 @@ import logging
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant, callback
@@ -519,16 +521,21 @@ class HeatControl:
         return None
 
     def outdoor_now(self, config: HeatConfig) -> float | None:
-        from ..site.house_forecast import to_celsius  # noqa: PLC0415 - the site imports this module
+        """The outdoor temperature now: the chosen sensor (a frozen one does not read), else the site's."""
+        from .runtime import temperature_c  # noqa: PLC0415 - the runtime imports this module
 
         if config.outdoor_sensor is None:
             return self.site.house_forecast.outdoor_c()
-        state = self.hass.states.get(config.outdoor_sensor)
-        if state is None:
-            return None
-        if config.outdoor_sensor.startswith("weather."):
-            return to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
-        return to_celsius(state.state, state.attributes.get("unit_of_measurement"))
+        return temperature_c(self.hass, config.outdoor_sensor)
+
+    def coldest_outdoor(self, config: HeatConfig, now: datetime) -> float | None:
+        """The lowest of the outdoor readings now: the chosen sensor, the site's (the pump's sensor or the weather),
+        and the weather's forecast for the running hour. What the cold limit is compared with."""
+        forecast = self.site.house_forecast
+        hour = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        readings = [self.outdoor_now(config), forecast.outdoor_c(), forecast.temperatures().get(hour)]
+        values = [value for value in readings if value is not None]
+        return min(values) if values else None
 
     def _safety(self, config: HeatConfig, now: datetime) -> str | None:
         """The safety reason now (see `relay_control`), `settling` while good data is younger than `GOOD_FOR`."""
@@ -539,7 +546,8 @@ class HeatControl:
             return SAFETY_STALE
         if self._good_since is None:
             self._good_since = now
-        if outdoor <= NO_LOWER_AT_C:
+        coldest_out = self.coldest_outdoor(config, now)
+        if coldest_out is not None and coldest_out <= NO_LOWER_AT_C:
             return SAFETY_TOO_COLD
         coldest = self.shadow.coldest_now(config)
         if coldest is None and config.indoor_sensors:
@@ -559,12 +567,13 @@ class HeatControl:
         """The check's readings now: the meter's power and what the pump does by it, the calculated supply."""
         from ..site.heat_meter import KIND_POWER, async_heat_hours  # noqa: PLC0415 - the site imports this module
         from .detect import read_heat_pumps  # noqa: PLC0415
+        from .runtime import fresh_state  # noqa: PLC0415
 
         meter = self.site.house_forecast.heat.meter
         kw = None
         power_meter = meter.found and meter.kind == KIND_POWER and meter.entity_id is not None
         if power_meter and meter.entity_id is not None:
-            state = self.hass.states.get(meter.entity_id)
+            state = fresh_state(self.hass, meter.entity_id)
             try:
                 value = None if state is None else float(state.state)
             except ValueError:

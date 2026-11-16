@@ -39,7 +39,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -87,6 +87,9 @@ LOG_SIZE: Final = 96
 #: The relay's state values that read as closed.
 CLOSED: Final = frozenset({"on"})
 
+#: A sensor that has not reported within this long is frozen: read as none (outdoors, the rooms, the meter).
+STALE_AFTER: Final = timedelta(hours=3)
+
 SOURCE_BLUEPRINT: Final = "blueprint"
 SOURCE_SPOTNAV: Final = "spotnav"
 SOURCE_UNKNOWN: Final = "unknown"
@@ -113,6 +116,28 @@ class ShadowLog:
 
     def as_list(self) -> list[dict[str, Any]]:
         return [{k: v for k, v in entry.items() if k != "key"} for entry in self.entries]
+
+
+def fresh_state(hass: HomeAssistant, entity_id: str) -> State | None:
+    """The entity's state when it reads and has reported within `STALE_AFTER`, else `None`."""
+    state = hass.states.get(entity_id)
+    if state is None or state.state in ("unavailable", "unknown"):
+        return None
+    reported = getattr(state, "last_reported", None) or state.last_updated
+    return state if dt_util.utcnow() - reported <= STALE_AFTER else None
+
+
+def temperature_c(hass: HomeAssistant, entity_id: str) -> float | None:
+    """A temperature sensor's or a weather entity's temperature now (°C, °F converted), `None` when it does not read
+    or is frozen."""
+    from ..site.house_forecast import to_celsius  # noqa: PLC0415 - the site imports this module
+
+    state = fresh_state(hass, entity_id)
+    if state is None:
+        return None
+    if entity_id.startswith("weather."):
+        return to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
+    return to_celsius(state.state, state.attributes.get("unit_of_measurement"))
 
 
 def relay_entity(config: HeatConfig) -> str | None:
@@ -538,10 +563,10 @@ class HeatShadow:
 
     def coldest_now(self, config: HeatConfig) -> float | None:
         """The coldest counted room now less its offset (what the comfort band is compared with), `None` without a
-        readable indoor sensor."""
+        readable indoor sensor (a frozen one does not read)."""
         readings = []
         for entity_id in config.indoor_sensors:
-            state = self.hass.states.get(entity_id)
+            state = fresh_state(self.hass, entity_id)
             try:
                 value = None if state is None else float(state.state)
             except ValueError:

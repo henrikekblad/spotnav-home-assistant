@@ -643,3 +643,39 @@ async def test_no_chosen_room_still_lowers(hass: HomeAssistant, freezer) -> None
     _site_, control, relay, now = await _running(hass, freezer, 0, 1, indoor_sensors=[])
     await control.async_look(now)
     assert relay.calls == ["on"] and control.status()["reason"] == "planned"
+
+
+@pytest.mark.parametrize("frozen", [OUTDOOR, ROOM])
+async def test_a_frozen_sensor_is_stale(hass: HomeAssistant, freezer, frozen: str) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    later = now + 4 * H
+    freezer.move_to(later)
+    # The other sensor reports on; the frozen one last reported four hours ago.
+    for entity_id, value in ((OUTDOOR, "4.0"), (ROOM, "21.0")):
+        if entity_id != frozen:
+            hass.states.async_set(entity_id, value, {"unit_of_measurement": "°C", "device_class": "temperature"})
+    _plan(control, later, 0, 1)
+    await control.async_look(later)
+    assert relay.calls == [] and control.status()["reason"] == "stale"
+
+
+async def test_the_forecast_colder_than_the_sensor_rules_the_cold_limit(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    control.site.house_forecast._temperatures = {now: -16.0}  # noqa: SLF001 - the weather's hourly forecast
+    await control.async_look(now)
+    assert relay.calls == [] and control.status()["reason"] == "too_cold"
+
+
+async def test_a_frozen_meter_gives_no_power(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.heat.meter_split import Levels
+    from custom_components.spotnav.site.heat_meter import KIND_POWER, STATUS_FOUND, HeatMeter
+
+    _site_, controller, _relay = await _site(hass, freezer)
+    control: HeatControl = controller.heat_control
+    control.site.house_forecast.heat.meter = HeatMeter(STATUS_FOUND, "sensor.vp_effekt", KIND_POWER)
+    now = controller.demand.now()
+    hass.states.async_set("sensor.vp_effekt", "1.1", {"unit_of_measurement": "kW"})
+    freezer.move_to(now + 4 * H)
+    control._levels, control._levels_hour = Levels(0.4, 1.1), (now + 4 * H).replace(minute=0, second=0, microsecond=0)  # noqa: SLF001
+    sample = await control.async_sample(now + 4 * H)
+    assert sample.kw is None and sample.state is None
