@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Per graaddag",
   "hist.heat.perDegreeDay": "Warmtepomp per graaddag",
   "hist.heat.perDegreeDayUnit": "kWh/graaddag",
-  "hist.heat.tooFew": "te weinig graaddagen",
+  "hist.heat.tooFewLine": "Graaddagen verschijnen zodra er een paar koude dagen zijn om mee te rekenen.",
   "hist.heat.degreeNote": "{sum} graaddagen onder {base} °C over {days} dagen. De hele energie van de meter (warm water inbegrepen) per graaddag: hetzelfde huis bij ander weer geeft hetzelfde cijfer, dus een nieuwe warmtepomp, isolatie of ramen tonen zich als een stap.",
   "hist.heat.fromForecast": "De buitentemperatuur is die van het weer, uit de uren die de huisvoorspelling bewaarde (acht weken): kies een buitenvoeler in de verwarmingsinstellingen voor de hele geschiedenis.",
   "hist.heat.noOutdoor": "Geen buitentemperatuur met geschiedenis: kies een buitenvoeler in de verwarmingsinstellingen voor graaddagen.",

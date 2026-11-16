@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Pr. graddag",
   "hist.heat.perDegreeDay": "Varmepumpen pr. graddag",
   "hist.heat.perDegreeDayUnit": "kWh/graddag",
-  "hist.heat.tooFew": "for få graddage",
+  "hist.heat.tooFewLine": "Graddage vises, når der er et par kolde døgn at regne på.",
   "hist.heat.degreeNote": "{sum} graddage under {base} °C over {days} døgn. Målerens samlede energi (varmt vand medregnet) pr. graddag: samme hus i andet vejr giver samme tal, så en ny varmepumpe, isolering eller nye vinduer ses som et trin.",
   "hist.heat.fromForecast": "Udetemperaturen er vejrets, fra de timer husprognosen har gemt (otte uger): vælg en udeføler i varmeindstillingerne for hele historikken.",
   "hist.heat.noOutdoor": "Ingen udetemperatur med historik: vælg en udeføler i varmeindstillingerne for graddage.",

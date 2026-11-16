@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Per graddag",
   "hist.heat.perDegreeDay": "Värmepumpen per graddag",
   "hist.heat.perDegreeDayUnit": "kWh/graddag",
-  "hist.heat.tooFew": "för få graddagar",
+  "hist.heat.tooFewLine": "Graddagar visas när det finns ett par kalla dygn att räkna på.",
   "hist.heat.degreeNote": "{sum} graddagar under {base} °C över {days} dygn. Mätarens hela energi (varmvatten inräknat) per graddag: samma hus i annat väder ger samma siffra, så en ny värmepump, isolering eller nya fönster syns som ett steg.",
   "hist.heat.fromForecast": "Utetemperaturen är väderprognosens, från de timmar husprognosen sparat (åtta veckor): välj en utegivare i värmeinställningarna för hela historiken.",
   "hist.heat.noOutdoor": "Ingen utetemperatur med historik: välj en utegivare i värmeinställningarna för graddagar.",

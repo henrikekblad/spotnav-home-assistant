@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Je Gradtag",
   "hist.heat.perDegreeDay": "Wärmepumpe je Gradtag",
   "hist.heat.perDegreeDayUnit": "kWh/Gradtag",
-  "hist.heat.tooFew": "zu wenige Gradtage",
+  "hist.heat.tooFewLine": "Gradtage erscheinen, sobald es ein paar kalte Tage zum Rechnen gibt.",
   "hist.heat.degreeNote": "{sum} Gradtage unter {base} °C über {days} Tage. Die ganze Energie des Zählers (Warmwasser eingeschlossen) je Gradtag: dasselbe Haus bei anderem Wetter ergibt denselben Wert, so zeigt sich eine neue Wärmepumpe, Dämmung oder neue Fenster als Stufe.",
   "hist.heat.fromForecast": "Die Außentemperatur ist die des Wetters, aus den Stunden, die die Hausprognose behalten hat (acht Wochen): wähle einen Außenfühler in den Heizungseinstellungen für den ganzen Verlauf.",
   "hist.heat.noOutdoor": "Keine Außentemperatur mit Verlauf: wähle einen Außenfühler in den Heizungseinstellungen für Gradtage.",

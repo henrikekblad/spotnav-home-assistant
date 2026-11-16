@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Astepäivää kohden",
   "hist.heat.perDegreeDay": "Lämpöpumppu astepäivää kohden",
   "hist.heat.perDegreeDayUnit": "kWh/astepäivä",
-  "hist.heat.tooFew": "liian vähän astepäiviä",
+  "hist.heat.tooFewLine": "Astepäivät näytetään, kun laskettavana on muutama kylmä vuorokausi.",
   "hist.heat.degreeNote": "{sum} astepäivää alle {base} °C:n {days} vuorokauden aikana. Mittarin koko energia (lämmin vesi mukaan lukien) astepäivää kohden: sama talo eri säässä antaa saman luvun, joten uusi lämpöpumppu, eristys tai ikkunat näkyvät porrastuksena.",
   "hist.heat.fromForecast": "Ulkolämpötila on sään, talon ennusteen tallentamilta tunneilta (kahdeksan viikkoa): valitse ulkoanturi lämmitysasetuksista koko historiaa varten.",
   "hist.heat.noOutdoor": "Ei ulkolämpötilaa historialla: valitse ulkoanturi lämmitysasetuksista astepäiviä varten.",

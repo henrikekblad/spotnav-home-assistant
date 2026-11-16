@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Por grado-día",
   "hist.heat.perDegreeDay": "Bomba de calor por grado-día",
   "hist.heat.perDegreeDayUnit": "kWh/grado-día",
-  "hist.heat.tooFew": "muy pocos grados-día",
+  "hist.heat.tooFewLine": "Los grados-día aparecen cuando hay unos cuantos días fríos con los que calcular.",
   "hist.heat.degreeNote": "{sum} grados-día por debajo de {base} °C en {days} días. Toda la energía del contador (agua caliente incluida) por grado-día: la misma casa con otro tiempo da la misma cifra, así que una bomba nueva, aislamiento o ventanas se ven como un escalón.",
   "hist.heat.fromForecast": "La temperatura exterior es la del tiempo, de las horas que guardó la previsión de la casa (ocho semanas): elige un sensor exterior en los ajustes de calefacción para todo el historial.",
   "hist.heat.noOutdoor": "No hay temperatura exterior con historial: elige un sensor exterior en los ajustes de calefacción para los grados-día.",

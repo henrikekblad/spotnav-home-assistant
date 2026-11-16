@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Par degré-jour",
   "hist.heat.perDegreeDay": "Pompe à chaleur par degré-jour",
   "hist.heat.perDegreeDayUnit": "kWh/degré-jour",
-  "hist.heat.tooFew": "trop peu de degrés-jours",
+  "hist.heat.tooFewLine": "Les degrés-jours s’affichent dès qu’il y a quelques jours froids sur lesquels compter.",
   "hist.heat.degreeNote": "{sum} degrés-jours sous {base} °C sur {days} jours. Toute l'énergie du compteur (eau chaude comprise) par degré-jour : la même maison par un autre temps donne le même chiffre, une nouvelle pompe, une isolation ou des fenêtres se voient donc comme une marche.",
   "hist.heat.fromForecast": "La température extérieure est celle de la météo, des heures gardées par la prévision de la maison (huit semaines) : choisissez une sonde extérieure dans les réglages du chauffage pour tout l'historique.",
   "hist.heat.noOutdoor": "Aucune température extérieure avec historique : choisissez une sonde extérieure dans les réglages du chauffage pour les degrés-jours.",

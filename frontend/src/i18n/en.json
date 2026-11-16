@@ -1598,7 +1598,7 @@
   "hist.heat.degreeDays": "Per degree-day",
   "hist.heat.perDegreeDay": "The heat pump per degree-day",
   "hist.heat.perDegreeDayUnit": "kWh/degree-day",
-  "hist.heat.tooFew": "too few degree-days",
+  "hist.heat.tooFewLine": "Degree-days show once there are a few cold days to count on.",
   "hist.heat.degreeNote": "{sum} degree-days below {base} °C over {days} days. The meter's whole energy (hot water included) per degree-day: the same house in other weather gives the same figure, so a new heat pump, insulation or windows show as a step.",
   "hist.heat.fromForecast": "The outdoor temperature is the weather's, from the hours the house forecast kept (eight weeks): choose an outdoor sensor in the heat settings for the whole history.",
   "hist.heat.noOutdoor": "No outdoor temperature with a history: choose an outdoor sensor in the heat settings for degree-days.",
