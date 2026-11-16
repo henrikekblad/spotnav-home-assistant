@@ -13,6 +13,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.setup_checklist import capture_site_setup
+from custom_components.spotnav.site.phase_peaks import Learned
 
 from .world import setup_charger, setup_site, setup_site_with_charger
 
@@ -158,15 +159,28 @@ async def test_the_card_fixtures_have_the_answers_shapes(hass: HomeAssistant, ha
     if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
         path.write_text(json.dumps(view, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     assert view == _fixture("site_view", "no_charger.json")
-    villa = _fixture("site_view", "villa.json")
-    assert set(villa) == set(view) and set(villa["price"]) == {"entry_id", "title", "area_id", "area_name"}
+    for name in ("villa.json", "with_price.json"):
+        _same_keys(_fixture("site_view", name), view, name)
 
     battery = (await _ask(client, {"type": "spotnav/battery_control", "api_version": 1, "site_id": "site_empty"}))[
         "result"
     ]
-    for name in ("needs_ack.json", "checking.json"):
+    # The learned peaks are `None` on an empty site, so their keys come from the dataclass that builds them.
+    learned = Learned(ready=True, raw_a=None, factor=1.0, peaks_a=None, days=0, hours=0, minutes=0, heat_w=None).as_dict()
+    for name in ("needs_ack.json", "checking.json", "live.json"):
         fixture = _fixture("battery_control", name)
-        assert set(fixture) == set(battery)
-        assert set(fixture["status"]) == set(battery["status"]), name
-        assert set(fixture["status"]["options"]) == set(battery["status"]["options"]), name
-        assert set(fixture["status"]["grid_charge_cap"]) == set(battery["status"]["grid_charge_cap"]), name
+        _same_keys(fixture, battery, name)
+        cap_learned = fixture["status"]["grid_charge_cap"]["learned"]
+        if cap_learned is not None:
+            _same_keys(cap_learned, learned, f"{name} learned")
+
+
+def _same_keys(fixture: Any, answer: Any, where: str) -> None:
+    """The same keys at every nesting level. A `None` on either side, a free-form value (a dict keyed by data) or an
+    empty list ends the comparison there; lists are compared by their first element."""
+    if isinstance(fixture, dict) and isinstance(answer, dict):
+        assert set(fixture) == set(answer), where
+        for key in fixture:
+            _same_keys(fixture[key], answer[key], f"{where}.{key}")
+    elif isinstance(fixture, list) and isinstance(answer, list) and fixture and answer:
+        _same_keys(fixture[0], answer[0], f"{where}[0]")
