@@ -197,7 +197,7 @@ describe("the owner's wording", () => {
     const payload = twoCars();
     payload["site"]["charger_count"] = 2;
     const { element } = await openSettings(payload);
-    expect(page(element).querySelector("[data-section='site']")?.textContent).toContain("Gäller alla 2 laddare");
+    expect(page(element).querySelector("[data-section='site']")?.textContent).toContain("Gäller alla två laddare");
   });
 });
 

@@ -307,7 +307,7 @@ describe("the strategy dialog's way to Solar", () => {
     link!.click();
     await settle();
     expect(dlg(element).querySelector("[data-section='solar']")).not.toBeNull();
-    expect(dlg(element).textContent).toContain(translate("en", "settings.overview.titleNamed", { name: "cheapest_direct_admin" }));
+    expect(dlg(element).textContent).toContain(translate("en", "settings.overview.title"));
   });
 
   it("says a direct site lacks the meter's total grid power and links to the site's entities, not to Solar", async () => {

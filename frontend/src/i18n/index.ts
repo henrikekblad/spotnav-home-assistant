@@ -132,6 +132,31 @@ export function pluralForm(language: Language, count: number): PluralCategory {
   return rulesFor(language).select(count) === "one" ? "one" : "other";
 }
 
+/** Small counts as words, 1 to 12, in each language's form for a count of things (1 is the common or masculine form). */
+const NUMBER_WORDS: Record<Language, readonly string[]> = {
+  en: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"],
+  sv: ["en", "två", "tre", "fyra", "fem", "sex", "sju", "åtta", "nio", "tio", "elva", "tolv"],
+  nb: ["en", "to", "tre", "fire", "fem", "seks", "syv", "åtte", "ni", "ti", "elleve", "tolv"],
+  da: ["en", "to", "tre", "fire", "fem", "seks", "syv", "otte", "ni", "ti", "elleve", "tolv"],
+  fi: ["yksi", "kaksi", "kolme", "neljä", "viisi", "kuusi", "seitsemän", "kahdeksan", "yhdeksän", "kymmenen", "yksitoista", "kaksitoista"],
+  de: ["ein", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"],
+  nl: ["een", "twee", "drie", "vier", "vijf", "zes", "zeven", "acht", "negen", "tien", "elf", "twaalf"],
+  fr: ["un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze"],
+  es: ["un", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce"],
+};
+
+/**
+ * A count of things in running text: the word for 1 to 12, the digits otherwise. `capital` for a
+ * sentence that starts with it. Not for measurements, money, clocks or table cells.
+ */
+export function numberWord(language: Language, count: number, capital = false): string {
+  const word = Number.isInteger(count) && count >= 1 && count <= 12 ? NUMBER_WORDS[language][count - 1] : undefined;
+  if (word === undefined) {
+    return String(count);
+  }
+  return capital ? word.charAt(0).toLocaleUpperCase(language) + word.slice(1) : word;
+}
+
 /** The heading key for a period block, in the reader's own plural rule. */
 export function periodHeadingKey(
   base: "plan.proposal" | "plan.installed",

@@ -54,7 +54,7 @@ import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "
 import { heatEditor, writeHeat } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
-import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   decodeMarketOptions,
   fiscalValues,
@@ -491,7 +491,7 @@ export class SiteSections {
       if (need.startsWith("control_disabled:")) {
         item.dataset["need"] = "control_disabled";
         const names = new Intl.ListFormat(language, { type: "conjunction" }).format(disabled);
-        item.append(translate(language, `battery.need.controlsDisabled.${pluralForm(language, disabled.length)}`, { count: String(disabled.length), names }));
+        item.append(translate(language, `battery.need.controlsDisabled.${pluralForm(language, disabled.length)}`, { count: String(disabled.length), countWord: numberWord(language, disabled.length), names }));
         if (deviceId !== null && admin) {
           const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.device.open")) as HTMLButtonElement;
           button.type = "button";
@@ -523,7 +523,7 @@ export class SiteSections {
       const list = element(doc, "ol");
       list.append(...steps);
       box.append(
-        element(doc, "p", C.batteryNeedsHeading, translate(language, `battery.needs.heading.${pluralForm(language, steps.length)}`, { count: String(steps.length) })),
+        element(doc, "p", C.batteryNeedsHeading, translate(language, `battery.needs.heading.${pluralForm(language, steps.length)}`, { count: String(steps.length), countWord: numberWord(language, steps.length, true) })),
         list,
       );
       wrap.append(box);
@@ -877,9 +877,7 @@ export class SettingsPopover {
   }
 
   private title(): string {
-    const view = this.state.kind === "ready" ? this.state.view : null;
-    const title = translate(this.language, "popover.open");
-    return view === null ? title : `${title} · ${view.name}`;
+    return translate(this.language, "popover.open");
   }
 
   private panel(): HTMLElement | null {

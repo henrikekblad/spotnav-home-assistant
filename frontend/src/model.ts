@@ -43,7 +43,7 @@ import {
   releaseConfirmText,
 } from "./status";
 import { chargeCeiling, effectiveTarget } from "./target-need";
-import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   ACTION_PAUSE,
   ACTION_RESUME,
@@ -819,7 +819,7 @@ export function siteFactsFor(site: Site | null, language: Language): SiteFacts |
   return {
     name: site.name,
     chargerCount: count,
-    appliesToText: translate(language, key, { count: String(count) }),
+    appliesToText: translate(language, key, { count: String(count), countWord: numberWord(language, count) }),
     solarPriority: site.solar_priority,
     solarForecastChoices: site.solar_forecast.choices.map((choice) => ({
       id: choice.id,
