@@ -1510,5 +1510,6 @@
   "setup.battery.text": "Ett hembatteri hittades. SpotNav kan styra det när elen är billig (av från början, i test).",
   "setup.battery.action": "Öppna batteriet",
   "setup.heat.text": "En värmepump hittades. Ställ in värmen, så visar SpotNav vad den kostar och när den går.",
-  "setup.heat.action": "Öppna värme"
+  "setup.heat.action": "Öppna värme",
+  "state.houseCardStart": "Ett hem utan laddbox börjar i stället med kortet ”SpotNav house”: där finns inställningarna för batteri, värme och elpris."
 }

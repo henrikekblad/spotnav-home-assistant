@@ -1510,5 +1510,6 @@
   "setup.battery.text": "Er is een thuisbatterij gevonden. SpotNav kan die aansturen als stroom goedkoop is (standaard uit, in de testfase).",
   "setup.battery.action": "Batterij openen",
   "setup.heat.text": "Er is een warmtepomp gevonden. Stel de verwarming in, dan laat SpotNav zien wat die kost en wanneer die draait.",
-  "setup.heat.action": "Verwarming openen"
+  "setup.heat.action": "Verwarming openen",
+  "state.houseCardStart": "Een huis zonder laadpaal begint in plaats daarvan met de kaart ‘SpotNav house’: daar staan de instellingen voor batterij, verwarming en stroomprijs."
 }

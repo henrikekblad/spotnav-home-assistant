@@ -1510,5 +1510,6 @@
   "setup.battery.text": "Kotiakku löytyi. SpotNav voi ohjata sitä, kun sähkö on halpaa (oletuksena pois, testissä).",
   "setup.battery.action": "Avaa akku",
   "setup.heat.text": "Lämpöpumppu löytyi. Määritä lämmitys, niin SpotNav näyttää, mitä se maksaa ja milloin se käy.",
-  "setup.heat.action": "Avaa lämmitys"
+  "setup.heat.action": "Avaa lämmitys",
+  "state.houseCardStart": "Koti ilman latauslaitetta aloittaa sen sijaan ”SpotNav house” -kortista: sen asetuksissa ovat akku, lämmitys ja sähkön hinta."
 }

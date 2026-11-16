@@ -1510,5 +1510,6 @@
   "setup.battery.text": "Une batterie domestique a été trouvée. SpotNav peut la piloter quand l’électricité est bon marché (désactivé par défaut, en test).",
   "setup.battery.action": "Ouvrir la batterie",
   "setup.heat.text": "Une pompe à chaleur a été trouvée. Configurez le chauffage, et SpotNav montre ce qu’il coûte et quand il fonctionne.",
-  "setup.heat.action": "Ouvrir le chauffage"
+  "setup.heat.action": "Ouvrir le chauffage",
+  "state.houseCardStart": "Un logement sans borne commence plutôt par la carte « SpotNav house » : ses paramètres réunissent la batterie, le chauffage et le prix de l’électricité."
 }

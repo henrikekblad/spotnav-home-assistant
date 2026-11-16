@@ -1510,5 +1510,6 @@
   "setup.battery.text": "Se encontró una batería doméstica. SpotNav puede controlarla cuando la electricidad es barata (desactivado por defecto, en pruebas).",
   "setup.battery.action": "Abrir la batería",
   "setup.heat.text": "Se encontró una bomba de calor. Configura la calefacción y SpotNav mostrará cuánto cuesta y cuándo funciona.",
-  "setup.heat.action": "Abrir calefacción"
+  "setup.heat.action": "Abrir calefacción",
+  "state.houseCardStart": "Una casa sin cargador empieza en su lugar con la tarjeta «SpotNav house»: sus ajustes reúnen la batería, la calefacción y el precio de la electricidad."
 }

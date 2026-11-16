@@ -1510,5 +1510,6 @@
   "setup.battery.text": "A home battery was found. SpotNav can run it when power is cheap (off by default, in testing).",
   "setup.battery.action": "Open the battery",
   "setup.heat.text": "A heat pump was found. Set up heating, and SpotNav shows what it costs and when it runs.",
-  "setup.heat.action": "Open heating"
+  "setup.heat.action": "Open heating",
+  "state.houseCardStart": "A home without a charger starts with the “SpotNav house” card instead: its settings hold the battery, heating and price."
 }

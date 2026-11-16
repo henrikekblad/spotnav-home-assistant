@@ -1510,5 +1510,6 @@
   "setup.battery.text": "Der blev fundet et hjemmebatteri. SpotNav kan styre det, når strømmen er billig (slået fra som standard, under test).",
   "setup.battery.action": "Åbn batteriet",
   "setup.heat.text": "Der blev fundet en varmepumpe. Indstil varmen, så viser SpotNav, hvad den koster, og hvornår den kører.",
-  "setup.heat.action": "Åbn varme"
+  "setup.heat.action": "Åbn varme",
+  "state.houseCardStart": "Et hjem uden lader starter i stedet med kortet “SpotNav house”: dets indstillinger rummer batteri, varme og elpris."
 }

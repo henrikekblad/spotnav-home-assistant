@@ -1510,5 +1510,6 @@
   "setup.battery.text": "Ein Heimspeicher wurde gefunden. SpotNav kann ihn bei günstigem Strom steuern (standardmäßig aus, im Test).",
   "setup.battery.action": "Speicher öffnen",
   "setup.heat.text": "Eine Wärmepumpe wurde gefunden. Richte die Heizung ein, dann zeigt SpotNav, was sie kostet und wann sie läuft.",
-  "setup.heat.action": "Heizung öffnen"
+  "setup.heat.action": "Heizung öffnen",
+  "state.houseCardStart": "Ein Zuhause ohne Ladestation beginnt stattdessen mit der Karte „SpotNav house“: In ihren Einstellungen sind Speicher, Heizung und Strompreis."
 }
