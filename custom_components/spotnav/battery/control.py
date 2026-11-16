@@ -477,7 +477,7 @@ class BatteryControl:
         self.facts = self._read_facts()
         self._transitions(options, now)
         trial = self.trial
-        if trial is not None and (now >= trial.until or (options.shadow_only and not trial.force)):
+        if trial is not None and (now >= trial.until or not self._trial_allowed(trial, options)):
             self._log([{"at": now.isoformat(), "kind": "trial_ended", "reason": trial.action}])
             self.trial = trial = None
         # The battery.
@@ -750,7 +750,9 @@ class BatteryControl:
         after = self.options()
         _LOGGER.info("SpotNav battery control: options %s", after.as_dict())
         if self._started and not self._closed:
-            if before.writes and not after.writes:
+            trial = self.trial
+            if (before.writes and not after.writes) or (trial is not None and not self._trial_allowed(trial, after)):
+                # A test action ends with the options that no longer allow it, forced or not.
                 await self.async_stop("disabled" if not after.enabled else "shadow_only")
             await self.async_look()
         return self.status()
@@ -759,8 +761,9 @@ class BatteryControl:
 
     async def async_trial(self, action: str, power_kw: float | None, minutes: float, *, force: bool) -> dict[str, Any]:
         """Run one action through the executor, with every rule, for `minutes` (`stop` ends a running one). Refused
-        while shadow only unless `force` (the owner's on-site tests), while the routine runs, and for selling unless
-        it is allowed. Answers what it started."""
+        unless the opt-in is on; while shadow only, and before hold and normal passed the verification, unless `force`
+        (the owner's on-site tests); while the routine runs; and for selling unless it is allowed. Answers what it
+        started."""
         if not self._started or self._closed:
             raise TrialRefused("starting")
         now = dt_util.now()
@@ -774,8 +777,12 @@ class BatteryControl:
                     await self._async_until_handed_back("trial_stopped")
                 await self._async_look(now)
             return {"stopped": trial is not None}
+        if not options.enabled:
+            raise TrialRefused("not_enabled")
         if options.shadow_only and not force:
             raise TrialRefused("shadow_only")
+        if not force and gate.report_status(self.report()) != "passed":
+            raise TrialRefused("not_verified")
         why = gate.trial_refusal(action, options)
         if why is not None:
             raise TrialRefused(why)
@@ -809,6 +816,12 @@ class BatteryControl:
             "phase": None if executor is None else executor.state.phase,
             "events": list(self.log)[-6:],
         }
+
+    @staticmethod
+    def _trial_allowed(trial: Trial, options: gate.Options) -> bool:
+        """Whether a running test action may go on under these options: the opt-in on, and shadow only off unless
+        the action was forced (`force_test` overrides shadow only and the verification, nothing else)."""
+        return options.enabled and (not options.shadow_only or trial.force)
 
     # ---- shadow only
 

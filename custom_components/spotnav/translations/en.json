@@ -1130,7 +1130,7 @@
     },
     "battery_control_test": {
       "name": "Test the home battery control (owner)",
-      "description": "For the owner's on-site tests only: run one action through SpotNav's battery control, with every safety rule, for some minutes, then hand the battery back. Refused while the site is shadow only unless Force test is set. Administrators only.",
+      "description": "For the owner's on-site tests only: run one action through SpotNav's battery control, with every safety rule, for some minutes, then hand the battery back. Refused unless the site's battery control is turned on; while the site is shadow only or the battery check has not passed, only with Force test. Administrators only.",
       "fields": {
         "site": {
           "name": "Site",
@@ -1150,7 +1150,7 @@
         },
         "force_test": {
           "name": "Force test",
-          "description": "Run even while the site is shadow only (on-site tests)."
+          "description": "Run even while the site is shadow only or before the battery check passed (on-site tests). Battery control must still be turned on."
         }
       }
     },

@@ -37,6 +37,17 @@ async def test_the_test_action_is_for_administrators_refused_while_shadow_only_u
     with pytest.raises(ServiceValidationError) as refused:
         await hass.services.async_call(DOMAIN, "battery_control_test", {"action": "hold"}, blocking=True, context=admin)
     assert refused.value.translation_key == "battery_control_refused"
+    assert refused.value.translation_placeholders == {"reason": "not_enabled"}
+    with pytest.raises(ServiceValidationError) as refused:
+        await hass.services.async_call(
+            DOMAIN, "battery_control_test", {"action": "hold", "force_test": True}, blocking=True, context=admin
+        )
+    assert refused.value.translation_placeholders == {"reason": "not_enabled"}, "forcing never lifts the opt-in"
+    await hass.services.async_call(
+        DOMAIN, "battery_control_settings", {"battery_control_enabled": True}, blocking=True, context=admin
+    )
+    with pytest.raises(ServiceValidationError) as refused:
+        await hass.services.async_call(DOMAIN, "battery_control_test", {"action": "hold"}, blocking=True, context=admin)
     assert refused.value.translation_placeholders == {"reason": "shadow_only"}
     with pytest.raises(ServiceValidationError) as refused:
         await hass.services.async_call(
@@ -52,7 +63,7 @@ async def test_the_test_action_is_for_administrators_refused_while_shadow_only_u
     for index in range(4):
         await control.async_look(dt_util.now() + timedelta(seconds=10 * (index + 1)))
     assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(SWITCH).state == "on"
-    assert control.options() == gate.Options(), "the test action changes no setting"
+    assert control.options() == gate.Options(enabled=True), "the test action changes no setting"
     answer = await hass.services.async_call(
         DOMAIN, "battery_control_test", {"action": "stop"}, blocking=True, context=admin, return_response=True,
     )

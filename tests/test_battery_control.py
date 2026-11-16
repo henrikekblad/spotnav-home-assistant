@@ -762,13 +762,81 @@ async def test_the_test_action_ends_by_itself_and_hands_back(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
-    control = BatteryControl(hass, controller)
-    await control.async_start()
-    _options(hass, site, shadow_only=False)
+    control = await _started(hass, site, controller, plan_source=lambda _now: None)
     await control.async_trial("grid_charge", 6.0, 2, force=False)
     now = await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
     assert hass.states.get(MODE).state == "Command Charging (Grid First)" and hass.states.get(CHARGE).state == "6"
     await _looks(control, now + timedelta(minutes=3), 6)
+    assert control.trial is None and hass.states.get(SWITCH).state == "off"
+    assert any(row["kind"] == "trial_ended" for row in control.log)
+
+
+async def test_the_test_action_is_refused_while_the_opt_in_is_off_even_forced(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller)
+    await control.async_start()
+    assert control.options() == gate.Options()
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("grid_charge", 6.0, 5, force=True)
+    assert refused.value.code == "not_enabled"
+    _options(hass, site, shadow_only=False)
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("hold", None, 5, force=False)
+    assert refused.value.code == "not_enabled"
+    await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
+    assert plant.calls == [] and control.trial is None
+
+
+async def test_the_test_action_waits_for_hold_and_normal_to_pass_unless_forced(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    control._enabled_seen = True
+    monkeypatch.setattr(BatteryControl, "_async_maybe_verify", lambda self, now, options: asyncio.sleep(0))
+    assert control.state() == "waiting"
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("grid_charge", 6.0, 5, force=False)
+    assert refused.value.code == "not_verified" and plant.calls == []
+    # Forced: the owner's on-site test runs before the verification.
+    await control.async_trial("hold", None, 5, force=True)
+    await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
+    assert hass.states.get(DISCHARGE).state == "0"
+
+
+async def test_a_forced_test_action_ends_and_hands_back_when_the_opt_in_is_turned_off(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller)
+    await control.async_start()
+    _options(hass, site, enabled=True)  # shadow only stays on
+    await control.async_trial("hold", None, 60, force=True)
+    await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
+    assert hass.states.get(DISCHARGE).state == "0"
+    await control.async_update_options({gate.CONF_ENABLED: False})
+    assert control.trial is None
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    plant.calls.clear()
+    await _looks(control, dt_util.now() + timedelta(seconds=60), 4)
+    assert plant.calls == []
+
+
+async def test_a_forced_test_action_ends_at_the_next_look_when_the_opt_in_goes_off_elsewhere(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller)
+    await control.async_start()
+    _options(hass, site, enabled=True)
+    await control.async_trial("hold", None, 60, force=True)
+    await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
+    _options(hass, site, enabled=False)  # the entry written by another path
+    await _looks(control, dt_util.now() + timedelta(seconds=60), 4)
     assert control.trial is None and hass.states.get(SWITCH).state == "off"
     assert any(row["kind"] == "trial_ended" for row in control.log)
 

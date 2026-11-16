@@ -16,8 +16,9 @@ it writes a file; nothing runs unless it is called.
 
 `battery_control_test` and `battery_control_settings` are the owner's, for the on-site tests of the home battery
 control (`battery/control.py`, plan `v3_battery_control_optin.md`), administrators only and in Developer tools only:
-the first runs one action through the battery's executor with every rule for some minutes (refused while the site is
-"shadow only" unless `force_test` is set), the second writes the site's `battery_control_*` options until the card
+the first runs one action through the battery's executor with every rule for some minutes (refused unless the
+site's battery control is turned on; while "shadow only" or before the battery check passed only with `force_test`),
+the second writes the site's `battery_control_*` options until the card
 has the switch. The card's own command is `spotnav/battery_control` (`api/battery_control.py`).
 
 `get_prices` only reads (an electricity price entry's prices, which every user's dashboard can show
