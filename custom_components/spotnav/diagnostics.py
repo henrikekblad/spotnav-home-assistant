@@ -250,6 +250,12 @@ def _load_forecast_diagnostics(controller: Any) -> dict[str, Any] | None:
         return None
 
 
+def _heat_settings(entry: ConfigEntry) -> Any:
+    from .api.heat import heat_settings_diagnostics  # noqa: PLC0415 - the API imports this module's peers
+
+    return heat_settings_diagnostics(entry)
+
+
 def _part_snapshot(snapshot: Callable[[], Any]) -> Any:
     """A part's snapshot, or `None` when it fails: diagnostics must never fail on one block."""
     try:
@@ -281,6 +287,8 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # The house load forecast (`site/house_forecast.py`): its sources (weather entity, holiday calendar), the last
         # forecast for the next 48 hours, and the log of each hour's first forecast with the daily reviews.
         "load_forecast": None if controller is None else _load_forecast_diagnostics(controller),
+        # The heat card's settings (`heat/config.py`) as stored and as read; shadow only, nothing is controlled.
+        "heat_settings": _part_snapshot(lambda: _heat_settings(entry)),
         # What the import target does this hour (`SiteCapacityController.import_target_snapshot`): the hour's budget or
         # why it is not applied, per charger held, paused or free, and each hold, pause and release it made.
         "import_target": None if controller is None else controller.import_target_snapshot(),
