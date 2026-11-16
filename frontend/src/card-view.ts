@@ -58,7 +58,6 @@ import {
   type Issue,
   type PlanPeriod,
   type PlanRelationKind,
-  type PriceEntryFacts,
   type SiteFacts,
 } from "./model";
 import type { ActiveControlNotice } from "./site-settings";
@@ -80,7 +79,7 @@ import {
   type EntityFieldError,
   type EntityScope,
 } from "./entity-config";
-import { marketAreaLabel, type MarketFormValues } from "./market";
+import { type MarketFormValues } from "./market";
 import { type RegionLookup } from "./market-editor";
 import {
   marketEditorBody,
@@ -92,27 +91,11 @@ import {
   GUEST_KWH_MAX,
   GUEST_KWH_MIN,
   GUEST_VEHICLE_ID,
-  type Fiscal,
-  type GridTariffBlock,
   type HighLoadWindow,
   type ReferencePicture,
   type Vehicle,
 } from "./validate";
-import {
-  gridTariffRows,
-  highLoadEditor,
-  supplierRows,
-  withComponent,
-  withHighLoad,
-  withMarkup,
-  withoutHighLoad,
-  withPercent,
-  withSellAdjustment,
-  SUPPLIER_MAX,
-  type GridTariffRowKey,
-  type SupplierRow,
-} from "./grid-tariff";
-import { componentEditor, demandRows, hourLine, kwText } from "./demand-charge";
+import { hourLine, kwText } from "./demand-charge";
 import { suggestionAdvice } from "./target-suggestion";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
@@ -141,7 +124,12 @@ import {
   type ReferenceAnswer,
 } from "./camera-editor";
 import { issueText, type IssueFix } from "./status";
-import { integrationPath, keyEditor, priceProviderNodes } from "./price-provider";
+import { integrationPath } from "./price-provider";
+import {
+  priceSectionBody as sharedPriceSection,
+  solarSectionBody as sharedSolarSection,
+  type SectionHost,
+} from "./price-section";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
 import { sendDebugEditor, type SendDebug } from "./send-debug";
@@ -154,7 +142,6 @@ import {
   CAPACITY_MIN_KWH,
   CONSUMPTION_MAX_KWH_PER_10KM,
   CONSUMPTION_MIN_KWH_PER_10KM,
-  fiscalRows,
   cameraReplacement,
   identificationReplacement,
   notificationsReplacement,
@@ -3152,380 +3139,48 @@ export function createCardView(input: CardViewInput): CardView {
     );
   }
 
-  /**
-   * The price: where it lives (the electricity price entry and how many chargers use it), the same-area question,
-   * the choice of entry when there are several, then the area (its own dialog, with the catalogue) and each fee
-   * in its own number editor.
-   */
+  /** The host side of the shared sections (`price-section.ts`): this view's rows and editors. */
+  function sectionHost(): SectionHost {
+    return {
+      doc,
+      language: model.language,
+      idPrefix,
+      isAdmin: input.isAdmin,
+      row: overviewRow,
+      rowHelp,
+      openValueEditor: (title, build) => openValueEditor(title, build),
+      editNumber,
+      editSingle: (title, options, selected, save, intro) => editSingle(title, options, selected, save, intro),
+      editMulti: (title, options, checked, save) => editMulti(title, options, checked, save),
+    };
+  }
+
+  /** The price section (`price-section.ts`), from the dashboard's price blocks; writes through the card. */
   function priceSectionBody(): HTMLElement {
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "market";
-    section.append(sectionHeading(doc, "price", translate(model.language, "settings.heading.price")));
-    section.append(...priceEntryNodes());
-    const area = marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId);
-    // The area opens its own dialog, with the catalogue, for an administrator; anyone else reads it, as every other value.
-    const areaLabel = translate(model.language, "context.area");
-    const areaValue = area || translate(model.language, "settings.value.unset");
-    const areaRow = overviewRow("area", areaLabel, areaValue, () => input.onOpenMarket());
-    const areaButton = areaRow.querySelector<HTMLElement>("button");
-    if (areaButton !== null) {
-      areaButton.classList.add(C.settingsTrigger);
-      areaButton.dataset["setting"] = "market";
-    }
-    section.append(areaRow);
-    // Where the area's prices come from, and what an administrator can do when it has no source of its own.
-    section.append(
-      ...priceProviderNodes(doc, {
-        language: model.language,
+    return sharedPriceSection({
+      ...sectionHost(),
+      facts: {
+        format: model.format,
+        priceEntry: model.priceEntry,
+        gridTariff: model.gridTariff,
+        fiscal: model.dashboardFiscal,
         provider: model.priceProvider,
-        areaLabel: area || (model.contextAreaId ?? ""),
         areaId: model.contextAreaId,
-        isAdmin: input.isAdmin,
-        idPrefix: input.idPrefix,
-        hasComponent: (domain) => hasComponent(input.hass?.(), domain),
-        navigate: (path) => {
-          settingsOverviewDialog.hide({ restoreFocus: false });
-          navigateTo(doc, path);
-        },
-        openExternal: (url) => {
-          doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
-        },
-        openArea: () => input.onOpenMarket(),
-        openKeyEditor: () =>
-          openValueEditor(translate(model.language, "price.key.title"), (handlers) =>
-            keyEditor(
-              doc,
-              model.language,
-              idPrefix,
-              (key) => writeValue({ kind: "entsoeKey", key, areaId: model.contextAreaId }),
-              handlers,
-            ),
-          ),
-      }),
-    );
-    for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
-      const component = fiscal.key as FiscalComponentName;
-      const included = model.dashboardFiscal?.[component].policy === "included";
-      section.append(
-        overviewRow(fiscal.key, fiscal.label, fiscal.value, included ? undefined : () => input.onEditFiscal?.(component)),
-      );
-      if (component === "transfer") {
-        section.append(...gridTariffNodes());
-      }
-    }
-    section.append(...supplierNodes());
-    section.append(...demandNodes());
-    return section;
-  }
-
-  /**
-   * The demand charge's rows below the fees: "None" until a component is added, then each component with its
-   * prices and this month's mean and peaks beneath, and a row adding another (at most three).
-   */
-  function demandNodes(): HTMLElement[] {
-    const block = model.gridTariff;
-    if (block === null || block.demand === null) {
-      return [];
-    }
-    const nodes: HTMLElement[] = [];
-    for (const row of demandRows(model.format, block.demand)) {
-      const key = row.key === "add" ? "demand_add" : `demand_${row.key}`;
-      const index = row.key;
-      nodes.push(overviewRow(key, row.label, row.value, block.writable ? () => editDemandComponent(block, index) : undefined));
-      row.lines.forEach((line, at) => nodes.push(rowHelp(`${key}_${at}`, line)));
-    }
-    return nodes;
-  }
-
-  /** One demand-charge component's editor (`add` adds one); Save writes the tariff with it, Remove without it. */
-  function editDemandComponent(block: GridTariffBlock, key: number | "add"): void {
-    const components = block.demand?.components ?? [];
-    const index = key === "add" ? components.length : key;
-    openValueEditor(translate(model.language, "demand.title"), (handlers) =>
-      componentEditor(
-        doc,
-        model.language,
-        { current: key === "add" ? null : (components[key] ?? null), idPrefix, unit: block.demand?.price_unit ?? null },
-        (component) => writeValue({ kind: "gridTariff", change: (current) => withComponent(current, index, component) }),
-        handlers,
-      ),
-    );
-  }
-
-  /**
-   * The grid tariff's rows beside the grid fee: the percentage of spot, the fee in high-load hours and, while that
-   * fee is on or hours are stored, the hours. Locked where the price already includes the grid fee, and read-only
-   * for a reader who may not change the electricity price.
-   */
-  function gridTariffNodes(): HTMLElement[] {
-    const block = model.gridTariff;
-    if (block === null) {
-      return [];
-    }
-    const edit: Record<GridTariffRowKey, () => void> = {
-      transfer_percent: () => editGridPercent(block),
-      transfer_high: () => editGridHigh(block),
-      high_load_window: () => editGridHigh(block),
-    };
-    return gridTariffRows(model.language, block).map((row) =>
-      overviewRow(row.key, row.label, row.value, row.included || !block.writable ? undefined : edit[row.key]),
-    );
-  }
-
-  /**
-   * The electricity supplier's two figures below the fees: the markup on each bought kWh and what a sold kWh earns
-   * beyond spot. Read-only for a reader who may not change the electricity price.
-   */
-  function supplierNodes(): HTMLElement[] {
-    const block = model.gridTariff;
-    if (block === null) {
-      return [];
-    }
-    return supplierRows(model.language, block).map((row) =>
-      overviewRow(row.key, row.label, row.value, block.writable ? () => editSupplier(block, row) : undefined),
-    );
-  }
-
-  /** One supplier figure in a number editor with its line of help; "Off" keeps the figure for next time. */
-  function editSupplier(block: GridTariffBlock, row: SupplierRow): void {
-    const markup = row.key === "supplier_markup";
-    const fee = markup ? block.supplier_markup : block.sell_adjustment;
-    if (fee === null) {
-      return;
-    }
-    editNumber(
-      row.label,
-      {
-        help: row.help,
-        unit: fee.unit ?? "",
-        current: fee.effective_value,
-        prefill: fee.explicit_value,
-        // What a sold kWh earns may be a deduction; the markup is a cost.
-        min: markup ? 0 : -SUPPLIER_MAX,
-        max: SUPPLIER_MAX,
-        decimals: 2,
-        noneLabel: translate(model.language, "settings.value.off"),
+        areaName: model.contextAreaName,
+        onSite: model.site !== null,
       },
-      (value) =>
-        writeValue({
-          kind: "gridTariff",
-          change: (current) => (markup ? withMarkup(current, value) : withSellAdjustment(current, value)),
-        }),
-    );
-  }
-
-  function editGridPercent(block: GridTariffBlock): void {
-    const fee = block.transfer_percent;
-    editNumber(
-      translate(model.language, "gridFee.percent"),
-      {
-        help: translate(model.language, "gridFee.percent.help"),
-        unit: fee.unit ?? "%",
-        current: fee.effective_value,
-        prefill: fee.explicit_value,
-        min: 0,
-        max: 100,
-        decimals: 2,
-        noneLabel: translate(model.language, "settings.value.off"),
+      write: (write) => writeValue(write),
+      openArea: () => input.onOpenMarket(),
+      editFiscal: (component) => input.onEditFiscal?.(component),
+      hasComponent: (domain) => hasComponent(input.hass?.(), domain),
+      navigate: (path) => {
+        settingsOverviewDialog.hide({ restoreFocus: false });
+        navigateTo(doc, path);
       },
-      (value) => writeValue({ kind: "gridTariff", change: (current) => withPercent(current, value) }),
-    );
-  }
-
-  /**
-   * The grid fee in high-load hours and its hours, in one dialog (`highLoadEditor`), from either row: Save writes the
-   * fee and the hours in one write, Remove turns the fee off and clears the hours in one write.
-   */
-  function editGridHigh(block: GridTariffBlock): void {
-    openValueEditor(translate(model.language, "gridFee.high"), (handlers) =>
-      highLoadEditor(
-        doc,
-        model.language,
-        { fee: block.transfer_high, window: block.high_load_window, idPrefix },
-        (choice) =>
-          writeValue({
-            kind: "gridTariff",
-            change: (current) =>
-              choice === null ? withoutHighLoad(current) : withHighLoad(current, choice.value, choice.window),
-          }),
-        handlers,
-      ),
-    );
-  }
-
-  /**
-   * An electricity price's name as shown: the name SpotNav gives one ("Electricity price SE4", or "Electricity price
-   * SE4 (Home)" beside another for the same area) in the reader's language, the part in brackets as it is.
-   */
-  function priceTitle(title: string): string {
-    const given = /^Electricity price ([A-Za-z0-9-]+)( \(.+\))?$/.exec(title);
-    return given === null ? title : `${translate(model.language, "price.title", { area: given[1]! })}${given[2] ?? ""}`;
-  }
-
-  /**
-   * Each electricity price's name for a list of them. Two with the same name (as SpotNav names them) are told apart:
-   * the one this charger uses says so, the other is "the other".
-   */
-  function priceLabels(entries: ReadonlyArray<{ entryId: string; title: string }>, current: string): Map<string, string> {
-    const labels = new Map<string, string>();
-    const shown = entries.map((entry) => ({ entryId: entry.entryId, title: priceTitle(entry.title) }));
-    for (const entry of shown) {
-      const same = shown.filter((other) => other.title === entry.title);
-      if (same.length < 2) {
-        labels.set(entry.entryId, entry.title);
-      } else if (entry.entryId === current) {
-        labels.set(entry.entryId, translate(model.language, "price.choice.here", { title: entry.title }));
-      } else {
-        const others = same.filter((other) => other.entryId !== current);
-        const label = translate(model.language, "price.choice.other", { title: entry.title });
-        labels.set(entry.entryId, others.length > 1 ? `${label} ${others.indexOf(entry) + 1}` : label);
-      }
-    }
-    return labels;
-  }
-
-  /** The electricity price entry's line, the shared note, the same-area question and the "Price from" choice. */
-  function priceEntryNodes(): HTMLElement[] {
-    const entry = model.priceEntry;
-    if (entry === null) {
-      return [];
-    }
-    const nodes: HTMLElement[] = [];
-    const count = entry.chargerCount;
-    const title = priceTitle(entry.title);
-    const sourceText =
-      count <= 1
-        ? title
-        : translate(model.language, count >= entry.chargerTotal ? "price.source.usedByAll" : "price.source.usedBy", {
-            title,
-            count: String(count),
-          });
-    const sourceLine = element(doc, "p", C.siteApplies, sourceText);
-    sourceLine.dataset["priceSource"] = entry.entryId;
-    nodes.push(sourceLine);
-    if (count > 1) {
-      const shared = element(doc, "p", C.siteApplies, translate(model.language, "price.shared"));
-      shared.dataset["priceShared"] = "";
-      nodes.push(shared);
-    }
-    if (input.isAdmin && entry.writable && entry.duplicate !== null) {
-      nodes.push(priceDuplicateQuestion(entry.duplicate, entry.entryId));
-    }
-    if (entry.choices.length > 1) {
-      const label = translate(model.language, "price.from.label");
-      const labels = priceLabels(entry.choices, entry.entryId);
-      const options: ChoiceOption[] = entry.choices.map((choice) => ({
-        value: choice.entryId,
-        label: labels.get(choice.entryId) ?? choice.title,
-      }));
-      const help = translate(model.language, model.site === null ? "price.from.help" : "price.from.helpSite");
-      nodes.push(
-        overviewRow(
-          "price_from",
-          label,
-          title,
-          entry.writable
-            ? () =>
-                editSingle(
-                  label,
-                  options,
-                  entry.entryId,
-                  (chosen) =>
-                    chosen === entry.entryId
-                      ? Promise.resolve(null)
-                      : writeValue({ kind: "priceSource", priceEntryId: chosen }),
-                  help,
-                )
-            : undefined,
-        ),
-      );
-    }
-    return nodes;
-  }
-
-  /**
-   * "Two electricity prices for SE4 with different fees. Use one?": one button per entry and one to keep them all.
-   * Answered once; nothing is removed.
-   */
-  function priceDuplicateQuestion(duplicate: NonNullable<PriceEntryFacts["duplicate"]>, current: string): HTMLElement {
-    const question = element(doc, "div", C.suggestion);
-    question.dataset["banner"] = "price";
-    question.dataset["priceDuplicate"] = duplicate.areaId;
-    const many = duplicate.entries.length > 2;
-    question.append(
-      element(
-        doc,
-        "p",
-        C.suggestionText,
-        translate(model.language, many ? "price.duplicate.questionMany" : "price.duplicate.question", {
-          area: duplicate.areaId,
-          count: String(duplicate.entries.length),
-        }),
-      ),
-    );
-    const answers = element(doc, "div", C.suggestionAnswers);
-    const failure = element(doc, "p", C.settingsError);
-    failure.hidden = true;
-    failure.setAttribute("role", "alert");
-    const buttons: HTMLButtonElement[] = [];
-    const choose = (keepEntryId: string | null): void => {
-      for (const button of buttons) {
-        button.disabled = true;
-      }
-      failure.hidden = true;
-      void writeValue({ kind: "priceDuplicate", areaId: duplicate.areaId, keepEntryId }).then((sentence) => {
-        if (sentence !== null) {
-          failure.textContent = sentence;
-          failure.hidden = false;
-          for (const button of buttons) {
-            button.disabled = false;
-          }
-        }
-      });
-    };
-    const answer = (text: string, keepEntryId: string | null, fees: string | null = null): void => {
-      const button = element(doc, "button", C.choiceButton);
-      button.append(element(doc, "span", C.choiceLabel, text));
-      if (fees !== null) {
-        const detail = element(doc, "span", C.choiceDetail, fees);
-        detail.dataset["fees"] = "";
-        button.append(detail);
-      }
-      button.type = "button";
-      button.dataset["keep"] = keepEntryId ?? "";
-      button.addEventListener("click", () => choose(keepEntryId));
-      buttons.push(button);
-      answers.append(button);
-    };
-    const labels = priceLabels(duplicate.entries, current);
-    for (const choice of duplicate.entries) {
-      answer(
-        translate(model.language, "price.duplicate.use", { title: labels.get(choice.entryId) ?? choice.title }),
-        choice.entryId,
-        priceFeesLine(choice.fees),
-      );
-    }
-    answer(translate(model.language, many ? "price.duplicate.keepAll" : "price.duplicate.keepBoth"), null);
-    question.append(answers, failure);
-    return question;
-  }
-
-  /**
-   * One electricity price's fees on a line, "VAT 25 % · tax 36 öre/kWh · grid 30 öre/kWh", each figure as the fee
-   * rows show it; `null` when they cannot be read.
-   */
-  function priceFeesLine(fees: Fiscal | null): string | null {
-    if (fees === null) {
-      return null;
-    }
-    const keys = {
-      vat: "price.duplicate.fee.vat",
-      tax: "price.duplicate.fee.tax",
-      transfer: "price.duplicate.fee.transfer",
-    } as const satisfies Record<FiscalComponentName, TranslationKey>;
-    return fiscalRows(model.language, fees)
-      .map((row) => translate(model.language, keys[row.key as FiscalComponentName], { value: row.value }))
-      .join(" · ");
+      openExternal: (url) => {
+        doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+      },
+    });
   }
 
   let overviewBodyNode: HTMLElement | null = null;
@@ -4583,38 +4238,22 @@ export function createCardView(input: CardViewInput): CardView {
     return siteSection;
   }
 
-  /** Solar: the forecast sources (any of them), in their own editor. */
+  /** Solar: the forecast sources (any of them), in their own editor (`price-section.ts`). */
   function solarSectionBody(): HTMLElement | null {
     const site = model.site;
     if (site === null) {
       return null;
     }
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "solar";
-    section.append(sectionHeading(doc, "solar", translate(model.language, "settings.section.solar")));
-    if (site.chargerCount > 1) {
-      section.append(element(doc, "p", C.siteApplies, site.appliesToText));
-    }
-    const writable = site.writable;
-    const forecastLabel = translate(model.language, "site.solarForecast.title");
-    const sources = site.solarForecastChoices.filter((choice) => choice.selected);
-    section.append(
-      overviewRow(
-        "solar_forecast",
-        forecastLabel,
-        sources.length === 0 ? translate(model.language, "settings.value.none") : sources.map((choice) => choice.title).join(", "),
-        writable && site.solarForecastChoices.length > 0
-          ? () =>
-              editMulti(
-                forecastLabel,
-                site.solarForecastChoices.map((choice) => ({ value: choice.id, label: choice.title })),
-                sources.map((choice) => choice.id),
-                (values) => writeValue({ kind: "solar", forecast: values }),
-              )
-          : undefined,
-      ),
-    );
-    return section;
+    return sharedSolarSection({
+      ...sectionHost(),
+      facts: {
+        chargerCount: site.chargerCount,
+        appliesToText: site.appliesToText,
+        writable: site.writable,
+        choices: site.solarForecastChoices,
+      },
+      writeForecast: (forecast) => writeValue({ kind: "solar", forecast }),
+    });
   }
 
   /**
