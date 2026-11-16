@@ -325,15 +325,17 @@ def comfort_block(inputs: HeatHistoryInputs, start: datetime, end: datetime) -> 
     lows: dict[str, float] = {}
     coldest_by_hour: dict[datetime, float] = {}
     for entity_id, (_name, hours) in inputs.indoor.items():
+        # Each room against its own aim: its reading less its offset is what the house's band is compared with.
+        offset = inputs.config.offset_of(entity_id)
         for moment, (mean, minimum) in hours.items():
             if not _in(moment, start, end):
                 continue
             means.setdefault(entity_id, []).append(mean)
             lows[entity_id] = min(lows.get(entity_id, minimum), minimum)
-            coldest_by_hour[moment] = min(coldest_by_hour.get(moment, mean), mean)
+            coldest_by_hour[moment] = min(coldest_by_hour.get(moment, mean - offset), mean - offset)
     coldest = None
     if means:
-        entity_id = min(means, key=lambda key: (sum(means[key]) / len(means[key]), key))
+        entity_id = min(means, key=lambda key: (sum(means[key]) / len(means[key]) - inputs.config.offset_of(key), key))
         coldest = {
             "entity_id": entity_id,
             "name": inputs.indoor[entity_id][0],

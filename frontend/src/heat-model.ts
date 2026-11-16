@@ -61,6 +61,8 @@ const CONFIG = O({
   control_entity_b: N("string"),
   hot_water_entity: N("string"),
   zones: A(O({ entity_id: "string", offset_c: "number" })),
+  indoor_offsets: A(O({ entity_id: "string", offset_c: "number" })),
+  control_enabled: "boolean",
   heat_meter_entity: N("string"),
 });
 const CHOICE = O({ entity_id: "string", name: "string", value: N("string") });
@@ -91,7 +93,8 @@ const ANSWER = O({
     value_c: N("number"),
     coldest: N("string"),
     coldest_name: N("string"),
-    sensors: A(O({ entity_id: "string", name: "string", value_c: N("number"), rise_c: N("number"), status: "string" })),
+    sensors: A(O({ entity_id: "string", name: "string", value_c: N("number"), rise_c: N("number"), status: "string", offset_c: "number" })),
+    relative_c: N("number"),
   }),
   outdoor: N(O({ value_c: N("number"), entity_id: N("string"), name: N("string"), source: "string" })),
   zones: A(
@@ -231,6 +234,10 @@ export interface HeatConfig {
   control_entity_b: string | null;
   hot_water_entity: string | null;
   zones: { entity_id: string; offset_c: number }[];
+  /** Each indoor sensor's room aim against the house target (°C); a sensor without one is 0. */
+  indoor_offsets: { entity_id: string; offset_c: number }[];
+  /** SpotNav's opt-in to switch the heat pump's relay itself ("Styr värmen"). */
+  control_enabled: boolean;
   heat_meter_entity: string | null;
 }
 
@@ -313,7 +320,9 @@ export interface HeatAnswer {
     value_c: number | null;
     coldest: string | null;
     coldest_name: string | null;
-    sensors: { entity_id: string; name: string; value_c: number | null; rise_c: number | null; status: string }[];
+    sensors: { entity_id: string; name: string; value_c: number | null; rise_c: number | null; status: string; offset_c: number }[];
+    /** The coldest room's reading less its offset: what the comfort band is compared with. */
+    relative_c: number | null;
   };
   outdoor: { value_c: number | null; entity_id: string | null; name: string | null; source: string } | null;
   zones: HeatZone[];

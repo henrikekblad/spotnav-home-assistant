@@ -305,11 +305,13 @@
   },
   "config": {
     "away_until": "2026-11-20T15:00:00+00:00",
+    "control_enabled": false,
     "control_entity": null,
     "control_entity_b": null,
     "control_path": "none",
     "heat_meter_entity": null,
     "hot_water_entity": null,
+    "indoor_offsets": [],
     "indoor_sensors": [],
     "mode": "away",
     "night": {
@@ -325,6 +327,7 @@
   "indoor": {
     "coldest": null,
     "coldest_name": null,
+    "relative_c": null,
     "sensors": [],
     "value_c": null
   },

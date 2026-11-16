@@ -394,11 +394,18 @@
   },
   "config": {
     "away_until": null,
+    "control_enabled": false,
     "control_entity": "switch.larm_utgang_1",
     "control_entity_b": null,
     "control_path": "relay",
     "heat_meter_entity": "sensor.varme_effekt",
     "hot_water_entity": null,
+    "indoor_offsets": [
+      {
+        "entity_id": "sensor.ovanvaning_temperatur",
+        "offset_c": -1.0
+      }
+    ],
     "indoor_sensors": [
       "sensor.inomhus_kok_temperatur",
       "sensor.ovanvaning_temperatur",
@@ -433,12 +440,14 @@
     ]
   },
   "indoor": {
-    "coldest": "sensor.ovanvaning_temperatur",
-    "coldest_name": "Ovanvåning temperatur",
+    "coldest": "sensor.toalett_nv_temperatur",
+    "coldest_name": "Toalett NV temperatur",
+    "relative_c": 20.6,
     "sensors": [
       {
         "entity_id": "sensor.inomhus_kok_temperatur",
         "name": "Inomhus kök temperatur",
+        "offset_c": 0.0,
         "rise_c": 0.1,
         "status": "ok",
         "value_c": 21.3
@@ -446,6 +455,7 @@
       {
         "entity_id": "sensor.ovanvaning_temperatur",
         "name": "Ovanvåning temperatur",
+        "offset_c": -1.0,
         "rise_c": 0.0,
         "status": "ok",
         "value_c": 20.5
@@ -453,12 +463,13 @@
       {
         "entity_id": "sensor.toalett_nv_temperatur",
         "name": "Toalett NV temperatur",
+        "offset_c": 0.0,
         "rise_c": -0.1,
         "status": "ok",
         "value_c": 20.6
       }
     ],
-    "value_c": 20.5
+    "value_c": 20.6
   },
   "meter": {
     "baseline_kw": 1.12,

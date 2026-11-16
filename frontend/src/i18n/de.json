@@ -1440,6 +1440,7 @@
   "heat.settings.zonesHelp": "Jeder gewählte Thermostat folgt der Haustemperatur mit seiner eigenen Verschiebung.",
   "heat.settings.zonesNone": "Keine Zonen",
   "heat.settings.offsetHelp": "Verschiebung gegenüber der Haustemperatur, −3 bis +3 °C.",
+  "heat.settings.sensorOffsetHelp": "Das eigene Ziel des Raums gegenüber der Haustemperatur, −3 bis +3 °C. Ein kühleres Obergeschoss: −1,5. Ein Fühler, der ein halbes Grad zu warm misst: +0,5. Der kälteste Raum wird an seinem eigenen Ziel gemessen.",
   "heat.settings.airHelp": "Luft-Luft-Wärmepumpe: SpotNav ändert nur den Sollwert und schaltet sie nie ein oder aus.",
   "heat.zone.floor": "Fußbodenheizung",
   "heat.zone.air": "Luft-Luft",

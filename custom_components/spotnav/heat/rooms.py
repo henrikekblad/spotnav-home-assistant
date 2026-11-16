@@ -10,6 +10,10 @@ recorder). A sensor is a **local heat** while
 
 Left-out sensors are listed with why; if every readable sensor is left out, all of them count (a whole house that
 warms is no local source). A value outside `PLAUSIBLE` is no reading.
+
+Each sensor may have an offset against the house target (its room's own aim, `heat/config.py`): the coldest room is
+the one whose reading less its offset is lowest, and that figure (`relative_c`) is what the house's comfort band is
+compared with. `value_c` stays the room's own reading.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ class SensorReading:
     #: `(time, °C)` readings of the window, oldest first (the reading in force at its start may come first).
     history: tuple[tuple[datetime, float], ...] = ()
     area_id: str | None = None
+    offset_c: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +53,7 @@ class SensorView:
     value_c: float | None
     rise_c: float | None
     status: str
+    offset_c: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -56,6 +62,7 @@ class SensorView:
             "value_c": None if self.value_c is None else round(self.value_c, 2),
             "rise_c": None if self.rise_c is None else round(self.rise_c, 2),
             "status": self.status,
+            "offset_c": self.offset_c,
         }
 
 
@@ -65,6 +72,8 @@ class Indoor:
     coldest: str | None = None
     coldest_name: str | None = None
     sensors: tuple[SensorView, ...] = field(default_factory=tuple)
+    #: The coldest room's reading less its offset: what the house's band is compared with.
+    relative_c: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -72,6 +81,7 @@ class Indoor:
             "coldest": self.coldest,
             "coldest_name": self.coldest_name,
             "sensors": [sensor.as_dict() for sensor in self.sensors],
+            "relative_c": None if self.relative_c is None else round(self.relative_c, 2),
         }
 
 
@@ -116,10 +126,12 @@ def indoor(readings: Sequence[SensorReading], now: datetime, heating_areas: froz
             reading.value_c if plausible(reading.value_c) else None,
             rises[reading.entity_id],
             left_out.get(reading.entity_id, STATUS_OK if plausible(reading.value_c) else STATUS_UNAVAILABLE),
+            reading.offset_c,
         )
         for reading in readings
     )
     if not counted:
         return Indoor(sensors=views)
-    coldest = min(counted, key=lambda reading: (reading.value_c, reading.entity_id))
-    return Indoor(coldest.value_c, coldest.entity_id, coldest.name, views)
+    coldest = min(counted, key=lambda reading: (reading.value_c - reading.offset_c, reading.entity_id))  # type: ignore[operator]
+    relative = float(coldest.value_c) - coldest.offset_c  # type: ignore[arg-type]
+    return Indoor(coldest.value_c, coldest.entity_id, coldest.name, views, relative)

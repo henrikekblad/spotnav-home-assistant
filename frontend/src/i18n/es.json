@@ -1440,6 +1440,7 @@
   "heat.settings.zonesHelp": "Cada termostato elegido sigue la temperatura de la casa con su propio desplazamiento.",
   "heat.settings.zonesNone": "Sin zonas",
   "heat.settings.offsetHelp": "Desplazamiento respecto a la temperatura de la casa, de −3 a +3 °C.",
+  "heat.settings.sensorOffsetHelp": "El objetivo propio de la habitación respecto a la temperatura de la casa, de −3 a +3 °C. Una planta alta más fresca: −1,5. Un sensor que marca medio grado de más: +0,5. La habitación más fría se mide con su propio objetivo.",
   "heat.settings.airHelp": "Bomba de calor aire-aire: SpotNav solo ajusta su consigna, nunca la enciende ni la apaga.",
   "heat.zone.floor": "Suelo radiante",
   "heat.zone.air": "Aire-aire",

@@ -1440,6 +1440,7 @@
   "heat.settings.zonesHelp": "Each chosen thermostat follows the house temperature with its own offset.",
   "heat.settings.zonesNone": "No zones",
   "heat.settings.offsetHelp": "Offset against the house temperature, −3 to +3 °C.",
+  "heat.settings.sensorOffsetHelp": "The room's own aim against the house temperature, −3 to +3 °C. A cooler upstairs: −1.5. A sensor that reads half a degree warm: +0.5. The coldest room is judged against its own aim.",
   "heat.settings.airHelp": "Air-to-air heat pump: SpotNav only nudges its setpoint, never turns it on or off.",
   "heat.zone.floor": "Floor heating",
   "heat.zone.air": "Air-to-air",

@@ -1440,6 +1440,7 @@
   "heat.settings.zonesHelp": "Hver valgt termostat følger husets temperatur med sin egen forskyvning.",
   "heat.settings.zonesNone": "Ingen soner",
   "heat.settings.offsetHelp": "Forskyvning mot husets temperatur, −3 til +3 °C.",
+  "heat.settings.sensorOffsetHelp": "Rommets eget mål mot husets temperatur, −3 til +3 °C. En kjøligere overetasje: −1,5. En føler som viser en halv grad for varmt: +0,5. Det kaldeste rommet måles mot sitt eget mål.",
   "heat.settings.airHelp": "Luft-til-luft-varmepumpe: SpotNav endrer bare settpunktet, slår den aldri av eller på.",
   "heat.zone.floor": "Gulvvarme",
   "heat.zone.air": "Luft-til-luft",

@@ -1440,6 +1440,7 @@
   "heat.settings.zonesHelp": "Elke gekozen thermostaat volgt de huistemperatuur met een eigen verschuiving.",
   "heat.settings.zonesNone": "Geen zones",
   "heat.settings.offsetHelp": "Verschuiving ten opzichte van de huistemperatuur, −3 tot +3 °C.",
+  "heat.settings.sensorOffsetHelp": "Het eigen doel van de kamer ten opzichte van de huistemperatuur, −3 tot +3 °C. Een koelere bovenverdieping: −1,5. Een sensor die een halve graad te warm meet: +0,5. De koudste kamer wordt aan zijn eigen doel gemeten.",
   "heat.settings.airHelp": "Lucht-luchtwarmtepomp: SpotNav past alleen het instelpunt aan en zet hem nooit aan of uit.",
   "heat.zone.floor": "Vloerverwarming",
   "heat.zone.air": "Lucht-lucht",

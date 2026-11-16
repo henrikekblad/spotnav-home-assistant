@@ -197,17 +197,21 @@ def plan_days(
     return hours, guard
 
 
-def coldest_by_period(rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[datetime, float]:
-    """The lowest of the rooms' 5-minute means per period (°C by UTC period start)."""
+def coldest_by_period(
+    rows: Mapping[str, Sequence[Mapping[str, Any]]], offsets: Mapping[str, float] | None = None
+) -> dict[datetime, float]:
+    """The lowest of the rooms' 5-minute means less each room's offset per period (°C by UTC period start): the
+    figure the house's comfort band is compared with."""
     out: dict[datetime, float] = {}
-    for series in rows.values():
+    for entity_id, series in rows.items():
+        offset = (offsets or {}).get(entity_id, 0.0)
         for row in series:
             start, mean = row.get("start"), row.get("mean")
             if isinstance(start, (int, float)) and not isinstance(start, bool):
                 start = datetime.fromtimestamp(float(start), timezone.utc)
             if not isinstance(start, datetime) or not isinstance(mean, (int, float)):
                 continue
-            out[start] = min(out.get(start, float(mean)), float(mean))
+            out[start] = min(out.get(start, float(mean) - offset), float(mean) - offset)
     return out
 
 
@@ -527,8 +531,8 @@ class HeatShadow:
                 value = None if state is None else float(state.state)
             except ValueError:
                 value = None
-            readings.append(SensorReading(entity_id, entity_id, value, (), None))
-        return indoor(readings, now, frozenset()).value_c if readings else None
+            readings.append(SensorReading(entity_id, entity_id, value, (), None, config.offset_of(entity_id)))
+        return indoor(readings, now, frozenset()).relative_c if readings else None
 
     def joint_inputs(self, now: datetime) -> tuple[frozenset[datetime], dict[datetime, float]]:
         """The joint plan's tight hours and the outdoor forecast (see the module)."""
@@ -675,7 +679,7 @@ class HeatShadow:
         except Exception:  # noqa: BLE001 - no rooms: the review has no comfort
             _LOGGER.debug("SpotNav heat: the rooms' 5-minute rows could not be read", exc_info=True)
             return {}
-        return coldest_by_period(rows)
+        return coldest_by_period(rows, {entity_id: config.offset_of(entity_id) for entity_id in ids})
 
     def _trim(self, now: datetime) -> None:
         oldest = (now - timedelta(days=DAYS_KEPT)).date().isoformat()

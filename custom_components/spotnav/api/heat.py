@@ -16,8 +16,9 @@ shadow logs each change of what it would do now (in the diagnostics). Refusals a
 `spotnav/update_heat` (API v1):
 
     {type: "spotnav/update_heat", api_version: 1, site_id | charger_id,
-     changes: {target_c?, mode?, away_until?, night?, indoor_sensors?, outdoor_sensor?, control_path?,
-               control_entity?, control_entity_b?, hot_water_entity?, zones?, heat_meter_entity?},
+     changes: {target_c?, mode?, away_until?, night?, indoor_sensors?, indoor_offsets?, outdoor_sensor?,
+               control_path?, control_entity?, control_entity_b?, hot_water_entity?, zones?, control_enabled?,
+               heat_meter_entity?},
      expected: {the same keys: the values the caller last saw}}
 
 The answer is one envelope for every outcome: `{api_version, ok, error, field_errors, config}`, `config` re-read
@@ -446,6 +447,7 @@ async def read_indoor(hass: HomeAssistant, site_id: str, config: HeatConfig, zon
             _celsius_of(hass, entity_id),
             tuple(histories.get(entity_id, ())),
             _area(hass, entity_id),
+            config.offset_of(entity_id),
         )
         for entity_id in sensors
     ]

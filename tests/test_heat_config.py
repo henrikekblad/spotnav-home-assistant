@@ -10,6 +10,7 @@ from custom_components.spotnav.heat.config import (
     DEFAULT_TARGET_C,
     HeatConfig,
     Night,
+    SensorOffset,
     Zone,
     apply_changes,
     away_target,
@@ -166,3 +167,44 @@ def test_nothing_applies_while_any_field_fails() -> None:
 @pytest.mark.parametrize("target", [16.0, 25.0, DEFAULT_TARGET_C])
 def test_the_ends_of_the_dial(target: float) -> None:
     assert write({"target_c": target})[0].target_c == target
+
+
+def test_indoor_sensor_offsets() -> None:
+    base, errors = apply_changes(HeatConfig(), {"indoor_sensors": ["sensor.kitchen", "sensor.upstairs"]}, now=NOW, check=check)
+    assert errors == []
+    updated, errors = apply_changes(
+        base, {"indoor_offsets": [{"entity_id": "sensor.upstairs", "offset_c": -1.5}, {"entity_id": "sensor.kitchen", "offset_c": 0}]}, now=NOW, check=check
+    )
+    # A zero offset is no offset.
+    assert errors == [] and updated.indoor_offsets == (SensorOffset("sensor.upstairs", -1.5),)
+    assert updated.offset_of("sensor.upstairs") == -1.5 and updated.offset_of("sensor.kitchen") == 0.0
+    assert updated.as_dict()["indoor_offsets"] == [{"entity_id": "sensor.upstairs", "offset_c": -1.5}]
+    assert read_config(updated.as_dict()) == updated
+    for raw, code in (
+        ([{"entity_id": "sensor.outside", "offset_c": 1.0}], "invalid_value"),
+        ([{"entity_id": "sensor.upstairs", "offset_c": 3.5}], "out_of_range"),
+        ([{"entity_id": "sensor.upstairs", "offset_c": 0.3}], "not_a_step"),
+        ([{"entity_id": "sensor.upstairs", "offset_c": 1.0}, {"entity_id": "sensor.upstairs", "offset_c": 1.0}], "duplicate"),
+        ([{"entity_id": "sensor.upstairs"}], "invalid_value"),
+        ("sensor.upstairs", "invalid_value"),
+    ):
+        same, errors = apply_changes(updated, {"indoor_offsets": raw}, now=NOW, check=check)
+        assert same == updated and [error.code for error in errors] == [code], raw
+    # A sensor no longer chosen takes its offset with it; sensors and offsets may change in one write.
+    fewer, errors = apply_changes(updated, {"indoor_sensors": ["sensor.kitchen"]}, now=NOW, check=check)
+    assert errors == [] and fewer.indoor_offsets == ()
+    both, errors = apply_changes(
+        HeatConfig(), {"indoor_sensors": ["sensor.upstairs"], "indoor_offsets": [{"entity_id": "sensor.upstairs", "offset_c": 1.0}]}, now=NOW, check=check
+    )
+    assert errors == [] and both.offset_of("sensor.upstairs") == 1.0
+    # Read leniently: an offset of a sensor not chosen, or a broken one, is left out.
+    stored = read_config({"indoor_sensors": ["sensor.kitchen"], "indoor_offsets": [{"entity_id": "sensor.upstairs", "offset_c": 1.0}, {"entity_id": "sensor.kitchen", "offset_c": "x"}]})
+    assert stored.indoor_offsets == ()
+
+
+def test_the_control_switch_is_a_plain_boolean_off_by_default() -> None:
+    assert HeatConfig().control_enabled is False and read_config({"control_enabled": "yes"}).control_enabled is False
+    on, errors = apply_changes(HeatConfig(), {"control_enabled": True}, now=NOW, check=check)
+    assert errors == [] and on.control_enabled is True and read_config(on.as_dict()).control_enabled is True
+    same, errors = apply_changes(on, {"control_enabled": 1}, now=NOW, check=check)
+    assert same == on and [error.code for error in errors] == ["invalid_value"]

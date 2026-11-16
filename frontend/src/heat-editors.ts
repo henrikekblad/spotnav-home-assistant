@@ -3,7 +3,7 @@
 // SpotNav's own heat settings for the site (`spotnav/update_heat`), never a heating device.
 
 import { updateHeat, type SiteTarget } from "./api";
-import { decodeHeatWrite, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
+import { decodeHeatWrite, roomName, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { instantToLocal, localToInstant, namesOf, type HeatSettingKey } from "./heat-view";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -146,6 +146,9 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
       };
     }
     default: {
+      if (key.startsWith("sensor:")) {
+        return sensorOffsetEditor(input, key.slice("sensor:".length), prefix, handlers);
+      }
       const entityId = key.slice("zone:".length);
       const zone = config.zones.find((item) => item.entity_id === entityId);
       if (zone === undefined) {
@@ -171,6 +174,36 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
       };
     }
   }
+}
+
+/** One indoor sensor's offset against the house target, −3 to +3 °C in half degrees (as a zone's). */
+function sensorOffsetEditor(input: HeatEditorInput, entityId: string, prefix: string, handlers: EditorHandlers): { title: string; body: HTMLElement } | null {
+  const { doc, language, answer } = input;
+  const config = answer.config;
+  if (!config.indoor_sensors.includes(entityId)) {
+    return null;
+  }
+  const current = config.indoor_offsets.find((item) => item.entity_id === entityId)?.offset_c ?? 0;
+  return {
+    title: roomName(namesOf(answer).get(entityId) ?? entityId),
+    body: numberEditor(
+      doc,
+      language,
+      { help: translate(language, "heat.settings.sensorOffsetHelp"), unit: "°C", current, min: -3, max: 3, decimals: 1, rangeMessage: translate(language, "heat.error.range"), idPrefix: prefix },
+      async (value) => {
+        const offset = value ?? 0;
+        if (Math.abs(offset * 2 - Math.round(offset * 2)) > 1e-9) {
+          return translate(language, "heat.error.step");
+        }
+        const others = config.indoor_offsets.filter((item) => item.entity_id !== entityId);
+        const next = config.indoor_sensors
+          .map((sensor) => (sensor === entityId ? { entity_id: sensor, offset_c: offset } : others.find((item) => item.entity_id === sensor)))
+          .filter((item): item is { entity_id: string; offset_c: number } => item !== undefined && item.offset_c !== 0);
+        return await input.write({ indoor_offsets: next });
+      },
+      handlers,
+    ),
+  };
 }
 
 function field(doc: Document, label: string, control: HTMLInputElement): HTMLElement {

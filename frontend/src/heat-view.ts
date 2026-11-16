@@ -748,6 +748,7 @@ export type HeatSettingKey =
   | "hotWater"
   | "zones"
   | `zone:${string}`
+  | `sensor:${string}`
   | "night";
 
 /** The "Heating" section of the settings dialog: one row per setting, each opening its editor (`onEdit`). */
@@ -778,6 +779,11 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
       : translate(language, "heat.settings.indoorCount", { count: String(sensors.length) });
   // Each row's help is in its own editor, so the section is a short list; only a row that cannot be opened keeps it.
   row("indoor", translate(language, "heat.settings.indoor"), indoorValue);
+  // Each chosen sensor's room aim against the house, as the zones' offsets: a cooler upstairs, a sensor that reads warm.
+  for (const sensor of sensors) {
+    const offset = config.indoor_offsets.find((item) => item.entity_id === sensor)?.offset_c ?? 0;
+    row(`sensor:${sensor}`, roomName(nameOf(names, sensor, sensor)), signedDegrees(language, offset));
+  }
   row(
     "outdoor",
     translate(language, "heat.settings.outdoor"),

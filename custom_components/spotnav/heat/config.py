@@ -2,8 +2,12 @@
 or away, the cooler night, the sensors, the control paths and the zones. Pure: read from and written to the site
 entry's data under `CONF_HEAT` (`api/heat.py`), judged here.
 
-Shadow only: these settings say what SpotNav would aim for and which entities it would one day steer. Nothing here,
-nor anything that reads it, writes to a heat pump, a thermostat or a relay.
+These settings say what SpotNav aims for and which entities it would steer. Nothing here writes to a heat pump, a
+thermostat or a relay; only `control_enabled` lets the heat control (`heat/control.py`) switch the relay path's relay.
+
+An indoor sensor's offset is its room's own aim against the house target (a cooler upstairs at -1.5, a sensor that
+reads half a degree too warm at +0.5): the coldest-room rule and the comfort review compare each sensor's reading less
+its offset with the house's band.
 
 Stored shape (every key optional in storage; a missing or broken one reads as its default, so an older entry or a
 hand-edited one never fails a read):
@@ -12,6 +16,8 @@ hand-edited one never fails a read):
      mode: "home" | "away", away_until: ISO instant with offset | null (set while away),
      night: {on: bool, delta_c: 0.5..3 in 0.5 steps, start: "HH:MM", end: "HH:MM"} (off, 1, 23:00, 06:00),
      indoor_sensors: [sensor ids] (up to 8), outdoor_sensor: sensor id | null (null: the house forecast's own),
+     indoor_offsets: [{entity_id: one of the indoor sensors, offset_c: -3..3 in 0.5 steps, never 0}] (none),
+     control_enabled: bool (false: SpotNav's opt-in to switch the relay itself, `heat/control.py`),
      control_path: "none" | "relay" | "sg_ready" | "offset" | "setpoint", control_entity: id | null,
      control_entity_b: id | null (SG Ready's second contact), hot_water_entity: id | null,
      zones: [{entity_id: climate id, offset_c: -3..3 in 0.5 steps}] (up to 8)}
@@ -78,8 +84,11 @@ F_CONTROL: Final = "control_entity"
 F_CONTROL_B: Final = "control_entity_b"
 F_HOT_WATER: Final = "hot_water_entity"
 F_ZONES: Final = "zones"
+F_INDOOR_OFFSETS: Final = "indoor_offsets"
+F_CONTROL_ENABLED: Final = "control_enabled"
 FIELDS: Final = (
     F_TARGET, F_MODE, F_AWAY_UNTIL, F_NIGHT, F_INDOOR, F_OUTDOOR, F_PATH, F_CONTROL, F_CONTROL_B, F_HOT_WATER, F_ZONES,
+    F_INDOOR_OFFSETS, F_CONTROL_ENABLED,
 )
 #: What anyone who can see the card may change (the dial and home/away, a thermostat's own controls); the rest is an
 #: administrator's.
@@ -135,6 +144,17 @@ class Zone:
 
 
 @dataclass(frozen=True, slots=True)
+class SensorOffset:
+    """An indoor sensor's room aim against the house target (°C)."""
+
+    entity_id: str
+    offset_c: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"entity_id": self.entity_id, "offset_c": self.offset_c}
+
+
+@dataclass(frozen=True, slots=True)
 class HeatConfig:
     target_c: float = DEFAULT_TARGET_C
     mode: str = MODE_HOME
@@ -147,6 +167,12 @@ class HeatConfig:
     control_entity_b: str | None = None
     hot_water_entity: str | None = None
     zones: tuple[Zone, ...] = ()
+    indoor_offsets: tuple[SensorOffset, ...] = ()
+    control_enabled: bool = False
+
+    def offset_of(self, entity_id: str) -> float:
+        """An indoor sensor's offset (0 when it has none)."""
+        return next((item.offset_c for item in self.indoor_offsets if item.entity_id == entity_id), 0.0)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -161,6 +187,8 @@ class HeatConfig:
             F_CONTROL_B: self.control_entity_b,
             F_HOT_WATER: self.hot_water_entity,
             F_ZONES: [zone.as_dict() for zone in self.zones],
+            F_INDOOR_OFFSETS: [item.as_dict() for item in self.indoor_offsets],
+            F_CONTROL_ENABLED: self.control_enabled,
         }
 
     def away_end(self) -> datetime | None:
@@ -239,6 +267,21 @@ def _zones(raw: Any) -> tuple[Zone, ...]:
     return tuple(zones)
 
 
+def _offsets(raw: Any, sensors: tuple[str, ...]) -> tuple[SensorOffset, ...]:
+    """The stored offsets of the chosen sensors, a zero, broken or duplicate one left out."""
+    if not isinstance(raw, list):
+        return ()
+    out: dict[str, SensorOffset] = {}
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        entity_id = item.get("entity_id")
+        offset = _step_in(item.get("offset_c"), OFFSET_MIN_C, OFFSET_MAX_C)
+        if entity_id in sensors and entity_id not in out and offset is not None and offset != 0:
+            out[entity_id] = SensorOffset(entity_id, offset)
+    return tuple(out[entity_id] for entity_id in sensors if entity_id in out)
+
+
 def read_config(raw: Any) -> HeatConfig:
     """The stored settings, every missing or broken key read as its default (see the module)."""
     if not isinstance(raw, Mapping):
@@ -260,6 +303,8 @@ def read_config(raw: Any) -> HeatConfig:
         away_until=away_until if mode == MODE_AWAY else None,
         night=_night(raw.get(F_NIGHT)),
         indoor_sensors=indoor[:MAX_SENSORS],
+        indoor_offsets=_offsets(raw.get(F_INDOOR_OFFSETS), indoor[:MAX_SENSORS]),
+        control_enabled=raw.get(F_CONTROL_ENABLED) is True,
         outdoor_sensor=_entity(raw.get(F_OUTDOOR), ("sensor", "weather")),
         control_path=path,
         control_entity=control,
@@ -471,9 +516,46 @@ def apply_changes(
             if len(errors) == before:
                 updated = replace(updated, zones=tuple(zones))
 
+    if F_INDOOR_OFFSETS in changes:
+        raw = changes[F_INDOOR_OFFSETS]
+        if raw is None:
+            updated = replace(updated, indoor_offsets=())
+        elif not isinstance(raw, list):
+            errors.append(FieldError(F_INDOOR_OFFSETS, ERR_INVALID))
+        else:
+            offsets: list[SensorOffset] = []
+            before = len(errors)
+            for item in raw:
+                if not isinstance(item, Mapping) or set(item) != {"entity_id", "offset_c"}:
+                    errors.append(FieldError(F_INDOOR_OFFSETS, ERR_INVALID))
+                    continue
+                number = _number(item["offset_c"])
+                if item["entity_id"] not in updated.indoor_sensors:
+                    errors.append(FieldError(F_INDOOR_OFFSETS, ERR_INVALID))
+                elif any(offset.entity_id == item["entity_id"] for offset in offsets):
+                    errors.append(FieldError(F_INDOOR_OFFSETS, ERR_DUPLICATE))
+                elif number is None:
+                    errors.append(FieldError(F_INDOOR_OFFSETS, ERR_INVALID))
+                elif not OFFSET_MIN_C <= number <= OFFSET_MAX_C:
+                    errors.append(FieldError(F_INDOOR_OFFSETS, ERR_RANGE))
+                elif not _on_step(number):
+                    errors.append(FieldError(F_INDOOR_OFFSETS, ERR_STEP))
+                elif number != 0:
+                    offsets.append(SensorOffset(str(item["entity_id"]), number))
+            if len(errors) == before:
+                updated = replace(updated, indoor_offsets=tuple(offsets))
+
+    if F_CONTROL_ENABLED in changes:
+        if not isinstance(changes[F_CONTROL_ENABLED], bool):
+            errors.append(FieldError(F_CONTROL_ENABLED, ERR_INVALID))
+        else:
+            updated = replace(updated, control_enabled=changes[F_CONTROL_ENABLED])
+
     if errors:
         return current, _unique(errors)
-    return updated, []
+    # A sensor no longer chosen takes its offset with it; the offsets follow the sensors' order.
+    kept = {item.entity_id: item for item in updated.indoor_offsets if item.entity_id in updated.indoor_sensors}
+    return replace(updated, indoor_offsets=tuple(kept[s] for s in updated.indoor_sensors if s in kept)), []
 
 
 def _unique(errors: list[FieldError]) -> list[FieldError]:

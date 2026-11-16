@@ -76,7 +76,7 @@ describe("the front", () => {
     expect(card.querySelector("[data-line='band']")!.textContent).toBe("inom 20,5–21,5 °C");
     expect(card.querySelector("[data-measured]")).not.toBeNull();
     // The sensor's "temperatur" left off the room's name; a figure and its unit kept together.
-    expect(measuredLine("sv", villa)).toBe("Inne 20,5\u00a0°C (kallast: Ovanvåning) · Ute 6,2\u00a0°C");
+    expect(measuredLine("sv", villa)).toBe("Inne 20,6\u00a0°C (kallast: Toalett NV) · Ute 6,2\u00a0°C");
     expect(pumpLine("sv", villa)).toBe("Värmepumpen värmer · 1,1 kW");
     expect(wouldLine("sv", villa)).toBe("Skulle sänka till 20,5 °C till 19:00: dyra timmar");
     expect(card.querySelector("[data-line='shadow']")!.textContent).toBe("Temperaturen och Hemma/Borta som du ställer in här följer SpotNav när den börjar styra värmen.");
@@ -175,6 +175,9 @@ describe("the settings section", () => {
     const rows = [...section.querySelectorAll<HTMLElement>("[data-row]")].map((row) => [row.dataset["row"], row.textContent]);
     expect(rows).toEqual([
       ["indoor", "Inomhusgivare3 valda"],
+      ["sensor:sensor.inomhus_kok_temperatur", "Inomhus kök0 °C"],
+      ["sensor:sensor.ovanvaning_temperatur", "Ovanvåning−1,0 °C"],
+      ["sensor:sensor.toalett_nv_temperatur", "Toalett NV0 °C"],
       ["outdoor", "UtegivareAutomatisk"],
       ["meter", "Värmepumpens mätareElmätare värme (Nibe + panna) Effekt"],
       ["path", "StyrningRelä (sänkning)"],
@@ -335,5 +338,26 @@ describe("the element", () => {
     await vi.advanceTimersByTimeAsync(0);
     const write = messages.find((message) => message["type"] === "spotnav/update_heat")!;
     expect((write["changes"] as { zones: { entity_id: string; offset_c: number }[] }).zones[3]).toEqual({ entity_id: "climate.ovanvaning", offset_c: 1 });
+  });
+
+  it("writes an indoor sensor's offset with the others kept, a zero left out", async () => {
+    const { messages, root } = await mount();
+    root.querySelector<HTMLButtonElement>("button[data-action='settings']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    root.querySelector<HTMLButtonElement>("button[data-edit='sensor:sensor.toalett_nv_temperatur']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-value-editor='number']")!;
+    expect(form.textContent).toContain("Rummets eget mål");
+    const input = form.querySelector<HTMLInputElement>("input")!;
+    input.value = "0,5";
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    const write = messages.find((message) => message["type"] === "spotnav/update_heat")!;
+    expect(write["changes"]).toEqual({
+      indoor_offsets: [
+        { entity_id: "sensor.ovanvaning_temperatur", offset_c: -1 },
+        { entity_id: "sensor.toalett_nv_temperatur", offset_c: 0.5 },
+      ],
+    });
+    expect(write["expected"]).toEqual({ indoor_offsets: [{ entity_id: "sensor.ovanvaning_temperatur", offset_c: -1 }] });
   });
 });

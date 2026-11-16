@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from custom_components.spotnav.api.heat import config_block
 from custom_components.spotnav.heat.automations import SteeringAutomation
-from custom_components.spotnav.heat.config import HeatConfig, Night, Zone
+from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset, Zone
 from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts, PriceControl
 from custom_components.spotnav.heat.meter_split import levels, split_day
 from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
@@ -128,6 +128,8 @@ def villa_answer() -> dict[str, Any]:
         target_c=21.0,
         night=Night(True, 1.0, "23:00", "06:00"),
         indoor_sensors=("sensor.inomhus_kok_temperatur", "sensor.ovanvaning_temperatur", "sensor.toalett_nv_temperatur"),
+        # Upstairs is kept a degree cooler than the house.
+        indoor_offsets=(SensorOffset("sensor.ovanvaning_temperatur", -1.0),),
         zones=(
             Zone("climate.golvvarme_toalett_nere", 0.0),
             Zone("climate.golvvarme_toalett_uppe", 0.0),
@@ -145,7 +147,7 @@ def villa_answer() -> dict[str, Any]:
     split = split_day(window, MIDNIGHT, MIDNIGHT + timedelta(days=1))
     sensors = [
         SensorReading("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", 21.3, ((NOW - timedelta(minutes=40), 21.2),)),
-        SensorReading("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", 20.5, ((NOW - timedelta(minutes=40), 20.5),)),
+        SensorReading("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", 20.5, ((NOW - timedelta(minutes=40), 20.5),), None, -1.0),
         SensorReading("sensor.toalett_nv_temperatur", "Toalett NV temperatur", 20.6, ((NOW - timedelta(minutes=40), 20.7),)),
     ]
     car = frozenset(MIDNIGHT + timedelta(hours=h) for h in (1, 2, 3, 4))
@@ -265,7 +267,11 @@ def test_the_villa() -> None:
     assert tuple(answer) == HEAT_KEYS
     assert all(tuple(hour) == BAND_HOUR_KEYS for hour in answer["band"]["hours"])
     assert answer["comfort"] == {"target_c": 21.0, "low_c": 20.5, "high_c": 21.5, "mode": "home", "away_until": None, "aim_c": 20.5}
-    assert (answer["indoor"]["value_c"], answer["indoor"]["coldest"]) == (20.5, "sensor.ovanvaning_temperatur")
+    # Upstairs reads 20.5 but aims a degree lower: the toilet at 20.6 is the room closest to too cold.
+    indoor_block = answer["indoor"]
+    assert (indoor_block["value_c"], indoor_block["relative_c"], indoor_block["coldest"]) == (20.6, 20.6, "sensor.toalett_nv_temperatur")
+    assert [sensor["offset_c"] for sensor in indoor_block["sensors"]] == [0.0, -1.0, 0.0]
+    assert answer["config"]["indoor_offsets"] == [{"entity_id": "sensor.ovanvaning_temperatur", "offset_c": -1.0}]
     # 17:20 lies in the evening's dearest hours: lowered to the band's low edge until 19:00 (three in a row at most).
     would = answer["status"]["would"]
     assert (would["action"], would["reason"]) == ("lower", "dear_hour")

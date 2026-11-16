@@ -3,7 +3,8 @@
     {api_version: 1, site_id, now, time_zone, writable, shadow: true,
      config: the settings (`api/heat.config_block`),
      comfort: {target_c, low_c, high_c, mode, away_until, aim_c},
-     indoor: {value_c, coldest, coldest_name, sensors: [{entity_id, name, value_c, rise_c, status}]},
+     indoor: {value_c, coldest, coldest_name, sensors: [{entity_id, name, value_c, rise_c, status, offset_c}],
+              relative_c: the coldest room's reading less its offset, what the comfort band is compared with},
      outdoor: {value_c, entity_id, name, source} | null,
      zones: [{entity_id, name, kind: "floor" | "air", offset_c, aim_c, current_c, setpoint_c, hvac_mode, heating,
               power_w, available}],
@@ -263,7 +264,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         now,
         zone_info,
         outdoor_c=outdoor_c,
-        coldest_c=inputs.indoor.value_c,
+        coldest_c=inputs.indoor.relative_c,
         tight=inputs.tight,
         outdoor_by_hour=inputs.outdoor_by_hour,
     )

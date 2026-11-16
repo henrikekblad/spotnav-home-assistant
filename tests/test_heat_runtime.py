@@ -13,7 +13,7 @@ from homeassistant.setup import async_setup_component
 
 from custom_components.spotnav.const import CONF_HEAT
 from custom_components.spotnav.heat.relay_effect import Effect, hour_of
-from custom_components.spotnav.heat.runtime import SOURCE_UNKNOWN, merged, tight_hours
+from custom_components.spotnav.heat.runtime import SOURCE_UNKNOWN, coldest_by_period, merged, tight_hours
 from custom_components.spotnav.runtime import site_controller_for
 
 from .test_demand_site import pilot_site
@@ -113,3 +113,11 @@ def test_the_joint_plans_tight_hours_and_joined_intervals() -> None:
     assert merged([(t0, t0 + timedelta(hours=1)), (t0 + timedelta(hours=1), t0 + timedelta(hours=2))]) == [
         (t0, t0 + timedelta(hours=2))
     ]
+
+
+def test_the_reviews_coldest_room_counts_each_rooms_offset() -> None:
+    t0 = datetime(2026, 11, 17, 16, 0, tzinfo=timezone.utc)
+    rows = {"sensor.uppe": [{"start": t0, "mean": 19.6}], "sensor.kok": [{"start": t0.timestamp(), "mean": 20.8}]}
+    # Upstairs aims 1.5 lower: 19.6 counts as 21.1, the kitchen's 20.8 is the coldest against the house.
+    assert coldest_by_period(rows, {"sensor.uppe": -1.5}) == {t0: pytest.approx(20.8)}
+    assert coldest_by_period(rows) == {t0: pytest.approx(19.6)}
