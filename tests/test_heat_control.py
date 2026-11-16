@@ -471,3 +471,43 @@ async def test_a_site_without_a_meter_or_a_pump_reading_asks_for_the_meter(hass:
     await control.async_look(now)
     assert control.signal is False and relay.calls == []
     assert (control.status()["state"], control.status()["reason"]) == ("waiting", "no_signal")
+
+
+async def test_turning_off_while_a_closing_is_read_back_opens_the_relay(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.pending is not None
+    # The closing takes late, and the person turns control off before it is read back.
+    hass.states.async_set(RELAY, "on")
+    relay.ignore = False
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {**site.data[CONF_HEAT], "control_enabled": False}})
+    await control.async_look(now + 30 * timedelta(seconds=1))
+    await control.async_look(now + MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off" and not control.held
+
+
+async def test_turning_off_while_a_closing_is_never_read_back_opens_the_relay(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {**site.data[CONF_HEAT], "control_enabled": False}})
+    await control.async_look(now + MIN)
+    relay.ignore = False
+    await control.async_look(now + READ_BACK + MIN)
+    await control.async_look(now + READ_BACK + 2 * MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off" and not control.held and control.pending is None
+
+
+async def test_an_error_while_a_write_is_pending_opens_the_relay_once_it_expires(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    relay.ignore = False
+
+    async def broken(_now: datetime) -> None:
+        raise RuntimeError("broken")
+
+    control._async_look = broken  # type: ignore[method-assign]  # noqa: SLF001
+    await control.async_look(now + READ_BACK + MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off"

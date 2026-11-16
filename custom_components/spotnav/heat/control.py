@@ -297,8 +297,10 @@ class HeatControl:
             raise
         except Exception:  # noqa: BLE001 - the next look tries again; the relay is opened where it can be
             _LOGGER.warning("SpotNav heat control: a look failed", exc_info=True)
-            if self.held and self.relay is not None and self.pending is None:
-                await self._async_write(False, now, why="error")
+            try:
+                await self._async_give_back(now, "error")
+            except Exception:  # noqa: BLE001 - tried again at the next look
+                _LOGGER.warning("SpotNav heat control: the relay could not be given back", exc_info=True)
         self._trim(now)
         self._save()
 
@@ -331,13 +333,9 @@ class HeatControl:
         self._was_enabled = enabled
         if self.paused_until is not None and now >= self.paused_until:
             self.paused_until = self.paused_reason = None
-        if not enabled or relay is None:
-            await self._async_give_back(now, "off")
-            self._set(STATE_OFF if not enabled else STATE_WAITING, None if not enabled else WAIT_NO_RELAY)
-            self._expect = None
-            return
-
-        read = self._read(relay)
+        # A write is read back (or given up) first, also when control was just turned off: a closing still pending
+        # is opened all the same.
+        read = None if relay is None else self._read(relay)
         if self.pending is not None:
             if read == self.pending.closed:
                 self._confirm(self.pending, now)
@@ -345,7 +343,15 @@ class HeatControl:
                 await self._async_failed(now, "not_read_back")
                 return
             else:
+                if not enabled:
+                    self._set(STATE_OFF, None)
                 return
+        if not enabled or relay is None:
+            await self._async_give_back(now, "off")
+            self._set(STATE_OFF if not enabled else STATE_WAITING, None if not enabled else WAIT_NO_RELAY)
+            self._expect = None
+            return
+
         if read is None:
             self._set(STATE_WAITING, WAIT_RELAY_UNAVAILABLE)
             if self.held:
@@ -582,8 +588,11 @@ class HeatControl:
                 self._end_lowering(now)
 
     async def _async_give_back(self, now: datetime, why: str) -> None:
-        """Open the relay SpotNav holds (no write otherwise), and end a running check."""
+        """Open the relay SpotNav holds (no write otherwise), and end a running check. A write not read back within
+        `READ_BACK` is given up: the opening is written all the same."""
         self.check.abort(why)
+        if self.pending is not None and now - self.pending.at > READ_BACK:
+            self.pending = None
         if self.held and self.relay is not None and self.pending is None:
             await self._async_write(False, now, why=why)
 
