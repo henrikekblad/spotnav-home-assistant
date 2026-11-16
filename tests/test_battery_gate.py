@@ -81,7 +81,7 @@ def test_a_pass_needs_hold_and_the_hand_back_and_the_report_decides_the_actions(
     passed = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
     assert report_status(passed) == "passed"
     assert allowed_actions(passed, Options()) == {"hold", "grid_charge", "discharge_house"}
-    assert "export_discharge" in allowed_actions(passed, Options(allow_sell=True)), "selling only when allowed"
+    assert "export_discharge" in allowed_actions(passed, Options(mode="max_profit")), "selling only when allowed"
     only_hold = _report(hold="obeyed", charge="ignored", discharge_house="not_judgeable:x", normal="restored")
     assert report_status(only_hold) == "passed" and allowed_actions(only_hold, Options()) == {"hold"}
     assert modes_to_run(only_hold) == ("discharge_house",) and needs_run(only_hold)
@@ -238,7 +238,7 @@ def test_the_hold_for_the_car_fills_a_self_consumption_slot_only() -> None:
 
 def test_selling_from_the_battery_is_off_by_default_also_for_the_test_action() -> None:
     assert trial_refusal("export_discharge", Options()) == "sell_not_allowed"
-    assert trial_refusal("export_discharge", Options(allow_sell=True)) is None
+    assert trial_refusal("export_discharge", Options(mode="max_profit")) is None
     assert trial_refusal("hold", Options()) is None and trial_refusal("curtail_export", Options()) is None
     assert trial_refusal("explode", Options()) == "unknown_action"
 
@@ -250,3 +250,24 @@ def test_the_car_backs_off_first_when_its_departure_has_room() -> None:
     assert battery_yields(True, False) is True
     assert battery_yields(True, True) is False
     assert battery_yields(False, False) is False, "battery first: the site's load balancing backs the car off"
+
+
+def test_the_mode_decides_selling_and_a_stored_legacy_sell_option_is_only_the_migration_source() -> None:
+    from custom_components.spotnav.battery import gate as g
+
+    assert g.Options.from_config({}).mode == "balanced" and not g.Options.from_config({}).allow_sell
+    for mode in ("self_consumption", "balanced", "max_profit"):
+        assert g.Options.from_config({g.CONF_MODE: mode}).mode == mode
+    assert g.Options.from_config({g.CONF_MODE: "export"}).mode == "balanced"
+    assert g.Options.from_config({g.CONF_MODE: 3}).mode == "balanced"
+    assert g.legacy_mode({g.CONF_ALLOW_SELL: True}) == "max_profit"
+    assert g.legacy_mode({g.CONF_ALLOW_SELL: False}) is None and g.legacy_mode({}) is None
+    assert g.legacy_mode({g.CONF_ALLOW_SELL: True, g.CONF_MODE: "balanced"}) is None, "a chosen mode wins"
+    assert g.Options.from_config({g.CONF_ALLOW_SELL: True}).mode == "max_profit"
+    assert g.Options.from_config({g.CONF_ALLOW_SELL: True, g.CONF_MODE: "balanced"}).mode == "balanced"
+    assert g.valid_change("battery_mode", "max_profit") and not g.valid_change("battery_mode", "x")
+    assert not g.valid_change(g.CONF_ALLOW_SELL, True)
+    every = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
+    for mode in ("self_consumption", "balanced"):
+        assert "export_discharge" not in g.allowed_actions(every, g.Options(mode=mode))
+    assert g.CONF_ALLOW_SELL not in g.WRITABLE and g.CONF_MODE in g.WRITABLE

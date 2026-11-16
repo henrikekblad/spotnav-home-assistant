@@ -76,8 +76,11 @@ export interface BatteryOptions {
   battery_control_enabled: boolean;
   battery_control_shadow_only: boolean;
   battery_control_ai_takeover_ack: boolean;
+  /** Derived from `battery_mode` and kept for one release (the payload only grows); the card reads the mode. */
   battery_control_allow_sell: boolean;
   battery_control_import_limit_acts: boolean;
+  /** self_consumption | balanced | max_profit; the only one that may sell. */
+  battery_mode: string;
 }
 
 export interface BatteryStatus {
@@ -173,6 +176,7 @@ const OPTIONS = O({
   battery_control_ai_takeover_ack: "boolean",
   battery_control_allow_sell: "boolean",
   battery_control_import_limit_acts: "boolean",
+  battery_mode: "string",
 });
 
 const PHASE_VALUES = O({ L1: "number", L2: "number", L3: "number" });

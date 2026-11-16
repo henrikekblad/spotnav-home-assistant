@@ -11,6 +11,7 @@
 // `spotnav/update_price` for the area and fees.
 // Administrators only: the cards show no settings button to anyone else.
 
+import { MODES } from "./house-model";
 import {
   answerPriceDuplicate,
   batteryControl,
@@ -392,7 +393,7 @@ export class SiteSections {
 
   // ---- battery
 
-  async writeBattery(changes: Record<string, boolean>): Promise<string | null> {
+  async writeBattery(changes: Record<string, boolean | string>): Promise<string | null> {
     const hass = this.input.hass();
     const target = this.input.target();
     const language = this.language;
@@ -428,6 +429,29 @@ export class SiteSections {
     });
   }
 
+  /** The battery mode: one of three, each with its help line; Choose writes `battery_mode`. */
+  private openBatteryMode(title: string, current: string): void {
+    const { doc, idPrefix } = this.input;
+    const language = this.language;
+    this.input.openEditor(title, (handlers) =>
+      singleEditor(
+        doc,
+        language,
+        {
+          options: MODES.map((mode) => ({
+            value: mode,
+            label: translate(language, `house.mode.${mode}` as TranslationKey),
+            help: translate(language, `battery.modeHelp.${mode}` as TranslationKey),
+          })),
+          selected: current,
+          idPrefix: `${idPrefix}-battery-mode`,
+        },
+        async (value) => (value === current ? null : await this.writeBattery({ battery_mode: value })),
+        handlers,
+      ),
+    );
+  }
+
   private onOff(title: string, key: string, on: boolean, intro?: string): void {
     const { doc, idPrefix } = this.input;
     const language = this.language;
@@ -460,6 +484,31 @@ export class SiteSections {
     section.append(element(doc, "p", C.siteApplies, translate(language, "battery.intro")));
     const options = status.options;
     const onText = (on: boolean): string => translate(language, on ? "settings.value.on" : "settings.value.off");
+    const mode = (MODES as readonly string[]).includes(options.battery_mode) ? options.battery_mode : "balanced";
+    const modeLabel = translate(language, "battery.modeLabel");
+    section.append(
+      ...settingRow(doc, {
+        key: "battery_mode",
+        label: modeLabel,
+        value: translate(language, `house.mode.${mode}` as TranslationKey),
+        help: translate(language, `battery.modeHelp.${mode}` as TranslationKey),
+        ...(admin
+          ? {
+              onTap: () => this.openBatteryMode(modeLabel, mode),
+              changeableText: translate(language, "settings.row.changeable", {
+                label: modeLabel,
+                value: translate(language, `house.mode.${mode}` as TranslationKey),
+              }),
+            }
+          : {}),
+      }),
+    );
+    if (status.state !== "on") {
+      // The mode counts even when nothing is controlled: it moves the comparison's marked row.
+      const shadow = element(doc, "p", C.settingRowHelp, translate(language, "battery.modeShadow"));
+      shadow.dataset["batteryModeShadow"] = "true";
+      section.append(shadow);
+    }
     const switchLabel = translate(language, "battery.switch");
     section.append(
       ...settingRow(doc, {
@@ -542,21 +591,6 @@ export class SiteSections {
       note.setAttribute("role", "status");
       section.append(note);
     }
-    const sellLabel = translate(language, "battery.sell");
-    section.append(
-      ...settingRow(doc, {
-        key: "battery_control_allow_sell",
-        label: sellLabel,
-        value: onText(options.battery_control_allow_sell),
-        help: translate(language, "battery.sellHelp"),
-        ...(admin
-          ? {
-              onTap: () => this.onOff(sellLabel, "battery_control_allow_sell", options.battery_control_allow_sell, translate(language, "battery.sellHelp")),
-              changeableText: translate(language, "settings.row.changeable", { label: sellLabel, value: onText(options.battery_control_allow_sell) }),
-            }
-          : {}),
-      }),
-    );
     return section;
   }
 

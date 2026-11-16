@@ -1170,9 +1170,9 @@
           "name": "Übernahme aus dem KI-Modus gelesen",
           "description": "Die Person hat gelesen, dass SpotNav die Anlage aus dem KI-Modus von Sigenergy übernimmt."
         },
-        "battery_control_allow_sell": {
-          "name": "Verkauf erlauben",
-          "description": "Der Plan darf die Batterie ins Netz entladen."
+        "battery_mode": {
+          "name": "Batteriemodus",
+          "description": "Wofür der Akku da ist. Nur Maximaler Gewinn darf ins Netz verkaufen."
         },
         "battery_control_import_limit_acts": {
           "name": "Importgrenze wirkt",

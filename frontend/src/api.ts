@@ -753,7 +753,7 @@ export async function getSiteSettingsView(hass: HomeAssistantLike, target: SiteT
 export async function batteryControl(
   hass: HomeAssistantLike,
   target: SiteTarget,
-  changes: Record<string, boolean> | null = null,
+  changes: Record<string, boolean | string> | null = null,
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/battery_control",

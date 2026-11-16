@@ -282,6 +282,19 @@ async def test_max_profit_as_the_site_mode_is_the_plan_in_force(
     assert [slot.action for slot in shadow.plan] == [slot.action for slot in shadow.mode_plans[MODE_MAX_PROFIT]]
 
 
+async def test_a_written_mode_re_plans_at_once_and_moves_the_plan_in_force(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    site, controller, now = await _planned(hass, monkeypatch)
+    shadow = controller.battery_shadow.plan
+    assert shadow.mode == MODE_BALANCED
+    hass.config_entries.async_update_entry(site, data={**site.data, plan_runtime.MODE_KEY: MODE_SELF_CONSUMPTION})
+    shadow.mode_changed(now)
+    await hass.async_block_till_done()
+    assert shadow.mode == MODE_SELF_CONSUMPTION
+    assert controller.battery_shadow.snapshot()["plan"]["mode"] == MODE_SELF_CONSUMPTION
+
+
 async def test_the_quarter_hours_record_what_the_battery_did_and_the_day_is_reviewed(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:

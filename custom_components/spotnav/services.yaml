@@ -313,13 +313,17 @@ battery_control_settings:
       required: false
       selector:
         boolean:
-    battery_control_allow_sell:
-      name: Allow selling
+    battery_mode:
+      name: Battery mode
       description: >
-        The plan may discharge the battery to the grid.
+        What the battery is for. Only Max profit may sell to the grid.
       required: false
       selector:
-        boolean:
+        select:
+          options:
+            - self_consumption
+            - balanced
+            - max_profit
     battery_control_import_limit_acts:
       name: Import limit acts
       description: >
