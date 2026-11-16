@@ -159,7 +159,20 @@ def _battery(controller: Any) -> BatteryInputs | None:
         prices=tuple(plan._prices),  # noqa: SLF001 - the slots the plan read, held between its runs
         production=_production(controller),
         stored=plan.stored,
+        control=_control_state(controller),
     )
+
+
+def _control_state(controller: Any) -> str | None:
+    """The battery control's state (`BatteryControl.state`), `None` where the site has none to read."""
+    control = getattr(controller, "battery_control", None)
+    if control is None:
+        return None
+    try:
+        state = control.state()
+    except Exception:  # noqa: BLE001 - the house view never fails on the control's status; it says Test instead
+        return None
+    return state if isinstance(state, str) else None
 
 
 def _heat(hass: HomeAssistant, controller: Any, read: Mapping[datetime, float] | None = None) -> HeatInputs | None:
