@@ -105,6 +105,12 @@ def test_a_mode_that_could_not_be_judged_is_tried_again_and_a_decided_one_is_kep
     assert report_status(stuck) == "failed" and not needs_run(stuck)
 
 
+def test_a_run_for_normal_alone_runs_hold_again_so_that_something_is_handed_back() -> None:
+    left = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="skipped")
+    assert modes_to_run(left) == ("hold",) and needs_run(left)
+    assert modes_to_run(_report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")) == ()
+
+
 def test_a_mode_left_pending_after_hold_and_normal_passed_is_tried_at_most_max_attempts_runs() -> None:
     modes = {"hold": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "obeyed", "normal": "restored"}
     assert needs_run(_report(attempts=MAX_ATTEMPTS - 1, **modes))

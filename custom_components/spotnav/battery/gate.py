@@ -224,9 +224,13 @@ def failed_mode(report: Mapping[str, Any] | None) -> str | None:
 
 
 def modes_to_run(report: Mapping[str, Any] | None) -> tuple[str, ...]:
-    """The battery modes a next run tries: those still pending (normal ends every run by itself)."""
+    """The battery modes a next run tries: those still pending (normal ends every run by itself). When only normal is
+    left, hold runs again, so that the hand-back normal judges is one of something written."""
     modes = _modes(report)
-    return tuple(name for name in BATTERY_MODES if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
+    pending = tuple(name for name in BATTERY_MODES if mode_verdict((modes.get(name) or {}).get("outcome")) == "pending")
+    if not pending and mode_verdict((modes.get(MODE_NORMAL) or {}).get("outcome")) == "pending":
+        return ("hold",)
+    return pending
 
 
 def needs_run(report: Mapping[str, Any] | None) -> bool:

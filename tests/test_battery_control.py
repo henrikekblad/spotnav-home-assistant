@@ -657,6 +657,25 @@ async def test_a_mode_that_cannot_be_judged_now_is_tried_again_later_not_failed(
     assert control.allowed() == {"hold", "grid_charge", "discharge_house"} and control.report()["attempts"] == 2
 
 
+async def test_normal_left_open_is_judged_on_a_hold_written_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    control._enabled_seen = True
+    _passed(control, normal="skipped")
+    control.reports[control.firmware_key()]["last_run_at"] = (dt_util.now() - timedelta(hours=3)).isoformat()
+    assert control.state() == "waiting"
+    now = await _looks(control, dt_util.now(), 1)
+    assert [result.mode for result in control.verification.results] == ["hold", "normal"]
+    await _looks(control, now, 200)
+    assert control.report()["modes"]["normal"]["outcome"] == "restored" and control.state() == "on"
+    assert any(call[2].get("entity_id") == DISCHARGE and call[2].get("value") == 0.0 for call in plant.calls)
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+
+
 async def test_a_firmware_change_hands_back_and_checks_again_at_the_next_suitable_evening(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

@@ -14,7 +14,9 @@ firmware before (Sigenergy SPC116/SPC117).
 Outcomes per mode: `obeyed` (every reading as asked), `ignored` (every reading as if nothing was written),
 `partial`, `not_judgeable:<why>` (the battery could not show it now: nothing to stop, nearly full, nearly empty, no
 rating, stale readings), `aborted:<why>` (the executor handed the battery back for a reason of its own: a write not
-taken, the fuse, a stale reading, a management change; the routine then stops) or, for normal, `restored`.
+taken, the fuse, a stale reading, a management change; the routine then stops, but for an abort for the moment's
+circumstances normal still judges that hand-back) or, for normal, `restored` (only after this run wrote something;
+`not_judgeable:nothing_written` otherwise).
 
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
@@ -33,6 +35,7 @@ from typing import Any, Final, Literal
 
 from .commands import ACTION_CURTAIL_EXPORT
 from .executor import Executor, StepResult
+from .gate import mode_verdict
 from .monitor import FLOOR_KW, Capability, Command, deliverable_kw, judge
 from .plan_model import ACTION_DISCHARGE_HOUSE, ACTION_GRID_CHARGE, ACTION_HOLD, ACTION_SELF_CONSUME
 
@@ -118,6 +121,8 @@ class Verification:
         self.stage: Stage = "command"
         self.stage_at = now
         self.last_reading_at: datetime | None = None
+        #: Whether this run wrote to the plant: normal judges a hand-back only after something was written.
+        self.wrote = False
         # `modes` runs only those (a later run retries the modes an earlier one could not judge); normal, the
         # hand-back's check, always ends a run.
         table = EXPORT_MODES if executor.control.kind == "export" else MODES
@@ -161,6 +166,8 @@ class Verification:
         if result is None:
             return
         state = step.state
+        if result.action != ACTION_SELF_CONSUME and (step.ops or state.phase in ("active", "restoring")):
+            self.wrote = True
         if result.action != ACTION_SELF_CONSUME and self.stage != "hand_back":
             hand_back = next((event for event in step.events if event["kind"] == "hand_back"), None)
             not_started = next((event for event in step.events if event["kind"] == "not_started"), None)
@@ -177,7 +184,11 @@ class Verification:
             if result.action == ACTION_SELF_CONSUME:
                 if state.phase in ("idle", "blocked") and not state.holds_snapshot and not step.ops:
                     result.taken_at = now
-                    result.outcome = "restored" if state.phase == "idle" else f"aborted:{state.blocked}"
+                    if not self.wrote:
+                        # Nothing of this run's was handed back: normal is judged at a later run.
+                        result.outcome = "not_judgeable:nothing_written"
+                    else:
+                        result.outcome = "restored" if state.phase == "idle" else f"aborted:{state.blocked}"
                     self._finish(now)
                 return
             if state.phase == "active" and state.action == result.action and state.pending is None and not step.ops:
@@ -256,9 +267,18 @@ class Verification:
         result = self.current
         if result is not None:
             result.outcome = outcome
-        # The executor hands the battery back by itself; nothing further is commanded.
+        # The executor hands the battery back by itself; no further mode is commanded. An abort for the moment's
+        # circumstances (`gate.mode_verdict` pending: the fuse, a stale reading) still lets normal judge that
+        # hand-back; one that shows the plant does not do as told ends the run.
+        moment = result is not None and result.action != ACTION_SELF_CONSUME and mode_verdict(outcome) == "pending"
+        normal = len(self.results) - 1
         for later in self.results[self.index + 1:]:
-            later.outcome = "skipped"
+            if not (moment and later is self.results[normal] and later.action == ACTION_SELF_CONSUME):
+                later.outcome = "skipped"
+        if moment and self.results[normal].action == ACTION_SELF_CONSUME and self.index < normal:
+            self.index = normal
+            self._enter(now, "command")
+            return
         self._finish(now)
 
     def _next(self, now: datetime) -> None:

@@ -3,10 +3,12 @@ a report per firmware string."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL, SOLAREDGE_CONTROL
 from custom_components.spotnav.battery.executor import Executor
+from custom_components.spotnav.battery.gate import mode_verdict
 from custom_components.spotnav.battery.monitor import Capability
 from custom_components.spotnav.battery.verify import MAX_REPORTS, Sample, Verification, keep_report
 from tests.battery_control_fakes import SIGENERGY_STATES, SOLAREDGE_STATES, T0, TICK, FakeBattery, inputs
@@ -14,7 +16,7 @@ from tests.battery_control_fakes import SIGENERGY_STATES, SOLAREDGE_STATES, T0, 
 
 def _verify(
     executor: Executor, battery: FakeBattery, *, looks: int = 400, house_kw: float = 2.0,
-    modes: tuple[str, ...] | None = None,
+    modes: tuple[str, ...] | None = None, headroom: Callable[[str | None], float] = lambda _mode: 20.0,
 ) -> Verification:
     now = T0
     verification = Verification(executor, now, firmware="V100R001C21SPC117", modes=modes)
@@ -24,7 +26,11 @@ def _verify(
         power = battery.power_kw(battery.action, battery.rate_kw)
         sample = Sample(power, 5.0, battery.soc_pct, house_kw)
         action, rate = verification.command(now, sample, 10.0)
-        result = executor.step(inputs(battery, now, action, rate, failed=failed, house_deficit_kw=house_kw))
+        current = verification.current
+        result = executor.step(inputs(
+            battery, now, action, rate, failed=failed, house_deficit_kw=house_kw,
+            headroom_a=headroom(None if current is None else current.mode),
+        ))
         failed = tuple(op.role for op in result.ops if not battery.apply(op))
         state = executor.state
         battery.action = state.action if state.phase == "active" else None
@@ -94,6 +100,26 @@ def test_a_later_run_tries_only_the_modes_left_and_always_ends_with_the_hand_bac
     executor = Executor(SIGENERGY_CONTROL)
     verification = _verify(executor, battery, modes=("charge",))
     assert _outcomes(verification) == {"charge": "obeyed", "normal": "restored"}
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+
+
+def test_normal_is_judged_only_after_the_run_wrote_something() -> None:
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    executor = Executor(SIGENERGY_CONTROL)
+    verification = _verify(executor, battery, modes=())
+    assert _outcomes(verification) == {"normal": "not_judgeable:nothing_written"}
+    assert battery.states == SIGENERGY_STATES
+
+
+def test_a_mode_aborted_for_the_moment_still_lets_normal_judge_the_hand_back() -> None:
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    executor = Executor(SIGENERGY_CONTROL)
+    # The fuse has no room when the charge mode comes: the executor does not take it.
+    verification = _verify(executor, battery, headroom=lambda mode: 0.5 if mode == "charge" else 20.0)
+    outcomes = _outcomes(verification)
+    assert outcomes["hold"] == "obeyed" and outcomes["charge"] == "aborted:headroom_too_small"
+    assert mode_verdict(outcomes["charge"]) == "pending"
+    assert outcomes["discharge_house"] == "skipped" and outcomes["normal"] == "restored"
     assert executor.state.phase == "idle" and not executor.state.holds_snapshot
 
 
