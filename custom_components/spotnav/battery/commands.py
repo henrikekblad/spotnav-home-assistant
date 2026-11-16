@@ -216,6 +216,10 @@ class BrandControl:
     hold_variants: tuple[HoldVariant, ...] = ()
     #: The hold variant this control runs (`None`: the brand has one hold).
     variant: str | None = None
+    #: Values written first, before the switch, on an enter after a hand-back whose write to a role that goes idle
+    #: with the switch (`Role.idle_when`) was never read back: the plant may still hold the command it had, and these
+    #: keep that command from acting until the role is written again (`executor.ExecState.unsure`).
+    prime: Mapping[str, Native] = field(default_factory=dict)
 
     def role(self, name: str) -> Role:
         for role in self.roles:
@@ -385,6 +389,10 @@ SIGENERGY_CONTROL: Final = BrandControl(
     " Consumption only, so turning it off hands back the mode it found.",
     hold_variants=SIGENERGY_HOLDS,
     variant=SIGENERGY_HOLDS[0].name,
+    # 40031 keeps its last value while Remote EMS is off, and the mode select is unavailable then (it cannot be
+    # written before the switch): both limits at 0 make a Command Charging or Discharging mode left there do nothing
+    # (V2.7: 40032 acts in 3 and 4, 40034 in 5 and 6; V2.9: everywhere) until the mode is written.
+    prime={"charge_limit": 0.0, "discharge_limit": 0.0},
 )
 
 #: An inverter's Output Type (Sigenergy's enum, lower-cased) as the phases it feeds.

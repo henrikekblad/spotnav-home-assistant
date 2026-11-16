@@ -70,6 +70,11 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   one (`ExecState.variant`, stored so a restart hands back with that variant's order) and changes it only while it
   holds nothing (`use_variant`). Every variant writes only the brand's roles, all of them in the snapshot, so the
   hand-back is the same whichever ran.
+* **A command left in the plant.** A role that goes idle with its switch (`Role.idle_when`, Sigenergy's mode
+  select while Remote EMS is off) cannot be read back once the switch is off, so a fuse hand-back, which writes both
+  at once, may leave its write unconfirmed (and 40031 at a command mode). Such a role is remembered
+  (`ExecState.unsure`, stored), and the next enter writes the brand's `prime` values before the switch (Sigenergy:
+  both limits at 0, so a mode left there does nothing), then the switch and the mode, then the action's own values.
 * **The export limit** (`commands.EXPORT_CONTROLS`, kind `export`): the same executor, ledger and rules run the
   site's export limit as its own instance, for the one action `curtail_export` (the limit at 0 kW while the sell price
   is below zero, `export_curtail.py`); anything else hands it back to the value found. It needs no battery reading
@@ -312,6 +317,14 @@ class ExecState:
     #: Roles written before the brand's enter order after a change of action: the grid charge's stop
     #: (`BrandControl.peak_first`), so no limit is loosened while the plant still charges from the grid; not stored.
     lead: tuple[str, ...] = ()
+    #: Roles that go idle with the switch (`Role.idle_when`) whose hand-back write was never read back (a fuse
+    #: hand-back writes the switch off at once): the plant may still hold the command. The next enter primes first.
+    unsure: tuple[str, ...] = ()
+    #: An enter that writes the brand's `prime` values first, until every role reads its target; not stored (a
+    #: restart hands back, and `unsure` primes the next enter again).
+    priming: bool = False
+    #: Roles read back during this hand-back; not stored.
+    confirmed: tuple[str, ...] = ()
 
     @property
     def holds_snapshot(self) -> bool:
@@ -352,6 +365,7 @@ class ExecState:
             "day": self.day,
             "writes_today": self.writes_today,
             "variant": self.variant,
+            "unsure": list(self.unsure),
         }
 
     @classmethod
@@ -425,6 +439,7 @@ class ExecState:
             day=text("day"),
             writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
             variant=text("variant"),
+            unsure=names("unsure"),
         )
 
 
@@ -729,6 +744,8 @@ class Executor:
                         self.state, pending=None if self.state.pending == role.name else self.state.pending,
                         in_flight=_without(self.state.in_flight, role.name), retries=retries,
                     )
+                if self.state.phase == "restoring" and role.name not in self.state.confirmed:
+                    self.state = replace(self.state, confirmed=(*self.state.confirmed, role.name))
                 events.append(_event(now, "confirmed", role.name, entity_id=entity_id, read=event.read))
             elif event.kind == "unconfirmed":
                 if self.state.pending == role.name:
@@ -929,7 +946,7 @@ class Executor:
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
-            charging_since=None,
+            charging_since=None, priming=False, confirmed=(),
         )
         return [_event(now, "hand_back", reason)]
 
@@ -985,10 +1002,17 @@ class Executor:
             blocked = None
         if state.reason == "daily_write_cap":
             blocked = "daily_write_cap"
+        # A role that goes idle with the switch, written by the action, and handed back without a read-back.
+        unsure = tuple(
+            role.name for role in self.control.roles
+            if role.idle_when and role.name in state.written and role.name in state.target
+            and role.name not in state.confirmed
+        )
         self.state = replace(
             state, phase="blocked" if blocked else "idle", blocked=blocked, action=None, rate_kw=0.0, target={},
             snapshot={}, restore_values={}, entities={}, device_id=None, snapshot_at=None, sent=(), renew=(),
-            released_at=now, given_up=state.given_up if blocked else (), written=(),
+            released_at=now, given_up=state.given_up if blocked else (), written=(), confirmed=(),
+            unsure=tuple(dict.fromkeys((*state.unsure, *unsure))),
         )
         return [_event(now, "handed_back", state.reason or "")]
 
@@ -996,11 +1020,14 @@ class Executor:
 
     def _wanted(self, action: str, rate_kw: float, restore_values: Mapping[str, Native]) -> dict[str, Native]:
         wanted = self.control.wanted(action, rate_kw, self.watchdog_s)
-        return {
+        out = {
             name: (restore_values[name] if value == SNAPSHOT else value)
             for name, value in wanted.items()
             if not (value == SNAPSHOT and name not in restore_values)
         }
+        if self.state.priming:
+            out |= {name: value for name, value in self.control.prime.items() if name in out}
+        return out
 
     def _rate(self, inputs: ExecInputs, commanded_kw: float) -> tuple[float, str | None]:
         """The rate to run the planned action at, and why it cannot run."""
@@ -1098,6 +1125,7 @@ class Executor:
             restore_values[role.name] = value
         action = inputs.action
         assert action is not None
+        self.state = replace(self.state, priming=bool(self.state.unsure and self.control.prime))
         self.state = replace(
             self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
             target=self._wanted(action, rate, restore_values), snapshot=snapshot, restore_values=restore_values,
@@ -1140,6 +1168,13 @@ class Executor:
         if why is not None:
             return self._begin_restore(now, why)
         events: list[dict[str, Any]] = []
+        if state.priming and state.pending is None and self._next_role(state, inputs) is None:
+            # Primed: the switch is on and the role that was unsure reads what this action wrote; now its own values.
+            self.state = state = replace(state, priming=False, unsure=())
+            self.state = state = replace(
+                state, target=self._wanted(state.action or action, state.rate_kw, state.restore_values), sent=(),
+            )
+            events.append(_event(now, "primed", state.action or action))
         if action != state.action:
             self.state = replace(
                 state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values),

@@ -542,3 +542,52 @@ def test_the_variant_to_run_is_the_one_that_passed_else_the_first_not_failed() -
     assert gate.hold_variant_to_run(report("partial", "pv_first", ("msc_no_discharge", "ignored"),
                                            ("pv_first", "partial")), names) is None
     assert gate.hold_variant_to_run(None, ()) is None
+
+
+# --- a mode write lost in a fuse hand-back ----------------------------------------------------------------------
+
+
+def _grid_charge_lost_mode() -> tuple[Executor, FakeBattery, object]:
+    """A grid charge handed back for the fuse whose mode write the plant dropped: 40031 still holds mode 3."""
+    executor, battery = Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 3.0)
+    battery.drops.add("control_mode")
+    now, results = run(executor, battery, now, 40, "grid_charge", 3.0, headroom_a=0.5)
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+    assert executor.state.phase == "idle" and battery.states["remote_ems"] == "off"
+    assert battery.register_40031 == "Command Charging (Grid First)"
+    battery.drops.clear()
+    return executor, battery, now
+
+
+def test_a_mode_write_lost_in_a_fuse_hand_back_is_remembered_over_a_restart() -> None:
+    executor, _battery, _now = _grid_charge_lost_mode()
+    assert executor.state.unsure == ("control_mode",)
+    assert ExecState.from_dict(executor.state.as_dict()).unsure == ("control_mode",)
+
+
+def test_the_next_enable_after_a_lost_mode_write_sets_both_limits_to_0_before_the_switch() -> None:
+    executor, battery, now = _grid_charge_lost_mode()
+    now, results = run(executor, battery, now + timedelta(minutes=5), 12, "hold")
+    roles = [role for role, _value in written(results)]
+    assert written(results)[:4] == [
+        ("charge_limit", 0.0), ("discharge_limit", 0.0), ("remote_ems", True), ("control_mode", MSC)
+    ]
+    # Then the hold's own values: the charge limit back as found (the rating), the discharge limit at 0.
+    assert written(results)[4:] == [("charge_limit", 10.0)]
+    assert roles.index("remote_ems") > roles.index("discharge_limit")
+    assert events(results, "primed") and executor.state.unsure == () and not executor.state.priming
+    assert battery.states == dict(SIGENERGY_STATES) | {
+        "remote_ems": "on", "control_mode": MSC, "charge_limit": "10", "discharge_limit": "0"
+    }
+
+
+def test_a_hand_back_that_read_its_mode_back_primes_nothing() -> None:
+    executor, battery = Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 3.0)
+    now, _ = run(executor, battery, now, 12, "self_consume")
+    assert executor.state.phase == "idle" and executor.state.unsure == ()
+    _now, results = run(executor, battery, now + timedelta(minutes=5), 8, "hold")
+    # 40031 kept the Maximum Self Consumption the hand-back wrote: nothing more to write.
+    assert written(results) == [("discharge_limit", 0.0), ("remote_ems", True)]
+    assert battery.states["control_mode"] == MSC
