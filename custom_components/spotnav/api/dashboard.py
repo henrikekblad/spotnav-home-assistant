@@ -2462,7 +2462,7 @@ def serialize_site(
     )
 
 
-def serialize_site_entry(
+def capture_site_block(
     hass: HomeAssistant,
     entry: ConfigEntry,
     *,

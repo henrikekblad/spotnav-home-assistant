@@ -5,7 +5,7 @@ A compare-and-set over one site config entry's stored data, reusing the dashboar
 
 * The charger names the site (`charger_id`); the server resolves it. Or (since 3.0, for the shared settings popover
   of a home with or without chargers) `site_id` names the site itself; the `site` block is then read from the site
-  (`dashboard_api.serialize_site_entry`), in the same shape. The webhook stays charger-bound.
+  (`dashboard_api.capture_site_block`), in the same shape. The webhook stays charger-bound.
 * A stale write is a `conflict`: `expected` carries the values (a subset of
   `solar_priority`/`solar_forecast`) the card last saw, and the current `site` block travels back.
 * One write, only the fields this command owns. `changes` names `solar_priority` and/or
@@ -64,7 +64,7 @@ from .dashboard import (
     DashboardFailure,
     resolve_charger_request,
     serialize_site,
-    serialize_site_entry,
+    capture_site_block,
     site_binding,
     solar_forecast_choices,
 )
@@ -129,12 +129,12 @@ async def _site_block(
 ) -> dict[str, Any] | None:
     """The `site` block this command answers with: `capture_site` re-read now and serialized as the
     dashboard does (`writable` is always `True`; only an admin reaches this far). A request that named the site
-    (`charger_entry_id` `None`) reads the site's own block (`serialize_site_entry`).
+    (`charger_entry_id` `None`) reads the site's own block (`capture_site_block`).
     """
     if charger_entry_id is None:
         if site_entry is None:
             return None
-        return serialize_site_entry(
+        return capture_site_block(
             hass,
             site_entry,
             forecast_domains=forecast_domains,
@@ -198,7 +198,7 @@ async def async_update_site_settings(
     while waiting starts again.
 
     `site_id` in place of `charger_id` names the site itself (a site without chargers too): its unknown id is
-    `spotnav_unknown_site`, and the answer's `site` block is the site's own (`serialize_site_entry`).
+    `spotnav_unknown_site`, and the answer's `site` block is the site's own (`capture_site_block`).
     """
     charger_entry_id: str | None
     if site_id is not None:

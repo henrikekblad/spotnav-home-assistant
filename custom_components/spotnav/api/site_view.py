@@ -41,7 +41,7 @@ from ..pricing.price_source import PriceSource, site_price_source
 from ..runtime import domain_data
 from ..runtime import site_controller_for
 from ..setup_checklist import capture_site_setup, serialize_setup
-from .dashboard import serialize_fiscal, serialize_site_entry
+from .dashboard import serialize_fiscal, capture_site_block
 from .grid_tariff import capture_site_grid_tariff, serialize_grid_tariff
 from .price_source import capture_site_price_source, serialize_price_source
 from .settings import encoded_override
@@ -168,7 +168,7 @@ def site_settings_view(
         "battery": {"found": battery_found(hass, site)},
         "setup": serialize_setup(capture_site_setup(hass, site)),
         "price_settings": price_settings_block(hass, site, writable=writable),
-        "site": serialize_site_entry(hass, site, forecast_domains=forecast_domains, can_act=writable),
+        "site": capture_site_block(hass, site, forecast_domains=forecast_domains, can_act=writable),
     }
 
 
