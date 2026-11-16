@@ -174,9 +174,11 @@ changes.
 - **A new charger was not added to the site.** Only a charger whose wiring SpotNav can tell (three
   phases and exactly one measured-current source on its device) is offered to the site. Add it from
   the site's **Configure**.
-- **A site has no charger.** The card is shown per charger, so a site on its own has no card. Add a
-  charger: **Settings, Devices & services, SpotNav, Add entry, Charger**; it offers to join the
-  site. The same sentence is in the site's Repairs entry and in its sensor's `next_step` attribute.
+- **A site has no charger.** That is fine for a home with only a battery or heating: use the
+  [house card](house-card.md) (and the heat card); their gear opens the site's settings. The charging card is shown
+  per charger. To add one later: **Settings, Devices & services, SpotNav, Add entry, Charger**; it offers to join the
+  site. The settings popover's **Get started** says the same and can be answered **Not needed**; there is no Repairs
+  entry for it.
 - **The site needs its meter chosen.** When no grid meter is found, pick the entities yourself or
   skip and finish later under the site's **Configure**. See
   [Set up SpotNav](setup.md#when-the-meter-is-not-found).

@@ -27,8 +27,18 @@ start).
 
 SpotNav can run the battery itself: hold it while the car charges from the grid, charge it in cheap hours, and
 stop export when selling costs money. **It is off by default, and in this release it is still being tested on site:
-even switched on, it only logs what it would do ("shadow only") until the tests are done.** The switch will be in
-the card's settings, site section ("Home battery"); until then there is no way to turn it on from the card.
+even switched on, it only logs what it would do ("shadow only") until the tests are done.** The switch is in the
+settings popover's **Home battery** section, shown when SpotNav finds a battery: from the house card's gear, the heat
+card's gear or the charging card's **Card settings** (administrators only). The section also has:
+
+* one line under the switch saying what control does now (off, test mode, checking, waiting for a suitable moment and
+  why, on, stopped, or only watching while the AI mode is not yet accepted);
+* the checklist of what you still have to do (enable an entity, turn on the firmware sensor, accept the AI-mode
+  takeover), each in plain words;
+* the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
+  passed, failed or not judged yet) with what SpotNav may then do;
+* the reminder to turn AI mode on again after a takeover ended, and **Allow selling from the battery** (off by
+  default).
 
 **Sigenergy** (the Sigenergy Local Modbus integration) is the first brand. Before control can run:
 
@@ -70,7 +80,7 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
 the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the
 Sigenergy app if you want it back* ("SpotNav tar över styrningen; när du stänger av hamnar batteriet i Maximal
 egenförbrukning — slå på AI-läget i Sigenergy-appen igen om du vill tillbaka"). Without that, a plant in AI mode is
-only watched. When you turn control off after such a takeover, the card reminds you once to turn AI mode on again
+only watched. In the battery section the checklist line **Read and accept** opens that text with **I understand**. When you turn control off after such a takeover, the card reminds you once to turn AI mode on again
 ("slå på AI-läget i Sigenergy-appen igen"); the reminder goes when the plant reads AI mode again.
 
 **Turning off** hands the battery back at once: control mode to Maximum Self Consumption, Remote EMS off, the
@@ -86,8 +96,8 @@ noted; then turn SpotNav's switch off.
 **For the on-site tests only** (Developer tools, administrators): `spotnav.battery_control_test` runs one action
 (`hold`, `grid_charge`, `discharge_house`, `export_discharge`, `curtail_export`, or `stop`) through the same write
 path with every rule for some minutes and then hands back; it is refused while the site is shadow only unless
-`force_test` is set. `spotnav.battery_control_settings` writes the site's battery control options until the card has
-the switch. Neither is meant for everyday use.
+`force_test` is set. `spotnav.battery_control_settings` writes the site's battery control options, the owner's test
+flags included (the card's section leaves those out). Neither is meant for everyday use.
 
 The site's diagnostics show it all under `battery_control`: the options, the state, the check's report per firmware,
 the actions allowed, what is missing, the notes, and the log of every write, refusal and would-do.

@@ -240,10 +240,11 @@ to only one site.
 Go to **Settings, Devices & services, Add integration, SpotNav** and choose **A site (load
 balancing)**.
 
-A site with no charger yet is fine, but nothing is shared until it has one, and the card needs a
-charger to show anything. The site's setup steps (including the confirmation), its Repairs entry,
-its own sensor and the card's editor all say the same thing: **Add a charger: Settings, Devices & services, SpotNav, Add entry, Charger; it will
-offer to join this site.**
+A site with no charger is fine: a home with only a battery or heating starts with the
+[house card](house-card.md), whose gear opens the site's settings (Get started, price, site, home battery, heating).
+The charging card needs a charger. The site's setup steps (including the confirmation) and the charging card's editor
+say how to add one: **Add a charger: Settings, Devices & services, SpotNav, Add entry, Charger; it will offer to join
+this site.** Get started in the settings popover offers it too, and **Not needed** keeps that row away.
 
 ### The basics
 
