@@ -1,5 +1,15 @@
-"""The heat card's commands (SpotNav 3.0, plan `plans/v3_heat_card.md`): `spotnav/update_heat` writes the site's heat
-settings (`heat/config.py`) with a compare-and-set. Shadow only: nothing here or behind it writes to a heating device.
+"""The heat card's commands (SpotNav 3.0, plan `plans/v3_heat_card.md`): `spotnav/get_heat` reads the card's view of
+a site, `spotnav/update_heat` writes the site's heat settings (`heat/config.py`) with a compare-and-set. Shadow only:
+nothing here or behind it writes to a heating device.
+
+`spotnav/get_heat` (API v1): `{api_version: 1, site_id | charger_id}`, any user who can see the card; the answer is
+`heat/view.py:heat_view` (its docstring has the shape; `writable` and `choices` only for an administrator). Read from
+what Home Assistant holds: the settings, the chosen sensors' states and their last half hour from the recorder
+(`heat/rooms.py`, read again every `ROOM_REFRESH_S`), the zones' climate entities and a power sensor on each one's
+device, the heat pump's facts (`heat/detect.py`), the heat pump meter's 5-minute rows of the last day
+(`heat/meter_split.py`, read again once per new 5-minute row), the prices with their fees as the battery plan holds
+them, the cars' measured hours and installed plans. The day band is the shadow rule's (`heat/shadow_rule.py`); each
+change of what it would do now is logged once (`ShadowLog`, in the diagnostics). Refusals as `spotnav/get_house`.
 
 `spotnav/update_heat` (API v1):
 
@@ -25,16 +35,22 @@ house forecast reads it at its next refresh, which the write asks for.
 from __future__ import annotations
 
 import logging
+import math
+from collections import deque
+from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import callback, HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from ..const import CONF_HEAT, CONF_HEAT_METER_ENTITY
+from .. import time_zones
+from ..battery.plan_runtime import site_car_windows
+from ..const import CONF_HEAT, CONF_HEAT_METER_ENTITY, DOMAIN
 from ..heat.config import (
     FIELDS,
     USER_FIELDS,
@@ -44,14 +60,36 @@ from ..heat.config import (
     comparable,
     read_config,
 )
+from ..heat.detect import other_controllers, read_heat_pumps
+from ..heat.facts import HeatPumpFacts
+from ..heat.meter_split import levels, split_day
+from ..heat.rooms import WINDOW, Indoor, SensorReading, indoor
+from ..heat.view import HEAT_API_VERSION, KIND_AIR, KIND_FLOOR, HeatViewInputs, MeterInputs, Outdoor, ZoneReading, heat_view
+from ..pricing.price_source import site_price_source
 from ..runtime import site_controller_for
-from ..site.heat_meter import sensor_kind
+from ..site.heat_meter import (
+    HEAT_WORDS,
+    KIND_POWER,
+    SOURCE_SETTING,
+    STATUS_NONE,
+    async_heat_hours,
+    needs_setting,
+    sensor_kind,
+)
+from ..site.house_forecast import to_celsius
 from .common import ERROR_NOT_ADMIN, is_admin, send_unsupported_version
-from .power_month import PowerMonthRefusal, _site_of_request
+from .house import async_cached_car_hours, five_slot
+from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
 
-HEAT_API_VERSION: Final = 1
+_CACHE: Final = f"{DOMAIN}_heat_reads"
+_SHADOW_LOG: Final = f"{DOMAIN}_heat_shadow_log"
+SHADOW_LOG_SIZE: Final = 96
+#: The indoor sensors' history is read again after this many seconds.
+ROOM_REFRESH_S: Final = 120
+#: An indoor sensor is offered when it reads within this band now (°C).
+INDOOR_CHOICE: Final = (10.0, 30.0)
 
 ERROR_CONFLICT: Final = "spotnav_conflict"
 ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
@@ -214,12 +252,443 @@ def websocket_update_heat(hass: HomeAssistant, connection: websocket_api.ActiveC
     connection.send_result(msg["id"], _envelope(site))
 
 
-def heat_settings_diagnostics(entry: ConfigEntry) -> dict[str, Any]:
-    """The diagnostics block: the settings as stored and read (entity ids only, no states)."""
-    return {"stored": entry.data.get(CONF_HEAT), "read": config_block(entry)}
+def heat_settings_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """The diagnostics block: the settings as stored and read (entity ids only, no states), and what the shadow rule
+    would have done, each change once (`ShadowLog`)."""
+    logs: dict[str, ShadowLog] = hass.data.get(_SHADOW_LOG, {})
+    log = logs.get(entry.entry_id)
+    return {
+        "stored": entry.data.get(CONF_HEAT),
+        "read": config_block(entry),
+        "shadow_log": [] if log is None else log.as_list(),
+    }
+
+
+# ------------------------------------------------------------------------------------------------ the read
+
+
+def _name(hass: HomeAssistant, entity_id: str) -> str:
+    state = hass.states.get(entity_id)
+    if state is not None:
+        return state.name
+    entry = er.async_get(hass).async_get(entity_id)
+    return (entry.name or entry.original_name or entity_id) if entry is not None else entity_id
+
+
+def _area(hass: HomeAssistant, entity_id: str) -> str | None:
+    """The entity's area, else its device's."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None:
+        return None
+    if entry.area_id:
+        return entry.area_id
+    if entry.device_id is None:
+        return None
+    device = dr.async_get(hass).async_get(entry.device_id)
+    return None if device is None else device.area_id
+
+
+def _celsius_of(hass: HomeAssistant, entity_id: str) -> float | None:
+    state = hass.states.get(entity_id)
+    if state is None:
+        return None
+    if entity_id.startswith("weather."):
+        return to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
+    return to_celsius(state.state, state.attributes.get("unit_of_measurement"))
+
+
+def _float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def zone_kind(attributes: Mapping[str, Any]) -> str:
+    """An air-to-air heat pump has fan or swing modes; an electric floor thermostat has neither."""
+    return KIND_AIR if attributes.get("fan_modes") or attributes.get("swing_modes") else KIND_FLOOR
+
+
+def _power_w(hass: HomeAssistant, entity_id: str) -> float | None:
+    """A power sensor on the climate entity's own device (W), where it has one."""
+    registry = er.async_get(hass)
+    entry = registry.async_get(entity_id)
+    if entry is None or entry.device_id is None:
+        return None
+    for other in er.async_entries_for_device(registry, entry.device_id):
+        if not other.entity_id.startswith("sensor.") or (other.device_class or other.original_device_class) != "power":
+            continue
+        state = hass.states.get(other.entity_id)
+        value = None if state is None else _float(state.state)
+        if value is not None:
+            return value * 1000.0 if state.attributes.get("unit_of_measurement") == "kW" else value
+    return None
+
+
+def _heating_now(state: Any) -> bool | None:
+    if state is None or state.state in ("unavailable", "unknown"):
+        return None
+    action = state.attributes.get("hvac_action")
+    if action is not None:
+        return action in ("heating", "preheating")
+    return None if state.state == "off" else None
+
+
+def read_zones(hass: HomeAssistant, config: HeatConfig) -> tuple[ZoneReading, ...]:
+    zones: list[ZoneReading] = []
+    for zone in config.zones:
+        state = hass.states.get(zone.entity_id)
+        attributes = {} if state is None else state.attributes
+        available = state is not None and state.state not in ("unavailable", "unknown")
+        zones.append(
+            ZoneReading(
+                entity_id=zone.entity_id,
+                name=_name(hass, zone.entity_id),
+                kind=zone_kind(attributes),
+                offset_c=zone.offset_c,
+                current_c=_float(attributes.get("current_temperature")),
+                setpoint_c=_float(attributes.get("temperature")),
+                hvac_mode=None if state is None else state.state,
+                heating=_heating_now(state),
+                power_w=_power_w(hass, zone.entity_id),
+                available=available,
+            )
+        )
+    return tuple(zones)
+
+
+def read_outdoor(hass: HomeAssistant, config: HeatConfig, controller: Any, pump: HeatPumpFacts | None) -> Outdoor | None:
+    """The chosen outdoor sensor, else the house forecast's own (the heat pump's sensor or the weather), else the
+    heat pump's reading."""
+    if config.outdoor_sensor is not None:
+        return Outdoor(_celsius_of(hass, config.outdoor_sensor), config.outdoor_sensor, _name(hass, config.outdoor_sensor), "setting")
+    forecast = controller.house_forecast
+    value = forecast.outdoor_c()
+    if value is not None:
+        entity_id = forecast.outdoor_entity_id if forecast.outdoor_source == "sensor" else forecast.weather_entity_id
+        return Outdoor(value, entity_id, None if entity_id is None else _name(hass, entity_id), "house_forecast")
+    if pump is not None and pump.outdoor_temp_c is not None:
+        return Outdoor(pump.outdoor_temp_c, pump.anchor_entity_id, pump.label, "pump")
+    return None
+
+
+async def _history(hass: HomeAssistant, entity_ids: tuple[str, ...], start: datetime, end: datetime) -> dict[str, list[tuple[datetime, float]]]:
+    """The sensors' readings in `[start, end]` with the one in force at `start`, from the recorder (its executor)."""
+    if not entity_ids:
+        return {}
+    from homeassistant.components.recorder import get_instance, history  # noqa: PLC0415 - only when loaded
+
+    def read() -> dict[str, list[Any]]:
+        return history.get_significant_states(
+            hass, start, end, list(entity_ids), significant_changes_only=False, include_start_time_state=True
+        )
+
+    rows = await get_instance(hass).async_add_executor_job(read)
+    out: dict[str, list[tuple[datetime, float]]] = {}
+    for entity_id, states in rows.items():
+        series: list[tuple[datetime, float]] = []
+        for state in states:
+            value = to_celsius(getattr(state, "state", None), getattr(state, "attributes", {}).get("unit_of_measurement"))
+            changed = getattr(state, "last_changed", None)
+            if value is not None and isinstance(changed, datetime):
+                series.append((changed, value))
+        out[entity_id] = series
+    return out
+
+
+async def _cached(hass: HomeAssistant, key: tuple[Any, ...], mark: Any, read: Any) -> Any:
+    """`read()`, kept per site and kind until `mark` changes (one entry per site and kind)."""
+    cache: dict[tuple[Any, ...], tuple[Any, Any]] = hass.data.setdefault(_CACHE, {})
+    held = cache.get(key)
+    if held is not None and held[0] == mark:
+        return held[1]
+    value = await read()
+    cache[key] = (mark, value)
+    return value
+
+
+@callback
+def forget_cached_heat(hass: HomeAssistant, site_entry_id: str) -> None:
+    """Drop a site's cached reads (its unload)."""
+    cache: dict[tuple[Any, ...], Any] | None = hass.data.get(_CACHE)
+    if cache:
+        for key in [key for key in cache if key[0] == site_entry_id]:
+            del cache[key]
+
+
+async def read_indoor(hass: HomeAssistant, site_id: str, config: HeatConfig, zones: tuple[ZoneReading, ...], now: datetime) -> Indoor:
+    sensors = config.indoor_sensors
+    mark = (sensors, int(now.timestamp() // ROOM_REFRESH_S))
+    try:
+        histories = await _cached(
+            hass, (site_id, "rooms"), mark, lambda: _history(hass, sensors, now - WINDOW - timedelta(minutes=5), now)
+        )
+    except Exception:  # noqa: BLE001 - without the recorder no sensor is seen rising: all of them count
+        _LOGGER.debug("SpotNav heat: the indoor sensors' history could not be read", exc_info=True)
+        histories = {}
+    readings = [
+        SensorReading(
+            entity_id,
+            _name(hass, entity_id),
+            _celsius_of(hass, entity_id),
+            tuple(histories.get(entity_id, ())),
+            _area(hass, entity_id),
+        )
+        for entity_id in sensors
+    ]
+    heating_areas = frozenset(
+        area
+        for zone in zones
+        if zone.kind == KIND_AIR and zone.heating
+        if (area := _area(hass, zone.entity_id)) is not None
+    )
+    return indoor(readings, now, heating_areas)
+
+
+def _meter_kw_now(hass: HomeAssistant, entity_id: str | None, kind: str | None) -> float | None:
+    if entity_id is None or kind != KIND_POWER:
+        return None
+    state = hass.states.get(entity_id)
+    value = None if state is None else _float(state.state)
+    if value is None:
+        return None
+    unit = state.attributes.get("unit_of_measurement")  # type: ignore[union-attr]
+    return value / 1000.0 if unit == "W" else value * 1000.0 if unit == "MW" else value
+
+
+async def read_meter(hass: HomeAssistant, site_id: str, controller: Any, now: datetime, day_start: datetime) -> MeterInputs | None:
+    heat = controller.house_forecast.heat
+    meter = heat.meter
+    if meter.status == STATUS_NONE:
+        return None
+    periods: dict[datetime, float] = {}
+    if meter.found:
+        start = min(day_start, now - timedelta(hours=24))
+        try:
+            periods = await _cached(
+                hass,
+                (site_id, "meter"),
+                (meter.entity_id, five_slot(now)),
+                lambda: async_heat_hours(hass, meter, start, now, "5minute"),
+            )
+        except Exception:  # noqa: BLE001 - without the 5-minute rows there is no split, the rest is shown
+            _LOGGER.debug("SpotNav heat: the heat meter's 5-minute rows could not be read", exc_info=True)
+            periods = {}
+    window_kw = {start: kwh * 12.0 for start, kwh in periods.items()}
+    found = levels(window_kw)
+    last = window_kw[max(window_kw)] if window_kw else None
+    day_end = day_start + timedelta(days=1, hours=1)
+    split = split_day(window_kw, day_start, day_end) if periods else None
+    state = None if meter.entity_id is None else hass.states.get(meter.entity_id)
+    return MeterInputs(
+        status=meter.status,
+        entity_id=meter.entity_id,
+        name=None if state is None else state.name,
+        source=meter.source,
+        setting_offered=needs_setting(heat.detected) or meter.source == SOURCE_SETTING,
+        candidates=tuple(meter.candidates),
+        kw_now=_meter_kw_now(hass, meter.entity_id, meter.kind),
+        last_period_kw=last,
+        levels=found,
+        split=split,
+        periods={start: kwh for start, kwh in periods.items() if start >= day_start},
+    )
+
+
+def _car_hours(hass: HomeAssistant, controller: Any, measured: Mapping[datetime, float]) -> frozenset[datetime]:
+    """Hours a car charged (measured, over 0.1 kWh) or is planned to (an installed plan's window)."""
+    hours = {start for start, kwh in measured.items() if kwh > 0.1}
+    try:
+        windows = site_car_windows(hass, controller)
+    except Exception:  # noqa: BLE001 - the band shows the rest
+        windows = []
+    for start, end, _kw in windows:
+        moment = start.replace(minute=0, second=0, microsecond=0)
+        while moment < end:
+            hours.add(moment)
+            moment += timedelta(hours=1)
+    return frozenset(hours)
+
+
+def _choice(hass: HomeAssistant, entity_id: str, **extra: Any) -> dict[str, Any]:
+    state = hass.states.get(entity_id)
+    value = None
+    if state is not None and state.state not in ("unavailable", "unknown"):
+        unit = state.attributes.get("unit_of_measurement")
+        value = f"{state.state} {unit}" if unit else state.state
+    return {"entity_id": entity_id, "name": _name(hass, entity_id), "value": value, **extra}
+
+
+def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | None, meter: MeterInputs | None) -> dict[str, Any]:
+    """What each setting may be set to, for an administrator (see `heat/view.py`): Home Assistant's entities that fit,
+    never a configuration or diagnostic entity nor SpotNav's own, and always what is chosen now."""
+    registry = er.async_get(hass)
+
+    def visible(entity_id: str) -> bool:
+        entry = registry.async_get(entity_id)
+        return entry is None or (
+            entry.platform != DOMAIN
+            and entry.entity_category is None
+            and entry.disabled_by is None
+            and entry.hidden_by is None
+        )
+
+    groups: dict[str, list[str]] = {name: [] for name in ("indoor", "outdoor", "zones", "relay", "offset", "setpoint", "hot_water", "meter")}
+    for state in hass.states.async_all():
+        entity_id = state.entity_id
+        if not visible(entity_id):
+            continue
+        domain = entity_id.split(".", 1)[0]
+        if domain == "sensor" and is_temperature(hass, entity_id):
+            value = _celsius_of(hass, entity_id)
+            if value is not None and INDOOR_CHOICE[0] <= value <= INDOOR_CHOICE[1]:
+                groups["indoor"].append(entity_id)
+            groups["outdoor"].append(entity_id)
+        elif domain == "weather":
+            groups["outdoor"].append(entity_id)
+        elif domain == "climate" and "heat" in (state.attributes.get("hvac_modes") or ()):
+            if state.state != "unavailable":
+                groups["zones"].append(entity_id)
+            groups["setpoint"].append(entity_id)
+        elif domain in ("switch", "input_boolean"):
+            groups["relay"].append(entity_id)
+            groups["hot_water"].append(entity_id)
+        elif domain in ("button", "input_button"):
+            groups["hot_water"].append(entity_id)
+        elif domain in ("number", "input_number") and state.attributes.get("unit_of_measurement") in TEMPERATURE_UNITS:
+            groups["offset"].append(entity_id)
+        elif domain == "sensor" and meter is not None and meter.setting_offered:
+            kind = sensor_kind(hass, entity_id)
+            if kind == KIND_POWER and (HEAT_WORDS.search(state.name or "") or entity_id in meter.candidates):
+                groups["meter"].append(entity_id)
+    chosen = {
+        "indoor": list(config.indoor_sensors),
+        "outdoor": [config.outdoor_sensor] if config.outdoor_sensor else [],
+        "zones": [zone.entity_id for zone in config.zones],
+        "relay": [e for e in (config.control_entity, config.control_entity_b) if e and config.control_path in ("relay", "sg_ready")],
+        "offset": [config.control_entity] if config.control_path == "offset" and config.control_entity else [],
+        "setpoint": [config.control_entity] if config.control_path == "setpoint" and config.control_entity else [],
+        "hot_water": [config.hot_water_entity] if config.hot_water_entity else [],
+        "meter": [meter.entity_id] if meter is not None and meter.entity_id else [],
+    }
+    if pump is not None:
+        for capability in pump.capabilities:
+            group = {"offset": "offset", "setpoint": "setpoint", "hot_water_boost": "hot_water", "sg_ready": "relay"}.get(capability.kind)
+            if group is not None:
+                chosen[group].append(capability.entity_id)
+    out: dict[str, Any] = {}
+    for name, found in groups.items():
+        ids = list(dict.fromkeys([*chosen[name], *found]))
+        if name == "meter" and (meter is None or not meter.setting_offered):
+            out[name] = None
+            continue
+        items = [
+            _choice(hass, entity_id, **({"kind": zone_kind((hass.states.get(entity_id).attributes if hass.states.get(entity_id) else {}))} if name == "zones" else {}))  # type: ignore[union-attr]
+            for entity_id in ids
+        ]
+        out[name] = sorted(items, key=lambda item: (item["entity_id"] not in chosen[name], str(item["name"]).casefold()))
+    return out
+
+
+async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool) -> dict[str, Any]:
+    """The answer for one site, or a `PowerMonthRefusal`."""
+    controller = site_controller_for(hass, site.entry_id)
+    if site.state is not ConfigEntryState.LOADED or controller is None:
+        raise PowerMonthRefusal(ERROR_NO_SITE, "The site is not loaded")
+    now = controller.demand.now()
+    tz = controller.demand.tracker.tz
+    zone_info = time_zones.require_zone(tz)
+    local = now.astimezone(zone_info)
+    day_start = datetime(local.year, local.month, local.day, tzinfo=zone_info).astimezone(timezone.utc)
+    config = stored_config(site)
+    pumps = read_heat_pumps(hass)
+    pump = pumps[0] if pumps else None
+    zones = read_zones(hass, config)
+    rooms = await read_indoor(hass, site.entry_id, config, zones, now)
+    meter = await read_meter(hass, site.entry_id, controller, now, day_start)
+    measured_car: Mapping[datetime, float] = {}
+    try:
+        measured_car = await async_cached_car_hours(hass, site.entry_id, controller) or {}
+    except Exception:  # noqa: BLE001 - the band shows the rest
+        _LOGGER.debug("SpotNav heat: the cars' hours could not be read", exc_info=True)
+    slots = controller.battery_shadow.plan.buy_slots(now)
+    source = site_price_source(hass, site.entry_id)
+    area = None if source is None else source.area
+    answer = heat_view(
+        HeatViewInputs(
+            site_id=site.entry_id,
+            now=now,
+            tz=tz,
+            writable=writable,
+            config=config,
+            config_block=config_block(site),
+            indoor=rooms,
+            outdoor=read_outdoor(hass, config, controller, pump),
+            zones=zones,
+            pump=pump,
+            other_controllers=other_controllers(hass),
+            meter=meter,
+            prices=tuple((slot.start, slot.end, slot.buy) for slot in slots),
+            money=None if area is None else (area.currency, area.major_unit, area.minor_unit),
+            car_hours=_car_hours(hass, controller, measured_car),
+            choices=heat_choices(hass, config, pump, meter) if writable else None,
+        )
+    )
+    shadow_log(hass, site.entry_id).record(now, answer["status"]["would"])
+    return answer
+
+
+class ShadowLog:
+    """What the shadow rule would do, each change once, newest last, bounded: the review reads it later."""
+
+    def __init__(self) -> None:
+        self.entries: deque[dict[str, Any]] = deque(maxlen=SHADOW_LOG_SIZE)
+
+    def record(self, now: datetime, would: Mapping[str, Any] | None) -> None:
+        key = None if would is None else (would.get("action"), would.get("target_c"), would.get("until"))
+        last = self.entries[-1] if self.entries else None
+        if last is not None and last.get("key") == key:
+            return
+        entry = {"at": now.isoformat(), "key": key, **({} if would is None else dict(would))}
+        self.entries.append(entry)
+        _LOGGER.debug("SpotNav heat (shadow): would %s", "keep the pump's own curve" if would is None else would)
+
+    def as_list(self) -> list[dict[str, Any]]:
+        return [{k: v for k, v in entry.items() if k != "key"} for entry in self.entries]
+
+
+def shadow_log(hass: HomeAssistant, site_entry_id: str) -> ShadowLog:
+    logs: dict[str, ShadowLog] = hass.data.setdefault(_SHADOW_LOG, {})
+    return logs.setdefault(site_entry_id, ShadowLog())
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "spotnav/get_heat",
+        vol.Optional("api_version"): object,
+        vol.Optional("charger_id"): object,
+        vol.Optional("site_id"): object,
+    }
+)
+@websocket_api.async_response
+async def websocket_get_heat(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """The heat card's view of one site (see `heat/view.py`)."""
+    version = msg.get("api_version")
+    if type(version) is not int or version != HEAT_API_VERSION:
+        send_unsupported_version(connection, msg, HEAT_API_VERSION)
+        return
+    try:
+        site = _site_of_request(hass, msg)
+        answer = await heat_answer(hass, site, writable=is_admin(connection))
+    except PowerMonthRefusal as refusal:
+        connection.send_error(msg["id"], refusal.code, refusal.message)
+        return
+    connection.send_result(msg["id"], answer)
 
 
 @callback
 def async_setup_heat_api(hass: HomeAssistant) -> None:
     """Register the heat card's commands once for the domain."""
     websocket_api.async_register_command(hass, websocket_update_heat)
+    websocket_api.async_register_command(hass, websocket_get_heat)

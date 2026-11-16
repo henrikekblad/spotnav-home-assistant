@@ -12,9 +12,10 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from custom_components.spotnav.api.heat import websocket_update_heat
+from custom_components.spotnav.api.heat import websocket_get_heat, websocket_update_heat
 from custom_components.spotnav.const import CONF_HEAT, CONF_HEAT_METER_ENTITY
 from custom_components.spotnav.diagnostics import _site_diagnostics
+from custom_components.spotnav.heat.view import HEAT_KEYS
 
 from .test_demand_site import pilot_site
 
@@ -119,3 +120,51 @@ async def test_field_errors_and_refusals(hass: HomeAssistant, freezer) -> None:
     ):
         answer = await update(hass, **request, changes={"target_c": 20.0})
         assert not answer["success"] and answer["error"]["code"] == code
+
+
+async def read(hass: HomeAssistant, admin: bool = True, **request: Any) -> dict[str, Any]:
+    connection = _Connection(admin)
+    websocket_get_heat(hass, connection, {"id": 1, "type": "spotnav/get_heat", **request})  # type: ignore[arg-type]
+    await hass.async_block_till_done()
+    (answer,) = connection.answers
+    return answer
+
+
+async def test_the_read_on_the_pilot_site(hass: HomeAssistant, freezer) -> None:
+    site = await pilot_site(hass, freezer)
+    _sensors(hass)
+    hass.states.async_set(
+        "climate.luft", "heat", {"current_temperature": 21.5, "temperature": 21, "fan_modes": ["auto"], "hvac_action": "heating"}
+    )
+    written = await update(
+        hass,
+        api_version=1,
+        site_id=site.entry_id,
+        changes={
+            "indoor_sensors": ["sensor.kok", "sensor.ovanvaning"],
+            "zones": [{"entity_id": "climate.golvvarme"}, {"entity_id": "climate.luft", "offset_c": -1.0}],
+        },
+    )
+    assert written["result"]["ok"], written
+    answer = await read(hass, api_version=1, charger_id="entry_a")
+    assert answer["success"], answer
+    result = answer["result"]
+    assert tuple(result) == HEAT_KEYS and result["shadow"] is True and result["writable"] is True
+    assert (result["indoor"]["value_c"], result["indoor"]["coldest"]) == (20.5, "sensor.ovanvaning")
+    assert [(zone["kind"], zone["aim_c"]) for zone in result["zones"]] == [("floor", 21.0), ("air", 20.0)]
+    assert result["zones"][1]["heating"] is True
+    choices = result["choices"]
+    assert [item["entity_id"] for item in choices["indoor"]][:2] == ["sensor.kok", "sensor.ovanvaning"]
+    assert "sensor.cpu_load" not in [item["entity_id"] for item in choices["indoor"]]
+    assert {item["entity_id"]: item["kind"] for item in choices["zones"]} == {"climate.golvvarme": "floor", "climate.luft": "air"}
+    relays = [item["entity_id"] for item in choices["relay"]]
+    assert "switch.larm_rele_1" in relays and not any(entity_id.startswith("switch.spotnav") for entity_id in relays)
+    assert len(result["band"]["hours"]) == 24 and result["pump"] is None
+    # Someone who is not an administrator reads the same without the choices.
+    user = (await read(hass, False, api_version=1, site_id=site.entry_id))["result"]
+    assert user["writable"] is False and user["choices"] is None
+    diagnostics = _site_diagnostics(hass, site)["heat_settings"]
+    assert diagnostics["shadow_log"], diagnostics
+    for request, code in (({"site_id": site.entry_id}, "spotnav_unsupported_api_version"), ({"api_version": 1, "site_id": "x"}, "spotnav_unknown_site")):
+        refused = await read(hass, **request)
+        assert not refused["success"] and refused["error"]["code"] == code
