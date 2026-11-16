@@ -72,8 +72,17 @@ def test_the_cooler_night_and_away() -> None:
     away = HeatConfig(target_c=21.0, mode="away", away_until=(MIDNIGHT + timedelta(hours=17)).isoformat())
     hours, _ = band(away, HOURS, priced(), MIDNIGHT + timedelta(hours=8), ZONE)
     assert actions(hours)[:17] == "A" * 15 + "RR" and hours[0].target_c == 18.0 and hours[15].target_c == 21.0
-    would = would_do(hours, MIDNIGHT + timedelta(hours=8))
+    would = would_do(hours, MIDNIGHT + timedelta(hours=8), away, ZONE)
     assert would is not None and (would.action, would.until, would.reason) == ("away", MIDNIGHT + timedelta(hours=15), "away")
+    # Away for days: the line follows it past the day's end, to the warm-up before the return.
+    long_away = HeatConfig(target_c=21.0, mode="away", away_until=(MIDNIGHT + timedelta(days=4, hours=16)).isoformat())
+    hours, _ = band(long_away, HOURS, priced(), MIDNIGHT + timedelta(hours=8), ZONE)
+    would = would_do(hours, MIDNIGHT + timedelta(hours=8), long_away, ZONE)
+    assert would is not None and would.until == MIDNIGHT + timedelta(days=4, hours=14)
+    # The cooler night at 23:30 lasts to 06:00 the next morning.
+    hours, _ = band(night, HOURS, priced(), MIDNIGHT + timedelta(hours=23, minutes=30), ZONE)
+    would = would_do(hours, MIDNIGHT + timedelta(hours=23, minutes=30), night, ZONE)
+    assert would is not None and would.until == MIDNIGHT + timedelta(days=1, hours=6)
 
 
 def test_a_short_day_at_the_clock_change() -> None:

@@ -215,8 +215,12 @@ def band(
     return out, guard
 
 
-def would_do(hours: Sequence[BandHour], now: datetime) -> WouldDo | None:
-    """The running hour's action and until when the same action lasts (`None` past the band's end)."""
+def would_do(
+    hours: Sequence[BandHour], now: datetime, config: HeatConfig | None = None, zone: ZoneInfo | None = None
+) -> WouldDo | None:
+    """The running hour's action and until when the same action lasts (`None` past the band's end). An action that
+    runs to the band's end is followed past it where its end is known: away to the return's warm-up, the cooler night
+    to its end time the next morning; a normal day has no end."""
     ordered = sorted(hours, key=lambda hour: hour.start)
     for index, hour in enumerate(ordered):
         if hour.start <= now < hour.start + timedelta(hours=1):
@@ -226,5 +230,15 @@ def would_do(hours: Sequence[BandHour], now: datetime) -> WouldDo | None:
                     break
                 until = later.start + timedelta(hours=1)
             last = ordered[-1].start + timedelta(hours=1)
-            return WouldDo(hour.action, hour.target_c, None if until >= last and hour.action == ACTION_NORMAL else until, hour.reason)
+            if until >= last:
+                if hour.action == ACTION_NORMAL:
+                    return WouldDo(hour.action, hour.target_c, None, hour.reason)
+                if config is not None and hour.action == ACTION_AWAY and (away_end := config.away_end()) is not None:
+                    until = max(until, away_end - timedelta(hours=RETURN_HOURS))
+                elif config is not None and zone is not None and hour.action == ACTION_NIGHT:
+                    local = last.astimezone(zone)
+                    end_minutes = config.night.minutes()[1]
+                    end = local.replace(hour=end_minutes // 60, minute=end_minutes % 60)
+                    until = max(until, end.astimezone(timezone.utc))
+            return WouldDo(hour.action, hour.target_c, until, hour.reason)
     return None

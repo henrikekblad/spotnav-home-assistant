@@ -188,7 +188,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
     band_hours, guard = band(
         config, hours, hour_prices, now, zone_info, outdoor_c=outdoor_c, coldest_c=inputs.indoor.value_c
     )
-    would = would_do(band_hours, now)
+    would = would_do(band_hours, now, config, zone_info)
     current = now.replace(minute=0, second=0, microsecond=0)
 
     meter = inputs.meter
