@@ -219,3 +219,11 @@ def test_the_check_is_kept_without_its_running_try() -> None:
     kept = Check.from_dict(check.as_dict())
     assert kept.phase == PHASE_WAIT and kept.tries == check.tries
     assert Check.from_dict(None).tries == [] and Check.from_dict({"tries": ["x"], "power_passes": True}).power_passes == 0
+
+
+def test_where_the_supply_reads_the_power_is_not_judged() -> None:
+    check = Check()
+    moment = to_closed(check, Sample(1.1, "heating", 40.3))
+    # The compressor pauses by itself, but the calculated supply does not move: no effect.
+    _moment, steps = run(check, moment, int(EFFECT_GRACE / MIN) + 1, Sample(0.5, "heating", 40.2), True)
+    assert check.phase != PHASE_OPENED and outcome(steps) == "failed:no_effect"

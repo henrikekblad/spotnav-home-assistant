@@ -329,8 +329,8 @@ class Check:
 
     def _effect(self, sample: Sample) -> bool:
         if self.baseline_supply is not None and sample.supply_c is not None:
-            if sample.supply_c <= self.baseline_supply - SUPPLY_DROP_C:
-                return True
+            # The supply follows the contact at once: where it reads, it alone is judged.
+            return sample.supply_c <= self.baseline_supply - SUPPLY_DROP_C
         if self.baseline_kw is not None and sample.kw is not None:
             return sample.kw <= self.baseline_kw * POWER_DROP_SHARE and self.baseline_kw - sample.kw >= POWER_DROP_MIN_KW
         return False
