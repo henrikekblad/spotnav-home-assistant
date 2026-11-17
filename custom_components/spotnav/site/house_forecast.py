@@ -373,6 +373,10 @@ class SiteHouseForecast:
         #: rest where it is (`None` without a meter or its hours). Shown and logged only.
         self.heat = SiteHeatMeter(hass, heat_setting, heat_zones, heat_moved)
         self.heat_split: HeatSplit | None = None
+        #: The same split on the heat pump's own meter alone (the zones left out): what the heat pump's relay or SG
+        #: Ready contacts change, read by the heat shadow for the relay's effect and the tight hours. The same object
+        #: as `heat_split` without zones.
+        self.pump_heat_split: HeatSplit | None = None
         #: The house figure's forecast (shown, logged), its median (the battery plan's and the expected surplus's)
         #: and, on a site whose house figure is the whole load, the import less the chargers for the import target
         #: (else `None`).
@@ -716,9 +720,19 @@ class SiteHouseForecast:
                 split = await self.hass.async_add_executor_job(
                     partial(heat_split, hours, heat, now, tz, temperatures=temperatures, holidays=self.holidays)
                 )
+            # The pump alone: the relay and SG Ready's contacts change the pump, never the zones.
+            pump = dict(self.heat.by_hour) if self.heat.meter.found else {}
+            pump_split = None
+            if pump and pump == heat:
+                pump_split = split
+            elif pump:
+                pump_split = await self.hass.async_add_executor_job(
+                    partial(heat_split, hours, pump, now, tz, temperatures=temperatures, holidays=self.holidays)
+                )
             if self._closed:
                 return
             self.heat_split = split
+            self.pump_heat_split = pump_split
             if split is None:
                 return
             oldest = now - timedelta(days=KEEP_HOURS_DAYS)

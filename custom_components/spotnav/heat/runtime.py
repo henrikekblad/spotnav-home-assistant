@@ -349,9 +349,10 @@ class HeatShadow:
         return state.state in CLOSED, state.last_changed
 
     def heat_kw(self) -> Callable[[datetime], float | None]:
-        """The heat per hour (kW): the house forecast's heat part, else the meter's mean over its last day."""
+        """The heat pump's own heat per hour (kW), what its relay or SG Ready contacts change: the house forecast's
+        split on the pump's meter alone (the zones left out), else the meter's mean over its last day."""
         forecast = self.site.house_forecast
-        split = forecast.heat_split
+        split = getattr(forecast, "pump_heat_split", None)
         known = {} if split is None else split.heat.known_by_hour()
         recent = sorted(forecast.heat.by_hour.items())[-24:]
         fallback = sum(kwh for _start, kwh in recent) / len(recent) if recent else None
