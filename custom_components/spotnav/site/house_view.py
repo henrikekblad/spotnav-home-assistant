@@ -49,6 +49,12 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   past hours) and its forecast (`heat_forecast_kw`: past, the first logged; ahead, the latest); both are part of
   `house_kw`/`house_forecast_kw`, never added to them. Shown only: nothing plans on the split.
 
+* **`saving`**: what SpotNav saved on the shown day, `{date, total, battery, car, heat, battery_share, car_since}`
+  (`site/spotnav_saving.py`, its docstring has each part's counterfactual and the rule against counting twice): each
+  part `None` where the site does not have it or not yet for the day, `total` their sum; `battery_share` the share of
+  the day SpotNav controlled the battery (0: the battery's own control, its arbitrage in `today` is its own),
+  `car_since` the first day the car's figure is known from. `None` without any part.
+
 Each hour also has `car_kw`: the cars' measured energy in the past hour (kWh = mean kW; the energy flow's own figures,
 the chargers' registers else the battery plan's measure), `null` ahead and where the cars could not be measured.
 
@@ -125,6 +131,7 @@ HOUSE_KEYS: Final = (
     "days",
     "sources",
     "heat",
+    "saving",
 )
 HOUR_KEYS: Final = (
     "start",
@@ -266,6 +273,9 @@ class HouseInputs:
     #: A learning period that holds something back now (`BatteryControl.learning_hold`): `{what, days_left, cap_kw}`;
     #: shown on today only.
     learning: tuple[Mapping[str, Any], ...] = ()
+    #: What SpotNav saved on the shown day (`site/spotnav_saving.saving_block`, the shell works it out); `None`
+    #: without any part.
+    saving: Mapping[str, Any] | None = None
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -769,4 +779,5 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
             "solar_forecasts": [] if inputs.sun is None else list(inputs.sun.forecast_names),
         },
         "heat": heat_block(inputs),
+        "saving": None if inputs.saving is None else dict(inputs.saving),
     }

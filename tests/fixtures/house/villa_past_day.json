@@ -919,6 +919,15 @@
     "major_unit": "kr",
     "minor_unit": "öre"
   },
+  "saving": {
+    "battery": 3510.0,
+    "battery_share": 1.0,
+    "car": 1700.0,
+    "car_since": "2026-11-12",
+    "date": "2026-11-12",
+    "heat": 158.0,
+    "total": 5368.0
+  },
   "site_id": "site_villa",
   "sources": {
     "holiday_calendar": "calendar.sverige",

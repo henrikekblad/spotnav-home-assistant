@@ -59,6 +59,7 @@ from custom_components.spotnav.site.house_view import (
     house_view,
 )
 from custom_components.spotnav.site.load_forecast import forecast_house_load
+from custom_components.spotnav.site.spotnav_saving import DaySaving, saving_block
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "house"
 WRITE = os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1"
@@ -376,6 +377,8 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
             actual={row.start: heat_kw(row.start) for row in rows},
             forecast={start: round(heat_kw(start) * 1.02, 3) for start in ahead},
         ),
+        # The owner's site: the battery under its own control (shadow), so only the car is SpotNav's today.
+        saving=saving_block(date(2026, 11, 13), DaySaving(car=1720.5, battery_share=0.0), date(2026, 11, 10)),
     )
 
 
@@ -513,7 +516,9 @@ def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
         has_battery=True,
         soc_pct=31.5,
     )
-    view = house_view(replace(full_inputs(), day=yesterday, energy_flow=flow))
+    # A past day SpotNav controlled the battery all day, and lowered the heat.
+    saving = saving_block(yesterday, DaySaving(battery=3510.0, car=1700.0, heat=158.0, battery_share=1.0), yesterday)
+    view = house_view(replace(full_inputs(), day=yesterday, energy_flow=flow, saving=saving))
     assert tuple(view) == HOUSE_KEYS
     hours = view["hours"]
     assert [row["start"] for row in hours] == [(midnight + timedelta(hours=i)).isoformat() for i in range(24)]

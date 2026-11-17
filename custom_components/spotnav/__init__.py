@@ -37,6 +37,7 @@ from .api.heat import async_setup_heat_api, forget_cached_heat
 from .api.heat_history import async_setup_heat_history_api, forget_cached_heat_history
 from .api.house import async_setup_house_api, forget_cached_flow
 from .api.house_history import async_setup_house_history_api, forget_cached_history
+from .api.saving import forget_cached_savings
 from .api.house_loads import async_setup_house_loads_api, forget_cached_loads
 from .api.power_month import async_setup_power_month_api
 from .api.target_suggestion import async_setup_target_suggestion_api
@@ -852,6 +853,7 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     entry.async_on_unload(partial(forget_cached_flow, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_heat, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_history, hass, entry.entry_id))
+    entry.async_on_unload(partial(forget_cached_savings, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_loads, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_heat_history, hass, entry.entry_id))
     await controller.async_initialize()
