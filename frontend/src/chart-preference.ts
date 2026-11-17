@@ -1,5 +1,6 @@
 // The chart's per-viewer display preferences, remembered in this browser only:
 //   * whether the price chart is collapsed to its strip, per charger;
+//   * whether the heat card's day chart is folded away, per site;
 //   * the chart's time axis ("day" or "from_now"), one choice for every SpotNav card in this browser;
 //   * the unit prices are shown in ("minor" or "major"), likewise one choice for the whole browser.
 //
@@ -56,6 +57,28 @@ export function writeChartCollapsed(
 /** The stored choice wins; without one, the YAML `chart` option; without that, the full chart. */
 export function initialChartCollapsed(stored: boolean | null, configured: ChartPresentation | undefined): boolean {
   return stored ?? configured === "compact";
+}
+
+export function heatChartKey(siteId: string): string {
+  return `spotnav-heat-card.chart.${siteId}`;
+}
+
+/** The heat card's day chart for this site: `true` folded away, `false` shown, `null` when nothing usable is stored. */
+export function readHeatChartCollapsed(store: () => PreferenceStore | null, siteId: string): boolean | null {
+  try {
+    const value = store()?.getItem(heatChartKey(siteId)) ?? null;
+    return value === "hidden" ? true : value === "shown" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeHeatChartCollapsed(store: () => PreferenceStore | null, siteId: string, collapsed: boolean): void {
+  try {
+    store()?.setItem(heatChartKey(siteId), collapsed ? "hidden" : "shown");
+  } catch {
+    // Nothing is remembered in this browser; the choice still holds for this card.
+  }
 }
 
 /** The chart axis is one choice for the whole browser, not per charger. */

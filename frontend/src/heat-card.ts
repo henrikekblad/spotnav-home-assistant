@@ -8,6 +8,7 @@
 // YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`.
 
 import { getHeat, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { browserStore, readHeatChartCollapsed, writeHeatChartCollapsed, type PreferenceStore } from "./chart-preference";
 import { writeError, writeHeat } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
@@ -80,6 +81,8 @@ export class SpotnavHeatCard extends HTMLElement {
   private settingsPopover: SettingsPopover | null = null;
   private historyDialog: HistoryDialog<HeatHistory> | null = null;
   private readonly idPrefix: string;
+  /** This browser's storage for the day chart's folded state; a test may hand in its own. */
+  store: () => PreferenceStore | null = browserStore;
 
   constructor() {
     super();
@@ -271,7 +274,7 @@ export class SpotnavHeatCard extends HTMLElement {
     }
     const base = this.ui.pendingTarget ?? answer.config.target_c;
     const next = Math.min(TARGET_MAX, Math.max(TARGET_MIN, Math.round((base + delta) * 2) / 2));
-    this.ui = { pendingTarget: next, error: null };
+    this.ui = { ...this.ui, pendingTarget: next, error: null };
     this.render();
     if (this.settle !== null) {
       clearTimeout(this.settle);
@@ -280,12 +283,12 @@ export class SpotnavHeatCard extends HTMLElement {
       this.settle = null;
       const wanted = this.ui.pendingTarget;
       if (wanted === null || wanted === answer.config.target_c) {
-        this.ui = { pendingTarget: null, error: null };
+        this.ui = { ...this.ui, pendingTarget: null, error: null };
         this.render();
         return;
       }
       void this.write({ target_c: wanted }).then((error) => {
-        this.ui = { pendingTarget: null, error };
+        this.ui = { ...this.ui, pendingTarget: null, error };
         this.render();
       });
     }, DIAL_SETTLE_MS);
@@ -358,6 +361,11 @@ export class SpotnavHeatCard extends HTMLElement {
     }
     const doc = this.ownerDocument;
     const language = this.cardLanguage();
+    const answer = this.answer();
+    if (answer !== null && this.ui.chartCollapsed === undefined) {
+      // The day chart as this browser last left it for the site; shown when nothing is remembered.
+      this.ui = { ...this.ui, chartCollapsed: readHeatChartCollapsed(this.store, answer.site_id) ?? false };
+    }
     this.mount.replaceChildren(
       heatBody({
         doc,
@@ -366,6 +374,7 @@ export class SpotnavHeatCard extends HTMLElement {
         ui: this.ui,
         width: this.width,
         nowMs: Date.now(),
+        idPrefix: this.idPrefix,
         handlers: {
           onStep: (delta) => this.step(delta),
           onHome: () => {
@@ -380,6 +389,17 @@ export class SpotnavHeatCard extends HTMLElement {
           onAway: () => this.showAway(),
           onSettings: () => this.showSettings(),
           onHistory: (opener) => this.showHistory(opener),
+          // Folding the chart and choosing a time change the drawn card in place; kept here for the next redraw.
+          onChartCollapsed: (collapsed) => {
+            this.ui = { ...this.ui, chartCollapsed: collapsed, chartSelectedMs: null };
+            const site = this.answer()?.site_id;
+            if (site !== undefined) {
+              writeHeatChartCollapsed(this.store, site, collapsed);
+            }
+          },
+          onChartSelect: (ms) => {
+            this.ui = { ...this.ui, chartSelectedMs: ms };
+          },
           onTest: (open) => {
             this.ui = { ...this.ui, testOpen: open };
             this.render();

@@ -1,14 +1,16 @@
 """The heat card's indoor curve for one local day: what a lowering did to the rooms (SpotNav 3.0). Pure.
 
     indoor_day: {start, end, step_min, low_c, high_c,
-                 points: [{start, mean_c, coldest_c}],
-                 setpoint: [{start, target_c, action}] | null} | null
+                 points: [{start, mean_c, coldest_c, coldest}],
+                 setpoint: [{start, target_c, action}] | null,
+                 rooms: [{entity_id, name}]} | null
 
 * **`points`**: the chosen indoor sensors' measured means per step (`step_min`: 15 on the live card, from the
   recorder's 5-minute statistics; 60 in the history, from its hourly ones), only up to now. Each sensor counts as its
   reading less its offset (its room's own aim against the house target, `heat/config.py`), so every room is on the
   house's scale: `mean_c` is the mean of the sensors that have the step, `coldest_c` the lowest (what the control
-  compares with the comfort band; the same as `mean_c` with one sensor). A step without a reading is left out. Every
+  compares with the comfort band; the same as `mean_c` with one sensor), `coldest` that room's sensor. A step without a
+  reading is left out. Every
   chosen sensor counts: the live exclusion of a room warmed by a stove or the sun (`heat/rooms.py`) is not made
   afresh for the past.
 * **`low_c`**, **`high_c`**: the comfort band around the target as set now.
@@ -16,6 +18,7 @@
   night setback and away included), for the history only; `null` on the live card, whose band hours carry it
   (`band.hours[].target_c`). Where the relay control sets no temperature, a lowered hour's target is the band's
   lower edge: no learned effect in degrees exists to draw instead.
+* **`rooms`**: the chosen sensors' names, so a chart can name the coldest room at a step.
 
 `None` without indoor sensors chosen.
 """
@@ -32,7 +35,7 @@ from .rooms import plausible
 #: The live card's step (min); the history's is an hour.
 LIVE_STEP_MIN: Final = 15
 HISTORY_STEP_MIN: Final = 60
-INDOOR_DAY_KEYS: Final = ("start", "end", "step_min", "low_c", "high_c", "points", "setpoint")
+INDOOR_DAY_KEYS: Final = ("start", "end", "step_min", "low_c", "high_c", "points", "setpoint", "rooms")
 
 
 def _number(value: Any) -> float | None:
@@ -76,12 +79,14 @@ def points(
             held[1] += 1
     out: list[dict[str, Any]] = []
     for index in sorted(sums):
-        values = [total / count - offsets.get(entity_id, 0.0) for entity_id, (total, count) in sums[index].items()]
+        values = {entity_id: total / count - offsets.get(entity_id, 0.0) for entity_id, (total, count) in sums[index].items()}
+        coldest = min(values, key=lambda entity_id: (values[entity_id], entity_id))
         out.append(
             {
                 "start": (start + timedelta(seconds=index * step_s)).isoformat(),
-                "mean_c": round(sum(values) / len(values), 2),
-                "coldest_c": round(min(values), 2),
+                "mean_c": round(sum(values.values()) / len(values), 2),
+                "coldest_c": round(values[coldest], 2),
+                "coldest": coldest,
             }
         )
     return out
@@ -95,8 +100,10 @@ def indoor_day(
     now: datetime,
     step_min: int,
     setpoint: Sequence[tuple[datetime, float, str]] | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    """The block (see the module); `setpoint` as `(hour start, target °C, action)`."""
+    """The block (see the module); `setpoint` as `(hour start, target °C, action)`, `names` the sensors' names by
+    entity id (the entity id where one is missing)."""
     if not config.indoor_sensors:
         return None
     chosen = {entity_id: readings.get(entity_id, {}) for entity_id in config.indoor_sensors}
@@ -111,6 +118,7 @@ def indoor_day(
         "setpoint": None
         if setpoint is None
         else [{"start": hour.isoformat(), "target_c": round(target, 2), "action": action} for hour, target, action in setpoint],
+        "rooms": [{"entity_id": entity_id, "name": (names or {}).get(entity_id) or entity_id} for entity_id in config.indoor_sensors],
     }
 
 

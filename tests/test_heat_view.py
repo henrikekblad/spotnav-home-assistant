@@ -240,7 +240,10 @@ def villa_answer(**overrides: Any) -> dict[str, Any]:
             automations=villa_automations(),
             names={"climate.golvvarme_toalett_nere": "Golvvärme toalett nedervåning"},
             review=villa_review(),
-            indoor_day=indoor_day(config, villa_rooms(), MIDNIGHT, MIDNIGHT + timedelta(days=1), NOW, LIVE_STEP_MIN),
+            indoor_day=indoor_day(
+                config, villa_rooms(), MIDNIGHT, MIDNIGHT + timedelta(days=1), NOW, LIVE_STEP_MIN,
+                names={sensor.entity_id: sensor.name for sensor in sensors},
+            ),
             control=control_status(
                 "waiting",
                 "automation",
@@ -427,4 +430,6 @@ def test_the_villa_has_its_indoor_curve_up_to_now() -> None:
     before, lowered = curve["points"][0], curve["points"][7 * 4]
     assert (before["mean_c"], before["coldest_c"]) == (21.17, 20.7)
     assert lowered["coldest_c"] == 20.7 and lowered["mean_c"] < before["mean_c"]
+    assert before["coldest"] == "sensor.toalett_nv_temperatur"
+    assert curve["rooms"][0] == {"entity_id": "sensor.inomhus_kok_temperatur", "name": "Inomhus kök temperatur"}
     assert villa_answer(indoor_day=None)["indoor_day"] is None

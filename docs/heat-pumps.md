@@ -49,7 +49,7 @@ comfort figures of the day's review and the heat history. The card still shows e
 
 With the heat pump's lowering input wired to a relay in Home Assistant (NIBE's external contact set to shift the curve
 down, or an SG Ready pump's first contact), SpotNav can switch that relay itself on its own heat plan, the same plan
-the heat card's day band shows. **It is off by default.** The switch, **Styr värmen**, is in the **Heating** section of
+the heat card's day chart shows. **It is off by default.** The switch, **Styr värmen**, is in the **Heating** section of
 the settings popover (administrators only) and is shown when the control path is **Relay** or **SG Ready**. Off, the
 relay is left alone and SpotNav only shows what it would do. Level C/D (a setpoint or a curve offset written to the
 pump) is not part of this.
@@ -89,6 +89,7 @@ SpotNav never turns an automation off. Another heat optimiser (EffektGuard) or t
 control from starting.
 
 **What you see**: the line under the switch (off; checking; controlling and until when; or what it waits for), the
-heat card's header chip **Styr värmen** instead of "Test" while it runs, and SpotNav's own lowerings in the relay's row
-of the day's band (**SpotNav sänkte**). The diagnostics (`heat_settings.control`) keep the switchings, the check's
+heat card's header chip **Styr värmen** instead of "Test" while it runs, and SpotNav's own lowerings as solid columns
+in the day's chart (**SpotNav sänkte**), beside the plan's lighter ones, the rooms and the setpoint. Tap or point at
+the chart for a time's figures; tap its heading to fold it away (each browser remembers that per site). The diagnostics (`heat_settings.control`) keep the switchings, the check's
 results and why each decision was made.

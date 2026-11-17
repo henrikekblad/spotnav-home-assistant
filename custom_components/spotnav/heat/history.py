@@ -394,6 +394,7 @@ def day_indoor(inputs: HeatHistoryInputs, outdoor_by_day: Mapping[date, float]) 
         inputs.now,
         HISTORY_STEP_MIN,
         day_setpoint(inputs, period.first, outdoor_by_day.get(period.first)),
+        names={entity_id: name for entity_id, (name, _hours) in inputs.indoor.items()},
     )
 
 
