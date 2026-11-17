@@ -204,8 +204,11 @@ describe("the front", () => {
     expect(line).toMatch(/^Styr: sänker värmen till .+, för varmt inne\.$/);
   });
 
-  it("says today's heat and hot water and their cost", () => {
-    expect(todayLine("sv", answer())).toBe("I dag · värme 13,9 kWh · varmvatten 1,7 kWh · 19 kr");
+  it("says today's heat (the zones' own meters in it) and hot water and their cost", () => {
+    expect(todayLine("sv", answer())).toBe("I dag · värme 17,5 kWh · varav zoner 3,6 kWh · varmvatten 1,7 kWh · 22 kr");
+    const plain = answer();
+    plain.today = { ...plain.today!, zones_kwh: null };
+    expect(todayLine("en", plain)).not.toContain("zones");
     expect(todayLine("en", answer("network_pump.json"))).toBeNull();
   });
 

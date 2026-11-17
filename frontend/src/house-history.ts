@@ -416,7 +416,8 @@ function flowSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
     block.append(note(doc, translate(language, flow.heat_hours < flow.hours ? "house.flow.heatPart" : "house.flow.heatRule")));
   }
   if (onHouse !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
-    block.append(note(doc, translate(language, "house.loads.tap"), "loads"));
+    const heat = diagram.querySelector(".spotnav-house-flow-action[data-role='heat']") !== null;
+    block.append(note(doc, translate(language, heat ? "house.loads.tapHeat" : "house.loads.tap"), "loads"));
   }
   return block;
 }

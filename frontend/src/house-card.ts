@@ -10,7 +10,7 @@
 
 import { getHouse, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { entityWordsOf } from "./entity-words";
-import { LOADS_STYLES, LoadsPopover, type LoadsRequest } from "./house-loads";
+import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from "./house-loads";
 import { decodeHouse, type EnergyFlow } from "./house-model";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
@@ -134,9 +134,9 @@ export class SpotnavHouseCard extends HTMLElement {
         width: () => this.width,
         decode: decodeHouseHistory,
         body: houseHistoryBody,
-        flowHouse: (answer, back) => {
+        flowHouse: (answer, back, kind) => {
           const running = answer.today >= answer.date && answer.today < answer.end;
-          this.ensureLoads().open({ period: answer.period, date: answer.date, running, ...apart(answer.energy_flow) }, null, back);
+          this.ensureLoads().open({ kind, period: answer.period, date: answer.date, running, ...apart(answer.energy_flow) }, null, back);
         },
       });
     }
@@ -158,14 +158,14 @@ export class SpotnavHouseCard extends HTMLElement {
     return this.loadsPopover;
   }
 
-  /** What the house used on the day the front shows (any user who sees the card). */
-  showLoads(opener: HTMLElement | null = null): void {
+  /** What the house (or the heat) used on the day the front shows (any user who sees the card). */
+  showLoads(opener: HTMLElement | null = null, kind: LoadsKind = "house"): void {
     if (this.target() === null || this.state.kind !== "ready") {
       return;
     }
     const answer = this.state.answer;
     const past = answer.day !== null && !answer.day.today;
-    const request: LoadsRequest = { period: "day", date: past ? answer.day!.date : null, running: !past, ...apart(answer.energy_flow) };
+    const request: LoadsRequest = { kind, period: "day", date: past ? answer.day!.date : null, running: !past, ...apart(answer.energy_flow) };
     this.ensureLoads().open(request, opener);
   }
 
@@ -378,7 +378,7 @@ export class SpotnavHouseCard extends HTMLElement {
           },
           ...(admin ? { onSettings: () => this.showSettings() } : {}),
           onHistory: (opener) => this.showHistory(opener),
-          onHouseLoads: (opener) => this.showLoads(opener),
+          onHouseLoads: (opener, kind) => this.showLoads(opener, kind),
         },
         width: this.width,
         nowMs: Date.now(),

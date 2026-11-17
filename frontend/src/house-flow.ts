@@ -14,11 +14,15 @@
 // * The colours are custom properties a theme may set (`--spotnav-flow-solar` and so on), each fill bright enough for
 //   the dark words on it on a light and a dark card.
 // * With `onHouse`, the house block is a button (tap, Enter or Space): the card opens what the house used
-//   (`house-loads.ts`).
+//   (`house-loads.ts`); so is the heat block where the heat holds more than one source (`heat_sources`: the heat
+//   pump's meter, floor heating, an air-to-air heat pump), opening its own pie.
 
 import { formatFixed, formatNumber } from "./format";
 import type { EnergyFlow, FlowLink, FlowNode } from "./house-model";
 import { translate, type Language, type TranslationKey } from "./i18n";
+
+/** Which block's pie is opened. */
+export type LoadsKind = "house" | "heat";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -135,7 +139,7 @@ export function renderFlow(
   width: number,
   idPrefix: string,
   past = false,
-  onHouse: ((opener: HTMLElement) => void) | null = null,
+  onHouse: ((opener: HTMLElement, kind: LoadsKind) => void) | null = null,
 ): SVGSVGElement | null {
   const big = new Set(flow.nodes.filter((node) => node.kwh >= MIN_SHOWN_KWH).map((node) => node.id));
   const linked = new Set(flow.links.filter((link) => link.kwh > 0 && big.has(link.from) && big.has(link.to)).flatMap((link) => [link.from, link.to]));
@@ -266,8 +270,9 @@ export function renderFlow(
       const title = svg(doc, "title");
       title.textContent = `${name} ${labels.kwh(node.kwh)} (${labels.share(node.kwh)})`;
       group.append(title);
-      if (onHouse !== null && node.role === "house" && node.side === "use") {
-        houseButton(group, language, `${name} ${labels.kwh(node.kwh)} (${labels.share(node.kwh)})`, onHouse);
+      if (onHouse !== null && node.side === "use" && (node.role === "house" || (node.role === "heat" && flow.heat_sources > 1))) {
+        const kind: LoadsKind = node.role === "heat" ? "heat" : "house";
+        houseButton(group, language, `${name} ${labels.kwh(node.kwh)} (${labels.share(node.kwh)})`, (opener) => onHouse(opener, kind), kind);
       }
       root.append(group);
     }
@@ -275,11 +280,11 @@ export function renderFlow(
   return root;
 }
 
-/** The house block as a button: focusable, named, opened by a tap, Enter or Space. */
-function houseButton(group: SVGGElement, language: Language, figures: string, onHouse: (opener: HTMLElement) => void): void {
+/** The house (or heat) block as a button: focusable, named, opened by a tap, Enter or Space. */
+function houseButton(group: SVGGElement, language: Language, figures: string, onHouse: (opener: HTMLElement) => void, kind: LoadsKind): void {
   group.setAttribute("role", "button");
   group.setAttribute("tabindex", "0");
-  group.setAttribute("aria-label", translate(language, "house.loads.open", { figures }));
+  group.setAttribute("aria-label", translate(language, kind === "heat" ? "house.loads.openHeat" : "house.loads.open", { figures }));
   group.classList.add("spotnav-house-flow-action");
   // An SVG element focuses and is told apart from a removed one as an HTML element is.
   const opener = group as unknown as HTMLElement;

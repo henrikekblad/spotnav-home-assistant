@@ -6,7 +6,7 @@
 // with Detailed on, the day's hot-water runs one by one. Every figure is
 // the backend's; text is written with `textContent` only.
 
-import { clock, formatFixed, formatNumber, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, formatNumber, type FormatContext } from "./format";
 import { fits, HEAT_HISTORY_API_VERSION, INDOOR_DAY, REVIEW, roomName, type HeatReview, type IndoorDay } from "./heat-model";
 import { dayChart, hoursOf } from "./heat-day-chart";
 import { bucketWords, isoDay, periodKind } from "./house-history";
@@ -32,6 +32,8 @@ export interface HeatBucket {
   key: string;
   kwh: number | null;
   hot_water_kwh: number | null;
+  /** The heat zones' energy in the bucket, already in `kwh`; `null` without a zone counted. */
+  zones_kwh: number | null;
   cost: number | null;
   degree_days: number | null;
   outdoor_c: number | null;
@@ -64,7 +66,18 @@ export interface HeatHistory {
   complete: boolean;
   money: { currency: string; major: string | null; minor: string | null } | null;
   meter: { entity_id: string; name: string | null } | null;
-  energy: { total_kwh: number; hours: number; hot_water_kwh: number | null; split_days: number; days: number; cost: number | null; priced_hours: number } | null;
+  energy: {
+    total_kwh: number;
+    hours: number;
+    hot_water_kwh: number | null;
+    split_days: number;
+    days: number;
+    cost: number | null;
+    priced_hours: number;
+    /** The heat zones' energy, already in `total_kwh`, and the first day they had any (the use steps up there). */
+    zones_kwh: number | null;
+    zones_from: string | null;
+  } | null;
   buckets: HeatBucket[];
   degree_days: {
     base_c: number;
@@ -175,6 +188,8 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
           days: count(item.days),
           cost: numberOrNull(item.cost),
           priced_hours: count(item.priced_hours),
+          zones_kwh: numberOrNull(item.zones_kwh ?? null),
+          zones_from: item.zones_from === undefined || item.zones_from === null ? null : isoDay(item.zones_from),
         })),
         buckets: list(source.buckets).map((raw): HeatBucket => {
           const item = record(raw);
@@ -182,6 +197,7 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
             key: text(item.key),
             kwh: numberOrNull(item.kwh),
             hot_water_kwh: numberOrNull(item.hot_water_kwh),
+            zones_kwh: numberOrNull(item.zones_kwh ?? null),
             cost: numberOrNull(item.cost),
             degree_days: numberOrNull(item.degree_days),
             outdoor_c: numberOrNull(item.outdoor_c),
@@ -301,6 +317,9 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
       if (item.shadow_value !== null && item.cost !== null) {
         parts.push(translate(language, "hist.heat.barSaving", { saving: money(language, item.shadow_value, answer.money) }));
       }
+      if (item.zones_kwh !== null && item.zones_kwh > 0) {
+        parts.push(translate(language, "hist.heat.barZones", { kwh: kwh(language, item.zones_kwh) }));
+      }
       if (item.hot_water_kwh !== null) {
         parts.push(translate(language, "hist.heat.barHotWater", { kwh: kwh(language, item.hot_water_kwh) }));
       }
@@ -347,6 +366,12 @@ function useSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement {
     return block;
   }
   block.append(figureRow(doc, translate(language, "hist.heat.total"), kwh(language, energy.total_kwh), "total"));
+  if (energy.zones_kwh !== null) {
+    block.append(figureRow(doc, translate(language, "hist.heat.zones"), kwh(language, energy.zones_kwh), "zones"));
+    if (energy.zones_from !== null) {
+      block.append(note(doc, translate(language, "hist.heat.zonesFrom", { date: dateLabel(language, energy.zones_from) }), "zones-from"));
+    }
+  }
   if (energy.hot_water_kwh !== null) {
     block.append(figureRow(doc, translate(language, "hist.heat.hotWater"), kwh(language, energy.hot_water_kwh), "hot-water"));
     // Said only when some days are missing from the split.

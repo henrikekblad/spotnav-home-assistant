@@ -31,8 +31,9 @@ export interface PeriodHandlers {
   /** Another period kind or day was chosen: the card reads it. */
   onPeriod(period: HistoryPeriod, date: string | null): void;
   onDetailed(detailed: boolean): void;
-  /** House in the period's energy flow tapped: what the house used. Without it the block is no button. */
-  onFlowHouse?(opener: HTMLElement): void;
+  /** House (or Heat, with more than one source) in the period's energy flow tapped: what it used. Without it the
+   * blocks are no buttons. */
+  onFlowHouse?(opener: HTMLElement, kind: "house" | "heat"): void;
 }
 
 // ------------------------------------------------------------------------------------------------ dates

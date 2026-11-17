@@ -181,6 +181,7 @@ const ANSWER = O({
       total_kwh: "number",
       heat_kwh: "number",
       hot_water_kwh: N("number"),
+      zones_kwh: N("number"),
       runs: A(RUN),
       baseline_kw: N("number"),
       cost: N("number"),
@@ -422,6 +423,8 @@ export interface HeatAnswer {
     total_kwh: number;
     heat_kwh: number;
     hot_water_kwh: number | null;
+    /** The heat zones' own energy today (floor heating, an air-to-air pump), already in `heat_kwh`; `null` without. */
+    zones_kwh: number | null;
     runs: { start: string; end: string; kwh: number }[];
     baseline_kw: number | null;
     cost: number | null;
