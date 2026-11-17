@@ -175,6 +175,7 @@ class ChargerAdapter:
         energy_entity_id: str | None = None,
         current_enabled: bool = False,
         phase_switch: Callable[[], PhaseSwitch | None] | None = None,
+        power_amps: Callable[[], float | None] | None = None,
         now: Callable[[], datetime] = dt_util.utcnow,
     ) -> None:
         self.hass = hass
@@ -204,6 +205,9 @@ class ChargerAdapter:
         #: The lowest current a charge is started at: the profile's, never below the 6 A floor.
         self.min_start_current_a = max(DEFAULT_MIN_CURRENT_A, min_start_current_a or 0.0)
         self.current_entity_ids = current_entity_ids
+        #: A charger given a power (`CURRENT_CONTROL_POWER`): its output power as the current per phase it is, the
+        #: same on all three (`sigenergy.py`), read where it has no current sensors of its own; `None` for any other.
+        self._power_amps = power_amps
         self.energy_entity_id = energy_entity_id
         #: The last `COMMAND_LOG_SIZE` commands sent through this adapter, oldest first (memory only).
         self._commands: deque[dict[str, Any]] = deque(maxlen=COMMAND_LOG_SIZE)
@@ -414,6 +418,9 @@ class ChargerAdapter:
         for cancel in tuple(self._after_reads):
             cancel()
         self._after_reads.clear()
+        timing = getattr(self.current, "timing", None)
+        if timing is not None:
+            timing.cancel()
 
     def _status_text(self) -> str | None:
         """The status entity's raw state, or `None` with none configured or no state."""
@@ -600,7 +607,10 @@ class ChargerAdapter:
         return status
 
     def measured_current_a(self) -> float | None:
-        """The highest phase current measured, in A, or `None` (none configured or unreadable)."""
+        """The highest phase current measured, in A, or `None` (none configured or unreadable). A charger given a power
+        with no current sensors reads its output power as the current per phase it is."""
+        if not self.current_entity_ids and self._power_amps is not None:
+            return self._power_amps()
         values: list[float] = []
         for entity_id in self.current_entity_ids:
             state = self.hass.states.get(entity_id)
@@ -615,6 +625,9 @@ class ChargerAdapter:
         """The measured current of each phase, in A (`None` for one unreadable), when the charger has
         exactly one current entity per phase; `None` when it does not, so the phases cannot be told apart.
         """
+        if not self.current_entity_ids and self._power_amps is not None:
+            amps = self._power_amps()
+            return None if amps is None else (amps, amps, amps)
         if len(self.current_entity_ids) != 3:
             return None
         values: list[float | None] = []
@@ -656,7 +669,7 @@ class ChargerAdapter:
                 can_set and self.policy.regulator_writes and self.current.available() is None
             ),
             reads_charging_state=bool(self.status_entity_id),
-            reads_measured_current=bool(self.current_entity_ids),
+            reads_measured_current=bool(self.current_entity_ids) or self._power_amps is not None,
             reads_energy_register=bool(self.energy_entity_id),
         )
 
@@ -722,9 +735,11 @@ def build_adapter(
         CONF_MODE,
         CURRENT_CONTROL_CHANGE_CONFIGURATION,
         CURRENT_CONTROL_NUMBER,
+        CURRENT_CONTROL_POWER,
         MODE_OCPP,
     )
     from ..charger_profiles import policy_for, profile_for
+    from .sigenergy import charger_sensor, charger_voltage_v, kw_per_amp, power_kw
 
     platform = config.get(CONF_CHARGER_PLATFORM) or None
     charge_control: str = config[CONF_CHARGE_CONTROL]
@@ -784,6 +799,16 @@ def build_adapter(
     if current is None:
         current = NoCurrent()
 
+    power_amps: Callable[[], float | None] | None = None
+    if control == CURRENT_CONTROL_POWER and current_limit:
+
+        def power_amps() -> float | None:
+            output = charger_sensor(hass, current_limit, "output_power_keys")
+            kw = power_kw(hass.states.get(output)) if output else None
+            if kw is None:
+                return None
+            return max(0.0, kw) / kw_per_amp(charger_voltage_v(hass, charge_control))
+
     current_entities = config.get(CONF_CHARGER_CURRENT_ENTITIES)
     adapter = ChargerAdapter(
         hass,
@@ -803,6 +828,7 @@ def build_adapter(
         disconnected_values=tuple(profile.disconnected_values) if profile is not None else (),
         connector_status_entity=_connector_status_entity_of(hass, ocpp_target),
         phase_switch=lambda: build_phase_switch(platform, context),
+        power_amps=power_amps,
     )
     holder["adapter"] = adapter
     return adapter

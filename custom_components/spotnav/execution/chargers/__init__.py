@@ -14,6 +14,7 @@ from . import (  # noqa: F401 - the imports register the paths
     peblar,
     phase_switches,
     registry,
+    sigenergy,
     smartevse,
     wattpilot,
     webasto,
