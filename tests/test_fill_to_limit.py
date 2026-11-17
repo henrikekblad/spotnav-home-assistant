@@ -267,3 +267,63 @@ async def test_the_energy_entity_sets_an_amount_and_so_clears_the_choice(hass: H
     await call(hass, "number", "set_value", {"entity_id": energy, "value": 7.0})
     stored = settings_of(hass, entry.entry_id)
     assert stored.requested_kwh == 7.0 and stored.fill_to_limit is False
+
+
+def _capacity_sensor(hass: HomeAssistant, device_id: str, state: str) -> str:
+    from homeassistant.helpers import entity_registry as er
+
+    entry = er.async_get(hass).async_get_or_create(
+        "sensor", "test", "ev6_battery_capacity", device_id=device_id, suggested_object_id="ev6_battery_capacity",
+        original_name="battery capacity",
+    )
+    hass.states.async_set(entry.entity_id, state, {"device_class": "energy_storage", "unit_of_measurement": "kWh"})
+    return entry.entity_id
+
+
+async def test_fill_plans_again_when_the_cars_battery_size_becomes_known(hass: HomeAssistant, transport: Any) -> None:
+    serve_prices(transport, rising=True)
+    with freeze_time(NOW):
+        charger, device_id, _ = await charger_and_car(
+            hass, capacity=None, soc_percent="11", driver=DRIVER_MANUAL_KWH, requested_kwh=22.4,
+            target=TargetSocIntent(), amps=16, phases=3, fill_to_limit=True,
+        )
+        preview = preview_for(hass, charger.entry_id)
+        # The car's integration lists its battery size, but it has no value yet (the car asleep at start-up).
+        capacity = _capacity_sensor(hass, device_id, "unavailable")
+        await preview.async_recalculate()
+        await hass.async_block_till_done()
+        assert preview.snapshot().fill == "unknown_room"
+        assert preview.snapshot().proposal.requested_kwh == pytest.approx(22.4)
+
+        # It reports the size: the plan is made again at once with the room, no reload.
+        hass.states.async_set(capacity, "80.7", {"device_class": "energy_storage", "unit_of_measurement": "kWh"})
+        await hass.async_block_till_done()
+        snapshot = preview.snapshot()
+        assert snapshot.fill == "battery"
+        assert snapshot.proposal.requested_kwh == pytest.approx(80.7 * 0.89 / 0.9, abs=0.01)
+
+        # A changed size plans again too.
+        hass.states.async_set(capacity, "70.0", {"device_class": "energy_storage", "unit_of_measurement": "kWh"})
+        await hass.async_block_till_done()
+        assert preview.snapshot().proposal.requested_kwh == pytest.approx(70.0 * 0.89 / 0.9, abs=0.01)
+
+
+async def test_fill_plans_again_when_the_cars_level_arrives(hass: HomeAssistant, transport: Any) -> None:
+    serve_prices(transport, rising=True)
+    with freeze_time(NOW):
+        charger, device_id, soc_entity = await charger_and_car(
+            hass, capacity=None, soc_percent="unknown", driver=DRIVER_MANUAL_KWH, requested_kwh=22.4,
+            target=TargetSocIntent(), amps=16, phases=3, fill_to_limit=True,
+        )
+        preview = preview_for(hass, charger.entry_id)
+        _capacity_sensor(hass, device_id, "80.7")
+        await preview.async_recalculate()
+        await hass.async_block_till_done()
+        assert preview.snapshot().fill == "unknown_room"
+
+        # The level arrives: the car is back in discovery, and its battery size with it.
+        hass.states.async_set(soc_entity, "11", {"device_class": "battery", "unit_of_measurement": "%"})
+        await hass.async_block_till_done()
+        snapshot = preview.snapshot()
+        assert snapshot.fill == "battery"
+        assert snapshot.proposal.requested_kwh == pytest.approx(80.7 * 0.89 / 0.9, abs=0.01)
