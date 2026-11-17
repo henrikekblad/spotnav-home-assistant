@@ -26,10 +26,9 @@ seconds.
 
 A wall screen can show one tab only, without the tab row: `tab: now`, `flow`, `graph` or `price` (the card editor's
 **Show only tab**; `all`, or leaving it out, shows the row). It is a setting of this card, not of SpotNav. In a box of
-fixed height (a layout card on a wall screen, a sections view with a number of rows) the shown tab's picture takes the
-box's spare height; a tab drops its explaining lines there (the tiles under the energy flow, the kr bars beside a day's
-prices), and its picture never goes below 150 px. With the tab row, the Energy flow tab of a site with five uses needs
-about 540 px; locked to that tab, 520 px is enough.
+fixed height (a layout card on a wall screen, a sections view with a number of rows) one part of the shown tab takes the
+box's spare height (the picture in Now, the diagram, the chart, the price chart) and the hints and footers go: the tiles
+under the energy flow, the tap hints. Every tab fits a 650×520 box with the tab row shown.
 
 ## Settings
 
@@ -54,74 +53,71 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
 
 ## What you see
 
-Above the tabs, compact: today's headline, what the battery has earned so far ("The battery has earned 26 kr today"):
-each kWh it gave back, over what that energy cost to store (the *arbitrage* of [the battery plan](battery-plan.md)).
-That is the same measure the battery's own app shows (the Price and battery tab says so). A day the battery ran under its
-own control (SpotNav off or in test, or the battery's own optimiser such as Sigenergy's AI mode) the headline says so:
-"The battery has earned 26 kr today (own control)". Under it **what SpotNav saved**: "SpotNav saved 54 kr today ·
-battery 35 · car 17 · heat 2", each part against a comparison of its own (below); only the parts the site has, and has for
-that day, are on it, never a 0 for one it cannot work out yet. A learning period that holds something back says so on a
-line of its own. On a site without a battery there is no battery line.
-
-Then four tabs, in this order: **Now**, **Energy flow**, **Energy chart** and **Price and battery**. Tap one, or move
-with the arrow keys (Home and End for the first and last; the tabs are a tablist for screen readers). The card remembers
-the tab per card in this browser.
+Above the tabs only the header. Then four tabs, in this order: **Now**, **Energy flow**, **Energy chart** and **Price
+and battery**. Tap one, or move with the arrow keys (Home and End for the first and last; the tabs are a tablist for
+screen readers). A long tab name wraps between its words, so all four stay in view at 360 px. The card remembers the tab
+per card in this browser.
 
 ### Now
 
 The live flows as a picture: the house in the middle and around it only what the site has: the sun (top left), the grid
 (top right), the battery (bottom left), the car (bottom right) and the heat under the house. A line runs from each to the
-house, with dots running the way the power flows and its kW beside it; a small arrow on the line says the way too. The
-dots are amber for the sun, teal for the battery, orange for the car, coral for the heat, red for an import and green for
-an export; they run faster with more power, and stand still where the browser asks for reduced motion. The house's own
-power (the heat included, the car not) is in its circle.
+house, with dots running the way the power flows, a filled arrowhead on its middle and its kW beside it. The dots are
+amber for the sun, teal for the battery, the car's and the heat's own colours, red for an import and green for an export;
+they run faster with more power, and stand still where the browser asks for reduced motion. The house's own power (the
+heat included, the car not) is in its circle. The car's line is drawn only while a car is plugged in; otherwise its node
+is dimmed. A house with the grid alone is one low row, the grid to the house.
 
-In the corners, the day so far: *Sun today*, *House today* (the heat included), *Grid today* (bought, and sold under it
-once there was some), the battery's level and the energy in it, *Heat today* and *Car today*: the energy flow's own
-figures, so they add up with the Energy flow tab.
+In the corners, the day so far, each figure in its part's colour (a little darker on a light card, lighter on a dark
+one): *Sun today*, *House today* (the heat included), *Bought today* with what was sold in green, the battery's level and
+the energy in it, *Heat today*, and the car's level with "25.5 kWh today" under it (its energy today alone while no car
+is plugged in). These are the energy flow's own figures, so they add up with the Energy flow tab. A name too long for
+its corner ends in "…".
 
-Under the picture one sentence of what the battery does and what its plan does next: "The battery covers the house and
-stores the sun until 18:00, then sells to the grid." While SpotNav does not control the battery it says who does and what
-SpotNav would do: "The battery runs itself (Sigenergy AI) · SpotNav would hold the charge until 17:00, then …". Under it
-the mode. A heat pump meter to choose (more than one could be it) is said here.
+Under the picture: one sentence of what the battery does and what its plan does next ("The battery covers the house and
+stores the sun until 18:00, then it sells to the grid."); while SpotNav does not control the battery it says who does and
+what SpotNav would do ("The battery runs itself (Sigenergy AI) · SpotNav would …"). Then the day's money: "Today: the
+battery earned 11 kr · SpotNav saved 17 kr". The battery's figure is its *arbitrage*: each kWh it gave back, over what
+that energy cost to store ([the battery plan](battery-plan.md)), the same measure the battery's own app shows. SpotNav's
+is against a comparison of its own per part (below). Small and grey under it: the mode, and a learning period that holds
+something back ("Learning the house's peaks, 13 days left. Does not charge from the grid until then."). A heat pump meter
+to choose (more than one could be it) is said here.
 
 The live figures are read every 30 seconds while Now is shown: the grid and the chargers as load balancing reads them,
-the battery's own power, the sun from the Energy dashboard's solar power sensors and the heat from the heat pump's meter
-where it is a power sensor. Without such a sensor the sun and the heat are the last quarter hour's mean, and the line under
-the sentence says so. From an older SpotNav the picture has the day's figures and the battery's own power only, and says
-"no live figures yet".
+whether a car is plugged in and its level, the battery's own power, the sun from the Energy dashboard's solar power
+sensors and the heat from the heat pump's meter where it is a power sensor (else the last quarter hour's mean). They are
+written into the picture in place: the dots keep running and only start again when a line turns. From an older SpotNav
+the picture has the day's figures and the battery's own power only, and says "no live figures yet".
 
 ### The period tabs
 
-Energy flow, Energy chart and Price and battery share one line to choose the period: "‹ 2026-11-17 › [Day ▾]". The
-arrows step one day, month or year; tap the date for a calendar (a month or a year is a list); *Day*, *Month* or *Year*
-changes the kind and keeps the moment. Nothing after today is offered, and nothing more than ten years back. The period
-stays chosen as you switch between the three.
+Energy flow, Energy chart and Price and battery share one row to choose the period: "‹ Today ›" and **Day | Month |
+Year**. The arrows step one period; tap the label ("Today", "Yesterday", "Wed 11 Nov", "Nov 2026", "2026") for the
+calendar or the list. Today's label in Energy flow says how far its figures reach ("Today · to 17:00"). Nothing after
+today is offered, and nothing more than ten years back. The period stays chosen as you switch between the three.
 
 * **Energy flow**: where the period's energy came from and where it went (the diagram below in *Heat in the flow* and
   *How the flow is counted*), and a tile each for *Sun*, *House*, *Discharged*, *Charged*, *Bought* and *Sold* in kWh,
-  plus *Heat* and *Car* where the site has them: the diagram's own blocks. Today is the card's own reading ("Until
-  17:00"); a past day, a month or a year is read from the history. Tap House (or Heat) for what used it.
+  plus *Heat* and *Car* where the site has them: the diagram's own blocks. Tap House (or Heat) for what used it.
 * **Energy chart**: today covers 12 hours back and 24 ahead: bars for the house's load per hour (measured before now,
   forecast after in a lighter shade), the heat in it, the car where it is shown, and an area for the sun; over a past bar
   a short line shows what the forecast was. A past day has its 24 hours. A month has a bar per day and a year a bar per
-  month: the house, the heat and the car stacked, the sun beside them. Tap a bar or an hour for its figures; the arrow
-  keys walk them.
-* **Price and battery**: the buying price (every fee included) and the selling price per hour, with the battery's level on
-  its own 0–100 % axis, dashed where it is planned; the hours the plan charges from the grid are tinted violet, those it
-  sells more lightly. Under it **what the battery's energy was worth**, as kr bars per hour (per day for a month, per month
-  for a year): what the battery gave at the buy price (to the grid at the sell price) less what it took from the grid at
-  the buy price and from the sun at the sell price, the export it stood in for. That is how the battery's own app counts
-  its "energy value"; a bar below the line is an hour the charging cost more than the battery gave. The period's total
-  heads them. Today adds what the headline counts, what the electricity bought cost (and the sun sold), and the last
-  week's reviewed sentence; another period its cost.
+  month, as wide as the chart allows, with the house, the heat and the car stacked and the sun as a stepped line over
+  them, on a kWh axis. Tap a bar or an hour for its figures; the arrow keys walk them.
+* **Price and battery**: headed by what the battery earned in the period ("The battery earned 11 kr", its arbitrage, the
+  sum of the bars), with "The same measure as the Sigenergy app" and what the electricity cost under it. A day has the
+  buying price (every fee included) and the selling price per hour, with the battery's level on its own 0–100 % axis,
+  dashed where it is planned; the hours the plan charges from the grid are tinted violet, those it sells more lightly.
+  Under it, on the same hours and the same time axis, what the battery earned each hour as kr bars (below the line where
+  it gave energy back for less than it cost to store); a tap on either is that hour. A month has a kr bar per day and a
+  year one per month. The battery's hourly figures are kept 40 days, its daily ones 400.
 
 ### The history
 
 The clock in the header opens the history: a day, month or year with its bars of what the house cost, the share of the
 perfect plan, the energy flow, the money and what SpotNav saved. With *Detailed* on it adds the modes side by side, the
-forecasts' errors, the days, and **the last days as the card reviews them**: what the front once kept behind *Show
-details* (below).
+forecasts' errors, the days, and **the last days as the card reviews them** (below), led by the reviewed week's sentence
+("Last 7 days: SpotNav's plan 51 kr · the battery itself 45 kr, against plain self-consumption").
 
 **The comparison** of the modes, titled with what it compares against ("Compared with the battery only storing your own
 sun, last 7 days"): each of SpotNav's modes (the chosen one marked) and the battery's own control, named where the
