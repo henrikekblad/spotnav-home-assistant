@@ -13,6 +13,8 @@ What is read, all off the event loop and kept:
 * A month or a year: the Energy dashboard's meters, the chargers' registers, the heat pump's meter and the heat zones' sensors by the hour
   from the recorder's long-term statistics (kept for good), in the recorder's executor, up to the last completed hour.
 * The prices: the area's held day documents (`PriceRepository.day_snapshot`, in memory) with the fees as set now.
+* What SpotNav saved per day (`api/saving.py`): the car's sessions with their hours from the recorder, the battery's
+  day money and the heat's reviews.
 * The battery's reviewed days: the battery plan's own (30 days), and for an older day of the period its file in the
   day archive (`<config>/spotnav_archive/<site>/<date>.json`, `day_export.py`) where one was exported, read in the
   executor.
@@ -48,6 +50,7 @@ from ..site.history_period import PERIOD_DAY, Period, local_date, requested_peri
 from ..site.house_period import HOUSE_HISTORY_API_VERSION, HouseHistoryInputs, house_history
 from .common import send_unsupported_version
 from .house import _car_register_ids, _hourly_periods, async_cached_day_flow, five_slot
+from .saving import async_day_savings
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -183,6 +186,13 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
     area = None if source is None else source.area
     heat = controller.house_forecast.heat
     zones = await heat.async_current_zones()
+    try:
+        savings, _since = await async_day_savings(
+            hass, site.entry_id, controller, [day for day in period.days() if day <= today]
+        )
+    except Exception:  # noqa: BLE001 - the rest is still shown
+        _LOGGER.debug("SpotNav house history: what SpotNav saved could not be worked out", exc_info=True)
+        savings = {}
     heat_sources = (1 if heat.meter.found else 0) + len(zones.sources)
     answer = house_history(
         HouseHistoryInputs(
@@ -201,6 +211,7 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             reviews=reviews,
             archived=archived,
             forecast_mae=forecast_maes(controller.house_forecast.log),
+            savings=savings,
         )
     )
     cache.pop(key, None)
