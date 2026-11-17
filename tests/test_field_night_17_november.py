@@ -243,3 +243,116 @@ async def test_a_stopped_charge_is_not_started_again_against_what_holds_it(
         await _after(hass, freezer, UNHELD_CHECK_S)
     assert len(night.halo.turn_on) == turned_on, case
     assert cc.window_start_retry["last"] is None, "the window's start was not decided again"
+
+
+# -- the look after a safety stop, a pause again in the same window, a charger slow to read off
+
+
+async def test_a_safety_stop_of_the_plans_charge_is_not_started_again(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """A safety stop (a must-lower write that failed or was not confirmed) holds nothing back for a plan's charge, on
+    purpose: no look is armed, so the charger is not started again 90 s later into the same failing write."""
+    night = await _the_night(hass, monkeypatch, freezer, "nov17safety", house=_HOUSE_0515)
+    cc = night.halo.cc
+    result = await cc._regulated_stop("safety_stop", cause="unconfirmed")  # noqa: SLF001
+    assert result.code == "safety_stop"
+    await night.step()
+    night.halo.reads(0.0)
+    await hass.async_block_till_done()
+    session = cc.session_runner.session
+    assert not night.on and not session.balancing_paused and session.owner == "none" and session.pending == ()
+    assert cc._unheld_check_cancel is None, "no look armed after a safety stop"  # noqa: SLF001
+
+    turned_on = len(night.halo.turn_on)
+    for _ in range(4):
+        await _after(hass, freezer, UNHELD_CHECK_S + 5.0)
+    assert len(night.halo.turn_on) == turned_on
+    assert cc.window_start_retry["last"] is None, "the window's start was not decided again"
+
+
+async def test_a_safety_stop_after_a_pause_takes_back_the_pauses_look(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """A pause arms the look; a safety stop before it is due takes it back."""
+    night = await _a_pause_that_was_lost(hass, monkeypatch, freezer, "nov17pausesafety")
+    cc = night.halo.cc
+    assert cc._unheld_check_cancel is not None  # noqa: SLF001
+    await cc._regulated_stop("safety_stop", cause="unconfirmed")  # noqa: SLF001
+    assert cc._unheld_check_cancel is None  # noqa: SLF001
+    night.house = _HOUSE_0515
+    turned_on = len(night.halo.turn_on)
+    for _ in range(3):
+        await _after(hass, freezer, UNHELD_CHECK_S + 5.0)
+    assert len(night.halo.turn_on) == turned_on
+    assert cc.window_start_retry["last"] is None
+
+
+async def test_a_window_decides_its_start_again_at_most_once(
+    hass: HomeAssistant, monkeypatch, freezer, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Started again once after a lost pause; paused and lost again in the same window, it is left: one sequence of
+    starts per window, never a cycle of stops and starts."""
+    caplog.set_level("DEBUG", logger="custom_components.spotnav")
+    night = await _a_pause_that_was_lost(hass, monkeypatch, freezer, "nov17once")
+    cc = night.halo.cc
+    night.house = _HOUSE_0515
+    await night.run(60.0)
+    await _after(hass, freezer, UNHELD_CHECK_S)
+    assert len(night.halo.turn_on) == 2, "the window's start, decided again"
+    await night.step()
+    assert night.on
+
+    night.house = _HOUSE_FULL
+    for _ in range(12):
+        await night.step()
+        if len(night.halo.turn_off) > 1:
+            break
+    await night.step()
+    assert len(night.halo.turn_off) == 2 and not night.on, "\n".join(night.trace[-20:])
+    night.halo.reads(0.0)
+    await hass.async_block_till_done()
+    cc.session_runner.feed(core_events.BalancingDropped())
+    assert cc.plan_expects_charge and not cc.paused_by_balancing
+
+    # The site has room again: only the look could start it, and it has started this window's charge once.
+    night.house = _HOUSE_0515
+    await night.run(60.0)
+    for _ in range(4):
+        await _after(hass, freezer, UNHELD_CHECK_S + 5.0)
+    assert len(night.halo.turn_on) == 2, "not started again a second time in this window"
+    assert "already decided again once" in caplog.text
+
+
+def _reads_on(monkeypatch, cc: Any, on: bool) -> None:
+    """The charger's control reads `on` (a slow charger, still on after the pause's stop went out)."""
+    monkeypatch.setattr(type(cc), "_control_observation", property(lambda self: on))
+
+
+async def test_a_charger_still_reading_on_is_looked_at_once_more(hass: HomeAssistant, monkeypatch, freezer) -> None:
+    """At the look the charger still reads on: nothing is decided then, and the charge is looked at once more; off by
+    then, the window's start is decided again."""
+    night = await _a_pause_that_was_lost(hass, monkeypatch, freezer, "nov17slow")
+    cc = night.halo.cc
+    night.house = _HOUSE_0515
+    _reads_on(monkeypatch, cc, True)
+    await _after(hass, freezer, UNHELD_CHECK_S)
+    assert len(night.halo.turn_on) == 1, "nothing while the charger reads on"
+    assert cc._unheld_check_cancel is not None, "looked at once more"  # noqa: SLF001
+
+    _reads_on(monkeypatch, cc, False)
+    await _after(hass, freezer, UNHELD_CHECK_S)
+    assert len(night.halo.turn_on) == 2, "the window's start, decided again"
+
+
+async def test_a_charger_that_keeps_reading_on_is_looked_at_only_once_more(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    night = await _a_pause_that_was_lost(hass, monkeypatch, freezer, "nov17slowon")
+    cc = night.halo.cc
+    _reads_on(monkeypatch, cc, True)
+    await _after(hass, freezer, UNHELD_CHECK_S)
+    assert cc._unheld_check_cancel is not None  # noqa: SLF001
+    await _after(hass, freezer, UNHELD_CHECK_S)
+    assert cc._unheld_check_cancel is None, "one more look, no more"  # noqa: SLF001
+    assert len(night.halo.turn_on) == 1 and cc.window_start_retry["last"] is None
