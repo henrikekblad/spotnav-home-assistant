@@ -660,6 +660,16 @@ class BatteryPlanShadow:
             facts.soc_pct,
         )
 
+    def _controlled(self) -> bool:
+        """Whether SpotNav controls the battery now (`BatteryControl.state` `on`); false where it cannot be read."""
+        control = getattr(self.site, "battery_control", None)
+        if control is None:
+            return False
+        try:
+            return control.state() == "on"
+        except Exception:  # noqa: BLE001 - a state that cannot be read is no control
+            return False
+
     def _quarter_turned(self, now: datetime) -> None:
         """Completed hours to house rows and the forecast log; days that ended reviewed; old rows dropped."""
         tz = self._tz
@@ -678,6 +688,7 @@ class BatteryPlanShadow:
             tz,
             usable,
             sum(buys) / len(buys) if buys else None,
+            controlled=self._controlled(),
         )
         if params is not None:
             reviewed = [review.day for review in self.reviews]

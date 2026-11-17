@@ -71,6 +71,7 @@ from .heat import forget_cached_heat
 from .heat_history import forget_cached_heat_history
 from .house import forget_cached_flow
 from .house_history import forget_cached_history
+from .saving import forget_cached_savings
 from .house_loads import forget_cached_loads
 from .dashboard import (
     capture_site,
@@ -499,7 +500,7 @@ async def _change_active_control(
 def _forget_energy_reads(hass: HomeAssistant, site_entry_id: str) -> None:
     """Drop the site's kept energy flow, histories and pies: a meter moved between the house and the heat changes
     them at once, not at the next 5-minute row."""
-    for forget in (forget_cached_flow, forget_cached_history, forget_cached_loads, forget_cached_heat, forget_cached_heat_history):
+    for forget in (forget_cached_flow, forget_cached_history, forget_cached_loads, forget_cached_heat, forget_cached_heat_history, forget_cached_savings):
         forget(hass, site_entry_id)
 
 

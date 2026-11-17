@@ -46,7 +46,11 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
   ("The battery has earned 26 kr today"): each kWh it gave back, over what that energy cost to store (the *arbitrage* of
   [the battery plan](battery-plan.md)). That is the same measure the battery's own app shows, and the card says so right
   under it. Below that, what the electricity bought cost and, when there is some, the sun sold. On a site without a battery
-  there is no battery line.
+  there is no battery line. A day the battery ran under its own control (SpotNav off or in test, or the battery's own
+  optimiser such as Sigenergy's AI mode) the headline says so: "The battery has earned 26 kr today (own control)".
+* **What SpotNav saved**: one line for what SpotNav itself did, "SpotNav saved 54 kr today · battery 35 · car 17 · heat 2",
+  each part against a comparison of its own (below). Only the parts the site has, and has for that day, are on it; a part
+  that cannot be worked out yet is left out, never shown as 0. With a single part there is no split.
 * **The chart** covers 12 hours back and 24 ahead, with two views you can switch between:
   * *Energy*: bars for the house's load per hour (measured before now, forecast after in a lighter shade) and an area
     for the sun. Over a past bar a short line shows what the forecast was for that hour.
@@ -146,9 +150,46 @@ A meter moved out of the house is listed under the house pie with where it went 
 choice is saved per meter in the site's settings (`meter_belongs`); a household member sees the pies without the
 choice. Only meters SpotNav did not sort out by itself can be moved.
 
+### What SpotNav saved
+
+Each part is compared with what would have happened without SpotNav, and only what SpotNav itself did counts.
+
+* **Battery**: the battery's earnings of the day (the headline's measure), in the share of the day SpotNav controlled
+  the battery. In test ("Test · controls nothing yet"), with SpotNav's control off, or while the battery runs its own
+  optimiser, the battery is not part of SpotNav's saving at all: what it earned is its own, and the headline says
+  "(own control)".
+* **Car**: against charging at once on plug-in. The same kWh are charged from the moment the car was plugged in, at the
+  power the car actually drew (the highest rate of the plug-in), until they are in or the car was unplugged, at the buy
+  price of those quarter hours with every fee, as the card prices hours. The saving is what that would have cost less
+  what the charge cost. A charge someone started (or one SpotNav cannot tell the start of) saves 0 but is still the
+  car's; a charge that started at plug-in anyway saves about 0. The car is counted from the first charge SpotNav kept
+  the plug-in time of, so the line has no car part before that. A charge is counted on the day it **started**, the same
+  day the charger card's history counts it, so a charge over midnight is one figure on one day in both cards. The
+  charger card's history shows the same figure per charge, day and month ("SpotNav saved 33 kr against charging at once
+  on plug-in").
+* **Heat** (estimated): the heat control's own review of the day: what SpotNav's lowerings of the relay took away at
+  their hours' prices, less the learned rebound bought back afterwards ("Yesterday the relay lowered 3 h: 1.58 kr"), in
+  the share of the relay's closed time SpotNav itself held it. What SpotNav's plan would have done in test never counts.
+  A day is reviewed the night after, so today has no heat part yet.
+
+**Nothing is counted twice.** Only the car's kWh from the grid count in its saving. The flow's rule says, hour by hour,
+how much of the car's energy came from the grid, the home battery and the sun. The kWh the battery gave the car are
+already in the battery's earnings (it values every kWh it gives the house, the car included, at the buy price), and the
+sun's are worth the selling price whenever they are used, so both are left out of the car's saving, in what happened and
+in the comparison alike. The battery's figure holds no part of the car's. An hour the flow has no figure for counts all
+the car's kWh as grid on a site with neither battery nor sun, and none of them on a site with either.
+
+The history (the clock in the card's header) has the same parts summed per day, month and year: a *SpotNav saved* box
+with the total and a row per part (with the days it covers where fewer than the period's), and each day's or month's bar
+adds its total to its figures. The battery's day money and the heat's reviews are kept about a month, so an older day
+has only the car.
+
 ### Details
 
 *Show details* opens, as far as the site has them:
+
+* **What SpotNav saved**: one line per part saying what it is compared with, that the heat is an estimate, a battery
+  under its own control, and from which day the car is counted.
 
 * **How the flow is counted**: the meters do not say which source fed which use, so the split follows a fixed rule, not a
   measurement: each hour (or quarter hour) the sun goes to the house first, then the car, the battery and the grid, and

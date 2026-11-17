@@ -7,13 +7,14 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      day), end (the first day after it), today, complete, money: {currency, major_unit, minor_unit} | null,
      energy_flow: (as `spotnav/get_house`'s, `site/energy_flow.py`) | null,
      buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods,
-                battery_saving, battery_days}],
+                battery_saving, battery_days, saving, saving_battery, saving_car, saving_heat}],
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
               by_day: [{date, battery_saving, plan_saving, own_saving, own_share, plan_share, share_note}],
               perfect: (`site/perfect_view.py`) | null} | null,
-     forecast: {house, sun, sun_corrected, soc: {mae, days} | null} }
+     forecast: {house, sun, sun_corrected, soc: {mae, days} | null},
+     saving: {total, battery, car, heat, battery_days, car_days, heat_days, days} | null }
 
 * **Energy** (`energy_flow`, `buckets`): the Energy dashboard's meters and the chargers' registers per period (a
   day within the recorder's short-term statistics by the quarter hour, else by the hour), allocated period by
@@ -42,6 +43,11 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   `plan_share`; `share_note` says why a day with a perfect plan has none: `partial`, under 90 % of it measured, or
   `small`, the perfect plan saved under 5 kr); `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
   over the period, where the day boundary washes out). `null` without a battery or with no reviewed day.
+* **What SpotNav saved** (`saving`): the battery, the car and the heat each against its own counterfactual
+  (`site/spotnav_saving.py`), per day summed over the period: `{total, battery, car, heat, battery_days, car_days,
+  heat_days, days}` (each part over the days that have it, `days` the days with any part); `null` without any. A
+  month's or a year's bucket has the same sums (`saving`, `saving_battery`, `saving_car`, `saving_heat`, `null` where
+  none of its days has the part); a day's hours have none (the parts are a whole day's).
 * **The forecasts** (`forecast`): the mean of each forecast's daily mean absolute error over the period's reviewed
   days (the forecast log keeps 30 days of reviews), with the days counted; `null` per forecast without one.
 
@@ -61,6 +67,7 @@ from ..battery.plan_shadow import KIND_BATTERY, DayReview, PriceSlot
 from .energy_flow import EnergyHour, allocate_hour, energy_flow
 from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED
 from .perfect_view import perfect_block
+from .spotnav_saving import DaySaving, period_sums
 from .history_period import PERIOD_DAY, Period, bucket_key, bucket_keys, local_date, midnight_utc
 
 HOUSE_HISTORY_API_VERSION: Final = 1
@@ -80,6 +87,7 @@ HISTORY_KEYS: Final = (
     "cost",
     "review",
     "forecast",
+    "saving",
 )
 BUCKET_KEYS: Final = (
     "key",
@@ -96,6 +104,10 @@ BUCKET_KEYS: Final = (
     "periods",
     "battery_saving",
     "battery_days",
+    "saving",
+    "saving_battery",
+    "saving_car",
+    "saving_heat",
 )
 #: The forecast log's kinds the history scores, by the answer's name.
 FORECAST_KINDS: Final = (
@@ -129,6 +141,8 @@ class HouseHistoryInputs:
     archived: frozenset[date] = frozenset()
     #: Per forecast kind (`forecast_log`'s), each reviewed day's mean absolute error.
     forecast_mae: Mapping[str, Mapping[date, float]] = field(default_factory=dict)
+    #: What SpotNav saved on each of the period's days up to today (`site/spotnav_saving.py`); empty without.
+    savings: Mapping[date, DaySaving] = field(default_factory=dict)
 
 
 def _r(value: float, digits: int = 2) -> float:
@@ -181,6 +195,10 @@ def _empty_bucket(key: str) -> dict[str, Any]:
         "periods": 0,
         "battery_saving": None,
         "battery_days": 0,
+        "saving": None,
+        "saving_battery": None,
+        "saving_car": None,
+        "saving_heat": None,
     }
 
 
@@ -242,6 +260,15 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             if target is not None:
                 _add(target, "battery_saving", saving)
                 target["battery_days"] += 1
+        for day, day_saving in inputs.savings.items():
+            if not period.contains(day):
+                continue
+            target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
+            if target is not None:
+                _add(target, "saving", day_saving.total)
+                _add(target, "saving_battery", day_saving.battery)
+                _add(target, "saving_car", day_saving.car)
+                _add(target, "saving_heat", day_saving.heat)
     rows = []
     for bucket in buckets.values():
         rows.append({key: (_r(value, 3) if isinstance(value, float) else value) for key, value in bucket.items()})
@@ -375,4 +402,5 @@ def house_history(inputs: HouseHistoryInputs) -> dict[str, Any]:
         "cost": cost,
         "review": review_block(inputs),
         "forecast": forecast_block(inputs),
+        "saving": period_sums({day: item for day, item in inputs.savings.items() if period.contains(day)}),
     }

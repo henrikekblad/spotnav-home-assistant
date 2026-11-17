@@ -58,6 +58,7 @@ from ..site.energy_statistics import (
     summed,
 )
 from ..site.session_car import car_energy_from_sessions
+from ..site.spotnav_saving import saving_block
 from ..pricing.price_source import site_price_source
 from ..runtime import controller_for, domain_data, site_controller_for
 from ..site.heat_meter import SOURCE_SETTING, STATUS_NONE, async_heat_periods, needs_setting
@@ -623,6 +624,18 @@ async def async_cached_recorded_soc(
     )
 
 
+async def async_saving(
+    hass: HomeAssistant, site_entry_id: str, controller: Any, day: date | None
+) -> dict[str, Any] | None:
+    """What SpotNav saved on the day shown (`api/saving.py`, `site/spotnav_saving.saving_block`)."""
+    from .saving import async_day_savings  # noqa: PLC0415 - it imports this module
+
+    shown = day or controller.demand.now().astimezone(time_zones.require_zone(controller.demand.tracker.tz)).date()
+    days, since = await async_day_savings(hass, site_entry_id, controller, [shown])
+    saving = days.get(shown)
+    return None if saving is None else saving_block(shown, saving, since)
+
+
 async def _or_none(read: Awaitable[Any], what: str) -> Any:
     """`read`'s answer, or `None` when it cannot be had (no recorder, statistics that fail): the view shows the rest."""
     try:
@@ -664,6 +677,7 @@ def house_answer(
     soc: dict[datetime, float] | None = None,
     car: dict[datetime, float] | None = None,
     heat: dict[datetime, float] | None = None,
+    saving: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The answer for one site, or a `PowerMonthRefusal`. `heat`: the heat meter's hours the energy flow read (over
     the house forecast's own hours of it)."""
@@ -711,6 +725,7 @@ def house_answer(
             car_actual=car or {},
             heat=_heat(hass, controller, heat or {}),
             learning=_learning(controller, demand.now()),
+            saving=saving,
         )
     )
 
@@ -736,7 +751,7 @@ async def websocket_get_house(
     try:
         site = _site_of_request(hass, msg)
         controller = site_controller_for(hass, site.entry_id)
-        flow = day = soc = car = None
+        flow = day = soc = car = saving = None
         heat: dict[datetime, float] = {}
         if site.state is ConfigEntryState.LOADED and controller is not None:
             day = requested_day(msg.get("date"), controller.demand.now(), controller.demand.tracker.tz)
@@ -747,7 +762,8 @@ async def websocket_get_house(
             car = await _or_none(async_cached_car_hours(hass, site.entry_id, controller, day, periods), "cars' hours")
             tz = controller.demand.tracker.tz
             heat = hour_figures(periods, "heat", lambda m: hour_start(m, tz))
-        answer = house_answer(hass, site, flow, day, soc, car, heat)
+            saving = await _or_none(async_saving(hass, site.entry_id, controller, day), "saving")
+        answer = house_answer(hass, site, flow, day, soc, car, heat, saving)
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return

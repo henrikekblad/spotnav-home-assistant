@@ -2,7 +2,8 @@
 //
 // What each charge cost is the backend's figure (the plan's own effective price with the person's tax,
 // grid fee and VAT as they are set now, calculated from the stored energy and spot prices); nothing is
-// recomputed here. The savings line compares with the day's average price and is always worded as an estimate. Every text from the answer
+// recomputed here. The savings line is SpotNav's saving against charging at once on plug-in where the answer has it (the
+// house card's own figure for the car, so both cards agree), else the day's average price, worded as an estimate. Every text from the answer
 // (a vehicle's name) is written with `textContent`, never parsed as markup.
 
 import { SESSIONS_API_VERSION } from "./types";
@@ -40,6 +41,9 @@ export interface SessionRecord {
   solar_share: number | null;
   reference_cost: number | null;
   savings: number | null;
+  /** What SpotNav saved against charging at once on plug-in (major unit), the house card's own figure for the car;
+   * `null` where it cannot be known, `undefined` from an answer without it (a charger in no site, an older backend). */
+  plug_in_saving?: number | null;
 }
 
 export interface SessionBucket {
@@ -54,6 +58,8 @@ export interface SessionBucket {
   solar_share: number | null;
   reference_cost: number | null;
   savings: number | null;
+  /** As `SessionRecord.plug_in_saving`, summed over the bucket's sessions that have it. */
+  plug_in_saving?: number | null;
   estimated: boolean;
 }
 
@@ -145,6 +151,7 @@ function decodeBucket(raw: unknown): SessionBucket {
     solar_share: shareOrNull(source, "solar_share"),
     reference_cost: numberOrNull(source, "reference_cost"),
     savings: numberOrNull(source, "savings"),
+    ...plugIn(source),
     estimated: flag(source, "estimated"),
   };
 }
@@ -170,7 +177,13 @@ function decodeRecord(raw: unknown): SessionRecord {
     solar_share: shareOrNull(source, "solar_share"),
     reference_cost: numberOrNull(source, "reference_cost"),
     savings: numberOrNull(source, "savings"),
+    ...plugIn(source),
   };
+}
+
+/** The additive `plug_in_saving`: absent stays absent, present must be a number or `null`. */
+function plugIn(source: Record<string, unknown>): { plug_in_saving?: number | null } {
+  return "plug_in_saving" in source ? { plug_in_saving: numberOrNull(source, "plug_in_saving") } : {};
 }
 
 function list<T>(source: Record<string, unknown>, key: string, decode: (raw: unknown) => T): T[] {
@@ -395,11 +408,21 @@ function startedByKey(startedBy: string): TranslationKey {
   }
 }
 
-/** The savings as a sentence, or `null` when there is nothing to compare (or no difference worth a line). */
+/** The savings as a sentence, or `null` when there is nothing to compare (or no difference worth a line). Where the
+ * answer has SpotNav's saving against charging at once on plug-in (the house card's figure for the car), that one;
+ * else the older comparison with the day's average price. */
 export function savingsLine(
   language: Language,
-  source: { savings: number | null; currency: string | null; major_unit: string | null; minor_unit: string | null },
+  source: { savings: number | null; plug_in_saving?: number | null; currency: string | null; major_unit: string | null; minor_unit: string | null },
 ): string | null {
+  if (source.plug_in_saving !== undefined) {
+    const value = source.plug_in_saving;
+    if (value === null || Math.abs(value) < 0.005) {
+      return null;
+    }
+    const amount = money(formatContext(language, source), Math.abs(value));
+    return translate(language, value > 0 ? "history.savings.plugIn" : "history.savings.plugInExtra", { amount });
+  }
   if (source.savings === null || Math.abs(source.savings) < 0.005) {
     return null;
   }
@@ -729,7 +752,8 @@ export function historyBody(
     month.append(latest);
   }
   body.append(month);
-  body.append(element(doc, "p", `${C.muted} ${C.historyFootnote}`, translate(language, "history.savings.note")));
+  const plugIn = answer.this_month.plug_in_saving !== undefined;
+  body.append(element(doc, "p", `${C.muted} ${C.historyFootnote}`, translate(language, plugIn ? "history.savings.plugInNote" : "history.savings.note")));
   if (answer.cost_basis === "current_settings") {
     body.append(element(doc, "p", `${C.muted} ${C.historyFootnote}`, translate(language, "history.costBasis")));
   }

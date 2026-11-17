@@ -7,13 +7,18 @@ the zone converts an absolute instant to a date, nothing here adds hours.
 Costs are summed only for sessions in the bucket's currency (the most recent session's), so a person
 who changed market never sees two currencies added together. The savings are the same priced energy at
 the day's average effective price minus what it cost: an estimate, and always labelled one.
+
+Where the charger's site works out what SpotNav saved (`site/spotnav_saving.session_savings`, against charging at once
+on plug-in, the car's part of the house card's "SpotNav sparade"), the figures are handed in as `savings` (minor
+units by session id) and each bucket gets `plug_in_saving` (major unit, summed over the sessions that have one;
+`None` with none); without them the key is not there. The charger card shows this figure, so both cards say the same.
 """
 
 from __future__ import annotations
 
 import csv
 import io
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 import calendar
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, Final
@@ -33,7 +38,15 @@ def local_day(session: ChargeSession, zone: tzinfo) -> date:
     return session.start.astimezone(zone).date()
 
 
-def summarize_bucket(period: str, sessions: Sequence[ChargeSession]) -> dict[str, Any]:
+def plug_in_saving(sessions: Iterable[ChargeSession], savings: Mapping[str, float | None]) -> float | None:
+    """The sessions' saving against charging at once on plug-in (major unit), over those that have one."""
+    known = [value for value in (savings.get(item.id) for item in sessions) if value is not None]
+    return round(sum(known) / 100, 4) if known else None
+
+
+def summarize_bucket(
+    period: str, sessions: Sequence[ChargeSession], savings: Mapping[str, float | None] | None = None
+) -> dict[str, Any]:
     """One bucket: totals over these sessions (any order, closed ones)."""
     ordered = sorted(sessions, key=lambda item: item.start)
     currency = next((item.currency for item in reversed(ordered) if item.currency is not None), None)
@@ -46,7 +59,7 @@ def summarize_bucket(period: str, sessions: Sequence[ChargeSession]) -> dict[str
     solar_known = sum(item.solar_known_kwh for item in ordered)
     has_cost = bool(priced)
     last = ordered[-1] if ordered else None
-    return {
+    out = {
         "period": period,
         "sessions": len(ordered),
         "energy_kwh": round(energy, 3),
@@ -62,6 +75,9 @@ def summarize_bucket(period: str, sessions: Sequence[ChargeSession]) -> dict[str
         "savings_estimate": True,
         "estimated": any(item.estimated for item in ordered),
     }
+    if savings is not None:
+        out["plug_in_saving"] = plug_in_saving(ordered, savings)
+    return out
 
 
 def cost_figures(session: ChargeSession | None) -> dict[str, Any]:
@@ -91,7 +107,13 @@ def previous_month(day: date) -> str:
     return f"{year:04d}-{month:02d}"
 
 
-def summarize(sessions: Iterable[ChargeSession], zone: tzinfo, *, by: str) -> list[dict[str, Any]]:
+def summarize(
+    sessions: Iterable[ChargeSession],
+    zone: tzinfo,
+    *,
+    by: str,
+    savings: Mapping[str, float | None] | None = None,
+) -> list[dict[str, Any]]:
     """Every day (`by="day"`) or month (`by="month"`) that has a session, newest first."""
     buckets: dict[str, list[ChargeSession]] = {}
     for session in sessions:
@@ -100,17 +122,19 @@ def summarize(sessions: Iterable[ChargeSession], zone: tzinfo, *, by: str) -> li
         day = local_day(session, zone)
         key = day.isoformat() if by == "day" else month_key(day)
         buckets.setdefault(key, []).append(session)
-    return [summarize_bucket(key, buckets[key]) for key in sorted(buckets, reverse=True)]
+    return [summarize_bucket(key, buckets[key], savings) for key in sorted(buckets, reverse=True)]
 
 
-def month_summary(sessions: Iterable[ChargeSession], zone: tzinfo, key: str) -> dict[str, Any]:
+def month_summary(
+    sessions: Iterable[ChargeSession], zone: tzinfo, key: str, savings: Mapping[str, float | None] | None = None
+) -> dict[str, Any]:
     """The month `key` (`YYYY-MM`), all zeros when nothing was charged in it."""
     members = [
         session
         for session in sessions
         if session.end is not None and month_key(local_day(session, zone)) == key
     ]
-    return summarize_bucket(key, members)
+    return summarize_bucket(key, members, savings)
 
 
 def month_bounds(key: str) -> tuple[date, date]:
@@ -129,7 +153,9 @@ def month_sessions(sessions: Iterable[ChargeSession], zone: tzinfo, key: str) ->
     return sorted(members, key=lambda item: item.start, reverse=True)
 
 
-def month_days(sessions: Iterable[ChargeSession], zone: tzinfo, key: str) -> list[dict[str, Any]]:
+def month_days(
+    sessions: Iterable[ChargeSession], zone: tzinfo, key: str, savings: Mapping[str, float | None] | None = None
+) -> list[dict[str, Any]]:
     """One bucket for every day of the month `key`, oldest first, a day with no session as a zero row,
     so a chart has every day."""
     by_day: dict[date, list[ChargeSession]] = {}
@@ -137,7 +163,7 @@ def month_days(sessions: Iterable[ChargeSession], zone: tzinfo, key: str) -> lis
         by_day.setdefault(local_day(session, zone), []).append(session)
     first, last = month_bounds(key)
     return [
-        summarize_bucket(day.isoformat(), by_day.get(day, []))
+        summarize_bucket(day.isoformat(), by_day.get(day, []), savings)
         for day in (first + timedelta(days=offset) for offset in range((last - first).days + 1))
     ]
 

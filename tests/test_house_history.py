@@ -30,6 +30,7 @@ from custom_components.spotnav.site.history_period import (
 )
 from tests.test_house_view import facit_for
 
+from custom_components.spotnav.site.spotnav_saving import DaySaving
 from custom_components.spotnav.site.house_period import (
     BUCKET_KEYS,
     HISTORY_KEYS,
@@ -174,6 +175,13 @@ def month_inputs(**extra: Any) -> HouseHistoryInputs:
         has_heat=True,
         prices=flat_slots(start - timedelta(days=1), last + timedelta(days=1)),
         money=MONEY,
+        # The car's figure from the 10th; the battery under its own control (no part); the heat lowered on two days.
+        savings={
+            date(2026, 11, day): DaySaving(
+                car=150.0 + 10 * day, heat=60.0 if day in (12, 13) else None, battery_share=0.0
+            )
+            for day in range(10, 17)
+        },
         reviews=[
             review(
                 date(2026, 11, day),

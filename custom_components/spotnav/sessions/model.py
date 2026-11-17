@@ -72,6 +72,7 @@ _OPTIONAL_FIELDS: Final = frozenset(
         "vehicle_decided_by",
         "start_soc_percent",
         "register_entity",
+        "plugged_in_at",
     }
 )
 #: How the session's vehicle was decided (`vehicles/identification.py`'s `METHODS`).
@@ -146,6 +147,10 @@ class ChargeSession:
     #: another origin, so a reading of it is never measured against this one's (`recorder._accrue`). An open record
     #: from before it was written is taken, when loaded, as the register the charger's entry names then.
     register_entity: str | None = None
+    #: When the car was plugged in for this charge, where the charger can say (`ChargingController.plugged_in_at`
+    #: while it reads connected): what SpotNav's saving on the car is measured from (`site/spotnav_saving.py`).
+    #: `None` in a record from before it, an imported one and where the charger cannot say.
+    plugged_in_at: datetime | None = None
 
     @property
     def cost_basis(self) -> str:
@@ -247,6 +252,8 @@ class ChargeSession:
             record["start_soc_percent"] = self.start_soc_percent
         if self.register_entity is not None:
             record["register_entity"] = self.register_entity
+        if self.plugged_in_at is not None:
+            record["plugged_in_at"] = self.plugged_in_at.isoformat()
         return record
 
     @classmethod
@@ -261,8 +268,10 @@ class ChargeSession:
         area_id = raw.get("area_id")
         decided_by = raw.get("vehicle_decided_by")
         start_soc = raw.get("start_soc_percent")
+        plugged = None if raw.get("plugged_in_at") is None else _instant(raw.get("plugged_in_at"))
         if (
-            (source is not None and source not in IMPORT_SOURCES)
+            (raw.get("plugged_in_at") is not None and plugged is None)
+            or (source is not None and source not in IMPORT_SOURCES)
             or (area_id is not None and not isinstance(area_id, str))
             or (decided_by is not None and decided_by not in VEHICLE_DECIDED_BY)
             or (start_soc is not None and _number(start_soc) is None)
@@ -346,6 +355,7 @@ class ChargeSession:
             vehicle_decided_by=decided_by,
             start_soc_percent=None if start_soc is None else _number(start_soc),
             register_entity=_text(raw.get("register_entity")),
+            plugged_in_at=plugged,
         )
 
     def public(self, zone: tzinfo | None = None) -> dict[str, Any]:

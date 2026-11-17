@@ -20,7 +20,7 @@ from ..sessions.model import ChargeSession
 INTERVAL_SHARE: Final = 0.95
 
 
-def _spans(session: ChargeSession) -> list[tuple[datetime, datetime, float]]:
+def energy_spans(session: ChargeSession) -> list[tuple[datetime, datetime, float]]:
     """Where the session's energy was drawn: `(start, end, kWh)`."""
     if session.energy_kwh <= 0:
         return []
@@ -49,7 +49,7 @@ def car_energy_from_sessions(
         return {}
     ordered = sorted(out)
     for session in sessions:
-        for begin, end, kwh in _spans(session):
+        for begin, end, kwh in energy_spans(session):
             length = (end - begin).total_seconds()
             for start in ordered[max(0, bisect_right(ordered, begin - step)) :]:
                 if start >= end:

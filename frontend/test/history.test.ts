@@ -202,6 +202,27 @@ describe("the dialog body", () => {
     expect(text).toContain("Savings are an estimate: the same energy at each day's average price.");
   });
 
+  it("writes SpotNav's saving against charging at once on plug-in where the answer has it, the house card's figure", () => {
+    const unit = { currency: "SEK", major_unit: "kr", minor_unit: "öre" };
+    expect(savingsLine("sv", { savings: 6.35, plug_in_saving: 33, ...unit })).toBe(
+      "SpotNav sparade 33 kr mot att ladda direkt vid inkoppling",
+    );
+    expect(savingsLine("en", { savings: 6.35, plug_in_saving: -1.3, ...unit })).toBe("1.3 kr more than charging at once on plug-in");
+    // Present but unknown (a charge from before plug-in times were kept): no line, never the day's average instead.
+    expect(savingsLine("en", { savings: 6.35, plug_in_saving: null, ...unit })).toBeNull();
+    const raw = read("sessions/get_sessions.json");
+    const withPlugIn = JSON.parse(JSON.stringify(raw)) as Record<string, Record<string, unknown>>;
+    withPlugIn["this_month"]!["plug_in_saving"] = 12.5;
+    const decoded = decodeSessions(withPlugIn);
+    if (!decoded.ok) {
+      throw new Error("must decode");
+    }
+    expect(decoded.value.this_month.plug_in_saving).toBe(12.5);
+    expect(decoded.value.last_month.plug_in_saving).toBeUndefined();
+    const text = body({ kind: "ready", answer: decoded.value }).textContent ?? "";
+    expect(text).toContain("The same figure as the house card's.");
+  });
+
   it("marks estimated energy and a charge with no price, and names how each started", () => {
     const rows = body({ kind: "ready", answer: answer() }).querySelectorAll("[data-list='sessions'] > li");
     const estimated = Array.from(rows).find((row) => row.textContent?.includes("estimated energy"));

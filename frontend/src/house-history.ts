@@ -45,6 +45,24 @@ export interface HouseBucket {
   /** The battery's money over the bucket's reviewed days (negative: it made it dearer), `null` with none. */
   battery_saving: number | null;
   battery_days: number;
+  /** What SpotNav saved over the bucket's days, in all and per part (`null` where none of its days has it; always on
+   * a day's hours, and from a backend before it). */
+  saving: number | null;
+  saving_battery: number | null;
+  saving_car: number | null;
+  saving_heat: number | null;
+}
+
+/** What SpotNav saved over the period: each part over the days that have it, with the days counted. */
+export interface HouseSaving {
+  total: number;
+  battery: number | null;
+  car: number | null;
+  heat: number | null;
+  battery_days: number;
+  car_days: number;
+  heat_days: number;
+  days: number;
 }
 
 export interface HouseCost {
@@ -108,6 +126,8 @@ export interface HouseHistory {
   cost: HouseCost | null;
   review: HouseReview | null;
   forecast: { house: ForecastError | null; sun: ForecastError | null; sun_corrected: ForecastError | null; soc: ForecastError | null };
+  /** `null` without any part and from a backend before it. */
+  saving: HouseSaving | null;
 }
 
 export type HouseHistoryDecode = { ok: true; value: HouseHistory } | { ok: false; failure: "unsupported" | "malformed" };
@@ -140,6 +160,28 @@ function number(value: unknown): number {
 
 function numberOrNull(value: unknown): number | null {
   return value === null ? null : number(value);
+}
+
+/** A field an older answer did not have: absent reads as `null`, present must be a number or `null`. */
+function newNumber(source: Record<string, unknown>, key: string): number | null {
+  return key in source ? numberOrNull(source[key]) : null;
+}
+
+function savingSums(value: unknown): HouseSaving | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const source = record(value);
+  return {
+    total: number(source.total),
+    battery: numberOrNull(source.battery),
+    car: numberOrNull(source.car),
+    heat: numberOrNull(source.heat),
+    battery_days: count(source.battery_days),
+    car_days: count(source.car_days),
+    heat_days: count(source.heat_days),
+    days: count(source.days),
+  };
 }
 
 function count(value: unknown): number {
@@ -178,6 +220,10 @@ function bucket(value: unknown): HouseBucket {
     periods: count(source.periods),
     battery_saving: numberOrNull(source.battery_saving),
     battery_days: count(source.battery_days),
+    saving: newNumber(source, "saving"),
+    saving_battery: newNumber(source, "saving_battery"),
+    saving_car: newNumber(source, "saving_car"),
+    saving_heat: newNumber(source, "saving_heat"),
   };
 }
 
@@ -281,6 +327,7 @@ export function decodeHouseHistory(raw: unknown): HouseHistoryDecode {
           sun_corrected: forecastError(forecast.sun_corrected),
           soc: forecastError(forecast.soc),
         },
+        saving: savingSums(source.saving),
       },
     };
   } catch {
@@ -380,6 +427,9 @@ function houseBars(input: HouseHistoryInput, answer: HouseHistory): HTMLElement 
       if (answer.period === "year") {
         figures += ` (${translate(language, "hist.days", { days: String(item.battery_days) })})`;
       }
+    }
+    if (item.saving !== null) {
+      figures += ` · ${translate(language, "hist.house.spotnav")} ${amount(language, item.saving, answer.money)}`;
     }
     return {
       key: item.key,
@@ -488,6 +538,38 @@ function moneySection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
   if (reviewed.archived > 0) {
     block.append(note(doc, translate(language, "hist.house.archived", { days: String(reviewed.archived) })));
   }
+  return block;
+}
+
+/** What SpotNav saved over the period: the total and a row per part the period has, each with its days where fewer
+ * than the period's counted days; the heat said to be an estimate. `null` without any part. */
+function spotnavSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
+  const saving = answer.saving;
+  if (saving === null) {
+    return null;
+  }
+  const { doc, language } = input;
+  const block = section(doc, translate(language, "hist.house.spotnav"), "spotnav-saving");
+  block.append(figureRow(doc, translate(language, "hist.house.spotnav.total"), amount(language, saving.total, answer.money), "total"));
+  const rows = (
+    [
+      ["battery", saving.battery, saving.battery_days],
+      ["car", saving.car, saving.car_days],
+      ["heat", saving.heat, saving.heat_days],
+    ] as const
+  ).filter(([, value]) => value !== null);
+  for (const [key, value, days] of rows) {
+    const figure = amount(language, value!, answer.money);
+    block.append(
+      figureRow(
+        doc,
+        translate(language, `hist.house.spotnav.${key}`),
+        days < saving.days ? translate(language, `hist.house.savedDays.${pluralForm(language, days)}`, { figure, days: String(days) }) : figure,
+        key,
+      ),
+    );
+  }
+  block.append(note(doc, translate(language, "hist.house.spotnav.note")));
   return block;
 }
 
@@ -633,7 +715,7 @@ export function houseHistoryBody(input: HouseHistoryInput): HTMLElement {
   if (shownAnswer.energy_flow === null && shownAnswer.buckets.length === 0) {
     period.append(note(doc, translate(language, "hist.house.noMeters"), "no-meters"));
   }
-  for (const part of [houseBars(input, shownAnswer), perfectSection(input, shownAnswer), flowSection(input, shownAnswer), moneySection(input, shownAnswer)]) {
+  for (const part of [houseBars(input, shownAnswer), perfectSection(input, shownAnswer), flowSection(input, shownAnswer), moneySection(input, shownAnswer), spotnavSection(input, shownAnswer)]) {
     if (part !== null) {
       period.append(part);
     }

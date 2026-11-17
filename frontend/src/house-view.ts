@@ -118,10 +118,75 @@ export function todayLine(language: Language, answer: HouseAnswer): string | nul
     return null;
   }
   const past = answer.day !== null && !answer.day.today;
-  return translate(language, past ? "house.dayMoney" : "house.today", {
+  // A day the battery ran under its own control (SpotNav off or in test, Sigenergy's AI): its earnings are its own.
+  const own = ownControl(answer);
+  return translate(language, past ? (own ? "house.dayMoneyOwn" : "house.dayMoney") : own ? "house.todayOwn" : "house.today", {
     day: past ? dateLabel(language, answer.day!.date) : "",
     amount: amount(language, today.arbitrage, answer.money),
   });
+}
+
+/** Whether the shown day's battery ran under its own control all day (the backend's `saving.battery_share` 0). */
+export function ownControl(answer: HouseAnswer): boolean {
+  return answer.saving !== null && answer.saving.battery_share === 0;
+}
+
+/** Money in the major unit without the unit, for the parts after the total ("35", "4,0"). */
+function bareAmount(language: Language, minor: number): string {
+  const major = minor / 100;
+  return formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1);
+}
+
+const SAVING_PARTS = ["battery", "car", "heat"] as const;
+
+/** What SpotNav saved on the shown day, with its parts when there is more than one ("SpotNav sparade 54 kr i dag ·
+ * batteri 35 · bil 17 · värme 2"); a part the day does not have is left out, never shown as 0. `null` without any. */
+export function savingTotalLine(language: Language, answer: HouseAnswer): string | null {
+  const saving = answer.saving;
+  if (saving === null || saving.total === null) {
+    return null;
+  }
+  const past = answer.day !== null && !answer.day.today;
+  const head = translate(language, past ? "house.saving.totalDay" : "house.saving.total", {
+    day: past ? dateLabel(language, answer.day!.date) : "",
+    amount: amount(language, saving.total, answer.money),
+  });
+  const parts = SAVING_PARTS.filter((part) => saving[part] !== null);
+  if (parts.length < 2) {
+    return head;
+  }
+  return [head, ...parts.map((part) => translate(language, `house.saving.part.${part}`, { amount: bareAmount(language, saving[part]!) }))].join(" · ");
+}
+
+/** In the details: what each part of SpotNav's saving is compared with, one line each; the heat said to be an
+ * estimate. `null` without the saving. */
+function savingDetails(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
+  const saving = answer.saving;
+  if (saving === null) {
+    return null;
+  }
+  const block = element(doc, "div", H.line);
+  block.dataset["line"] = "saving-details";
+  block.append(element(doc, "p", `${C.muted}`, translate(language, "house.saving.details.head")));
+  const lines: string[] = [];
+  if (saving.battery !== null) {
+    lines.push(translate(language, "house.saving.details.battery"));
+  } else if (saving.battery_share === 0) {
+    lines.push(translate(language, "house.saving.details.batteryOwn"));
+  }
+  if (saving.car !== null) {
+    lines.push(translate(language, "house.saving.details.car"));
+    if (saving.car_since !== null) {
+      lines.push(translate(language, "house.saving.details.carSince", { date: dateLabel(language, saving.car_since) }));
+    }
+  }
+  if (saving.heat !== null) {
+    lines.push(translate(language, "house.saving.details.heat"));
+  }
+  for (const line of lines) {
+    block.append(element(doc, "p", C.muted, line));
+  }
+  return block;
 }
 
 /** The brands whose own app is verified to show the same measure as the headline, by name in the hint. */
@@ -380,6 +445,12 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
         wrap.append(sub);
       }
     }
+  }
+  const total = answer === null ? null : savingTotalLine(language, answer);
+  if (total !== null) {
+    const line = element(doc, "p", H.today, total);
+    line.dataset["line"] = "spotnav-saving";
+    wrap.append(line);
   }
   return wrap;
 }
@@ -1131,6 +1202,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     review.dataset["line"] = "review";
     for (const part of [
       perfectBlock(doc, language, answer),
+      savingDetails(doc, language, answer),
       energyFlow === null ? flowBlock(doc, language, answer.flow) : flowNotes(doc, language, answer, energyFlow.querySelector("svg") !== null),
       baselinesBlock(doc, language, answer),
       modesTable(doc, language, answer),

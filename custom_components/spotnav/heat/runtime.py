@@ -25,7 +25,8 @@ this plan and tells what it will close ahead (`control.closings_ahead`).
   What it would do now is logged at each change (`log`), and each hour's action is kept for the day as it was planned
   when the hour began (`days`).
 * **The review** (`heat/review.py`): each day kept with a plan, once the three hours after its end have passed and
-  while the recorder still holds its 5-minute rows: the relay's real closings and SpotNav's plan, money and comfort.
+  while the recorder still holds its 5-minute rows: the relay's real closings and SpotNav's plan, money and comfort;
+  beside it (`spotnav_min`) the minutes SpotNav's heat control itself held the relay closed that day.
 * **Notes**: the enabled automations that reference the relay or a zone (`heat/automations.py`), read every look.
 
 Kept in the site's store (`spotnav.heat_shadow.<entry>`): the measured blocks and `DAYS_KEPT` days of plans and
@@ -745,6 +746,12 @@ class HeatShadow:
                 effect=self.effect,
                 coldest=coldest,
                 low_c=config.target_c - BAND_C,
+            )
+            # SpotNav's own lowering of the day (its heat control's), kept beside the review: the share of the relay's
+            # closings that counts in what SpotNav saved (`site/spotnav_saving.heat_part`).
+            control = self.control
+            record["spotnav_min"] = (
+                0 if control is None else sum(control.executed_minutes(list(day_hours(start, zone)), now).values())
             )
             _LOGGER.info("SpotNav heat (shadow): %s reviewed: %s", key, record["review"])
 

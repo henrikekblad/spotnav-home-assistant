@@ -168,6 +168,19 @@ export interface TodayMoney {
   estimated: boolean;
 }
 
+/** What SpotNav saved on the shown day (minor units): each part `null` where the site does not have it or not yet for
+ * the day, never 0 for that; `battery_share` the share of the day SpotNav controlled the battery (0: its own control),
+ * `car_since` the first day the car is counted from. */
+export interface SavingDay {
+  date: string;
+  total: number | null;
+  battery: number | null;
+  car: number | null;
+  heat: number | null;
+  battery_share: number | null;
+  car_since: string | null;
+}
+
 export interface DayFlow {
   date: string;
   sources: { solar: number | null; battery: number; grid: number };
@@ -293,6 +306,8 @@ export interface HouseAnswer {
   };
   /** `null` without a heat pump meter found, set or ambiguous, and from a backend before heat. */
   heat: HeatView | null;
+  /** What SpotNav saved on the shown day; `null` without any part and from a backend before it. */
+  saving: SavingDay | null;
 }
 
 export type HouseDecodeResult = { ok: true; value: HouseAnswer } | { ok: false; failure: "unsupported" | "malformed" };
@@ -507,6 +522,22 @@ function today(value: unknown): TodayMoney | null {
     stored_kwh: additive(source, "stored_kwh", numberOrNull, null),
     average_cost: additive(source, "average_cost", numberOrNull, null),
     estimated: additive(source, "estimated", flag, false),
+  };
+}
+
+function saving(value: unknown): SavingDay | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  return {
+    date: day(source.date),
+    total: numberOrNull(source.total),
+    battery: numberOrNull(source.battery),
+    car: numberOrNull(source.car),
+    heat: numberOrNull(source.heat),
+    battery_share: numberOrNull(source.battery_share),
+    car_since: source.car_since === null ? null : day(source.car_since),
   };
 }
 
@@ -738,6 +769,7 @@ export function decodeHouse(raw: unknown): HouseDecodeResult {
           solar_forecasts: list(sources.solar_forecasts).map(text),
         },
         heat: additive(source, "heat", heatView, null),
+        saving: additive(source, "saving", saving, null),
       },
     };
   } catch {

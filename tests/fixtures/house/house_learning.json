@@ -609,6 +609,7 @@
     "major_unit": "kr",
     "minor_unit": "öre"
   },
+  "saving": null,
   "site_id": "site_villa",
   "sources": {
     "holiday_calendar": null,

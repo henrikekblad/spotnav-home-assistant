@@ -14,6 +14,10 @@
       "house": 595.2,
       "key": "2026-01",
       "periods": 248,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 595.2
     },
@@ -30,6 +34,10 @@
       "house": 537.6,
       "key": "2026-02",
       "periods": 224,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 537.6
     },
@@ -46,6 +54,10 @@
       "house": 595.2,
       "key": "2026-03",
       "periods": 248,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 595.2
     },
@@ -62,6 +74,10 @@
       "house": 576.0,
       "key": "2026-04",
       "periods": 240,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 576.0
     },
@@ -78,6 +94,10 @@
       "house": 595.2,
       "key": "2026-05",
       "periods": 248,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 595.2
     },
@@ -94,6 +114,10 @@
       "house": 576.0,
       "key": "2026-06",
       "periods": 240,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 576.0
     },
@@ -110,6 +134,10 @@
       "house": 595.2,
       "key": "2026-07",
       "periods": 248,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 595.2
     },
@@ -126,6 +154,10 @@
       "house": 595.2,
       "key": "2026-08",
       "periods": 248,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 595.2
     },
@@ -142,6 +174,10 @@
       "house": 576.0,
       "key": "2026-09",
       "periods": 240,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 576.0
     },
@@ -158,6 +194,10 @@
       "house": 595.2,
       "key": "2026-10",
       "periods": 248,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 595.2
     },
@@ -174,6 +214,10 @@
       "house": 288.0,
       "key": "2026-11",
       "periods": 120,
+      "saving": 2080.0,
+      "saving_battery": null,
+      "saving_car": 1960.0,
+      "saving_heat": 120.0,
       "solar": null,
       "use": 288.0
     },
@@ -190,6 +234,10 @@
       "house": 0.0,
       "key": "2026-12",
       "periods": 0,
+      "saving": null,
+      "saving_battery": null,
+      "saving_car": null,
+      "saving_heat": null,
       "solar": null,
       "use": 0.0
     }
@@ -269,6 +317,16 @@
   },
   "period": "year",
   "review": null,
+  "saving": {
+    "battery": null,
+    "battery_days": 0,
+    "car": 1960.0,
+    "car_days": 7,
+    "days": 7,
+    "heat": 120.0,
+    "heat_days": 2,
+    "total": 2080.0
+  },
   "site_id": "site_villa",
   "time_zone": "Europe/Stockholm",
   "today": "2026-11-16"

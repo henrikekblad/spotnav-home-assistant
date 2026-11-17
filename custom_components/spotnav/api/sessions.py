@@ -20,10 +20,17 @@ The WebSocket command and the webhook action `sessions` share `sessions_answer`,
 Every authenticated user may read, like the dashboard. Money is in the major unit (as the plan's
 estimated cost), prices in the minor unit per kWh, and the savings are an estimate (the same energy at
 the day's average price) and say so. Nothing here writes.
+
+The WebSocket answer of a charger in a loaded site also has `plug_in_saving` (major unit) on each summary and session:
+what SpotNav saved against charging at once on plug-in, the house card's own figure for the car
+(`api/saving.py`, `site/spotnav_saving.py`), `null` where it cannot be known (a session from before plug-in times
+were kept). The card's history shows it; the webhook's answer (the app) is as before.
 """
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Mapping
 from datetime import date
 from typing import Any, Final
 
@@ -51,6 +58,8 @@ from ..sessions.summary import (
 )
 from .common import send_unsupported_version
 from .dashboard import DashboardFailure, resolve_charger_request
+
+_LOGGER = logging.getLogger(__name__)
 
 SESSIONS_API_VERSION: Final = 1
 
@@ -99,8 +108,19 @@ def sessions_payload(
     now,
     limit: int,
     month: str | None = None,
+    savings: Mapping[str, float | None] | None = None,
 ) -> dict[str, Any]:
-    """The JSON answer, built from values only. `month` (validated) defaults to the current one."""
+    """The JSON answer, built from values only. `month` (validated) defaults to the current one. `savings`: each
+    session's saving against charging at once on plug-in (minor units, `api/saving.py`), shown as `plug_in_saving` on
+    the summaries and the sessions; without it those keys are not there."""
+
+    def row(item: ChargeSession) -> dict[str, Any]:
+        public = item.public(zone)
+        if savings is not None:
+            value = savings.get(item.id)
+            public["plug_in_saving"] = None if value is None else round(value / 100, 4)
+        return public
+
     today = now.astimezone(zone).date()
     chosen = month if month is not None else month_key(today)
     in_window = [m for m in available_months(sessions, zone) if m >= months_back(today, MONTH_LIMIT)]
@@ -109,16 +129,16 @@ def sessions_payload(
         "charger_id": charger_id,
         "retention_days": RETENTION_DAYS,
         "cost_basis": COST_BASIS,
-        "this_month": month_summary(sessions, zone, month_key(today)),
-        "last_month": month_summary(sessions, zone, previous_month(today)),
-        "months": summarize(sessions, zone, by="month"),
-        "days": summarize(sessions, zone, by="day")[:DAY_LIMIT],
-        "open": None if open_session is None else open_session.public(zone),
-        "sessions": [item.public(zone) for item in sorted(sessions, key=lambda s: s.start, reverse=True)[:limit]],
+        "this_month": month_summary(sessions, zone, month_key(today), savings),
+        "last_month": month_summary(sessions, zone, previous_month(today), savings),
+        "months": summarize(sessions, zone, by="month", savings=savings),
+        "days": summarize(sessions, zone, by="day", savings=savings)[:DAY_LIMIT],
+        "open": None if open_session is None else row(open_session),
+        "sessions": [row(item) for item in sorted(sessions, key=lambda s: s.start, reverse=True)[:limit]],
         "month": chosen,
-        "month_summary": month_summary(sessions, zone, chosen),
-        "month_days": month_days(sessions, zone, chosen),
-        "month_sessions": [item.public(zone) for item in month_sessions(sessions, zone, chosen)],
+        "month_summary": month_summary(sessions, zone, chosen, savings),
+        "month_days": month_days(sessions, zone, chosen, savings),
+        "month_sessions": [row(item) for item in month_sessions(sessions, zone, chosen)],
         "available_months": in_window,
     }
 
@@ -170,11 +190,16 @@ class SessionsRefusal(Exception):
         self.message = message
 
 
-def sessions_answer(hass: HomeAssistant, entry_id: str, request: dict[str, Any]) -> dict[str, Any]:
+def sessions_answer(
+    hass: HomeAssistant,
+    entry_id: str,
+    request: dict[str, Any],
+    savings: Mapping[str, float | None] | None = None,
+) -> dict[str, Any]:
     """The answer to one sessions request for one charger (WebSocket and webhook alike).
 
     Reads `format`, `limit`, `from`, `to` and `month` from `request`; raises `SessionsRefusal` for a
-    request that is not valid.
+    request that is not valid. `savings`: see `sessions_payload`.
     """
     form = request.get("format", "json")
     limit = request.get("limit", DEFAULT_LIMIT)
@@ -212,6 +237,7 @@ def sessions_answer(hass: HomeAssistant, entry_id: str, request: dict[str, Any])
         now=now,
         limit=limit,
         month=month,
+        savings=savings,
     )
 
 
@@ -240,12 +266,39 @@ async def websocket_get_sessions(
     if isinstance(charger, DashboardFailure):
         connection.send_error(msg["id"], charger.code, charger.message)
         return
+    savings = None
+    if msg.get("format", "json") == "json":
+        try:
+            savings = await async_charger_savings(hass, charger.entry_id)
+        except Exception:  # noqa: BLE001 - the history is still shown, with the day's average as before
+            _LOGGER.debug("SpotNav sessions: what SpotNav saved could not be worked out", exc_info=True)
     try:
-        answer = sessions_answer(hass, charger.entry_id, msg)
+        answer = sessions_answer(hass, charger.entry_id, msg, savings)
     except SessionsRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return
     connection.send_result(msg["id"], answer)
+
+
+async def async_charger_savings(hass: HomeAssistant, charger_entry_id: str) -> dict[str, float | None] | None:
+    """Each of the charger's sessions' saving against charging at once on plug-in (`api/saving.py`, the house card's
+    own computation); `None` for a charger in no loaded site (no house total to agree with)."""
+    from homeassistant.config_entries import ConfigEntryState  # noqa: PLC0415
+    from ..planning.first_run import site_for_charger  # noqa: PLC0415
+    from ..runtime import site_controller_for  # noqa: PLC0415
+    from .saving import async_session_savings  # noqa: PLC0415 - it imports the house API
+
+    site = site_for_charger(hass, charger_entry_id)
+    controller = None if site is None else site_controller_for(hass, site.entry_id)
+    if site is None or site.state is not ConfigEntryState.LOADED or controller is None:
+        return None
+    store = domain_data(hass).session_store
+    if store is None:
+        return None
+    sessions = list(store.closed_raw(charger_entry_id))
+    if (open_session := store.open_raw(charger_entry_id)) is not None:
+        sessions.append(open_session)
+    return await async_session_savings(hass, site.entry_id, controller, sessions)
 
 
 @callback
