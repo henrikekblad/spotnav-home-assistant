@@ -3159,7 +3159,7 @@ var Ha="start",Io="stop",Ws="resume",Pa="pause";var Kk="normal",Nc="vehicle_not_
   .${ce.dayColumn}[data-mark="relay"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
   .${ce.dayColumn}[data-mark="relay_expected"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
   .${ce.dayMark}[data-mark="hot_water"] {
-    fill: var(--spotnav-heat-water-colour, #1e88e5);
+    fill: var(--spotnav-heat-water-colour, #c62828);
     stroke: var(--card-background-color, #fff);
     stroke-width: 1.5;
   }
@@ -3225,7 +3225,7 @@ var Ha="start",Io="stop",Ws="resume",Pa="pause";var Kk="normal",Nc="vehicle_not_
     height: 10px;
     border-radius: 2px;
   }
-  .${ce.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water-colour, #1e88e5); border-radius: 50% 0 50% 50%; transform: rotate(-45deg) scale(0.85); }
+  .${ce.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water-colour, #c62828); border-radius: 50% 0 50% 50%; transform: rotate(-45deg) scale(0.85); }
   .${ce.swatch}[data-action="car"] { background: var(--spotnav-flow-car-colour, #f08c3a); height: 4px; }
   .${ce.swatch}[data-action="relay"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
   .${ce.swatch}[data-action="relay_expected"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }

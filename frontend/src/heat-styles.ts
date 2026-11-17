@@ -239,7 +239,7 @@ export const HEAT_STYLES = `
   .${X.dayColumn}[data-mark="relay"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
   .${X.dayColumn}[data-mark="relay_expected"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
   .${X.dayMark}[data-mark="hot_water"] {
-    fill: var(--spotnav-heat-water-colour, #1e88e5);
+    fill: var(--spotnav-heat-water-colour, #c62828);
     stroke: var(--card-background-color, #fff);
     stroke-width: 1.5;
   }
@@ -305,7 +305,7 @@ export const HEAT_STYLES = `
     height: 10px;
     border-radius: 2px;
   }
-  .${X.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water-colour, #1e88e5); border-radius: 50% 0 50% 50%; transform: rotate(-45deg) scale(0.85); }
+  .${X.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water-colour, #c62828); border-radius: 50% 0 50% 50%; transform: rotate(-45deg) scale(0.85); }
   .${X.swatch}[data-action="car"] { background: var(--spotnav-flow-car-colour, #f08c3a); height: 4px; }
   .${X.swatch}[data-action="relay"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
   .${X.swatch}[data-action="relay_expected"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
