@@ -69,8 +69,12 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
   after.
 
   Once a reviewed day has its **perfect plan** the comparison leads with each way's share of it: the best the battery
-  could have done that day in hindsight, with the measured house, sun and car, the same battery and the same mode's
-  rules, against the same day with no battery. The rules that keep it fair:
+  could have done that day in hindsight, with the measured house, sun and car and the same battery, against the same
+  day with no battery. The rules that keep it fair:
+  * Every way is measured against one perfect plan, under the most permissive rules any of them used, so none can
+    beat it: where selling was possible that day (the site sent energy to the grid, or the battery's own control or a
+    SpotNav mode sold) it is allowed to sell, with Max profit's rules; otherwise it does not sell either. The note
+    under the shares says which.
   * Every way starts the day at the same measured level, and what is left in the battery at midnight counts at the
     next day's mean buy price (with fees) less the battery's losses: a price that is known at the time, as the next
     day's prices come at about 13:00. Until they are in, the day uses its own price and says so.
