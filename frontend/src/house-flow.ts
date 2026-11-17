@@ -140,6 +140,8 @@ export function renderFlow(
   idPrefix: string,
   past = false,
   onHouse: ((opener: HTMLElement, kind: LoadsKind) => void) | null = null,
+  /** A height of its own (a box of fixed height gives its spare room); never below what the blocks' words need. */
+  fitHeight: number | null = null,
 ): SVGSVGElement | null {
   const big = new Set(flow.nodes.filter((node) => node.kwh >= MIN_SHOWN_KWH).map((node) => node.id));
   const linked = new Set(flow.links.filter((link) => link.kwh > 0 && big.has(link.from) && big.has(link.to)).flatMap((link) => [link.from, link.to]));
@@ -149,7 +151,8 @@ export function renderFlow(
   if (sources.length === 0 || uses.length === 0) {
     return null;
   }
-  const height = flowHeight(width, Math.max(sources.length, uses.length));
+  const blocks = Math.max(sources.length, uses.length);
+  const height = fitHeight === null ? flowHeight(width, blocks) : Math.round(Math.max(fitHeight, blocks * (MIN_NODE + GAP) + GAP));
   const nodeW = nodeWidth(width);
   const left = place(sources, height);
   const right = place(uses, height);

@@ -27,7 +27,7 @@ import type { SiteSettingsRequest } from "./site-settings";
 import type { GridTariffBody } from "./grid-tariff";
 import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
 import { HEAT_API_VERSION, HEAT_HISTORY_API_VERSION } from "./heat-model";
-import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION, HOUSE_LOADS_API_VERSION } from "./house-model";
+import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION, HOUSE_LOADS_API_VERSION, HOUSE_NOW_API_VERSION } from "./house-model";
 import { BATTERY_CONTROL_API_VERSION, SITE_VIEW_API_VERSION } from "./site-model";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
@@ -669,6 +669,18 @@ export async function getHouse(hass: HomeAssistantLike, target: { site: string }
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     // A past local day (`YYYY-MM-DD`); left out for today, so an older backend is asked as before.
     ...(date === null ? {} : { date }),
+  });
+}
+
+/**
+ * The house's live flows for the house card's Now tab (`spotnav/get_house_now`, the site's id or a charger's in it);
+ * `unknown` until `decodeHouseNow()` decodes it. Read-only; any signed-in user may read it.
+ */
+export async function getHouseNow(hass: HomeAssistantLike, target: { site: string } | { charger: string }): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_house_now",
+    api_version: HOUSE_NOW_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
   });
 }
 

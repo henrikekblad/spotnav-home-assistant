@@ -7,7 +7,12 @@ import { attachScrub } from "./chart-scrub";
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
-import { renderFlow, type LoadsKind } from "./house-flow";
+import { flowHeight, renderFlow, type LoadsKind } from "./house-flow";
+import type { HouseHistory } from "./house-history";
+import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
+import { energyBars, kwhText, tilesBlock, valueBars, valueTotal, PERIOD_VIEW_CLASSES } from "./house-period-view";
+import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice } from "./house-tabs";
+import type { HistoryPeriod } from "./period-history";
 import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { hiddenIn, type HiddenSeries } from "./house-series";
 import { cardHeader, headerButton, headerTitle } from "./card-header";
@@ -17,6 +22,8 @@ import { daysLeft, pluralForm, translate, type Language, type TranslationKey } f
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 const HOUR_MS = 3_600_000;
+/** The Energy flow tab's diagram at most (px) outside a box; its blocks' words still fit (`house-flow.ts`). */
+const TAB_FLOW_PX = 290;
 
 export type HouseState =
   | { kind: "unconfigured" }
@@ -24,8 +31,34 @@ export type HouseState =
   | { kind: "failed"; sentenceKey: TranslationKey; code: string | null }
   | { kind: "ready"; answer: HouseAnswer };
 
+/** A read of the tabs' own data: on its way, failed, or in. */
+export type Loadable<A> = { kind: "loading" } | { kind: "failed"; code: string | null } | { kind: "ready"; answer: A };
+
+/** What the tabs show besides the card's own answer. */
+export interface HouseTabsData {
+  /** The live flows (`spotnav/get_house_now`); `null` before the first or from a backend without them. */
+  live: HouseNow | null;
+  /** The period shown in the period tabs (`spotnav/get_house_history`), where the tab needs it; else `null`. */
+  history: Loadable<HouseHistory> | null;
+  /** A past day's own answer (`spotnav/get_house` with its date) for its hours; else `null`. */
+  day: Loadable<HouseAnswer> | null;
+  /** The site's local date. */
+  today: string;
+}
+
 export interface HouseUi {
-  detailsOpen: boolean;
+  /** Kept for older callers; the details now live in the history dialog (`houseDetails`). */
+  detailsOpen?: boolean;
+  /** The tab shown (default the first). */
+  tab?: HouseTab;
+  /** The tab the card's YAML locks: the row is not drawn. */
+  locked?: HouseTab | null;
+  /** The period the period tabs show (default today). */
+  choice?: PeriodChoice;
+  /** In a box of fixed height: the height of the shown tab's main picture (its spare room given to it). */
+  fill?: number | null;
+  /** The bar chosen in the period tabs' bars. */
+  bar?: string | null;
   /** The series hidden from the chart's legend, per view (absent: each view's defaults, `house-series.ts`). */
   hidden?: HiddenSeries;
   /** The chart's view: the energy (default) or the price with the battery. */
@@ -37,7 +70,7 @@ export interface HouseUi {
 }
 
 export interface HouseHandlers {
-  onDetails(open: boolean): void;
+  onDetails?(open: boolean): void;
   onView?(view: HouseChartView): void;
   /** The viewer hid or showed a series: the view's whole hidden list after the change. */
   onLegend?(view: HouseChartView, hidden: string[]): void;
@@ -48,8 +81,15 @@ export interface HouseHandlers {
   onSettings?(): void;
   /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
   onTest?(open: boolean): void;
-  /** House in the energy flow tapped: what the house used (`house-loads.ts`). Without it the block is no button. */
-  onHouseLoads?(opener: HTMLElement, kind: LoadsKind): void;
+  /** House in the energy flow tapped: what the house used (`house-loads.ts`) over the period the flow shows (`null`:
+   * today). Without it the block is no button. */
+  onHouseLoads?(opener: HTMLElement, kind: LoadsKind, period?: { period: HistoryPeriod; date: string; running: boolean } | null): void;
+  /** Another tab chosen (`byKey`: by the arrow keys, Home or End: the card focuses it again). */
+  onTab?(tab: HouseTab, byKey: boolean): void;
+  /** Another period chosen in the period tabs. */
+  onPeriod?(choice: PeriodChoice): void;
+  /** A bar chosen in the period tabs' bars (kept over a redraw). */
+  onBar?(key: string | null): void;
 }
 
 export interface HouseRenderInput {
@@ -63,6 +103,8 @@ export interface HouseRenderInput {
   nowMs: number;
   idPrefix: string;
   entityWords?: EntityWords;
+  /** The tabs' own data; without it the period tabs say they are loading and Now has no live figures. */
+  tabs?: HouseTabsData;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
@@ -431,7 +473,8 @@ export function batteryNow(language: Language, answer: HouseAnswer): { code: str
   return { code: "idle", text: translate(language, "house.now.idle") };
 }
 
-/** The header (`card-header.ts`), "Huset · Laddar från nätet", then the battery's level and mode and the day's money. */
+/** The header (`card-header.ts`), "Huset · Laddar från nätet", then the day's money: what the battery earned and what
+ * SpotNav saved. */
 function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElement {
   const { doc, language, handlers } = input;
   const onSettings = handlers.onSettings?.bind(handlers);
@@ -462,35 +505,13 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
   if (test !== null) {
     wrap.append(test.explain);
   }
-  const battery = answer?.battery ?? null;
-  if (battery !== null) {
-    const words = [];
-    if (answer !== null && answer.day !== null && !answer.day.today) {
-      // A past day: the level logged at its last hour's end, said to be that day's.
-      const logged = [...answer.hours].reverse().find((hour) => hour.soc_pct !== null)?.soc_pct ?? null;
-      if (logged !== null) {
-        words.push(translate(language, "house.sub.socDayEnd", { pct: pct(language, logged) }));
-      }
-    } else if (battery.soc_pct !== null) {
-      words.push(translate(language, "house.sub.soc", { pct: pct(language, battery.soc_pct) }));
-    }
-    words.push(translate(language, "house.sub.mode", { mode: modeName(language, answer?.today?.mode ?? battery.mode) }));
-    wrap.append(element(doc, "p", `${C.muted} ${H.sub}`, words.join(" · ")));
-    const today = answer === null ? null : todayLine(language, answer);
-    if (today !== null) {
-      const line = element(doc, "p", H.today, today);
-      line.dataset["line"] = "today";
-      // Said once, right under it: the battery app's own measure where that is verified, else what it counts.
-      const hint = element(doc, "p", `${C.muted} ${H.todayDetail}`, todayHint(language, answer!));
-      hint.dataset["line"] = "today-hint";
-      wrap.append(line, hint);
-      const detail = todayDetail(language, answer!);
-      if (detail !== null) {
-        const sub = element(doc, "p", `${C.muted} ${H.todayDetail}`, detail);
-        sub.dataset["line"] = "today-detail";
-        wrap.append(sub);
-      }
-    }
+  // Above the tabs, compact: what the battery earned today and what SpotNav saved; the battery's level and mode are
+  // in Now, what the headline counts and the day's cost in Price and battery.
+  const today = answer === null || answer.battery === null ? null : todayLine(language, answer);
+  if (today !== null) {
+    const line = element(doc, "p", H.today, today);
+    line.dataset["line"] = "today";
+    wrap.append(line);
   }
   const total = answer === null ? null : savingTotalLine(language, answer);
   if (total !== null) {
@@ -741,7 +762,7 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
   return list;
 }
 
-function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
+function chartBlock(input: HouseRenderInput, answer: HouseAnswer, forced: HouseChartView | null = null, fitHeight: number | null = null): HTMLElement {
   const { doc, language, ui, handlers, nowMs } = input;
   const ctx = context(language, answer);
   const surface = element(doc, "div", H.surface);
@@ -750,7 +771,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   readout.setAttribute("aria-live", "polite");
   const width = Math.max(200, Math.round(input.width));
   const priced = answer.hours.some((hour) => hour.buy !== null);
-  const view: HouseChartView = priced ? (ui.view ?? "energy") : "energy";
+  const view: HouseChartView = forced ?? (priced ? (ui.view ?? "energy") : "energy");
   const hidden = hiddenIn(ui.hidden, view);
   const chart: HouseChart = renderHouseChart({
     hours: answer.hours,
@@ -758,7 +779,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     timeZone: answer.time_zone,
     nowMs,
     width,
-    height: houseChartHeight(width),
+    height: fitHeight ?? houseChartHeight(width),
     labels: {
       kw: (value) => formatNumber(language, value, 1),
       price: (value) => formatNumber(language, value, 0),
@@ -836,7 +857,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   });
   show(selected);
   const block = element(doc, "div");
-  if (priced) {
+  if (priced && forced === null) {
     const views = element(doc, "div", H.views);
     views.setAttribute("role", "group");
     views.setAttribute("aria-label", translate(language, "house.views"));
@@ -1182,6 +1203,297 @@ function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, wo
   return section;
 }
 
+// ------------------------------------------------------------------------------------------------ details
+
+/** The analysis behind the house's last week, which the front once kept behind "Show details" and the history dialog
+ * now shows with Detailed on: the share of the perfect plan (or, before the first, the modes side by side), what
+ * SpotNav's saving is compared with, how the flow is counted, the battery against no battery, the modes ahead and
+ * reviewed, the money behind the shares, the forecasts' errors, the days and the sources. */
+export function houseDetails(doc: Document, language: Language, answer: HouseAnswer, words?: EntityWords, idPrefix = "spotnav-house"): HTMLElement {
+  const details = element(doc, "div", H.details);
+  details.id = `${idPrefix}-details`;
+  const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
+  review.dataset["line"] = "review";
+  const perfect = perfectShown(answer) !== null;
+  for (const part of [
+    perfect ? perfectBlock(doc, language, answer) : compareBlock(doc, language, answer),
+    savingDetails(doc, language, answer),
+    answer.energy_flow === null ? flowBlock(doc, language, answer.flow) : flowNotes(doc, language, answer, true),
+    baselinesBlock(doc, language, answer),
+    modesTable(doc, language, answer),
+    perfectDetailsBlock(doc, language, answer),
+    review,
+    daysTable(doc, language, answer),
+    sourcesBlock(doc, language, answer, words),
+  ]) {
+    if (part !== null) {
+      details.append(part);
+    }
+  }
+  return details;
+}
+
+// ------------------------------------------------------------------------------------------------ tabs
+
+/** The site's local date at `nowMs`. */
+export function localDate(timeZone: string, nowMs: number): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(nowMs));
+    const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  } catch {
+    return new Date(nowMs).toISOString().slice(0, 10);
+  }
+}
+
+/** The battery's level and mode, under the schematic ("Batteri 48 % · läge Balanserad"); `null` without a battery. */
+export function batterySub(language: Language, answer: HouseAnswer): string | null {
+  const battery = answer.battery;
+  if (battery === null) {
+    return null;
+  }
+  const words: string[] = [];
+  if (battery.soc_pct !== null) {
+    words.push(translate(language, "house.sub.soc", { pct: pct(language, battery.soc_pct) }));
+  }
+  words.push(translate(language, "house.sub.mode", { mode: modeName(language, answer.today?.mode ?? battery.mode) }));
+  return words.join(" · ");
+}
+
+function statusParagraph(doc: Document, language: Language, key: TranslationKey, line: string): HTMLElement {
+  const paragraph = element(doc, "p", `${C.muted} ${H.line}`, translate(language, key));
+  paragraph.setAttribute("role", "status");
+  paragraph.dataset["line"] = line;
+  return paragraph;
+}
+
+/** Now: the live schematic, the plan's sentence, the battery's level and mode, and a heat meter to choose. */
+function nowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement): void {
+  const { doc, language } = input;
+  const live = input.tabs?.live ?? null;
+  const wrap = element(doc, "div", "spotnav-now");
+  wrap.dataset["part"] = "now";
+  wrap.append(renderSchematic({ doc, language, answer, live, width: input.width, height: input.ui.fill ?? null, idPrefix: input.idPrefix }));
+  panel.append(wrap);
+  const plan = planSentence(language, answer, input.nowMs);
+  if (plan !== null) {
+    const line = element(doc, "p", H.line, plan);
+    line.dataset["line"] = "plan";
+    panel.append(line);
+  }
+  // The level is the schematic's; under it the mode.
+  const notes: string[] = answer.battery === null ? [] : [translate(language, "house.sub.mode", { mode: modeName(language, answer.today?.mode ?? answer.battery.mode) })];
+  if (live === null) {
+    notes.push(translate(language, "house.nowTab.noLive"));
+  } else if (live.sun_from === "recent" || live.heat_from === "recent") {
+    notes.push(translate(language, "house.nowTab.recent"));
+  }
+  if (notes.length > 0) {
+    const line = element(doc, "p", `${C.muted} ${H.sub}`, notes.join(" · "));
+    line.dataset["line"] = "battery-sub";
+    panel.append(line);
+  }
+  const heat = answer.heat;
+  if (heat !== null && (heat.status === "ambiguous" || heat.status === "unusable")) {
+    const line = element(doc, "p", H.line, heatLine(language, answer, input.entityWords) ?? "");
+    line.dataset["line"] = "heat";
+    panel.append(line);
+  }
+}
+
+/** The period tabs' picker, shared by the three. */
+function picker(input: HouseRenderInput, today: string): HTMLElement {
+  const choice = input.ui.choice ?? { period: "day", date: null };
+  return periodPicker(input.doc, input.language, choice, today, (next) => input.handlers.onPeriod?.(next));
+}
+
+/** The shown period's history, or the line saying it is on its way or could not be read. */
+function historyOrStatus(input: HouseRenderInput, panel: HTMLElement): HouseHistory | null {
+  const history = input.tabs?.history ?? null;
+  if (history === null || history.kind === "loading") {
+    const line = statusParagraph(input.doc, input.language, "hist.loading", "loading");
+    line.setAttribute("aria-busy", "true");
+    panel.append(line);
+    return null;
+  }
+  if (history.kind === "failed") {
+    const line = statusParagraph(input.doc, input.language, history.code === "unknown_command" || history.code === "spotnav_unsupported_api_version" ? "hist.unsupported" : "hist.failed", "failed");
+    if (history.code !== null) {
+      line.dataset["code"] = history.code;
+    }
+    panel.append(line);
+    return null;
+  }
+  return history.answer;
+}
+
+/** The energy flow of the period with its tiles (today's: the card's own answer, up to its last read). */
+function flowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
+  const { doc, language } = input;
+  const choice = input.ui.choice ?? { period: "day", date: null };
+  panel.append(picker(input, today));
+  let flow: HouseAnswer["energy_flow"];
+  let running: boolean;
+  let date: string;
+  if (choice.period === "day" && choice.date === null) {
+    flow = answer.energy_flow;
+    running = true;
+    date = today;
+  } else {
+    const history = historyOrStatus(input, panel);
+    if (history === null) {
+      return;
+    }
+    flow = history.energy_flow;
+    running = history.today >= history.date && history.today < history.end;
+    date = history.date;
+  }
+  if (flow === null) {
+    panel.append(statusParagraph(doc, language, "hist.house.noMeters", "no-meters"));
+    return;
+  }
+  const onHouse = input.handlers.onHouseLoads?.bind(input.handlers) ?? null;
+  const loads = onHouse === null ? null : (opener: HTMLElement, kind: LoadsKind) => onHouse(opener, kind, { period: choice.period, date, running });
+  // Lower than the old front's own diagram, the tiles under it carry the figures; a box gives it its spare room.
+  const flowWidth = Math.max(260, Math.floor(input.width));
+  const diagram = renderFlow(doc, language, flow, flowWidth, input.idPrefix, !running || choice.period !== "day", loads, input.ui.fill ?? Math.min(flowHeight(flowWidth, 5), TAB_FLOW_PX));
+  const section = element(doc, "section", `${H.flow}`);
+  section.dataset["part"] = "energy-flow";
+  if (diagram === null) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, running && choice.period === "day" ? "house.flow.waiting" : "hist.house.noEnergy")));
+    panel.append(section);
+    return;
+  }
+  if (running && choice.period === "day") {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: clock(context(language, answer), Date.parse(flow.through)) })));
+  }
+  section.append(diagram);
+  panel.append(section, tilesBlock(doc, language, flow));
+  if (loads !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
+    const heat = diagram.querySelector(".spotnav-house-flow-action[data-role='heat']") !== null;
+    panel.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, heat ? "house.loads.tapHeat" : "house.loads.tap")));
+  }
+}
+
+/** The day's hours a tab draws: today's from the card's answer, a past day's from its own read; `undefined` while
+ * that is on its way (the line is in `panel`), `null` when the day has none (too far back: the history's bars). */
+function dayHours(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement): HouseAnswer | null | undefined {
+  const choice = input.ui.choice ?? { period: "day", date: null };
+  if (choice.date === null) {
+    return answer;
+  }
+  const first = answer.day?.first ?? null;
+  if (first !== null && choice.date < first) {
+    return null;
+  }
+  const day = input.tabs?.day ?? null;
+  if (day === null || day.kind === "loading") {
+    const line = statusParagraph(input.doc, input.language, "hist.loading", "loading");
+    line.setAttribute("aria-busy", "true");
+    panel.append(line);
+    return undefined;
+  }
+  if (day.kind === "failed") {
+    return null;
+  }
+  return day.answer.day !== null && !day.answer.day.has_data ? null : day.answer;
+}
+
+/** The bars' height: the spare room in a box, else by the width. */
+function barsHeight(input: HouseRenderInput): number {
+  return Math.round(input.ui.fill ?? Math.min(200, Math.max(130, input.width * 0.36)));
+}
+
+/** Our energy chart: a day by the hour (today with the forecast ahead), a month by the day, a year by the month. */
+function graphPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
+  const choice = input.ui.choice ?? { period: "day", date: null };
+  panel.append(picker(input, today));
+  if (choice.period === "day") {
+    const shown = dayHours(input, answer, panel);
+    if (shown === undefined) {
+      return;
+    }
+    if (shown !== null) {
+      panel.append(chartBlock({ ...input, nowMs: shown === answer ? input.nowMs : Date.parse(`${choice.date}T23:59:59Z`) + 86_400_000 }, shown, "energy", input.ui.fill ?? null));
+      return;
+    }
+  }
+  const history = historyOrStatus(input, panel);
+  if (history === null) {
+    return;
+  }
+  const bars = energyBars(input.doc, input.language, history, barsHeight(input), input.ui.bar ?? null, input.handlers.onBar?.bind(input.handlers));
+  panel.append(bars ?? statusParagraph(input.doc, input.language, "hist.house.noEnergy", "no-energy"));
+}
+
+/** The prices with the battery, and what the battery's energy was worth: a day's hours, a month's days, a year's months. */
+function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
+  const { doc, language } = input;
+  const choice = input.ui.choice ?? { period: "day", date: null };
+  panel.append(picker(input, today));
+  if (choice.period === "day") {
+    const shown = dayHours(input, answer, panel);
+    if (shown === undefined) {
+      return;
+    }
+    if (shown !== null && shown.hours.some((hour) => hour.buy !== null)) {
+      panel.append(chartBlock({ ...input, nowMs: shown === answer ? input.nowMs : Date.parse(`${choice.date}T23:59:59Z`) + 86_400_000 }, shown, "price", input.ui.fill ?? null));
+    }
+  }
+  const history = input.tabs?.history ?? null;
+  if (history !== null && history.kind === "ready" && answer.battery !== null) {
+    const total = valueTotal(history.answer);
+    if (total !== null) {
+      const line = element(
+        doc,
+        "p",
+        PERIOD_VIEW_CLASSES.total,
+        translate(language, total < 0 ? "house.value.totalCost" : "house.value.total", { amount: amount(language, Math.abs(total), answer.money) }),
+      );
+      line.dataset["line"] = "value-total";
+      panel.append(line);
+      const bars = valueBars(doc, language, history.answer, choice.period === "day" ? 110 : barsHeight(input), (minor) => amount(language, minor, answer.money), input.ui.bar ?? null, input.handlers.onBar?.bind(input.handlers));
+      if (bars !== null) {
+        panel.append(bars, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.value.note")));
+      }
+    }
+    const cost = history.answer.cost;
+    if (cost !== null && cost.priced > 0 && !(choice.period === "day" && choice.date === null)) {
+      const parts = [translate(language, "house.todayCost", { amount: amount(language, cost.bought, answer.money) })];
+      if (Math.abs(cost.sold) >= 50) {
+        parts.push(translate(language, "house.todaySold", { amount: amount(language, cost.sold, answer.money) }));
+      }
+      const line = element(doc, "p", `${C.muted} ${H.todayDetail}`, parts.join(" · "));
+      line.dataset["line"] = "period-cost";
+      panel.append(line);
+    }
+  } else if (history !== null && history.kind === "loading" && answer.battery !== null) {
+    const line = statusParagraph(doc, language, "hist.loading", "loading");
+    line.setAttribute("aria-busy", "true");
+    panel.append(line);
+  } else if (choice.period !== "day" && history !== null && history.kind === "failed") {
+    historyOrStatus(input, panel);
+  }
+  if (choice.period === "day" && choice.date === null && answer.battery !== null) {
+    // Today's money in words: what the headline counts, the day's cost, the week's reviewed sentence.
+    const hint = element(doc, "p", `${C.muted} ${H.todayDetail}`, todayHint(language, answer));
+    hint.dataset["line"] = "today-hint";
+    panel.append(hint);
+    const detail = todayDetail(language, answer);
+    if (detail !== null) {
+      const sub = element(doc, "p", `${C.muted} ${H.todayDetail}`, detail);
+      sub.dataset["line"] = "today-detail";
+      panel.append(sub);
+    }
+    const saving = savingLine(language, answer);
+    if (saving !== null) {
+      const line = element(doc, "p", `${C.muted} ${H.todayDetail}`, saving);
+      line.dataset["line"] = "saving";
+      panel.append(line);
+    }
+  }
+}
+
 // ------------------------------------------------------------------------------------------------ body
 
 /** The card's whole content for one state. */
@@ -1212,66 +1524,28 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     line.dataset["line"] = "learning";
     card.append(line);
   }
-  if (answer.day !== null && !answer.day.has_data) {
-    const none = element(doc, "p", `${C.muted} ${H.line}`, translate(language, "house.day.noData"));
-    none.setAttribute("role", "status");
-    none.dataset["line"] = "no-data";
-    card.append(none);
-    return card;
+  const locked = input.ui.locked ?? null;
+  const tab: HouseTab = locked ?? input.ui.tab ?? "now";
+  card.dataset["tab"] = tab;
+  if (locked === null) {
+    card.append(tabList(doc, language, tab, input.idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey)));
   }
-  card.append(chartBlock(input, answer));
-  // The perfect share lives in the details, first there, so the front stays the earnings, the chart, the heat and the
-  // flow; before the first perfect plan the modes' comparison stands on the front.
-  const perfect = perfectShown(answer) !== null;
-  const comparison = perfect ? null : compareBlock(doc, language, answer);
-  if (comparison !== null) {
-    card.append(comparison);
-  }
-  // The week's sentence is the comparison's own once a night was reviewed; before, the line says what is to come.
-  const saving = (perfect || comparison !== null) && answer.battery?.review !== null ? null : savingLine(language, answer);
-  if (saving !== null) {
-    const line = element(doc, "p", H.line, saving);
-    line.dataset["line"] = "saving";
-    card.append(line);
-  }
-  const heat = heatLine(language, answer, input.entityWords);
-  if (heat !== null) {
-    const line = element(doc, "p", H.line, heat);
-    line.dataset["line"] = "heat";
-    card.append(line);
-  }
-  const energyFlow = energyFlowBlock(input, answer);
-  if (energyFlow !== null) {
-    card.append(energyFlow);
-  }
-  const toggle = element(doc, "button", `${C.linkButton} ${H.detailsToggle}`, translate(language, input.ui.detailsOpen ? "details.hide" : "details.show"));
-  toggle.type = "button";
-  toggle.setAttribute("aria-expanded", String(input.ui.detailsOpen));
-  const detailsId = `${input.idPrefix}-details`;
-  toggle.setAttribute("aria-controls", detailsId);
-  toggle.addEventListener("click", () => input.handlers.onDetails(!input.ui.detailsOpen));
-  card.append(toggle);
-  if (input.ui.detailsOpen) {
-    const details = element(doc, "div", H.details);
-    details.id = detailsId;
-    const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
-    review.dataset["line"] = "review";
-    for (const part of [
-      perfectBlock(doc, language, answer),
-      savingDetails(doc, language, answer),
-      energyFlow === null ? flowBlock(doc, language, answer.flow) : flowNotes(doc, language, answer, energyFlow.querySelector("svg") !== null),
-      baselinesBlock(doc, language, answer),
-      modesTable(doc, language, answer),
-      perfectDetailsBlock(doc, language, answer),
-      review,
-      daysTable(doc, language, answer),
-      sourcesBlock(doc, language, answer, input.entityWords),
-    ]) {
-      if (part !== null) {
-        details.append(part);
-      }
+  const panel = tabPanel(doc, tab, input.idPrefix, locked === null);
+  card.append(panel);
+  const today = input.tabs?.today ?? (answer.day?.today === true ? answer.day.date : localDate(answer.time_zone, input.nowMs));
+  if (tab === "now") {
+    if (answer.day !== null && !answer.day.has_data) {
+      panel.append(statusParagraph(doc, language, "house.day.noData", "no-data"));
     }
-    card.append(details);
+    nowPanel(input, answer, panel);
+  } else if (tab === "flow") {
+    flowPanel(input, answer, panel, today);
+  } else if (tab === "graph") {
+    graphPanel(input, answer, panel, today);
+  } else {
+    pricePanel(input, answer, panel, today);
   }
   return card;
 }
+
+export { kwhText, schematicHeight };
