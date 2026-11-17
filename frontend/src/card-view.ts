@@ -2218,6 +2218,8 @@ export function createCardView(input: CardViewInput): CardView {
       natural: target.offsetHeight,
       statusHeight: statusNode?.offsetHeight ?? 0,
       lineHeight: Number.isFinite(lineHeight) ? lineHeight : 0,
+      // The readout line is out of the flow in a box of fixed height (see `[data-fill]` in visual-styles.ts).
+      reclaimed: readout.hidden ? 0 : readout.offsetHeight + Number.parseFloat(getComputedStyle(readout).marginTop || "0"),
     };
   }
 
