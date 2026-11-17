@@ -405,7 +405,7 @@ export const HOUSE_STYLES = `
     display: flex;
     flex-wrap: wrap;
     gap: 0 12px;
-    margin: 4px 0 0;
+    margin: 4px 0;
     padding: 0;
     list-style: none;
     font-size: 0.78rem;
@@ -421,7 +421,8 @@ export const HOUSE_STYLES = `
     align-items: center;
     gap: 5px;
     min-height: 40px;
-    margin: 0;
+    /* The finger-sized box overlaps its neighbours' rows, so wrapped rows sit a line apart, not 40 px apart. */
+    margin: -8px 0;
     padding: 0 2px;
     border: 0;
     border-radius: 4px;
