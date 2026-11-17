@@ -50,6 +50,7 @@ from ..const import (
     CONF_PHASE_SWITCHING,
     CONF_POWER_ENTITY,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
+    CURRENT_CONTROL_POWER,
     DEFAULT_IDLE_POWER_W,
     DEFAULT_MIN_CURRENT_A,
     DOMAIN,
@@ -83,6 +84,7 @@ from .chargers.base import (
     ASSIGN_UNCHANGED,
     ASSIGN_UNCONFIRMED,
     ASSIGN_UNSUPPORTED,
+    ASSIGN_WRITE_FAILED,
     IN_EFFECT_OUTCOMES,
     MODULATION_WRITES,
     STOP_HELD_AT_FLOOR,
@@ -550,6 +552,12 @@ CURRENT_RANGE_SOURCE_CURRENT_LIMIT = "current_limit"
 CURRENT_RANGE_SOURCE_SESSION_LIMIT = "session_limit"
 CURRENT_RANGE_SOURCE_STATION_MAXIMUM = "station_maximum"
 CURRENT_RANGE_SOURCE_DEFAULT = "default"
+
+
+async def power_start_retry_sleep(seconds: float) -> None:
+    """The wait before a DC charger's session-start limit is written again (`_retry_power_start_write`); a test
+    replaces it."""
+    await asyncio.sleep(seconds)
 
 
 def power_range(current: Any) -> dict[str, Any] | None:
@@ -3896,6 +3904,35 @@ class ChargingController:
         finally:
             self._start_in_flight = False
 
+    async def _retry_power_start_write(self, amps: int, outcome: str) -> str:
+        """A DC charger's session-start limit write that was held by the write interval or failed, tried once more
+        once the interval allows (at most the policy's interval). Under `_assign_lock`."""
+        if outcome not in (ASSIGN_RATE_LIMITED, ASSIGN_WRITE_FAILED):
+            return outcome
+        # A failed write took its place in the write interval too: the retry waits for it.
+        wait_s = self.adapter.current.wait_s()
+        if wait_s > max(self.adapter.policy.min_interval_s, 1.0):
+            return outcome
+        if wait_s > 0:
+            await power_start_retry_sleep(wait_s)
+        return await self._assign_current_locked(amps, verify=False, reason=WRITE_SESSION_START)
+
+    def _power_start_limit_ok(self, outcome: str | None, amps: int | None) -> bool:
+        """Whether a DC charger may be started: the session-start limit is in effect, or the limit it carries reads
+        at or below what it may draw now (`amps`, the current the start asked for within the site's allowance; with
+        none, the allowance, else its ceiling). Started otherwise, it would charge at whatever its register holds, up
+        to its whole rating."""
+        if outcome in IN_EFFECT_OUTCOMES:
+            return True
+        bound: float | None = amps
+        if bound is None:
+            bound = self._start_allowance_a()
+        if bound is None:
+            ceiling = getattr(self.adapter.current, "max_a", None)
+            bound = ceiling() if callable(ceiling) else None
+        carried = self.adapter.current.read_back_a()
+        return bound is not None and carried is not None and carried <= bound
+
     async def _hold_start_for_room(
         self, manual: bool, cause: str | None, allowance: float, floor: float
     ) -> None:
@@ -3954,6 +3991,8 @@ class ChargingController:
             # asked for, so the start is still capped by load balancing as every start is.
             explicit_amps = self._requested_current_a
         reserved = False
+        # A DC charger (`CURRENT_CONTROL_POWER`) is started only with its power limit in effect (`_power_start_limit_ok`).
+        start_limit_ok = True
         if self.is_switch_only:
             # A charger whose current cannot be set draws its whole switched current from the moment it starts: with
             # active control on it starts only where the site has room for all of it, and the request is recorded
@@ -4009,11 +4048,15 @@ class ChargingController:
                             outcome = await self._assign_current_locked(
                                 explicit_amps, verify=False, reason=WRITE_SESSION_START
                             )
+                            if self.current_control == CURRENT_CONTROL_POWER and not self._control_on:
+                                # Start is about to be pressed: only with this limit in effect.
+                                outcome = await self._retry_power_start_write(explicit_amps, outcome)
+                                start_limit_ok = self._power_start_limit_ok(outcome, explicit_amps)
                             # A session-bound number is not there before the session: write when it appears.
                             self._start_write_pending = (
                                 outcome == ASSIGN_TARGET_UNAVAILABLE and self.adapter.policy.session_bound
                             )
-                if too_low is None:
+                if too_low is None and start_limit_ok:
                     await self._async_save()
             except BaseException:
                 # Nothing went out: the site's margin is not on its way to this charger.
@@ -4023,6 +4066,20 @@ class ChargingController:
             if too_low is not None:
                 await self._hold_start_for_room(manual, cause, too_low, DEFAULT_MIN_CURRENT_A)
                 return False
+        elif self.current_control == CURRENT_CONTROL_POWER and self._writes_current_at_start and not self._control_on:
+            # No current named: the limit the charger carries must still be within what it may draw.
+            start_limit_ok = self._power_start_limit_ok(None, None)
+        if not start_limit_ok:
+            if reserved:
+                self._reserve_start(None)
+            _LOGGER.warning(
+                "SpotNav charger %s: the DC charger is not started; its power limit could not be set to what the site "
+                "allows, and it would start at %s A",
+                self.entry_id,
+                self.adapter.current.read_back_a(),
+            )
+            self._notify()
+            return False
         executed = True
         # From here the charge is SpotNav's, whoever asked (a window, a manual Start, a webhook,
         # solar or hybrid execution): the hold of a charge that starts by itself leaves it alone.
@@ -4323,6 +4380,12 @@ class ChargingController:
         if applied is not None and amps >= applied:
             # Already at or below what the fuse needs: nothing to lower.
             return RegulatedWrite(REGULATED_HELD, outcome, False)
+        if outcome == ASSIGN_RATE_LIMITED and self.current_control == CURRENT_CONTROL_POWER:
+            # A DC charger's limit is written at most every 10 s: a must-lower inside it stops the charge (the
+            # fail-safe), counted for the tester's report.
+            note = getattr(self.adapter.current, "note_interval_stop", None)
+            if callable(note):
+                note()
         return await self._regulated_stop("safety_stop", cause=outcome)
 
     def _log_regulated_stop(self, code: str, cause: str | None) -> None:
@@ -4338,6 +4401,9 @@ class ChargingController:
                 "SpotNav charger %s: pausing the charge; load balancing leaves less than the charger's minimum current",
                 self.entry_id,
             )
+            return
+        if code == "safety_stop" and cause == ASSIGN_RATE_LIMITED and self.current_control == CURRENT_CONTROL_POWER:
+            _LOGGER.info("SpotNav charger %s: DC charger stopped to protect the fuse (write interval)", self.entry_id)
             return
         _LOGGER.warning(
             "SpotNav charger %s: stopping the charge (%s%s); the current cannot be lowered in time",
