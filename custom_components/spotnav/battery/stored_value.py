@@ -48,15 +48,21 @@ class DayMoney:
     arbitrage: float = 0.0
     battery_export_kwh: float = 0.0
     quarters: int = 0
+    #: The quarter hours of `quarters` counted while SpotNav controlled the battery (`BatteryControl.state` `on`):
+    #: the share of the day's arbitrage that is SpotNav's doing (`site/spotnav_saving.py`).
+    controlled: int = 0
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "sold": round(self.sold, 2),
             "bought": round(self.bought, 2),
             "arbitrage": round(self.arbitrage, 2),
             "battery_export_kwh": round(self.battery_export_kwh, 3),
             "quarters": self.quarters,
         }
+        if self.controlled:
+            out["controlled"] = self.controlled
+        return out
 
     @classmethod
     def from_dict(cls, raw: Any) -> DayMoney | None:
@@ -69,6 +75,7 @@ class DayMoney:
                 float(raw["arbitrage"]),
                 float(raw.get("battery_export_kwh", 0.0)),
                 int(raw.get("quarters", 0)),
+                int(raw.get("controlled", 0)),
             )
         except (KeyError, TypeError, ValueError):
             return None
@@ -100,8 +107,16 @@ class StoredValue:
         self.kwh, self.cost, self.estimated = kwh, kwh * price, kwh >= EMPTY_KWH
         self.estimate_left = kwh
 
-    def step(self, bucket: Bucket, tz: str, usable_kwh: float | None, start_price: float | None = None) -> bool:
-        """Count one completed quarter hour (oldest first); whether it counted."""
+    def step(
+        self,
+        bucket: Bucket,
+        tz: str,
+        usable_kwh: float | None,
+        start_price: float | None = None,
+        controlled: bool = False,
+    ) -> bool:
+        """Count one completed quarter hour (oldest first); whether it counted. `controlled`: SpotNav controlled the
+        battery when it was counted."""
         if self.last is not None and bucket.start <= self.last:
             return False
         if not bucket.covered or bucket.buy is None or bucket.sell is None:
@@ -116,6 +131,8 @@ class StoredValue:
         day = bucket.start.astimezone(time_zones.require_zone(tz)).date()
         money = self.days.setdefault(day, DayMoney())
         money.quarters += 1
+        if controlled:
+            money.controlled += 1
         money.bought += imported * buy
         sold_kwh = exported
         if moved > 0:
@@ -146,11 +163,20 @@ class StoredValue:
         return True
 
     def run(
-        self, buckets: Iterable[Bucket], tz: str, usable_kwh: float | None, start_price: float | None = None
+        self,
+        buckets: Iterable[Bucket],
+        tz: str,
+        usable_kwh: float | None,
+        start_price: float | None = None,
+        controlled: bool = False,
     ) -> int:
-        """Count the completed quarter hours not counted yet, oldest first; how many counted."""
+        """Count the completed quarter hours not counted yet, oldest first; how many counted. `controlled`: whether
+        SpotNav controls the battery now (each quarter hour counted takes it, so one counted late after a restart takes
+        the state at its counting)."""
         counted = sum(
-            1 for bucket in sorted(buckets, key=lambda b: b.start) if self.step(bucket, tz, usable_kwh, start_price)
+            1
+            for bucket in sorted(buckets, key=lambda b: b.start)
+            if self.step(bucket, tz, usable_kwh, start_price, controlled)
         )
         if self.days:
             newest = max(self.days)
