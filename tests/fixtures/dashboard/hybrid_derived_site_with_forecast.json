@@ -2393,7 +2393,8 @@
     "vehicles": {}
   },
   "sun": {
-    "hours": []
+    "hours": [],
+    "quarters": []
   },
   "target_vehicle_id": null,
   "vehicle_choices": [],
