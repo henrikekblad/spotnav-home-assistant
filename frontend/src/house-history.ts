@@ -51,10 +51,9 @@ export interface HouseBucket {
   saving_battery: number | null;
   saving_car: number | null;
   saving_heat: number | null;
-  /** What the battery's energy was worth over the bucket's priced periods (minor unit; the battery app's "energy
-   * value": what it gave less what it took, at the period's prices); `null` without a battery, a price, and from a
-   * backend before it. */
-  battery_value: number | null;
+  /** What the battery earned in the bucket (minor unit): its arbitrage, the card's headline measure, the same as the
+   * battery's own app shows; `null` without a battery, where nothing is kept, and from a backend before it. */
+  arbitrage: number | null;
   /** The bucket's mean buy and sell price over its priced periods (minor unit per kWh); `null` unpriced and from a
    * backend before them. */
   buy: number | null;
@@ -232,7 +231,7 @@ function bucket(value: unknown): HouseBucket {
     saving_battery: newNumber(source, "saving_battery"),
     saving_car: newNumber(source, "saving_car"),
     saving_heat: newNumber(source, "saving_heat"),
-    battery_value: newNumber(source, "battery_value"),
+    arbitrage: newNumber(source, "arbitrage"),
     buy: newNumber(source, "buy"),
     sell: newNumber(source, "sell"),
   };

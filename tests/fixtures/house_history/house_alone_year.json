@@ -232,7 +232,7 @@
       "use": 595.2
     },
     {
-      "arbitrage": 5250.0,
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,

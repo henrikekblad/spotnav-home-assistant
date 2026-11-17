@@ -9,9 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSE_CARD_ELEMENT, houseConfigForm, LIVE_REFRESH_MS, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { decodeHouseNow, dotLap, planRuns, planSentence, renderSchematic, schematicLines, type HouseNow } from "../src/house-now";
-import { energyBars, flowTiles, valueBars, valueTotal } from "../src/house-period-view";
-import { kindChoice, periodPicker, readTab, stepChoice, tabForKey, tabKey, tabList, writeTab, type PeriodChoice } from "../src/house-tabs";
+import { decodeHouseNow, dotLap, fitName, patchSchematic, planRuns, planSentence, renderSchematic, schematicLines, type HouseNow } from "../src/house-now";
+import { earnedBars, earnedTotal, energyChart, flowTiles, niceStep } from "../src/house-period-view";
+import { choiceLabel, kindChoice, periodPicker, readTab, stepChoice, tabForKey, tabKey, tabList, writeTab, type PeriodChoice } from "../src/house-tabs";
 import { houseBody, type HouseTabsData, type HouseUi } from "../src/house-view";
 import { translate } from "../src/i18n";
 import { FakeHass } from "./helpers";
@@ -181,11 +181,25 @@ describe("the period picker", () => {
     const months = Array.from(month.querySelectorAll<HTMLOptionElement>("select[data-pick='month'] option")).map((option) => option.value);
     expect(months[0]).toBe("2026-11-01");
     expect(months.every((value) => value <= TODAY)).toBe(true);
-    const kind = month.querySelector<HTMLSelectElement>("select[data-pick-kind]")!;
-    expect(Array.from(kind.options).map((option) => option.textContent)).toEqual(["Dag", "Månad", "År"]);
-    kind.value = "year";
-    kind.dispatchEvent(new Event("change"));
+    const kinds = Array.from(month.querySelectorAll<HTMLButtonElement>("button[data-kind]"));
+    expect(kinds.map((button) => `${button.textContent}:${button.getAttribute("aria-pressed")}`)).toEqual(["Dag:false", "Månad:true", "År:false"]);
+    kinds[2]!.click();
     expect(onChange).toHaveBeenLastCalledWith({ period: "year", date: null });
+  });
+
+  it("names the period in the reader's language, today's with how far its figures reach", () => {
+    expect(choiceLabel("sv", { period: "day", date: null }, TODAY)).toBe("I dag");
+    expect(choiceLabel("sv", { period: "day", date: "2026-11-12" }, TODAY)).toBe("I går");
+    expect(choiceLabel("sv", { period: "day", date: "2026-11-11" }, TODAY)).toMatch(/^ons 11 nov/);
+    expect(choiceLabel("en", { period: "day", date: "2026-11-11" }, TODAY)).toBe("Wed 11 Nov");
+    expect(choiceLabel("sv", { period: "month", date: null }, TODAY)).toBe("nov 2026");
+    expect(choiceLabel("sv", { period: "year", date: "2025-01-01" }, TODAY)).toBe("2025");
+    const picker = periodPicker(document, "sv", { period: "day", date: null }, TODAY, vi.fn(), "17:00");
+    expect(picker.querySelector("[data-pick-label]")?.textContent).toBe("I dag · till 17:00");
+    // A month's or a year's list lies over the label, see-through, for a tap and the keyboard.
+    const month = periodPicker(document, "sv", { period: "month", date: null }, TODAY, vi.fn(), "17:00");
+    expect(month.querySelector("[data-pick-label]")?.textContent).toBe("nov 2026");
+    expect(month.querySelector("select[data-pick='month']")?.className).toContain("spotnav-house-picker-over");
   });
 
   it("stops ten years back", () => {
@@ -216,11 +230,59 @@ describe("Now", () => {
     expect(svg.querySelector(".spotnav-now-house-kw")?.textContent).toBe("3,1 kW");
     // Each day figure in its corner.
     expect(svg.querySelector(".spotnav-now-words[data-role='sun']")?.textContent).toBe("Sol i dag7,5 kWh");
-    expect(svg.querySelector(".spotnav-now-words[data-role='grid']")?.textContent).toBe("Nät i dag76,9 kWhsålt 0,1 kWh");
+    // Narrow: what was sold under what was bought, in the export's colour; wide: beside it.
+    expect(svg.querySelector(".spotnav-now-words[data-role='grid']")?.textContent).toBe("Köpt i dag76,9 kWhsålt 0,1 kWh");
+    expect(svg.querySelector(".spotnav-now-words[data-role='grid'] .spotnav-now-extra")?.getAttribute("data-tone")).toBe("export");
+    const wide = renderSchematic({ doc: document, language: "sv", answer, live: live(), width: 760, idPrefix: "t" });
+    expect(wide.querySelector(".spotnav-now-words[data-role='grid'] .spotnav-now-beside")?.textContent).toBe(" · sålt 0,1");
+    // Each figure in its part's colour: the sun, bought, the battery, the car.
+    expect(svg.querySelector(".spotnav-now-value[data-k='value-grid']")?.getAttribute("data-tone")).toBe("import");
+    expect(svg.querySelector(".spotnav-now-value[data-k='value-sun']")?.getAttribute("data-tone")).toBe("sun");
+    // The car plugged in: its level, and today's energy small under it.
+    expect(svg.querySelector(".spotnav-now-words[data-role='car']")?.textContent).toBe("Bil73 %25,5 kWh i dag");
+    // A filled arrowhead on each flowing line.
+    expect(svg.querySelectorAll(".spotnav-now-arrow")).toHaveLength(4);
     expect(svg.querySelector("title")?.textContent).toContain("Köper 0,4 kW från nätet");
-    // A house alone: the grid and the house only.
+    // A house alone: one low row, the grid to the house, no other corner.
     const alone = renderSchematic({ doc: document, language: "en", answer: house("house_learning.json"), live: live("house_alone_now.json"), width: 340, idPrefix: "t" });
     expect(Array.from(alone.querySelectorAll<SVGGElement>(".spotnav-now-node")).map((node) => node.dataset["role"]).sort()).toEqual(["grid", "house"]);
+    expect(alone.getAttribute("height")).toBe("90");
+    expect(Array.from(alone.querySelectorAll<SVGGElement>(".spotnav-now-words")).map((words) => words.dataset["corner"])).toEqual(["top-right", "top-left"]);
+  });
+
+  it("dims an unplugged car and draws no line to it", () => {
+    const unplugged = { ...live(), car_connected: false, car_soc_pct: null };
+    const svg = renderSchematic({ doc: document, language: "sv", answer: house(), live: unplugged, width: 340, idPrefix: "t" });
+    expect(svg.querySelector(".spotnav-now-node[data-role='car']")?.getAttribute("data-dim")).toBe("true");
+    expect(svg.querySelector(".spotnav-now-wire[data-role='car']")).toBeNull();
+    expect(svg.querySelector(".spotnav-now-words[data-role='car']")?.textContent).toBe("Bil25,5 kWhi dag");
+  });
+
+  it("cuts a long corner name with an ellipsis and keeps it whole in a tooltip", () => {
+    expect(fitName("SOL I DAG", 100)).toBe("SOL I DAG");
+    expect(fitName("Chauffage aujourd'hui", 80)).toBe("Chauffage…");
+    const svg = renderSchematic({ doc: document, language: "fr", answer: house(), live: live(), width: 300, idPrefix: "t" });
+    for (const name of Array.from(svg.querySelectorAll(".spotnav-now-name"))) {
+      expect(name.firstChild?.textContent?.length ?? 0).toBeLessThanOrEqual(Math.floor(100 / 7.2));
+    }
+  });
+
+  it("patches a live refresh in place, the dots kept running, and draws anew when a line turns", () => {
+    const answer = house();
+    const host = document.createElement("div");
+    const drawn = renderSchematic({ doc: document, language: "sv", answer, live: live(), width: 340, idPrefix: "t" });
+    host.append(drawn);
+    const dots = drawn.querySelector(".spotnav-now-dots[data-role='grid']");
+    const more = { ...live(), grid_kw: 2.4, house_kw: 5.1 };
+    expect(patchSchematic(drawn, renderSchematic({ doc: document, language: "sv", answer, live: more, width: 340, idPrefix: "t" }))).toBe(true);
+    expect(host.firstElementChild).toBe(drawn);
+    expect(drawn.querySelector(".spotnav-now-dots[data-role='grid']")).toBe(dots);
+    expect(drawn.querySelector(".spotnav-now-pill[data-role='grid']")?.textContent).toBe("2,4 kW");
+    expect(drawn.querySelector(".spotnav-now-house-kw")?.textContent).toBe("5,1 kW");
+    // The grid turns to an export: a new drawing.
+    const turned = renderSchematic({ doc: document, language: "sv", answer, live: { ...live(), grid_kw: -1.2 }, width: 340, idPrefix: "t" });
+    expect(patchSchematic(drawn, turned)).toBe(false);
+    expect(host.firstElementChild).toBe(turned);
   });
 
   it("says each line's way: an export and a charging battery away from the house, in the export's colour", () => {
@@ -229,7 +291,9 @@ describe("Now", () => {
     expect(by["grid"]).toMatchObject({ way: "out", tone: "export", kw: 2.6 });
     expect(by["battery"]).toMatchObject({ way: "out", kw: 1.2 });
     expect(by["sun"]).toMatchObject({ way: "in" });
-    expect(by["car"]).toMatchObject({ way: "still" });
+    // No car plugged in: no line to it.
+    expect(by["car"]).toBeUndefined();
+    expect(schematicLines(live("villa_car.json"), house()).find((line) => line.role === "car")).toMatchObject({ way: "out", kw: 7.4 });
     // Faster dots with more power, within the lap's bounds.
     expect(dotLap(0)).toBeCloseTo(3.3);
     expect(dotLap(12)).toBeCloseTo(0.8);
@@ -251,7 +315,7 @@ describe("Now", () => {
     const runs = planRuns(answer, NOW);
     expect(runs.length).toBeGreaterThan(1);
     const controlled = { ...answer, battery: { ...answer.battery!, control: "on" } };
-    expect(planSentence("sv", controlled, NOW)).toBe("Batteriet täcker huset och lagrar solen till 18:00, sedan säljer till nätet.");
+    expect(planSentence("sv", controlled, NOW)).toBe("Batteriet täcker huset och lagrar solen till 18:00, sedan säljer det till nätet.");
     expect(planSentence("sv", answer, NOW)).toBe("Batteriet styr sig självt (Sigenergy AI) · SpotNav skulle täcka huset och lagra solen till 18:00, sedan sälja till nätet.");
     const free = { ...answer, battery: { ...answer.battery!, management: "free" } };
     expect(planSentence("en", free, NOW)).toMatch(/^Only testing so far · SpotNav would cover the house and store the sun until 18:00/);
@@ -285,54 +349,68 @@ describe("the period tabs' content", () => {
     expect(render(answer, { tab: "graph" }).querySelector(".spotnav-house-surface svg")).not.toBeNull();
     const month = history("villa_month.json");
     const card = render(answer, { tab: "graph", choice: { period: "month", date: null } }, { history: { kind: "ready", answer: month } });
-    const bars = card.querySelectorAll<HTMLButtonElement>(".spotnav-house-pbar");
-    expect(bars).toHaveLength(30);
-    // The house's use stacked, the sun beside it.
-    const full = card.querySelector<HTMLElement>(".spotnav-house-pbar[data-bar='2026-11-10']")!;
-    expect(full.querySelectorAll(".spotnav-house-pbar-lane")).toHaveLength(2);
-    expect(full.getAttribute("aria-label")).toMatch(/^.+ · House \d/);
+    const chart = card.querySelector<SVGSVGElement>(".spotnav-house-period-chart")!;
+    // A full-width stack a day (the house and the heat here), the sun a stepped line over them, a kWh axis.
+    const parts = Array.from(chart.querySelectorAll<SVGRectElement>(".spotnav-house-period-part"));
+    expect(new Set(parts.map((part) => part.dataset["series"]))).toEqual(new Set(["house", "heat"]));
+    expect(chart.querySelector(".spotnav-house-period-sun")?.getAttribute("d")).toMatch(/^M/);
+    expect(Array.from(chart.querySelectorAll("text")).some((text) => text.textContent?.endsWith("kWh"))).toBe(true);
     expect(Array.from(card.querySelectorAll(".spotnav-house-pbars-key li")).map((item) => item.textContent)).toEqual(["House", "Heat", "Sun"]);
-    const year = history("house_alone_year.json");
-    expect(energyBars(document, "en", year, 150, null)!.querySelectorAll(".spotnav-house-pbar")).toHaveLength(12);
-    // Bars walk with the arrow keys from one tab stop.
+    // No battery series, no car without car energy.
+    expect(card.textContent).not.toContain("Battery");
+    // The keys walk the days, the readout says each.
     document.body.append(card);
-    const first = bars[0]!;
-    expect(Array.from(bars).filter((bar) => bar.tabIndex === 0)).toHaveLength(1);
-    first.focus();
-    first.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-    expect(card.querySelector(".spotnav-house-pbars-readout")?.textContent).toBe(bars[1]!.getAttribute("aria-label"));
+    const surface = card.querySelector<HTMLElement>(".spotnav-house-period-surface")!;
+    expect(card.querySelector(".spotnav-house-pbars-readout")?.textContent).toBe("Tap a bar for its figures.");
+    surface.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    expect(card.querySelector(".spotnav-house-pbars-readout")?.textContent).toMatch(/ · House \d/);
     card.remove();
+    const year = history("villa_year.json");
+    const yearChart = energyChart(document, "en", year, 340, 160, null)!;
+    expect(yearChart.querySelectorAll(".spotnav-house-period-chart text").length).toBeGreaterThan(12);
+    expect(niceStep(27, 3)).toBe(10);
+    expect(niceStep(2.2, 3)).toBe(1);
   });
 
-  it("Price and battery: what the battery's energy was worth as kr bars, above and below zero, and its total", () => {
+  it("Price and battery: what the battery earned under one heading, as kr bars on the price chart's hours", () => {
     const answer = house();
     const day = history("villa_day.json");
-    const total = valueTotal(day)!;
-    expect(total).toBeCloseTo(day.buckets.reduce((sum, bucket) => sum + (bucket.battery_value ?? 0), 0));
-    const card = render(answer, { tab: "price" }, { history: { kind: "ready", answer: day } }, "sv");
+    const total = earnedTotal(day)!;
+    expect(total).toBeCloseTo(day.buckets.reduce((sum, bucket) => sum + (bucket.arbitrage ?? 0), 0));
+    // The day's history on the house fixture's day, so its hours meet the chart's.
+    const today = { ...day, date: "2026-11-13", buckets: day.buckets.map((bucket) => ({ ...bucket, key: `2026-11-13${bucket.key.slice(10)}` })) };
+    const card = render(answer, { tab: "price" }, { history: { kind: "ready", answer: today } }, "sv");
     expect(card.querySelector(".spotnav-house-surface .spotnav-house-price-buy")).not.toBeNull();
-    expect(card.querySelector("[data-line='value-total']")?.textContent).toMatch(/^Batteriets energi var värd /);
-    const bars = card.querySelectorAll(".spotnav-house-pbar");
-    expect(bars).toHaveLength(24);
-    expect(card.querySelector(".spotnav-house-pbar-lane[data-below]")).not.toBeNull();
-    expect(card.querySelector(".spotnav-house-pbars-zero")).not.toBeNull();
+    expect(card.querySelector("[data-line='earned']")?.textContent).toBe("Batteriet tjänade 11 kr");
+    expect(card.querySelector("[data-line='earned-sub']")?.textContent).toBe("Samma mått som Sigenergy-appen. · Elkostnad 38 kr");
+    // The kr bars share the chart's x-axis: as wide, the same plot edges, under it, and a tap on them is that hour.
+    const strip = card.querySelector<SVGSVGElement>(".spotnav-house-earned-strip")!;
+    const chart = card.querySelector<SVGSVGElement>(".spotnav-house-surface svg")!;
+    expect(strip.getAttribute("viewBox")!.split(" ")[2]).toBe(chart.getAttribute("viewBox")!.split(" ")[2]);
+    expect(strip.querySelector(".spotnav-house-period-part[data-series='cost']")).not.toBeNull();
+    expect(card.querySelector(".spotnav-house-earned-box")?.previousElementSibling?.classList.contains("spotnav-house-surface")).toBe(true);
+    // One hint only.
+    expect(card.textContent).not.toContain("Tryck på en stapel");
     // A house without a battery: no kr bars.
     const alone = history("house_alone_year.json");
-    expect(valueBars(document, "en", alone, 120, (minor) => `${minor}`, null)).toBeNull();
-    const month = render(answer, { tab: "price", choice: { period: "month", date: null } }, { history: { kind: "ready", answer: history("villa_month.json") } }, "sv");
-    expect(month.querySelector("[data-line='period-cost']")?.textContent).toMatch(/^Elkostnad /);
-    expect(month.querySelector("[data-line='today-hint']")).toBeNull();
+    expect(earnedBars(document, "en", alone, 120, (minor) => `${minor}`, null)).toBeNull();
+    // A year: a bar a month, its heading their sum.
+    const year = render(answer, { tab: "price", choice: { period: "year", date: null } }, { history: { kind: "ready", answer: history("villa_year.json") } }, "sv");
+    expect(year.querySelectorAll(".spotnav-house-pbar")).toHaveLength(12);
+    expect(year.querySelector("[data-line='earned']")?.textContent).toMatch(/^Batteriet tjänade /);
+    expect(year.querySelector("[data-line='earned-sub']")?.textContent).toMatch(/Elkostnad /);
+    expect(year.querySelector("[data-line='saving']")).toBeNull();
   });
 
   it("reads a history bucket from a backend before the kr bars and the prices as none", () => {
     const raw = read("house_history", "villa_day.json");
-    const buckets = (raw["buckets"] as Array<Record<string, unknown>>).map(({ battery_value: _value, buy: _buy, sell: _sell, ...rest }) => rest);
+    const buckets = (raw["buckets"] as Array<Record<string, unknown>>).map(({ arbitrage: _value, buy: _buy, sell: _sell, ...rest }) => rest);
     const decoded = decodeHouseHistory({ ...raw, buckets });
     expect(decoded.ok).toBe(true);
     const older = decoded.ok ? decoded.value : null!;
-    expect(older.buckets.every((bucket) => bucket.battery_value === null && bucket.buy === null && bucket.sell === null)).toBe(true);
-    expect(valueTotal(older)).toBeNull();
-    expect(decodeHouseHistory({ ...raw, buckets: (raw["buckets"] as object[]).map((bucket) => ({ ...bucket, battery_value: "1" })) }).ok).toBe(false);
+    expect(older.buckets.every((bucket) => bucket.arbitrage === null && bucket.buy === null && bucket.sell === null)).toBe(true);
+    expect(earnedTotal(older)).toBeNull();
+    expect(decodeHouseHistory({ ...raw, buckets: (raw["buckets"] as object[]).map((bucket) => ({ ...bucket, arbitrage: "1" })) }).ok).toBe(false);
   });
 });
 
@@ -412,9 +490,7 @@ describe("the card element's tabs", () => {
     expect(store.get("spotnav-house-card.tab.site_villa")).toBe("flow");
     // Today's flow is the card's own answer: nothing more is read.
     expect(hass.messages).toHaveLength(1);
-    const kind = root.querySelector<HTMLSelectElement>("select[data-pick-kind]")!;
-    kind.value = "month";
-    kind.dispatchEvent(new Event("change"));
+    root.querySelector<HTMLButtonElement>("button[data-kind='month']")!.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(hass.messages[1]).toEqual({ type: "spotnav/get_house_history", api_version: 1, site_id: "site_villa", period: "month" });
     hass.resolveNext(read("house_history", "villa_month.json"));
@@ -424,11 +500,9 @@ describe("the card element's tabs", () => {
     root.querySelector<HTMLButtonElement>("[role='tab'][data-tab='graph']")!.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(hass.messages).toHaveLength(2);
-    expect(root.querySelectorAll(".spotnav-house-pbar")).toHaveLength(30);
+    expect(root.querySelector(".spotnav-house-period-chart")).not.toBeNull();
     // A past day's hours in Energy chart: the day's own answer by its date.
-    const day = root.querySelector<HTMLSelectElement>("select[data-pick-kind]")!;
-    day.value = "day";
-    day.dispatchEvent(new Event("change"));
+    root.querySelector<HTMLButtonElement>("button[data-kind='day']")!.click();
     root.querySelector<HTMLButtonElement>("[data-step='back']")!.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(hass.messages.at(-1)).toEqual({ type: "spotnav/get_house", api_version: 1, site_id: "site_villa", date: "2026-11-12" });

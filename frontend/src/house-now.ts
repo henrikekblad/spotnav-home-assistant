@@ -1,16 +1,21 @@
-// The house card's Now tab (SpotNav 3.0): the live flows as a schematic and one sentence of what the battery does and
-// what its plan does next.
+// The house card's Now tab (SpotNav 3.0): the live flows as a schematic, one sentence of what the battery does and
+// what its plan does next, and the day's money.
 //
 // * The schematic: the house in the middle, and around it only what the site has: the sun (top left), the grid (top
 //   right), the battery (bottom left), the car (bottom right) and the heat (below the house, part of it). A line
-//   runs from each to the house, with dots running the way the power flows and the live kW on it; a small arrow on
-//   the line says the way too, so the direction is never colour or motion alone. Under each node, its day so far:
-//   the energy flow's own figures (`site/energy_flow.py`), the battery's level and stored energy.
+//   runs from each to the house, with dots running the way the power flows, a filled arrowhead on its middle and the
+//   live kW beside it, so the direction is never colour or motion alone. The car's line is there only while a car is
+//   plugged in; otherwise its node is dimmed. A house with the grid alone is one low row, the grid to the house.
+// * In the corners, the day so far (the energy flow's own figures, `site/energy_flow.py`), each value in its part's
+//   colour as the owner's hall card has them (the sun yellow, bought red, sold green, the battery teal, the car its
+//   own), mixed toward the text colour so it keeps its contrast on a light and a dark card; a long name ends in "…".
 // * The dots' colour says what flows: the sun's amber, the battery's teal, the car's and the heat's own, an import in
-//   red and an export in green. They stand still under `prefers-reduced-motion`.
-// * The live figures are `spotnav/get_house_now`'s (`site/house_now.py`), read every 30 s while the tab is shown. From
-//   a backend before it, or while it cannot be read, the schematic has the day's figures and the battery's own
-//   power from `spotnav/get_house`, and no other live kW.
+//   red and an export in green; faster with more power. They stand still under `prefers-reduced-motion`.
+// * The live figures are `spotnav/get_house_now`'s (`site/house_now.py`), read every 30 s while the tab is shown, and
+//   patched into the drawn schematic (`patchSchematic`): its texts, colours and speeds change in place, and it is drawn
+//   anew only when a line changes its way or a part comes or goes, so the dots never jump back on a refresh. From a
+//   backend before it, or while it cannot be read, the schematic has the day's figures and the battery's own power
+//   from `spotnav/get_house`, and no other live kW.
 // * The sentence: from the battery plan's hours (`HouseHour.battery_action`), what the battery does now and until
 //   when, then what comes next; while SpotNav does not control the battery, who does and what SpotNav would do.
 
@@ -32,6 +37,9 @@ export interface HouseNow {
   battery_kw: number | null;
   soc_pct: number | null;
   car_kw: number | null;
+  /** Whether a car is plugged in (`null` without chargers, unread, or from a backend before it), and its level. */
+  car_connected: boolean | null;
+  car_soc_pct: number | null;
   heat_kw: number | null;
   heat_from: string | null;
   house_kw: number | null;
@@ -85,6 +93,8 @@ export function decodeHouseNow(raw: unknown): HouseNowDecode {
         battery_kw: numberOrNull(source.battery_kw),
         soc_pct: numberOrNull(source.soc_pct),
         car_kw: numberOrNull(source.car_kw),
+        car_connected: source.car_connected === undefined || source.car_connected === null ? null : flag(source.car_connected),
+        car_soc_pct: source.car_soc_pct === undefined ? null : numberOrNull(source.car_soc_pct),
         heat_kw: numberOrNull(source.heat_kw),
         heat_from: textOrNull(source.heat_from),
         house_kw: numberOrNull(source.house_kw),
@@ -122,7 +132,7 @@ export function planRuns(answer: HouseAnswer, nowMs: number): PlanRun[] {
     }
     const act: PlanAct = hour.battery_action ?? "self";
     if (runs.length === 0 || runs[runs.length - 1]!.act !== act) {
-      runs.push({ act, startMs: Math.max(hour.startMs, runs.length === 0 ? hour.startMs : hour.startMs) });
+      runs.push({ act, startMs: hour.startMs });
     }
   }
   return runs;
@@ -160,7 +170,9 @@ export function planSentence(language: Language, answer: HouseAnswer, nowMs: num
   if (next === undefined) {
     return controlling ? translate(language, "house.plan.whole", { act: first }) : translate(language, "house.plan.wouldWhole", { who, act: first });
   }
-  const values = { act: first, time: when(ctx, nowMs, next.startMs), then: translate(language, `house.plan.${verb}.${next.act}` as TranslationKey) };
+  // Controlled, the second clause has its own subject ("sedan säljer det till nätet").
+  const then = translate(language, `house.plan.${controlling ? "then" : "inf"}.${next.act}` as TranslationKey);
+  const values = { act: first, time: when(ctx, nowMs, next.startMs), then };
   return controlling ? translate(language, "house.plan.next", values) : translate(language, "house.plan.wouldNext", { who, ...values });
 }
 
@@ -184,7 +196,13 @@ export interface SchematicLine {
   tone: NodeRole | "import" | "export";
 }
 
-/** Each line of the schematic from the live figures (`null`: the day's figures only, the battery's own power). */
+/** Whether a car is plugged in: the live answer's word; unknown (no line drawn) without it. */
+export function carPlugged(live: HouseNow | null): boolean {
+  return live?.car_connected === true;
+}
+
+/** Each line of the schematic from the live figures (`null`: the day's figures only, the battery's own power). The
+ * car has a line only while a car is plugged in. */
 export function schematicLines(live: HouseNow | null, answer: HouseAnswer): SchematicLine[] {
   const has = present(live, answer);
   const lines: SchematicLine[] = [];
@@ -205,7 +223,7 @@ export function schematicLines(live: HouseNow | null, answer: HouseAnswer): Sche
     // + charging: away from the house.
     lines.push(line("battery", live?.battery_kw ?? answer.battery?.now?.power_kw ?? null, false));
   }
-  if (has.car) {
+  if (has.car && carPlugged(live)) {
     lines.push(line("car", live?.car_kw ?? null, false));
   }
   if (has.heat) {
@@ -241,6 +259,11 @@ function kwhText(language: Language, kwh: number): string {
   return `${formatFixed(language, kwh, kwh >= 100 ? 0 : 1)} kWh`;
 }
 
+/** A figure without its unit, for the grid's sold part ("0,1"). */
+function bare(language: Language, kwh: number): string {
+  return formatFixed(language, kwh, kwh >= 100 ? 0 : 1);
+}
+
 function svg<K extends keyof SVGElementTagNameMap>(doc: Document, name: K, attributes: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const created = doc.createElementNS(SVG_NS, name);
   for (const [key, value] of Object.entries(attributes)) {
@@ -263,6 +286,9 @@ const ICONS: Record<NodeRole | "house", string[]> = {
 export function schematicHeight(width: number): number {
   return Math.round(Math.min(320, Math.max(270, width * 0.42)));
 }
+
+/** A house with the grid alone: one low row. */
+export const ROW_HEIGHT = 90;
 
 interface Spot {
   x: number;
@@ -287,6 +313,8 @@ export function nodeSpots(width: number, height: number): Record<NodeRole | "hou
 
 const NODE_R = 16;
 const HOUSE_R = 30;
+/** The corner names' width per character (px, 10.5 px capitals with their spacing), for the ellipsis. */
+const NAME_CHAR_PX = 7.2;
 
 export interface SchematicInput {
   doc: Document;
@@ -298,7 +326,6 @@ export interface SchematicInput {
   idPrefix: string;
 }
 
-/** A corner's words: where they stand and which way they read from there. */
 type Corner = "top-left" | "top" | "top-right" | "bottom-left" | "bottom" | "bottom-right";
 
 const CORNER_OF: Record<NodeRole | "house", Corner> = {
@@ -310,20 +337,103 @@ const CORNER_OF: Record<NodeRole | "house", Corner> = {
   car: "bottom-right",
 };
 
+/** A name cut to `room` px with "…" where it is longer. */
+export function fitName(name: string, room: number): string {
+  const most = Math.max(3, Math.floor(room / NAME_CHAR_PX));
+  return name.length <= most ? name : `${name.slice(0, most - 1).trimEnd()}…`;
+}
+
+/** One corner's words: a small name over a coloured figure, and a smaller figure under or beside it. */
+interface CornerWords {
+  role: NodeRole | "house";
+  name: string;
+  value: string;
+  /** The value's colour: the part's own (`data-tone`). */
+  tone: string;
+  /** Beside the value, smaller, in its own colour (the grid's sold part). */
+  beside?: { text: string; tone: string };
+  /** Under the value, smaller and muted (or in `underTone`'s colour). */
+  under?: string;
+  underTone?: string;
+}
+
+/** The corners' words for the day so far and the live level (see the module). */
+export function cornerWords(language: Language, answer: HouseAnswer, live: HouseNow | null, wide = true): CornerWords[] {
+  const flow = answer.energy_flow;
+  const has = present(live, answer);
+  const value = (kwh: number | null): string => (kwh === null ? "–" : kwhText(language, kwh));
+  const words: CornerWords[] = [];
+  if (has.sun) {
+    words.push({ role: "sun", name: translate(language, "house.nowTab.sun"), value: value(flowKwh(flow, "source", "solar")), tone: "sun" });
+  }
+  const whole = flow === null ? null : (flowKwh(flow, "use", "house") ?? 0) + (flowKwh(flow, "use", "heat") ?? 0);
+  words.push({ role: "house", name: translate(language, "house.nowTab.house"), value: value(whole), tone: "house" });
+  const sold = flowKwh(flow, "use", "grid");
+  words.push({
+    role: "grid",
+    name: translate(language, "house.nowTab.grid"),
+    value: value(flowKwh(flow, "source", "grid")),
+    tone: "import",
+    // Beside the figure where the corner has the room, else under it.
+    ...(sold !== null && sold >= STILL_KW
+      ? wide
+        ? { beside: { text: ` · ${translate(language, "house.nowTab.sold", { kwh: bare(language, sold) })}`, tone: "export" } }
+        : { under: translate(language, "house.nowTab.sold", { kwh: kwhText(language, sold) }), underTone: "export" }
+      : {}),
+  });
+  if (has.battery) {
+    const soc = live?.soc_pct ?? answer.battery?.soc_pct ?? null;
+    const usable = answer.battery?.usable_kwh ?? null;
+    words.push({
+      role: "battery",
+      name: translate(language, "house.nowTab.battery"),
+      value: soc === null ? "–" : `${formatNumber(language, soc, 0)} %`,
+      tone: "battery",
+      ...(soc !== null && usable !== null ? { under: kwhText(language, (soc / 100) * usable) } : {}),
+    });
+  }
+  if (has.heat) {
+    words.push({ role: "heat", name: translate(language, "house.nowTab.heat"), value: value(flowKwh(flow, "use", "heat")), tone: "heat" });
+  }
+  if (has.car) {
+    const soc = carPlugged(live) ? (live?.car_soc_pct ?? null) : null;
+    const today = flowKwh(flow, "use", "car");
+    const todayWords = translate(language, "house.nowTab.carToday", { kwh: today === null ? "–" : kwhText(language, today) });
+    words.push(
+      soc === null
+        ? { role: "car", name: translate(language, "house.nowTab.car"), value: today === null ? "–" : kwhText(language, today), tone: "car", under: translate(language, "house.nowTab.today") }
+        : { role: "car", name: translate(language, "house.nowTab.car"), value: `${formatNumber(language, soc, 0)} %`, tone: "car", under: todayWords },
+    );
+  }
+  return words;
+}
+
+/** What makes two drawings the same drawing (the parts, each line's way, the layout): a patch keeps it. */
+function signature(lines: SchematicLine[], words: CornerWords[], row: boolean, width: number, height: number): string {
+  return [row ? "row" : "full", width, height, ...lines.map((line) => `${line.role}:${line.way}`), ...words.map((word) => word.role + (word.beside ? "+" : "") + (word.under ? "_" : ""))].join("|");
+}
+
 /** The schematic (see the module): an SVG drawn at the card's width, its words in the reader's language. */
 export function renderSchematic(input: SchematicInput): SVGSVGElement {
   const { doc, language, answer, live } = input;
   const width = Math.max(260, Math.round(input.width));
-  const height = Math.max(220, Math.round(input.height ?? schematicHeight(width)));
-  const spots = nodeSpots(width, height);
+  const has = present(live, answer);
+  const row = !has.sun && !has.battery && !has.car && !has.heat;
+  const height = row ? ROW_HEIGHT : Math.max(220, Math.round(input.height ?? schematicHeight(width)));
   const lines = schematicLines(live, answer);
-  const flow = answer.energy_flow;
+  const words = cornerWords(language, answer, live, width >= 480);
   const root = svg(doc, "svg", { viewBox: `0 0 ${width} ${height}`, width, height, class: "spotnav-now-schematic", role: "img" });
+  root.dataset["sig"] = signature(lines, words, row, width, height);
+  root.dataset["layout"] = row ? "row" : "full";
   root.style.width = "100%";
   root.style.height = "auto";
   const title = svg(doc, "title", { id: `${input.idPrefix}-now-title` });
   root.append(title);
   const said: string[] = [];
+  const spots: Record<NodeRole | "house", Spot> = row
+    ? { ...nodeSpots(width, 220), grid: { x: NODE_R + 2, y: height - 26 }, house: { x: width - HOUSE_R + 4, y: height - 26 } }
+    : nodeSpots(width, height);
+  const houseR = row ? 22 : HOUSE_R;
   const edge = (from: Spot, to: Spot, fromR: number, toR: number): [Spot, Spot] => {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
@@ -334,9 +444,9 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
     ];
   };
   const wires = svg(doc, "g", { class: "spotnav-now-wires" });
-  const pills = svg(doc, "g", { class: "spotnav-now-pills" });
+  const labels = svg(doc, "g", { class: "spotnav-now-pills" });
   for (const line of lines) {
-    const [a, b] = edge(spots[line.role], spots.house, NODE_R + 3, HOUSE_R + 3);
+    const [a, b] = edge(spots[line.role], spots.house, NODE_R + 3, houseR + 3);
     // Drawn the way the power flows, so the dashes run with it.
     const [from, to] = line.way === "out" ? [b, a] : [a, b];
     const d = `M${from.x.toFixed(1)} ${from.y.toFixed(1)}L${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
@@ -349,42 +459,48 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
     const dots = svg(doc, "path", { d, class: "spotnav-now-dots" });
     dots.dataset["tone"] = line.tone;
     dots.dataset["role"] = line.role;
+    dots.dataset["k"] = `dots-${line.role}`;
     dots.style.animationDuration = `${dotLap(line.kw).toFixed(2)}s`;
     wires.append(dots);
-    // The arrow, near the house end: the direction without the colour or the motion.
+    // A filled arrowhead on the line's middle: the direction without the colour or the motion.
     const angle = (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
-    const at = { x: from.x + (to.x - from.x) * 0.8, y: from.y + (to.y - from.y) * 0.8 };
-    const arrow = svg(doc, "path", { d: "M-4 -4.5L2.5 0L-4 4.5", class: "spotnav-now-arrow", transform: `translate(${at.x.toFixed(1)} ${at.y.toFixed(1)}) rotate(${angle.toFixed(0)})` });
-    arrow.dataset["tone"] = line.tone;
-    wires.append(arrow);
-    const label = kwText(language, line.kw);
-    // Beside the line's middle, away from the house's centre line (above a top line, below a bottom one), on a halo
-    // in the card's colour so the line stays whole; the heat's short line has it to its right.
     const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+    const arrow = svg(doc, "path", { d: "M-5 -5L5 0L-5 5Z", class: "spotnav-now-arrow", transform: `translate(${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) rotate(${angle.toFixed(0)})` });
+    arrow.dataset["tone"] = line.tone;
+    arrow.dataset["k"] = `arrow-${line.role}`;
+    wires.append(arrow);
+    // The kW beside the middle, away from the house's centre line, on a halo in the card's colour.
     let normal = { x: -(to.y - from.y), y: to.x - from.x };
     const length = Math.hypot(normal.x, normal.y) || 1;
     normal = { x: normal.x / length, y: normal.y / length };
     if (line.role === "heat") {
       normal = { x: 1, y: 0 };
+    } else if (row) {
+      normal = { x: 0, y: -1 };
     } else if ((normal.y > 0) !== (mid.y > spots.house.y)) {
       normal = { x: -normal.x, y: -normal.y };
     }
-    const offset = line.role === "heat" ? 10 : 12;
-    const at2 = { x: mid.x + normal.x * offset, y: mid.y + normal.y * offset };
+    const offset = line.role === "heat" ? 10 : 13;
+    const at = { x: mid.x + normal.x * offset, y: mid.y + normal.y * offset };
     const anchor = Math.abs(normal.x) < 0.35 ? "middle" : normal.x > 0 ? "start" : "end";
-    const group = svg(doc, "g", { class: "spotnav-now-pill", transform: `translate(${at2.x.toFixed(1)} ${at2.y.toFixed(1)})` });
+    const group = svg(doc, "g", { class: "spotnav-now-pill", transform: `translate(${at.x.toFixed(1)} ${at.y.toFixed(1)})` });
     group.dataset["role"] = line.role;
     group.dataset["tone"] = line.tone;
-    group.append(Object.assign(svg(doc, "text", { x: 0, y: 4, "text-anchor": anchor }), { textContent: label }));
-    pills.append(group);
+    const text = Object.assign(svg(doc, "text", { x: 0, y: 4, "text-anchor": anchor }), { textContent: kwText(language, line.kw) });
+    text.dataset["k"] = `kw-${line.role}`;
+    group.append(text);
+    labels.append(group);
   }
   root.append(wires);
-  const disc = (role: NodeRole | "house", r: number): SVGGElement => {
+  const disc = (role: NodeRole | "house", r: number, dim = false): SVGGElement => {
     const spot = spots[role];
     const group = svg(doc, "g", { class: "spotnav-now-node", transform: `translate(${spot.x.toFixed(1)} ${spot.y.toFixed(1)})` });
     group.dataset["role"] = role;
+    if (dim) {
+      group.dataset["dim"] = "true";
+    }
     group.append(svg(doc, "circle", { r, class: "spotnav-now-disc" }));
-    const icon = svg(doc, "g", { class: "spotnav-now-icon", transform: role === "house" ? "translate(0 -7) scale(0.95)" : "scale(0.85)" });
+    const icon = svg(doc, "g", { class: "spotnav-now-icon", transform: role === "house" ? `translate(0 ${row ? -1 : -7}) scale(${row ? 0.8 : 0.95})` : "scale(0.85)" });
     for (const path of ICONS[role]) {
       icon.append(svg(doc, "path", { d: path }));
     }
@@ -392,84 +508,122 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
     root.append(group);
     return group;
   };
-  // Each node's day, in its corner: a small name over a figure (and, for the grid, what was sold).
-  const words = (role: NodeRole | "house", lines: string[]): void => {
-    const corner = CORNER_OF[role];
-    const anchor = corner.endsWith("left") ? "start" : corner.endsWith("right") ? "end" : "middle";
-    const x = anchor === "start" ? 0 : anchor === "end" ? width : width / 2;
-    const atTop = corner.startsWith("top");
-    const [name, value, extra] = lines;
-    const block = svg(doc, "g", { class: "spotnav-now-words" });
-    block.dataset["corner"] = corner;
-    block.dataset["role"] = role;
-    const rows: Array<[string | undefined, string]> = atTop
-      ? [[name, "spotnav-now-name"], [value, "spotnav-now-value"], [extra, "spotnav-now-extra"]]
-      : [[name, "spotnav-now-name"], [value, "spotnav-now-value"], [extra, "spotnav-now-extra"]];
-    const heights = [11, 18, 14];
-    const total = rows.reduce((sum, [text], index) => sum + (text === undefined ? 0 : heights[index]!), 0);
-    let y = atTop ? 0 : height - total;
-    rows.forEach(([text, cls], index) => {
-      if (text === undefined) {
-        return;
-      }
-      y += heights[index]!;
-      block.append(Object.assign(svg(doc, "text", { x, y: y - (index === 0 ? 1 : 3), "text-anchor": anchor, class: cls }), { textContent: text }));
-    });
-    root.append(block);
-    said.push(lines.filter((item) => item !== undefined).join(" "));
-  };
-  const today = (key: TranslationKey, kwh: number | null): string[] => [translate(language, key), kwh === null ? "–" : kwhText(language, kwh)];
-  const has = present(live, answer);
   if (has.sun) {
     disc("sun", NODE_R);
-    words("sun", today("house.nowTab.sun", flowKwh(flow, "source", "solar")));
   }
-  {
-    disc("grid", NODE_R);
-    const sold = flowKwh(flow, "use", "grid");
-    const grid = today("house.nowTab.grid", flowKwh(flow, "source", "grid"));
-    if (sold !== null && sold >= STILL_KW) {
-      grid.push(translate(language, "house.nowTab.sold", { kwh: kwhText(language, sold) }));
-    }
-    words("grid", grid);
-  }
+  disc("grid", NODE_R);
   if (has.battery) {
     disc("battery", NODE_R);
-    const soc = live?.soc_pct ?? answer.battery?.soc_pct ?? null;
-    const usable = answer.battery?.usable_kwh ?? null;
-    const level = soc === null ? "–" : `${formatNumber(language, soc, 0)} %`;
-    const battery = [translate(language, "house.nowTab.battery"), level];
-    if (soc !== null && usable !== null) {
-      battery.push(kwhText(language, (soc / 100) * usable));
-    }
-    words("battery", battery);
   }
   if (has.car) {
-    disc("car", NODE_R);
-    words("car", today("house.nowTab.car", flowKwh(flow, "use", "car")));
+    disc("car", NODE_R, !carPlugged(live));
   }
   if (has.heat) {
     disc("heat", NODE_R - 2);
-    words("heat", today("house.nowTab.heat", flowKwh(flow, "use", "heat")));
   }
-  // The house: its day at the top, its live power in its disc.
-  const whole = flow === null ? null : (flowKwh(flow, "use", "house") ?? 0) + (flowKwh(flow, "use", "heat") ?? 0);
-  const house = disc("house", HOUSE_R);
-  words("house", today("house.nowTab.house", whole));
+  const house = disc("house", houseR);
   const houseKw = live?.house_kw ?? null;
-  if (houseKw !== null) {
-    house.append(Object.assign(svg(doc, "text", { x: 0, y: 17, "text-anchor": "middle", class: "spotnav-now-house-kw" }), { textContent: kwText(language, houseKw) }));
+  if (houseKw !== null && !row) {
+    const text = Object.assign(svg(doc, "text", { x: 0, y: 17, "text-anchor": "middle", class: "spotnav-now-house-kw" }), { textContent: kwText(language, houseKw) });
+    text.dataset["k"] = "kw-house";
+    house.append(text);
     said.push(`${translate(language, "house.nowTab.houseNow")} ${kwText(language, houseKw)}`);
   }
-  root.append(pills);
+  // The corners: in a row only the grid (left) and the house (right).
+  const room = row ? width / 2 - 8 : width / 3 - 6;
+  for (const word of words) {
+    const corner: Corner = row ? (word.role === "grid" ? "top-left" : "top-right") : CORNER_OF[word.role];
+    const anchor = corner.endsWith("left") ? "start" : corner.endsWith("right") ? "end" : "middle";
+    const x = anchor === "start" ? 0 : anchor === "end" ? width : width / 2;
+    const atTop = corner.startsWith("top");
+    const block = svg(doc, "g", { class: "spotnav-now-words" });
+    block.dataset["corner"] = corner;
+    block.dataset["role"] = word.role;
+    const total = 11 + 18 + (word.under === undefined ? 0 : 14);
+    let y = atTop ? 0 : height - total;
+    const name = Object.assign(svg(doc, "text", { x, y: y + 10, "text-anchor": anchor, class: "spotnav-now-name" }), { textContent: fitName(word.name, room) });
+    if (name.textContent !== word.name) {
+      name.append(Object.assign(svg(doc, "title"), { textContent: word.name }));
+    }
+    y += 11 + 18;
+    const value = svg(doc, "text", { x, y: y - 3, "text-anchor": anchor, class: "spotnav-now-value" });
+    value.dataset["tone"] = word.tone;
+    value.dataset["k"] = `value-${word.role}`;
+    const main = Object.assign(svg(doc, "tspan"), { textContent: word.value });
+    value.append(main);
+    if (word.beside !== undefined) {
+      const beside = Object.assign(svg(doc, "tspan", { class: "spotnav-now-beside" }), { textContent: word.beside.text });
+      beside.dataset["tone"] = word.beside.tone;
+      value.append(beside);
+    }
+    block.append(name, value);
+    if (word.under !== undefined) {
+      y += 14;
+      const under = Object.assign(svg(doc, "text", { x, y: y - 2, "text-anchor": anchor, class: "spotnav-now-extra" }), { textContent: word.under });
+      under.dataset["k"] = `under-${word.role}`;
+      if (word.underTone !== undefined) {
+        under.dataset["tone"] = word.underTone;
+      }
+      block.append(under);
+    }
+    root.append(block);
+    said.push([word.name, word.value, word.beside?.text, word.under].filter((item) => item !== undefined).join(" "));
+  }
+  root.append(labels);
   for (const line of lines) {
     if (line.kw !== null && line.way !== "still") {
       said.push(translate(language, `house.nowTab.line.${line.role}.${line.way}` as TranslationKey, { kw: kwText(language, line.kw) }));
     }
   }
   title.textContent = said.join(". ");
+  title.dataset["k"] = "title";
   root.setAttribute("aria-labelledby", title.id);
   return root;
+}
+
+/**
+ * Bring a drawn schematic up to a fresh one in place (a live refresh): the same drawing (`data-sig`) has its texts,
+ * colours and the dots' speed copied over, so the dots keep running; another (a line changed its way, a part came or
+ * went, another size) replaces it. Whether it was patched in place.
+ */
+export function patchSchematic(drawn: SVGSVGElement, fresh: SVGSVGElement): boolean {
+  if (drawn.dataset["sig"] !== fresh.dataset["sig"]) {
+    drawn.replaceWith(fresh);
+    return false;
+  }
+  const old = new Map(Array.from(drawn.querySelectorAll<SVGElement>("[data-k]")).map((element) => [element.dataset["k"], element]));
+  for (const element of Array.from(fresh.querySelectorAll<SVGElement>("[data-k]"))) {
+    const target = old.get(element.dataset["k"]);
+    if (target === undefined) {
+      continue;
+    }
+    if (element.tagName.toLowerCase() === "path") {
+      for (const name of ["d", "transform"]) {
+        const value = element.getAttribute(name);
+        if (value !== null && target.getAttribute(name) !== value) {
+          target.setAttribute(name, value);
+        }
+      }
+      if (element.style.animationDuration !== target.style.animationDuration) {
+        target.style.animationDuration = element.style.animationDuration;
+      }
+    } else if (target.textContent !== element.textContent) {
+      target.replaceChildren(...Array.from(element.childNodes).map((node) => node.cloneNode(true)));
+    }
+    if (element.dataset["tone"] !== undefined && target.dataset["tone"] !== element.dataset["tone"]) {
+      target.dataset["tone"] = element.dataset["tone"];
+    }
+  }
+  // The kW labels' places follow their lines.
+  const groups = new Map(Array.from(drawn.querySelectorAll<SVGGElement>(".spotnav-now-pill")).map((group) => [group.dataset["role"], group]));
+  for (const group of Array.from(fresh.querySelectorAll<SVGGElement>(".spotnav-now-pill"))) {
+    const target = groups.get(group.dataset["role"]);
+    const place = group.getAttribute("transform");
+    if (target !== undefined && place !== null && target.getAttribute("transform") !== place) {
+      target.setAttribute("transform", place);
+    }
+  }
+  return true;
 }
 
 export const NOW_STYLES = `
@@ -498,17 +652,27 @@ export const NOW_STYLES = `
     .spotnav-now-dots { animation: none; }
   }
   .spotnav-now-arrow {
-    fill: none;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    stroke: none;
   }
-  .spotnav-now-dots[data-tone="sun"], .spotnav-now-arrow[data-tone="sun"] { stroke: var(--spotnav-sun-colour); }
-  .spotnav-now-dots[data-tone="battery"], .spotnav-now-arrow[data-tone="battery"] { stroke: var(--spotnav-battery-colour); }
-  .spotnav-now-dots[data-tone="car"], .spotnav-now-arrow[data-tone="car"] { stroke: var(--spotnav-car-colour, #e07b2e); }
-  .spotnav-now-dots[data-tone="heat"], .spotnav-now-arrow[data-tone="heat"] { stroke: var(--spotnav-heat-colour); }
-  .spotnav-now-dots[data-tone="import"], .spotnav-now-arrow[data-tone="import"] { stroke: var(--spotnav-import-colour, #d64541); }
-  .spotnav-now-dots[data-tone="export"], .spotnav-now-arrow[data-tone="export"] { stroke: var(--spotnav-export-colour, #2e9d57); }
+  .spotnav-now-schematic [data-tone="sun"] { --spotnav-now-tone: var(--spotnav-sun-colour); }
+  .spotnav-now-schematic [data-tone="battery"] { --spotnav-now-tone: var(--spotnav-battery-colour); }
+  .spotnav-now-schematic [data-tone="car"] { --spotnav-now-tone: var(--spotnav-car-colour, #e07b2e); }
+  .spotnav-now-schematic [data-tone="heat"] { --spotnav-now-tone: var(--spotnav-heat-colour); }
+  .spotnav-now-schematic [data-tone="import"] { --spotnav-now-tone: var(--spotnav-import-colour, #d64541); }
+  .spotnav-now-schematic [data-tone="export"] { --spotnav-now-tone: var(--spotnav-export-colour, #2e9d57); }
+  .spotnav-now-schematic [data-tone="house"] { --spotnav-now-tone: var(--primary-text-color, #212121); }
+  .spotnav-now-dots { stroke: var(--spotnav-now-tone); }
+  .spotnav-now-arrow { fill: var(--spotnav-now-tone); }
+  /* A corner's figure in its part's colour, a third of the way toward the text colour: darker on a light card,
+     lighter on a dark one, so it keeps its contrast on both. */
+  .spotnav-now-value[data-tone], .spotnav-now-beside[data-tone], .spotnav-now-extra[data-tone] {
+    fill: color-mix(in srgb, var(--spotnav-now-tone) 68%, var(--primary-text-color, #212121));
+  }
+  .spotnav-now-beside {
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .spotnav-now-node[data-dim] { opacity: 0.4; }
   .spotnav-now-disc {
     fill: var(--card-background-color, var(--ha-card-background, #fff));
     stroke-width: 2;

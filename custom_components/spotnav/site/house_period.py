@@ -292,12 +292,12 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
                 _add(target, "saving_car", day_saving.car)
                 _add(target, "saving_heat", day_saving.heat)
     # The battery's arbitrage: a day's by its hours, a month's and a year's by their days.
-    if period.kind == PERIOD_DAY:
+    if inputs.has_battery and period.kind == PERIOD_DAY:
         for hour, value in inputs.arbitrage_hours.items():
             target = buckets.get(bucket_key(period, hour, tz))
             if target is not None:
                 _add(target, "arbitrage", value)
-    else:
+    elif inputs.has_battery:
         for day, value in inputs.arbitrage_days.items():
             if period.contains(day):
                 target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))

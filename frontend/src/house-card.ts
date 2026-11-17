@@ -17,7 +17,7 @@ import { getHouse, getHouseNow, getPeriodHistory, SpotnavApiError, UNSUPPORTED_A
 import { entityWordsOf } from "./entity-words";
 import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from "./house-loads";
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
-import { decodeHouseNow, NOW_STYLES, type HouseNow } from "./house-now";
+import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
 import { HOUSE_TABS, isHouseTab, readTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
 import { HEAT_STYLES } from "./heat-styles";
@@ -109,7 +109,7 @@ function focusSelector(element: Element | null): string | null {
   if (!(element instanceof HTMLElement)) {
     return null;
   }
-  for (const key of ["tab", "step", "pick", "pickKind", "bar", "legend", "view", "action"] as const) {
+  for (const key of ["tab", "step", "pick", "pickLabel", "kind", "bar", "legend", "view", "action"] as const) {
     const value = element.dataset[key];
     if (value !== undefined) {
       const attribute = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
@@ -137,6 +137,9 @@ export class SpotnavHouseCard extends HTMLElement {
   private liveUnsupported = false;
   private readonly periods = new Map<string, Loadable<HouseHistory>>();
   private readonly days = new Map<string, Loadable<HouseAnswer>>();
+  /** The pointer is over the card: a refresh waits for it to leave, so a hover's readout is not swept away. */
+  private hovering = false;
+  private pendingRender = false;
   private connected = false;
   private generation = 0;
   private width = HOUSE_FALLBACK_WIDTH;
@@ -164,6 +167,15 @@ export class SpotnavHouseCard extends HTMLElement {
     this.layer = doc.createElement("div");
     this.layer.className = VISUAL_CLASSES.shell;
     this.root.append(this.styleNode, this.mount, this.layer);
+    this.mount.addEventListener("pointerenter", (event) => {
+      this.hovering = (event as PointerEvent).pointerType === "mouse";
+    });
+    this.mount.addEventListener("pointerleave", () => {
+      this.hovering = false;
+      if (this.pendingRender) {
+        this.render();
+      }
+    });
   }
 
   private ensurePopover(): SettingsPopover {
@@ -429,13 +441,21 @@ export class SpotnavHouseCard extends HTMLElement {
     if (next.kind === "failed" && this.state.kind === "ready") {
       return;
     }
+    const first = this.state.kind !== "ready";
     this.state = next;
-    // The running periods are read again with the answer; past ones stay.
-    for (const key of [...this.periods.keys()].filter((key) => key.endsWith(":now"))) {
-      this.periods.delete(key);
+    if (first) {
+      this.render();
+    } else {
+      this.renderSoon();
     }
-    this.render();
     this.ensureData();
+    // The running periods are read again with the answer, the old ones shown until the new are in; past ones stay.
+    if (!first) {
+      for (const key of [...this.periods.keys()].filter((key) => key.endsWith(":now"))) {
+        const [period] = key.split(":") as [HistoryPeriod];
+        void this.loadPeriod({ period, date: null }, true);
+      }
+    }
   }
 
   // -------------------------------------------------------------------------------------------- the tabs' data
@@ -502,14 +522,17 @@ export class SpotnavHouseCard extends HTMLElement {
     }
   }
 
-  private async loadPeriod(choice: PeriodChoice): Promise<void> {
+  /** Read a period once (`quiet`: again, the one shown kept until the new one is in). */
+  private async loadPeriod(choice: PeriodChoice, quiet = false): Promise<void> {
     const hass = this.hassObject;
     const target = this.target();
     const key = this.periodKey(choice);
-    if (hass === null || target === null || this.periods.has(key)) {
+    if (hass === null || target === null || (!quiet && this.periods.has(key))) {
       return;
     }
-    this.periods.set(key, { kind: "loading" });
+    if (!quiet) {
+      this.periods.set(key, { kind: "loading" });
+    }
     const generation = this.generation;
     let next: Loadable<HouseHistory>;
     try {
@@ -518,7 +541,7 @@ export class SpotnavHouseCard extends HTMLElement {
     } catch (error) {
       next = { kind: "failed", code: error instanceof SpotnavApiError ? error.code : null };
     }
-    if (generation !== this.generation) {
+    if (generation !== this.generation || (quiet && next.kind === "failed")) {
       return;
     }
     this.periods.set(key, next);
@@ -533,7 +556,11 @@ export class SpotnavHouseCard extends HTMLElement {
         }
       }, 0);
     }
-    this.render();
+    if (quiet) {
+      this.renderSoon();
+    } else {
+      this.render();
+    }
   }
 
   private async loadDay(date: string): Promise<void> {
@@ -584,6 +611,7 @@ export class SpotnavHouseCard extends HTMLElement {
       return;
     }
     const generation = this.generation;
+    const had = this.live !== null;
     try {
       const decoded = decodeHouseNow(await getHouseNow(hass, target));
       if (generation !== this.generation) {
@@ -591,6 +619,9 @@ export class SpotnavHouseCard extends HTMLElement {
       }
       if (decoded.ok) {
         this.live = decoded.value;
+        if (had && this.patchLive()) {
+          return;
+        }
       } else if (decoded.failure === "unsupported") {
         this.liveUnsupported = true;
         this.stopLive();
@@ -610,12 +641,41 @@ export class SpotnavHouseCard extends HTMLElement {
     }
   }
 
+  /** A live reading into the drawn Now tab, in place (`patchSchematic`): whether it was (else the card is drawn). */
+  private patchLive(): boolean {
+    const drawn = this.root.querySelector<SVGSVGElement>("svg.spotnav-now-schematic");
+    if (drawn === null || this.state.kind !== "ready" || this.shownTab() !== "now") {
+      return false;
+    }
+    const fresh = renderSchematic({
+      doc: this.ownerDocument,
+      language: this.language ?? resolveLanguage(null),
+      answer: this.state.answer,
+      live: this.live,
+      width: this.width,
+      height: Number(drawn.getAttribute("height")) || null,
+      idPrefix: this.idPrefix,
+    });
+    patchSchematic(drawn, fresh);
+    return true;
+  }
+
+  /** Draw again, unless the pointer is over the card: then once it leaves (a refresh, not a choice of the reader's). */
+  private renderSoon(): void {
+    if (this.hovering) {
+      this.pendingRender = true;
+      return;
+    }
+    this.render();
+  }
+
   // -------------------------------------------------------------------------------------------- drawing
 
   private render(): void {
     if (this.config === null) {
       return;
     }
+    this.pendingRender = false;
     const focused = focusSelector(this.root.activeElement);
     this.paint(null);
     this.fit();

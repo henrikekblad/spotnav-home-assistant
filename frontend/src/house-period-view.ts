@@ -1,17 +1,19 @@
-// The house card's period tabs' own parts (SpotNav 3.0): the tiles of the Energy flow tab, the energy bars of the
+// The house card's period tabs' own parts (SpotNav 3.0): the tiles of the Energy flow tab, the energy chart of the
 // Energy chart tab for a month or a year (and a past day too far back for its hours), and the kr bars of the Price
-// and battery tab (what the battery's energy was worth, `battery_value`, the battery app's "energy value").
+// and battery tab: what the battery earned (its arbitrage, `HouseBucket.arbitrage`, the card's headline measure and
+// the one the battery's own app shows), under a day's price chart on its own hours, and per day or month alone.
 //
 // * The tiles are the energy flow's own blocks (`site/energy_flow.py`), so they add up with the diagram above them:
 //   sun, house, discharged, charged, bought, sold, and heat and car where the site has them.
 // * The bars are HTML buttons in one row with a single tab stop: the arrow keys, Home and End move between them, and
-//   hover, focus, a tap or a drag shows a bar's figures in the readout under them. A stacked bar is the house's use
-//   (the house, the heat, the car) with the sun beside it; a kr bar grows up from the zero line when the battery
-//   earned and down when it cost.
+//   hover, focus, a tap or a drag shows a bar's figures in the readout under them. A kr bar grows up from the zero
+//   line when the battery earned and down when it lost.
+// * The energy chart is the day chart's look (`house-chart.ts`): a kWh axis with its gridlines, one full-width bar per
+//   day or month with the house, the heat and the car stacked, and the sun as a stepped line over them.
 // Every figure is the backend's; text is written with `textContent` only.
 
-import { scrubBars } from "./chart-scrub";
-import { formatFixed } from "./format";
+import { attachScrub, scrubBars } from "./chart-scrub";
+import { formatFixed, formatNumber } from "./format";
 import type { EnergyFlow } from "./house-model";
 import type { HouseBucket, HouseHistory } from "./house-history";
 import { bucketWords } from "./house-history";
@@ -255,75 +257,234 @@ export function barChart(input: BarChartInput): HTMLElement {
   return wrap;
 }
 
-/** The energy bars of a period: per bucket the house, the heat and the car stacked, and the sun beside them. */
-export function energyBars(doc: Document, language: Language, answer: HouseHistory, height: number, selected: string | null, onSelect?: (key: string | null) => void): HTMLElement | null {
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function svgOf<K extends keyof SVGElementTagNameMap>(doc: Document, name: K, attributes: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
+  const created = doc.createElementNS(SVG_NS, name);
+  for (const [key, value] of Object.entries(attributes)) {
+    created.setAttribute(key, String(value));
+  }
+  return created;
+}
+
+/** A round step for an axis up to `top` with at most `ticks` steps (1, 2 or 5 times a power of ten). */
+export function niceStep(top: number, ticks = 4): number {
+  if (!(top > 0)) {
+    return 1;
+  }
+  const raw = top / ticks;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  for (const factor of [1, 2, 2.5, 5, 10]) {
+    if (factor * power >= raw) {
+      return factor * power;
+    }
+  }
+  return 10 * power;
+}
+
+/** Which series a period's energy chart has: the house always, the heat, the car and the sun where any bucket has them. */
+export function energySeries(answer: HouseHistory): { heat: boolean; car: boolean; sun: boolean } {
+  return {
+    heat: answer.buckets.some((bucket) => (bucket.heat ?? 0) > 0),
+    car: answer.buckets.some((bucket) => bucket.car > 0),
+    sun: answer.buckets.some((bucket) => bucket.solar !== null),
+  };
+}
+
+/** The energy chart of a period (see the module); `null` with nothing measured. */
+export function energyChart(
+  doc: Document,
+  language: Language,
+  answer: HouseHistory,
+  width: number,
+  height: number,
+  selected: string | null,
+  onSelect?: (key: string | null) => void,
+): HTMLElement | null {
   const buckets = answer.buckets;
   if (buckets.length === 0 || buckets.every((bucket) => bucket.periods === 0)) {
     return null;
   }
-  const sun = buckets.some((bucket) => bucket.solar !== null);
-  const heat = buckets.some((bucket) => (bucket.heat ?? 0) > 0);
-  const car = buckets.some((bucket) => bucket.car > 0);
-  const bars: Bar[] = buckets.map((bucket, index) => {
+  const series = energySeries(answer);
+  const use = (bucket: HouseBucket): number => bucket.house + (series.heat ? (bucket.heat ?? 0) : 0) + (series.car ? bucket.car : 0);
+  const peak = Math.max(0, ...buckets.map(use), ...(series.sun ? buckets.map((bucket) => bucket.solar ?? 0) : []));
+  const step = niceStep(peak, 3);
+  const top = Math.max(step, Math.ceil(peak / step) * step);
+  const left = 40;
+  const right = width - 4;
+  const plotTop = 10;
+  const bottom = height - 18;
+  const y = (value: number): number => bottom - (value / top) * (bottom - plotTop);
+  const slot = (right - left) / buckets.length;
+  const gap = Math.min(2, slot * 0.25);
+  const root = svgOf(doc, "svg", { viewBox: `0 0 ${width} ${height}`, width, height, class: "spotnav-house-period-chart", role: "img" });
+  root.setAttribute("aria-label", translate(language, "house.graph.label"));
+  const grid = svgOf(doc, "g");
+  for (let value = 0; value <= top + 1e-9; value += step) {
+    grid.append(
+      svgOf(doc, "line", { class: C.gridline, x1: left, x2: right, y1: y(value), y2: y(value) }),
+      Object.assign(svgOf(doc, "text", { class: C.tickLabel, x: left - 4, y: y(value) + 4, "text-anchor": "end" }), {
+        textContent: `${formatNumber(language, value, step >= 1 ? 0 : 1)}${value === top ? " kWh" : ""}`,
+      }),
+    );
+  }
+  root.append(grid);
+  const band = svgOf(doc, "rect", { class: "spotnav-house-period-band", x: 0, y: plotTop, width: slot, height: bottom - plotTop });
+  band.style.display = "none";
+  root.append(band);
+  const bars = svgOf(doc, "g");
+  buckets.forEach((bucket, index) => {
+    const x = left + index * slot + gap / 2;
+    const parts: Array<[string, number]> = [["house", bucket.house]];
+    if (series.heat) {
+      parts.push(["heat", bucket.heat ?? 0]);
+    }
+    if (series.car) {
+      parts.push(["car", bucket.car]);
+    }
+    let base = 0;
+    for (const [name, value] of parts) {
+      if (value <= 0) {
+        continue;
+      }
+      const rect = svgOf(doc, "rect", { class: "spotnav-house-period-part", x, y: y(base + value), width: Math.max(0.5, slot - gap), height: Math.max(0.5, y(base) - y(base + value)) });
+      rect.dataset["series"] = name;
+      bars.append(rect);
+      base += value;
+    }
     const words = bucketWords(language, answer.period, bucket.key, index, buckets.length);
-    const use: BarPart[] = [{ series: "house", value: bucket.house }];
-    if (heat) {
-      use.push({ series: "heat", value: bucket.heat ?? 0 });
+    if (words.axis !== "") {
+      bars.append(Object.assign(svgOf(doc, "text", { class: C.tickLabel, x: left + (index + 0.5) * slot, y: height - 4, "text-anchor": "middle" }), { textContent: words.axis }));
     }
-    if (car) {
-      use.push({ series: "car", value: bucket.car });
+  });
+  root.append(bars);
+  if (series.sun) {
+    // A step per bucket measured; a gap (a new run) where one was not, and none after the last.
+    let d = "";
+    let joined = false;
+    buckets.forEach((bucket, index) => {
+      if (bucket.periods === 0 || bucket.solar === null) {
+        joined = false;
+        return;
+      }
+      const x0 = left + index * slot;
+      const level = y(bucket.solar).toFixed(1);
+      d += `${joined ? "L" : "M"}${x0.toFixed(1)},${level}L${(x0 + slot).toFixed(1)},${level}`;
+      joined = true;
+    });
+    const sun = svgOf(doc, "path", { d, class: "spotnav-house-period-sun" });
+    root.append(sun);
+  }
+  root.append(svgOf(doc, "line", { class: C.gridline, x1: left, x2: right, y1: bottom, y2: bottom }));
+  const surface = element(doc, "div", "spotnav-house-period-surface");
+  surface.tabIndex = 0;
+  surface.setAttribute("role", "group");
+  surface.setAttribute("aria-label", translate(language, "house.graph.label"));
+  surface.append(root);
+  const readout = element(doc, "p", `${C.muted} ${P.readout}`);
+  readout.setAttribute("aria-live", "polite");
+  const words = buckets.map((bucket, index) => energyWords(language, bucket, bucketWords(language, answer.period, bucket.key, index, buckets.length).when, series));
+  let chosen = buckets.findIndex((bucket) => bucket.key === selected);
+  const show = (index: number): void => {
+    if (index < 0) {
+      band.style.display = "none";
+      readout.textContent = translate(language, "hist.house.hint");
+      return;
     }
-    const lanes = sun ? [use, [{ series: "sun", value: bucket.solar ?? 0 }]] : [use];
-    return { key: bucket.key, lanes, words: energyWords(language, bucket, words.when, sun, heat, car), axis: words.axis };
+    band.style.display = "";
+    band.setAttribute("x", String(left + index * slot));
+    readout.textContent = words[index]!;
+  };
+  const indexAt = (event: PointerEvent | MouseEvent): number => {
+    const box = root.getBoundingClientRect();
+    if (box.width <= 0) {
+      return -1;
+    }
+    const at = ((event.clientX - box.left) / box.width) * width;
+    return at < left - 4 || at > right + 4 ? -1 : Math.min(buckets.length - 1, Math.max(0, Math.floor((at - left) / slot)));
+  };
+  const choose = (index: number): void => {
+    chosen = index;
+    show(index);
+    onSelect?.(index < 0 ? null : buckets[index]!.key);
+  };
+  let scrubbed = -1;
+  attachScrub(surface, {
+    hover: (event) => show(indexAt(event) >= 0 ? indexAt(event) : chosen),
+    leave: () => show(chosen),
+    drag: (event) => {
+      scrubbed = indexAt(event);
+      show(scrubbed);
+    },
+    end: () => {
+      if (scrubbed >= 0) {
+        choose(scrubbed);
+      }
+      scrubbed = -1;
+    },
   });
-  const key = [{ series: "house", words: translate(language, "house.legend.house") }];
-  if (heat) {
-    key.push({ series: "heat", words: translate(language, "house.legend.heat") });
-  }
-  if (car) {
-    key.push({ series: "car", words: translate(language, "house.legend.car") });
-  }
-  if (sun) {
-    key.push({ series: "sun", words: translate(language, "house.legend.sun") });
-  }
-  return barChart({
-    doc,
-    label: translate(language, "house.graph.label"),
-    bars,
-    height,
-    scale: (value) => kwhText(language, value),
-    hint: translate(language, "hist.house.hint"),
-    key,
-    selected,
-    ...(onSelect === undefined ? {} : { onSelect }),
+  surface.addEventListener("click", (event) => choose(indexAt(event)));
+  surface.addEventListener("keydown", (event) => {
+    const last = buckets.length - 1;
+    const next = event.key === "ArrowRight" ? Math.min(last, chosen + 1) : event.key === "ArrowLeft" ? Math.max(0, chosen < 0 ? last : chosen - 1) : event.key === "Home" ? 0 : event.key === "End" ? last : event.key === "Escape" ? -1 : null;
+    if (next === null) {
+      return;
+    }
+    event.preventDefault();
+    choose(next);
   });
+  show(chosen);
+  const key = element(doc, "ul", `${C.muted} ${P.key}`);
+  const item = (name: string, words_: TranslationKey, line = false): void => {
+    const entry = element(doc, "li");
+    const swatch = element(doc, "span", line ? `${P.part} spotnav-house-key-line` : P.part);
+    swatch.dataset["series"] = name;
+    swatch.setAttribute("aria-hidden", "true");
+    entry.append(swatch, element(doc, "span", undefined, translate(language, words_)));
+    key.append(entry);
+  };
+  item("house", "house.legend.house");
+  if (series.heat) {
+    item("heat", "house.legend.heat");
+  }
+  if (series.car) {
+    item("car", "house.legend.car");
+  }
+  if (series.sun) {
+    item("sun", "house.legend.sun", true);
+  }
+  const wrap = element(doc, "div", P.bars);
+  wrap.dataset["part"] = "period-energy";
+  wrap.append(surface, readout, key);
+  return wrap;
 }
 
-function energyWords(language: Language, bucket: HouseBucket, when: string, sun: boolean, heat: boolean, car: boolean): string {
+function energyWords(language: Language, bucket: HouseBucket, when: string, series: { heat: boolean; car: boolean; sun: boolean }): string {
   if (bucket.periods === 0) {
     return translate(language, "hist.house.barNone", { when });
   }
   const parts = [when, `${translate(language, "house.legend.house")} ${kwhText(language, bucket.house)}`];
-  if (heat && bucket.heat !== null) {
+  if (series.heat && bucket.heat !== null) {
     parts.push(`${translate(language, "house.legend.heat")} ${kwhText(language, bucket.heat)}`);
   }
-  if (car && bucket.car > 0) {
+  if (series.car && bucket.car > 0) {
     parts.push(`${translate(language, "house.legend.car")} ${kwhText(language, bucket.car)}`);
   }
-  if (sun && bucket.solar !== null) {
+  if (series.sun && bucket.solar !== null) {
     parts.push(`${translate(language, "house.legend.sun")} ${kwhText(language, bucket.solar)}`);
   }
   return parts.join(" · ");
 }
 
-/** What the battery earned over the period (minor unit): the buckets' `battery_value` summed; `null` with none. */
-export function valueTotal(answer: HouseHistory): number | null {
-  const values = answer.buckets.map((bucket) => bucket.battery_value).filter((value): value is number => value !== null);
+/** What the battery earned over the period (minor unit): the buckets' arbitrage summed; `null` with none. */
+export function earnedTotal(answer: HouseHistory): number | null {
+  const values = answer.buckets.map((bucket) => bucket.arbitrage).filter((value): value is number => value !== null);
   return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0);
 }
 
-/** The kr bars (see the module); `null` without a figure. `money` writes an amount in the major unit. */
-export function valueBars(
+/** The kr bars of a month or a year, a bar a day or a month (see the module); `null` without a figure. `money` writes
+ * an amount in the major unit. */
+export function earnedBars(
   doc: Document,
   language: Language,
   answer: HouseHistory,
@@ -332,13 +493,13 @@ export function valueBars(
   selected: string | null,
   onSelect?: (key: string | null) => void,
 ): HTMLElement | null {
-  if (valueTotal(answer) === null) {
+  if (earnedTotal(answer) === null) {
     return null;
   }
   const buckets = answer.buckets;
   const bars: Bar[] = buckets.map((bucket, index) => {
     const words = bucketWords(language, answer.period, bucket.key, index, buckets.length);
-    const value = bucket.battery_value;
+    const value = bucket.arbitrage;
     return {
       key: bucket.key,
       lanes: value === null || value === 0 ? [] : [[{ series: value < 0 ? "cost" : "earned", value }]],
@@ -359,6 +520,60 @@ export function valueBars(
     selected,
     ...(onSelect === undefined ? {} : { onSelect }),
   });
+}
+
+/** The day's kr bars under its price chart, on the chart's own hours and x-axis (`left`, `right` its plot's edges in
+ * the chart's units): what the battery earned each hour, up from the line, down where it lost; `null` per hour where
+ * nothing is known. A strip with its own two figures (the most and the least) at the left. */
+export function earnedStrip(
+  doc: Document,
+  values: Array<number | null>,
+  geometry: { width: number; left: number; right: number },
+  height: number,
+  money: (minor: number) => string,
+): { element: SVGSVGElement; select: (index: number | null) => void } {
+  const { width, left, right } = geometry;
+  const root = svgOf(doc, "svg", { viewBox: `0 0 ${width} ${height}`, width, height, class: "spotnav-house-earned-strip", "aria-hidden": "true" });
+  const known = values.filter((value): value is number => value !== null);
+  const most = Math.max(0, ...known);
+  const least = Math.min(0, ...known);
+  const span = most - least > 0 ? most - least : 1;
+  const top = 4;
+  const usable = height - top - 2;
+  const zero = top + (most / span) * usable;
+  const slot = (right - left) / Math.max(1, values.length);
+  const marks: SVGRectElement[] = [];
+  values.forEach((value, index) => {
+    const highlight = svgOf(doc, "rect", { class: "spotnav-house-period-band", x: left + index * slot, y: 0, width: slot, height });
+    highlight.style.display = "none";
+    root.append(highlight);
+    marks.push(highlight);
+    if (value === null || value === 0) {
+      return;
+    }
+    const size = (Math.abs(value) / span) * usable;
+    const rect = svgOf(doc, "rect", {
+      class: "spotnav-house-period-part",
+      x: left + index * slot + Math.min(1, slot * 0.15),
+      y: value > 0 ? zero - size : zero,
+      width: Math.max(0.5, slot - 2 * Math.min(1, slot * 0.15)),
+      height: Math.max(0.5, size),
+      rx: 1.5,
+    });
+    rect.dataset["series"] = value < 0 ? "cost" : "earned";
+    root.append(rect);
+  });
+  root.append(svgOf(doc, "line", { class: "spotnav-house-earned-zero", x1: left, x2: right, y1: zero, y2: zero }));
+  if (most > 0) {
+    root.append(Object.assign(svgOf(doc, "text", { class: C.tickLabel, x: left - 4, y: top + 8, "text-anchor": "end" }), { textContent: money(most) }));
+  }
+  if (least < 0) {
+    root.append(Object.assign(svgOf(doc, "text", { class: C.tickLabel, x: left - 4, y: height - 2, "text-anchor": "end" }), { textContent: money(least) }));
+  }
+  return {
+    element: root,
+    select: (index) => marks.forEach((mark, at) => (mark.style.display = at === index ? "" : "none")),
+  };
 }
 
 export const PERIOD_VIEW_STYLES = `
@@ -395,7 +610,7 @@ export const PERIOD_VIEW_STYLES = `
   [data-series="grid"] { --spotnav-tile-colour: var(--spotnav-grid-colour); }
   [data-series="sell"] { --spotnav-tile-colour: var(--spotnav-sell-colour); }
   [data-series="heat"] { --spotnav-tile-colour: var(--spotnav-heat-colour); }
-  [data-series="car"] { --spotnav-tile-colour: var(--spotnav-flow-car); }
+  [data-series="car"] { --spotnav-tile-colour: var(--spotnav-car-colour, var(--spotnav-flow-car)); }
   [data-series="earned"] { --spotnav-tile-colour: var(--spotnav-battery-colour); }
   [data-series="cost"] { --spotnav-tile-colour: var(--spotnav-sell-colour); }
   .${P.bars} {
@@ -508,6 +723,47 @@ export const PERIOD_VIEW_STYLES = `
     margin: 0;
     font-size: 1.05rem;
     font-weight: 600;
+  }
+  .spotnav-house-total-sub {
+    margin: -6px 0 0;
+    font-size: 0.85rem;
+  }
+  .spotnav-house-period-surface {
+    position: relative;
+    touch-action: pan-y;
+    outline: none;
+    border-radius: 4px;
+  }
+  .spotnav-house-period-surface:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .spotnav-house-period-chart, .spotnav-house-earned-strip {
+    display: block;
+    overflow: visible;
+  }
+  .spotnav-house-earned-box {
+    margin-top: 2px;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .spotnav-house-period-part { fill: var(--spotnav-tile-colour); }
+  .spotnav-house-period-band { fill: var(--secondary-background-color, rgba(127, 127, 127, 0.15)); opacity: 0.8; }
+  .spotnav-house-period-sun {
+    fill: none;
+    stroke: var(--spotnav-sun-colour);
+    stroke-width: 2;
+    stroke-linejoin: round;
+  }
+  .spotnav-house-earned-zero {
+    stroke: var(--secondary-text-color, #727272);
+    stroke-width: 1;
+  }
+  .${P.key} .spotnav-house-key-line {
+    height: 0;
+    border-top: 2px solid var(--spotnav-sun-colour);
+    background: none;
   }
   @media (forced-colors: active) {
     .${P.lane} > .${P.part}, .${P.key} .${P.part} { background: CanvasText; }

@@ -12,6 +12,7 @@
 //   to choose; nothing after today is offered.
 
 import { browserStore, type PreferenceStore } from "./chart-preference";
+import { dateLabel } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   HISTORY_PERIODS,
@@ -35,6 +36,11 @@ export const TAB_CLASSES = {
   pickerDate: "spotnav-house-picker-date",
   pickerKind: "spotnav-house-picker-kind",
   pickerStep: "spotnav-house-picker-step",
+  pickerRow: "spotnav-house-picker-row",
+  pickerLabel: "spotnav-house-picker-label",
+  pickerHidden: "spotnav-house-picker-hidden",
+  pickerOver: "spotnav-house-picker-over",
+  pickerKinds: "spotnav-house-picker-kinds",
 } as const;
 
 const T = TAB_CLASSES;
@@ -193,12 +199,47 @@ const STEP_KEYS: Record<HistoryPeriod, [TranslationKey, TranslationKey, Translat
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The one-line picker (see the module). `today` is the site's local date. */
-export function periodPicker(doc: Document, language: Language, choice: PeriodChoice, today: string, onChange: (next: PeriodChoice) => void): HTMLElement {
-  const row = doc.createElement("div");
-  row.className = T.picker;
-  row.setAttribute("role", "group");
-  row.setAttribute("aria-label", translate(language, "hist.period.label"));
+const shortMonths = new Map<string, Intl.DateTimeFormat>();
+
+/** The period in words, the picker's label: "I dag", "I går", a date ("ons 11 nov"), a month ("nov 2026"), a year;
+ * the reader's language through `Intl`, never the browser's own date format. */
+export function choiceLabel(language: Language, choice: PeriodChoice, today: string): string {
+  const shown = shownStart(choice, today);
+  if (choice.period === "day") {
+    if (shown === today) {
+      return translate(language, "house.picker.today");
+    }
+    if (shown === shiftPeriod("day", today, -1)) {
+      return translate(language, "house.picker.yesterday");
+    }
+    return dateLabel(language, shown);
+  }
+  if (choice.period === "month") {
+    let format = shortMonths.get(language);
+    if (format === undefined) {
+      format = new Intl.DateTimeFormat(language === "en" ? "en-GB" : language, { month: "short", year: "numeric", timeZone: "UTC" });
+      shortMonths.set(language, format);
+    }
+    return format.format(new Date(Date.UTC(Number(shown.slice(0, 4)), Number(shown.slice(5, 7)) - 1, 15, 12))).replace(".", "");
+  }
+  return shown.slice(0, 4);
+}
+
+/**
+ * The one-line picker (see the module): "‹ [label] ›" and Day | Month | Year. The label is a button that opens the
+ * native picker of a hidden control (a date input for a day, a list of months or years); `through` ("17:00") is told
+ * after today's label ("I dag · till 17:00"). `today` is the site's local date.
+ */
+export function periodPicker(
+  doc: Document,
+  language: Language,
+  choice: PeriodChoice,
+  today: string,
+  onChange: (next: PeriodChoice) => void,
+  through: string | null = null,
+): HTMLElement {
+  const wrap = doc.createElement("div");
+  wrap.className = T.picker;
   const shown = shownStart(choice, today);
   const [previousKey, nextKey, pickKey] = STEP_KEYS[choice.period];
   const earliest = periodStart(choice.period, periodStart("year", shiftPeriod("year", today, -PICKER_YEARS)));
@@ -213,25 +254,43 @@ export function periodPicker(doc: Document, language: Language, choice: PeriodCh
     button.addEventListener("click", () => onChange(stepChoice(choice, today, steps)));
     return button;
   };
-  let picker: HTMLElement;
+  // The label, and over it (for a month or a year) the list itself, see-through, so a tap opens the native list.
+  const holder = doc.createElement("div");
+  holder.className = T.pickerDate;
+  const label = doc.createElement("button");
+  label.type = "button";
+  label.className = T.pickerLabel;
+  label.dataset["pickLabel"] = "true";
+  const words = choiceLabel(language, choice, today);
+  label.textContent = through !== null && choice.period === "day" && choice.date === null ? translate(language, "house.picker.through", { label: words, time: through }) : words;
+  label.setAttribute("aria-label", `${translate(language, pickKey)}: ${label.textContent}`);
+  holder.append(label);
   if (choice.period === "day") {
     const input = doc.createElement("input");
     input.type = "date";
-    input.className = T.pickerDate;
+    input.className = T.pickerHidden;
+    input.tabIndex = -1;
+    input.setAttribute("aria-hidden", "true");
     input.value = shown;
     input.max = today;
     input.min = earliest;
     input.dataset["pick"] = "day";
-    input.setAttribute("aria-label", translate(language, pickKey));
     input.addEventListener("change", () => {
       if (DATE.test(input.value) && input.value <= today && input.value >= earliest) {
         onChange({ period: "day", date: input.value === today ? null : input.value });
       }
     });
-    picker = input;
+    label.addEventListener("click", () => {
+      try {
+        (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+      } catch {
+        input.focus();
+      }
+    });
+    holder.append(input);
   } else {
     const select = doc.createElement("select");
-    select.className = T.pickerDate;
+    select.className = `${T.pickerHidden} ${T.pickerOver}`;
     select.dataset["pick"] = choice.period;
     select.setAttribute("aria-label", translate(language, pickKey));
     const options = choice.period === "month" ? pickerMonths(periodStart("month", today), shown) : pickerYears(periodStart("year", today), shown);
@@ -247,29 +306,38 @@ export function periodPicker(doc: Document, language: Language, choice: PeriodCh
         onChange({ period: choice.period, date: select.value >= periodStart(choice.period, today) ? null : select.value });
       }
     });
-    picker = select;
+    // The list takes the taps and the keyboard; the label under it only shows the words.
+    label.tabIndex = -1;
+    label.setAttribute("aria-hidden", "true");
+    holder.append(select);
   }
-  const kind = doc.createElement("select");
-  kind.className = T.pickerKind;
-  kind.dataset["pickKind"] = "true";
-  kind.setAttribute("aria-label", translate(language, "hist.period.label"));
-  for (const period of HISTORY_PERIODS) {
-    const option = doc.createElement("option");
-    option.value = period;
-    option.textContent = translate(language, `hist.period.${period}`);
-    option.selected = period === choice.period;
-    kind.append(option);
-  }
-  kind.addEventListener("change", () => {
-    const period = kind.value as HistoryPeriod;
-    if ((HISTORY_PERIODS as readonly string[]).includes(period) && period !== choice.period) {
-      onChange(kindChoice(choice, period, today));
-    }
-  });
   const before = shiftPeriod(choice.period, shown, -1);
   const after = shiftPeriod(choice.period, shown, 1);
-  row.append(step("back", "‹", previousKey, before >= earliest, -1), picker, step("forward", "›", nextKey, after <= today, 1), kind);
-  return row;
+  const row = doc.createElement("div");
+  row.className = T.pickerRow;
+  row.setAttribute("role", "group");
+  row.setAttribute("aria-label", translate(language, "hist.period.label"));
+  row.append(step("back", "‹", previousKey, before >= earliest, -1), holder, step("forward", "›", nextKey, after <= today, 1));
+  // Day | Month | Year, one pressed.
+  const kinds = doc.createElement("div");
+  kinds.className = T.pickerKinds;
+  kinds.setAttribute("role", "group");
+  kinds.setAttribute("aria-label", translate(language, "hist.period.label"));
+  for (const period of HISTORY_PERIODS) {
+    const button = doc.createElement("button");
+    button.type = "button";
+    button.dataset["kind"] = period;
+    button.textContent = translate(language, `hist.period.${period}`);
+    button.setAttribute("aria-pressed", String(period === choice.period));
+    button.addEventListener("click", () => {
+      if (period !== choice.period) {
+        onChange(kindChoice(choice, period, today));
+      }
+    });
+    kinds.append(button);
+  }
+  wrap.append(row, kinds);
+  return wrap;
 }
 
 export const TAB_STYLES = `
@@ -278,10 +346,7 @@ export const TAB_STYLES = `
     gap: 2px;
     margin: 10px 0 0;
     border-bottom: 1px solid var(--divider-color, #e0e0e0);
-    overflow-x: auto;
-    scrollbar-width: none;
   }
-  .${T.list}::-webkit-scrollbar { display: none; }
   /* A tab shrinks to its longest word and wraps there, so a long language's four tabs stay in view at 360 px. */
   .${T.tab} {
     flex: 1 1 auto;
@@ -291,6 +356,9 @@ export const TAB_STYLES = `
     font-size: 0.85rem;
     line-height: 1.2;
     white-space: normal;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    hyphens: auto;
     color: var(--secondary-text-color, #727272);
     background: transparent;
     border: 0;
@@ -318,40 +386,107 @@ export const TAB_STYLES = `
   .${T.picker} {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
   }
-  .${T.picker} > * {
-    min-height: 36px;
-    box-sizing: border-box;
-    font: inherit;
-    font-size: 0.9rem;
-    color: var(--primary-text-color, #212121);
-    background: var(--secondary-background-color, transparent);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
-    color-scheme: light dark;
+  .${T.pickerRow} {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
   }
   .${T.pickerStep} {
-    flex: 0 0 36px;
-    width: 36px;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
     padding: 0;
-    font-size: 1.2rem;
+    font: inherit;
+    font-size: 1.3rem;
+    line-height: 1;
+    color: var(--primary-text-color, #212121);
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
     cursor: pointer;
   }
-  .${T.pickerStep}:disabled { opacity: 0.4; cursor: default; }
+  .${T.pickerStep}:hover:not(:disabled) { background: var(--secondary-background-color, #eee); }
+  .${T.pickerStep}:disabled { opacity: 0.3; cursor: default; }
   .${T.pickerDate} {
+    position: relative;
     flex: 1 1 auto;
     min-width: 0;
+    display: flex;
+    justify-content: center;
+  }
+  .${T.pickerLabel} {
+    max-width: 100%;
+    min-height: 34px;
     padding: 0 8px;
-    text-align: center;
+    font: inherit;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
   }
-  .${T.pickerKind} {
+  .${T.pickerLabel}:hover { background: var(--secondary-background-color, #eee); }
+  /* The native control: out of sight under the label (a day's date input, opened by the label), or over it,
+     see-through (a month's or a year's list), so a tap opens it and the keyboard reaches it. */
+  .${T.pickerHidden} {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    border: 0;
+    padding: 0;
+    pointer-events: none;
+  }
+  .${T.pickerOver} {
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    font: inherit;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+  .${T.pickerKinds} {
     flex: 0 0 auto;
-    padding: 0 6px;
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: 9px;
+    background: var(--secondary-background-color, #eee);
   }
-  .${T.picker} > *:focus-visible {
+  .${T.pickerKinds} > button {
+    min-height: 30px;
+    padding: 0 9px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color, #727272);
+    background: transparent;
+    border: 0;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .${T.pickerKinds} > button[aria-pressed="true"] {
+    color: var(--primary-text-color, #212121);
+    background: var(--ha-card-background, var(--card-background-color, #fff));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    font-weight: 500;
+  }
+  .${T.picker} button:focus-visible, .${T.pickerOver}:focus-visible + *, .${T.pickerOver}:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 1px;
+  }
+  .${T.pickerDate}:has(.${T.pickerOver}:focus-visible) .${T.pickerLabel} {
+    outline: 2px solid var(--primary-color, #03a9f4);
   }
 `;

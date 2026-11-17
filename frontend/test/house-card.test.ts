@@ -36,6 +36,13 @@ function withoutPerfect(value: HouseAnswer): HouseAnswer {
   return { ...value, battery, day_review: value.day_review === null ? null : { ...value.day_review, perfect: null } };
 }
 
+/** The history's day fixture, its hours on the house fixture's day (13 November). */
+function dayHistory(): HouseHistory {
+  const decoded = decodeHouseHistory(read("house_history/villa_day.json"));
+  const history = decoded.ok ? decoded.value : null!;
+  return { ...history, date: "2026-11-13", end: "2026-11-14", today: "2026-11-13", buckets: history.buckets.map((bucket) => ({ ...bucket, key: `2026-11-13${bucket.key.slice(10)}` })) };
+}
+
 /** The fixture's own moment: 13 November 2026, 17:20 in Stockholm. */
 const NOW = Date.parse("2026-11-13T16:20:00+00:00");
 
@@ -348,8 +355,8 @@ describe("the body", () => {
 describe("what SpotNav saved", () => {
   it("leaves the battery under its own control out of the total, and shows a single part without a split", () => {
     expect(savingTotalLine("sv", answer())).toBe("SpotNav sparade 17 kr i dag");
-    const card = body(answer(), {}, "sv");
-    expect(card.querySelector("[data-line='spotnav-saving']")?.textContent).toBe("SpotNav sparade 17 kr i dag");
+    // On the card, in Now's money line.
+    expect(body(answer(), { tab: "now" }, "sv").querySelector("[data-line='today']")?.textContent).toBe("I dag: batteriet tjänade 11 kr · SpotNav sparade 17 kr");
     expect(savingTotalLine("sv", answer("house/house_learning.json"))).toBeNull();
   });
 
@@ -384,17 +391,21 @@ describe("the battery app's views, calm", () => {
     expect(todayDetail("sv", answer())).toBe("Elkostnad 38 kr");
     const value = answer();
     expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,2 kr");
-    // The headline above the tabs, on every tab.
-    for (const tab of ["now", "flow", "graph", "price"] as const) {
-      expect(body(answer(), { tab }, "sv").querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag (egen styrning)");
+    // Nothing above the tabs but the header: the day's money is Now's line.
+    for (const tab of ["flow", "graph", "price"] as const) {
+      expect(body(answer(), { tab }, "sv").querySelector("[data-line='today']")).toBeNull();
     }
-    // What it counts and the day's cost in Price and battery: a Sigenergy battery's app is verified to show the same
-    // measure, so the hint names it.
-    const card = body(answer(), { tab: "price" }, "sv");
-    expect(card.querySelector("[data-line='today-hint']")?.textContent).toBe("Samma mått som Sigenergy-appen.");
-    expect(card.querySelector("[data-line='today-detail']")?.textContent).toBe("Elkostnad 38 kr");
-    // The level is the schematic's in Now, the mode under it.
     const now = body(answer(), { tab: "now" }, "sv");
+    expect(now.querySelector("[data-line='today']")?.textContent).toBe("I dag: batteriet tjänade 11 kr · SpotNav sparade 17 kr");
+    // What it counts and the day's cost under Price and battery's heading: a Sigenergy battery's app is verified to
+    // show the same measure, so the subline names it.
+    const card = body(answer(), { tab: "price" }, "sv", { onSelect: vi.fn() });
+    const tabs = { live: null, history: { kind: "ready" as const, answer: dayHistory() }, day: null, today: "2026-11-13" };
+    const priced = houseBody({ doc: document, language: "sv", state: { kind: "ready", answer: answer() }, ui: { selected: null, tab: "price" }, handlers: { onSelect: vi.fn() }, width: 340, nowMs: NOW, idPrefix: "p", tabs });
+    expect(priced.querySelector("[data-line='earned']")?.textContent).toBe("Batteriet tjänade 11 kr");
+    expect(priced.querySelector("[data-line='earned-sub']")?.textContent).toBe("Samma mått som Sigenergy-appen. · Elkostnad 38 kr");
+    expect(card.querySelector("[data-line='earned']")).toBeNull();
+    // The level is the schematic's in Now, the mode under it.
     expect(now.querySelector(".spotnav-house-sub")?.textContent).toBe("Läge Balanserad · inga livevärden än");
     expect(now.querySelector(".spotnav-now-words[data-role='battery']")?.textContent).toBe("Batteri48 %19,5 kWh");
   });
@@ -404,7 +415,9 @@ describe("the battery app's views, calm", () => {
     for (const brand of ["huawei", null]) {
       const other = { ...value, battery: { ...value.battery!, brand } };
       expect(todayHint("sv", other)).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade.");
-      expect(body(other, { tab: "price" }, "en").querySelector("[data-line='today-hint']")?.textContent).toBe("What the battery gave back, at the price then, less what charging it cost.");
+      const tabs = { live: null, history: { kind: "ready" as const, answer: dayHistory() }, day: null, today: "2026-11-13" };
+      const card = houseBody({ doc: document, language: "en", state: { kind: "ready", answer: other }, ui: { selected: null, tab: "price" }, handlers: { onSelect: vi.fn() }, width: 340, nowMs: NOW, idPrefix: "p", tabs });
+      expect(card.querySelector("[data-line='earned-sub']")?.textContent).toMatch(/^What the battery gave back, at the price then, less what charging it cost\./);
     }
     expect(todayHint("en", value)).toBe("The same measure as the Sigenergy app.");
   });
@@ -459,11 +472,11 @@ describe("the legend", () => {
   });
 
   it("keeps the grid charging and selling tints and their legend items to the price view", () => {
-    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast was", "Sun", "Car"]);
+    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast", "Sun", "Car"]);
     expect(legendOf(body(answer(), { view: "price" }))).toEqual([
       "Buy price",
       "Sell price",
-      "Battery 0–100 % (dashed: plan)",
+      "Battery level · dashed = plan",
       "Charges from the grid",
       "Sells to the grid",
     ]);
@@ -638,7 +651,9 @@ describe("the shares of the perfect plan", () => {
     expect(front.querySelector("[data-part='modes']")).toBeNull();
     const open = body(answer(), OPEN, "sv");
     const details = open.querySelector(".spotnav-house-details")!;
-    const part = details.firstElementChild as HTMLElement;
+    // After the week's sentence, which moved here from the front.
+    expect((details.firstElementChild as HTMLElement).dataset["line"]).toBe("saving");
+    const part = details.children[1] as HTMLElement;
     expect(part.dataset["part"]).toBe("modes");
     expect(part.dataset["view"]).toBe("perfect");
     expect(part.querySelector("[data-line='perfect-headline']")).not.toBeNull();
@@ -870,14 +885,17 @@ describe("a past day's answer", () => {
     const graph = render("graph", { kind: "ready", answer: past });
     expect(graph.querySelectorAll(".spotnav-house-surface .spotnav-house-bar").length).toBeGreaterThan(0);
     expect(graph.querySelector("input[data-pick='day']")?.getAttribute("value") ?? (graph.querySelector<HTMLInputElement>("input[data-pick='day']")!.value)).toBe("2026-11-12");
-    // The headline stays today's.
-    expect(graph.querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag (egen styrning)");
+    // The picker names the day; the forecast hint is today's only.
+    expect(graph.querySelector("[data-pick-label]")?.textContent).toMatch(/^ons 11 nov|^tors 12 nov|^I går/);
+    expect(graph.querySelector(".spotnav-readout")?.textContent).not.toContain("prognos");
     // Before the history is in, no prices to draw; then its prices on the day's hours, and its kr bars.
     expect(render("price", { kind: "ready", answer: past }).querySelector(".spotnav-house-surface")).toBeNull();
     const price = render("price", { kind: "ready", answer: past }, { kind: "ready", answer: dayHistory });
     expect(price.querySelector(".spotnav-house-surface .spotnav-house-price-buy")).not.toBeNull();
     expect(withPrices(past, dayHistory).hours[3]!.buy).toBe(103);
-    expect(price.querySelectorAll(".spotnav-house-pbar")).toHaveLength(24);
+    // The kr bars on the chart's own hours, under it, and the day's heading their sum.
+    expect(price.querySelectorAll(".spotnav-house-earned-strip .spotnav-house-period-part").length).toBeGreaterThan(0);
+    expect(price.querySelector("[data-line='earned']")?.textContent).toMatch(/^Batteriet tjänade /);
     // Today's own words (what the headline counts, the week) only on today.
     expect(price.querySelector("[data-line='today-hint']")).toBeNull();
     expect(translate("en", "house.sub.socDayEnd", { pct: "41 %" })).toBe("Battery 41 % at the end of the day");
@@ -1038,7 +1056,7 @@ describe("today's energy flow", () => {
     const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
     expect(battery.textContent).toContain("nu 48 %");
     expect(svgRoot.getAttribute("aria-label")).toMatch(/^Sol 7,5 kWh \(8 %\), Batteri 8,6 kWh/);
-    expect(section.textContent).toContain("Fram till 17:00.");
+    expect(card.querySelector("[data-pick-label]")?.textContent).toBe("I dag · till 17:00");
     // A flow allocated by the hour says so in the details; by the quarter hour, that.
     expect(section.textContent).not.toContain("varje timme går solen");
     const notes = flowBody(answer(), { detailsOpen: true }, "sv").querySelector("[data-part='flow-notes']")!;
@@ -1108,7 +1126,7 @@ describe("today's energy flow", () => {
     const value = answer();
     const flow = { ...value.energy_flow!, step_min: 15, through: "2026-11-13T16:15:00+00:00" };
     const card = flowBody({ ...value, energy_flow: flow }, { detailsOpen: true }, "sv");
-    expect(card.querySelector("[data-part='energy-flow']")!.textContent).toContain("Fram till 17:15.");
+    expect(card.querySelector("[data-pick-label]")?.textContent).toBe("I dag · till 17:15");
     expect(card.querySelector("[data-part='flow-notes']")!.textContent).toContain("varje kvart går solen");
     const raw = JSON.parse(JSON.stringify(read("house/villa_battery_sun.json")));
     delete raw.energy_flow.step_min;
@@ -1419,13 +1437,14 @@ describe("a learning period that holds something back", () => {
     expect(decodeHouse(broken).ok).toBe(false);
   });
 
-  it("says it at the top of the card, in Swedish as the owner asked", () => {
-    expect(learningLines("sv", answer())).toEqual(["Laddar inte från nätet än · lär sig husets toppar per fas, 13 dygn kvar"]);
+  it("says it in Now, small and grey, in Swedish as the owner asked", () => {
+    expect(learningLines("sv", answer())).toEqual(["Lär sig husets toppar, 13 dygn kvar. Laddar inte från nätet förrän dess."]);
     const capped = { ...answer(), learning: [{ what: "phase_peaks", days_left: 1, cap_kw: 2.4 }] };
-    expect(learningLines("en", capped)).toEqual(["At most 2.4 kW from the grid for now · learning the house's peaks per phase, 1 day left"]);
-    const line = body(answer(), {}, "sv").querySelector<HTMLElement>('[data-line="learning"]');
+    expect(learningLines("en", capped)).toEqual(["Learning the house's peaks, 1 day left. Charges at most 2.4 kW from the grid until then."]);
+    const line = body(answer(), { tab: "now" }, "sv").querySelector<HTMLElement>('[data-line="learning"]');
     expect(line?.textContent).toContain("13 dygn kvar");
-    expect(line?.parentElement?.children[1]).toBe(line);
+    expect(line?.classList.contains("spotnav-house-sub")).toBe(true);
+    expect(body(answer(), { tab: "graph" }, "sv").querySelector('[data-line="learning"]')).toBeNull();
   });
 
   it("shows nothing when nothing is held back, or a kind it does not know", () => {

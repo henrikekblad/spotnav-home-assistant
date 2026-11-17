@@ -272,8 +272,8 @@ def test_a_bucket_has_the_batterys_arbitrage_by_the_hour_or_by_its_days() -> Non
     year = house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 11, 1))))
     by_month = {bucket["key"]: bucket["arbitrage"] for bucket in year["buckets"]}
     assert by_month["2026-11"] == pytest.approx(14 * DAY_ARBITRAGE) and by_month["2026-10"] is None
-    alone = house_history(month_inputs(arbitrage_days={}, arbitrage_hours={}))
-    assert all(bucket["arbitrage"] is None for bucket in alone["buckets"])
+    for alone in (month_inputs(arbitrage_days={}, arbitrage_hours={}), month_inputs(has_battery=False)):
+        assert all(bucket["arbitrage"] is None for bucket in house_history(alone)["buckets"])
 
 
 def test_a_bucket_has_its_mean_prices_where_priced() -> None:
@@ -410,6 +410,7 @@ def test_a_day_without_a_share_says_why_and_the_month_counts_whole_days() -> Non
 
 def test_contract_fixtures() -> None:
     _fixture("villa_month.json", house_history(month_inputs()))
+    _fixture("villa_year.json", house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 11, 1)))))
     day = period_of(PERIOD_DAY, date(2026, 11, 15))
     start, end = utc_bounds(day, TZ)
     quarters = []
