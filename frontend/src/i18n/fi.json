@@ -1333,6 +1333,8 @@
   "perfect.headline": "{own} {ownShare} täydellisestä · {plan} {planShare}",
   "perfect.headlineOne": "{name} {share} täydellisestä",
   "perfect.explain": "Täydellinen: paras mahdollinen jälkikäteen, samoilla säännöillä.",
+  "perfect.explainSell": "Täydellinen: paras mahdollinen jälkikäteen, saa myydä ({mode}-säännöt).",
+  "perfect.explainNoSell": "Täydellinen: paras mahdollinen jälkikäteen, ilman myyntiä (verkkoon ei mennyt mitään).",
   "perfect.midnight": "Laskettu sillä, mitä akussa oli jäljellä keskiyöllä.",
   "perfect.provisional.one": "Keskiyöllä jäljellä ollut lasketaan vuorokauden omalla hinnalla {days} vuorokaudelle, kunnes seuraavan vuorokauden hinnat ovat tiedossa.",
   "perfect.provisional.other": "Keskiyöllä jäljellä ollut lasketaan vuorokauden omalla hinnalla {days} vuorokaudelle, kunnes seuraavan vuorokauden hinnat ovat tiedossa.",

@@ -1333,6 +1333,8 @@
   "perfect.headline": "{own} {ownShare} of perfect · {plan} {planShare}",
   "perfect.headlineOne": "{name} {share} of perfect",
   "perfect.explain": "Perfect: the best possible in hindsight, with the same rules.",
+  "perfect.explainSell": "Perfect: the best possible in hindsight, allowed to sell ({mode} rules).",
+  "perfect.explainNoSell": "Perfect: the best possible in hindsight, without selling (nothing went to the grid).",
   "perfect.midnight": "Counted with what was left in the battery at midnight.",
   "perfect.provisional.one": "What was left at midnight is valued at the day's own price on {days} of the days, until the next day's prices are in.",
   "perfect.provisional.other": "What was left at midnight is valued at the day's own price on {days} of the days, until the next day's prices are in.",

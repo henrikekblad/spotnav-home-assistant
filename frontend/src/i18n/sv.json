@@ -1333,6 +1333,8 @@
   "perfect.headline": "{own} {ownShare} av perfekt · {plan} {planShare}",
   "perfect.headlineOne": "{name} {share} av perfekt",
   "perfect.explain": "Perfekt: bästa möjliga i efterhand, med samma regler.",
+  "perfect.explainSell": "Perfekt: bästa möjliga i efterhand, får sälja ({mode}-regler).",
+  "perfect.explainNoSell": "Perfekt: bästa möjliga i efterhand, utan försäljning (inget gick ut på nätet).",
   "perfect.midnight": "Räknat med det som fanns kvar i batteriet vid midnatt.",
   "perfect.provisional.one": "Det som fanns kvar vid midnatt räknas med dygnets eget pris för {days} av dygnen, tills nästa dygns priser finns.",
   "perfect.provisional.other": "Det som fanns kvar vid midnatt räknas med dygnets eget pris för {days} av dygnen, tills nästa dygns priser finns.",

@@ -169,7 +169,7 @@ describe("the house history", () => {
     const part = body.querySelector("[data-part='perfect']")!;
     expect(part.querySelector("h4")?.textContent).toBe("Andel av perfekt");
     expect(part.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Batteriets egen styrning 77 % av perfekt · SpotNav Balanserad 74 %");
-    expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, med samma regler.");
+    expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, får sälja (Max vinst-regler).");
     expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
     expect(part.querySelector("[data-line='perfect-partial']")?.textContent).toBe("1 ofullständigt dygn räknas inte med.");
     // It comes before the money; the money behind it and the work only with Detailed on.

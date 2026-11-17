@@ -1333,6 +1333,8 @@
   "perfect.headline": "{own} {ownShare} des Perfekten · {plan} {planShare}",
   "perfect.headlineOne": "{name} {share} des Perfekten",
   "perfect.explain": "Perfekt: das Bestmögliche im Nachhinein, mit denselben Regeln.",
+  "perfect.explainSell": "Perfekt: das Bestmögliche im Nachhinein, darf verkaufen (Regeln von {mode}).",
+  "perfect.explainNoSell": "Perfekt: das Bestmögliche im Nachhinein, ohne Verkauf (nichts ging ins Netz).",
   "perfect.midnight": "Gerechnet mit dem, was um Mitternacht noch im Akku war.",
   "perfect.provisional.one": "Was um Mitternacht übrig war, zählt für {days} der Tage zum eigenen Preis des Tages, bis die Preise des nächsten Tages da sind.",
   "perfect.provisional.other": "Was um Mitternacht übrig war, zählt für {days} der Tage zum eigenen Preis des Tages, bis die Preise des nächsten Tages da sind.",

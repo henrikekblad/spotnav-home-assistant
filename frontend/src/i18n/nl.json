@@ -1333,6 +1333,8 @@
   "perfect.headline": "{own} {ownShare} van perfect · {plan} {planShare}",
   "perfect.headlineOne": "{name} {share} van perfect",
   "perfect.explain": "Perfect: het best mogelijke achteraf, met dezelfde regels.",
+  "perfect.explainSell": "Perfect: het best mogelijke achteraf, mag verkopen (regels van {mode}).",
+  "perfect.explainNoSell": "Perfect: het best mogelijke achteraf, zonder verkoop (er ging niets naar het net).",
   "perfect.midnight": "Gerekend met wat er om middernacht nog in de batterij zat.",
   "perfect.provisional.one": "Wat er om middernacht over was, telt voor {days} van de dagen tegen de eigen prijs van die dag, tot de prijzen van de volgende dag er zijn.",
   "perfect.provisional.other": "Wat er om middernacht over was, telt voor {days} van de dagen tegen de eigen prijs van die dag, tot de prijzen van de volgende dag er zijn.",

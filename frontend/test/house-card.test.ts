@@ -527,10 +527,11 @@ describe("the shares of the perfect plan", () => {
     expect(part.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Sigenergy AI 79 % av perfekt · SpotNav Balanserad 85 %");
     const rows = Array.from(part.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
     expect(rows.map((row) => row.dataset["row"])).toEqual(["own", "balanced", "max_profit", "self_consumption"]);
-    expect(rows.map((row) => row.querySelector(".spotnav-house-compare-value")?.textContent)).toEqual(["79 %", "85 %", "72 %", "55 %"]);
+    expect(rows.map((row) => row.querySelector(".spotnav-house-compare-value")?.textContent)).toEqual(["79 %", "85 %", "78 %", "55 %"]);
     expect(rows[1]!.dataset["inForce"]).toBe("true");
     expect(rows[0]!.querySelector<HTMLElement>(".spotnav-house-compare-fill")!.style.width).toBe("79%");
-    expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, med samma regler.");
+    // Ways sold on these days: every share against the perfect plan that may sell, and the note says so.
+    expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, får sälja (Max vinst-regler).");
     // A week: the day boundary washes out, so no word about midnight; one day still on its own value says so.
     expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
     expect(part.querySelector("[data-line='perfect-provisional']")?.textContent).toBe(
@@ -551,6 +552,18 @@ describe("the shares of the perfect plan", () => {
   });
 
   it("name a share clamped to 0-100 % and a way with too small a difference to compare", () => {
+  it("say which rules the perfect plan kept: may sell, does not sell, or a day stored before as the mode's", () => {
+    const value = answer();
+    const explain = (rules: string | null): string | null | undefined => {
+      const perfect = { ...value.battery!.review!.perfect!, rules };
+      const card = body({ ...value, battery: { ...value.battery!, review: { ...value.battery!.review!, perfect } } }, {}, "sv");
+      return card.querySelector("[data-line='perfect-explain']")?.textContent;
+    };
+    expect(explain("max_profit")).toBe("Perfekt: bästa möjliga i efterhand, får sälja (Max vinst-regler).");
+    expect(explain("no_sell")).toBe("Perfekt: bästa möjliga i efterhand, utan försäljning (inget gick ut på nätet).");
+    expect(explain("mode")).toBe("Perfekt: bästa möjliga i efterhand, med samma regler.");
+  });
+
     const value = answer();
     const perfect = value.battery!.review!.perfect!;
     const clamped = { ...perfect, clamped: ["own"], shares: { ...perfect.shares, own: 100, max_profit: null } };
@@ -571,11 +584,11 @@ describe("the shares of the perfect plan", () => {
       ["Perfekt", "81 kr", "100 %"],
       ["Sigenergy AI", "64 kr", "79 %"],
       ["SpotNav Balanserad", "69 kr", "85 %"],
-      ["SpotNav Max vinst", "63 kr", "72 %"],
+      ["SpotNav Max vinst", "63 kr", "78 %"],
       ["SpotNav Egenförbrukning", "45 kr", "55 %"],
     ]);
     expect(rows(work!)[0]).toEqual(["Sigenergy AI", "2,87", "28", "63,0", "2,8"]);
-    expect(rows(work!).at(-1)).toEqual(["Perfekt", "3,13", "14", "98,0", "0,0"]);
+    expect(rows(work!).at(-1)).toEqual(["Perfekt", "3,13", "14", "98,0", "42,0"]);
     expect(part.querySelector("[data-line='cell-temperature']")?.textContent).toBe("Battericeller: medel 22,4 °C, högst 30,0 °C, 25 min över 30 °C (sex dygn).");
     // The rules behind the shares: the next day's mean price at midnight, and 5 kr a day for a share.
     expect(part.textContent).toContain("nästa dygns medelpris för köpt el");
@@ -601,7 +614,7 @@ describe("the shares of the perfect plan", () => {
 
   it("are worded in every language and read from an older backend as none", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["perfect.partialDay", "perfect.partial.one", "perfect.partial.other", "perfect.partialOnly.one", "perfect.partialOnly.other", "hist.house.share.partial", "hist.house.share.small", "perfect.heading.one", "perfect.heading.other", "perfect.headingDay", "perfect.headingPeriod", "perfect.headline", "perfect.headlineOne", "perfect.explain", "perfect.midnight", "perfect.provisional.one", "perfect.provisional.other", "perfect.provisionalDay", "perfect.clamped", "perfect.nothing", "perfect.money.heading", "perfect.money.saved", "perfect.money.share", "perfect.money.perfect", "perfect.money.note", "perfect.work.heading", "perfect.work.way", "perfect.work.cycles", "perfect.work.switches", "perfect.work.fromGrid", "perfect.work.toGrid", "perfect.work.note", "perfect.temperature.one", "perfect.temperature.other", "hist.house.col.share"] as const) {
+      for (const key of ["perfect.partialDay", "perfect.partial.one", "perfect.partial.other", "perfect.partialOnly.one", "perfect.partialOnly.other", "hist.house.share.partial", "hist.house.share.small", "perfect.heading.one", "perfect.heading.other", "perfect.headingDay", "perfect.headingPeriod", "perfect.headline", "perfect.headlineOne", "perfect.explain", "perfect.explainSell", "perfect.explainNoSell", "perfect.midnight", "perfect.provisional.one", "perfect.provisional.other", "perfect.provisionalDay", "perfect.clamped", "perfect.nothing", "perfect.money.heading", "perfect.money.saved", "perfect.money.share", "perfect.money.perfect", "perfect.money.note", "perfect.work.heading", "perfect.work.way", "perfect.work.cycles", "perfect.work.switches", "perfect.work.fromGrid", "perfect.work.toGrid", "perfect.work.note", "perfect.temperature.one", "perfect.temperature.other", "hist.house.col.share"] as const) {
         expect(translate(language, key as never, {}), `${language} ${key}`).not.toBe(key);
       }
     }

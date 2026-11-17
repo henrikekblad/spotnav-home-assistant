@@ -1333,6 +1333,8 @@
   "perfect.headline": "{own} {ownShare} du parfait · {plan} {planShare}",
   "perfect.headlineOne": "{name} {share} du parfait",
   "perfect.explain": "Parfait : le meilleur possible après coup, avec les mêmes règles.",
+  "perfect.explainSell": "Parfait : le meilleur possible après coup, vente permise (règles {mode}).",
+  "perfect.explainNoSell": "Parfait : le meilleur possible après coup, sans vente (rien n'est parti sur le réseau).",
   "perfect.midnight": "Compté avec ce qui restait dans la batterie à minuit.",
   "perfect.provisional.one": "Ce qui restait à minuit est compté au prix du jour même pour {days} des jours, jusqu'à ce que les prix du jour suivant soient connus.",
   "perfect.provisional.other": "Ce qui restait à minuit est compté au prix du jour même pour {days} des jours, jusqu'à ce que les prix du jour suivant soient connus.",

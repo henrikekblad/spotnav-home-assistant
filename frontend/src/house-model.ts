@@ -95,6 +95,9 @@ export interface PerfectFigures {
   /** Incomplete days, left out. */
   partial: number;
   mode: string | null;
+  /** The rules of the perfect plan every share is measured against: `max_profit` (selling was possible: it may sell),
+   * `no_sell`, or `mode` (days stored before: the site's mode's). */
+  rules: string | null;
   saving: number | null;
   shares: Record<PerfectWay, number | null>;
   savings: Record<PerfectWay, number | null>;
@@ -604,6 +607,7 @@ export function decodePerfect(value: unknown): PerfectFigures | null {
     provisional: count(source.provisional),
     partial: count(source.partial),
     mode: textOrNull(source.mode),
+    rules: textOrNull(source.rules),
     saving: numberOrNull(source.saving),
     shares: perWay(shares, numberOrNull),
     savings: perWay(savings, numberOrNull),
