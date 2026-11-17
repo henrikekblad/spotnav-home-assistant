@@ -1812,6 +1812,10 @@ class AutoPlannerController:
                 **energy.as_dict(),
                 # The need counts on it: trusted, for a target (a fixed amount is never changed by it).
                 "used": energy.trusted and settings.driver == DRIVER_TARGET_SOC,
+                # The battery size it stands in for while nobody states one (`learned_energy.learned_capacity_kwh`).
+                "learned_capacity_kwh": (
+                    None if (size := learned_capacity_kwh(energy, capacity)) is None else round(size, 1)
+                ),
                 "stretch_start": None if anchor is None else {
                     "soc_percent": anchor.soc_percent, "at": anchor.at.isoformat(), "kwh": round(anchor.kwh, 3),
                 },

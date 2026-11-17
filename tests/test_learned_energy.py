@@ -490,6 +490,7 @@ async def test_the_need_for_a_target_follows_the_learned_ratio_once_trusted(
         assert preview.snapshot().proposal.requested_kwh == pytest.approx(60.0 * RATIO)
         facts = preview.plan_watch_facts()["learned_energy"]
         assert facts["trusted"] and facts["used"] and facts["kwh_per_percent"] == pytest.approx(RATIO, abs=1e-4)
+        assert facts["learned_capacity_kwh"] is None, "a stated size: nothing stands in for it"
 
 
 @pytest.mark.usefixtures("offline_relay")
