@@ -35,6 +35,7 @@ from custom_components.spotnav.site.house_period import (
     BUCKET_KEYS,
     HISTORY_KEYS,
     HouseHistoryInputs,
+    battery_value,
     house_history,
     slot_prices,
 )
@@ -241,6 +242,24 @@ def test_cost_prices_each_hour_and_counts_the_unpriced() -> None:
     later = house_history(month_inputs(prices=flat_slots(start, NOW + timedelta(days=1))))
     assert later["cost"]["priced"] < later["cost"]["periods"]
     assert next(bucket for bucket in later["buckets"] if bucket["key"] == "2026-11-05")["cost"] is None
+
+
+def test_the_battery_value_is_what_it_gave_less_what_it_took_at_the_hour_prices() -> None:
+    flows = {("battery", "house"): 1.0, ("battery", "grid"): 0.5, ("grid", "battery"): 2.0, ("solar", "battery"): 1.0}
+    assert battery_value(flows, 200.0, 50.0) == pytest.approx(1.0 * 200 + 0.5 * 50 - 2.0 * 200 - 1.0 * 50)
+    answer = house_history(month_inputs())
+    full = next(bucket for bucket in answer["buckets"] if bucket["key"] == "2026-11-10")
+    # The villa's day: 4 sunny hours store 0.5 kWh each, 0.3 of it the sun's (at the sell price) once the house and the
+    # heat have theirs and 0.2 the grid's (at the buy price); 4 evening hours give 0.6 kWh at 250 (three) and 150 öre.
+    expected = 3 * 0.6 * 250.0 + 0.6 * 150.0 - 4 * (0.3 * 60.0 + 0.2 * 150.0)
+    assert full["battery_value"] == pytest.approx(expected, abs=0.01)
+    assert next(bucket for bucket in answer["buckets"] if bucket["key"] == "2026-11-20")["battery_value"] is None
+    day = house_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 10))))
+    assert sum(bucket["battery_value"] or 0 for bucket in day["buckets"]) == pytest.approx(expected, abs=0.05)
+    no_battery = house_history(month_inputs(has_battery=False))
+    assert all(bucket["battery_value"] is None for bucket in no_battery["buckets"])
+    unpriced = house_history(month_inputs(money=None, prices=()))
+    assert all(bucket["battery_value"] is None for bucket in unpriced["buckets"])
 
 
 def test_an_hour_priced_by_quarters_is_their_mean_and_a_gap_leaves_it_unpriced() -> None:
