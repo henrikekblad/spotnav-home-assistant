@@ -45,6 +45,8 @@ what the battery and the sun really did in each hour. The hold and the main fuse
 stay on what is measured. It is shown as the site's *House load forecast* sensor (diagnostic) and in the
 [house card](house-card.md).
 
+How this model was tested, and the alternatives we rejected: [How the forecasts are tested](forecast-experiments.md).
+
 ## The solar forecast correction
 
 A solar forecast is often off in the same way every day at one site: shade, a wrong tilt, an optimistic provider. On a site
