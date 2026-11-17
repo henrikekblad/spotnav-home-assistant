@@ -342,16 +342,24 @@ describe("the heat history's indoor curve", () => {
     const answer = heat("heat_history/villa_day.json");
     expect(answer.indoor_day?.points).toHaveLength(24);
     const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    const block = body.querySelector("[data-block='indoor']")!;
+    const block = body.querySelector("[data-part='indoor'] [data-block='day']")!;
     expect(block.querySelector("[data-line='mean']")).not.toBeNull();
     expect(block.querySelector("[data-line='coldest']")).not.toBeNull();
     expect(block.querySelector("[data-line='setpoint']")?.getAttribute("d")).toMatch(/^M0\.00 /);
     const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
-    expect(legend).toEqual(["Rummen, medel", "Kallaste rummet", "Börvärde (SpotNav sänker)", "Komfortband 20,5–21,5 °C"]);
+    expect(legend).toEqual(["Rummen, medel", "Kallaste rummet", "Börvärde (SpotNav sänker)", "Komfortband 20,5–21,5 °C", "Planerad sänkning", "Varmvatten"]);
+    expect(block.querySelectorAll("[data-mark='hot_water']")).toHaveLength(answer.runs.length);
+    expect(block.querySelectorAll("[data-mark='planned']")).toHaveLength(3);
+    // A step's figures name the coldest room.
+    block.querySelector(".spotnav-heat-day-surface")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    for (let step = 0; step < 3; step += 1) {
+      block.querySelector(".spotnav-heat-day-surface")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    }
+    expect(block.querySelector("[data-line='day-readout']")!.textContent).toBe("03:00 · rummen 20,9 °C · kallast Övervåning 20,3 °C · börvärde 21,0 °C · varmvatten");
     const month = heat("heat_history/villa_month.json");
     expect(month.indoor_day).toBeNull();
     const monthBody = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: month }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    expect(monthBody.querySelector("[data-block='indoor']")).toBeNull();
+    expect(monthBody.querySelector("[data-block='day']")).toBeNull();
   });
 
   it("refuses a mistyped or unknown key in the curve", () => {

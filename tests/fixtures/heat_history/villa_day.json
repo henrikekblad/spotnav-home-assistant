@@ -265,124 +265,158 @@
     "low_c": 20.5,
     "points": [
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.3,
         "mean_c": 20.85,
         "start": "2026-11-14T23:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.3,
         "mean_c": 20.85,
         "start": "2026-11-15T00:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.3,
         "mean_c": 20.85,
         "start": "2026-11-15T01:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.3,
         "mean_c": 20.85,
         "start": "2026-11-15T02:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.3,
         "mean_c": 20.85,
         "start": "2026-11-15T03:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.3,
         "mean_c": 20.85,
         "start": "2026-11-15T04:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.3,
         "mean_c": 20.85,
         "start": "2026-11-15T05:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T06:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T07:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T08:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T09:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T10:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T11:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T12:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T13:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T14:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T15:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T16:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T17:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T18:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T19:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T20:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T21:00:00+00:00"
       },
       {
+        "coldest": "sensor.uppe",
         "coldest_c": 20.8,
         "mean_c": 21.1,
         "start": "2026-11-15T22:00:00+00:00"
+      }
+    ],
+    "rooms": [
+      {
+        "entity_id": "sensor.kok",
+        "name": "Kök"
+      },
+      {
+        "entity_id": "sensor.uppe",
+        "name": "Övervåning"
       }
     ],
     "setpoint": [

@@ -119,34 +119,83 @@ describe("the front", () => {
     expect(card.querySelector("button[data-action='settings']")).not.toBeNull();
   });
 
-  it("draws the day's band with the hot water, the car and the now line", () => {
+  it("draws one day chart with the lowering, the hot water, the car and the now line, and no hour squares", () => {
     const card = body(answer());
-    const cells = [...card.querySelectorAll<SVGRectElement>(".spotnav-heat-band-cell")];
-    expect(cells).toHaveLength(24);
-    expect(cells[17]!.dataset["action"]).toBe("lower");
-    expect(cells[0]!.dataset["action"]).toBe("night");
-    expect(card.querySelectorAll("[data-mark='hot_water']")).toHaveLength(2);
-    expect(card.querySelectorAll("[data-mark='car']")).toHaveLength(4);
-    expect(card.querySelector(".spotnav-heat-band-now")).not.toBeNull();
-    const legend = [...card.querySelectorAll("[data-block='band'] .spotnav-heat-legend-item")].map((item) => item.textContent);
-    expect(legend).toEqual(["Sänkt", "Förvärmning", "Natt", "Reläet sänkte", "Reläet väntas sänka", "Varmvatten", "Bilen laddar"]);
-    // The relay's row under SpotNav's plan: closed 07-09 and since 16:00, expected until 19:00.
-    expect(card.querySelectorAll("[data-mark='relay']")).toHaveLength(3);
-    expect(card.querySelectorAll("[data-mark='relay_expected']")).toHaveLength(2);
-    expect(cells[17]!.querySelector("title")!.textContent).toBe("17:00: Sänkt, 20,5 °C · reläet väntas sänka 60 min");
-    // A tap on an hour says it in words under the band.
-    const readout = card.querySelector("[data-line='band-readout']")!;
-    expect(readout.textContent).toBe("");
-    cells[17]!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(readout.textContent).toBe(cells[17]!.querySelector("title")!.textContent);
+    const chart = card.querySelector("[data-block='band'] [data-block='day']")!;
+    expect(chart.querySelectorAll("svg")).toHaveLength(1);
+    expect(card.querySelector("[data-block='indoor']")).toBeNull();
+    // The plan's lowered hours as light columns, the relay as anyone closed it (and is expected to) in teal.
+    expect(chart.querySelectorAll("[data-mark='planned']")).toHaveLength(7);
+    expect(chart.querySelectorAll("[data-mark='relay']")).toHaveLength(3);
+    expect(chart.querySelectorAll("[data-mark='relay_expected']")).toHaveLength(2);
+    expect(chart.querySelectorAll("[data-mark='hot_water']")).toHaveLength(2);
+    // The car's four hours in a row, one bar.
+    expect(chart.querySelectorAll("[data-mark='car']")).toHaveLength(1);
+    expect(chart.querySelector(".spotnav-heat-day-now")).not.toBeNull();
+    const legend = [...chart.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
+    expect(legend).toEqual([
+      "Rummen, medel", "Kallaste rummet", "Börvärde (SpotNav sänker)", "Komfortband 20,5–21,5 °C",
+      "Planerad sänkning", "Reläet sänkte", "Reläet väntas sänka", "Varmvatten", "Bilen laddar",
+    ]);
+  });
+
+  it("says a chosen time's figures under the chart, by the keys too", () => {
+    const onChartSelect = vi.fn();
+    const handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), onChartSelect };
+    const card = body(answer(), "sv", handlers);
+    const surface = card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!;
+    const readout = card.querySelector("[data-line='day-readout']")!;
+    expect(surface.tabIndex).toBe(0);
+    expect(readout.textContent).toBe("Tryck eller peka i diagrammet för en tids siffror.");
+    expect(card.querySelector(".spotnav-heat-day-cross")!.getAttribute("display")).toBe("none");
+    // From the now line (17:15) a step on: the rooms, the coldest one by name, the setpoint and the relay.
+    surface.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(onChartSelect).toHaveBeenLastCalledWith(Date.parse("2026-11-16T16:30:00+00:00"));
+    expect(card.querySelector(".spotnav-heat-day-cross")!.hasAttribute("display")).toBe(false);
+    expect(readout.textContent).toBe("17:30 · börvärde 20,5 °C · reläet väntas sänka 60 min · planerad sänkning");
+    surface.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    expect(readout.textContent).toMatch(/^00:00 · rummen 21,2 °C · kallast Toalett NV 20,7 °C · börvärde 20,0 °C · natt$/);
+    surface.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(onChartSelect).toHaveBeenLastCalledWith(null);
+    expect(readout.textContent).toBe("Tryck eller peka i diagrammet för en tids siffror.");
+    // A time chosen before the card's redraw stays chosen.
+    const kept = heatBody({
+      doc: document, language: "sv", state: { kind: "ready", answer: answer() }, handlers, width: 330, nowMs: NOW,
+      ui: { pendingTarget: null, error: null, chartSelectedMs: Date.parse("2026-11-16T03:00:00+00:00") },
+    });
+    expect(kept.querySelector("[data-line='day-readout']")!.textContent).toMatch(/^04:00 · rummen /);
+  });
+
+  it("folds the chart away under its heading and tells the card", () => {
+    const onChartCollapsed = vi.fn();
+    const handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), onChartCollapsed };
+    const card = body(answer(), "sv", handlers);
+    const toggle = card.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!;
+    const chart = card.querySelector<HTMLElement>("[data-block='day']")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-controls")).toBe(chart.id);
+    expect(toggle.textContent).toContain("Dölj dagens diagram");
+    toggle.click();
+    expect(chart.hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(onChartCollapsed).toHaveBeenLastCalledWith(true);
+    const folded = heatBody({
+      doc: document, language: "sv", state: { kind: "ready", answer: answer() }, handlers, width: 330, nowMs: NOW,
+      ui: { pendingTarget: null, error: null, chartCollapsed: true },
+    });
+    expect(folded.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
   });
 
   it("says when a lowering is for a house that is too warm", () => {
     const villa = answer();
     const hours = villa.band.hours.map((hour, index) => (index === 17 ? { ...hour, reason: "room_warm" } : hour));
     const warm: HeatAnswer = { ...villa, band: { ...villa.band, hours }, status: { ...villa.status, would: { ...villa.status.would!, action: "lower", reason: "room_warm" } } };
-    const cells = [...body(warm).querySelectorAll<SVGRectElement>(".spotnav-heat-band-cell")];
-    expect(cells[17]!.querySelector("title")!.textContent).toBe("17:00: Sänkt (för varmt inne), 20,5 °C · reläet väntas sänka 60 min");
+    // The chart's readout names the hour's lowering (a lowering column like a dear hour's).
+    const card = body(warm);
+    card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(card.querySelector("[data-line='day-readout']")!.textContent).toBe(
+      "17:30 · börvärde 20,5 °C · reläet väntas sänka 60 min · planerad sänkning · för varmt inne",
+    );
     expect(wouldLine("sv", warm)).toBe("Skulle sänka till 20,5 °C till 19:00: för varmt inne");
     expect(wouldLine("en", warm)).toBe("Would lower to 20.5 °C until 19:00: too warm indoors");
     const controlled = answer("controlled.json");
@@ -329,6 +378,37 @@ describe("the element", () => {
     return { element, messages, root: element.shadowRoot! };
   }
 
+  it("remembers the folded day chart for the site in this browser, and shows it when storage fails", async () => {
+    const stored = new Map<string, string>();
+    const store = { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => void stored.set(key, value) };
+    const { hass } = fakeHass();
+    const element = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
+    element.store = () => store;
+    element.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa" });
+    element.hass = hass as never;
+    document.body.append(element);
+    await vi.advanceTimersByTimeAsync(0);
+    const root = element.shadowRoot!;
+    expect(root.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(false);
+    root.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!.click();
+    expect([...stored.entries()]).toEqual([["spotnav-heat-card.chart.site_villa", "hidden"]]);
+    // The next read redraws the card folded.
+    await element.refresh();
+    expect(root.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
+    element.remove();
+    const failing = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
+    failing.store = () => {
+      throw new Error("blocked");
+    };
+    failing.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa" });
+    failing.hass = hass as never;
+    document.body.append(failing);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(failing.shadowRoot!.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(false);
+    failing.shadowRoot!.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!.click();
+    expect(failing.shadowRoot!.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
+  });
+
   it("is in the card picker", () => {
     expect(window.customCards?.some((entry) => entry.type === HEAT_PICKER_ENTRY.type)).toBe(true);
     expect(parseHeatConfig({ type: "custom:spotnav-heat-card", charger: "c1" })).toEqual({ type: "custom:spotnav-heat-card", charger: "c1" });
@@ -445,10 +525,16 @@ describe("SpotNav controlling the heat", () => {
     expect(card.querySelector("[data-line='test-explain']")).toBeNull();
     expect(card.querySelector("[data-line='shadow']")).toBeNull();
     expect(controlLine("sv", controlled)).toBe("Styr: sänker värmen till 19:00.");
-    // SpotNav's own lowerings in the relay's row, said in words and in the legend.
+    // SpotNav's own lowerings as solid columns in the chart, said in words and in the legend.
     const marks = [...card.querySelectorAll<SVGElement>("[data-mark='executed']")];
     expect(marks).toHaveLength(3);
-    expect(card.textContent).toContain("07:00: Sänkt, 20,5 °C · SpotNav sänkte 60 min");
+    const surface = card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!;
+    surface.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    for (let step = 0; step < 7 * 4; step += 1) {
+      surface.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    }
+    expect(card.querySelector("[data-line='day-readout']")!.textContent).toContain("07:00 · ");
+    expect(card.querySelector("[data-line='day-readout']")!.textContent).toContain("börvärde 20,5 °C · SpotNav sänkte 60 min");
     expect([...card.querySelectorAll("li")].map((item) => item.textContent)).toContain("SpotNav sänkte");
     // The villa before: the test chip, nothing executed.
     const villa = body(answer());
@@ -484,38 +570,37 @@ describe("SpotNav controlling the heat", () => {
   });
 });
 
-describe("the indoor curve under the band", () => {
+describe("the rooms in the day chart", () => {
   it("draws the rooms up to now, the coldest room, the band's setpoint as a step and the comfort band", () => {
     const value = answer();
     expect(value.indoor_day?.points.length).toBe(69);
-    const block = body(value).querySelector("[data-block='indoor']")!;
-    expect(block.previousElementSibling?.getAttribute("data-block")).toBe("band");
+    const block = body(value).querySelector("[data-block='day']")!;
     const mean = block.querySelector("[data-line='mean']")!.getAttribute("d")!;
     expect(mean.startsWith("M")).toBe(true);
     expect(mean.match(/M/g)).toHaveLength(1);
-    expect(block.querySelector("[data-line='coldest']")).not.toBeNull();
+    expect(block.querySelector("path[data-line='coldest']")).not.toBeNull();
     // The setpoint follows the band's hours over the whole day: 24 levels, dropping in the lowered hours.
     const setpoint = block.querySelector("[data-line='setpoint']")!.getAttribute("d")!;
     expect(setpoint.match(/L/g)).toHaveLength(24 * 2 - 1);
     expect(block.querySelector(".spotnav-heat-indoor-comfort")).not.toBeNull();
-    expect(block.querySelector(".spotnav-heat-band-now")).not.toBeNull();
-    const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
-    expect(legend).toEqual(["Rummen, medel", "Kallaste rummet", "Börvärde (SpotNav sänker)", "Komfortband 20,5–21,5 °C"]);
   });
 
-  it("says plain setpoint when nothing is lowered, leaves out a coldest room that never differs, and draws nothing without points", () => {
+  it("says plain setpoint when nothing is lowered, leaves out a coldest room that never differs, and draws the plan without rooms", () => {
     const value = answer();
     const flat = {
       ...value,
-      band: { ...value.band, hours: value.band.hours.map((hour) => ({ ...hour, action: "normal", target_c: 21 })) },
+      band: { ...value.band, hours: value.band.hours.map((hour) => ({ ...hour, action: "normal", target_c: 21, relay_min: null, hot_water: false, car: false })) },
       indoor_day: { ...value.indoor_day!, points: value.indoor_day!.points.map((point) => ({ ...point, coldest_c: point.mean_c })) },
     };
-    const block = body(flat, "en").querySelector("[data-block='indoor']")!;
+    const block = body(flat, "en").querySelector("[data-block='day']")!;
     const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
     expect(legend).toEqual(["Rooms, mean", "Setpoint", "Comfort band 20.5–21.5 °C"]);
-    expect(block.querySelector("[data-line='coldest']")).toBeNull();
-    expect(body({ ...value, indoor_day: { ...value.indoor_day!, points: [] } }).querySelector("[data-block='indoor']")).toBeNull();
-    expect(body({ ...value, indoor_day: null }).querySelector("[data-block='indoor']")).toBeNull();
+    expect(block.querySelector("path[data-line='coldest']")).toBeNull();
+    // Without indoor sensors the plan is still drawn, against the comfort band as set now.
+    const bare = body({ ...value, indoor_day: null }).querySelector("[data-block='day']")!;
+    expect(bare.querySelector("path[data-line='mean']")).toBeNull();
+    expect(bare.querySelector("[data-line='setpoint']")).not.toBeNull();
+    expect(body({ ...value, indoor_day: null, band: { ...value.band, hours: [] } }).querySelector("[data-block='day']")).toBeNull();
   });
 
   it("refuses an unknown key in the curve", () => {

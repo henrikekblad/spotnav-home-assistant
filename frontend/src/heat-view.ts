@@ -1,13 +1,13 @@
 // The heat card's body: a header (with the settings button for an administrator), the thermostat dial with the
 // comfort band and the measured room, home or away, one status line for the heat pump and one for what SpotNav would
-// do (shadow), the day's band, today's heat and hot water, and the notes the household can act on. Below, the
+// do (shadow), the day's chart (folded away on request), today's heat and hot water, and the notes the household can act on. Below, the
 // "Heating" settings section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state
 // with `textContent` only; every figure is the backend's.
 
 import { historyHeaderButton } from "./period-history";
-import { clock, dateLabel, formatFixed, hourLabel, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
 import { roomName, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
-import { indoorChart } from "./heat-indoor";
+import { dayChart } from "./heat-day-chart";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -33,6 +33,10 @@ export interface HeatUi {
   error: string | null;
   /** The header's test chip opened to its explanation. */
   testOpen?: boolean;
+  /** The day's chart folded away under its heading (the card remembers it per browser). */
+  chartCollapsed?: boolean;
+  /** The time chosen on the day's chart (a step's start, ms), kept across the card's redraws. */
+  chartSelectedMs?: number | null;
 }
 
 export interface HeatHandlers {
@@ -44,6 +48,10 @@ export interface HeatHandlers {
   onHistory?(opener: HTMLElement): void;
   /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
   onTest?(open: boolean): void;
+  /** The day's chart folded away (`true`) or opened. */
+  onChartCollapsed?(collapsed: boolean): void;
+  /** A time chosen on the day's chart (`null`: let go). */
+  onChartSelect?(ms: number | null): void;
 }
 
 export interface HeatRenderInput {
@@ -54,6 +62,8 @@ export interface HeatRenderInput {
   handlers: HeatHandlers;
   width: number;
   nowMs: number;
+  /** Ids in the card's shadow root start with this. */
+  idPrefix?: string;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
@@ -503,133 +513,73 @@ export function reviewLines(language: Language, answer: HeatAnswer): { key: stri
   ];
 }
 
-// ------------------------------------------------------------------------------------------------ the band
+// ------------------------------------------------------------------------------------------------ the day
 
-const BAND_ACTIONS = ["lower", "preheat", "night", "away", "return"] as const;
-
-function actionWord(language: Language, action: string): string {
-  const keys: Record<string, TranslationKey> = {
-    lower: "heat.band.lower",
-    preheat: "heat.band.preheat",
-    night: "heat.band.night",
-    away: "heat.band.away",
-    return: "heat.band.preheat",
-  };
-  return keys[action] === undefined ? "" : translate(language, keys[action]!);
-}
-
-function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width: number, nowMs: number): HTMLElement {
-  const block = element(doc, "section");
-  block.dataset["block"] = "band";
+/** The day's chart (`heat-day-chart.ts`) under a heading that folds it away, so the card can be just the dial. */
+function dayBlock(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | null {
+  const { doc, language, ui, handlers } = input;
   const hours = answer.band.hours;
-  const ctx = context(language, answer);
-  const drawWidth = Math.max(200, Math.round(width));
-  // With a relay, a thin row under SpotNav's plan shows what the relay did (and is expected to do).
-  const withRelay = answer.relay !== null;
-  const shift = withRelay ? 9 : 0;
-  const height = 52 + shift;
-  const picture = svg(doc, "svg", { viewBox: `0 0 ${drawWidth} ${height}`, class: X.band, role: "img" });
-  const readout = element(doc, "p", `${C.muted} ${X.bandReadout}`);
-  readout.setAttribute("aria-live", "polite");
-  readout.dataset["line"] = "band-readout";
-  picture.setAttribute("aria-label", translate(language, "heat.band.title"));
-  if (hours.length > 0) {
-    const cell = drawWidth / hours.length;
-    hours.forEach((hour: HeatBandHour, index) => {
-      const x = index * cell;
-      const rect = svg(doc, "rect", { x: (x + 0.5).toFixed(2), y: 0, width: Math.max(1, cell - 1).toFixed(2), height: 20, rx: 2, class: X.bandCell });
-      rect.dataset["action"] = hour.action;
-      rect.dataset["past"] = hour.past ? "true" : "false";
-      const title = svg(doc, "title", {});
-      const words = actionWord(language, hour.action) + (hour.reason === "room_warm" ? ` (${translate(language, "heat.band.roomWarm")})` : "");
-      title.textContent = translate(language, "heat.band.hour", {
-        time: clock(ctx, hour.startMs),
-        action: words === "" ? degrees(language, hour.target_c) : words,
-        temp: degrees(language, hour.target_c),
-      });
-      const executed = hour.executed_min ?? 0;
-      if (executed > 0) {
-        title.textContent += ` · ${translate(language, "heat.band.executedHour", { minutes: String(executed) })}`;
-      } else if (hour.relay_min !== null && hour.relay_min > 0) {
-        title.textContent += ` · ${translate(language, hour.relay_expected ? "heat.band.relayHourExpected" : "heat.band.relayHour", { minutes: String(hour.relay_min) })}`;
-      }
-      rect.append(title);
-      // A tap or the pointer shows the hour in words under the band: a tooltip alone never shows on a phone.
-      const say = (): void => {
-        readout.textContent = title.textContent;
-      };
-      rect.addEventListener("click", say);
-      rect.addEventListener("mouseenter", say);
-      picture.append(rect);
-      // SpotNav's own lowering where it held the relay, else the relay as anyone closed it (or is expected to).
-      if (executed > 0 || (hour.relay_min !== null && hour.relay_min > 0)) {
-        const share = Math.min(60, executed > 0 ? executed : hour.relay_min ?? 0) / 60;
-        const mark = svg(doc, "rect", { x: (x + 0.5).toFixed(2), y: 23, width: Math.max(1, (cell - 1) * share).toFixed(2), height: 6, rx: 1, class: X.bandRelay });
-        mark.dataset["mark"] = executed > 0 ? "executed" : hour.relay_expected ? "relay_expected" : "relay";
-        picture.append(mark);
-      }
-      if (hour.car) {
-        const mark = svg(doc, "rect", { x: (x + 1).toFixed(2), y: 24 + shift, width: Math.max(1, cell - 2).toFixed(2), height: 4, rx: 1, class: X.bandMark });
-        mark.dataset["mark"] = "car";
-        picture.append(mark);
-      }
-      if (hour.hot_water) {
-        const mark = svg(doc, "circle", { cx: (x + cell / 2).toFixed(2), cy: 34 + shift, r: 3, class: X.bandMark });
-        mark.dataset["mark"] = "hot_water";
-        picture.append(mark);
-      }
-      const label = hourLabel(ctx, hour.startMs);
-      if (index % 6 === 0) {
-        const text = svg(doc, "text", { x: (x + 1).toFixed(2), y: height - 2, class: X.bandAxis });
-        text.textContent = label;
-        picture.append(text);
-      }
-    });
-    const first = hours[0]!.startMs;
-    const last = hours[hours.length - 1]!.startMs + HOUR_MS;
-    if (nowMs >= first && nowMs < last) {
-      const x = ((nowMs - first) / (last - first)) * drawWidth;
-      picture.append(svg(doc, "line", { x1: x.toFixed(2), x2: x.toFixed(2), y1: -2, y2: 40 + shift, class: X.bandNow }));
-    }
+  const indoor = answer.indoor_day;
+  const startMs = indoor !== null ? Date.parse(indoor.start) : hours.length > 0 ? hours[0]!.startMs : Number.NaN;
+  const endMs = indoor !== null ? Date.parse(indoor.end) : hours.length > 0 ? hours[hours.length - 1]!.startMs + HOUR_MS : Number.NaN;
+  const chart = dayChart({
+    doc,
+    language,
+    ctx: context(language, answer),
+    startMs,
+    endMs,
+    day: indoor,
+    low_c: indoor?.low_c ?? answer.comfort.low_c,
+    high_c: indoor?.high_c ?? answer.comfort.high_c,
+    hours: hours.map((hour) => ({
+      startMs: hour.startMs,
+      target_c: hour.target_c,
+      action: hour.action,
+      reason: hour.reason,
+      executed_min: hour.executed_min,
+      relay_min: hour.relay_min,
+      relay_expected: hour.relay_expected,
+      car: hour.car,
+    })),
+    water: hours.filter((hour) => hour.hot_water).map((hour) => ({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS })),
+    width: input.width,
+    nowMs: input.nowMs,
+    selectedMs: ui.chartSelectedMs ?? null,
+    onSelect: (ms) => handlers.onChartSelect?.(ms),
+  });
+  if (chart === null) {
+    return null;
   }
-  const title = `${translate(language, "heat.band.title")} · ${dateLabel(language, answer.band.date)}`;
-  const heading = element(doc, "p", `${H.line} ${C.muted}`, withRelay ? `${title} · ${translate(language, "heat.band.planAndRelay")}` : title);
-  block.append(heading, picture, readout);
-  const shown = new Set(hours.map((hour) => hour.action));
-  const legend = element(doc, "ul", X.legend);
-  for (const action of BAND_ACTIONS) {
-    if (!shown.has(action) || (action === "return" && shown.has("preheat"))) {
-      continue;
-    }
-    legend.append(legendItem(doc, action, actionWord(language, action)));
-  }
-  if (hours.some((hour) => (hour.executed_min ?? 0) > 0)) {
-    legend.append(legendItem(doc, "executed", translate(language, "heat.band.executed")));
-  }
-  if (hours.some((hour) => (hour.relay_min ?? 0) > 0 && !hour.relay_expected && (hour.executed_min ?? 0) === 0)) {
-    legend.append(legendItem(doc, "relay", translate(language, "heat.band.relay")));
-  }
-  if (hours.some((hour) => (hour.relay_min ?? 0) > 0 && hour.relay_expected)) {
-    legend.append(legendItem(doc, "relay_expected", translate(language, "heat.band.relayExpected")));
-  }
-  if (hours.some((hour) => hour.hot_water)) {
-    legend.append(legendItem(doc, "hot_water", translate(language, "heat.band.hotWater")));
-  }
-  if (hours.some((hour) => hour.car)) {
-    legend.append(legendItem(doc, "car", translate(language, "heat.band.car")));
-  }
-  if (legend.childElementCount > 0) {
-    block.append(legend);
-  }
+  const block = element(doc, "section", X.daySection);
+  block.dataset["block"] = "band";
+  // The heading is the chart's toggle, as the charging card's price row is: a chevron at its right end and the action
+  // in words for assistive technology.
+  const toggle = element(doc, "button", X.dayToggle);
+  toggle.type = "button";
+  toggle.dataset["action"] = "day-chart";
+  const chartId = `${input.idPrefix ?? "spotnav-heat"}-day`;
+  chart.id = chartId;
+  toggle.setAttribute("aria-controls", chartId);
+  const words = element(doc, "span", `${H.line} ${C.muted} ${X.dayTitle}`, `${translate(language, "heat.band.title")} · ${dateLabel(language, answer.band.date)}`);
+  const glyph = element(doc, "span", C.chartToggleGlyph);
+  glyph.setAttribute("aria-hidden", "true");
+  const action = element(doc, "span", C.visuallyHidden);
+  toggle.append(words, glyph, action);
+  let collapsed = ui.chartCollapsed === true;
+  const apply = (): void => {
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    glyph.textContent = collapsed ? "\u02c5" : "\u02c4";
+    action.textContent = translate(language, collapsed ? "heat.chart.show" : "heat.chart.hide");
+    chart.hidden = collapsed;
+  };
+  toggle.addEventListener("click", () => {
+    collapsed = !collapsed;
+    apply();
+    handlers.onChartCollapsed?.(collapsed);
+  });
+  apply();
+  block.append(toggle, chart);
   return block;
-}
-
-function legendItem(doc: Document, action: string, text: string): HTMLElement {
-  const item = element(doc, "li", X.legendItem);
-  const swatch = element(doc, "span", X.swatch);
-  swatch.dataset["action"] = action;
-  item.append(swatch, doc.createTextNode(text));
-  return item;
 }
 
 // ------------------------------------------------------------------------------------------------ today and notes
@@ -734,14 +684,9 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
     line.dataset["line"] = "relay";
     card.append(line);
   }
-  card.append(bandBlock(doc, language, answer, input.width, input.nowMs));
-  if (answer.indoor_day !== null) {
-    // The rooms over the day under the band: what a lowering did, beside the band's setpoint per hour.
-    const setpoint = answer.band.hours.map((hour) => ({ startMs: hour.startMs, target_c: hour.target_c, action: hour.action }));
-    const indoor = indoorChart(doc, language, context(language, answer), answer.indoor_day, setpoint, input.width, input.nowMs);
-    if (indoor !== null) {
-      card.append(indoor);
-    }
+  const day = dayBlock(input, answer);
+  if (day !== null) {
+    card.append(day);
   }
   const today = todayLine(language, answer);
   if (today !== null) {
