@@ -33,10 +33,12 @@ them over with the house's (or the heat's) figure from the energy flow; nothing 
 * **The figures** (`meter_kwh`): each meter's energy over the same span as the flow's house block (the period's
   start up to `through`): the recorder's hourly statistics where the hour is whole, else its 5-minute ones (today's
   running hour). `loads` is sorted by energy, largest first.
-* **Hours that cannot be** (`plausible_kwh`): a meter's hour above what the block it is in used in that hour (the
-  house's whole load, for the heat pie the house's and the heat's; `PLAUSIBLE_TOLERANCE_KWH` over it), or above the
-  main fuse's capacity for an hour, is a broken statistic (a plug whose total drops and comes back: the recorder
-  counts every return as new energy), not energy: it is not counted. Each meter that lost hours so is in
+* **Hours that cannot be** (`plausible_kwh`): a meter's hour far above what the whole site used in that hour (the
+  house, the heat and the car together: a dashboard device that also measures the car or the heat stays counted, see
+  `over_kwh`; more than `PLAUSIBLE_FACTOR` times it and more than `PLAUSIBLE_MARGIN_KWH` over it, so a meter that
+  lags into the next hour stays counted too), or above the main fuse's capacity for an hour, is a broken statistic (a
+  plug whose total drops and comes back: the recorder counts every return as new energy), not energy: it is not
+  counted. Each meter that lost hours so is in
   `implausible` (`{statistic_id, name, hours, left_out}`), so the card says so once and points to Home Assistant's
   statistics repair (an actionable line); a meter with no plausible hour left is left out of the pie (`left_out`).
   The same rule holds for the heat pie's sources.
@@ -82,8 +84,11 @@ LOADS_KEYS: Final = (
     "implausible",
 )
 IMPLAUSIBLE_KEYS: Final = ("statistic_id", "name", "hours", "left_out")
-#: An hour's meter figure may exceed its block's own by this much (kWh: rounding, a meter a little ahead).
-PLAUSIBLE_TOLERANCE_KWH: Final = 0.2
+#: An hour's meter figure is a broken statistic only when it is more than this many times the site's whole use in
+#: the hour and more than `PLAUSIBLE_MARGIN_KWH` over it (a meter that lags into the next hour, or one that also
+#: measures the car or the heat, stays counted).
+PLAUSIBLE_FACTOR: Final = 2.0
+PLAUSIBLE_MARGIN_KWH: Final = 1.0
 LOAD_KEYS: Final = ("statistic_id", "name", "kwh", "source", "changed")
 MOVED_KEYS: Final = ("statistic_id", "name", "belongs")
 KIND_HOUSE: Final = "house"
@@ -313,8 +318,9 @@ def plausible_kwh(
     cap_kwh: float | None = None,
 ) -> MeterRead:
     """A meter's energy in `[start, through)` by `period_total`'s rule, each hour's figure (the hourly one, else its
-    5-minute ones in the span) dropped when it is above `limits[hour]` (the block's own use in that UTC hour, see the
-    module) plus `PLAUSIBLE_TOLERANCE_KWH`, or above `cap_kwh` (the main fuse's hour)."""
+    5-minute ones in the span) dropped when it is grossly above `limits[hour]` (the site's whole use in that UTC hour:
+    more than `PLAUSIBLE_FACTOR` times it and more than `PLAUSIBLE_MARGIN_KWH` over it, see the module), or above
+    `cap_kwh` (the main fuse's hour)."""
     by_hour: dict[datetime, float] = {}
     for moment, kwh in hourly.items():
         if start <= moment and moment + _HOUR <= through:
@@ -329,7 +335,8 @@ def plausible_kwh(
     dropped = 0
     for hour, kwh in by_hour.items():
         limit = None if limits is None else limits.get(hour)
-        if (limit is not None and kwh > limit + PLAUSIBLE_TOLERANCE_KWH) or (cap_kwh is not None and kwh > cap_kwh):
+        gross = limit is not None and kwh > PLAUSIBLE_FACTOR * limit and kwh > limit + PLAUSIBLE_MARGIN_KWH
+        if gross or (cap_kwh is not None and kwh > cap_kwh):
             dropped += 1
             continue
         total += kwh

@@ -162,7 +162,7 @@ def test_a_glitch_hour_is_dropped_and_ovrigt_stays_right() -> None:
 
 def test_a_meter_that_is_always_plausible_is_unchanged() -> None:
     house = _hours([1.2, 0.9, 1.1, 1.0])
-    dish = _hours([0.5, 0.0, 1.0, 1.15])  # 1.15 is within the tolerance over 1.0
+    dish = _hours([0.5, 0.0, 1.0, 1.15])  # 1.15 is over 1.0 but no gross excess
     read = plausible_kwh(dish, {}, START, START + timedelta(hours=4), limits=house, cap_kwh=13.8)
     assert (read.kwh, read.dropped) == (pytest.approx(2.65), 0)
     assert read.kwh == pytest.approx(meter_kwh([{"start": k, "change": v} for k, v in dish.items()], [], START, START + timedelta(hours=4)))
@@ -186,10 +186,43 @@ def test_a_meter_with_no_plausible_hour_is_left_out_with_its_line() -> None:
 
 
 def test_the_running_hour_is_judged_by_its_five_minute_rows() -> None:
-    fives = {START + timedelta(minutes=5 * index): 0.1 for index in range(6)}
+    fives = {START + timedelta(minutes=5 * index): 0.5 for index in range(6)}
     read = plausible_kwh({}, fives, START, START + timedelta(minutes=30), limits={START: 0.2})
     assert (read.hours, read.dropped) == (1, 1)
-    assert plausible_kwh({}, fives, START, START + timedelta(minutes=30), limits={START: 0.5}).kwh == pytest.approx(0.6)
+    assert plausible_kwh({}, fives, START, START + timedelta(minutes=30), limits={START: 2.0}).kwh == pytest.approx(3.0)
+
+
+def test_only_a_gross_excess_over_the_site_s_use_is_a_broken_statistic() -> None:
+    site = _hours([2.0, 0.3, 0.3, 0.3])
+    # A dashboard device that also measures the car: as much as the site, counted.
+    car_too = plausible_kwh(_hours([2.0, 0.3, 0.3, 0.3]), {}, START, START + timedelta(hours=4), limits=site)
+    assert (car_too.kwh, car_too.dropped) == (pytest.approx(2.9), 0)
+    # A meter that lags into the next hour: 1.2 kWh in a 0.3 kWh hour is four times it but only 0.9 kWh over it.
+    lag = plausible_kwh(_hours([0.0, 1.2, 0.3, 0.3]), {}, START, START + timedelta(hours=4), limits=site)
+    assert (lag.kwh, lag.dropped) == (pytest.approx(1.8), 0)
+    # More than twice it but within a kWh of it, or over a kWh above it but under twice it: counted.
+    assert plausible_kwh(_hours([3.9]), {}, START, START + timedelta(hours=1), limits={START: 2.0}).dropped == 0
+    assert plausible_kwh(_hours([1.29]), {}, START, START + timedelta(hours=1), limits={START: 0.3}).dropped == 0
+    # Both: broken.
+    assert plausible_kwh(_hours([4.1]), {}, START, START + timedelta(hours=1), limits={START: 2.0}).dropped == 1
+    assert plausible_kwh(_hours([1.31]), {}, START, START + timedelta(hours=1), limits={START: 0.3}).dropped == 1
+
+
+def test_a_meter_s_hour_is_judged_against_the_site_s_whole_use() -> None:
+    from custom_components.spotnav.api.house_loads import _limits
+    from custom_components.spotnav.site.energy_flow import EnergyHour
+
+    # 9 kWh from the grid: 6 to the car, 2 to the heat, 1 to the house; a quarter of the next hour.
+    hours = [
+        EnergyHour(START, grid_in=9.0, grid_out=0.0, car=6.0, heat=2.0),
+        EnergyHour(START + timedelta(hours=1), grid_in=0.5, grid_out=0.0, car=0.0, heat=0.0, minutes=15),
+        EnergyHour(START + timedelta(hours=1, minutes=15), grid_in=0.25, grid_out=0.0, minutes=15),
+    ]
+    limits = _limits(hours)
+    assert limits == {START: pytest.approx(9.0), START + timedelta(hours=1): pytest.approx(0.75)}
+    # A device on the dashboard that measures the car too (8 kWh in the hour) is no broken statistic.
+    read = plausible_kwh(_hours([8.0]), {}, START, START + timedelta(hours=1), limits=limits, cap_kwh=13.8)
+    assert (read.kwh, read.dropped) == (8.0, 0)
 
 
 def test_ovrigt_is_the_house_less_the_meters() -> None:

@@ -32,7 +32,7 @@ from homeassistant.helpers import entity_registry as er
 from ..const import CONF_CHARGE_CONTROL, CONF_CHARGER_ENTRY_IDS, CONF_METER_BELONGS, CONF_POWER_ENTITY
 from ..energy_register import _charger_device_id
 from ..runtime import controller_for, site_controller_for
-from ..site.energy_flow import ROLE_HEAT, ROLE_HOUSE, allocate_hour
+from ..site.energy_flow import ROLE_CAR, ROLE_HEAT, ROLE_HOUSE, allocate_hour
 from ..site.energy_statistics import async_energy_prefs, async_statistics
 from ..site.history_period import PERIOD_DAY, period_of, utc_bounds
 from ..site.heat_meter import async_heat_hours
@@ -121,13 +121,18 @@ def charger_sensors(hass: HomeAssistant, controller: Any) -> tuple[set[str], set
     return entities, devices
 
 
-def _limits(periods: Any, roles: tuple[str, ...]) -> dict[datetime, float]:
-    """What `roles` used per UTC hour in the flow's periods (`site/energy_flow.allocate_hour`): the plausible most a
-    meter inside them can show for the hour (`site/house_loads.plausible_kwh`)."""
+#: The uses a meter's hour is judged against: the site's whole use (a dashboard device may also measure the car or
+#: the heat).
+SITE_USES: Final = (ROLE_HOUSE, ROLE_HEAT, ROLE_CAR)
+
+
+def _limits(periods: Any) -> dict[datetime, float]:
+    """What the whole site used (`SITE_USES`) per UTC hour in the flow's periods (`site/energy_flow.allocate_hour`):
+    what a meter's hour is judged against (`site/house_loads.plausible_kwh`)."""
     out: dict[datetime, float] = {}
     for item in periods or ():
         hour = item.start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
-        used = sum(kwh for (_source, use), kwh in allocate_hour(item).items() if use in roles)
+        used = sum(kwh for (_source, use), kwh in allocate_hour(item).items() if use in SITE_USES)
         out[hour] = out.get(hour, 0.0) + used
     return out
 
@@ -255,7 +260,7 @@ async def loads_answer(
         except Exception:  # noqa: BLE001 - without the flow's hours only the fuse bounds a meter's hour
             _LOGGER.debug("SpotNav house loads: the flow's hours could not be read", exc_info=True)
             periods = None
-        limits = _limits(periods, (ROLE_HOUSE, ROLE_HEAT) if kind == KIND_HEAT else (ROLE_HOUSE,)) if periods else None
+        limits = _limits(periods) if periods else None
         cap = fuse_kw(controller)  # kW over an hour: kWh
         if kind == KIND_HEAT:
             reads = await _read_heat(hass, meter, zones, start, through, five, limits, cap)
