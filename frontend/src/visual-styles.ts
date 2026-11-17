@@ -57,6 +57,7 @@ export const VISUAL_CLASSES = {
   nameRow: "spotnav-name-row",
   connectionWord: "spotnav-connection-word",
   connectionIcon: "spotnav-connection-icon",
+  statusButton: "spotnav-status-button",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
   vehicleChoiceName: "spotnav-vehicle-choice-name",
@@ -1193,6 +1194,10 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.name} {
     flex: 1 1 8rem;
     min-width: 0;
+    /* No heading margins, also on a name without its status (the charge bar showing): every card's header row is
+       as tall as its buttons, whatever it shows after the name. */
+    margin: 0;
+    line-height: 1.25;
     font-weight: 500;
     overflow-wrap: break-word;
   }
@@ -1416,6 +1421,30 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.connectionError} {
     color: var(--warning-color, #b26a00);
+  }
+  /* A status that explains itself when tapped (the house and heat cards' "· Test"): the muted word itself, dotted
+     underneath, with a finger-sized target around it. */
+  .${VISUAL_CLASSES.statusButton} {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.statusButton}::after {
+    content: "";
+    position: absolute;
+    inset: -12px -8px;
+  }
+  .${VISUAL_CLASSES.statusButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
   .${VISUAL_CLASSES.vehicleChoices} {
     display: flex;
