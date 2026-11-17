@@ -36,7 +36,15 @@ higher than usual, it nudges the rest of today.
 **Forecast error.** The simplest measure is the *mean absolute error* (MAE): for every hour, how many kW the
 forecast was off, ignoring the direction, averaged. An MAE of 0.35 kW means the forecast is on average 0.35 kW from
 what happened. SpotNav also gives a band around the figure, from the 10th to the 90th percentile; the band is
-good when about 10 % of hours fall below it and 10 % above it.
+good when about 10 % of hours fall below it and 10 % above it. The chart below shows what an error of about 0.36 kW
+looks like over one week.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/forecast-experiments/week-dark.png">
+  <img src="images/forecast-experiments/week-light.png" alt="Line chart of one winter week, hourly, in kW: the measured house load swings between about 1.7 and 4.6 kW, while today's model and D2 both run as smoother lines between about 2.0 and 3.4 kW, close to each other.">
+</picture>
+
+*One real week, 26 January to 1 February 2026, each day forecast at 13:00 the day before. This week's error is close to the winter average: today's model 0.36 kW, D2 0.33 kW.*
 
 **Money.** A small error is no use if it does not change what the plan does. So we also rerun the battery planner on
 frozen real days, with each candidate forecast, and count what the day would have cost:
@@ -68,6 +76,20 @@ against today's model, in kronor over 89 days (Max vinst mode):
 | Today's and B, half each (D2) | 0.337 | 0 |
 | All four blended (D4) | 0.339 | -1 |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/forecast-experiments/error-dark.png">
+  <img src="images/forecast-experiments/error-light.png" alt="Horizontal bar chart of the winter next-day error in kW, sorted: D2 0.337, D4 0.339, B 0.344, A 0.350, today's model 0.358 (highlighted), C 0.390, mean of the last four same weekdays 0.540, same hour last week 0.600.">
+</picture>
+
+*Forecast error per approach, December to February, next day as issued at 13:00. The same figures as the MAE column of the table.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/forecast-experiments/winter-money-dark.png">
+  <img src="images/forecast-experiments/winter-money-light.png" alt="Horizontal bar chart of kronor over 89 winter days against today's model, Max vinst mode: A -1, B -3, C -3, D2 0, D4 -1, today's at the 60th percentile +3, each with a resampling range of a few kronor; a line at +12 kr marks a perfect house forecast.">
+</picture>
+
+*Money against today's model over 89 winter days, Max vinst mode. Even a perfect house forecast would add only 12 kr.*
+
 What the table says:
 
 * The best candidate (D2) cuts the error by about 6 % in winter. In kronor it is worth nothing: every candidate
@@ -78,6 +100,13 @@ What the table says:
   days). SpotNav, planning with today's forecasts, reached 91 % (3 960 kr), 125 kr less than the optimiser.
   Part of that gap was the data itself (car charging counted as house load in part of it); with that fixed, a
   perfect house forecast would have closed only about 20 kr of it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/forecast-experiments/autumn-money-dark.png">
+  <img src="images/forecast-experiments/autumn-money-light.png" alt="Horizontal bar chart of the saving against no battery over 76 autumn days: perfect plan 4 350 kr (100 %), Sigenergy AI 4 080 kr (94 %), SpotNav Max vinst 3 960 kr (91 %), SpotNav Balanserad 3 730 kr (86 %).">
+</picture>
+
+*Saving against no battery, 1 September to 15 November 2026, and the share of the perfect plan (Max vinst rules).*
 
 ## Tried and rejected
 
