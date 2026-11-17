@@ -1309,6 +1309,22 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "fill with a learned battery size says the size is learned",
+        base(
+            waiting_for_tomorrow=True,
+            planning=PlanningFacts(
+                state="waiting_for_prices", reason="no_prices_yet", energy_basis="register", remaining_kwh=12.0,
+                room_kwh=51.6, fill="battery", learned_capacity_kwh=74.9,
+            ),
+        ),
+        "normal",
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "filling_to_limit", "params": {"kwh": 51.6}},
+            {"code": "battery_size_learned", "params": {"kwh": 75}},
+        ],
+    ),
+    (
         "a full battery says nothing about a cap of nothing",
         base(
             planning=PlanningFacts(state="nothing_to_charge", reason="already_at_target", room_kwh=0.0),
