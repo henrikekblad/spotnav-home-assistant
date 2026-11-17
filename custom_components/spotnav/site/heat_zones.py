@@ -18,7 +18,9 @@ Among several of one kind a cooling one (`cool` in its entity id or translation 
 (`no_sensor`), when its sensor is the heat pump's meter or on the heat pump meter's own device (`heat_meter`: the meter
 already holds it), when the Energy dashboard nests its sensor inside the heat pump's meter (`in_heat_meter`), when an
 earlier zone already counts the same sensor (`shared`: two thermostats of one device) or when the Energy dashboard
-nests it inside another zone's sensor (`in_zone`). Nothing is said to the household about a zone left out: it is
+nests it inside another zone's sensor (`in_zone`), or when the Energy dashboard nests the heat pump's meter inside its
+sensor (`holds_heat_meter`: a circuit meter moved to heat that the pump's meter is part of; counting both would count
+the pump twice). Nothing is said to the household about a zone left out: it is
 listed in the diagnostics only.
 
 **A meter the household moved to heat**: an Energy dashboard individual device whose belonging the household set
@@ -47,6 +49,7 @@ REASON_HEAT_METER: Final = "heat_meter"
 REASON_IN_HEAT_METER: Final = "in_heat_meter"
 REASON_SHARED: Final = "shared"
 REASON_IN_ZONE: Final = "in_zone"
+REASON_HOLDS_HEAT_METER: Final = "holds_heat_meter"
 
 #: The state classes an energy sensor's statistics keep a total by (its `change` per period).
 ENERGY_STATE_CLASSES: Final = frozenset({"total", "total_increasing"})
@@ -164,6 +167,13 @@ def resolve_zones(
     name, its device)`, after the zones."""
     nested = dict(nested or {})
     meters = {entity_id for entity_id in (*meter_ids, meter.entity_id if meter.found else None) if entity_id}
+    # The statistics the heat pump's meter is nested in, all the way up (a sensor among them holds the pump).
+    holders: set[str] = set()
+    for meter_id in meters:
+        parent = nested.get(meter_id)
+        while parent is not None and parent not in holders and parent not in meters:
+            holders.add(parent)
+            parent = nested.get(parent)
     sources: list[ZoneSource] = []
     unmeasured: list[tuple[str, str]] = []
     rows = [(entity_id, name, picked, device_id, ORIGIN_ZONE) for entity_id, name, picked, device_id in zones]
@@ -178,6 +188,8 @@ def resolve_zones(
             unmeasured.append((entity_id, REASON_HEAT_METER))
         elif parent is not None and parent in meters:
             unmeasured.append((entity_id, REASON_IN_HEAT_METER))
+        elif sensor_id in holders:
+            unmeasured.append((entity_id, REASON_HOLDS_HEAT_METER))
         elif any(source.sensor_id == sensor_id for source in sources):
             unmeasured.append((entity_id, REASON_SHARED))
         else:

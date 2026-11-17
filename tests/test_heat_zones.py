@@ -25,6 +25,7 @@ from custom_components.spotnav.site.heat_meter import (
 )
 from custom_components.spotnav.site.heat_zones import (
     REASON_HEAT_METER,
+    REASON_HOLDS_HEAT_METER,
     REASON_IN_HEAT_METER,
     REASON_IN_ZONE,
     REASON_NO_SENSOR,
@@ -132,6 +133,21 @@ def test_without_a_heat_pump_meter_the_zones_are_the_heat_and_a_moved_meter_come
         ("sensor.shelly_golv", "meter"),
     ]
     assert dict(found.unmeasured) == {"sensor.tvattstuga_energy": REASON_SHARED}
+
+
+def test_a_moved_meter_that_holds_the_heat_pump_s_meter_is_left_out() -> None:
+    # The pump's energy is nested in a circuit meter the household moved to heat (and that one in the main meter).
+    nested = {"sensor.varme_energi": "sensor.krets_golv", "sensor.krets_golv": "sensor.huvud"}
+    moved = [("sensor.krets_golv", "Krets", "dev_krets"), ("sensor.huvud", "Huvud", "dev_huvud")]
+    found = resolve_zones([], PUMP, meter_ids=("sensor.varme_effekt", "sensor.varme_energi"), nested=nested, moved=moved)
+    assert found.sources == ()
+    assert dict(found.unmeasured) == {
+        "sensor.krets_golv": REASON_HOLDS_HEAT_METER,
+        "sensor.huvud": REASON_HOLDS_HEAT_METER,
+    }
+    # Without a heat pump meter the circuit meter is the heat.
+    alone = resolve_zones([], NO_METER, nested=nested, moved=moved[:1])
+    assert alone.sensor_ids == ("sensor.krets_golv",)
 
 
 def test_the_dashboard_pairs_a_power_sensor_with_its_statistic() -> None:
