@@ -4,6 +4,7 @@ goes to a fake switch service in the test; nothing reaches a device."""
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -881,6 +882,9 @@ async def test_a_house_above_its_band_for_an_hour_is_lowered_whatever_the_price(
         hass.states.async_set(OUTDOOR, "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
         shadow.tick(now)
         await hass.async_block_till_done()
+        # The plan is made in a background task, which the block above does not wait for.
+        while shadow._task is not None and not shadow._task.done():  # noqa: SLF001
+            await asyncio.sleep(0)
         await control.async_look(now)
         return now
 

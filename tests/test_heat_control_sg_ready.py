@@ -4,6 +4,8 @@ Every write goes to a fake switch service in the test; nothing reaches a device.
 
 from __future__ import annotations
 
+import asyncio
+
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -530,6 +532,9 @@ async def test_a_warm_house_is_lowered_through_a_and_never_raised(hass: HomeAssi
         hass.states.async_set(OUTDOOR, "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
         shadow.tick(now)
         await hass.async_block_till_done()
+        # The plan is made in a background task, which the block above does not wait for.
+        while shadow._task is not None and not shadow._task.done():  # noqa: SLF001
+            await asyncio.sleep(0)
         await control.async_look(now)
         return now
 
