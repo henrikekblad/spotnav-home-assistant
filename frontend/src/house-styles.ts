@@ -9,10 +9,7 @@ import { CHART_DENSITY, PLAN_BAND_STYLE } from "./visual-styles";
 
 export const HOUSE_CLASSES = {
   card: "spotnav-house",
-  head: "spotnav-house-head",
-  title: "spotnav-house-title",
   chip: "spotnav-house-chip",
-  chipButton: "spotnav-house-chip-button",
   testExplain: "spotnav-house-test-explain",
   sub: "spotnav-house-sub",
   surface: "spotnav-house-surface",
@@ -212,19 +209,6 @@ export const HOUSE_STYLES = `
     stroke: var(--primary-color, #03a9f4);
     stroke-width: 3px;
   }
-  .${H.head} {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 4px 8px;
-    min-width: 0;
-  }
-  .${H.title} {
-    margin: 0;
-    font-size: 1.05rem;
-    font-weight: 500;
-    flex: 1 1 auto;
-  }
   .${H.chip} {
     flex: none;
     padding: 1px 8px;
@@ -233,24 +217,6 @@ export const HOUSE_STYLES = `
     color: var(--secondary-text-color, #727272);
     font-size: 0.75rem;
     white-space: nowrap;
-  }
-  /* The test chip is a button: tapping it shows what test means. */
-  .${H.chipButton} {
-    position: relative;
-    background: none;
-    font-family: inherit;
-    line-height: 1.4;
-    cursor: pointer;
-  }
-  /* A finger-sized target around the small chip. */
-  .${H.chipButton}::after {
-    content: "";
-    position: absolute;
-    inset: -10px -4px;
-  }
-  .${H.chipButton}:focus-visible {
-    outline: 2px solid var(--primary-color, #03a9f4);
-    outline-offset: 2px;
   }
   .${H.testExplain} {
     margin: 6px 0 0;

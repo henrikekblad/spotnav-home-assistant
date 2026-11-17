@@ -1,9 +1,13 @@
 # The house card (preview)
 
 A second card in the same bundle as the charging card, about the whole house: its load, the sun and the home battery.
-Until battery control is on and checked, the chip in its header says "Test · not controlling yet" (tap it for two
-sentences on what that means): the card shows what SpotNav forecasts and what its battery plan would do, and writes to
-nothing. Once SpotNav controls the battery ([Home battery](home-battery.md)), the chip says "Controls the battery".
+Its header is the charging card's: the SpotNav mark, "House" and a muted status after it. Until battery control is on
+and checked, the status says "· Test" (tap it: "SpotNav is not controlling anything yet" and what that means): the
+card shows what SpotNav forecasts and what its battery plan would do, and writes to nothing. While the battery's own
+optimiser runs it (Sigenergy's AI mode, for one) it says "· Own control". Once SpotNav controls the battery
+([Home battery](home-battery.md)), it says what the battery does now: "· Charges from the grid", "· Holding",
+"· Sells to the grid" or "· Discharging" for the action SpotNav runs, else, as the battery's own self-consumption
+measures, "· Charging from the sun", "· Discharging" or "· Idle". The mode stays in the line under it ("mode Balanced").
 The card itself never writes to anything. The charging card stays about the car; the house card is where a home without a charger starts.
 
 ## Add it
@@ -156,7 +160,7 @@ choice. Only meters SpotNav did not sort out by itself can be moved.
 Each part is compared with what would have happened without SpotNav, and only what SpotNav itself did counts.
 
 * **Battery**: the battery's earnings of the day (the headline's measure), in the share of the day SpotNav controlled
-  the battery. In test ("Test · controls nothing yet"), with SpotNav's control off, or while the battery runs its own
+  the battery. In test ("· Test" in the header), with SpotNav's control off, or while the battery runs its own
   optimiser, the battery is not part of SpotNav's saving at all: what it earned is its own, and the headline says
   "(own control)".
 * **Car**: against charging at once on plug-in. The same kWh are charged from the moment the car was plugged in, at the

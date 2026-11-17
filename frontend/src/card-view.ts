@@ -132,7 +132,7 @@ import {
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
 import { sendDebugEditor, type SendDebug } from "./send-debug";
-import { historyIcon as sharedHistoryIcon } from "./period-history";
+import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
 import type { PowerState, PowerUi } from "./power-view";
 import { connectionLabel, guestLineFor, vehicleLineFor, type VehicleLineFacts } from "./vehicle-line";
@@ -676,91 +676,6 @@ function periodBlock(
   return block;
 }
 
-/**
- * The product mark: a dark rounded square with the red-yellow-green bolt, readable on light and
- * dark themes. Hidden from assistive technology and built with `createElementNS`; gradient and
- * filter ids carry the instance prefix so several cards never share a `url(#id)`.
- */
-const MARK_PATH =
-  "m214 42-6 62-18-10-23 49 47 3-86.00154 76.23385L142 232l-50 32 6-62 13.99846 9.52923L139 163l-47-3 " +
-  "81.29385-75.527692-16.59077-9.06z";
-
-export function brandMark(doc: Document, idPrefix: string): SVGElement {
-  const ns = "http://www.w3.org/2000/svg";
-  const make = (tag: string, attributes: Record<string, string>): SVGElement => {
-    const node = doc.createElementNS(ns, tag) as SVGElement;
-    for (const [name, value] of Object.entries(attributes)) {
-      node.setAttribute(name, value);
-    }
-    return node;
-  };
-  const stop = (offset: string, color: string): SVGElement => make("stop", { offset, "stop-color": color });
-  const backgroundId = `${idPrefix}-mark-background`;
-  const boltId = `${idPrefix}-mark-bolt`;
-  const haloId = `${idPrefix}-mark-halo`;
-
-  const svg = make("svg", {
-    viewBox: "0 0 306 306",
-    width: "22",
-    height: "22",
-    "aria-hidden": "true",
-    focusable: "false",
-  });
-  svg.classList.add(C.identity);
-
-  const background = make("radialGradient", {
-    id: backgroundId,
-    cx: "106.158",
-    cy: "79.888",
-    r: "261",
-    gradientUnits: "userSpaceOnUse",
-  });
-  background.append(stop("0", "#454d55"), stop(".42", "#1b1e22"), stop(".76", "#101216"), stop("1", "#080a0d"));
-  const bolt = make("linearGradient", {
-    id: boltId,
-    x1: "155.35",
-    y1: "4.69",
-    x2: "129.22",
-    y2: "303.87",
-    gradientUnits: "userSpaceOnUse",
-  });
-  bolt.append(
-    stop("0", "#ff0000"),
-    stop(".102", "#ff0000"),
-    stop(".43", "#ffd22e"),
-    stop(".57", "#ffe56a"),
-    stop(".904", "#00ff06"),
-    stop("1", "#00ff00"),
-  );
-  const halo = make("filter", { id: haloId, x: "-30%", y: "-30%", width: "160%", height: "160%" });
-  halo.append(make("feGaussianBlur", { stdDeviation: "3.2" }));
-  const defs = make("defs", {});
-  defs.append(background, bolt, halo);
-
-  svg.append(
-    defs,
-    make("rect", { x: "8", y: "8", width: "290", height: "290", rx: "70", fill: `url(#${backgroundId})` }),
-    make("path", {
-      d: MARK_PATH,
-      fill: "none",
-      stroke: "#ffe36b",
-      "stroke-width": "8",
-      "stroke-opacity": ".36",
-      "stroke-linejoin": "round",
-      filter: `url(#${haloId})`,
-    }),
-    make("path", {
-      d: MARK_PATH,
-      fill: `url(#${boltId})`,
-      stroke: "#ffe36b",
-      "stroke-width": "1.2",
-      "stroke-opacity": ".52",
-      "stroke-linejoin": "round",
-    }),
-  );
-  return svg;
-}
-
 /** One small path-only SVG icon, decorative and hidden from assistive technology. */
 function icon(doc: Document, build: (svg: SVGElement, ns: string) => void): SVGElement {
   const ns = "http://www.w3.org/2000/svg";
@@ -791,35 +706,6 @@ function fillPath(ns: string, doc: Document, d: string): SVGPathElement {
   path.setAttribute("d", d);
   path.setAttribute("fill", "currentColor");
   return path;
-}
-
-/** The history clock, shared with the house and heat cards' headers (`period-history.ts`). */
-function historyIcon(doc: Document): SVGElement {
-  return sharedHistoryIcon(doc, 16, C.actionIcon);
-}
-
-/**
- * The settings cog: MDI `mdiCog` path data (`@mdi/js`, Apache License 2.0), one filled path unlike
- * this file's usual stroked primitives.
- */
-function settingsGearIcon(doc: Document): SVGElement {
-  return icon(doc, (svg, ns) => {
-    svg.append(
-      fillPath(
-        ns,
-        doc,
-        "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43," +
-          "12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 " +
-          "21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5," +
-          "2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95," +
-          "5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.22,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 " +
-          "4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.22,15.05 2.34,15.27L4.34,18.73C4.46," +
-          "18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 " +
-          "10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C" +
-          "19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z",
-      ),
-    );
-  });
 }
 
 /** MDI `power-plug`: a plugged-in car for the status. */
@@ -1216,10 +1102,9 @@ export function createCardView(input: CardViewInput): CardView {
   const card = element(doc, "div", C.card);
   card.style.boxSizing = "border-box";
 
-  // Header: the product mark and the charger's own name. One card is bound to one charger, so there is
-  // no selector and no visible product name; the accessible name still names the product.
-  const header = element(doc, "div", C.header);
-  header.append(brandMark(doc, idPrefix));
+  // Header: the product mark and the charger's own name (`card-header.ts`, shared with the house and heat cards). One
+  // card is bound to one charger, so there is no selector and no visible product name; the accessible name still
+  // names the product.
   // A guest car's line is "Guest car · 10 kWh": it has no level of its own.
   const vehicleLine =
     model.guest?.active === true
@@ -1230,69 +1115,41 @@ export function createCardView(input: CardViewInput): CardView {
   // The charger's name with its status after it ("HALO Charger · Waiting"): the status is the charger's, not the car's.
   // The status as a word, and as a symbol for when the word does not fit beside the name (`fitStatus`).
   let statusRow: HTMLElement | null = null;
-  const nameRow = (): HTMLElement => {
-    const row = element(doc, "div", C.nameRow);
-    if (model.chargerName !== null) {
-      row.append(element(doc, "h3", C.name, model.chargerName));
-    }
+  let title: HTMLElement | null = null;
+  if (connectionText !== null) {
     const shown = model.connection?.shown;
-    if (connectionText !== null && shown !== undefined && shown !== "unknown") {
-      const status = element(
-        doc,
-        "span",
-        shown === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine,
-      );
-      status.dataset["connection"] = shown;
-      // The leading dot only separates the word from the name: a screen reader skips it, as on the car line.
-      const word = element(doc, "span", C.connectionWord);
-      if (model.chargerName !== null) {
-        const dot = element(doc, "span", undefined, "\u00b7");
-        dot.setAttribute("aria-hidden", "true");
-        word.append(dot, doc.createTextNode(` ${connectionText}`));
-      } else {
-        word.append(doc.createTextNode(connectionText));
+    let status: HTMLElement | null = null;
+    if (shown !== undefined && shown !== "unknown") {
+      status = headerStatus(doc, connectionText, model.chargerName !== null).line;
+      if (shown === "error") {
+        status.classList.add(C.connectionError);
       }
-      status.append(word, connectionIcon(doc, shown, connectionText));
-      row.append(status);
-      row.dataset["statusFit"] = "word";
-      statusRow = row;
+      status.dataset["connection"] = shown;
+      status.append(connectionIcon(doc, shown, connectionText));
     }
-    return row;
-  };
+    const titled = headerTitle(doc, model.chargerName, status);
+    if (status !== null) {
+      titled.row.dataset["statusFit"] = "word";
+      statusRow = titled.row;
+    }
+    title = titled.block;
+  } else if (model.chargerName !== null) {
+    title = element(doc, "h3", C.name, model.chargerName);
+  }
   // The car is a button of its own over the action bar (`carButtonElement`), not a line under the name.
   const vehicleButton = vehicleLine === null ? null : carButtonFor(vehicleLine);
-  if (connectionText !== null) {
-    // The status after the name.
-    const identity = element(doc, "div", C.nameBlock);
-    identity.append(nameRow());
-    header.append(identity);
-  } else if (model.chargerName !== null) {
-    header.append(element(doc, "h3", C.name, model.chargerName));
-  }
-  // The product name: in the DOM for anyone who cannot see the mark, clipped out of sight (text nodes only, never an attribute).
-  header.append(
-    element(doc, "span", C.visuallyHidden, translate(model.language, "card.title")),
-  );
   // The charge history: what each charge delivered and cost, beside Settings.
-  const historyButton = element(doc, "button", C.iconButton);
-  historyButton.type = "button";
-  historyButton.setAttribute("aria-label", translate(model.language, "header.history"));
-  historyButton.setAttribute("aria-haspopup", "dialog");
-  historyButton.title = translate(model.language, "header.history");
-  historyButton.dataset["history"] = "open";
-  historyButton.append(historyIcon(doc));
-  const headerActions = element(doc, "div", C.headerActions);
+  const historyButton = headerButton(doc, "history", translate(model.language, "header.history"));
   // The Settings entry point: one popover gathering price/fiscal, consumption, capabilities and the site, beside the history.
-  const settingsGeneral = element(doc, "button", C.iconButton);
-  settingsGeneral.type = "button";
-  settingsGeneral.setAttribute("aria-label", translate(model.language, "header.settings"));
-  settingsGeneral.title = translate(model.language, "header.settings");
-  settingsGeneral.dataset["settings"] = "open";
-  settingsGeneral.append(settingsGearIcon(doc));
-  headerActions.append(historyButton, settingsGeneral);
+  const settingsGeneral = headerButton(doc, "settings", translate(model.language, "header.settings"));
   // Shown to a reader who is not an administrator only when Settings holds something they may change.
   settingsGeneral.hidden = !settingsChangeable();
-  header.append(headerActions);
+  const { header } = cardHeader(doc, {
+    idPrefix,
+    productName: translate(model.language, "card.title"),
+    title,
+    buttons: [historyButton, settingsGeneral],
+  });
   card.append(header);
 
   // Dialogs are created once as overlays so nothing shifts the card's height.

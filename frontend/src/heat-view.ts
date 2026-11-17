@@ -4,7 +4,7 @@
 // "Heating" settings section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state
 // with `textContent` only; every figure is the backend's.
 
-import { historyHeaderButton } from "./period-history";
+import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
 import { roomName, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
 import { dayChart } from "./heat-day-chart";
@@ -197,78 +197,94 @@ function nameOf(names: Map<string, string>, entityId: string | null, fallback: s
 
 // ------------------------------------------------------------------------------------------------ header
 
-/** The settings gear in a card's header (the heat and house cards): opens the shared settings popover. */
-export function settingsGearButton(doc: Document, label: string, onClick: () => void): HTMLButtonElement {
-  const button = element(doc, "button", X.settingsButton) as HTMLButtonElement;
-  button.type = "button";
-  button.dataset["action"] = "settings";
-  button.setAttribute("aria-label", label);
-  button.title = label;
-  const icon = svg(doc, "svg", { viewBox: "0 0 24 24", width: 20, height: 20, "aria-hidden": "true", focusable: "false" });
-  icon.append(
-    svg(doc, "path", {
-      d: "M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z",
-      fill: "currentColor",
-    }),
-  );
-  button.append(icon);
-  button.addEventListener("click", onClick);
-  return button;
+/** The house and heat cards' status after the name, muted (`card-header.ts`), named by `code` for tests. */
+export function statusLine(doc: Document, content: string | Node, code: string): HTMLElement {
+  const { line } = headerStatus(doc, content, true);
+  line.dataset["line"] = "header-status";
+  line.dataset["status"] = code;
+  return line;
 }
 
 /**
- * The header's "Test · not controlling yet" chip (the heat and house cards): a button that shows or hides two sentences
- * on what test means. Returns the chip and the explanation, which the caller places under the header.
+ * The "· Test" status after the house and heat cards' names while SpotNav controls nothing yet: a button whose tooltip
+ * says so ("SpotNav styr inget än") and that shows or hides that sentence with what test means, under the header.
+ * Returns the status and the explanation, which the caller places under the header.
  */
-export function testChip(
+export function testStatus(
   doc: Document,
   language: Language,
   explainKey: TranslationKey,
   open: boolean,
   id: string,
   onToggle?: (open: boolean) => void,
-): { chip: HTMLButtonElement; explain: HTMLElement } {
-  const chip = element(doc, "button", `${H.chip} ${H.chipButton}`, translate(language, "house.preview")) as HTMLButtonElement;
-  chip.type = "button";
-  chip.dataset["action"] = "test";
-  chip.setAttribute("aria-expanded", String(open));
-  chip.setAttribute("aria-controls", id);
-  const explain = element(doc, "p", `${C.muted} ${H.note} ${H.testExplain}`, translate(language, explainKey));
+): { status: HTMLElement; explain: HTMLElement } {
+  const lead = translate(language, "header.testExplain");
+  const button = element(doc, "button", C.statusButton, translate(language, "header.test")) as HTMLButtonElement;
+  button.type = "button";
+  button.title = lead;
+  button.dataset["action"] = "test";
+  button.setAttribute("aria-expanded", String(open));
+  button.setAttribute("aria-controls", id);
+  const explain = element(doc, "p", `${C.muted} ${H.note} ${H.testExplain}`);
+  explain.append(element(doc, "strong", undefined, lead), doc.createTextNode(` ${translate(language, explainKey)}`));
   explain.id = id;
   explain.dataset["line"] = "test-explain";
   explain.hidden = !open;
-  chip.addEventListener("click", () => {
-    const next = chip.getAttribute("aria-expanded") !== "true";
+  button.addEventListener("click", () => {
+    const next = button.getAttribute("aria-expanded") !== "true";
     if (onToggle !== undefined) {
       onToggle(next);
       return;
     }
-    chip.setAttribute("aria-expanded", String(next));
+    button.setAttribute("aria-expanded", String(next));
     explain.hidden = !next;
   });
-  return { chip, explain };
+  return { status: statusLine(doc, button, "test"), explain };
 }
 
-function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null, testOpen = false): HTMLElement[] {
-  const head = element(doc, "div", H.head);
-  // "Test" while SpotNav only shows what it would do; once its heat control runs, a quiet chip that says so instead.
-  const controlling = answer?.control?.state === "running";
-  const test = testChip(doc, language, "heat.test.explain", testOpen, "spotnav-heat-test", handlers?.onTest?.bind(handlers));
-  const chip = controlling ? element(doc, "span", H.chip, translate(language, "heat.controlling")) : test.chip;
-  if (controlling) {
-    chip.dataset["line"] = "controlling";
+/** What SpotNav's heat control does now, as the header says it after the name; `null` while it controls nothing. */
+export function heatNow(language: Language, answer: HeatAnswer): { code: string; text: string } | null {
+  const control = answer.control;
+  if (control === null || !control.enabled || control.state !== "running") {
+    return null;
   }
-  head.append(element(doc, "h2", H.title, translate(language, "heat.title")), chip);
+  if (control.raised) {
+    return { code: "raise", text: translate(language, "heat.now.raise") };
+  }
+  if (control.lowered) {
+    const would = answer.status.would;
+    return would !== null && would.action === "lower"
+      ? { code: "lower", text: translate(language, "heat.now.lowerTo", { temp: degrees(language, would.target_c) }) }
+      : { code: "lower", text: translate(language, "heat.now.lower") };
+  }
+  return { code: "normal", text: translate(language, "heat.now.normal") };
+}
+
+/** The heat card's header (`card-header.ts`): "Värme · Test" in shadow, "Värme · Sänker till 20,5 °C" while it controls. */
+function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null, testOpen = false, idPrefix = "spotnav-heat"): HTMLElement[] {
+  const now = answer === null ? null : heatNow(language, answer);
+  const test = answer === null || now !== null ? null : testStatus(doc, language, "heat.test.explain", testOpen, `${idPrefix}-test`, handlers?.onTest?.bind(handlers));
+  const status = now !== null ? statusLine(doc, now.text, now.code) : test?.status ?? null;
+  const buttons: HTMLButtonElement[] = [];
   const onHistory = handlers?.onHistory;
   if (answer !== null && onHistory !== undefined) {
-    const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory.call(handlers, button));
-    head.append(button);
+    const button = headerButton(doc, "history", translate(language, "hist.open"));
+    button.addEventListener("click", () => onHistory.call(handlers, button));
+    buttons.push(button);
   }
   if (answer?.writable === true && handlers !== null) {
-    const button = settingsGearButton(doc, translate(language, "heat.settings.open"), () => handlers.onSettings());
-    head.append(button);
+    const button = headerButton(doc, "settings", translate(language, "heat.settings.open"));
+    button.dataset["action"] = "settings";
+    button.addEventListener("click", () => handlers.onSettings());
+    buttons.push(button);
   }
-  return controlling ? [head] : [head, test.explain];
+  const { header: head } = cardHeader(doc, {
+    idPrefix,
+    productName: translate(language, "card.title"),
+    title: headerTitle(doc, translate(language, "heat.title"), status).block,
+    buttons,
+  });
+  return test === null ? [head] : [head, test.explain];
 }
 
 // ------------------------------------------------------------------------------------------------ the dial
@@ -650,7 +666,7 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
   const card = element(doc, "div", `${C.card} ${H.card} ${X.card}`);
   card.dataset["state"] = state.kind;
   if (state.kind !== "ready") {
-    card.append(...header(doc, language, null, null));
+    card.append(...header(doc, language, null, null, false, input.idPrefix));
     const key: TranslationKey = state.kind === "unconfigured" ? "heat.unconfigured" : state.kind === "loading" ? "heat.loading" : state.sentenceKey;
     const line = element(doc, "p", C.muted, translate(language, key));
     line.setAttribute("role", "status");
@@ -662,7 +678,7 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
   }
   const answer = state.answer;
   const target = input.ui.pendingTarget ?? answer.comfort.target_c;
-  card.append(...header(doc, language, answer, input.handlers, input.ui.testOpen === true));
+  card.append(...header(doc, language, answer, input.handlers, input.ui.testOpen === true, input.idPrefix));
   card.append(dial(doc, language, answer, target, input.ui, input.handlers));
   const measured = element(doc, "p", X.measured, measuredLine(language, answer));
   measured.dataset["line"] = "measured";

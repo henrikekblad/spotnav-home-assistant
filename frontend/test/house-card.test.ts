@@ -132,7 +132,7 @@ describe("the body", () => {
 
   it("draws one chart: a bar per hour, the first forecast over each measured one, the sun, the battery and the grid charging", () => {
     const card = body(answer());
-    const svg = card.querySelector("svg")!;
+    const svg = card.querySelector(".spotnav-house-surface svg")!;
     expect(svg.getAttribute("role")).toBe("img");
     expect(svg.querySelectorAll(".spotnav-house-bar")).toHaveLength(36);
     expect(svg.querySelectorAll(".spotnav-house-bar-forecast")).toHaveLength(24);
@@ -164,38 +164,93 @@ describe("the body", () => {
     expect(Array.from(card.querySelectorAll(".spotnav-house-legend li")).map((item) => item.textContent)).toEqual(["House"]);
   });
 
-  it("says what test means when its chip is tapped, in place or through the card", () => {
-    const card = body(answer(), {}, "sv");
-    const chip = card.querySelector<HTMLButtonElement>("button[data-action='test']")!;
-    const explain = card.querySelector<HTMLElement>("[data-line='test-explain']")!;
-    expect(chip.textContent).toBe("Test · styr inget än");
-    expect(chip.getAttribute("aria-controls")).toBe(explain.id);
-    expect(explain.hidden).toBe(true);
-    chip.click();
-    expect(chip.getAttribute("aria-expanded")).toBe("true");
-    expect(explain.hidden).toBe(false);
-    const onTest = vi.fn();
-    body(answer(), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onTest } as never).querySelector<HTMLButtonElement>("button[data-action='test']")!.click();
-    expect(onTest).toHaveBeenCalledWith(true);
-    expect(body(answer(), { testOpen: true }, "sv").querySelector<HTMLElement>("[data-line='test-explain']")!.hidden).toBe(false);
+  /** The fixture's battery changed: its control, who manages it and what it does now. */
+  function withBattery(patch: Partial<NonNullable<HouseAnswer["battery"]>>): HouseAnswer {
+    const value = answer();
+    value.battery = { ...value.battery!, ...patch };
+    return value;
+  }
+
+  /** The header's status after "Huset": its code and its words, or `null` without one. */
+  function status(card: HTMLElement): { code: string; text: string } | null {
+    const line = card.querySelector<HTMLElement>(".spotnav-header [data-line='header-status']");
+    return line === null ? null : { code: line.dataset["status"]!, text: line.textContent! };
+  }
+
+  it("has the charger card's header: the mark, the name as its title, the status after it and the buttons at the end", () => {
+    const card = body(withBattery({ management: "free", control: "off" }), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onHistory: vi.fn(), onSettings: vi.fn() } as never);
+    const header = card.querySelector<HTMLElement>(".spotnav-header")!;
+    expect([...header.children].map((child) => child.getAttribute("class"))).toEqual([
+      "spotnav-identity",
+      "spotnav-name-block",
+      "spotnav-visually-hidden",
+      "spotnav-header-actions",
+    ]);
+    expect(header.querySelector("h3.spotnav-name")!.textContent).toBe("Huset");
+    expect(header.querySelector(".spotnav-visually-hidden")!.textContent).toBe("SpotNav");
+    const buttons = [...header.querySelectorAll<HTMLButtonElement>(".spotnav-header-actions > button.spotnav-icon-button")];
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Historik", translate("sv", "popover.open")]);
+    expect(buttons[1]!.dataset["action"]).toBe("settings");
+    // No pill any more: the status is muted text after the name.
+    expect(card.querySelector(".spotnav-house-chip")).toBeNull();
   });
 
-  it("says Test only while SpotNav does not control the battery, and a quiet chip once it does", () => {
+  it("says Test after the name while SpotNav controls nothing yet, and what that means when tapped", () => {
+    const card = body(withBattery({ management: "free", control: "off" }), {}, "sv");
+    expect(status(card)).toEqual({ code: "test", text: "· Test" });
+    const button = card.querySelector<HTMLButtonElement>("[data-line='header-status'] button[data-action='test']")!;
+    const explain = card.querySelector<HTMLElement>("[data-line='test-explain']")!;
+    expect(button.title).toBe("SpotNav styr inget än.");
+    expect(button.getAttribute("aria-controls")).toBe(explain.id);
+    expect(explain.hidden).toBe(true);
+    expect(explain.textContent).toMatch(/^SpotNav styr inget än\. SpotNav visar vad den skulle göra/);
+    button.click();
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(explain.hidden).toBe(false);
+    const onTest = vi.fn();
+    body(withBattery({ management: "free" }), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onTest } as never)
+      .querySelector<HTMLButtonElement>("button[data-action='test']")!
+      .click();
+    expect(onTest).toHaveBeenCalledWith(true);
+    expect(body(withBattery({ management: "free" }), { testOpen: true }, "sv").querySelector<HTMLElement>("[data-line='test-explain']")!.hidden).toBe(false);
     for (const control of ["off", "shadow_only", "verifying", "waiting", "failed", null]) {
-      const value = answer();
-      value.battery = { ...value.battery!, control };
-      const card = body(value, {}, "sv");
-      expect(card.querySelector("button[data-action='test']"), String(control)).not.toBeNull();
-      expect(card.querySelector("[data-line='controlling']")).toBeNull();
+      expect(status(body(withBattery({ management: "free", control }), {}, "sv"))?.code, String(control)).toBe("test");
     }
-    const on = answer();
-    on.battery = { ...on.battery!, control: "on" };
-    const card = body(on, { detailsOpen: true }, "sv");
+  });
+
+  it("says Egen styrning while the battery's own optimiser runs it", () => {
+    // The fixture: a Sigenergy in its AI mode, SpotNav's control off.
+    const card = body(answer(), {}, "sv");
+    expect(status(card)).toEqual({ code: "own", text: "· Egen styrning" });
     expect(card.querySelector("button[data-action='test']")).toBeNull();
     expect(card.querySelector("[data-line='test-explain']")).toBeNull();
-    expect(card.querySelector("[data-line='controlling']")!.textContent).toBe("Styr batteriet");
+    expect(status(body(answer(), {}, "en"))!.text).toBe("· Own control");
+  });
+
+  it("says what the battery does now while SpotNav controls it, the mode staying in the line under it", () => {
+    const at = (now: { action: string | null; power_kw: number | null } | null) =>
+      status(body(withBattery({ control: "on", now }), {}, "sv"));
+    expect(at({ action: "grid_charge", power_kw: 4.2 })).toEqual({ code: "grid_charge", text: "· Laddar från nätet" });
+    expect(at({ action: "hold", power_kw: 0 })).toEqual({ code: "hold", text: "· Håller" });
+    expect(at({ action: "export_discharge", power_kw: -5 })).toEqual({ code: "export_discharge", text: "· Säljer till nätet" });
+    expect(at({ action: "discharge_house", power_kw: -1 })).toEqual({ code: "discharge_house", text: "· Laddar ur" });
+    // No action of SpotNav's: the battery's own self-consumption, said by the measured power.
+    expect(at({ action: null, power_kw: 1.8 })).toEqual({ code: "sun", text: "· Laddar med sol" });
+    expect(at({ action: null, power_kw: -0.6 })).toEqual({ code: "discharge", text: "· Laddar ur" });
+    expect(at({ action: null, power_kw: 0.04 })).toEqual({ code: "idle", text: "· Vilar" });
+    expect(at({ action: "something_new", power_kw: null })).toBeNull();
+    expect(at(null)).toBeNull();
+    const card = body(withBattery({ control: "on", now: { action: "grid_charge", power_kw: 4.2 } }), { detailsOpen: true }, "sv");
+    expect(card.querySelector("button[data-action='test']")).toBeNull();
+    expect(card.querySelector("[data-line='test-explain']")).toBeNull();
+    expect(card.querySelector(".spotnav-header")!.textContent).not.toContain("läge");
+    expect(card.querySelector(".spotnav-house-sub")!.textContent).toContain("läge");
     expect(card.textContent).toContain("SpotNav styr batteriet efter planen.");
     expect(card.textContent).not.toContain("SpotNav planerar batteriet men styr det inte än.");
+  });
+
+  it("has no status without a battery, and none before the answer", () => {
+    expect(status(body(answer("house/house_learning.json")))).toBeNull();
   });
 
   it("opens the details on a tap: the modes side by side, the days and the sources", () => {
@@ -348,7 +403,7 @@ describe("the battery app's views, calm", () => {
     buttons[1]!.click();
     expect(onView).toHaveBeenCalledWith("price");
     const price = body(answer(), { view: "price" }, "en");
-    const svg = price.querySelector("svg")!;
+    const svg = price.querySelector(".spotnav-house-surface svg")!;
     expect(svg.querySelector(".spotnav-house-bar")).toBeNull();
     expect(svg.querySelector(".spotnav-house-price-buy")?.getAttribute("d")).toMatch(/^M/);
     expect(svg.querySelector(".spotnav-house-price-sell")).not.toBeNull();
@@ -422,7 +477,7 @@ describe("the legend", () => {
     const value = answer();
     const hidden = { energy: ["car", "heat", "sun", "forecast", "battery"] };
     const card = body(value, { hidden });
-    const svg = card.querySelector("svg")!;
+    const svg = card.querySelector(".spotnav-house-surface svg")!;
     expect(svg.querySelector(".spotnav-house-heat-bar")).toBeNull();
     expect(svg.querySelector(".spotnav-house-sun-area")).toBeNull();
     expect(svg.querySelector(".spotnav-house-sun-raw")).toBeNull();
@@ -434,7 +489,7 @@ describe("the legend", () => {
     const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>(".spotnav-house-legend button"));
     expect(buttons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(4);
     // Hiding the house itself leaves the rest (the forecast ticks, the heat) standing.
-    const noHouse = body(value, { hidden: { energy: ["house", "car"] } }).querySelector("svg")!;
+    const noHouse = body(value, { hidden: { energy: ["house", "car"] } }).querySelector(".spotnav-house-surface svg")!;
     expect(noHouse.querySelector(".spotnav-house-bar")).toBeNull();
     expect(noHouse.querySelector(".spotnav-house-heat-bar")).not.toBeNull();
   });
@@ -472,7 +527,7 @@ describe("the legend", () => {
 
   it("hides the price lines and the tints from the price view's legend, and the battery's axis with the battery", () => {
     const hidden = { price: ["sellPrice", "charge", "battery"] };
-    const svg = body(answer(), { view: "price", hidden }).querySelector("svg")!;
+    const svg = body(answer(), { view: "price", hidden }).querySelector(".spotnav-house-surface svg")!;
     expect(svg.querySelector(".spotnav-house-price-sell")).toBeNull();
     expect(svg.querySelector(".spotnav-house-price-buy")).not.toBeNull();
     expect(svg.querySelector(".spotnav-house-band[data-action='grid_charge']")).toBeNull();
@@ -1186,12 +1241,12 @@ describe("the element", () => {
     expect(element.shadowRoot!.textContent).toContain(translate("en", "house.loading"));
     hass.resolveNext(read("house/villa_battery_sun.json"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(element.shadowRoot!.querySelector("svg")).not.toBeNull();
+    expect(element.shadowRoot!.querySelector(".spotnav-house-surface svg")).not.toBeNull();
     await vi.advanceTimersByTimeAsync(300_000);
     expect(hass.messages).toHaveLength(2);
     hass.rejectNext(apiFailure("spotnav_no_site"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(element.shadowRoot!.querySelector("svg")).not.toBeNull();
+    expect(element.shadowRoot!.querySelector(".spotnav-house-surface svg")).not.toBeNull();
     element.remove();
     await vi.advanceTimersByTimeAsync(600_000);
     expect(hass.messages).toHaveLength(2);

@@ -60,8 +60,8 @@ import {
   setEntsoeKey,
   updateVehicle,
 } from "./api";
+import { brandMark } from "./card-header";
 import {
-  brandMark,
   createCardView,
   type ActionId,
   type CameraPictureRequest,

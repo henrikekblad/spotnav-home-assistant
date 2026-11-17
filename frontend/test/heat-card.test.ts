@@ -115,7 +115,22 @@ describe("the front", () => {
     expect(pumpLine("sv", villa)).toBe("Värmepumpen värmer · 1,1 kW");
     expect(wouldLine("sv", villa)).toBe("Skulle sänka till 20,5 °C till 19:00: dyra timmar");
     expect(card.querySelector("[data-line='shadow']")!.textContent).toBe("Temperaturen och Hemma/Borta som du ställer in här följer SpotNav när den börjar styra värmen.");
-    expect(card.querySelector("button[data-action='test']")!.textContent).toBe("Test · styr inget än");
+    // The charger card's header: the mark, "Värme · Test", the buttons at the end; tapping Test says what it means.
+    const header = card.querySelector<HTMLElement>(".spotnav-header")!;
+    expect(header.querySelector(".spotnav-identity")).not.toBeNull();
+    expect(header.querySelector("h3.spotnav-name")!.textContent).toBe("Värme");
+    const status = header.querySelector<HTMLElement>("[data-line='header-status']")!;
+    expect(status.dataset["status"]).toBe("test");
+    expect(status.textContent).toBe("· Test");
+    const test = status.querySelector<HTMLButtonElement>("button[data-action='test']")!;
+    expect(test.title).toBe("SpotNav styr inget än.");
+    const explain = card.querySelector<HTMLElement>("[data-line='test-explain']")!;
+    expect(explain.hidden).toBe(true);
+    test.click();
+    expect(explain.hidden).toBe(false);
+    expect(explain.textContent).toMatch(/^SpotNav styr inget än\. SpotNav räknar ut/);
+    expect(header.querySelector(".spotnav-header-actions button[data-action='settings']")).not.toBeNull();
+    expect(card.querySelector(".spotnav-house-chip")).toBeNull();
     expect(card.querySelector("button[data-mode='home']")!.getAttribute("aria-pressed")).toBe("true");
     expect(card.querySelector("button[data-action='settings']")).not.toBeNull();
   });
@@ -565,7 +580,11 @@ describe("SpotNav controlling the heat", () => {
   it("says so in the header, under the switch and in the day's band", () => {
     const controlled = answer("controlled.json");
     const card = body(controlled);
-    expect(card.querySelector("[data-line='controlling']")!.textContent).toBe("Styr värmen");
+    // The header says what the control does now; no "Styr värmen" pill, that is the setting's.
+    const status = card.querySelector<HTMLElement>(".spotnav-header [data-line='header-status']")!;
+    expect(status.dataset["status"]).toBe("lower");
+    expect(status.textContent).toBe("· Sänker till 20,5 °C");
+    expect(card.querySelector(".spotnav-header")!.textContent).not.toContain("Styr värmen");
     expect(card.querySelector("[data-action='test']")).toBeNull();
     expect(card.querySelector("[data-line='test-explain']")).toBeNull();
     expect(card.querySelector("[data-line='shadow']")).toBeNull();
@@ -585,6 +604,27 @@ describe("SpotNav controlling the heat", () => {
     const villa = body(answer());
     expect(villa.querySelector("[data-action='test']")).not.toBeNull();
     expect(villa.querySelectorAll("[data-mark='executed']")).toHaveLength(0);
+  });
+
+  it("says in the header what the control does now: lowers (to what), raises, normal; Test while it does not run", () => {
+    const controlled = answer("controlled.json");
+    const at = (control: Partial<NonNullable<HeatAnswer["control"]>>, would: HeatAnswer["status"]["would"] = controlled.status.would) => {
+      const value = { ...controlled, control: { ...controlled.control!, ...control }, status: { ...controlled.status, would } };
+      const line = body(value).querySelector<HTMLElement>(".spotnav-header [data-line='header-status']");
+      return line === null ? null : `${line.dataset["status"]}: ${line.textContent}`;
+    };
+    expect(at({})).toBe("lower: · Sänker till 20,5 °C");
+    expect(at({}, null)).toBe("lower: · Sänker");
+    expect(at({}, { action: "preheat", target_c: 21.5, until: null, reason: "cheap_before_dear" })).toBe("lower: · Sänker");
+    expect(at({ lowered: false, raised: true })).toBe("raise: · Höjer");
+    expect(at({ lowered: false, reason: "normal" })).toBe("normal: · Normal");
+    expect(at({ lowered: false, reason: "room_cold" })).toBe("normal: · Normal");
+    for (const control of [{ enabled: false, state: "off" }, { state: "verifying" }, { state: "waiting", reason: "automation" }]) {
+      expect(at({ ...control, lowered: false }), JSON.stringify(control)).toBe("test: · Test");
+    }
+    expect(body({ ...controlled, control: null }).querySelector("[data-line='header-status']")!.textContent).toBe("· Test");
+    const en = heatBody({ doc: document, language: "en", state: { kind: "ready", answer: controlled }, ui: { pendingTarget: null, error: null }, handlers: { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn() }, width: 330, nowMs: NOW });
+    expect(en.querySelector("[data-line='header-status']")!.textContent).toBe("· Lowering to 20.5 °C");
   });
 
   it("words every state of the switch's line", () => {
