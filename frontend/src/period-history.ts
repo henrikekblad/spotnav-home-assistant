@@ -4,6 +4,7 @@
 // `textContent` only; every figure is the backend's.
 
 import { browserStore, type PreferenceStore } from "./chart-preference";
+import { scrubBars } from "./chart-scrub";
 import { dateLabel, formatFixed } from "./format";
 import { monthLabel } from "./history";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -374,6 +375,18 @@ export function periodBars(
     plot.append(button);
   }
   plot.addEventListener("mouseleave", () => show(bars.find((bar) => bar.key === ui.selected) ?? null));
+  scrubBars(
+    plot,
+    buttons,
+    (index) => show(bars[index] ?? null),
+    (index) => {
+      const bar = bars[index];
+      if (bar !== undefined) {
+        ui.selected = bar.key;
+        show(bar);
+      }
+    },
+  );
   const axis = element(doc, "div", C.historyAxis);
   axis.setAttribute("aria-hidden", "true");
   for (const bar of bars) {

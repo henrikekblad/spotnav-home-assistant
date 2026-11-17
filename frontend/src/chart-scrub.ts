@@ -139,3 +139,46 @@ export function attachScrub(host: HTMLElement, handlers: ScrubHandlers, threshol
     },
   };
 }
+
+/** The index of the element whose horizontal span is nearest a client x; `null` for none. */
+export function indexAtClientX(nodes: readonly Element[], clientX: number): number | null {
+  let best: number | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  nodes.forEach((node, index) => {
+    const box = node.getBoundingClientRect();
+    const distance = clientX < box.left ? box.left - clientX : clientX > box.right ? clientX - box.right : 0;
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  });
+  return best;
+}
+
+/**
+ * A row of bar buttons (the history charts): a horizontal touch drag over the row shows the bar under the
+ * finger as it moves and keeps the one it ends on. A mouse hovers the full-height buttons themselves.
+ */
+export function scrubBars(
+  plot: HTMLElement,
+  bars: readonly Element[],
+  show: (index: number) => void,
+  choose: (index: number) => void,
+): Scrub {
+  let scrubbed: number | null = null;
+  return attachScrub(plot, {
+    drag(event) {
+      const index = indexAtClientX(bars, event.clientX);
+      if (index !== null) {
+        scrubbed = index;
+        show(index);
+      }
+    },
+    end() {
+      if (scrubbed !== null) {
+        choose(scrubbed);
+      }
+      scrubbed = null;
+    },
+  });
+}
