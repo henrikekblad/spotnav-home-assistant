@@ -365,10 +365,14 @@ function decided(method: string, evidence: Array<Record<string, unknown>> = []):
   return payload;
 }
 
-const carLine = (element: Element): HTMLElement | null =>
-  shadow(element).querySelector<HTMLElement>("[data-vehicle-line]");
-const changeCar = (element: Element): HTMLButtonElement | null =>
-  shadow(element).querySelector<HTMLButtonElement>("button[data-vehicle-line]");
+const carButton = (element: Element): HTMLButtonElement | null =>
+  shadow(element).querySelector<HTMLButtonElement>("button[data-car-button]");
+const caption = (element: Element): string => carButton(element)?.querySelector(".spotnav-bar-caption")?.textContent ?? "";
+/** The car button where it opens Byt bil (its name ends with it), else `null`. */
+const changeCar = (element: Element): HTMLButtonElement | null => {
+  const button = carButton(element);
+  return button !== null && /Byt bil$|Change car$/.test(button.getAttribute("aria-label") ?? "") ? button : null;
+};
 
 describe("the owner's wording", () => {
   it("says inkopplad, Bilar vid laddaren and Laddmål in Swedish, and Charge target in English", () => {
@@ -395,84 +399,41 @@ describe("the car line", () => {
     ["answered", "vald manuellt"],
     ["manual", "vald manuellt"],
     ["assumed", "antagen"],
-  ])("shows how the car was decided (%s) as an icon after the name, its words as title and accessible name", async (method, words) => {
+  ])("says how the car was decided (%s) in the car button's caption, as the app does", async (method, words) => {
     const { element } = await mounted(decided(method), "sv");
-    const line = carLine(element)!;
-    // No words on the line: the icon says it.
-    expect(line.textContent).not.toContain(words);
-    const icon = line.querySelector<HTMLElement>(`[data-method='${method}']`)!;
-    expect(icon.getAttribute("role")).toBe("img");
-    expect(icon.title).toBe(words);
-    expect(icon.getAttribute("aria-label")).toBe(words);
-    expect(icon.querySelector("svg path")?.getAttribute("d")).toMatch(/^M/);
-    // Glued to the name with no separator; the separator comes after.
-    const head = icon.parentElement!;
-    expect(head.classList.contains("spotnav-vehicle-line-head")).toBe(true);
-    // The battery, the name and its icon stay together; the "·" leads the next part, where a wrapped row clips it.
-    expect(head.firstElementChild?.tagName.toLowerCase()).toBe("svg");
-    expect(head.querySelector(".spotnav-vehicle-line-name")?.nextElementSibling).toBe(icon);
-    expect(head.textContent).toBe("EV6");
-    const next = head.nextElementSibling as HTMLElement;
-    const part = next.classList.contains("spotnav-vehicle-line-tail") ? next.firstElementChild! : next;
-    expect(part.classList.contains("spotnav-vehicle-line-part")).toBe(true);
-    expect(part.firstElementChild?.classList.contains("spotnav-vehicle-line-separator")).toBe(true);
-    expect(part.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+    expect(caption(element)).toBe(`Bil · ${words}`);
+    expect(carButton(element)!.getAttribute("aria-label")).toContain(words);
+    expect(carButton(element)!.querySelector(".spotnav-car-button-name")?.textContent).toBe("EV6");
   });
 
-  it("gives each method its own icon, answered and manual sharing the person", async () => {
-    const paths: Record<string, string> = {};
-    for (const method of ["camera", "plug_sensor", "location", "answered", "manual", "assumed"]) {
-      document.body.innerHTML = "";
-      const line = carLine((await mounted(decided(method), "sv")).element)!;
-      paths[method] = line.querySelector(`[data-method='${method}'] path`)!.getAttribute("d")!;
-    }
-    expect(paths["answered"]).toBe(paths["manual"]);
-    const distinct = new Set(Object.entries(paths).filter(([key]) => key !== "manual").map(([, d]) => d));
-    expect(distinct.size).toBe(5);
-  });
-
-  it("shows a turning icon while identifying, and nothing without identification", async () => {
-    const line = carLine((await mounted(dashboard(true), "sv")).element)!;
-    const icon = line.querySelector<HTMLElement>("[data-method='identifying']")!;
-    expect(icon.title).toBe("identifierar…");
-    expect(icon.getAttribute("aria-label")).toBe("identifierar…");
-    expect(line.textContent).not.toContain("identifierar");
+  it("says identifying while it identifies, and only Car without identification", async () => {
+    const waiting = decided("assumed");
+    waiting["identification"]["state"] = "waiting";
+    expect(caption((await mounted(waiting, "sv")).element)).toBe("Bil · identifierar…");
     document.body.innerHTML = "";
-    const plain = carLine((await mounted(dashboard(false), "sv")).element)!;
-    expect(plain.querySelector("[data-method]")).toBeNull();
-    expect(plain.textContent).not.toContain("identifier");
+    expect(caption((await mounted(dashboard(false), "sv")).element)).toBe("Bil");
   });
 
-  it("turns the identifying icon slowly, and not at all when the system asks for less motion", () => {
-    const css = VISUAL_STYLES;
-    expect(css).toMatch(/\[data-method="identifying"\] > svg \{\s*animation: spotnav-method-turn/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none !important/);
+  it("asks Choose car in the accent while the question is open", async () => {
+    const payload = dashboard(true);
+    const { element } = await mounted(payload, "sv");
+    expect(caption(element)).toBe("Välj bil");
+    expect(carButton(element)!.dataset["asking"]).toBe("true");
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-car-button\[data-asking="true"\] > \.spotnav-bar-caption \{[^}]*color: var\(--primary-color/);
   });
 });
 
 describe("Byt bil", () => {
-  it("is labelled in every language", () => {
-    const words = { en: "Change car – EV6", sv: "Byt bil – EV6", da: "Skift bil – EV6", nb: "Bytt bil – EV6", fi: "Vaihda auto – EV6" };
-    for (const [language, text] of Object.entries(words)) {
-      expect(translate(language as "en", "identify.changeCarAria", { name: "EV6" })).toBe(text);
-    }
-  });
-
   it("is offered to every signed-in user, and corrects the car through the question's own answer", async () => {
     const evidence = [
       { vehicle_id: EV6, plug: null, location: null, verdict: "plugged_in" },
       { vehicle_id: NIRO, plug: null, location: null, verdict: null },
     ];
     const { hass, element } = await mounted(decided("plug_sensor", evidence), "sv", false);
-    // The button hides its children from a screen reader: its name says how the car was decided too.
-    expect(changeCar(element)?.getAttribute("aria-label")).toBe("Byt bil – EV6, identifierad via bilens laddkabel");
-    expect(changeCar(element)?.querySelector("[data-icon='swap']")).not.toBeNull();
-    // The icon sits in the same nowrap group as the last text part, so a wrap never leaves it alone.
-    const tail = changeCar(element)?.querySelector(".spotnav-vehicle-line-inner")?.lastElementChild;
-    expect(tail?.classList.contains("spotnav-vehicle-line-tail")).toBe(true);
-    expect(tail?.lastElementChild?.getAttribute("data-icon")).toBe("swap");
-    expect(tail?.firstElementChild?.tagName).toBe("SPAN");
-    expect(tail?.childElementCount).toBe(2);
+    // The button hides its children from a screen reader: its name is the caption, the car and what it does.
+    expect(changeCar(element)?.getAttribute("aria-label")).toBe(
+      "Bil · identifierad via bilens laddkabel. EV6, 40 % av 80 % mål. Byt bil",
+    );
     expect(shadow(element).querySelector("[data-change-car]")).toBeNull();
     changeCar(element)!.click();
     await settle();
@@ -493,16 +454,12 @@ describe("Byt bil", () => {
   it("is not offered with one car at the charger", async () => {
     const payload = dashboard(false);
     payload["settings"]["vehicle_ids"] = [EV6];
-    expect(changeCar((await mounted(payload)).element)).toBeNull();
-  });
-
-  it("names a plain car line once: the group by the line, the method only by its own icon", async () => {
-    const payload = decided("plug_sensor");
-    payload["settings"]["vehicle_ids"] = [EV6];
-    const line = carLine((await mounted(payload, "sv")).element)!;
-    expect(line.getAttribute("role")).toBe("group");
-    expect(line.getAttribute("aria-label")).not.toContain("laddkabel");
-    expect(line.querySelector("[data-method]")?.getAttribute("aria-label")).toBe("identifierad via bilens laddkabel");
+    const { element } = await mounted(payload);
+    expect(carButton(element)).not.toBeNull();
+    expect(changeCar(element)).toBeNull();
+    carButton(element)!.click();
+    await settle();
+    expect(openDialog(element)!.querySelector("[data-change-car-form]")).toBeNull();
   });
 
   it("has no method note in the dialog when nothing identified the car", async () => {
@@ -516,7 +473,6 @@ describe("Byt bil", () => {
     const payload = dashboard(false);
     payload["connection"] = { state: "connected", source: null };
     const { hass, element } = await mounted(payload, "sv", false);
-    expect(changeCar(element)?.querySelector("[data-icon='swap']")).not.toBeNull();
     changeCar(element)!.click();
     await settle();
     const dialog = openDialog(element)!;

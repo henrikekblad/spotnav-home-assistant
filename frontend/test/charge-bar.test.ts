@@ -202,14 +202,14 @@ describe("the bar in the card", () => {
     expect(withoutBar.querySelector(`.${VISUAL_CLASSES.chargeBar}`)).toBeNull();
   });
 
-  it("hides it beside the vehicle line too", () => {
+  it("hides it beside the car button too", () => {
     const soc = {
       value: 50, age_s: 60, source: "vehicle", estimated: false, target_percent: null, need_kwh: null,
       capacity_kwh: 77, vehicle_name: "EV", vehicle_id: "ev", vehicle_max_percent: 80, room_kwh: 25.7,
       efficiency: 0.9, vehicles: [], missing: [],
     };
     const root = view(modelOf(charging(block(), { soc })));
-    expect(root.querySelector(`.${VISUAL_CLASSES.vehicleLine}`)).not.toBeNull();
+    expect(root.querySelector(`.${VISUAL_CLASSES.carButton}`)).not.toBeNull();
     expect(root.querySelector(`.${VISUAL_CLASSES.connectionLine}`)).toBeNull();
   });
 
