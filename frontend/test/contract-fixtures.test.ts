@@ -218,6 +218,7 @@ interface ExpectedV7 {
 
 const V7_EXPECTED: Record<string, ExpectedV7> = {
   "charger_states_its_maximum.json": { selected: "cheapest", strategyState: null, site: null },
+  "dc_charger_power.json": { selected: "cheapest", strategyState: null, site: null },
   "cheapest_direct_site_admin.json": {
     selected: "cheapest",
     strategyState: null,
@@ -626,13 +627,22 @@ describe("the phases a charge uses", () => {
 
 describe("the backend's v7 soc", () => {
   it("is null in every fixture that has no state-of-charge source", () => {
-    for (const name of names().filter((entry) => !entry.startsWith("target_soc_"))) {
+    for (const name of names().filter((entry) => !entry.startsWith("target_soc_") && entry !== "dc_charger_power.json")) {
       const result = decodeFixture(name);
       expect(result.ok, name).toBe(true);
       if (result.ok && true) {
         expect(result.value.soc, name).toBeNull();
       }
     }
+  });
+
+  it("is unknown, never the 0 % a DC charger reads before its session, in dc_charger_power.json", () => {
+    const result = decodeFixture("dc_charger_power.json");
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error("no v7 soc");
+    }
+    expect(result.value.soc).toMatchObject({ value: null, source: "charger", missing: ["soc", "capacity"] });
   });
 
   it("is decoded exactly as the backend wrote it in target_soc_estimated.json", () => {
@@ -844,7 +854,9 @@ describe("the backend's v7 current_range", () => {
     expect(result.value.current_range).toEqual(
       name === "charger_states_its_maximum.json"
         ? { min_a: 6, max_a: 16, source: "current_limit" }
-        : { min_a: 6, max_a: 32, source: "default" },
+        : name === "dc_charger_power.json"
+          ? { min_a: 6, max_a: 17, source: "current_limit", kw_per_a: 0.6928 }
+          : { min_a: 6, max_a: 32, source: "default" },
     );
   });
 });

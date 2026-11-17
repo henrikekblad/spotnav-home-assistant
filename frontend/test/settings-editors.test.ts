@@ -409,6 +409,34 @@ describe("the request lifecycle", () => {
     expect(editorDialog(element)?.querySelector("[data-part='phases-reason']")).toBeNull();
   });
 
+  it("shows a DC charger's planned current as the power it is written as, with no phases line", async () => {
+    const payload = fixture("start_idle");
+    payload["current_range"] = { min_a: 6, max_a: 17, source: "current_limit", kw_per_a: 0.6928 };
+    payload["charging_phases"] = { phases: 1, charger: 3, vehicle: 1, limited_by: "vehicle" };
+    const { hass, element } = await openEditor("current", { record: aRecord({ phases: 3, amps: 16 }), payload });
+
+    expect(currentText(element)).toBe("11.1 kW");
+    // The Plan cell names it in kW too (the fixture's stored 10 A).
+    expect(rowValues(element)[2]).toBe("6.9 kW");
+    const label = editorDialog(element)?.textContent ?? "";
+    expect(label).toContain(translate("en", "settings.current.labelPower"));
+    const slider = editorDialog(element)?.querySelector<HTMLInputElement>("input[type='range'][id$='-current']");
+    expect(slider?.getAttribute("aria-label")).toBe(
+      translate("en", "settings.current.sliderPower", { min: "4.2", max: "11.8" }),
+    );
+    expect(editorDialog(element)?.querySelector<HTMLElement>(".spotnav-settings-power")?.hidden).toBe(true);
+    // The car's onboard phases do not limit a DC charger: no reason line.
+    expect(editorDialog(element)?.querySelector("[data-part='phases-reason']")).toBeNull();
+
+    // The slider still moves in whole amperes; what is saved is the current per phase.
+    focusKind = "current";
+    enter(inputs(element)[0]!, "17");
+    expect(currentText(element)).toBe("11.8 kW");
+    button(element, "spotnav-settings-save")!.click();
+    await settle();
+    expect((updates(hass)[0]!["settings"] as Record<string, unknown>)["amps"]).toBe(17);
+  });
+
   it("says why when the car limits the phases", async () => {
     const payload = fixture("start_idle");
     payload["charging_phases"] = { phases: 1, charger: 3, vehicle: 1, limited_by: "vehicle" };

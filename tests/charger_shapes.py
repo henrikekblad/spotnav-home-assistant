@@ -24,6 +24,8 @@ MILLIAMPS = {"device_class": "current", "unit_of_measurement": "mA"}
 NUMBER_A = {"unit_of_measurement": "A", "min": 6, "max": 16, "step": 1}
 POWER_W = {"device_class": "power", "state_class": "measurement", "unit_of_measurement": "W"}
 POWER_KW = {"device_class": "power", "state_class": "measurement", "unit_of_measurement": "kW"}
+#: Sigenergy's DC charger power limit (TypQxQ 2.0.3: kW, 0 to 100 in steps of 0.001).
+SIGEN_POWER_LIMIT = {"device_class": "power", "unit_of_measurement": "kW", "min": 0, "max": 100, "step": 0.001}
 
 
 @dataclass(frozen=True)
@@ -708,6 +710,82 @@ SHAPES: dict[str, Shape] = {
             "session_energy_register": None,
             "energy_power_entity": "sensor.abb_terra_ac_active_power",
             "charging_state": "sensor.abb_terra_ac_charging_state",
+            "current_entities": [],
+        },
+    ),
+    # Sigenergy's DC charger through the TypQxQ "Sigenergy ESS" integration 2.0.3: the unique id is
+    # `<config entry>_<device>_<key>` and the translation key is the key; the power limit is in kW.
+    "sigen": Shape(
+        "sigen",
+        "EVDC1",
+        (
+            _e("button", "sig1_inverter_1_dc_charger_start", "dc_charger_start", translation_key=True),
+            _e("button", "sig1_inverter_1_dc_charger_stop", "dc_charger_stop", translation_key=True),
+            _e(
+                "number",
+                "sig1_inverter_1_dc_charger_max_charging_power_limit",
+                "dc_charger_max_charging_power_limit",
+                "12",
+                SIGEN_POWER_LIMIT,
+                translation_key=True,
+            ),
+            _e(
+                "number",
+                "sig1_inverter_1_dc_charger_max_discharging_power_limit",
+                "dc_charger_max_discharging_power_limit",
+                "12",
+                SIGEN_POWER_LIMIT,
+                translation_key=True,
+            ),
+            _e("sensor", "sig1_inverter_1_dc_charger_output_power", "dc_charger_output_power", "7.5", POWER_KW, translation_key=True),
+            _e("sensor", "sig1_inverter_1_dc_charger_rated_charging_power", "dc_charger_rated_charging_power", "12", POWER_KW, translation_key=True),
+            _e("sensor", "sig1_inverter_1_dc_charger_charging_current", "dc_charger_charging_current", "19.5", AMPS, translation_key=True),
+            _e(
+                "sensor",
+                "sig1_inverter_1_dc_charger_vehicle_soc",
+                "dc_charger_vehicle_soc",
+                "55",
+                {"device_class": "battery", "state_class": "measurement", "unit_of_measurement": "%"},
+                translation_key=True,
+            ),
+            _e("sensor", "sig1_inverter_1_dc_charger_running_state", "dc_charger_running_state", "charging", {"device_class": "enum"}, translation_key=True),
+            _e(
+                "sensor",
+                "sig1_inverter_1_dc_charger_total_charging_capacity",
+                "dc_charger_total_charging_capacity",
+                "1234.56",
+                {**ENERGY_KWH, "state_class": "total"},
+                translation_key=True,
+            ),
+            _e(
+                "sensor",
+                "sig1_inverter_1_dc_charger_current_charging_capacity",
+                "dc_charger_current_charging_capacity",
+                "4.2",
+                {**ENERGY_KWH, "state_class": "total"},
+                translation_key=True,
+            ),
+            _e(
+                "sensor",
+                "sig1_inverter_1_dc_charger_total_discharging_capacity",
+                "dc_charger_total_discharging_capacity",
+                "12.3",
+                {**ENERGY_KWH, "state_class": "total"},
+                translation_key=True,
+            ),
+        ),
+        {
+            "charge_control": "button.sigen_dc_charger_start",
+            "path": {
+                "kind": "buttons",
+                "start_entity_id": "button.sigen_dc_charger_start",
+                "stop_entity_id": "button.sigen_dc_charger_stop",
+            },
+            "current_limit": "number.sigen_dc_charger_max_charging_power_limit",
+            "current_control": "power",
+            "energy_register": "sensor.sigen_dc_charger_total_charging_capacity",
+            "session_energy_register": None,
+            "charging_state": "sensor.sigen_dc_charger_running_state",
             "current_entities": [],
         },
     ),
