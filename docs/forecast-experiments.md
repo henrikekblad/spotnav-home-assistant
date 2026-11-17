@@ -63,7 +63,7 @@ a result holds up or is luck.
 ## Results
 
 Forecast error, next day as issued at 13:00, December to February (lower is better), and money on the winter days
-against today's model, in kronor over 89 days (Max vinst mode):
+against today's model, in kronor over 89 days (Max profit mode):
 
 | Forecast | MAE, kW | Money vs today's |
 | --- | ---: | ---: |
@@ -85,10 +85,10 @@ against today's model, in kronor over 89 days (Max vinst mode):
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/forecast-experiments/winter-money-dark.png">
-  <img src="images/forecast-experiments/winter-money-light.png" alt="Horizontal bar chart of kronor over 89 winter days against today's model, Max vinst mode: A -1, B -3, C -3, D2 0, D4 -1, today's at the 60th percentile +3, each with a resampling range of a few kronor; a line at +12 kr marks a perfect house forecast.">
+  <img src="images/forecast-experiments/winter-money-light.png" alt="Horizontal bar chart of kronor over 89 winter days against today's model, Max profit mode: A -1, B -3, C -3, D2 0, D4 -1, today's at the 60th percentile +3, each with a resampling range of a few kronor; a line at +12 kr marks a perfect house forecast.">
 </picture>
 
-*Money against today's model over 89 winter days, Max vinst mode. Even a perfect house forecast would add only 12 kr.*
+*Money against today's model over 89 winter days, Max profit mode. Even a perfect house forecast would add only 12 kr.*
 
 What the table says:
 
@@ -103,10 +103,12 @@ What the table says:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/forecast-experiments/autumn-money-dark.png">
-  <img src="images/forecast-experiments/autumn-money-light.png" alt="Horizontal bar chart of the saving against no battery over 76 autumn days: perfect plan 4 350 kr (100 %), Sigenergy AI 4 080 kr (94 %), SpotNav Max vinst 3 960 kr (91 %), SpotNav Balanserad 3 730 kr (86 %).">
+  <img src="images/forecast-experiments/autumn-money-light.png" alt="Horizontal bar chart of the saving against no battery over 76 autumn days, beside the battery cycles a day. Perfect plan 4 350 kr (100 %, 0.66 cycles a day), Sigenergy AI 4 080 kr (94 %, 0.84), SpotNav Max profit 3 960 kr (91 %, 0.79), SpotNav Balanced 3 730 kr (86 %, 0.58).">
 </picture>
 
-*Saving against no battery, 1 September to 15 November 2026, and the share of the perfect plan (Max vinst rules).*
+*Saving against no battery, 1 September to 15 November 2026, and the share of the perfect plan (Max profit rules), with the battery cycles a day on the right.*
+
+The battery's own optimiser cycles the most, 0.84 a day, 26 % more than the perfect plan. After a wear cost of 15 öre per kWh in and out, the gap narrows: net of wear, the perfect plan is 3 721 kr, Sigenergy AI 3 290 kr, SpotNav Max profit 3 206 kr and SpotNav Balanced 3 183 kr.
 
 ## Tried and rejected
 
@@ -172,8 +174,8 @@ logged it, so the provider's hourly shape is an estimate that flatters it.
   is 0.506 kW against 0.508 kW, and in money the difference is within about 15 kr on both data sets, with no
   consistent sign.
 * **The raw provider forecast is the costly one.** It forecast 1.57 times the PV that was measured in autumn. On
-  the data set where the car's charging is taken out of the house load it lost 42 kr (Max vinst) and 28 kr
-  (Balanserad) to the corrected forecast, every week the same way. On the other data set the loss was 18 and 7 kr
+  the data set where the car's charging is taken out of the house load it lost 42 kr (Max profit) and 28 kr
+  (Balanced) to the corrected forecast, every week the same way. On the other data set the loss was 18 and 7 kr
   and not significant. The true loss is probably larger, because of the estimate above.
 * **Over a year our own forecast beats the simple alternatives** (441 days, hourly error).
 
@@ -193,7 +195,7 @@ logged it, so the provider's hourly shape is an estimate that flatters it.
 * **A new site starts well.** With no history the first week's error is about 40 % above a full history's, and
   still well under yesterday's PV. It is within about 5 % from week 2 to 4.
 
-Autumn has little sun, so the money at stake was small: a perfect sun forecast would have earned 34 kr (Max vinst)
+Autumn has little sun, so the money at stake was small: a perfect sun forecast would have earned 34 kr (Max profit)
 over today's on the 76 days. Summer is untested at decision level; the forecast-level result above covers the year.
 
 **Tried and rejected**
