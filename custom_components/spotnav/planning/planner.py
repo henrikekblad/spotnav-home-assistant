@@ -1377,13 +1377,16 @@ def ending_at_need(result: PlanResult) -> PlanResult:
     itself, and the cost counts every slot whole but the last one in time, which counts only for the share of it
     the need takes (the same for the cost of charging now, whose last slot is the last of the first ones). The
     slots and periods stay whole (what is installed); `need_met_at` says where in the last one the need is met.
-    A plan short of its departure, one with no slots, or one whose need fills its slots exactly is unchanged
-    beyond the flag.
+    A plan short of its departure, or one whose slots hold a little less than the need (near enough to count as
+    ready, `NEAR_ENOUGH_PERCENT`), is unchanged: every slot runs and the count never ends it early. One with no
+    slots, or one whose need fills its slots exactly, is unchanged beyond the flag.
     """
     if not result.has_plan or result.short_of_deadline or not result.slots or result.power_kw <= 0:
         return result
     per_slot = result._last_slot_kw() * SLOT_HOURS
     extra = result.delivered_kwh - result.requested_kwh
+    if extra < -_WHOLE_SLOTS_KWH:
+        return result
     if extra <= _WHOLE_SLOTS_KWH or extra >= per_slot:
         return replace(result, ends_at_need=True)
     last = max(result.slots, key=lambda slot: slot.start)
