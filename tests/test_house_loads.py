@@ -359,7 +359,28 @@ async def test_the_pie_of_a_day_and_a_month_end_to_end(hass: HomeAssistant, free
     assert (await ask(hass, 2, api_version=1, charger_id="entry_a"))["result"] == result
     assert len([read for read in reads if "sensor.diskmaskin_energi" in read[0]]) == 1
 
+    # The month's hours are read once, by the history; the pie judges its meters' hours off the event loop.
+    import threading
+
+    period_reads: list[str] = []
+    real_read_periods = history_api._read_periods
+
+    async def counted_read_periods(*args, **kwargs):
+        period_reads.append(args[3].kind)
+        return await real_read_periods(*args, **kwargs)
+
+    threads: list[str] = []
+    real_limits = loads_api._limits
+
+    def limits_spy(periods):
+        threads.append(threading.current_thread().name)
+        return real_limits(periods)
+
+    monkeypatch.setattr(history_api, "_read_periods", counted_read_periods)
+    monkeypatch.setattr(loads_api, "_limits", limits_spy)
     month = (await ask(hass, 3, api_version=1, site_id=site.entry_id, period="month"))["result"]
+    assert period_reads == ["month"]
+    assert threads and threading.main_thread().name not in threads
     assert month["period"] == "month" and month["date"].endswith("-01")
     assert month["house_kwh"] == 2.0 and [row["kwh"] for row in month["loads"]] == [0.5, 0.25]
 
