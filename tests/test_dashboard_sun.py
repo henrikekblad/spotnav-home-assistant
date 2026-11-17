@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from custom_components.spotnav.api.sun import HOUR_KEYS, SUN_KEYS, sun_block_from
+from custom_components.spotnav.api.sun import HOUR_KEYS, MAX_QUARTERS, QUARTER_KEYS, SUN_KEYS, sun_block_from
 from custom_components.spotnav.api.webhook import APP_DASHBOARD_BLOCK_READS, APP_READS_SUN, _for_app
 
 TZ = "Europe/Stockholm"
@@ -43,6 +43,27 @@ def test_the_running_hour_has_a_forecast_so_the_hours_run_without_a_gap() -> Non
     ]
 
 
+def test_todays_measured_quarters_are_sent_up_to_now_and_none_where_statistics_are_missing() -> None:
+    quarter = _hour(11)
+    quarters = {
+        _hour(9) - timedelta(days=1): 5.0,  # yesterday
+        _hour(9): 0.4,
+        quarter: 1.0,
+        quarter + timedelta(minutes=15): 1.2,  # the quarter running at now (11:20) is sent
+        quarter + timedelta(minutes=30): 9.0,  # in the future
+    }
+    block = sun_block_from(NOW, TZ, {}, {}, quarters)
+    assert [item["start"] for item in block["quarters"]] == [
+        _hour(9).isoformat(),
+        quarter.isoformat(),
+        (quarter + timedelta(minutes=15)).isoformat(),
+    ]
+    assert all(tuple(item) == QUARTER_KEYS for item in block["quarters"])
+    assert sun_block_from(NOW, TZ, {}, {})["quarters"] == []
+    many = {_hour(0) + timedelta(minutes=15 * index): 1.0 for index in range(200)}
+    assert len(sun_block_from(_hour(23), TZ, {}, {}, many)["quarters"]) <= MAX_QUARTERS
+
+
 def test_an_hour_with_no_figure_is_left_out_and_nothing_is_negative() -> None:
     block = sun_block_from(NOW, TZ, {_hour(8): -0.2}, {})
     assert block["hours"] == [{"start": _hour(8).isoformat(), "kw": 0.0, "measured": True}]
@@ -74,6 +95,7 @@ def test_the_block_reads_the_sites_corrected_forecast_and_measured_log(monkeypat
     made = _hour(6)
     log = SimpleNamespace(hours=lambda kind: {_hour(9): LoggedHour(1.0, made, 0.6)} if kind == KIND_SUN else {})
     controller = SimpleNamespace(house_forecast=SimpleNamespace(log=log))
+    controller.solar_correction = SimpleNamespace(quarters={_hour(11): 1.234})
     forecast = SimpleNamespace(corrected={_hour(12): 0.8}, raw={_hour(12): 1.4})
     monkeypatch.setattr(dashboard, "site_binding", lambda _hass, _id: SimpleNamespace(entry_id="site"))
     monkeypatch.setattr(sun, "site_controller_for", lambda _hass, _id: controller)
@@ -83,7 +105,8 @@ def test_the_block_reads_the_sites_corrected_forecast_and_measured_log(monkeypat
         "hours": [
             {"start": _hour(9).isoformat(), "kw": 0.6, "measured": True},
             {"start": _hour(12).isoformat(), "kw": 0.8, "measured": False},
-        ]
+        ],
+        "quarters": [{"start": _hour(11).isoformat(), "kw": 1.23}],
     }
     assert sun.capture_sun(None, "charger", NOW, None) is None
     monkeypatch.setattr(sun, "_sun", lambda _hass, _controller: None)

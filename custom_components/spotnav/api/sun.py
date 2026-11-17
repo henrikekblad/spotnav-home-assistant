@@ -5,7 +5,9 @@ The block is present only where the site has a solar forecast (the same source t
 (a kWh over an hour is its mean kW): before the running hour the measured production (the forecast log's outcomes,
 filled from the Energy dashboard's statistics, `measured` true), from the running hour on the corrected forecast the
 plan uses (`measured` false). An hour with no figure is left out, never sent as zero. The forecast reaches only
-`SHOWN_HOURS` ahead (`site/solar_correction_shadow.py`), so tomorrow is partly there.
+`SHOWN_HOURS` ahead (`site/solar_correction_shadow.py`), so tomorrow is partly there. `quarters` holds today's measured
+mean power per quarter hour up to now (from the recorder's 5-minute statistics, at most `MAX_QUARTERS`; empty where
+they are missing), finer than the hourly measured figures, which the card then replaces for those hours.
 """
 
 from __future__ import annotations
@@ -22,7 +24,10 @@ from ..runtime import site_controller_for
 from ..site.house_view import day_hour_starts
 from .house import _production, _sun
 
-SUN_KEYS: Final = ("hours",)
+SUN_KEYS: Final = ("hours", "quarters")
+QUARTER_KEYS: Final = ("start", "kw")
+#: A day has at most 100 quarters of the sun measured so far (25 hours); the block sends at most this many.
+MAX_QUARTERS: Final = 96
 HOUR_KEYS: Final = ("start", "kw", "measured")
 
 
@@ -31,8 +36,10 @@ def sun_block_from(
     tz: str,
     measured: Mapping[datetime, float],
     forecast: Mapping[datetime, float],
+    quarters: Mapping[datetime, float] | None = None,
 ) -> dict[str, Any]:
-    """The block from the measured hours (kWh by UTC hour start) and the corrected forecast, for today and tomorrow."""
+    """The block from the measured hours (kWh by UTC hour start) and the corrected forecast, for today and tomorrow,
+    and today's measured quarter hours (mean kW by UTC quarter start, none where the 5-minute statistics are missing)."""
     current = hour_start(now, tz)
     today: date = now.astimezone(time_zones.require_zone(tz)).date()
     hours: list[dict[str, Any]] = []
@@ -43,7 +50,13 @@ def sun_block_from(
             if value is None:
                 continue
             hours.append({"start": start.isoformat(), "kw": round(max(0.0, value), 2), "measured": past})
-    return {"hours": hours}
+    first = day_hour_starts(today, tz)[0]
+    recent = [
+        {"start": start.isoformat(), "kw": round(max(0.0, value), 2)}
+        for start, value in sorted((quarters or {}).items())
+        if first <= start <= now
+    ]
+    return {"hours": hours, "quarters": recent[-MAX_QUARTERS:]}
 
 
 def capture_sun(hass: HomeAssistant, charger_entry_id: str, now: datetime, tz: str | None) -> dict[str, Any] | None:
@@ -59,4 +72,4 @@ def capture_sun(hass: HomeAssistant, charger_entry_id: str, now: datetime, tz: s
     sun = _sun(hass, controller)
     if sun is None:
         return None
-    return sun_block_from(now, tz, _production(controller), sun.corrected)
+    return sun_block_from(now, tz, _production(controller), sun.corrected, controller.solar_correction.quarters)
