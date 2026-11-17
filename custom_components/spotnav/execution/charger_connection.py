@@ -71,6 +71,21 @@ PLATFORM_STATUS: Final[dict[str, dict[str, str]]] = {
         "completed": FINISHED,
         "error": ERROR,
     },
+    # Sigenergy's DC charger (the TypQxQ "Sigenergy ESS" integration's `dc_charger_running_state`). `ended` is left
+    # out on purpose: a session SpotNav stopped may read it with the car still plugged in, so it is neither a
+    # plug-in nor an unplug until the tester has said what it shows (`docs/setup.md`, Sigenergy DC charger).
+    # `charger_unavailable` says nothing about a car.
+    "sigen": {
+        "idle": DISCONNECTED,
+        "occupied": CONNECTED,
+        "preparing_comm": CONNECTED,
+        "preparing_insulation": CONNECTED,
+        "scheduled": CONNECTED,
+        "discharging": CONNECTED,
+        "charging": CHARGING,
+        "fault": ERROR,
+        "alarm": ERROR,
+    },
     "wallbox": {
         "disconnected": DISCONNECTED,
         "ready": CONNECTED,
