@@ -136,6 +136,12 @@ export const VISUAL_CLASSES = {
   summaryMax: "spotnav-summary-max",
   summaryMin: "spotnav-summary-min",
   summaryCurrent: "spotnav-summary-current",
+  summarySun: "spotnav-summary-sun",
+  sunSwatch: "spotnav-sun-swatch",
+  sun: "spotnav-sun",
+  sunArea: "spotnav-sun-area",
+  sunLine: "spotnav-sun-line",
+  sunForecast: "spotnav-sun-forecast",
   summaryArrow: "spotnav-summary-arrow",
   chartToggle: "spotnav-chart-toggle",
   chartToggleGlyph: "spotnav-chart-toggle-glyph",
@@ -1650,6 +1656,41 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.marks} {
     pointer-events: none;
+  }
+  /* The sun: a light amber area with a line on its own kW scale, behind the price marks. Measured is solid, the
+   * forecast dashed. The amber is the house card's sun, readable on a light and on a dark card. */
+  .${VISUAL_CLASSES.sun} {
+    pointer-events: none;
+  }
+  .${VISUAL_CLASSES.sunArea} {
+    fill: var(--spotnav-sun, #e8a200);
+    fill-opacity: 0.2;
+    stroke: none;
+  }
+  .${VISUAL_CLASSES.sunLine} {
+    fill: none;
+    stroke: var(--spotnav-sun, #e8a200);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .${VISUAL_CLASSES.sunLine}.${VISUAL_CLASSES.sunForecast} {
+    stroke-dasharray: 4 3;
+  }
+  .${VISUAL_CLASSES.summarySun} {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.sunSwatch} {
+    display: inline-block;
+    width: 0.8em;
+    height: 0.6em;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--spotnav-sun, #e8a200) 35%, transparent);
+    border-top: 2px solid var(--spotnav-sun, #e8a200);
   }
   .${VISUAL_CLASSES.cheap} {
     --spotnav-mark-colour: var(--spotnav-cheap, #2e7d32);

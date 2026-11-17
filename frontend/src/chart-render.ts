@@ -22,6 +22,7 @@ import {
   type PlanBand,
   type PlanBands,
 } from "./chart";
+import { SUN_HEIGHT_SHARE, sunRuns, type SunPoint, type SunSeries } from "./chart-sun";
 import { CHART_DENSITY, PLAN_BAND_STYLE, VISUAL_CLASSES, type ChartDensityStyle } from "./visual-styles";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -105,6 +106,8 @@ export interface ChartRenderInput {
   title: string;
   description: string;
   labels: ChartLabels;
+  /** The sun on its own kW scale behind the price marks; none when the viewer turned it off or there is none. */
+  sun?: SunSeries | null;
   /** How dense the chart is drawn; the ordinary card when omitted, `CHART_DENSITY.detail` for `chart_detail`. */
   density?: ChartDensityStyle;
   /**
@@ -215,6 +218,55 @@ function bandRect(
     "data-day-key": band.dayKey,
     ...(band.tomorrow ? { fill: `url(#${hatchId})` } : {}),
   });
+}
+
+/** `d` of a polyline through points. */
+function polyline(points: ReadonlyArray<{ x: number; y: number }>): string {
+  return points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(" ");
+}
+
+/**
+ * The sun: per run of consecutive hours a light area from the baseline to the line through the hours' middles, the
+ * line solid where measured and dashed from the last measured hour on (the forecast).
+ */
+export function sunLayer(sun: SunSeries, scale: ChartScale): SVGGElement {
+  const layer = svg("g", { class: VISUAL_CLASSES.sun });
+  const height = (scale.bottom - scale.top) * SUN_HEIGHT_SHARE;
+  const place = (point: SunPoint): { x: number; y: number } => ({
+    x: xForWallClock(scale, point.position),
+    y: scale.bottom - (point.kw / sun.maxKw) * height,
+  });
+  for (const run of sunRuns(sun.points)) {
+    const dots = run.map(place);
+    const first = dots[0];
+    const last = dots[dots.length - 1];
+    if (first === undefined || last === undefined) {
+      continue;
+    }
+    layer.append(
+      svg("path", {
+        class: VISUAL_CLASSES.sunArea,
+        d: `${polyline(dots)} L${last.x.toFixed(2)} ${scale.bottom} L${first.x.toFixed(2)} ${scale.bottom} Z`,
+      }),
+    );
+    // The forecast line starts at the last measured hour, so the two lines meet.
+    const lastMeasured = run.reduce((found, point, index) => (point.measured ? index : found), -1);
+    const measured = dots.slice(0, lastMeasured + 1);
+    const forecast = dots.slice(Math.max(0, lastMeasured));
+    if (measured.length > 0) {
+      layer.append(svg("path", { class: VISUAL_CLASSES.sunLine, "data-kind": "measured", d: polyline(measured) }));
+    }
+    if (forecast.length > 0 && lastMeasured < run.length - 1) {
+      layer.append(
+        svg("path", {
+          class: `${VISUAL_CLASSES.sunLine} ${VISUAL_CLASSES.sunForecast}`,
+          "data-kind": "forecast",
+          d: polyline(forecast),
+        }),
+      );
+    }
+  }
+  return layer;
 }
 
 export function renderChart(input: ChartRenderInput): ChartRenderResult {
@@ -337,6 +389,9 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
     }
   }
   root.append(axis);
+  if (input.sun !== undefined && input.sun !== null) {
+    root.append(sunLayer(input.sun, scale));
+  }
   // Focus lines come before every mark in the DOM so they sit behind them; `applyFocus` decides
   // which one shows.
   const nowLine = svg("line", {
