@@ -104,13 +104,15 @@ export interface ChangeCarInput {
   guest?: boolean;
   /** How the current car was decided, in words (`methodWords`); shown as a note, as the line's icon has no tooltip on touch. */
   decidedBy?: string | null;
+  /** The planned car's charge and the age of its reading (`~62 % · read 3 h ago`), said under that car's radio. */
+  reading?: { vehicleId: string; text: string } | null;
   chargerName: string | null;
   idPrefix: string;
   onChoose: (vehicleId: string) => void;
   onCancel: () => void;
 }
 
-/** "Byt bil": a radio per car (with what its own sensors say), Cancel and Choose. Any signed-in user may. */
+/** "Byt bil": a radio per car (with what its own sensors say, and the planned car's reading and its age), Cancel and Choose. Any signed-in user may. */
 export function changeCarBody(doc: Document, language: Language, input: ChangeCarInput): HTMLFormElement {
   const form = element(doc, "form") as HTMLFormElement;
   form.noValidate = true;
@@ -149,6 +151,11 @@ export function changeCarBody(doc: Document, language: Language, input: ChangeCa
     const hint = verdict === null ? undefined : HINT_KEYS[verdict as keyof typeof HINT_KEYS];
     if (hint !== undefined) {
       group.append(element(doc, "p", C.entityHelp, translate(language, hint)));
+    }
+    if (input.reading !== undefined && input.reading !== null && input.reading.vehicleId === car.id) {
+      const reading = element(doc, "p", C.entityHelp, input.reading.text);
+      reading.dataset["reading"] = car.id;
+      group.append(reading);
     }
   }
   form.append(group);

@@ -50,22 +50,13 @@ export const VISUAL_CLASSES = {
   choiceLabel: "spotnav-choice-label",
   choiceDetail: "spotnav-choice-detail",
   nameBlock: "spotnav-name-block",
-  vehicleLine: "spotnav-vehicle-line",
-  vehicleLineName: "spotnav-vehicle-line-name",
-  vehicleLineCharge: "spotnav-vehicle-line-charge",
+  carButton: "spotnav-car-button",
+  carButtonName: "spotnav-car-button-name",
   connectionLine: "spotnav-connection-line",
   connectionError: "spotnav-connection-error",
-  vehicleLineAge: "spotnav-vehicle-line-age",
-  vehicleLineTail: "spotnav-vehicle-line-tail",
-  vehicleLineHead: "spotnav-vehicle-line-head",
-  vehicleLineMethod: "spotnav-vehicle-line-method",
   nameRow: "spotnav-name-row",
   connectionWord: "spotnav-connection-word",
   connectionIcon: "spotnav-connection-icon",
-  vehicleLinePart: "spotnav-vehicle-line-part",
-  vehicleLineClip: "spotnav-vehicle-line-clip",
-  vehicleLineInner: "spotnav-vehicle-line-inner",
-  vehicleLineSeparator: "spotnav-vehicle-line-separator",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
   vehicleChoiceName: "spotnav-vehicle-choice-name",
@@ -848,6 +839,29 @@ export const VISUAL_STYLES = `
     border-radius: 12px;
     text-align: center;
   }
+  /* The car over the cells (as in the app): the cells' look, the row's full width, the name in bold. */
+  .spotnav-car-button {
+    width: 100%;
+    margin: 0 0 8px;
+    padding: 6px 12px;
+  }
+  .spotnav-car-button > .spotnav-bar-value > .spotnav-action-icon {
+    width: 1.35em;
+    height: 1.35em;
+    color: var(--primary-color, #03a9f4);
+  }
+  .spotnav-car-button-name {
+    font-weight: 600;
+  }
+  /* The open question "which car is plugged in?": the caption asks, in the accent, with the accent outline. */
+  .spotnav-car-button[data-asking="true"] {
+    border: 2px solid var(--primary-color, #03a9f4);
+    background: color-mix(in srgb, var(--primary-color, #03a9f4) 12%, transparent);
+  }
+  .spotnav-car-button[data-asking="true"] > .spotnav-bar-caption {
+    color: var(--primary-color, #03a9f4);
+    opacity: 1;
+  }
   .spotnav-bar-cell.spotnav-bar-busy {
     opacity: 0.6;
     animation: spotnav-bar-busy 1.4s ease-in-out infinite;
@@ -1379,116 +1393,8 @@ export const VISUAL_STYLES = `
     top: 0;
     visibility: hidden;
   }
-  /* The planned vehicle: a quiet text button under the name; the header's 40 px icon buttons keep the row tall enough to tap. */
-  .${VISUAL_CLASSES.vehicleLine} {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-    max-width: 100%;
-    min-height: 28px;
-    margin: 0 0 -4px -4px;
-    padding: 2px 4px;
-    font: inherit;
-    font-size: 0.85rem;
-    color: var(--secondary-text-color, #727272);
-    background: transparent;
-    border: 0;
-    border-radius: 6px;
-    text-align: start;
-    cursor: pointer;
-  }
-  .${VISUAL_CLASSES.vehicleLine} > svg {
-    flex: none;
-  }
-  .${VISUAL_CLASSES.vehicleLine}:focus-visible {
-    outline: 2px solid var(--primary-color, #03a9f4);
-    outline-offset: 1px;
-  }
-  /* Never squeezed to nothing: the charge and status wrap to the next line first; only a name wider
-     than the whole line is cut with an ellipsis. */
-  .${VISUAL_CLASSES.vehicleLineName} {
-    flex: 0 0 auto;
-    max-width: 100%;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .${VISUAL_CLASSES.vehicleLineCharge},
-  .${VISUAL_CLASSES.vehicleLineAge},
   .${VISUAL_CLASSES.connectionLine} {
     flex: none;
-    white-space: nowrap;
-  }
-  /* The line's parts wrap inside a clipped box whose inner row starts one separator to the left: a part that
-     starts a row has its leading "·" in the clipped strip, so no row starts with a lone dot. */
-  .${VISUAL_CLASSES.vehicleLineClip} {
-    display: block;
-    min-width: 0;
-    max-width: 100%;
-    overflow: hidden;
-  }
-  .${VISUAL_CLASSES.vehicleLineInner} {
-    --spotnav-line-separator: 0.9em;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    column-gap: 2px;
-    margin-inline-start: calc(-1 * var(--spotnav-line-separator, 0.9em));
-  }
-  .${VISUAL_CLASSES.vehicleLineHead},
-  .${VISUAL_CLASSES.vehicleLinePart} {
-    display: inline-flex;
-    align-items: center;
-    white-space: nowrap;
-  }
-  .${VISUAL_CLASSES.vehicleLineHead} {
-    flex: 0 1 auto;
-    gap: 4px;
-    min-width: 0;
-    max-width: calc(100% - var(--spotnav-line-separator, 0.9em));
-    margin-inline-start: var(--spotnav-line-separator, 0.9em);
-  }
-  .${VISUAL_CLASSES.vehicleLinePart} {
-    flex: none;
-  }
-  .${VISUAL_CLASSES.vehicleLineSeparator} {
-    display: inline-block;
-    flex: none;
-    width: var(--spotnav-line-separator, 0.9em);
-    text-align: center;
-  }
-  .${VISUAL_CLASSES.vehicleLineHead} > svg {
-    flex: none;
-  }
-  .${VISUAL_CLASSES.vehicleLineHead} > .${VISUAL_CLASSES.vehicleLineName} {
-    flex: 0 1 auto;
-  }
-  .${VISUAL_CLASSES.vehicleLineMethod} {
-    display: inline-flex;
-    flex: none;
-    opacity: 0.8;
-  }
-  .${VISUAL_CLASSES.vehicleLineMethod} > svg {
-    width: 1.1em;
-    height: 1.1em;
-  }
-  /* Identifying: the arrows turn slowly (the reduced-motion rule below stops them). */
-  .${VISUAL_CLASSES.vehicleLineMethod}[data-method="identifying"] > svg {
-    animation: spotnav-method-turn 2.4s linear infinite;
-  }
-  @keyframes spotnav-method-turn {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  /* The last part of the line and the swap icon: if the line wraps, they wrap together, never the icon alone. */
-  .${VISUAL_CLASSES.vehicleLineTail} {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 4px;
     white-space: nowrap;
   }
   /* The charger's status, after its name; an error in the warning colour. */

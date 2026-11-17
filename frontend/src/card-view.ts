@@ -28,9 +28,7 @@ import {
   changeCarBody,
   identificationBanner,
   identificationSummary,
-  methodOf,
   methodWords,
-  type MethodName,
   sourceChoice,
   sourceOption,
   sourceReadingText,
@@ -137,7 +135,7 @@ import { sendDebugEditor, type SendDebug } from "./send-debug";
 import { historyIcon as sharedHistoryIcon } from "./period-history";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
 import type { PowerState, PowerUi } from "./power-view";
-import { connectionLabel, guestLineFor, vehicleLineFor } from "./vehicle-line";
+import { connectionLabel, guestLineFor, vehicleLineFor, type VehicleLineFacts } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
 import {
   CAPACITY_MAX_KWH,
@@ -184,6 +182,7 @@ interface OverviewSection {
   anyone: boolean;
   append: (body: HTMLElement) => void;
 }
+
 
 export interface CardViewInput {
   model: CardModel;
@@ -823,38 +822,8 @@ function settingsGearIcon(doc: Document): SVGElement {
   });
 }
 
-/** A small battery glyph for the vehicle line. */
-/** Byt bil's ⇄ at the end of the car line. */
-function swapIcon(doc: Document): SVGElement {
-  const svg = icon(doc, (svg, ns) => {
-    svg.append(strokePath(ns, doc, "M5 8h13M15 5l3 3-3 3M19 16H6M9 13l-3 3 3 3"));
-  });
-  svg.dataset["icon"] = "swap";
-  return svg;
-}
-
-/** MDI `power-plug`: the car's cable for the method, a plugged-in car for the status. */
-const METHOD_PLUG_PATH = "M16,7V3H14V7H10V3H8V7H8C7,7 6,8 6,9V14.5L9.5,18V21H14.5V18L18,14.5V9C18,8 17,7 16,7Z";
-
-/**
- * How the car on the car line was decided, as one small icon: MDI path data (`@mdi/js`, Apache License 2.0) for
- * camera, power-plug, map-marker, account, help-circle-outline and sync. Answered and manual share the account.
- */
-const METHOD_ICON_PATHS: Readonly<Record<MethodName, string>> = {
-  camera:
-    "M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z",
-  plug_sensor: METHOD_PLUG_PATH,
-  location:
-    "M12,11.5A2.5,2.5 0 0,1 9.5,9A2.5,2.5 0 0,1 12,6.5A2.5,2.5 0 0,1 14.5,9A2.5,2.5 0 0,1 12,11.5M12,2A7,7 0 0,0 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9A7,7 0 0,0 12,2Z",
-  answered:
-    "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z",
-  manual:
-    "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z",
-  assumed:
-    "M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z",
-  identifying:
-    "M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z",
-};
+/** MDI `power-plug`: a plugged-in car for the status. */
+const PLUG_PATH = "M16,7V3H14V7H10V3H8V7H8C7,7 6,8 6,9V14.5L9.5,18V21H14.5V18L18,14.5V9C18,8 17,7 16,7Z";
 
 /**
  * The charger's status as a symbol, for a header too narrow for the word: MDI path data (`@mdi/js`, Apache License
@@ -864,7 +833,7 @@ const METHOD_ICON_PATHS: Readonly<Record<MethodName, string>> = {
 const CONNECTION_ICON_PATHS: Readonly<Record<Exclude<ConnectionShownName, "unknown">, string>> = {
   disconnected:
     "M13,3V7H15V3H17V7C18,7 19,8 19,9V14.5L17.88,15.63L8.25,6H11V3H13M3.28,4L2,5.27L5.5,8.77C5.18,9.04 5,9.5 5,10V15.5L8.5,19V22H13.5V19L14.5,18L18.73,22.27L20,21L3.28,4Z",
-  connected: METHOD_PLUG_PATH,
+  connected: PLUG_PATH,
   charging: "M11 15H6L13 1V9H18L11 23V15Z",
   paused: "M14,19H18V5H14M6,19H10V5H6V19Z",
   waiting:
@@ -926,34 +895,63 @@ function readStatusFit(row: HTMLElement): StatusFitReading {
   };
 }
 
-/** The method icon: an image named by the full words (its title shows them on hover); `identifying` turns slowly. */
-function methodIcon(doc: Document, method: MethodName, words: string): HTMLElement {
-  const holder = element(doc, "span", C.vehicleLineMethod);
-  holder.setAttribute("role", "img");
-  holder.setAttribute("aria-label", words);
-  holder.title = words;
-  holder.dataset["method"] = method;
-  holder.append(
-    icon(doc, (svg, ns) => {
-      svg.append(fillPath(ns, doc, METHOD_ICON_PATHS[method]));
-    }),
-  );
-  return holder;
+/** MDI `car` path data (`@mdi/js`, Apache License 2.0), the app's car glyph. */
+const CAR_PATH =
+  "M18.92,6.01C18.72,5.42 18.16,5 17.5,5H6.5C5.84,5 5.29,5.42 5.08,6.01L3,12V20A1,1 0 0,0 4,21H5A1,1 0 0,0 6,20V19H18V20A1,1 0 0,0 19,21H20A1,1 0 0,0 21,20V12L18.92,6.01M6.5,16A1.5,1.5 0 0,1 5,14.5A1.5,1.5 0 0,1 6.5,13A1.5,1.5 0 0,1 8,14.5A1.5,1.5 0 0,1 6.5,16M17.5,16A1.5,1.5 0 0,1 16,14.5A1.5,1.5 0 0,1 17.5,13A1.5,1.5 0 0,1 19,14.5A1.5,1.5 0 0,1 17.5,16M5,11L6.5,6.5H17.5L19,11H5Z";
+
+export interface CarButtonInput {
+  line: VehicleLineFacts;
+  /** How the car was decided at this plug-in, in words (`methodWords`), or `null`. */
+  decidedBy: string | null;
+  /** The question "which car is plugged in?" is open: the caption asks, and the button is marked. */
+  asking: boolean;
+  /** The car can be changed here: the button opens Change car (else the car's reading). */
+  changeable: boolean;
 }
 
-function batteryIcon(doc: Document): SVGElement {
-  return icon(doc, (svg, ns) => {
-    const body = doc.createElementNS(ns, "path");
-    body.setAttribute("d", "M4 8h13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1zM19 11h1.5v2H19z");
-    body.setAttribute("fill", "none");
-    body.setAttribute("stroke", "currentColor");
-    body.setAttribute("stroke-width", "1.6");
-    body.setAttribute("stroke-linejoin", "round");
-    const level = doc.createElementNS(ns, "path");
-    level.setAttribute("d", "M5.5 10h7v4h-7z");
-    level.setAttribute("fill", "currentColor");
-    svg.append(body, level);
-  });
+/**
+ * The car over the action bar, as in the app: a small caption ("Car · identified by the camera", or "Choose car"
+ * while the question is open) over the car's glyph, its name in bold and its charge. The reading's age is not
+ * here: the dialog the button opens says it.
+ */
+export function carButtonElement(doc: Document, language: Language, input: CarButtonInput): HTMLButtonElement {
+  const { line } = input;
+  const car = translate(language, "carButton.caption");
+  const caption = input.asking
+    ? translate(language, "carButton.choose")
+    : input.decidedBy === null
+      ? car
+      : `${car} \u00b7 ${input.decidedBy}`;
+  const button = element(doc, "button", `${C.button} ${C.barCell} ${C.carButton}`) as HTMLButtonElement;
+  button.type = "button";
+  button.dataset["carButton"] = line.vehicleId;
+  button.dataset["asking"] = String(input.asking);
+  button.setAttribute("aria-haspopup", "dialog");
+  const captionNode = element(doc, "span", C.barCaption, caption);
+  captionNode.setAttribute("aria-hidden", "true");
+  const value = element(doc, "span", C.barValue);
+  value.setAttribute("aria-hidden", "true");
+  const words = element(doc, "span", C.settingsValue);
+  const charge = `${line.estimatePrefix}${line.charge}`;
+  if (line.name !== null) {
+    words.append(element(doc, "strong", C.carButtonName, line.name));
+    if (charge !== "") {
+      words.append(doc.createTextNode(` \u00b7 ${charge}`));
+    }
+  } else {
+    words.append(doc.createTextNode(charge));
+  }
+  value.append(
+    icon(doc, (svg, ns) => {
+      svg.append(fillPath(ns, doc, CAR_PATH));
+    }),
+    words,
+  );
+  button.append(captionNode, value);
+  const main = line.name === null ? charge : charge === "" ? line.name : `${line.name}, ${charge}`;
+  const spoken = [caption, main, input.changeable ? translate(language, "identify.changeCar") : null];
+  button.setAttribute("aria-label", spoken.filter((part) => part !== null && part !== "").join(". "));
+  return button;
 }
 
 function pauseIcon(doc: Document): SVGElement {
@@ -1227,7 +1225,6 @@ export function createCardView(input: CardViewInput): CardView {
     model.guest?.active === true
       ? guestLineFor(model.language, model.dashboardSettings)
       : vehicleLineFor(model.language, model.soc, model.dashboardSettings);
-  let vehicleButton: HTMLElement | null = null;
   // While the charge bar shows, it already says the charge runs: the connection status steps aside.
   const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
   // The charger's name with its status after it ("HALO Charger · Waiting"): the status is the charger's, not the car's.
@@ -1262,92 +1259,10 @@ export function createCardView(input: CardViewInput): CardView {
     }
     return row;
   };
-  if (vehicleLine !== null) {
-    // The name and the planned vehicle stack in one block, so the line sits under the name.
-    const identity = element(doc, "div", C.nameBlock);
-    identity.append(nameRow());
-    // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
-    // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
-    // choice is the plan's car, a plan setting (`mayPlan`), so a reader who may not change the plan gets the plain line.
-    // A guest car can be plugged in anywhere: with one car too, while a car is plugged in, it can be the answer.
-    const changeable =
-      (model.chargerCars.length >= 2 && (mayPlan || model.connection?.state !== "disconnected")) ||
-      guestOffered(model);
-    const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
-    const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
-    // How the car was decided at this plug-in: an icon after the name, its words as its title and accessible name.
-    const method = methodOf(model.identification);
-    const decidedBy = methodWords(model.language, model.identification);
-    vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
-    if (changeable) {
-      (vehicleButton as HTMLButtonElement).type = "button";
-      vehicleButton.setAttribute("aria-haspopup", "dialog");
-    }
-    vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
-    // The button hides its children from a screen reader, so its name carries how the car was decided too. The plain
-    // line is a group named by the line only: the method icon inside is read once, as itself.
-    if (changeable) {
-      vehicleButton.setAttribute("aria-label", decidedBy === null ? changeLabel : `${changeLabel}, ${decidedBy}`);
-    } else {
-      vehicleButton.setAttribute("role", "group");
-      vehicleButton.setAttribute("aria-label", vehicleLine.ariaLabel);
-    }
-    if (vehicleLine.estimateTitle !== null) {
-      vehicleButton.title = vehicleLine.estimateTitle;
-      vehicleButton.dataset["estimated"] = "true";
-    }
-    // Only the parts that exist, each after the first behind a "·": never a leading or doubled separator. Each
-    // separator leads its own part, and a part that starts a wrapped row has its separator in the clipped margin
-    // (`vehicleLineClip`), so no row starts with a lone "·" and the charge stays with the swap icon.
-    const parts: { cls: string; text: string }[] = [];
-    if (vehicleLine.name !== null) {
-      parts.push({ cls: C.vehicleLineName, text: vehicleLine.name });
-    }
-    parts.push({ cls: C.vehicleLineCharge, text: `${vehicleLine.estimatePrefix}${vehicleLine.charge}` });
-    if (vehicleLine.age !== null) {
-      parts.push({ cls: C.vehicleLineAge, text: vehicleLine.age });
-    }
-    const clip = element(doc, "span", C.vehicleLineClip);
-    const inner = element(doc, "span", C.vehicleLineInner);
-    clip.append(inner);
-    vehicleButton.append(clip);
-    parts.forEach((part, index) => {
-      const last = index === parts.length - 1;
-      const span = element(doc, "span", part.cls, part.text);
-      let piece: HTMLElement;
-      if (index === 0) {
-        // The battery, the name and how the car was decided stay together: the icon belongs to the name (or to the
-        // charge, for a car with no name), with no separator between them.
-        piece = element(doc, "span", C.vehicleLineHead);
-        piece.append(batteryIcon(doc), span);
-        if (method !== null && decidedBy !== null) {
-          piece.append(methodIcon(doc, method, decidedBy));
-        }
-      } else {
-        piece = element(doc, "span", C.vehicleLinePart);
-        const separator = element(doc, "span", C.vehicleLineSeparator, "\u00b7");
-        separator.setAttribute("aria-hidden", "true");
-        piece.append(separator, span);
-      }
-      if (changeable && last) {
-        // The icon travels with the last part of the line, so a wrap never leaves it alone on a row.
-        const tail = element(doc, "span", C.vehicleLineTail);
-        tail.append(piece, swapIcon(doc));
-        inner.append(tail);
-      } else {
-        inner.append(piece);
-      }
-    });
-    if (changeable) {
-      const opener = vehicleButton;
-      vehicleButton.addEventListener("click", () => {
-        openChangeCar(opener);
-      });
-    }
-    identity.append(vehicleButton);
-    header.append(identity);
-  } else if (connectionText !== null) {
-    // No vehicle: the status after the name, as with a vehicle.
+  // The car is a button of its own over the action bar (`carButtonElement`), not a line under the name.
+  const vehicleButton = vehicleLine === null ? null : carButtonFor(vehicleLine);
+  if (connectionText !== null) {
+    // The status after the name.
     const identity = element(doc, "div", C.nameBlock);
     identity.append(nameRow());
     header.append(identity);
@@ -2041,6 +1956,10 @@ export function createCardView(input: CardViewInput): CardView {
   // states axis + value + action, since the caption is not part of a button's name.
   const bar = element(doc, "div", C.actionBar);
   const barWrap = element(doc, "div", C.actionBarWrap);
+  // The car, as in the app: its own full-width button right over the cells.
+  if (vehicleButton !== null) {
+    barWrap.append(vehicleButton);
+  }
   barWrap.append(bar);
   const immediateLabelKey = model.control.immediate.labelKey;
   const automaticLabelKey = model.control.automatic.labelKey;
@@ -2585,12 +2504,60 @@ export function createCardView(input: CardViewInput): CardView {
     });
   }
 
-  function openChangeCar(opener: HTMLElement): void {
+  /**
+   * The car button over the action bar. It opens Change car wherever the car can be changed (more than one car can
+   * charge here): for every user while a car is plugged in, since any user may answer which car it is. With no car
+   * plugged in the choice is the plan's car, a plan setting (`mayPlan`). A guest car can be plugged in anywhere: with
+   * one car too, while a car is plugged in, it can be the answer. Anywhere else it opens the car's reading.
+   */
+  function carButtonFor(line: VehicleLineFacts): HTMLButtonElement {
+    const changeable =
+      (model.chargerCars.length >= 2 && (mayPlan || model.connection?.state !== "disconnected")) ||
+      guestOffered(model);
+    const button = carButtonElement(doc, model.language, {
+      line,
+      decidedBy: methodWords(model.language, model.identification),
+      asking: model.identification?.state === "asking",
+      changeable,
+    });
+    button.addEventListener("click", () => {
+      if (changeable) {
+        openChangeCar(button, line);
+      } else {
+        openCarReading(button, line);
+      }
+    });
+    return button;
+  }
+
+  /** The car's charge and how old its reading is, where the car cannot be changed: the card says the age only here. */
+  function openCarReading(opener: HTMLElement, line: VehicleLineFacts): void {
+    if (destroyed) {
+      return;
+    }
+    hideForChildDialog();
+    const body = element(doc, "div");
+    const reading = element(doc, "p", C.settingsNote, line.reading ?? `${line.estimatePrefix}${line.charge}`);
+    reading.dataset["reading"] = line.vehicleId;
+    body.append(reading);
+    const decidedBy = methodWords(model.language, model.identification);
+    if (decidedBy !== null) {
+      body.append(element(doc, "p", C.settingsNote, decidedBy));
+    }
+    vehicleDialog.show({
+      title: line.name ?? translate(model.language, "carButton.caption"),
+      body,
+      opener,
+    });
+  }
+
+  function openChangeCar(opener: HTMLElement, line: VehicleLineFacts): void {
     if (destroyed) {
       return;
     }
     hideForChildDialog();
     const body = changeCarBody(doc, model.language, {
+      reading: line.reading === null ? null : { vehicleId: line.vehicleId, text: line.reading },
       block: model.identification,
       vehicles: model.chargerCars,
       currentId:
