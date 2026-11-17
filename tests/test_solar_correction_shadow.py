@@ -288,3 +288,39 @@ async def test_the_sun_log_kept_apart_before_moves_into_the_sites_log_once(
     assert moved.log is log
     # The correction's store keeps its state only from now on.
     assert "log" not in hass_storage[shell.store_key(entry.entry_id)]["data"]
+
+
+def test_five_minute_rows_become_quarter_hour_power() -> None:
+    from custom_components.spotnav.site.solar_correction_shadow import quarter_power
+
+    base = datetime(2026, 9, 23, 10, 0, tzinfo=UTC)
+    rows = {base + timedelta(minutes=5 * index): 0.1 for index in range(4)}  # 10:00-10:20; the last quarter has one row
+    assert quarter_power(rows) == {base: pytest.approx(1.2), base + timedelta(minutes=15): pytest.approx(1.2)}
+    assert quarter_power({}) == {}
+
+
+async def test_the_quarters_are_read_in_the_executor_once_per_five_minutes_and_empty_without_statistics(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entry = await pilot_site(hass, freezer, **{CONF_SOLAR_FORECAST_ENTRIES: ["forecast_solar_1"]})
+    correction = site_controller_for(hass, entry.entry_id).solar_correction
+    calls: list[tuple[str, datetime]] = []
+    rows: dict[str, list[dict[str, Any]]] = {}
+
+    async def energy_ids() -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return ("sensor.pv",), ()
+
+    async def statistics(ids: Any, start: datetime, end: datetime, period: str) -> dict[str, list[dict[str, Any]]]:
+        calls.append((period, end))
+        return rows
+
+    monkeypatch.setattr(correction, "_async_energy_ids", energy_ids)
+    monkeypatch.setattr(correction, "_async_statistics", statistics)
+    step = datetime(2026, 9, 23, 10, 5, tzinfo=UTC)
+    rows["sensor.pv"] = [{"start": (step - timedelta(minutes=5)).timestamp(), "change": 0.1}]
+    await correction.async_refresh_quarters(step)
+    assert calls == [("5minute", step)]
+    assert correction.quarters == {step.replace(minute=0): pytest.approx(1.2)}
+    rows.clear()
+    await correction.async_refresh_quarters(step + timedelta(minutes=5))
+    assert correction.quarters == {}

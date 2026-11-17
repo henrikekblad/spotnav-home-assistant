@@ -121,6 +121,16 @@ def _number(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
+def quarter_power(slots_kwh: Mapping[datetime, float]) -> dict[datetime, float]:
+    """Five-minute energy rows (kWh by UTC slot start) as the mean power (kW) of each quarter hour they fall in; a
+    quarter with only some of its rows (the one running) is the mean of those."""
+    sums: dict[datetime, list[float]] = {}
+    for start, kwh in slots_kwh.items():
+        quarter = start.replace(minute=start.minute - start.minute % 15, second=0, microsecond=0)
+        sums.setdefault(quarter, []).append(kwh)
+    return {quarter: sum(rows) * 60.0 / (5.0 * len(rows)) for quarter, rows in sorted(sums.items())}
+
+
 def as_power(slots_kwh: Mapping[datetime, float], minutes: float = 5.0) -> dict[datetime, float]:
     """Energy per slot (kWh) as the slot's mean power (kW)."""
     return {start: kwh * 60.0 / minutes for start, kwh in slots_kwh.items()}
@@ -202,6 +212,11 @@ class SiteSolarCorrection:
         self.clipped: set[datetime] = set()
         self.evidence: list[dict[str, Any]] = []
         self.next_hours: list[dict[str, Any]] = []
+        #: The sun's measured mean power (kW) per quarter hour of the local day so far (UTC quarter starts), from the
+        #: recorder's 5-minute statistics, read in its executor at most once per five minutes (display only).
+        self.quarters: dict[datetime, float] = {}
+        self._quarters_for: datetime | None = None
+        self._quarters_task: asyncio.Task[None] | None = None
         #: The sun the expected surplus counts on (`surplus`): the last refresh's forecast from the running hour on
         #: (kWh per UTC hour), corrected once the correction has learnt (the battery plan's rule), else as read.
         self.sun_kwh: dict[datetime, float] = {}
@@ -256,7 +271,10 @@ class SiteSolarCorrection:
     @callback
     def tick(self, now: datetime) -> None:
         """Start a refresh when the UTC hour changed, or a retry is due."""
-        if not self._loaded or self._closed or (self._task is not None and not self._task.done()):
+        if not self._loaded or self._closed:
+            return
+        self._tick_quarters(now)
+        if self._task is not None and not self._task.done():
             return
         hour = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
         retry = self._retry_at is not None and now >= self._retry_at
@@ -266,6 +284,34 @@ class SiteSolarCorrection:
         self._task = self.hass.async_create_background_task(
             self.async_refresh(now), "spotnav_solar_correction", eager_start=False
         )
+
+    def _tick_quarters(self, now: datetime) -> None:
+        """Start the read of today's quarters when the five minutes changed."""
+        step = now.astimezone(timezone.utc).replace(minute=now.minute - now.minute % 5, second=0, microsecond=0)
+        if step == self._quarters_for or (self._quarters_task is not None and not self._quarters_task.done()):
+            return
+        if not self._forecast_entries():
+            return
+        self._quarters_for = step
+        self._quarters_task = self.hass.async_create_background_task(
+            self.async_refresh_quarters(step), "spotnav_solar_quarters", eager_start=False
+        )
+
+    async def async_refresh_quarters(self, step: datetime) -> None:
+        """Today's measured quarters up to `step`; empty where the 5-minute statistics are missing (the card then
+        keeps the hourly figures)."""
+        try:
+            solar_ids, _export = await self._async_energy_ids()
+            if not solar_ids:
+                self.quarters = {}
+                return
+            zone = time_zones.require_zone(self.site.demand.tracker.tz)
+            midnight = step.astimezone(zone).replace(hour=0, minute=0, second=0, microsecond=0)
+            rows = await self._async_statistics(solar_ids, midnight.astimezone(timezone.utc), step, "5minute")
+            self.quarters = quarter_power(summed(rows, solar_ids))
+        except Exception:  # noqa: BLE001 - no short-term statistics: the hourly figures stand
+            _LOGGER.debug("SpotNav solar correction: the 5-minute statistics could not be read", exc_info=True)
+            self.quarters = {}
 
     # ---- sources
 
