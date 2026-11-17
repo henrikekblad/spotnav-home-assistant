@@ -84,6 +84,8 @@ export interface IndoorPoint {
   start: string;
   mean_c: number;
   coldest_c: number;
+  /** The coldest room's sensor at the step (named in `IndoorDay.rooms`). */
+  coldest: string;
 }
 
 export interface IndoorDay {
@@ -95,6 +97,8 @@ export interface IndoorDay {
   points: IndoorPoint[];
   /** The history's setpoint per hour; `null` on the live card, whose band hours carry it. */
   setpoint: { start: string; target_c: number; action: string }[] | null;
+  /** The chosen sensors' names, so the chart can name the coldest room at a step. */
+  rooms: { entity_id: string; name: string }[];
 }
 
 export const INDOOR_DAY = O({
@@ -103,8 +107,9 @@ export const INDOOR_DAY = O({
   step_min: "number",
   low_c: "number",
   high_c: "number",
-  points: A(O({ start: "string", mean_c: "number", coldest_c: "number" })),
+  points: A(O({ start: "string", mean_c: "number", coldest_c: "number", coldest: "string" })),
   setpoint: N(A(O({ start: "string", target_c: "number", action: "string" }))),
+  rooms: A(O({ entity_id: "string", name: "string" })),
 });
 
 const ANSWER = O({

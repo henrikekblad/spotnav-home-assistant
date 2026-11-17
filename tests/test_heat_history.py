@@ -357,7 +357,8 @@ def test_a_day_has_its_indoor_curve_and_spotnavs_setpoint() -> None:
     assert (curve["low_c"], curve["high_c"]) == (20.5, 21.5)
     assert len(curve["points"]) == 24
     night, noon = curve["points"][3], curve["points"][12]
-    assert (night["mean_c"], night["coldest_c"]) == (20.85, 20.3)
+    assert (night["mean_c"], night["coldest_c"], night["coldest"]) == (20.85, 20.3, "sensor.uppe")
+    assert curve["rooms"] == [{"entity_id": "sensor.kok", "name": "Kök"}, {"entity_id": "sensor.uppe", "name": "Övervåning"}]
     assert (noon["mean_c"], noon["coldest_c"]) == (21.1, 20.8)
     setpoint = {item["start"]: (item["target_c"], item["action"]) for item in curve["setpoint"]}
     assert len(setpoint) == 24

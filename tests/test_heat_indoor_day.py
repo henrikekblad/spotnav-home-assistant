@@ -31,8 +31,8 @@ def test_rooms_count_less_their_offset_mean_and_coldest_per_step() -> None:
     out = points(readings, {"sensor.uppe": -1.0}, START, END, now, 15)
     # Upstairs aims a degree lower: its 20.0 is 21.0 on the house's scale.
     assert out == [
-        {"start": START.isoformat(), "mean_c": 21.15, "coldest_c": 21.0},
-        {"start": (START + timedelta(minutes=15)).isoformat(), "mean_c": 20.8, "coldest_c": 20.6},
+        {"start": START.isoformat(), "mean_c": 21.15, "coldest_c": 21.0, "coldest": "sensor.uppe"},
+        {"start": (START + timedelta(minutes=15)).isoformat(), "mean_c": 20.8, "coldest_c": 20.6, "coldest": "sensor.uppe"},
     ]
 
 
@@ -46,7 +46,11 @@ def test_the_block_has_the_band_and_no_block_without_sensors() -> None:
     block = indoor_day(CONFIG, {"sensor.kok": five({0: 21.0})}, START, END, START + timedelta(hours=1), 15)
     assert block is not None and tuple(block) == INDOOR_DAY_KEYS
     assert (block["low_c"], block["high_c"], block["step_min"], block["setpoint"]) == (20.5, 21.5, 15, None)
-    assert block["points"] == [{"start": START.isoformat(), "mean_c": 21.0, "coldest_c": 21.0}]
+    assert block["points"] == [{"start": START.isoformat(), "mean_c": 21.0, "coldest_c": 21.0, "coldest": "sensor.kok"}]
+    # The rooms are named for the chart; a sensor without a name goes by its entity id.
+    assert block["rooms"] == [{"entity_id": "sensor.kok", "name": "sensor.kok"}, {"entity_id": "sensor.uppe", "name": "sensor.uppe"}]
+    named = indoor_day(CONFIG, {}, START, END, START, 15, names={"sensor.kok": "Kök"})
+    assert named is not None and named["rooms"][0] == {"entity_id": "sensor.kok", "name": "Kök"}
     hours = [(START, 21.0, "normal"), (START + timedelta(hours=1), 20.5, "lower")]
     with_setpoint = indoor_day(CONFIG, {}, START, END, START, 60, hours)
     assert with_setpoint is not None and with_setpoint["points"] == []

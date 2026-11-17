@@ -502,7 +502,8 @@ async def read_indoor_day(
     except Exception:  # noqa: BLE001 - without the recorder the curve is empty, the rest is shown
         _LOGGER.debug("SpotNav heat: the indoor sensors' 5-minute statistics could not be read", exc_info=True)
         readings = {}
-    return indoor_day(config, readings, day_start, day_end, now, LIVE_STEP_MIN)
+    names = {entity_id: _name(hass, entity_id) for entity_id in sensors}
+    return indoor_day(config, readings, day_start, day_end, now, LIVE_STEP_MIN, names=names)
 
 
 def _meter_kw_now(hass: HomeAssistant, entity_id: str | None, kind: str | None) -> float | None:
