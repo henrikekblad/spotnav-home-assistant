@@ -941,6 +941,7 @@ export function settingsEditorBody(
       if (soc.vehicles.length > 1) {
         const select = doc.createElement("select") as HTMLSelectElement;
         select.dataset["soc"] = "vehicle-choice";
+        select.className = C.settingsInput;
         select.disabled = form.readOnly;
         const current = values.vehicleId !== "" ? values.vehicleId : (soc.vehicle_id ?? "");
         if (current === "") {

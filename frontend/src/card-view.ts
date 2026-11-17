@@ -1714,6 +1714,21 @@ export function createCardView(input: CardViewInput): CardView {
     return keys;
   }
 
+  // One muted line under the chart naming what the grey marks and the striped window are, only for what is drawn.
+  const chartKey = element(doc, "p", C.chartKey);
+  chartKey.dataset["part"] = "chart-key";
+  function paintChartKey(): void {
+    const parts: string[] = [];
+    if (model.chart.days.some((day) => day.role === "future")) {
+      parts.push(translate(model.language, "graph.key.tomorrow"));
+    }
+    if (model.bands.installed.length > 0 || model.bands.proposal.length > 0) {
+      parts.push(translate(model.language, "graph.key.plan"));
+    }
+    chartKey.textContent = parts.join(" \u00b7 ");
+    chartKey.hidden = parts.length === 0 || collapsed;
+  }
+
   function paintLegend(selected: ChartMark | null): void {
     legend.replaceChildren(
       ...legendKeys(model, selected).map((key) =>
@@ -1954,6 +1969,7 @@ export function createCardView(input: CardViewInput): CardView {
     hint.hidden = collapsed;
     legend.hidden = collapsed;
     strip.hidden = !collapsed;
+    paintChartKey();
   }
   function toggleChart(): void {
     collapsed = !collapsed;
@@ -1973,7 +1989,7 @@ export function createCardView(input: CardViewInput): CardView {
   applyCollapsed();
   paintStrip();
 
-  graph.append(summary, viewport, readout, strip, hint, legend);
+  graph.append(summary, viewport, readout, chartKey, strip, hint, legend);
   card.append(graph);
 
   interaction = createChartInteraction({

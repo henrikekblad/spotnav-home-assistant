@@ -14,6 +14,8 @@ export const CARD_STYLES = `
     background: var(--ha-card-background, var(--card-background-color, #ffffff));
     color: var(--primary-text-color, #212121);
     border-radius: var(--ha-card-border-radius, 12px);
+    border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, transparent));
+    box-shadow: var(--ha-card-box-shadow, none);
   }
   h2 {
     margin: 0 0 2px;
