@@ -719,12 +719,19 @@ async def test_the_store_is_saved_only_when_its_data_changed(hass: HomeAssistant
     await control.async_look(now)
     saves: list[int] = []
     control._store.async_delay_save = lambda *_args, **_kw: saves.append(1)  # type: ignore[method-assign]  # noqa: SLF001
+    kept: list[dict[str, Any]] = []
+
+    async def save_now(data: dict[str, Any]) -> None:
+        kept.append(data)
+
+    control._store.async_save = save_now  # type: ignore[method-assign]  # noqa: SLF001
     for minute in range(1, 6):
         await control.async_look(now + minute * MIN)
-    assert saves == []
+    assert saves == [] and kept == []
     _plan(control, now + 6 * MIN, 0, 1)
     await control.async_look(now + 6 * MIN)
-    assert relay.calls == ["on"] and saves
+    # A closing is kept at once, before it is written.
+    assert relay.calls == ["on"] and len(kept) == 1 and kept[0]["held"] is True
 
 
 async def test_the_check_counts_toward_the_days_writes(hass: HomeAssistant, freezer) -> None:

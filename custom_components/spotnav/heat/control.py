@@ -287,13 +287,32 @@ class HeatControl:
     async def async_start(self) -> None:
         try:
             self._restore(await self._store.async_load())
-        except Exception:  # noqa: BLE001 - a store that cannot be read starts again (the relay is read as it is)
-            _LOGGER.warning("SpotNav heat control: the kept state could not be read; starting a new one", exc_info=True)
+        except Exception:  # noqa: BLE001 - a store that cannot be read starts again, the contacts opened once
+            _LOGGER.warning(
+                "SpotNav heat control: the kept state could not be read; starting a new one and opening the contacts",
+                exc_info=True,
+            )
+            self._open_unknown()
         self._saved = self._data()
         self._loaded = True
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=LOOK_S))
         self._watch_contacts()
         self.request_look()
+
+    def _open_unknown(self) -> None:
+        """The kept state is lost, so whether SpotNav left a contact closed is not known: behind the opt-in, both
+        contacts are taken as held and opened once at the first look where they read (as after a stop while held; one
+        that reads open is left alone). Without it SpotNav's own closing would read as someone else's for good."""
+        from .runtime import relay_entity  # noqa: PLC0415 - the runtime imports this module
+
+        config = self.shadow.config()
+        if not config.control_enabled:
+            return
+        self.relay, self.raise_entity = relay_entity(config), raise_entity(config)
+        if self.relay is not None:
+            self.held, self.held_since, self._reopen = True, None, True
+        if self.raise_entity is not None:
+            self.raised, self.raised_since, self._reopen_b = True, None, True
 
     def _restore(self, raw: Any) -> None:
         if not isinstance(raw, dict):
@@ -365,6 +384,17 @@ class HeatControl:
             return
         self._saved = data
         self._store.async_delay_save(self._data, 1.0)
+
+    async def _async_save_now(self) -> bool:
+        """Save at once (before a closing is written); `False` when it could not be kept."""
+        data = self._data()
+        try:
+            await self._store.async_save(data)
+        except Exception:  # noqa: BLE001 - not kept: the closing is not written
+            _LOGGER.warning("SpotNav heat control: the state could not be kept; nothing is closed", exc_info=True)
+            return False
+        self._saved = data
+        return True
 
     async def async_shutdown(self) -> None:
         """Open the relay SpotNav holds (bounded) and keep the state: a relay still held is opened at the next start."""
@@ -851,14 +881,24 @@ class HeatControl:
         if not closed and self._retry_open_at is not None and now < self._retry_open_at:
             return
         self.pending = Pending(closed, now)
-        self._own_at = now
-        if closed:
-            self._own_reopen_at = None
         day = self._day(now)
         self.writes[day] = self.writes.get(day, 0) + 1
         if closed:
             self.held, self.held_since = True, now
             self.lowerings.append([now, None])
+            # Kept before the closing goes out: a crash right after it still knows SpotNav holds A (opened at the
+            # next start); B is read again after the wait.
+            if not await self._async_save_now() or not self._b_clear(now):
+                self.pending = None
+                self.writes[day] -= 1
+                self.held, self.held_since = False, None
+                self.lowerings.pop()
+                self._log(now, "close_not_written", why=why)
+                self._save()
+                return
+        self._own_at = now
+        if closed:
+            self._own_reopen_at = None
         self._log(now, "close" if closed else "open", why=why)
         self._save()
         try:
@@ -1174,14 +1214,24 @@ class HeatControl:
         if not closed and self._b_retry_open_at is not None and now < self._b_retry_open_at:
             return
         self.pending_b = Pending(closed, now)
+        day = self._day(now)
+        self.writes[day] = self.writes.get(day, 0) + 1
+        if closed:
+            self.raised, self.raised_since = True, now
+            self.raisings.append([now, None])
+            # Kept before the closing goes out (see `_async_write`); A is read again after the wait.
+            if not await self._async_save_now() or not self._a_clear(now):
+                self.pending_b = None
+                self.writes[day] -= 1
+                self.raised, self.raised_since = False, None
+                self.raisings.pop()
+                self._log(now, "raise_not_written", why=why)
+                self._save()
+                return
         self._b_own_at = now
         if closed:
             self._b_own_reopen_at = None
             self._b_close_unseen_at = now
-            self.raised, self.raised_since = True, now
-            self.raisings.append([now, None])
-        day = self._day(now)
-        self.writes[day] = self.writes.get(day, 0) + 1
         self._log(now, "raise" if closed else "raise_end", why=why)
         self._save()
         try:
