@@ -563,7 +563,6 @@
   "graph.legend.current": "Huidig interval",
   "graph.legend.sun": "Zonnevermogen: gemeten vóór nu, prognose erna",
   "graph.legend.sunMeasured": "Zonnevermogen, gemeten",
-  "graph.key.plan": "Gestreept: geplande lading",
   "graph.sun.short": "Zon",
   "graph.sun.peak": "Zon, piek {kw} kW",
   "graph.legend.selection": "Geselecteerd interval",

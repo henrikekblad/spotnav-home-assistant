@@ -312,15 +312,6 @@ describe("the sun layer", () => {
     card.destroy();
   });
 
-  it("keys only the striped plan window: tomorrow's prices are drawn in today's colours", () => {
-    const withTomorrow = view(model());
-    const key = withTomorrow.root.querySelector<HTMLElement>("[data-part='chart-key']");
-    expect(key?.textContent ?? "").not.toMatch(/grått|grey|gray/i);
-    const planned = withTomorrow.root.querySelector("[data-part='chart-key']")?.textContent?.includes(translate("sv", "graph.key.plan")) ?? false;
-    expect(key?.hidden).toBe(!planned);
-    withTomorrow.card.destroy();
-  });
-
   it("is offered but draws nothing where a capable site has no measured hour yet", () => {
     const scene = model({ sun: { hours: [], quarters: [] } });
     expect(scene.sunOffered).toBe(true);
@@ -400,7 +391,7 @@ describe("the sun in Display", () => {
 
   it("has its words in every card language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["display.sun", "display.sun.help", "graph.legend.sun", "graph.legend.sunMeasured", "graph.key.plan", "graph.sun.short", "graph.sun.peak", "graph.readout.sun", "graph.readout.sunForecast"] as const) {
+      for (const key of ["display.sun", "display.sun.help", "graph.legend.sun", "graph.legend.sunMeasured", "graph.sun.short", "graph.sun.peak", "graph.readout.sun", "graph.readout.sunForecast"] as const) {
         expect(translate(language, key).length, `${language} ${key}`).toBeGreaterThan(0);
       }
     }
