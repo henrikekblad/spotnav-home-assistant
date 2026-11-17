@@ -159,9 +159,11 @@ class _Session:
     def __init__(self, answer: Any) -> None:
         self.answer = answer
         self.requests: list[tuple[str, dict[str, str], dict[str, str]]] = []
+        self.redirects: list[bool] = []
 
-    def get(self, url: str, params: dict[str, str], headers: dict[str, str]) -> Any:
+    def get(self, url: str, params: dict[str, str], headers: dict[str, str], allow_redirects: bool = True) -> Any:
         self.requests.append((url, params, headers))
+        self.redirects.append(allow_redirects)
         if isinstance(self.answer, BaseException):
             raise self.answer
         return self.answer
@@ -172,6 +174,10 @@ async def test_a_good_answer_is_parsed_with_the_user_agent_sent() -> None:
     result = await om.async_fetch_json(session, om.FORECAST_URL, {"latitude": "55.7"}, "SpotNav test")  # type: ignore[arg-type]
     assert result.error is None and result.body == _body()
     assert session.requests[0][2] == {"User-Agent": "SpotNav test"}
+    # A redirect is never followed: it is an HTTP error.
+    assert session.redirects == [False]
+    moved = await om.async_fetch_json(_Session(_Response(302, b"")), om.FORECAST_URL, {}, "ua")  # type: ignore[arg-type]
+    assert (moved.error, moved.status) == (om.ERROR_HTTP, 302)
 
 
 @pytest.mark.parametrize(
