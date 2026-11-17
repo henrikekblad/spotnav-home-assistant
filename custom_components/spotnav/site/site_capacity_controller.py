@@ -6628,6 +6628,10 @@ class SiteCapacityController:
         source = source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE))
         if source is None:
             return None
+        if source.kind == "power":
+            # A DC charger's output power is spread over three phases at the site's voltage as it is now, never at
+            # the copy stored with the source (a site corrected from 230 V to 400 V would read 1.74 times too high).
+            source = replace(source, voltage_between_phases_v=stored_voltage_between_phases_v(self.config))
         values = read_phase_measurement(self.hass, source, classify_current)
         return DirectPhaseMeasurement(l1=values["L1"], l2=values["L2"], l3=values["L3"])
 

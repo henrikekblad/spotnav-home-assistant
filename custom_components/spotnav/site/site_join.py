@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -11,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MEASURED_CURRENT_SOURCE, CONF_PHASE_WIRING, DOMAIN
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..vehicles.discovery import profile_attribute_source
-from .measurement_source import source_to_dict
+from .measurement_source import source_from_dict, source_to_dict
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -107,6 +108,10 @@ def backfill_profile_measured_sources(hass: HomeAssistant, site: ConfigEntry) ->
     has none and whose platform profile can name one (Easee: the `current` sensor's terminal
     attributes), or `None` when nothing changes. A source a person set, or removed on purpose, is left
     as it is. Logs once per charger it fills in (a later start finds the source and does nothing).
+
+    A DC charger's output-power source (`power`) stored at another voltage than the site's now is rewritten at the
+    site's (the site reloads when its voltage changes, so this runs then too; the site also reads it at its live
+    voltage, `_read_charger_measured_current`).
     """
     # Imported here: the flows import this module's neighbours, and they import the controller.
     from ..flows.measured_source import charger_device_id
@@ -116,6 +121,20 @@ def backfill_profile_measured_sources(hass: HomeAssistant, site: ConfigEntry) ->
     updated: dict[str, Any] = {}
     for charger_entry_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
         wiring = wiring_by_charger.get(charger_entry_id)
+        stored = source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE)) if isinstance(wiring, dict) else None
+        if stored is not None and stored.kind == "power" and stored.voltage_between_phases_v != voltage:
+            # A DC charger's output power keeps a copy of the site's voltage: rewritten when the site's changed.
+            updated[charger_entry_id] = {
+                **wiring,
+                CONF_MEASURED_CURRENT_SOURCE: source_to_dict(replace(stored, voltage_between_phases_v=voltage)),
+            }
+            _LOGGER.info(
+                "Site %s: charger %s now reads its output power at %.0f V between phases",
+                site.entry_id,
+                charger_entry_id,
+                voltage,
+            )
+            continue
         if not isinstance(wiring, dict) or wiring.get(CONF_MEASURED_CURRENT_SOURCE) or wiring.get(MEASURED_SOURCE_DECLINED):
             continue
         device_id = charger_device_id(hass, charger_entry_id)

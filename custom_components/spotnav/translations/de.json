@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität.",
       "fee_value_required": "Gib einen eigenen Wert ein oder wähle den Vorschlag.",
       "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts.",
-      "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu.",
+      "dc_charger_three_phase": "Ein DC-Lader wird nur dreiphasig gesteuert: SpotNav schreibt ihm die Leistung von drei Phasen, die auf einer Phase den dreifachen gerechneten Strom ziehen würde. Wähle 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts.",
       "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu.",
       "switch_load_incomplete": "Gib die Nennleistung und die Laufzeit der Last an.",
-      "switch_load_floor_pair": "Temperatursensor und Mindesttemperatur gehören zusammen: gib beide oder keines an."
+      "switch_load_floor_pair": "Temperatursensor und Mindesttemperatur gehören zusammen: gib beide oder keines an.",
+      "dc_charger_three_phase": "Ein DC-Lader wird nur dreiphasig gesteuert: SpotNav schreibt ihm die Leistung von drei Phasen, die auf einer Phase den dreifachen gerechneten Strom ziehen würde. Wähle 3."
     }
   },
   "selector": {

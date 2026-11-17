@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
       "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
       "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
-      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu.",
+      "dc_charger_three_phase": "Een DC-lader wordt alleen driefasig aangestuurd: SpotNav schrijft het vermogen van drie fasen, dat op één fase drie keer de getelde stroom zou trekken. Kies 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
       "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu.",
       "switch_load_incomplete": "Geef het nominale vermogen en de looptijd van de last op.",
-      "switch_load_floor_pair": "De temperatuursensor en de laagste temperatuur horen bij elkaar: geef beide of geen van beide op."
+      "switch_load_floor_pair": "De temperatuursensor en de laagste temperatuur horen bij elkaar: geef beide of geen van beide op.",
+      "dc_charger_three_phase": "Een DC-lader wordt alleen driefasig aangestuurd: SpotNav schrijft het vermogen van drie fasen, dat op één fase drie keer de getelde stroom zou trekken. Kies 3."
     }
   },
   "selector": {

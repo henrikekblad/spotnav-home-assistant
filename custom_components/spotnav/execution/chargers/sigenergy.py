@@ -16,14 +16,23 @@ power the charger is assumed to hold (`EVDC_MIN_POWER_KW`, to be confirmed), so 
 it can hold. Phase switching, the car's onboard phases and a per-phase cut do not exist for a DC charger: the power
 is spread over three phases whatever car is plugged in (`planning/phases.py`).
 
-**Conservative until the tester has answered** (`docs/setup.md`, Sigenergy DC charger): a pause presses Stop (the profile's
-`zero_pauses`; whether a 0 kW limit pauses it is not known), no limit is written faster than every 10 s (the
+**Three phases only.** `sqrt(3) x V x I` is the power of a three-phase draw. On one phase the same limit would draw
+three times the current the plan counts, so a charger wired as one phase is never written (`PowerCurrent.async_set`
+refuses it, and the site's wiring step does not take one phase for a DC charger).
+
+**What the limit may be.** The charger's rating, from its rated-power sensor when that reads a plausible power
+(`RATED_KW_RANGE`), else the last plausible one it read (kept across restarts, `RatingMemory`), else nothing above
+the limit the charger already carries. On a site, never above the fuse either (`evdc_fuse_cap_a`).
+
+**Conservative until the tester has answered** (`docs/setup.md`, Sigenergy DC charger): a pause presses Stop (the
+controller's pause; whether a 0 kW limit pauses it is not known), no limit is written faster than every 10 s (the
 policy), a raise waits `EVDC_SETTLE_S` after the last write so the charger has followed it, and every limit write,
 Start and Stop is kept with the output power read after it (`PowerTiming`), which the diagnostics show.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import deque
 from collections.abc import Callable
@@ -34,6 +43,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, HassJob, HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ...const import CURRENT_CONTROL_POWER, DEFAULT_MIN_CURRENT_A, DEFAULT_VOLTAGE_BETWEEN_PHASES_V
@@ -48,6 +58,7 @@ from .base import (
     ASSIGN_UNCHANGED,
     ASSIGN_UNCONFIRMED,
     ASSIGN_UNIT_UNKNOWN,
+    ASSIGN_UNSUPPORTED,
     ASSIGN_WRITE_FAILED,
     call_service,
     current_description,
@@ -58,6 +69,8 @@ from .base import (
 )
 from .generic import ButtonPath
 from .registry import ChargerContext, register_current
+
+_LOGGER = logging.getLogger(__name__)
 
 #: The lowest power the charger is taken to hold, in kW. TO BE CONFIRMED by the tester: a limit below it is never
 #: written. SpotNav's 6 A floor (4.2 kW at 400 V) is above it, so today it only guards.
@@ -73,8 +86,45 @@ FOLLOW_SHARE: Final = 0.1
 FOLLOW_TOLERANCE_KW: Final = 0.3
 
 _POWER_UNITS: Final = {"kw": 1.0, "w": 0.001, "mw": 1000.0}
-#: What a limit read back may lie under the current it was written from (the write is rounded down to its step).
-READ_BACK_SLACK_A: Final = 0.01
+#: What a limit read back may lie under the power it was written from (the write is rounded down to the number's
+#: step): at least 0.01 kW, the number's own step when larger, never as much as one ampere.
+READ_BACK_SLACK_KW: Final = 0.01
+#: A rating outside this range (kW) is not the charger's (a sensor in W labelled kW, a 0 before it has read).
+RATED_KW_RANGE: Final = (1.0, 400.0)
+#: How long after a write the limit SpotNav wrote stands for the number's state, when the integration has not yet
+#: refreshed it (Sigenergy ESS reads the register back on its next poll, not during the write).
+PENDING_WRITE_S: Final = 15.0
+#: Where the last plausible rating of each DC charger is kept, by its power number.
+RATING_STORE_KEY: Final = "spotnav.evdc_ratings"
+RATING_STORE_VERSION: Final = 1
+#: Whether a site whose battery import limit the owner confirmed (`battery_control_import_limit_acts`, test T3) lifts
+#: the fuse cap (`evdc_fuse_cap_a`). Change here once the owner has decided.
+EVDC_CAP_LIFTED_BY_IMPORT_LIMIT: Final = True
+
+
+def evdc_fuse_cap_a(hass: HomeAssistant, charger_entry_id: str | None) -> int | None:
+    """The most a DC charger on a site is given, in amperes per phase: the main fuse less the safety margin
+    (`site_limit_a`), or `None` (no cap) for a charger in no site or on a site whose battery import limit is confirmed.
+
+    Load balancing measures the room net of the battery and the sun, so on a site with a home battery it can let a
+    DC charger's limit sit far above the fuse (25 kW on a 20 A fuse) while the battery carries the car. When the
+    battery reaches its floor all of that lands on the grid at once, faster than the regulator lowers it. Capped
+    at the fuse, the grid carries at most what the fuse does. A site whose plant's own grid import limit was shown to
+    act (the owner's test T3, `battery_control_import_limit_acts`) is held by that limit instead, so the cap is lifted
+    there (`EVDC_CAP_LIFTED_BY_IMPORT_LIMIT`).
+    """
+    from ...battery.gate import Options  # noqa: PLC0415 - the battery package imports the execution
+    from ...planning.first_run import site_for_charger, site_limit_a  # noqa: PLC0415 - the planning imports execution
+
+    if not charger_entry_id:
+        return None
+    site = site_for_charger(hass, charger_entry_id)
+    if site is None:
+        return None
+    if EVDC_CAP_LIFTED_BY_IMPORT_LIMIT and Options.from_config(site.data).import_limit_acts:
+        return None
+    limit = site_limit_a(site)
+    return None if limit is None else max(0, limit)
 
 
 def kw_per_amp(voltage_between_phases_v: float) -> float:
@@ -101,30 +151,113 @@ def _native_factor(state: State | None) -> float | None:
     return None if factor is None else 1.0 / factor
 
 
+_LOOKUPS: Final = "spotnav_evdc_lookups"
+
+
+def _lookups(hass: HomeAssistant) -> dict[tuple[str, str], str]:
+    return hass.data.setdefault(_LOOKUPS, {})
+
+
+def charger_entry_id(hass: HomeAssistant, charge_control: str | None) -> str | None:
+    """The SpotNav charger entry whose charge control this is, or `None` (kept once found, checked on each use)."""
+    from ...const import CONF_CHARGE_CONTROL, DOMAIN  # noqa: PLC0415 - kept beside its only use
+
+    if not charge_control:
+        return None
+    cache = _lookups(hass)
+    cached = cache.get(("entry", charge_control))
+    if cached is not None:
+        entry = hass.config_entries.async_get_entry(cached)
+        if entry is not None and entry.data.get(CONF_CHARGE_CONTROL) == charge_control:
+            return cached
+        cache.pop(("entry", charge_control), None)
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get(CONF_CHARGE_CONTROL) == charge_control:
+            cache[("entry", charge_control)] = entry.entry_id
+            return entry.entry_id
+    return None
+
+
 def charger_voltage_v(hass: HomeAssistant, charge_control: str | None) -> float:
     """The voltage between phases of the SpotNav charger whose charge control this is: its site's, else its own."""
-    from ...const import CONF_CHARGE_CONTROL, DOMAIN  # noqa: PLC0415 - kept beside its only use
     from ...planning.grid_voltage import voltage_between_phases_v  # noqa: PLC0415 - the planning imports execution
 
-    if charge_control:
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            if entry.data.get(CONF_CHARGE_CONTROL) == charge_control:
-                return voltage_between_phases_v(hass, entry.entry_id)
-    return float(DEFAULT_VOLTAGE_BETWEEN_PHASES_V)
+    entry_id = charger_entry_id(hass, charge_control)
+    return float(DEFAULT_VOLTAGE_BETWEEN_PHASES_V) if entry_id is None else voltage_between_phases_v(hass, entry_id)
 
 
 def charger_sensor(hass: HomeAssistant, number_entity_id: str | None, keys_of: str) -> str | None:
     """The sensor of the charger's own device that the profile names under `keys_of` (`output_power_keys` or
-    `rated_power_keys`), found from the power number's device; `None` without one."""
+    `rated_power_keys`), found from the power number's device; `None` without one. A sensor found is kept and only
+    looked up again once it is gone from the registry or disabled."""
     if not number_entity_id:
         return None
-    entry = er.async_get(hass).async_get(number_entity_id)
+    registry = er.async_get(hass)
+    cache = _lookups(hass)
+    key = (number_entity_id, keys_of)
+    cached = cache.get(key)
+    if cached is not None:
+        cached_entry = registry.async_get(cached)
+        if cached_entry is not None and cached_entry.disabled_by is None:
+            return cached
+        cache.pop(key, None)
+    entry = registry.async_get(number_entity_id)
     profile = profile_for(entry.platform if entry is not None else None)
     keys = getattr(profile, keys_of, ()) if profile is not None else ()
     if entry is None or not keys:
         return None
     found = device_entities(hass, entry.platform, "sensor", keys, number_entity_id)
-    return found[0] if found else None
+    if not found:
+        return None
+    cache[key] = found[0]
+    return found[0]
+
+
+class RatingMemory:
+    """The last plausible rating (kW) read from each DC charger's rated-power sensor, by its power number, kept across
+    restarts: when the sensor is unavailable, reads 0 or is disabled, the charger is still never given more."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._store: Store[dict[str, Any]] = Store(hass, RATING_STORE_VERSION, RATING_STORE_KEY)
+        self._ratings: dict[str, float] = {}
+        self._loading = False
+
+    def ensure_loaded(self, hass: HomeAssistant) -> None:
+        if self._loading:
+            return
+        self._loading = True
+        hass.async_create_task(self._async_load(), "spotnav evdc ratings", eager_start=True)
+
+    async def _async_load(self) -> None:
+        data = await self._store.async_load()
+        ratings = data.get("ratings") if isinstance(data, dict) else None
+        for entity_id, value in (ratings or {}).items() if isinstance(ratings, dict) else ():
+            kw = _finite(value)
+            if isinstance(entity_id, str) and kw is not None and _plausible_rating(kw):
+                # A rating read since the start is newer than the stored one.
+                self._ratings.setdefault(entity_id, kw)
+
+    def get(self, entity_id: str) -> float | None:
+        return self._ratings.get(entity_id)
+
+    def remember(self, entity_id: str, kw: float) -> None:
+        known = self._ratings.get(entity_id)
+        if known is not None and abs(known - kw) < 1e-3:
+            return
+        self._ratings[entity_id] = kw
+        self._store.async_delay_save(lambda: {"ratings": dict(self._ratings)}, 5.0)
+
+
+def rating_memory(hass: HomeAssistant) -> RatingMemory:
+    memory = hass.data.get(RATING_STORE_KEY)
+    if not isinstance(memory, RatingMemory):
+        memory = hass.data[RATING_STORE_KEY] = RatingMemory(hass)
+    memory.ensure_loaded(hass)
+    return memory
+
+
+def _plausible_rating(kw: float) -> bool:
+    return RATED_KW_RANGE[0] <= kw <= RATED_KW_RANGE[1]
 
 
 class PowerTiming:
@@ -203,9 +336,13 @@ class PowerTiming:
 class PowerCurrent(CurrentPath):
     """`number.set_value` on a power limit (kW or W), given a current per phase. See the module docstring.
 
-    Refuses, in this order: below the 6 A floor or `EVDC_MIN_POWER_KW`, a number that is gone or has no power unit,
-    a value it already carries, a raise within `EVDC_SETTLE_S` of the last write (the regulator's and the sun's only),
-    and the policy's interval not yet elapsed.
+    Refuses, in this order: below the 6 A floor, a charger not wired as three phases, a number that is gone or has no
+    power unit, no ceiling known (`ceiling_kw`), below `EVDC_MIN_POWER_KW`, a value it already carries, a raise within
+    `EVDC_SETTLE_S` of the last write (the regulator's and the sun's only), and the policy's interval not yet elapsed.
+
+    The number's state lags a write (the integration reads the register back on its next poll), so for
+    `PENDING_WRITE_S` after a write, until the state shows it, the value written stands for what the charger carries
+    (`_carried_native`): a lowering right after a raise is never taken for "unchanged".
     """
 
     kind = CURRENT_CONTROL_POWER
@@ -220,6 +357,9 @@ class PowerCurrent(CurrentPath):
         limiter: WriteRateLimiter | None = None,
         voltage_v: Callable[[], float] = lambda: float(DEFAULT_VOLTAGE_BETWEEN_PHASES_V),
         rated_entity_id: Callable[[], str | None] = lambda: None,
+        three_phase: Callable[[], bool] = lambda: True,
+        fuse_cap_a: Callable[[], int | None] = lambda: None,
+        ratings: RatingMemory | None = None,
         timing: PowerTiming | None = None,
         now: Callable[[], datetime] = dt_util.utcnow,
     ) -> None:
@@ -229,54 +369,89 @@ class PowerCurrent(CurrentPath):
         self._limiter = limiter or WriteRateLimiter(policy, now)
         self._voltage_v = voltage_v
         self._rated_entity_id = rated_entity_id
+        self._three_phase = three_phase
+        self._fuse_cap_a = fuse_cap_a
+        self._ratings = ratings
         self.timing = timing
         self._now = now
+        #: The native value last written and when, until the number's state shows it (`_carried_native`).
+        self._pending: tuple[float, datetime] | None = None
+        #: How many must-lowers the write interval refused, so the charge was stopped instead (the controller counts).
+        self.interval_stops = 0
+        self._single_phase_logged = False
 
     # -- the conversion
 
     def kw_per_a(self) -> float:
         return kw_per_amp(self._voltage_v())
 
-    def rated_kw(self) -> float | None:
-        """The charger's rating (kW): its rated-power sensor, else the number's `max`; `None` when neither says."""
+    def sensor_rated_kw(self) -> float | None:
+        """The rated-power sensor's reading (kW) when it is a plausible rating, else `None`."""
         rated_id = self._rated_entity_id()
         rated = power_kw(self.hass.states.get(rated_id)) if rated_id else None
-        if rated is not None and rated > 0:
+        return rated if rated is not None and _plausible_rating(rated) else None
+
+    def rated_kw(self) -> float | None:
+        """The charger's rating (kW): its rated-power sensor when plausible (then remembered), else the last plausible
+        one remembered; `None` when neither. The number's own `max` (100 kW) is never taken for it."""
+        rated = self.sensor_rated_kw()
+        if rated is not None:
+            if self._ratings is not None:
+                self._ratings.remember(self.entity_id, rated)
             return rated
-        state = self.hass.states.get(self.entity_id)
-        factor = _native_factor(state)
-        maximum = _finite(state.attributes.get("max")) if state is not None else None
-        if factor is None or maximum is None or maximum <= 0:
-            return None
-        return maximum / factor
+        return None if self._ratings is None else self._ratings.get(self.entity_id)
+
+    def fuse_cap_kw(self) -> float | None:
+        cap_a = self._fuse_cap_a()
+        return None if cap_a is None else cap_a * self.kw_per_a()
+
+    def ceiling_kw(self) -> float | None:
+        """The most the limit may be (kW): the rating, else the limit the charger carries now (never raised without a
+        rating), and on a site the fuse cap below either. `None` when nothing says."""
+        rated = self.rated_kw()
+        bound = rated if rated is not None else self.limit_kw()
+        cap = self.fuse_cap_kw()
+        values = [value for value in (bound, cap) if value is not None]
+        return min(values) if values else None
 
     def max_a(self) -> int | None:
-        """The current per phase the rating is, rounded down; `None` without a rating."""
-        rated = self.rated_kw()
-        if rated is None:
+        """The current per phase the ceiling is, rounded down; `None` without one."""
+        ceiling = self.ceiling_kw()
+        if ceiling is None:
             return None
-        return int(math.floor(rated / self.kw_per_a() + 1e-6))
+        return int(math.floor(ceiling / self.kw_per_a() + 1e-6))
 
-    def kw_for(self, amps: int) -> float:
-        """The power `amps` per phase is written as: the rating at its current or above, else the three-phase power."""
-        rated = self.rated_kw()
+    def kw_for(self, amps: int) -> float | None:
+        """The power `amps` per phase is written as: the ceiling at its current or above, else the three-phase power;
+        `None` when there is no ceiling."""
+        ceiling = self.ceiling_kw()
+        if ceiling is None:
+            return None
         kw = amps * self.kw_per_a()
         maximum = self.max_a()
-        if rated is not None and (kw > rated or (maximum is not None and amps >= maximum)):
-            return rated
+        if kw > ceiling or (maximum is not None and amps >= maximum):
+            return ceiling
         return kw
+
+    def _slack_kw(self, state: State | None) -> float:
+        """What a limit read back may lie under the power written (the number's step, at least 0.01 kW, under one
+        ampere's worth)."""
+        factor = _native_factor(state)
+        step = _finite(state.attributes.get("step")) if state is not None else None
+        step_kw = step / factor if step is not None and step > 0 and factor else 0.0
+        return min(max(READ_BACK_SLACK_KW, step_kw) + 1e-6, 0.9 * self.kw_per_a())
 
     def _amps_of(self, kw: float) -> int:
         """The current per phase a power limit is: rounded down, after allowing for the limit's own step (a write is
-        rounded down to it, so 6 A written as 4.156 kW reads back as 6 A, not 5)."""
+        rounded down to it, so 6 A written as 4.15 kW reads back as 6 A, not 5)."""
         maximum = self.max_a()
-        amps = int(math.floor(kw / self.kw_per_a() + READ_BACK_SLACK_A))
-        rated = self.rated_kw()
-        if maximum is not None and rated is not None and kw >= rated - 1e-6:
+        ceiling = self.ceiling_kw()
+        if maximum is not None and ceiling is not None and kw >= ceiling - 1e-6:
             return maximum
-        return amps
+        return int(math.floor((kw + self._slack_kw(self.hass.states.get(self.entity_id))) / self.kw_per_a()))
 
     def limit_kw(self) -> float | None:
+        """The limit the number's state shows (kW)."""
         state = self.hass.states.get(self.entity_id)
         factor = _native_factor(state)
         value = _finite(state.state) if state is not None else None
@@ -284,11 +459,32 @@ class PowerCurrent(CurrentPath):
             return None
         return value / factor
 
+    def _carried_native(self, state: State | None) -> float | None:
+        """What the charger carries, in the number's units: the value last written while the state has not shown it
+        yet (within `PENDING_WRITE_S`), else the state."""
+        present = _finite(state.state) if state is not None else None
+        pending = self._pending
+        if pending is None:
+            return present
+        native, at = pending
+        step = _finite(state.attributes.get("step")) if state is not None else None
+        if present is not None and abs(present - native) < max(1e-6, (step or 0.0) / 2):
+            self._pending = None
+            return present
+        if (self._now() - at).total_seconds() < PENDING_WRITE_S:
+            return native
+        self._pending = None
+        return present
+
     # -- `CurrentPath`
 
     def setpoint_a(self) -> int | None:
-        limit = self.limit_kw()
-        return self.last_written_a if limit is None else self._amps_of(limit)
+        state = self.hass.states.get(self.entity_id)
+        factor = _native_factor(state)
+        carried = self._carried_native(state)
+        if factor is None or carried is None:
+            return self.last_written_a
+        return self._amps_of(carried / factor)
 
     def read_back_a(self) -> int | None:
         limit = self.limit_kw()
@@ -300,9 +496,23 @@ class PowerCurrent(CurrentPath):
     def wait_s(self) -> float:
         return self._limiter.wait_s()
 
+    def note_interval_stop(self) -> None:
+        self.interval_stops += 1
+
     async def async_set(self, amps: int, *, reason: str, verify: bool = False) -> str:
         if amps < DEFAULT_MIN_CURRENT_A:
             return ASSIGN_BELOW_MINIMUM
+        if not self._three_phase():
+            # sqrt(3) x V x I on one phase is three times the current the plan counts: never written.
+            if not self._single_phase_logged:
+                self._single_phase_logged = True
+                _LOGGER.warning(
+                    "SpotNav: the DC charger's power limit %s is not written: the charger is wired as one phase, and "
+                    "a DC charger is driven only on three",
+                    self.entity_id,
+                )
+            return ASSIGN_UNSUPPORTED
+        self._single_phase_logged = False
         state = self.hass.states.get(self.entity_id)
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             return ASSIGN_TARGET_UNAVAILABLE
@@ -310,6 +520,8 @@ class PowerCurrent(CurrentPath):
         if factor is None:
             return ASSIGN_UNIT_UNKNOWN
         kw = self.kw_for(amps)
+        if kw is None:
+            return ASSIGN_TARGET_UNAVAILABLE
         if kw < EVDC_MIN_POWER_KW:
             return ASSIGN_BELOW_MINIMUM
         native = kw * factor
@@ -323,7 +535,7 @@ class PowerCurrent(CurrentPath):
             return ASSIGN_BELOW_MINIMUM
         if maximum is not None and native > maximum:
             native = maximum
-        present = _finite(state.state)
+        present = self._carried_native(state)
         if present is not None and abs(present - native) < max(1e-9, (step or 0.0) / 2):
             return ASSIGN_UNCHANGED
         last = self._limiter.last_write_at
@@ -347,6 +559,7 @@ class PowerCurrent(CurrentPath):
         except Exception:  # noqa: BLE001 - the outcome code says it; the regulator decides what that means
             return ASSIGN_WRITE_FAILED
         self.last_written_a = amps
+        self._pending = (float(native), self._now())
         if self.timing is not None:
             self.timing.note("limit", value / factor)
         if verify:
@@ -361,19 +574,26 @@ class PowerCurrent(CurrentPath):
     def describe_state(self) -> dict[str, Any]:
         rated = self.rated_kw()
         limit = self.limit_kw()
+        cap = self._fuse_cap_a()
         return {
             "limit_kw": None if limit is None else round(limit, 3),
             "rated_kw": None if rated is None else round(rated, 3),
+            "rated_from_sensor": self.sensor_rated_kw() is not None,
+            "fuse_cap_a": cap,
+            "three_phase": self._three_phase(),
             "kw_per_a": round(self.kw_per_a(), 4),
             "max_a": self.max_a(),
             "min_power_kw": EVDC_MIN_POWER_KW,
             "settle_s": EVDC_SETTLE_S,
+            "interval_stops": self.interval_stops,
             "output_kw": None if self.timing is None else PowerTiming._rounded(self.timing.output_kw()),
             "timing": [] if self.timing is None else self.timing.records(),
         }
 
 
 def _power_current(context: ChargerContext) -> CurrentPath | None:
+    from ...planning.phases import charger_wiring  # noqa: PLC0415 - the planning imports execution
+
     number = context.current_limit
     if not number:
         return None
@@ -381,6 +601,15 @@ def _power_current(context: ChargerContext) -> CurrentPath | None:
 
     def output() -> str | None:
         return charger_sensor(hass, number, "output_power_keys")
+
+    def entry_id() -> str | None:
+        return charger_entry_id(hass, context.charge_control)
+
+    def three_phase() -> bool:
+        # Guard: a charger wired as one phase is never given a power (`PowerCurrent.async_set`). No entry or no
+        # wiring stated is three phases, as everywhere else.
+        charger = entry_id()
+        return charger is None or (charger_wiring(hass, charger) or 3) == 3
 
     timing = PowerTiming(hass, output, lambda: _status_text(context), context.now)
     path = context.path
@@ -394,6 +623,9 @@ def _power_current(context: ChargerContext) -> CurrentPath | None:
         limiter=context.limiter,
         voltage_v=lambda: charger_voltage_v(hass, context.charge_control),
         rated_entity_id=lambda: charger_sensor(hass, number, "rated_power_keys"),
+        three_phase=three_phase,
+        fuse_cap_a=lambda: evdc_fuse_cap_a(hass, entry_id()),
+        ratings=rating_memory(hass),
         timing=timing,
         now=context.now,
     )

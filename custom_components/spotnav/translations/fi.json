@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä.",
       "fee_value_required": "Anna oma luku tai valitse ehdotus.",
       "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään.",
-      "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu.",
+      "dc_charger_three_phase": "DC-laturia ohjataan vain kolmella vaiheella: SpotNav kirjoittaa sille kolmen vaiheen tehon, joka yhdellä vaiheella ottaisi kolminkertaisen virran laskettuun nähden. Valitse 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään.",
       "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu.",
       "switch_load_incomplete": "Anna kuorman nimellisteho ja käyntiaika.",
-      "switch_load_floor_pair": "Lämpötila-anturi ja alin lämpötila kuuluvat yhteen: anna molemmat tai ei kumpaakaan."
+      "switch_load_floor_pair": "Lämpötila-anturi ja alin lämpötila kuuluvat yhteen: anna molemmat tai ei kumpaakaan.",
+      "dc_charger_three_phase": "DC-laturia ohjataan vain kolmella vaiheella: SpotNav kirjoittaa sille kolmen vaiheen tehon, joka yhdellä vaiheella ottaisi kolminkertaisen virran laskettuun nähden. Valitse 3."
     }
   },
   "selector": {

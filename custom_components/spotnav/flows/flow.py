@@ -980,6 +980,10 @@ class SpotNavChargingConfigFlow(
         """Ask what the charger's entities cannot say (its phases, and in Norway the voltage between
         phases), then create the entry, after offering to add it to the installation's one site.
         """
+        profile = profile_for(data.get(CONF_CHARGER_PLATFORM))
+        if profile is not None and profile.power_controlled and charger_phases_from_entry(data) is None:
+            # A DC charger is driven only on three phases (`execution/chargers/sigenergy.py`): never asked.
+            data = {**data, CONF_CHARGER_PHASES: 3}
         self._installation_charger = (title, data)
         if any(self._installation_questions(data)):
             return await self.async_step_charger_installation()

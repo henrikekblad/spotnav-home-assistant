@@ -14,6 +14,7 @@ from typing import Any
 from homeassistant.data_entry_flow import FlowResult
 
 from ..const import CONF_MEASURED_CURRENT_SOURCE
+from ..planning.phases import dc_charger
 from .labels import MANUAL_CHOICE, MANUAL_ENTITIES_CHOICE
 from .measured_source import (
     async_manual_source_step,
@@ -69,7 +70,11 @@ class ChargerWiringSteps:
         if not self._wiring_queue:
             return await self._finish_pending_site()
         charger_entry_id = self._wiring_queue[0]
-        if user_input is not None:
+        errors: dict[str, str] = {}
+        if user_input is not None and _one_phase(user_input) and dc_charger(self.hass, charger_entry_id):
+            # A DC charger is given the power of three phases: on one it would draw three times the current counted.
+            errors["phases"] = "dc_charger_three_phase"
+        elif user_input is not None:
             pending.charger_inputs[charger_entry_id] = dict(user_input)
             choice = user_input.get("measured_source")
             if choice in (MANUAL_CHOICE, MANUAL_ENTITIES_CHOICE):
@@ -94,6 +99,7 @@ class ChargerWiringSteps:
                 existing=self._stored_wiring(charger_entry_id),
                 candidates=pending.charger_candidates.get(charger_entry_id),
             ),
+            errors=errors,
             description_placeholders={"charger": entry.title if entry is not None else charger_entry_id},
         )
 
@@ -138,3 +144,10 @@ class ChargerWiringSteps:
             )
         self._manual_measured_sources[charger_entry_id] = outcome.source
         return await self._next_charger()
+
+
+def _one_phase(user_input: dict[str, Any]) -> bool:
+    try:
+        return int(user_input.get("phases", 3)) == 1
+    except (TypeError, ValueError):
+        return False

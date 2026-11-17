@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité.",
       "fee_value_required": "Saisissez votre propre montant, ou choisissez la suggestion.",
       "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien.",
-      "entsoe_key_rejected": "ENTSO-E n'a pas accepté cette clé. Vérifiez-la ou générez-en une nouvelle sur transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E n'a pas accepté cette clé. Vérifiez-la ou générez-en une nouvelle sur transparency.entsoe.eu.",
+      "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien.",
       "entsoe_key_rejected": "ENTSO-E n'a pas accepté cette clé. Vérifiez-la ou générez-en une nouvelle sur transparency.entsoe.eu.",
       "switch_load_incomplete": "Indiquez la puissance nominale et la durée de fonctionnement de la charge.",
-      "switch_load_floor_pair": "Le capteur de température et la température minimale vont ensemble : indiquez les deux ou aucun."
+      "switch_load_floor_pair": "Le capteur de température et la température minimale vont ensemble : indiquez les deux ou aucun.",
+      "dc_charger_three_phase": "Un chargeur DC n'est piloté qu'en triphasé : SpotNav lui écrit la puissance de trois phases, qui sur une seule phase tirerait trois fois le courant compté. Choisissez 3."
     }
   },
   "selector": {
