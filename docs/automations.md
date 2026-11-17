@@ -175,7 +175,9 @@ It runs when the price sensors change, when a limit runs out, every 5 minutes, a
 starts or automations are reloaded, and each time sets the relays the price calls for: after a restart a
 relay is never left closed when it should be open. The time limits count from when this automation last
 switched the relays, which Home Assistant keeps over a restart. While a relay is unavailable nothing is
-done.
+done. A relay closed by hand is opened at the next run when the price does not call for it, and also while
+Expensive now is on once it has been closed longer than the longest closed time (counted from this
+automation's last switching when that is earlier).
 
 | Input | Default | |
 |---|---|---|
