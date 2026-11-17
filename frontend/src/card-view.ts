@@ -1770,7 +1770,6 @@ export function createCardView(input: CardViewInput): CardView {
       day: (instantMs) => dayCue(model.format, instantMs),
       hour: (instantMs) => hourLabel(model.format, instantMs),
       price: (value, span) => priceAxisLabel(model.format, value, span),
-      sunPeak: (kw) => translate(model.language, "graph.sun.peak", { kw: formatNumber(model.language, kw, 1) }),
     };
     const result = renderChart({
       series: model.chart,
@@ -1939,7 +1938,13 @@ export function createCardView(input: CardViewInput): CardView {
     // The legend's swatch for the sun in the chart, in the summary row beside the price extremes.
     const sunKey = element(doc, "span", C.summarySun);
     sunKey.dataset["part"] = "sun-key";
-    sunKey.append(element(doc, "span", C.sunSwatch), doc.createTextNode(translate(model.language, "graph.sun.short")));
+    // With the site's peak known, the swatch says what the sun is scaled against ("Sol, topp 10 kW"), so a dull day
+    // drawn low reads as little sun; the label stays out of the plot, where it would sit on the price marks.
+    const sunText =
+      model.sun.peakKw !== null
+        ? translate(model.language, "graph.sun.peak", { kw: formatNumber(model.language, model.sun.peakKw, 1) })
+        : translate(model.language, "graph.sun.short");
+    sunKey.append(element(doc, "span", C.sunSwatch), doc.createTextNode(sunText));
     sunKey.querySelector(`.${C.sunSwatch}`)?.setAttribute("aria-hidden", "true");
     summaryExtremes.append(sunKey);
   }

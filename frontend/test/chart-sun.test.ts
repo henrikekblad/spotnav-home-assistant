@@ -469,7 +469,9 @@ describe("the sun's scale against the site's peak", () => {
     const scene = model({ sun });
     const result = view(scene);
     const line = sunLine(result.root);
-    const label = result.root.querySelector(`.${C.sunPeak}`)?.textContent ?? null;
+    // The peak is said in the sun's swatch beside the price extremes, never inside the plot.
+    expect(result.root.querySelector(`.${C.sunPeak}`)).toBeNull();
+    const label = result.root.querySelector('[data-part="sun-key"]')?.textContent ?? null;
     result.card.destroy();
     return { y: topY(line), label, maxKw: scene.sun?.maxKw ?? 0 };
   };
@@ -488,7 +490,7 @@ describe("the sun's scale against the site's peak", () => {
     expect(without.maxKw).toBe(4.2);
     // A larger y is lower on the chart.
     expect(withPeak.y).toBeGreaterThan(without.y);
-    expect(without.label).toBeNull();
+    expect(without.label).toBe(translate("sv", "graph.sun.short"));
     expect(withPeak.label).toBe(translate("sv", "graph.sun.peak", { kw: "10" }));
   });
 
