@@ -698,7 +698,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
     source = site_price_source(hass, site.entry_id)
     area = None if source is None else source.area
     shadow = getattr(controller, "heat_shadow", None)
-    relay, tight, outdoor_by_hour, kept, review = None, frozenset(), {}, {}, None
+    relay, tight, outdoor_by_hour, kept, review, room_warm = None, frozenset(), {}, {}, None, False
     automations: tuple[Any, ...] = ()
     control_status, executed = None, {}
     control = getattr(controller, "heat_control", None)
@@ -715,6 +715,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             kept = shadow.kept_actions(local.date())
             review = shadow.review_of(local.date() - timedelta(days=1))
             automations = tuple(shadow.automations)
+            room_warm = shadow.room_warm.active
         except Exception:  # noqa: BLE001 - the heat shadow is extra: the card shows the rest
             _LOGGER.debug("SpotNav heat: the heat shadow could not be read", exc_info=True)
     answer = heat_view(
@@ -745,6 +746,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             control=control_status,
             executed=executed,
             indoor_day=curve,
+            room_warm=room_warm,
         )
     )
     return answer

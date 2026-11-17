@@ -14,6 +14,10 @@ warms is no local source). A value outside `PLAUSIBLE` is no reading.
 Each sensor may have an offset against the house target (its room's own aim, `heat/config.py`): the coldest room is
 the one whose reading less its offset is lowest, and that figure (`relative_c`) is what the house's comfort band is
 compared with. `value_c` stays the room's own reading.
+
+Whether the house is **too warm** (`warm_c`) is judged on the same figure, but never on a room that is rising fast
+itself: a sensor warmed by sun or a stove reads warm before the house is, and with one sensor (or all of them rising)
+the rule above leaves nothing out. The coldest counted room rising `LOCAL_RISE_C` over the window is no warm reading.
 """
 
 from __future__ import annotations
@@ -135,3 +139,14 @@ def indoor(readings: Sequence[SensorReading], now: datetime, heating_areas: froz
     coldest = min(counted, key=lambda reading: (reading.value_c - reading.offset_c, reading.entity_id))  # type: ignore[operator]
     relative = float(coldest.value_c) - coldest.offset_c  # type: ignore[arg-type]
     return Indoor(coldest.value_c, coldest.entity_id, coldest.name, views, relative)
+
+
+def warm_c(result: Indoor) -> float | None:
+    """The figure the band's high edge is compared with (see the module): the coldest counted room less its offset,
+    `None` while that room rises fast or its rise is not known."""
+    if result.relative_c is None or result.coldest is None:
+        return None
+    sensor = next((view for view in result.sensors if view.entity_id == result.coldest), None)
+    if sensor is None or sensor.rise_c is None or sensor.rise_c >= LOCAL_RISE_C:
+        return None
+    return result.relative_c

@@ -8,7 +8,8 @@ The relay path only (and SG Ready's first contact): **closed** lowers the pump's
 **The rules** (fixed, no settings), `decide`, on SpotNav's own plan (`heat/shadow_rule.band`, the running hour's
 planned lowered run: `planned_run_end`):
 
-* A lowering starts only where the plan lowers the running hour and its run ahead leaves at least `MIN_LOWER` (no
+* A lowering starts only where the plan lowers the running hour (a dear or tight hour, or the house too warm:
+  `shadow_rule.REASON_ROOM_WARM`, the same rules for all; an hour lowered for both is one lowering) and its run ahead leaves at least `MIN_LOWER` (no
   quarter blips), at least `MIN_NORMAL` after SpotNav's last lowering ended, while the lowered time of the last 24
   hours (a rolling day) leaves `MIN_LOWER` under `MAX_DAY`, and the day's writes leave room for its end too
   (`MAX_WRITES_DAY`).

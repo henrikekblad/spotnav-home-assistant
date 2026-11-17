@@ -865,3 +865,59 @@ async def test_the_stop_waits_for_a_running_look_before_it_opens(hass: HomeAssis
     await control.async_shutdown()
     # The look ended (its closing taken) before the opening was written: the relay ends open.
     assert look_done_at_opening == [True] and relay.calls == ["on", "off"] and relay.state == "off"
+
+
+async def test_a_house_above_its_band_for_an_hour_is_lowered_whatever_the_price(hass: HomeAssistant, freezer) -> None:
+    site, controller, relay = await _site(hass, freezer, target_c=21.0)
+    control: HeatControl = controller.heat_control
+    shadow = controller.heat_shadow
+    _passed(control)
+    start = controller.demand.now().replace(second=0, microsecond=0)
+
+    async def at(minute: int, room: str) -> datetime:
+        now = start + minute * MIN
+        freezer.move_to(now)
+        hass.states.async_set(ROOM, room, {"unit_of_measurement": "°C", "device_class": "temperature"})
+        hass.states.async_set(OUTDOOR, "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+        shadow.tick(now)
+        await hass.async_block_till_done()
+        await control.async_look(now)
+        return now
+
+    for minute in range(0, 60, 5):
+        await at(minute, "22.3")
+    # Above the band (21.5) for less than an hour: nothing.
+    assert relay.calls == [] and not shadow.room_warm.active
+    now = await at(61, "22.3")
+    assert shadow.room_warm.active and relay.calls == ["on"]
+    running = next(hour for hour in shadow.plan if hour.start <= now < hour.start + H)
+    assert (running.action, running.reason) == ("lower", "room_warm")
+    # The card shows the hour lowered for it, and the hour is kept so.
+    answer = (await read(hass, api_version=1, site_id=site.entry_id))["result"]
+    current = now.replace(minute=0).isoformat()
+    shown = next(hour for hour in answer["band"]["hours"] if hour["start"] == current)
+    assert (shown["action"], shown["reason"]) == ("lower", "room_warm")
+    assert answer["status"]["would"]["reason"] == "room_warm"
+    # Back 0.2 inside the band: the lowering ends once its 45 minutes have passed.
+    await at(70, "21.2")
+    assert not shadow.room_warm.active and relay.calls == ["on"]
+    await at(61 + 45, "21.2")
+    assert relay.calls == ["on", "off"]
+
+
+async def test_a_fast_rising_room_is_no_warm_reading(hass: HomeAssistant, freezer) -> None:
+    _site_, controller, relay = await _site(hass, freezer, target_c=21.0)
+    control: HeatControl = controller.heat_control
+    shadow = controller.heat_shadow
+    _passed(control)
+    start = controller.demand.now().replace(second=0, microsecond=0)
+    # A sensor warmed by sun climbs 0.15 °C every five minutes from 21.4 for well over an hour.
+    for step in range(0, 18):
+        now = start + 5 * step * MIN
+        freezer.move_to(now)
+        hass.states.async_set(ROOM, f"{21.4 + 0.15 * step:.2f}", {"unit_of_measurement": "°C", "device_class": "temperature"})
+        hass.states.async_set(OUTDOOR, "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+        shadow.tick(now)
+        await hass.async_block_till_done()
+        await control.async_look(now)
+    assert not shadow.room_warm.active and relay.calls == []

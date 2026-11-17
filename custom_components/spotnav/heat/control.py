@@ -26,7 +26,7 @@ first contact only. Nothing is written without it. The rules and the check are p
    meter's power now and its levels (read again every hour from its 5-minute rows) or the pump's calculated supply
    (`heat/facts.py`); without either nothing can be judged (`no_signal`). A failed check stops control
    (`check_failed`) until the switch is turned off and on again.
-6. **Control**: `relay_control.decide` on the heat shadow's plan, with SpotNav's lowerings of the last 24 hours, its writes and
+6. **Control**: `relay_control.decide` on the heat shadow's plan (its dear and tight hours, and the house too warm), with SpotNav's lowerings of the last 24 hours, its writes and
    the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`; a sensor that
    has not reported for `runtime.STALE_AFTER` does not read), outdoors at or below -15 °C (the lowest of the chosen
    sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)

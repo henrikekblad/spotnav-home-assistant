@@ -186,6 +186,24 @@ describe("the front", () => {
     expect(folded.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
   });
 
+  it("says when a lowering is for a house that is too warm", () => {
+    const villa = answer();
+    const hours = villa.band.hours.map((hour, index) => (index === 17 ? { ...hour, reason: "room_warm" } : hour));
+    const warm: HeatAnswer = { ...villa, band: { ...villa.band, hours }, status: { ...villa.status, would: { ...villa.status.would!, action: "lower", reason: "room_warm" } } };
+    // The chart's readout names the hour's lowering (a lowering column like a dear hour's).
+    const card = body(warm);
+    card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(card.querySelector("[data-line='day-readout']")!.textContent).toBe(
+      "17:30 · börvärde 20,5 °C · reläet väntas sänka 60 min · planerad sänkning · för varmt inne",
+    );
+    expect(wouldLine("sv", warm)).toBe("Skulle sänka till 20,5 °C till 19:00: för varmt inne");
+    expect(wouldLine("en", warm)).toBe("Would lower to 20.5 °C until 19:00: too warm indoors");
+    const controlled = answer("controlled.json");
+    const lowered = { ...controlled.control!, state: "running", reason: "planned", lowered: true, until: controlled.status.would?.until ?? controlled.now };
+    const line = controlLine("sv", { ...controlled, control: lowered, status: { ...controlled.status, would: { action: "lower", target_c: 20.5, until: null, reason: "room_warm" } } });
+    expect(line).toMatch(/^Styr: sänker värmen till .+, för varmt inne\.$/);
+  });
+
   it("says today's heat and hot water and their cost", () => {
     expect(todayLine("sv", answer())).toBe("I dag · värme 13,9 kWh · varmvatten 1,7 kWh · 19 kr");
     expect(todayLine("en", answer("network_pump.json"))).toBeNull();

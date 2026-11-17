@@ -36,6 +36,8 @@ export interface DayHour {
   target_c: number;
   /** The plan's action: `lower`, `preheat`, `night`, `away`, `return` or `normal`. */
   action: string;
+  /** Why the plan lowers or keeps the hour (`dear_hour`, `tight_hour`, `room_warm`, …); absent where not known. */
+  reason?: string;
   /** Minutes SpotNav itself held the relay closed in the hour; `null` where nothing is known. */
   executed_min: number | null;
   /** Minutes the relay was (or is expected to be) closed by anyone; `null` without a relay. */
@@ -185,6 +187,9 @@ export function dayFigures(input: DayChartInput, ms: number): string {
     }
     if (lowering.planned && lowering.executed === 0) {
       parts.push(translate(language, "heat.chart.plannedHour"));
+    }
+    if (lowering.planned && hour.reason === "room_warm") {
+      parts.push(translate(language, "heat.chart.roomWarm"));
     }
     const key = ACTION_KEYS[hour.action];
     if (key !== undefined) {

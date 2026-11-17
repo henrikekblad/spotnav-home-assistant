@@ -424,7 +424,9 @@ export function wouldLine(language: Language, answer: HeatAnswer): string | null
   if (!actions.includes(would.action)) {
     return null;
   }
-  const key = would.action === "lower" && would.reason === "tight_hour" ? "heat.would.lowerTight" : `heat.would.${would.action}`;
+  // A lowering's own reason; the dear hours are the plain one.
+  const lowerKey = would.reason === "tight_hour" ? "heat.would.lowerTight" : would.reason === "room_warm" ? "heat.would.lowerWarm" : "heat.would.lower";
+  const key = would.action === "lower" ? lowerKey : `heat.would.${would.action}`;
   return translate(language, key as TranslationKey, {
     temp: degrees(language, would.target_c),
     until: would.until === null ? "" : whenLabel(language, answer, Date.parse(would.until)),
@@ -533,6 +535,7 @@ function dayBlock(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | nul
       startMs: hour.startMs,
       target_c: hour.target_c,
       action: hour.action,
+      reason: hour.reason,
       executed_min: hour.executed_min,
       relay_min: hour.relay_min,
       relay_expected: hour.relay_expected,
@@ -730,9 +733,10 @@ export function controlLine(language: Language, answer: HeatAnswer): string | nu
   }
   if (control.state === "running") {
     if (control.lowered) {
+      const warm = answer.status.would?.reason === "room_warm";
       return control.until === null
         ? translate(language, "heat.control.loweredNow")
-        : translate(language, "heat.control.lowered", { until: whenLabel(language, answer, Date.parse(control.until)) });
+        : translate(language, warm ? "heat.control.loweredWarm" : "heat.control.lowered", { until: whenLabel(language, answer, Date.parse(control.until)) });
     }
     const reason = control.reason ?? "";
     return translate(language, (CONTROL_SAFETY.includes(reason) ? `heat.control.${reason}` : "heat.control.normal") as TranslationKey);
