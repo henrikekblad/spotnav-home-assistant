@@ -99,12 +99,13 @@ def plausible(value: float | None) -> bool:
 
 def rise(reading: SensorReading, now: datetime) -> float | None:
     """How much the sensor rose over the window: now against the reading in force at the window's start (else its
-    first in the window); `None` without both."""
+    first in the window before now); `None` without both. A reading taken only now (the first look after a restart)
+    is no rise: it is not known yet."""
     if not plausible(reading.value_c):
         return None
     start = now - WINDOW
     before = [value for moment, value in reading.history if moment <= start and plausible(value)]
-    inside = [value for moment, value in reading.history if moment > start and plausible(value)]
+    inside = [value for moment, value in reading.history if start < moment < now and plausible(value)]
     base = before[-1] if before else (inside[0] if inside else None)
     if base is None:
         return None

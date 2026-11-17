@@ -533,10 +533,10 @@ async def test_a_warm_house_is_lowered_through_a_and_never_raised(hass: HomeAssi
         await control.async_look(now)
         return now
 
-    for minute in range(0, 60, 5):
+    for minute in range(0, 65, 5):
         await at(minute, "22.3")
     assert contacts.calls == [] and not shadow.room_warm.active
-    now = await at(61, "22.3")
+    now = await at(66, "22.3")
     assert shadow.room_warm.active and contacts.calls == [(A, "on")] and contacts.pair == (1, 0)
     running = next(hour for hour in shadow.plan if hour.start <= now < hour.start + H)
     assert (running.action, running.reason) == ("lower", "room_warm")

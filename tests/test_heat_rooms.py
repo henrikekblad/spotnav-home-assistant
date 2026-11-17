@@ -89,3 +89,13 @@ def test_the_safety_figures_never_leave_a_cold_room_out() -> None:
     assert coldest_c(result) == 16.7
     assert warm_c(result) == 16.7
     assert warmest_c(result) == 21.8
+
+
+def test_a_reading_taken_only_now_has_no_known_rise() -> None:
+    # The first look after a restart: the window holds only the reading just taken.
+    fresh = SensorReading("sensor.vardagsrum", "Vardagsrum", 22.3, ((NOW, 22.3),))
+    assert rise(fresh, NOW) is None
+    assert warm_c(indoor([fresh], NOW)) is None
+    # A reading from earlier in the window is a known rise.
+    later = SensorReading("sensor.vardagsrum", "Vardagsrum", 22.3, ((NOW - timedelta(minutes=1), 22.3), (NOW, 22.3)))
+    assert rise(later, NOW) == 0.0
