@@ -339,17 +339,17 @@ class ResolutionRepairFlow(RepairsFlow):
     def _selector(self, candidate_entity_ids: list[str]) -> selector.SelectSelector:
         """The dropdown for these candidates.
 
-        The state-of-charge kind also gets the "this is not a vehicle" option (the config flow's
-        sentinel); a charge limit does not, because the device is a vehicle and only its limit is undecided.
+        Both kinds end with the "this is not a vehicle" option (the config flow's sentinel): discovery
+        only guesses that a device is a vehicle, so either question may be about something that is not one,
+        and a person must always be able to make it stop.
         """
         options = [entity_option(self.hass, entity_id) for entity_id in candidate_entity_ids]
-        if self._kind == "soc":
-            options.append(
-                selector.SelectOptionDict(
-                    value=DISMISS_VEHICLE_CHOICE,
-                    label=resolve_vehicle_text(self.hass, "dismiss"),
-                )
+        options.append(
+            selector.SelectOptionDict(
+                value=DISMISS_VEHICLE_CHOICE,
+                label=resolve_vehicle_text(self.hass, "dismiss"),
             )
+        )
         return selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=options, mode=selector.SelectSelectorMode.DROPDOWN
@@ -377,10 +377,11 @@ class ResolutionRepairFlow(RepairsFlow):
             return await self.async_step_init()
         choice = str(user_input["choice"])
         store = await async_setup_decisions(self.hass)
-        if self._kind == "soc":
-            if choice == DISMISS_VEHICLE_CHOICE:
-                await store.async_dismiss(DECISION_DOMAIN_VEHICLE, self._device_id)
-            elif valid_soc_entity_id(self.hass, self._device_id, choice):
+        if choice == DISMISS_VEHICLE_CHOICE:
+            # Either kind: dismissing the device answers every question about it.
+            await store.async_dismiss(DECISION_DOMAIN_VEHICLE, self._device_id)
+        elif self._kind == "soc":
+            if valid_soc_entity_id(self.hass, self._device_id, choice):
                 await store.async_confirm(
                     DECISION_DOMAIN_VEHICLE, self._device_id, {"soc_entity_id": choice}
                 )

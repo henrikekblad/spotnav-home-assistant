@@ -925,7 +925,7 @@
         "step": {
           "pick": {
             "title": "Vilken gräns ska en ändring sätta?",
-            "description": "**{device}** rapporterar mer än en laddgräns, så SpotNav gissar inte vilken av dem en ändring ska sätta. Välj den gräns bilens ändringar ska använda. Den skrivs via bilens egen integration och gäller när den integrationen läser av den nästa gång.",
+            "description": "**{device}** rapporterar mer än en laddgräns, så SpotNav gissar inte vilken av dem en ändring ska sätta. Välj den gräns bilens ändringar ska använda. Den skrivs via bilens egen integration och gäller när den integrationen läser av den nästa gång. Om {device} inte är ett fordon kan du ange det i stället, så slutar SpotNav fråga om det.",
             "data": {
               "choice": "Laddgräns"
             }

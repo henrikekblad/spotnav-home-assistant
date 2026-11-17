@@ -925,7 +925,7 @@
         "step": {
           "pick": {
             "title": "¿Qué límite debe fijar un cambio?",
-            "description": "**{device}** informa de más de un límite de carga, así que SpotNav no adivinará cuál debe fijar un cambio. Elige el límite que deben usar los cambios de este vehículo. Se escribe a través de la integración propia del vehículo y surte efecto la próxima vez que esa integración lo lea.",
+            "description": "**{device}** informa de más de un límite de carga, así que SpotNav no adivinará cuál debe fijar un cambio. Elige el límite que deben usar los cambios de este vehículo. Se escribe a través de la integración propia del vehículo y surte efecto la próxima vez que esa integración lo lea. Si {device} no es un vehículo, indícalo en su lugar y SpotNav dejará de preguntar por él.",
             "data": {
               "choice": "Límite de carga"
             }

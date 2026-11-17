@@ -14,6 +14,7 @@ from custom_components.spotnav.vehicles.discovery_decisions import (
     async_setup_decisions,
 )
 from custom_components.spotnav.vehicles.vehicle_discovery import (
+    discover_ambiguous_charge_limits,
     discover_ambiguous_vehicles,
     discover_vehicles,
     vehicle_charge_limit_entity_id,
@@ -238,6 +239,58 @@ async def test_a_confirmation_resolves_the_ceiling_to_the_entity_a_human_chose(
 
     assert by_id[device_id].target_soc_percent_max == 80.0
     assert vehicle_charge_limit_entity_id(hass, device_id) == lower
+
+
+async def test_a_presence_sensor_is_not_asked_about_a_charge_limit(hass: HomeAssistant) -> None:
+    """An mmWave presence sensor (LD2410, Everything Presence, FP2 ...) reports a distance and percent settings.
+
+    Its distance looks like a range and its sensitivity numbers like two charge limits, but with no
+    state of charge it is not a vehicle, so no charge-limit decision is asked for (GitHub issue #3).
+    """
+    device_id = _device(hass, unique_id="presence", name="Hall presence")
+    _entity(
+        hass,
+        device_id=device_id,
+        domain="sensor",
+        object_id="detection_distance",
+        state="142",
+        attributes={"device_class": "distance", "unit_of_measurement": "cm"},
+    )
+    _charge_limit(hass, device_id, object_id="g0_move_threshold", percent="50", minimum=0)
+    _charge_limit(hass, device_id, object_id="g0_still_threshold", percent="40", minimum=0)
+    _charge_limit(hass, device_id, object_id="sensitivity", percent="70", minimum=0)
+
+    assert discover_ambiguous_charge_limits(hass) == []
+    assert discover_vehicles(hass) == []
+
+
+async def test_a_charge_limit_decision_needs_a_state_of_charge_and_a_range(
+    hass: HomeAssistant,
+) -> None:
+    """A car with a range, a state of charge and two limits is still asked, and so is one whose state of charge
+    is itself undecided; one whose only battery reading is its health has no state of charge and is not."""
+    car = _device(hass, unique_id="car_two_limits", name="Two-limit car")
+    _battery_percent(hass, car, percent="55")
+    _range_sensor(hass, car, km="300")
+    _charge_limit(hass, car, object_id="limit_a", percent="80")
+    _charge_limit(hass, car, object_id="limit_b", percent="100")
+
+    undecided = _device(hass, unique_id="car_undecided_soc", name="Undecided car")
+    _battery_percent(hass, undecided, object_id="battery_a", percent="55")
+    _battery_percent(hass, undecided, object_id="battery_b", percent="60")
+    _range_sensor(hass, undecided, km="300")
+    _charge_limit(hass, undecided, object_id="limit_a", percent="80")
+    _charge_limit(hass, undecided, object_id="limit_b", percent="100")
+
+    health_only = _device(hass, unique_id="car_health_only", name="Health-only car")
+    _battery_percent(hass, health_only, object_id="battery_health", percent="96")
+    _range_sensor(hass, health_only, km="300")
+    _charge_limit(hass, health_only, object_id="limit_a", percent="80")
+    _charge_limit(hass, health_only, object_id="limit_b", percent="100")
+
+    asked = {candidate.id for candidate in discover_ambiguous_charge_limits(hass)}
+
+    assert asked == {car, undecided}
 
 
 async def test_a_stale_confirmation_is_ignored_and_the_ordinary_rule_decides_again(

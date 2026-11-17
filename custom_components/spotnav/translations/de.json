@@ -925,7 +925,7 @@
         "step": {
           "pick": {
             "title": "Welche Grenze soll eine Änderung setzen?",
-            "description": "**{device}** meldet mehr als eine Ladegrenze, daher rät SpotNav nicht, welche eine Änderung setzen soll. Wähle die Grenze, die für Änderungen an diesem Fahrzeug gelten soll. Sie wird über die eigene Integration des Fahrzeugs geschrieben und wirkt, sobald diese Integration sie das nächste Mal liest.",
+            "description": "**{device}** meldet mehr als eine Ladegrenze, daher rät SpotNav nicht, welche eine Änderung setzen soll. Wähle die Grenze, die für Änderungen an diesem Fahrzeug gelten soll. Sie wird über die eigene Integration des Fahrzeugs geschrieben und wirkt, sobald diese Integration sie das nächste Mal liest. Ist {device} kein Fahrzeug, gib das stattdessen an, dann fragt SpotNav nicht mehr danach.",
             "data": {
               "choice": "Ladegrenze"
             }
