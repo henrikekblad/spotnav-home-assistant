@@ -5,7 +5,6 @@
 
 export const HEAT_CLASSES = {
   card: "spotnav-heat",
-  settingsButton: "spotnav-heat-settings-button",
   dialWrap: "spotnav-heat-dial-wrap",
   dial: "spotnav-heat-dial",
   dialTrack: "spotnav-heat-dial-track",
@@ -51,20 +50,6 @@ const X = HEAT_CLASSES;
 export const HEAT_STYLES = `
   .${X.card} {
     --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
-  }
-  .${X.settingsButton} {
-    flex: none;
-    min-width: 40px;
-    min-height: 40px;
-    padding: 8px;
-    border: none;
-    background: none;
-    color: var(--secondary-text-color, #727272);
-    cursor: pointer;
-    border-radius: 50%;
-  }
-  .${X.settingsButton}:focus-visible {
-    outline: 2px solid var(--primary-color, #03a9f4);
   }
   .${X.dialWrap} {
     display: grid;

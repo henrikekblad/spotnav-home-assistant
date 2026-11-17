@@ -147,19 +147,6 @@ export function historyIcon(doc: Document, size = 16, className?: string): SVGEl
   return svg;
 }
 
-/** The history button in the house and heat cards' headers, beside the settings gear and in its style. */
-export function historyHeaderButton(doc: Document, label: string, className: string, onClick: () => void): HTMLButtonElement {
-  const button = element(doc, "button", className);
-  button.type = "button";
-  button.dataset["history"] = "open";
-  button.setAttribute("aria-label", label);
-  button.setAttribute("aria-haspopup", "dialog");
-  button.title = label;
-  button.append(historyIcon(doc, 20));
-  button.addEventListener("click", onClick);
-  return button;
-}
-
 const STEP_KEYS: Record<HistoryPeriod, [TranslationKey, TranslationKey, TranslationKey]> = {
   day: ["hist.previous.day", "hist.next.day", "hist.pick.day"],
   month: ["hist.previous.month", "hist.next.month", "hist.pick.month"],

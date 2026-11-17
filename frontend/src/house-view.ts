@@ -10,9 +10,8 @@ import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour
 import { renderFlow, type LoadsKind } from "./house-flow";
 import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { hiddenIn, type HiddenSeries } from "./house-series";
-import { settingsGearButton, testChip } from "./heat-view";
-import { HEAT_CLASSES as X } from "./heat-styles";
-import { historyHeaderButton } from "./period-history";
+import { cardHeader, headerButton, headerTitle } from "./card-header";
+import { statusLine, testStatus } from "./heat-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { daysLeft, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -391,30 +390,76 @@ export function reviewLine(language: Language, answer: HouseAnswer): string {
 
 // ------------------------------------------------------------------------------------------------ parts
 
+/** Measured battery power below this (kW, either way) is the battery at rest. */
+const REST_KW = 0.1;
+
+/**
+ * What the battery does now, as the house card's header says it after the name: while SpotNav controls it, the action
+ * its control runs ("Laddar från nätet", "Håller", "Säljer till nätet", "Laddar ur"), else (the battery's own
+ * self-consumption) what the measured power says ("Laddar med sol", "Laddar ur", "Vilar"); "Egen styrning" while the
+ * battery's own optimiser runs it; `test` while SpotNav controls nothing yet; `null` without a battery or (controlling)
+ * without a reading.
+ */
+export function batteryNow(language: Language, answer: HouseAnswer): { code: string; text: string } | "test" | null {
+  const battery = answer.battery;
+  if (battery === null) {
+    return null;
+  }
+  if (battery.control !== "on") {
+    return battery.management === "self_managed" ? { code: "own", text: translate(language, "house.now.own") } : "test";
+  }
+  const action = battery.now?.action ?? null;
+  const said: Record<string, TranslationKey> = {
+    grid_charge: "house.legend.charge",
+    hold: "house.now.hold",
+    export_discharge: "house.legend.sell",
+    discharge_house: "house.now.discharge",
+  };
+  if (action !== null && action in said) {
+    return { code: action, text: translate(language, said[action]!) };
+  }
+  const power = battery.now?.power_kw ?? null;
+  if (power === null) {
+    return null;
+  }
+  if (power >= REST_KW) {
+    return { code: "sun", text: translate(language, "house.now.sun") };
+  }
+  if (power <= -REST_KW) {
+    return { code: "discharge", text: translate(language, "house.now.discharge") };
+  }
+  return { code: "idle", text: translate(language, "house.now.idle") };
+}
+
+/** The header (`card-header.ts`), "Huset · Laddar från nätet", then the battery's level and mode and the day's money. */
 function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElement {
   const { doc, language, handlers } = input;
   const onSettings = handlers.onSettings?.bind(handlers);
   const onHistory = handlers.onHistory?.bind(handlers);
-  const head = element(doc, "div", H.head);
-  // "Test" while SpotNav does not control the battery (off, test only, still checking it); once control is on and
-  // checked, a quiet chip that says so instead.
-  const controlling = answer?.battery?.control === "on";
-  const test = testChip(doc, language, "house.test.explain", input.ui.testOpen === true, `${input.idPrefix}-test`, handlers.onTest?.bind(handlers));
-  const chip = controlling ? element(doc, "span", H.chip, translate(language, "house.controlling")) : test.chip;
-  if (controlling) {
-    chip.dataset["line"] = "controlling";
-  }
-  head.append(element(doc, "h2", H.title, translate(language, "house.title")), chip);
+  const now = answer === null ? null : batteryNow(language, answer);
+  const test = now === "test" ? testStatus(doc, language, "house.test.explain", input.ui.testOpen === true, `${input.idPrefix}-test`, handlers.onTest?.bind(handlers)) : null;
+  const status = test !== null ? test.status : now !== null && now !== "test" ? statusLine(doc, now.text, now.code) : null;
+  const buttons: HTMLButtonElement[] = [];
   if (onHistory !== undefined) {
-    const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory(button));
-    head.append(button);
+    const button = headerButton(doc, "history", translate(language, "hist.open"));
+    button.addEventListener("click", () => onHistory(button));
+    buttons.push(button);
   }
   if (onSettings !== undefined) {
-    head.append(settingsGearButton(doc, translate(language, "popover.open"), onSettings));
+    const button = headerButton(doc, "settings", translate(language, "popover.open"));
+    button.dataset["action"] = "settings";
+    button.addEventListener("click", () => onSettings());
+    buttons.push(button);
   }
+  const { header: head } = cardHeader(doc, {
+    idPrefix: input.idPrefix,
+    productName: translate(language, "card.title"),
+    title: headerTitle(doc, translate(language, "house.title"), status).block,
+    buttons,
+  });
   const wrap = element(doc, "div");
   wrap.append(head);
-  if (!controlling) {
+  if (test !== null) {
     wrap.append(test.explain);
   }
   const battery = answer?.battery ?? null;
