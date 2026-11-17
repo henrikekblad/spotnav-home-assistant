@@ -76,7 +76,8 @@ What the table says:
   we treat that as within plus or minus 20 kr, the error of the data itself. It is not a win.
 * In autumn the battery's own optimiser saved 94 % of what the perfect plan could (4 080 of 4 350 kr over 76
   days). SpotNav, planning with today's forecasts, reached 91 % (3 960 kr), 125 kr less than the optimiser.
-  Most of that gap lies elsewhere than in the house forecast: in the sun forecast and in the planner's own rules.
+  Part of that gap was the data itself (car charging counted as house load in part of it); with that fixed, a
+  perfect house forecast would have closed only about 20 kr of it.
 
 ## Tried and rejected
 
@@ -86,18 +87,19 @@ What the table says:
   smaller error, no money (-1 kr), and a second model to keep running.
 * **Analog days (C).** Find the past days that looked most like tomorrow and copy their load. The weakest single
   model (0.390 kW): after a change in habits or a cold snap there are few days to copy.
-* **Four models blended (D4).** Not better than blending only today's model and B (D2): the winter pinball loss
-  differs by 0.4 % and the error is slightly worse. Two more models for nothing.
+* **Four models blended (D4).** Not better than blending only today's model and B (D2): in winter the two are
+  within half a percent of each other. Two more models for nothing.
 * **Weights learned from recent errors.** Letting the blend give more weight to whichever model did best lately was
-  no better than a plain 50/50 (0.11380 against 0.11387).
+  no better than a plain 50/50 (the difference was under 0.1 %).
 * **A fading correction from the last hours.** It helps for the next few hours and does nothing for tomorrow,
   which is what the battery plan needs.
 * **Planning on the 60th or 70th percentile instead of the median.** It lowers the error over the dearest hours,
   but in the money it is not a robust win: +3 kr in winter, -2 kr or worse in autumn. Today's median is kept.
-* **A median bias correction as the default.** It helps a house whose temperature history and forecast come from
-  different sources, and it is slightly worse where they come from the same one. Not on by default.
-* **The first round's "+9 kr".** An early result said one candidate earned 9 kr more than the battery's optimiser.
-  It was withdrawn: the car's charging had been counted as house load in part of the data, and one lucky day
+* **A correction of the forecast's typical bias, on by default.** It helps a house whose temperature history and
+  forecast come from different sources, but less than fixing the temperatures themselves (0.372 against 0.363 kW),
+  and it does not pay elsewhere. The temperature fix below was kept instead.
+* **The first round's "+9 kr".** An early result said the four-model blend (D4) earned 9 kr more than today's
+  model over the autumn days. It was withdrawn: the car's charging had been counted as house load in part of the data, and one lucky day
   did the rest. We keep the withdrawal here on purpose. With the car taken out properly, no candidate changes the
   money.
 
