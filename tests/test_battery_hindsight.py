@@ -13,6 +13,9 @@ from custom_components.spotnav.battery.hindsight import (
     HOT_C,
     MIN_PERFECT_SAVING,
     OWN,
+    RULES_MODE,
+    RULES_NO_SELL,
+    RULES_SELL,
     SELF_CONSUMPTION,
     WHOLE_DAY_SHARE,
     CellTemperature,
@@ -168,6 +171,60 @@ def test_a_perfect_saving_under_five_kronor_a_day_is_too_small_to_compare() -> N
     # A week: 5 kr a day over its days.
     assert share_of(1500.0, 3000.0, MIN_PERFECT_SAVING * 7) == (None, False)
     assert share_of(1500.0, 3500.0, MIN_PERFECT_SAVING * 7)[0] == pytest.approx(1500 / 3500 * 100)
+
+
+def test_a_day_the_battery_sold_is_measured_against_max_profits_perfect_plan() -> None:
+    # The battery's own optimiser charged in the cheap night and sold 4 kW over the house in the first dear hours.
+    battery = [1.5] * 6 + [-4.0] * 2 + [-1.0] + [0.0] * 15
+    soc = [10.0]
+    for hour in range(24):
+        soc.append(soc[-1] + battery[hour] * 10)
+    made = _facit(_day(battery=battery, soc=soc), end_value=100.0)
+    own = made.candidates[OWN]
+    assert own.work.to_grid_kwh > 5
+    # Selling was possible: every way against Max profit's perfect plan, the most permissive rules, not the site's
+    # Balanced; the battery's own control lands below it rather than clamped at 100 %.
+    assert made.rules == RULES_SELL and made.mode == MODE_BALANCED
+    assert made.best == made.perfect[MODE_MAX_PROFIT] and made.saving == pytest.approx(made.perfect[MODE_MAX_PROFIT].saving)
+    assert all(item.perfect == pytest.approx(made.perfect[MODE_MAX_PROFIT].saving) for item in made.candidates.values())
+    assert own.share is not None and 0 < own.share < 100 and not own.clamped
+    assert own.saving < made.perfect[MODE_MAX_PROFIT].saving
+    again = Facit.from_dict(made.as_dict())
+    assert again is not None and again.as_dict() == made.as_dict()
+
+
+def test_a_site_that_could_not_sell_keeps_a_perfect_plan_that_does_not_sell() -> None:
+    # Nothing went to the grid all day and no way sold: the perfect plan may not sell either.
+    ran = [(ACTION_GRID_CHARGE, 1.5)] * 6 + [(ACTION_DISCHARGE_HOUSE, 0.0)] * 18
+    made = _facit(_day(battery=[0.0] * 24, soc=[10.0] * 25, ran=ran), end_value=100.0)
+    assert made.rules == RULES_NO_SELL and made.best is not None
+    assert made.best.work.to_grid_kwh == pytest.approx(0.0)
+    assert made.saving == pytest.approx(made.best.saving) and made.best.saving <= made.perfect[MODE_MAX_PROFIT].saving + 1e-6
+    assert all(item.perfect == pytest.approx(made.best.saving) for item in made.candidates.values())
+    assert all(item.share is not None and item.share <= 100 for item in made.candidates.values())
+
+
+def test_a_day_stored_before_the_yardstick_is_measured_again_where_a_way_sold() -> None:
+    battery = [1.5] * 6 + [-4.0] * 2 + [-1.0] + [0.0] * 15
+    soc = [10.0]
+    for hour in range(24):
+        soc.append(soc[-1] + battery[hour] * 10)
+    made = _facit(_day(battery=battery, soc=soc), end_value=100.0)
+    old = made.as_dict()
+    del old["rules"], old["best"]
+    for item in old["candidates"].values():
+        item["perfect"] = old["perfect"][MODE_BALANCED]["saving"]  # the site's mode's, as it was
+    again = Facit.from_dict(old)
+    assert again is not None and again.rules == RULES_SELL and again.best is not None
+    assert again.best.as_dict() == made.perfect[MODE_MAX_PROFIT].as_dict()
+    assert again.candidates[OWN].share == pytest.approx(made.candidates[OWN].share, abs=0.1)
+    # No way sold: kept as it was, against the site's mode's perfect plan.
+    ran = [(ACTION_GRID_CHARGE, 1.5)] * 6 + [(ACTION_DISCHARGE_HOUSE, 0.0)] * 18
+    quiet = _facit(_day(battery=[0.0] * 24, soc=[10.0] * 25, ran=ran), end_value=100.0).as_dict()
+    del quiet["rules"], quiet["best"]
+    kept = Facit.from_dict(quiet)
+    assert kept is not None and kept.rules == RULES_MODE and kept.best is None
+    assert kept.saving == pytest.approx(kept.perfect[MODE_BALANCED].saving)
 
 
 def test_a_partial_day_gets_its_figures_and_no_share() -> None:

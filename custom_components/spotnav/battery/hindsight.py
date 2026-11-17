@@ -8,8 +8,15 @@ that day had everything been known, and each way's share of it.
   measured quarter hours with the measured house load, sun and cars (`measured_slot`), the day's real prices with
   their fees, the same battery (its floor, ceiling, rated power and round trip), the mode's wear and the mode's
   selling rule (no selling unless the mode allows it; a quarter hour with a sell price below zero exports nothing, as
-  the plan in force has it, `export_curtail.curtail_slots`). One per planning mode; the site's mode is the headline's.
-  A quarter hour the meters lost counts in no run, as in the review: the plan steps over it.
+  the plan in force has it, `export_curtail.curtail_slots`). One per planning mode (`Facit.perfect`, the ceiling of
+  each mode's own rules). A quarter hour the meters lost counts in no run, as in the review: the plan steps over it.
+* **The yardstick** (`Facit.best`, `Facit.rules`; owner 2026-11-17): every share is measured against one perfect plan,
+  under the most permissive rules any way shown used, so no way can beat it but by the model's ideal battery. Where
+  selling was possible that day (the site sent energy to the grid, or any way sold from the battery: the battery's
+  own optimiser, or a SpotNav mode run beside it) that is Max profit's (`RULES_SELL`: selling allowed, the true
+  wear). Otherwise it is a perfect plan that does not sell, with the true wear (`RULES_NO_SELL`). A day stored before
+  this (`RULES_MODE`) measured each SpotNav mode against its own mode's plan and the rest against the site's; read
+  back, it is measured against Max profit's where a way sold, and kept as it was otherwise.
 * **The day boundary** (fairness): every way (what really happened, which is the battery's own optimiser on a battery
   that runs its own way; each SpotNav mode; the perfect plan) starts the day at the same measured SoC, and the energy
   each leaves at midnight is valued the same way (`end_value_next_day`): at the next day's mean buy price with its
@@ -21,8 +28,7 @@ that day had everything been known, and each way's share of it.
 * **Whole days only** (`Facit.whole`): a day counts when at least `WHOLE_DAY_SHARE` of its quarter hours were
   measured. A partial day has no share (the card says "incomplete day") and no sum counts it.
 * **Shares** (`Facit.candidates`): each way's saving against the day with no battery at all (`review_baselines`),
-  with the energy left at midnight counted at that value, as a share of the perfect plan's: the site's mode's for
-  what really happened and for self-consumption, the mode's own for each SpotNav mode. A share is given only where
+  with the energy left at midnight counted at that value, as a share of the yardstick's. A share is given only where
   the perfect plan saves at least `MIN_PERFECT_SAVING` a day (5 kr): below it the difference is too small to compare
   and the share is `None`. Shares are clamped to 0-100 % (`clamped` says when one was): above 100 only by the model's
   ideal battery or the wear the perfect plan weighs but money does not count; below 0 a way that cost more than no
@@ -51,7 +57,10 @@ from .export_curtail import curtail_slots
 from .plan import action_power, plan_mode, run_slot
 from .plan_model import (
     ACTION_SELF_CONSUME,
+    EXPORT_OFF,
     MODE_DEFS,
+    MODE_MAX_PROFIT,
+    BatteryMode,
     BatteryParams,
     PlanRequest,
     PlanSlot,
@@ -72,6 +81,16 @@ IDLE_KW: Final = 0.2
 BASIS_NEXT_DAY: Final = "next_day"
 BASIS_DAY: Final = "day_median"
 BASES: Final = (BASIS_NEXT_DAY, BASIS_DAY)
+
+# The rules of the yardstick every share is measured against (see the module).
+RULES_SELL: Final = "max_profit"
+RULES_NO_SELL: Final = "no_sell"
+RULES_MODE: Final = "mode"
+RULES: Final = (RULES_SELL, RULES_NO_SELL, RULES_MODE)
+#: Selling counts as possible on a day where at least this much (kWh) went to the grid.
+SELL_KWH: Final = 0.1
+#: The yardstick where nothing could be sold: Max profit's wear, no selling.
+NO_SELL_MODE: Final = BatteryMode(RULES_NO_SELL, plans=True, export=EXPORT_OFF, wear_factor=MODE_DEFS[MODE_MAX_PROFIT].wear_factor)
 
 # The ways compared, by the answer's name: what really happened, self-consumption, each planning mode, the perfect plan.
 OWN: Final = "own"
@@ -257,18 +276,20 @@ def perfect_plans(
     start_soc_pct: float,
     wear: float,
     end_value: float,
-    modes: Iterable[str] = PLANNING_MODES,
+    modes: Iterable[str | BatteryMode] = PLANNING_MODES,
 ) -> dict[str, SimRun]:
-    """Each planning mode's perfect plan in hindsight over the measured [slots] (see the module), run as the review
-    runs a way."""
+    """Each of [modes]' perfect plan in hindsight over the measured [slots] (see the module), run as the review runs
+    a way; a mode is named (`MODE_DEFS`) or given."""
     chained = list(curtail_slots(_chain(slots)))
     out: dict[str, SimRun] = {}
     if not chained:
         return out
     soc = min(100.0, max(0.0, start_soc_pct))
-    for name in modes:
+    for item in modes:
+        mode = MODE_DEFS[item] if isinstance(item, str) else item
+        name = mode.name
         request = PlanRequest(slots=tuple(chained), battery=battery, soc_now_pct=soc, end_value=end_value)
-        made = plan_mode(request, MODE_DEFS[name], wear)
+        made = plan_mode(request, mode, wear)
         actions = [(decision.action, decision.battery_kw) for decision in made.plan.decisions]
         out[name] = simulate(chained, battery, soc, actions)
     return out
@@ -329,7 +350,7 @@ class Facit:
     #: What a kWh left at midnight was worth (minor units) and where that came from (`BASES`).
     end_value: float
     basis: str
-    #: The mode whose rules the headline's perfect plan kept (the site's).
+    #: The site's mode that day.
     mode: str
     no_battery_cost: float
     #: The local day's quarter hours and how many of them were measured (`whole`).
@@ -338,6 +359,15 @@ class Facit:
     #: The perfect plan's saving against no battery, per planning mode, and its work.
     perfect: dict[str, Candidate] = field(default_factory=dict)
     candidates: dict[str, Candidate] = field(default_factory=dict)
+    #: The rules of the yardstick every share is measured against (`RULES`) and its run (see the module); without a
+    #: run (`RULES_MODE`, a day stored before it) the site's mode's perfect plan stands in.
+    rules: str = RULES_MODE
+    best: Candidate | None = None
+
+    @property
+    def yardstick(self) -> Candidate | None:
+        """The perfect plan every share is measured against."""
+        return self.best if self.best is not None else self.perfect.get(self.mode)
 
     @property
     def whole(self) -> bool:
@@ -346,8 +376,8 @@ class Facit:
 
     @property
     def saving(self) -> float | None:
-        """The headline: the perfect plan's saving under the site's mode."""
-        item = self.perfect.get(self.mode)
+        """The headline: the yardstick's saving."""
+        item = self.yardstick
         return None if item is None else item.saving
 
     def as_dict(self) -> dict[str, Any]:
@@ -361,6 +391,8 @@ class Facit:
             "measured": self.measured,
             "perfect": {name: item.as_dict() for name, item in sorted(self.perfect.items())},
             "candidates": {name: item.as_dict() for name, item in sorted(self.candidates.items())},
+            "rules": self.rules,
+            "best": None if self.best is None else self.best.as_dict(),
         }
 
     @classmethod
@@ -371,7 +403,7 @@ class Facit:
             computed_at = datetime.fromisoformat(raw["computed_at"])
             if computed_at.tzinfo is None or raw["basis"] not in BASES or raw["mode"] not in PLANNING_MODES:
                 return None
-            return cls(
+            made = cls(
                 computed_at=computed_at,
                 end_value=float(raw["end_value"]),
                 basis=raw["basis"],
@@ -382,8 +414,33 @@ class Facit:
                 perfect={k: Candidate.from_dict(v) for k, v in raw["perfect"].items() if k in PLANNING_MODES},
                 candidates={k: Candidate.from_dict(v) for k, v in raw["candidates"].items() if k in CANDIDATES},
             )
+            if "rules" not in raw:
+                return made.measured_again()  # stored before the yardstick
+            rules, best = raw["rules"], raw["best"]
+            if rules not in RULES:
+                return None
+            return replace(made, rules=rules, best=None if best is None else Candidate.from_dict(best))
         except (AttributeError, KeyError, TypeError, ValueError):
             return None
+
+    def measured_again(self) -> Facit:
+        """A day stored before the yardstick (see the module): against Max profit's perfect plan where a way sold,
+        else as it was."""
+        best = self.perfect.get(MODE_MAX_PROFIT)
+        if best is None or not any(item.work.to_grid_kwh >= SELL_KWH for item in self.candidates.values()):
+            return self
+        return replace(
+            self,
+            rules=RULES_SELL,
+            best=best,
+            candidates={name: against(item, best.saving, self.whole) for name, item in self.candidates.items()},
+        )
+
+
+def against(item: Candidate, perfect: float, whole: bool) -> Candidate:
+    """[item] measured against a perfect plan's saving [perfect] (no share on a partial day)."""
+    share, clamped = share_of(item.saving, perfect) if whole else (None, False)
+    return Candidate(item.saving, perfect, share, clamped, item.work)
 
 
 def facit_day(
@@ -417,30 +474,39 @@ def facit_day(
         return no_battery_cost - net(cost, end_soc)
 
     whole = len(buckets) >= WHOLE_DAY_SHARE * day_quarters
-    perfect_runs = perfect_plans(slots, battery, start_soc_pct, wear, end_value)
-    perfect: dict[str, Candidate] = {}
-    for name, run in perfect_runs.items():
+
+    def perfect_of(run: SimRun) -> Candidate:
         value = saving(run.cost, run.end_soc_pct)
-        perfect[name] = Candidate(value, value, 100.0 if whole and value >= MIN_PERFECT_SAVING else None, False, run.work)
-    headline = perfect.get(site_mode)
-    if headline is None:
+        return Candidate(value, value, 100.0 if whole and value >= MIN_PERFECT_SAVING else None, False, run.work)
+
+    perfect = {name: perfect_of(run) for name, run in perfect_plans(slots, battery, start_soc_pct, wear, end_value).items()}
+    if site_mode not in perfect or MODE_MAX_PROFIT not in perfect:
         return None
 
-    candidates: dict[str, Candidate] = {}
+    # Each way's saving, measured against the yardstick once its rules are known.
+    ways: dict[str, Candidate] = {}
 
-    def add(name: str, cost: float, end_soc: float, work: Work, against: float) -> None:
-        value = saving(cost, end_soc)
-        share, clamped = share_of(value, against) if whole else (None, False)
-        candidates[name] = Candidate(value, against, share, clamped, work)
+    def add(name: str, cost: float, end_soc: float, work: Work) -> None:
+        ways[name] = Candidate(saving(cost, end_soc), 0.0, None, False, work)
 
-    add(OWN, actual_cost, actual_end_soc_pct, measured_work(buckets, usable), headline.saving)
+    add(OWN, actual_cost, actual_end_soc_pct, measured_work(buckets, usable))
     base = simulate(slots, battery, start_soc_pct, [(ACTION_SELF_CONSUME, 0.0)] * len(slots))
-    add(SELF_CONSUMPTION, base.cost, base.end_soc_pct, base.work, headline.saving)
+    add(SELF_CONSUMPTION, base.cost, base.end_soc_pct, base.work)
     for name in PLANNING_MODES:
         if name not in perfect or not all(name in bucket.ran_modes for bucket in buckets):
             continue  # a mode not planned beside the plan all day has no run of its own
         run = simulate(slots, battery, start_soc_pct, [bucket.ran_modes[name] for bucket in buckets])
-        add(name, run.cost, run.end_soc_pct, run.work, perfect[name].saving)
+        add(name, run.cost, run.end_soc_pct, run.work)
+
+    exported = sum(bucket.export_kwh for bucket in buckets) >= SELL_KWH
+    if exported or any(item.work.to_grid_kwh >= SELL_KWH for item in ways.values()):
+        rules, best = RULES_SELL, perfect[MODE_MAX_PROFIT]
+    else:
+        runs = perfect_plans(slots, battery, start_soc_pct, wear, end_value, (NO_SELL_MODE,))
+        if RULES_NO_SELL not in runs:
+            return None
+        rules, best = RULES_NO_SELL, perfect_of(runs[RULES_NO_SELL])
+    candidates = {name: against(item, best.saving, whole) for name, item in ways.items()}
     return Facit(
         computed_at=now,
         end_value=end_value,
@@ -451,6 +517,8 @@ def facit_day(
         measured=len(buckets),
         perfect=perfect,
         candidates=candidates,
+        rules=rules,
+        best=best,
     )
 
 

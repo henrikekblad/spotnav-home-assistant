@@ -118,6 +118,12 @@ export function perfectRows(doc: Document, language: Language, perfect: PerfectF
   return grid;
 }
 
+/** What "perfect" is, by the rules it was measured with (`hindsight.RULES`): allowed to sell, not selling, or (days
+ * stored before) the same rules as the mode. */
+function explainKey(rules: string | null): "perfect.explainSell" | "perfect.explainNoSell" | "perfect.explain" {
+  return rules === "max_profit" ? "perfect.explainSell" : rules === "no_sell" ? "perfect.explainNoSell" : "perfect.explain";
+}
+
 /** The plain notes under the shares: an incomplete day, what perfect is, a single day's midnight, the days still on
  * their own value, the incomplete days left out, a share clamped. */
 export function perfectNotes(doc: Document, language: Language, perfect: PerfectFigures, ownName: string, singleDay: boolean): HTMLElement[] {
@@ -134,7 +140,7 @@ export function perfectNotes(doc: Document, language: Language, perfect: Perfect
     );
     return notes;
   }
-  add("perfect-explain", translate(language, "perfect.explain"));
+  add("perfect-explain", translate(language, explainKey(perfect.rules), { mode: translate(language, "house.mode.max_profit") }));
   if (singleDay) {
     add("perfect-midnight", translate(language, "perfect.midnight"));
   }

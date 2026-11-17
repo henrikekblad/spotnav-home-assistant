@@ -767,6 +767,7 @@
       "mode": "balanced",
       "partial": 1,
       "provisional": 1,
+      "rules": "max_profit",
       "saving": 9400.0,
       "savings": {
         "balanced": 6940.0,
@@ -776,7 +777,7 @@
       },
       "shares": {
         "balanced": 73.8,
-        "max_profit": 63.4,
+        "max_profit": 68.5,
         "own": 77.0,
         "self_consumption": 55.0
       },
@@ -813,7 +814,7 @@
           "discharged_kwh": 162.0,
           "grid_charge_kwh": 126.0,
           "switches": 18,
-          "to_grid_kwh": 0.0
+          "to_grid_kwh": 54.0
         },
         "self_consumption": {
           "cycles": 2.68,

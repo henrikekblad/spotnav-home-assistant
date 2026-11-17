@@ -107,7 +107,7 @@ function priceUnit(answer: HouseAnswer): string {
   return `${answer.money?.minor_unit ?? ""}/kWh`.replace(/^\//, "");
 }
 
-/** Today's headline, the figure the battery's own app shows: what each kWh the battery gave back earned over its
+/** Today's headline, the figure the battery's own app shows (Sigenergy's, verified): what each kWh the battery gave back earned over its
  * stored cost (the backend's `arbitrage`; "Batteriet har tjänat 26 kr i dag"). */
 export function todayLine(language: Language, answer: HouseAnswer): string | null {
   const today = answer.today;
@@ -119,6 +119,15 @@ export function todayLine(language: Language, answer: HouseAnswer): string | nul
     day: past ? dateLabel(language, answer.day!.date) : "",
     amount: amount(language, today.arbitrage, answer.money),
   });
+}
+
+/** The brands whose own app is verified to show the same measure as the headline, by name in the hint. */
+const SAME_MEASURE_APPS: Record<string, string> = { sigenergy: "Sigenergy" };
+
+/** Under the headline: "the same measure as the Sigenergy app" for a brand verified to match, else what it counts. */
+export function todayHint(language: Language, answer: HouseAnswer): string {
+  const brand = SAME_MEASURE_APPS[answer.battery?.brand ?? ""];
+  return brand === undefined ? translate(language, "house.todayHint") : translate(language, "house.todayHintApp", { brand });
 }
 
 /** Under the headline: what the electricity bought cost, and the sun sold when it came to at least half a unit
@@ -340,8 +349,8 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
     if (today !== null) {
       const line = element(doc, "p", H.today, today);
       line.dataset["line"] = "today";
-      // Said once, right under it: this one is the battery app's own measure; the comparison below is not.
-      const hint = element(doc, "p", `${C.muted} ${H.todayDetail}`, translate(language, "house.todayHint"));
+      // Said once, right under it: the battery app's own measure where that is verified, else what it counts.
+      const hint = element(doc, "p", `${C.muted} ${H.todayDetail}`, todayHint(language, answer!));
       hint.dataset["line"] = "today-hint";
       wrap.append(line, hint);
       const detail = todayDetail(language, answer!);
