@@ -6,6 +6,7 @@
 // "charging" only from `live.charging`.
 
 import { setupRowsOf, type SetupRow } from "./setup-checklist";
+import { sunSeries, type SunSeries } from "./chart-sun";
 import {
   chartSeries,
   DEFAULT_CHART_AXIS,
@@ -277,6 +278,12 @@ export interface CardModel {
   bands: PlanBands;
   /** This browser's chart axis preference, as asked for; `chart.time` says what is drawn. */
   chartAxis: ChartAxisMode;
+  /** The sun the price chart draws (measured before now, forecast after) on its own scale; `null` when off or none. */
+  sun: SunSeries | null;
+  /** Whether the site has a sun to draw, so Display offers the choice. */
+  sunOffered: boolean;
+  /** This browser's choice to draw it (on unless turned off). */
+  sunOn: boolean;
   /** This browser's price unit preference, as asked for; `format` shows the minor unit when the market lacks a name. */
   priceUnit: PriceUnit;
   /**
@@ -907,6 +914,8 @@ export interface BuildInput {
   chartAxis?: ChartAxisMode;
   /** This browser's price unit preference; the market's minor unit when omitted. */
   priceUnit?: PriceUnit;
+  /** This browser's choice to draw the sun in the price chart; on when omitted. */
+  chartSun?: boolean;
   /** Home Assistant's own words for the entities status lines name (`entity-words.ts`); raw values when omitted. */
   entityWords?: EntityWords;
 }
@@ -974,6 +983,9 @@ export function buildModel(input: BuildInput): CardModel {
     chart,
     bands,
     chartAxis,
+    sun: input.chartSun === false ? null : sunSeries(dashboard.sun, chart),
+    sunOffered: dashboard.sun !== null,
+    sunOn: input.chartSun !== false,
     priceUnit: format.priceUnit ?? DEFAULT_PRICE_UNIT,
     summary: {
       max: price(extremes.max),

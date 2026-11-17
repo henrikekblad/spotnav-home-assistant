@@ -20,6 +20,7 @@ import {
   type ChartSize,
 } from "./chart-interaction";
 import { FILL_MIN_CHART_PX, planFill, type FillReading } from "./card-fill";
+import { sunAt } from "./chart-sun";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
@@ -223,6 +224,8 @@ export interface CardViewInput {
   onChartAxisChange?: (mode: ChartAxisMode) => void;
   /** The price unit chosen in Display: stored for this browser, every SpotNav card in it redraws. */
   onPriceUnitChange?: (unit: PriceUnit) => void;
+  /** The viewer turned the sun in the price chart on or off (stored for this browser by the card). */
+  onChartSunChange?: (on: boolean) => void;
   /**
    * What the row does when a person acts: the card owns the request, the guard and the refresh; the
    * view only reports the click with the backend-supplied choice.
@@ -517,7 +520,17 @@ export function readoutTextFor(model: CardModel, mark: ChartMark | null): string
     return translate(language, key, { day, time, offset }).trim();
   }
   const key: TranslationKey = ambiguous ? "graph.readoutWithOffset" : "graph.readout";
-  return translate(language, key, { day, time, offset, price }).trim();
+  return `${translate(language, key, { day, time, offset, price }).trim()}${sunReadout(model, mark)}`;
+}
+
+/** The sun's figure for the hour of a mark, appended to the readout (empty where the chart draws no sun there). */
+function sunReadout(model: CardModel, mark: ChartMark): string {
+  const point = sunAt(model.sun, mark.startMs);
+  if (point === null) {
+    return "";
+  }
+  const kw = formatNumber(model.language, point.kw, 1);
+  return ` · ${translate(model.language, point.measured ? "graph.readout.sun" : "graph.readout.sunForecast", { kw })}`;
 }
 
 /**
@@ -1689,6 +1702,9 @@ export function createCardView(input: CardViewInput): CardView {
     if (current.bands.proposal.length > 0) {
       keys.push("graph.legend.proposal");
     }
+    if (current.sun !== null) {
+      keys.push("graph.legend.sun");
+    }
     if (!current.timesAvailable) {
       keys.push("graph.noZone");
     }
@@ -1757,6 +1773,7 @@ export function createCardView(input: CardViewInput): CardView {
       ),
       labels,
       density,
+      sun: model.sun,
       ids: {
         title: `${idPrefix}-chart-title`,
         description: `${idPrefix}-chart-description`,
@@ -1902,6 +1919,14 @@ export function createCardView(input: CardViewInput): CardView {
   minLine.setAttribute("aria-label", `${translate(model.language, "graph.summary.min")} ${model.summary.min ?? ""}`);
   minLine.hidden = model.summary.min === null;
   summaryExtremes.append(maxLine, minLine);
+  if (model.sun !== null) {
+    // The legend's swatch for the sun in the chart, in the summary row beside the price extremes.
+    const sunKey = element(doc, "span", C.summarySun);
+    sunKey.dataset["part"] = "sun-key";
+    sunKey.append(element(doc, "span", C.sunSwatch), doc.createTextNode(translate(model.language, "graph.sun.short")));
+    sunKey.querySelector(`.${C.sunSwatch}`)?.setAttribute("aria-hidden", "true");
+    summaryExtremes.append(sunKey);
+  }
   // The model's build-time figure is the first paint; later redraws read the injected now fact and hide the line the same way when it has no figure.
   const currentText = nowSummaryText(model, model.summary.current);
   const currentValue = element(doc, "span", C.summaryCurrent, currentText ?? "");
@@ -2866,7 +2891,44 @@ export function createCardView(input: CardViewInput): CardView {
     if (priceUnitChoosable(model.format)) {
       section.append(priceUnitRow());
     }
+    if (model.sunOffered) {
+      section.append(chartSunRow());
+    }
     return section;
+  }
+
+  /** The sun this view shows as chosen: the model's, then whatever was chosen here since. */
+  let chartSunChoice: boolean = model.sunOn;
+
+  /** Display's "Solprognos": whether the price chart draws the sun. Offered only where the site has a sun source. */
+  function chartSunRow(): HTMLElement {
+    const label = translate(model.language, "display.sun");
+    const onOff = (on: boolean): string => translate(model.language, on ? "settings.value.on" : "settings.value.off");
+    const value = onOff(chartSunChoice);
+    const [row] = settingRow(doc, {
+      key: "chart_sun",
+      label,
+      value,
+      onTap: () =>
+        openValueEditor(
+          label,
+          (handlers) =>
+            onOffEditor(
+              doc,
+              model.language,
+              { intro: translate(model.language, "display.sun.help"), on: chartSunChoice, idPrefix: `${idPrefix}-chart-sun` },
+              async (chosen) => {
+                chartSunChoice = chosen;
+                input.onChartSunChange?.(chosen);
+                return null;
+              },
+              handlers,
+            ),
+          { anyone: true },
+        ),
+      changeableText: translate(model.language, "settings.row.changeable", { label, value }),
+    });
+    return row!;
   }
 
   /** The price unit this view shows as chosen: the model's, then whatever was chosen here since. */

@@ -187,14 +187,18 @@ import {
   browserStore,
   CHART_AXIS_EVENT,
   CHART_AXIS_KEY,
+  CHART_SUN_EVENT,
+  CHART_SUN_KEY,
   initialChartCollapsed,
   PRICE_UNIT_EVENT,
   PRICE_UNIT_KEY,
   readChartAxis,
   readChartCollapsed,
+  readChartSun,
   readPriceUnit,
   writeChartAxis,
   writeChartCollapsed,
+  writeChartSun,
   writePriceUnit,
 } from "./chart-preference";
 import type { ChartAxisMode } from "./chart";
@@ -250,6 +254,28 @@ export function choosePriceUnit(unit: PriceUnit): void {
   writePriceUnit(browserStore, unit);
   try {
     globalThis.dispatchEvent?.(new Event(PRICE_UNIT_EVENT));
+  } catch {
+    // No window to announce on: the next render of each card reads the choice anyway.
+  }
+}
+
+/**
+ * Whether the price chart draws the sun, chosen on this page and shared by every card in it: it holds where the
+ * browser cannot store it. `null` defers to storage (and its default, on).
+ */
+let pageChartSun: boolean | null = null;
+
+/** This browser's choice to draw the sun in the price chart, the same for every SpotNav card in it. */
+export function chartSunNow(): boolean {
+  return pageChartSun ?? readChartSun(browserStore);
+}
+
+/** Choose it for every card in this browser: stored, and announced to the cards on this page. */
+export function chooseChartSun(on: boolean): void {
+  pageChartSun = on;
+  writeChartSun(browserStore, on);
+  try {
+    globalThis.dispatchEvent?.(new Event(CHART_SUN_EVENT));
   } catch {
     // No window to announce on: the next render of each card reads the choice anyway.
   }
@@ -409,8 +435,11 @@ export class SpotnavCard extends HTMLElement {
   private readonly onDisplayChanged = (event: Event): void => {
     if (event.type === "storage") {
       const key = (event as StorageEvent).key;
-      if (key !== null && key !== CHART_AXIS_KEY && key !== PRICE_UNIT_KEY) {
+      if (key !== null && key !== CHART_AXIS_KEY && key !== PRICE_UNIT_KEY && key !== CHART_SUN_KEY) {
         return;
+      }
+      if (key === null || key === CHART_SUN_KEY) {
+        pageChartSun = null;
       }
       if (key === null || key === CHART_AXIS_KEY) {
         pageChartAxis = null;
@@ -513,6 +542,7 @@ export class SpotnavCard extends HTMLElement {
     this.connected = true;
     globalThis.addEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
     globalThis.addEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
+    globalThis.addEventListener?.(CHART_SUN_EVENT, this.onDisplayChanged);
     globalThis.addEventListener?.("storage", this.onDisplayChanged);
     this.startWork();
   }
@@ -522,6 +552,7 @@ export class SpotnavCard extends HTMLElement {
     this.stopMalformedRetry();
     globalThis.removeEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
     globalThis.removeEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
+    globalThis.removeEventListener?.(CHART_SUN_EVENT, this.onDisplayChanged);
     globalThis.removeEventListener?.("storage", this.onDisplayChanged);
     this.stopTimer();
     this.generation += 1;
@@ -2874,6 +2905,7 @@ export class SpotnavCard extends HTMLElement {
         shownAutomatic: this.shownAutomatic,
         chartAxis: chartAxisNow(),
         priceUnit: priceUnitNow(),
+        chartSun: chartSunNow(),
         entityWords: entityWordsOf(this.hassObject),
       });
       this.rememberControls(model.control);
@@ -2888,6 +2920,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onPriceUnitChange: (unit) => {
           choosePriceUnit(unit);
+        },
+        onChartSunChange: (on) => {
+          chooseChartSun(on);
         },
         onChartCollapsedChange: (collapsed) => {
           this.chartCollapsed = collapsed;

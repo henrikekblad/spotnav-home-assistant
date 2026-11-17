@@ -120,3 +120,32 @@ export function writePriceUnit(store: () => PreferenceStore | null, unit: PriceU
     return false;
   }
 }
+
+/** Whether the price chart draws the sun is one choice for the whole browser, like the axis. */
+export const CHART_SUN_KEY = "spotnav-card.chart-sun";
+
+/** Sent on the window after this browser's sun choice changed, so every SpotNav card on the page redraws. */
+export const CHART_SUN_EVENT = "spotnav-card-chart-sun";
+
+/** The stored choice: the sun is drawn unless this browser was told not to, also where nothing can be stored. */
+export function readChartSun(store: () => PreferenceStore | null): boolean {
+  try {
+    return (store()?.getItem(CHART_SUN_KEY) ?? null) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+/** Remember the choice in this browser; `false` when it could not be stored (it then holds for this page only). */
+export function writeChartSun(store: () => PreferenceStore | null, on: boolean): boolean {
+  try {
+    const target = store();
+    if (target === null) {
+      return false;
+    }
+    target.setItem(CHART_SUN_KEY, on ? "on" : "off");
+    return true;
+  } catch {
+    return false;
+  }
+}

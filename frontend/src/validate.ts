@@ -313,6 +313,16 @@ export interface Dashboard {
   setup: SetupBlock | null;
   /** The guest car (a visitor's car planned by kWh); `null` from an older backend or unreadable. */
   guest: GuestBlock | null;
+  /** The sun for the price chart; `null` without a solar forecast, from an older backend, or unreadable. */
+  sun: SunBlock | null;
+}
+
+/**
+ * The dashboard's `sun` block: the sun's mean power per hour of today and tomorrow in kW, the measured production
+ * before the running hour and the corrected forecast the plan uses from it on. An hour with no figure is left out.
+ */
+export interface SunBlock {
+  hours: Array<{ startMs: number; kw: number; measured: boolean }>;
 }
 
 /** The dashboard's `guest` block: a guest car planned for now, the amount the next one starts from, and its place
@@ -1930,6 +1940,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         grid_tariff: gridTariffOrNull(root),
         setup: setupOrNull(root),
         guest: guestOrNull(root.guest),
+        sun: sunOrNull(root.sun),
       },
     };
   } catch {
@@ -1990,7 +2001,30 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "setup",
   "grid_tariff",
   "guest",
+  "sun",
 ] as const;
+
+/** The `sun` block, or `null` when it is missing or unreadable: the chart then draws no sun and offers no choice. */
+export function sunOrNull(value: unknown): SunBlock | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["hours"]);
+    const hours = arrayValue(value, "hours").map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["start", "kw", "measured"]);
+      const kw = numberValue(item, "kw");
+      if (kw < 0) {
+        return bad();
+      }
+      return { startMs: instantMs(item["start"]), kw, measured: booleanValue(item, "measured") };
+    });
+    return { hours: hours.sort((left, right) => left.startMs - right.startMs) };
+  } catch {
+    return null;
+  }
+}
 
 /** A `guest` block (the dashboard's, or `spotnav/update_guest`'s answer), or `null` when it is missing or unreadable:
  * the card then offers no guest car. */

@@ -543,7 +543,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
     for (const name of names()) {
       const raw = JSON.parse(readFileSync(join(DASHBOARD_DIR, name), "utf8")) as Record<string, unknown>;
       expect(raw.api_version, name).toBe(1);
-      expect(Object.keys(raw).sort(), name).toEqual(
+      expect(Object.keys(raw).filter((key) => key !== "sun").sort(), name).toEqual(
         [
           "api_version",
           "charge_progress",
