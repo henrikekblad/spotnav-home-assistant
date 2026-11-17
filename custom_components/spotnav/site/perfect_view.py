@@ -3,7 +3,7 @@
 One block, the same in `spotnav/get_house` (the week's reviewed days, and a past day's own) and in
 `spotnav/get_house_history` (a day, month or year):
 
-    {days, provisional, partial, mode, saving, shares: {own, self_consumption, balanced, max_profit},
+    {days, provisional, partial, mode, rules, saving, shares: {own, self_consumption, balanced, max_profit},
      savings: {own, self_consumption, balanced, max_profit}, clamped: [name],
      work: {own, self_consumption, balanced, max_profit, perfect: {discharged_kwh, cycles, switches, grid_charge_kwh,
             to_grid_kwh} | null},
@@ -11,17 +11,19 @@ One block, the same in `spotnav/get_house` (the week's reviewed days, and a past
 
 * `days`: the whole days that have a perfect plan (at least 90 % of their quarter hours measured, `hindsight.py`);
   only they count in every figure below. `provisional` of them valued the energy left at midnight at the day's own
-  end value (the next day's prices were not held yet); `partial` the days left out as incomplete; `mode` the mode
-  whose rules the perfect plan kept (the site's, the most days').
+  end value (the next day's prices were not held yet); `partial` the days left out as incomplete; `mode` the site's
+  mode (the most days'); `rules` the rules of the perfect plan every share is measured against (`hindsight.RULES`,
+  the most days'): `max_profit` where selling was possible (selling allowed, Max profit's wear), `no_sell` where it
+  was not, `mode` for days stored before the yardstick (the site's mode's perfect plan).
 * `saving`: the perfect plan's saving against no battery, summed (minor units). `savings`: each way's, summed over the
   days it ran (`None` where it ran none): what really happened (`own`: the battery's own optimiser on a battery that
   runs its own way), self-consumption and each SpotNav mode.
-* `shares`: each way's summed saving over the summed perfect saving it is measured against (its own mode's for a
-  SpotNav mode, the site's for the others), in percent, clamped to 0-100 (`clamped` names those that were). `None`
+* `shares`: each way's summed saving over the summed perfect saving it is measured against (the day's yardstick,
+  `hindsight.py`), in percent, clamped to 0-100 (`clamped` names those that were). `None`
   where the way never ran, and where the perfect plan saved under `MIN_PERFECT_SAVING` a day over its days (5 kr a
   day: too small a difference to compare). Summed over days before dividing, the day boundary washes out: a single
   day counts the energy left at midnight (`hindsight.py`).
-* `work`: the battery's work summed over the days, per way and for the perfect plan (the site's mode's).
+* `work`: the battery's work summed over the days, per way and for the perfect plan (the yardstick).
 * `temperature`: the cells' temperature over the days that have it (mean weighted by the minutes read).
 
 `None` when no day has a perfect plan (whole or partial) nor a cell temperature.
@@ -35,7 +37,7 @@ from typing import Any, Final
 from ..battery.hindsight import BASIS_DAY, CANDIDATES, MIN_PERFECT_SAVING, PERFECT, Work, share_of
 from ..battery.plan_shadow import DayReview
 
-PERFECT_KEYS: Final = ("days", "provisional", "partial", "mode", "saving", "shares", "savings", "clamped", "work", "temperature")
+PERFECT_KEYS: Final = ("days", "provisional", "partial", "mode", "rules", "saving", "shares", "savings", "clamped", "work", "temperature")
 WORK_WAYS: Final = (*CANDIDATES, PERFECT)
 WORK_KEYS: Final = ("discharged_kwh", "cycles", "switches", "grid_charge_kwh", "to_grid_kwh")
 TEMPERATURE_KEYS: Final = ("days", "mean_c", "max_c", "minutes_above")
@@ -89,14 +91,16 @@ def perfect_block(reviews: Sequence[DayReview]) -> dict[str, Any] | None:
         if was_clamped:
             clamped.append(name)
         work[name] = _work_sum([item.work for item in ran])
-    headline = [facit.perfect[facit.mode] for facit in facits]
+    headline = [facit.yardstick for facit in facits if facit.yardstick is not None]
     work[PERFECT] = _work_sum([item.work for item in headline])
     modes = [facit.mode for facit in facits]
+    rules = [facit.rules for facit in facits]
     return {
         "days": len(facits),
         "provisional": sum(1 for facit in facits if facit.basis == BASIS_DAY),
         "partial": len(made) - len(facits),
         "mode": max(reversed(modes), key=modes.count) if modes else None,
+        "rules": max(reversed(rules), key=rules.count) if rules else None,
         "saving": round(sum(item.saving for item in headline), 2) if facits else None,
         "shares": shares,
         "savings": savings,

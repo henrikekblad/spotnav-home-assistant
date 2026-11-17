@@ -346,8 +346,8 @@ def facit(record: dict[str, Any]) -> dict[str, Any]:
 def render_facit(result: dict[str, Any]) -> str:
     made = result["facit"]
     lines = [
-        f"{result['date']} (site {result['site_id']}): the perfect plan ({made['mode']}) saved "
-        f"{made['perfect'][made['mode']]['saving']} minor {result['currency'] or 'currency'} units against no battery; "
+        f"{result['date']} (site {result['site_id']}, mode {made['mode']}): the perfect plan ({made['rules']} rules) saved "
+        f"{(made['best'] or made['perfect'][made['mode']])['saving']} minor {result['currency'] or 'currency'} units against no battery; "
         f"the energy left at midnight at {made['end_value']} per kWh ({made['basis']}); {made['measured']} of "
         f"{made['quarters']} quarter hours measured"
         + ("" if made["measured"] >= 0.9 * made["quarters"] else " (an incomplete day: no share)"),

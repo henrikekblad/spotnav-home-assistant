@@ -22,7 +22,7 @@ from custom_components.spotnav.battery.plan_model import (
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
 )
-from custom_components.spotnav.battery.hindsight import Candidate, CellTemperature, Facit, Work, share_of
+from custom_components.spotnav.battery.hindsight import RULES_SELL, Candidate, CellTemperature, Facit, Work, share_of
 from custom_components.spotnav.battery.plan_shadow import (
     KIND_BATTERY,
     Bucket,
@@ -179,7 +179,10 @@ def facit_for(
         work = Work(discharged, discharged / 40.3, switches, grid, sold)
         return Candidate(saving, against, share, clamped, work)
 
-    best = perfect * 1.08
+    # Ways sold that day: every share is measured against Max profit's perfect plan ([perfect]); Balanced's own
+    # ceiling is lower.
+    ceiling = perfect * 0.92
+    best = way(perfect, perfect, 18.0, 2, 14.0, 6.0)
     return Facit(
         computed_at=datetime.combine(day + timedelta(days=1), datetime.min.time(), timezone.utc) + timedelta(hours=13),
         end_value=118.0 if provisional else 141.5,
@@ -188,13 +191,15 @@ def facit_for(
         no_battery_cost=4700.0,
         quarters=96,
         measured=measured,
-        perfect={"balanced": way(perfect, perfect, 18.0, 2, 14.0, 0.0), "max_profit": way(best, best, 24.0, 3, 16.0, 6.0)},
+        perfect={"balanced": way(ceiling, ceiling, 16.0, 2, 13.0, 0.0), "max_profit": best},
         candidates={
             "own": way(own, perfect, 16.5, 4, 9.0, 0.4),
             "self_consumption": way(perfect * 0.55, perfect, 12.0, 1, 0.0, 0.0),
             "balanced": way(balanced, perfect, 17.0, 2, 12.5, 0.0),
-            "max_profit": way(max_profit, best, 22.0, 3, 15.0, 5.5),
+            "max_profit": way(max_profit, perfect, 22.0, 3, 15.0, 5.5),
         },
+        rules=RULES_SELL,
+        best=best,
     )
 
 
