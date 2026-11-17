@@ -40,7 +40,7 @@ from custom_components.spotnav.vehicles.soc_estimate import CHARGE_EFFICIENCY
 
 from .harness import Harness, Session, assert_nothing_executed
 from .planning import build_request, parse_documents
-from .relay import Clock, FakeScheduler, StubTransport, serve
+from .relay import TODAY, Clock, FakeScheduler, StubTransport, serve
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -303,6 +303,29 @@ async def test_a_manual_need_says_the_energy_and_no_state_of_charge(
     assert warning["params"] == {
         "kwh": 7.36, "requested_kwh": 12.0, "soc_percent": None, "departure": DEPARTURE_AT.isoformat()
     }
+
+
+async def test_a_near_enough_need_with_tomorrows_prices_unpublished_charges_to_the_departure(
+    harness: Harness, no_execution: dict[str, Any]
+) -> None:
+    """40 kWh at 2.3 kW from 14:45 to 08:00 tomorrow: the 69 quarter-hours hold 39.7 kWh, within one percent, so
+    the plan is not short. Tomorrow's prices are published after the departure, so nothing can wait for them: the
+    plan charges every quarter-hour up to the departure at once, and is never a wait."""
+    serve(harness.transport, days=(TODAY,), listed=(TODAY,))
+    harness.clock.now = datetime(2026, 9, 22, 12, 45, tzinfo=timezone.utc)
+    controller = await harness.auto(requested_kwh=40.0, departure=time(8, 0))
+
+    snapshot = controller.snapshot()
+    assert snapshot.state != "waiting_for_publication" and snapshot.price_wait != "waiting"
+    assert snapshot.state == "proposal_unpriced" and snapshot.price_wait == "guarantee"
+    proposal = snapshot.proposal
+    assert proposal is not None and proposal.has_plan and proposal.short_of_deadline is False
+    assert proposal.slots_needed == 69
+    assert proposal.periods == (
+        (datetime(2026, 9, 22, 12, 45, tzinfo=timezone.utc), datetime(2026, 9, 23, 6, 0, tzinfo=timezone.utc)),
+    )
+    assert not any(line["code"] == "departure_shortfall" for line in lines(snapshot)["lines"])
+    assert_nothing_executed(no_execution)
 
 
 async def test_a_need_that_fits_says_nothing_about_a_shortfall(

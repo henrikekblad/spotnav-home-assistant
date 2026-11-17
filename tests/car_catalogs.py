@@ -78,12 +78,21 @@ def _device_class(domain: str, entity: dict[str, Any]) -> str | None:
     return _RUNTIME_DEVICE_CLASS.get((domain, entity["key"]), entity.get("device_class"))
 
 
+def _unit(entity: dict[str, Any]) -> str | None:
+    """The entity's unit as Home Assistant shows it. A catalogue notes a unit the car or its API chooses at run
+    time ("dynamic: km or mi ...") in words; a metric installation sees km."""
+    unit = entity.get("unit")
+    if isinstance(unit, str) and unit.startswith("dynamic"):
+        return "km"
+    return unit
+
+
 def _attributes(domain: str, entity: dict[str, Any], fills: dict[str, str]) -> dict[str, Any]:
     attributes: dict[str, Any] = {}
     if device_class := _device_class(domain, entity):
         attributes["device_class"] = device_class
-    if entity.get("unit"):
-        attributes["unit_of_measurement"] = entity["unit"]
+    if unit := _unit(entity):
+        attributes["unit_of_measurement"] = unit
     if entity.get("state_class"):
         attributes["state_class"] = entity["state_class"]
     options = entity.get("options")
@@ -132,7 +141,7 @@ def register(
             original_name=name,
             has_entity_name=not literal,
             original_device_class=_device_class(data["domain"], entity),
-            unit_of_measurement=entity.get("unit"),
+            unit_of_measurement=_unit(entity),
             disabled_by=None if enabled else er.RegistryEntryDisabler.INTEGRATION,
         )
         keys[registered.entity_id] = f"{entity['platform']}:{entity['key']}"

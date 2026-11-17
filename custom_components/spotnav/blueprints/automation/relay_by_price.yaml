@@ -13,9 +13,9 @@ blueprint:
     ends, for an input that lowers the heating curve or blocks an add-on heater. On a NIBE SPLIT ACVM
     270, for example, a closed contact on X1:3-4 shifts the heating curve by the steps set in menu 2.4.
     It is only closed when the expensive stretch ahead lasts at least the shortest closing, and then
-    stays closed until Expensive now ends. It is closed for at most the longest closed time in a row, then stays open for at least the
-    shortest rest, and is never closed while the outdoor temperature (if you choose a sensor) is below
-    the lowest outdoor temperature.
+    stays closed until Expensive now ends. It is closed for at most the longest closed time in a row,
+    then stays open for at least the shortest rest, and is never closed while the outdoor temperature
+    (if you choose a sensor) is below the lowest outdoor temperature.
 
 
     **Pulse when cheap**: a short pulse when Cheap now comes on, for an input that starts extra hot
@@ -107,7 +107,8 @@ blueprint:
           description: >-
             The relay is only closed when the expensive stretch ahead lasts at least this long, so a single
             expensive quarter-hour does not close it. Once closed it stays closed until Expensive now ends.
-            0 turns this off.
+            Before tomorrow's prices are published, a stretch that runs past the known prices counts only
+            up to their end, so it may look shorter and not close the relay. 0 turns this off.
           default: 45
           selector:
             number:

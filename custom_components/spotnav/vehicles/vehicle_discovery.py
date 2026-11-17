@@ -9,7 +9,7 @@ generic words of each entity's key (`entity_keys`: `soh`, `target`, `v2l`, `capa
 by brand. A wrong guess is worse than a miss, so:
 
 * A percent battery sensor alone is not enough; a distance-class range sensor
-  must be on the same device.
+  in km or mi must be on the same device.
 * An unreadable state of charge leaves the device out.
 * Several percent battery sensors are ranked by key: health, target, limit, 12 V, arrival,
   predicted ... keys never are the state of charge, `usable` is only a soft demotion, a
@@ -48,6 +48,8 @@ CapacitySource = Literal["detected", "unknown"]
 
 _BATTERY_DEVICE_CLASS = "battery"
 _RANGE_DEVICE_CLASS = "distance"
+# A car's range is a road distance. A presence or level sensor reports its distance in m, cm or mm.
+_RANGE_UNITS = ("km", "mi")
 # `energy_storage` is an exact match; `energy` is the weaker fallback.
 _ENERGY_STORAGE_DEVICE_CLASS = "energy_storage"
 _ENERGY_DEVICE_CLASS = "energy"
@@ -677,18 +679,24 @@ def valid_soc_percent(state: State | None) -> float | None:
 def _range_signal_entity_ids(
     entities: list[tuple[er.RegistryEntry, State]],
 ) -> list[str]:
-    """Entities that count as the range signal: a `sensor` with `device_class: distance`.
+    """Entities that count as the range signal: a `sensor` with `device_class: distance` in km or mi.
 
     Rejected on purpose: charging or plug binary sensors (home batteries, laptops),
-    percent numbers, device trackers and name patterns. The cost is a miss, never a
-    wrong report.
+    percent numbers, device trackers, name patterns, and a distance in m, cm or mm (a
+    battery-powered mmWave presence sensor has a battery percent and a distance too). The
+    cost is a miss, never a wrong report.
     """
     return [
         entry.entity_id
         for entry, state in entities
         if entry.domain == "sensor"
         and state.attributes.get("device_class") == _RANGE_DEVICE_CLASS
+        and _is_range_unit(state.attributes.get("unit_of_measurement"))
     ]
+
+
+def _is_range_unit(unit: Any) -> bool:
+    return isinstance(unit, str) and unit.strip() in _RANGE_UNITS
 
 
 def _has_range_signal(entities: list[tuple[er.RegistryEntry, State]]) -> bool:

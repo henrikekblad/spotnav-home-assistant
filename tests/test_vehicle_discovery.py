@@ -18,6 +18,7 @@ from custom_components.spotnav.vehicles.vehicle_discovery import (
     discover_ambiguous_vehicles,
     discover_vehicles,
     vehicle_charge_limit_entity_id,
+    vehicle_soc_entity_id,
 )
 
 from .helpers import (
@@ -262,6 +263,42 @@ async def test_a_presence_sensor_is_not_asked_about_a_charge_limit(hass: HomeAss
 
     assert discover_ambiguous_charge_limits(hass) == []
     assert discover_vehicles(hass) == []
+
+
+async def test_a_battery_powered_presence_sensor_is_not_a_vehicle(hass: HomeAssistant) -> None:
+    """A battery-powered mmWave presence sensor reports a battery percent and a distance (in cm or m): a state of
+    charge and a range by their classes. A car's range is in km or mi, so neither is a vehicle, nor asked about."""
+    for unique_id, unit, distance in (("presence_cm", "cm", "142"), ("presence_m", "m", "1.4")):
+        device_id = _device(hass, unique_id=unique_id, name=f"Presence {unit}")
+        _battery_percent(hass, device_id, object_id="battery", percent="87")
+        _entity(
+            hass,
+            device_id=device_id,
+            domain="sensor",
+            object_id="target_distance",
+            state=distance,
+            attributes={"device_class": "distance", "unit_of_measurement": unit},
+        )
+        _charge_limit(hass, device_id, object_id="sensitivity", percent="70", minimum=0)
+        _charge_limit(hass, device_id, object_id="still_threshold", percent="40", minimum=0)
+        assert vehicle_soc_entity_id(hass, device_id) is None
+
+    assert discover_vehicles(hass) == []
+    assert discover_ambiguous_vehicles(hass) == []
+    assert discover_ambiguous_charge_limits(hass) == []
+
+    # The same shape with a range in miles is a car.
+    car = _device(hass, unique_id="car_miles", name="Car in miles")
+    _battery_percent(hass, car, percent="64")
+    _entity(
+        hass,
+        device_id=car,
+        domain="sensor",
+        object_id="range",
+        state="180",
+        attributes={"device_class": "distance", "unit_of_measurement": "mi"},
+    )
+    assert [vehicle.id for vehicle in discover_vehicles(hass)] == [car]
 
 
 async def test_a_charge_limit_decision_needs_a_state_of_charge_and_a_range(
