@@ -1,6 +1,7 @@
 // The house card's body: a header, the one chart with its legend and readout, one line of money and one line of how
-// well the forecasts hit, and the details behind a tap (the battery's modes side by side, the reviewed days, the
-// sources and what was assumed). Built fresh for each state with `textContent` only; every figure is the backend's.
+// well the forecasts hit, and the details behind a tap (the share of the perfect plan first, the battery's modes side
+// by side, the reviewed days, the sources and what was assumed). Built fresh for each state with `textContent` only;
+// every figure is the backend's.
 
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
@@ -383,17 +384,14 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
   return wrap;
 }
 
-/** The comparison in the main body, its baseline in its title: each of SpotNav's modes over the reviewed nights and
- * the battery's own control (its optimiser named where known), against the battery only storing its own sun
- * (self-consumption, the zero line and so not a row), the chosen mode marked, a short bar each so the order shows. */
+/** The comparison in the main body before the first perfect plan (from then on the perfect share in the details stands
+ * in for it), its baseline in its title: each of SpotNav's modes over the reviewed nights and the battery's own control
+ * (its optimiser named where known), against the battery only storing its own sun (self-consumption, the zero line and
+ * so not a row), the chosen mode marked, a short bar each so the order shows. */
 function compareBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
   const battery = answer.battery;
   if (battery === null) {
     return null;
-  }
-  const perfect = perfectBlock(doc, language, answer);
-  if (perfect !== null) {
-    return perfect;
   }
   const rows: Array<{ key: string; name: string; value: number | null; days: number; inForce: boolean }> = [];
   const optimiser = battery.management === "self_managed" ? OPTIMISER_NAMES[battery.brand ?? ""] : undefined;
@@ -1095,12 +1093,15 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     return card;
   }
   card.append(chartBlock(input, answer));
-  const comparison = compareBlock(doc, language, answer);
+  // The perfect share lives in the details, first there, so the front stays the earnings, the chart, the heat and the
+  // flow; before the first perfect plan the modes' comparison stands on the front.
+  const perfect = perfectShown(answer) !== null;
+  const comparison = perfect ? null : compareBlock(doc, language, answer);
   if (comparison !== null) {
     card.append(comparison);
   }
   // The week's sentence is the comparison's own once a night was reviewed; before, the line says what is to come.
-  const saving = comparison !== null && answer.battery?.review !== null ? null : savingLine(language, answer);
+  const saving = (perfect || comparison !== null) && answer.battery?.review !== null ? null : savingLine(language, answer);
   if (saving !== null) {
     const line = element(doc, "p", H.line, saving);
     line.dataset["line"] = "saving";
@@ -1129,6 +1130,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
     review.dataset["line"] = "review";
     for (const part of [
+      perfectBlock(doc, language, answer),
       energyFlow === null ? flowBlock(doc, language, answer.flow) : flowNotes(doc, language, answer, energyFlow.querySelector("svg") !== null),
       baselinesBlock(doc, language, answer),
       modesTable(doc, language, answer),

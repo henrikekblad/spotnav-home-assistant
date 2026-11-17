@@ -232,8 +232,9 @@ export const HEAT_STYLES = `
     margin-top: 2px;
     overflow: visible;
   }
-  /* Two lines kept for the readout, so nothing below moves when a time is chosen. */
-  .${X.dayReadout} { margin: 2px 0 0; min-height: 2.6em; font-size: 0.85rem; overflow-wrap: break-word; }
+  /* One line kept for the readout (the hint, or a short time) so the legend does not move on a hover; a longer time
+   * wraps below it. */
+  .${X.dayReadout} { margin: 2px 0 0; min-height: 1.4em; font-size: 0.85rem; line-height: 1.4; overflow-wrap: break-word; }
   .${X.dayColumn}[data-mark="planned"] { fill: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 18%, transparent); }
   .${X.dayColumn}[data-mark="executed"] { fill: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 38%, transparent); }
   .${X.dayColumn}[data-mark="relay"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }

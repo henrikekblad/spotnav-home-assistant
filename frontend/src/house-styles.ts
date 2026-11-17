@@ -157,9 +157,11 @@ export const HOUSE_STYLES = `
     font-weight: 600;
     overflow-wrap: break-word;
   }
+  /* One line kept for the readout (the hint, or a short hour) so the legend does not move on a hover; a longer hour
+   * wraps below it. */
   .${H.readout} {
     height: auto;
-    min-height: 2.8em;
+    min-height: 1.4em;
     margin: 4px 0 2px;
     white-space: normal;
     text-overflow: clip;
@@ -501,6 +503,10 @@ export const HOUSE_STYLES = `
     margin-top: 8px;
     padding-top: 6px;
     border-top: 1px solid var(--divider-color, #e0e0e0);
+  }
+  /* The perfect share leads the details: the same room after it as between the details' sections. */
+  .${H.details} > .${H.compare} {
+    margin-bottom: 12px;
   }
   .${H.section} + .${H.section} {
     margin-top: 10px;

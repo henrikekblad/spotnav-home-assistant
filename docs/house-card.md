@@ -68,8 +68,9 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
   reviewed a line says what the plan expects until the end of its horizon, and the first comparison arrives the night
   after.
 
-  Once a reviewed day has its **perfect plan** the comparison leads with each way's share of it: the best the battery
-  could have done that day in hindsight, with the measured house, sun and car and the same battery, against the same
+  Once a reviewed day has its **perfect plan** the comparison moves into *Show details*, first there, as each way's share
+  of it, so the front keeps the headline, the chart, the heat and the energy flow. The perfect plan is the best the
+  battery could have done that day in hindsight, with the measured house, sun and car and the same battery, against the same
   day with no battery. The rules that keep it fair:
   * Every way is measured against one perfect plan, under the most permissive rules any of them used, so none can
     beat it: where selling was possible that day (the site sent energy to the grid, or the battery's own control or a

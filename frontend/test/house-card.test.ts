@@ -38,6 +38,9 @@ function withoutPerfect(value: HouseAnswer): HouseAnswer {
 /** The fixture's own moment: 13 November 2026, 17:20 in Stockholm. */
 const NOW = Date.parse("2026-11-13T16:20:00+00:00");
 
+/** The details open, where the perfect share is. */
+const OPEN = { detailsOpen: true };
+
 function body(value: HouseAnswer, ui: Partial<HouseUi> = {}, language: (typeof LANGUAGES)[number] = "en", handlers = { onDetails: vi.fn(), onSelect: vi.fn() }) {
   const state: HouseState = { kind: "ready", answer: value };
   return houseBody({
@@ -146,8 +149,9 @@ describe("the body", () => {
     expect(svg.querySelector(".spotnav-house-band")).toBeNull();
     expect(svg.querySelector(".spotnav-now")?.getAttribute("display")).toBeNull();
     expect(card.querySelector("[data-line='saving']")).toBeNull();
-    expect(card.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Sigenergy AI 79 % of perfect · SpotNav Balanced 85 %");
-    // The forecasts' errors are in the details, not on the front.
+    // The perfect share and the forecasts' errors are in the details, not on the front.
+    expect(card.querySelector("[data-part='modes']")).toBeNull();
+    expect(card.querySelector("[data-line='perfect-headline']")).toBeNull();
     expect(card.querySelector("[data-line='review']")).toBeNull();
     expect(card.querySelector(".spotnav-house-details")).toBeNull();
   });
@@ -530,8 +534,22 @@ describe("the modes side by side in the body", () => {
 });
 
 describe("the shares of the perfect plan", () => {
+  it("stand first in the details, whole, and not on the front", () => {
+    const front = body(answer(), {}, "sv");
+    expect(front.querySelector("[data-part='modes']")).toBeNull();
+    const open = body(answer(), OPEN, "sv");
+    const details = open.querySelector(".spotnav-house-details")!;
+    const part = details.firstElementChild as HTMLElement;
+    expect(part.dataset["part"]).toBe("modes");
+    expect(part.dataset["view"]).toBe("perfect");
+    expect(part.querySelector("[data-line='perfect-headline']")).not.toBeNull();
+    expect(part.querySelectorAll(".spotnav-house-compare-row")).toHaveLength(4);
+    expect(part.querySelector("[data-line='perfect-explain']")).not.toBeNull();
+    expect(open.querySelectorAll("[data-part='modes']")).toHaveLength(1);
+  });
+
   it("lead the comparison: the battery's own optimiser and the chosen mode, a bar a way, and what perfect is", () => {
-    const card = body(answer(), {}, "sv");
+    const card = body(answer(), OPEN, "sv");
     const part = card.querySelector<HTMLElement>("[data-part='modes']")!;
     expect(part.dataset["view"]).toBe("perfect");
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Andel av perfekt, senaste 7 dygnen");
@@ -556,7 +574,7 @@ describe("the shares of the perfect plan", () => {
     const value = answer();
     const explain = (rules: string | null): string | null | undefined => {
       const perfect = { ...value.battery!.review!.perfect!, rules };
-      const card = body({ ...value, battery: { ...value.battery!, review: { ...value.battery!.review!, perfect } } }, {}, "sv");
+      const card = body({ ...value, battery: { ...value.battery!, review: { ...value.battery!.review!, perfect } } }, OPEN, "sv");
       return card.querySelector("[data-line='perfect-explain']")?.textContent;
     };
     expect(explain("max_profit")).toBe("Perfekt: bästa möjliga i efterhand, får sälja (Max vinst-regler).");
@@ -565,7 +583,7 @@ describe("the shares of the perfect plan", () => {
   });
 
   it("say on a single day that what was left at midnight counted", () => {
-    const card = body(answer("house/villa_past_day.json"), {}, "sv");
+    const card = body(answer("house/villa_past_day.json"), OPEN, "sv");
     const part = card.querySelector("[data-part='modes']")!;
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Andel av perfekt, tors 12 nov/);
     expect(part.querySelector("[data-line='perfect-midnight']")?.textContent).toBe("Räknat med det som fanns kvar i batteriet vid midnatt.");
@@ -578,11 +596,11 @@ describe("the shares of the perfect plan", () => {
     const value = answer();
     const perfect = value.battery!.review!.perfect!;
     const clamped = { ...perfect, clamped: ["own"], shares: { ...perfect.shares, own: 100, max_profit: null } };
-    const card = body({ ...value, battery: { ...value.battery!, review: { ...value.battery!.review!, perfect: clamped } } }, {}, "sv");
+    const card = body({ ...value, battery: { ...value.battery!, review: { ...value.battery!.review!, perfect: clamped } } }, OPEN, "sv");
     expect(card.querySelector("[data-line='perfect-clamped']")?.textContent).toBe("Sigenergy AI: utanför 0–100 %, visas vid närmaste gräns (en förlust som 0 %).");
     expect(card.querySelector("[data-row='max_profit'] .spotnav-house-compare-value")?.textContent).toBe("för liten skillnad att jämföra");
     // Not managed by its own optimiser: the battery's own control by name.
-    const free = body({ ...value, battery: { ...value.battery!, management: "free" } }, {}, "sv");
+    const free = body({ ...value, battery: { ...value.battery!, management: "free" } }, OPEN, "sv");
     expect(free.querySelector("[data-line='perfect-headline']")?.textContent).toMatch(/^Batteriets egen styrning 79 % av perfekt/);
   });
 
@@ -611,7 +629,7 @@ describe("the shares of the perfect plan", () => {
     const day = value.day_review!.perfect!;
     const none = { own: null, self_consumption: null, balanced: null, max_profit: null };
     const partial = { ...day, days: 0, partial: 1, saving: null, shares: none, savings: none, provisional: 0 };
-    const card = body({ ...value, day_review: { ...value.day_review!, perfect: partial } }, {}, "sv");
+    const card = body({ ...value, day_review: { ...value.day_review!, perfect: partial } }, OPEN, "sv");
     const part = card.querySelector("[data-part='modes']")!;
     expect(part.querySelector("[data-line='perfect-partial']")?.textContent).toBe("Ofullständigt dygn: under 90 % av dygnet mättes, så det jämförs inte.");
     expect(part.querySelectorAll(".spotnav-house-compare-row")).toHaveLength(0);
@@ -619,7 +637,7 @@ describe("the shares of the perfect plan", () => {
     // A week with two incomplete days says they are left out.
     const week = answer();
     const perfect = { ...week.battery!.review!.perfect!, partial: 2 };
-    const weekCard = body({ ...week, battery: { ...week.battery!, review: { ...week.battery!.review!, perfect } } }, {}, "sv");
+    const weekCard = body({ ...week, battery: { ...week.battery!, review: { ...week.battery!.review!, perfect } } }, OPEN, "sv");
     expect(weekCard.querySelector("[data-line='perfect-partial']")?.textContent).toBe("2 ofullständiga dygn räknas inte med.");
   });
 
