@@ -812,7 +812,9 @@ function chartBlock(
     chart.select(index);
     strip?.select(index);
     const hour = index === null ? undefined : answer.hours[index];
-    let words = hour === undefined ? translate(language, view === "energy" && shownToday ? "house.hint.energy" : "house.hint") : hourFigures(language, answer, hour, nowMs, view, hidden);
+    // In a box of fixed height (a wall screen) no hint: the line stays empty until an hour is chosen.
+    const hint = fitHeight !== null ? "" : translate(language, view === "energy" && shownToday ? "house.hint.energy" : "house.hint");
+    let words = hour === undefined ? hint : hourFigures(language, answer, hour, nowMs, view, hidden);
     const value = index === null || earned === null ? null : (earned.values[index] ?? null);
     if (value !== null) {
       words += ` · ${translate(language, value < 0 ? "house.value.hourCost" : "house.value.hour", { amount: amount(language, Math.abs(value), answer.money) })}`;
@@ -1482,7 +1484,7 @@ function graphPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
     return;
   }
   const width = Math.max(240, Math.round(input.width));
-  const chart = energyChart(input.doc, input.language, history, width, input.ui.fill ?? houseChartHeight(width), input.ui.bar ?? null, input.handlers.onBar?.bind(input.handlers));
+  const chart = energyChart(input.doc, input.language, history, width, input.ui.fill ?? houseChartHeight(width), input.ui.bar ?? null, input.handlers.onBar?.bind(input.handlers), boxed(input));
   panel.append(chart ?? statusParagraph(input.doc, input.language, "hist.house.noEnergy", "no-energy"));
 }
 

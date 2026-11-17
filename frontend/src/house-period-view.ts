@@ -300,6 +300,8 @@ export function energyChart(
   height: number,
   selected: string | null,
   onSelect?: (key: string | null) => void,
+  /** In a box of fixed height: no hint under it. */
+  boxed = false,
 ): HTMLElement | null {
   const buckets = answer.buckets;
   if (buckets.length === 0 || buckets.every((bucket) => bucket.periods === 0)) {
@@ -388,7 +390,7 @@ export function energyChart(
   const show = (index: number): void => {
     if (index < 0) {
       band.style.display = "none";
-      readout.textContent = translate(language, "hist.house.hint");
+      readout.textContent = boxed ? "" : translate(language, "hist.house.hint");
       return;
     }
     band.style.display = "";

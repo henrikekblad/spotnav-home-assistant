@@ -131,6 +131,8 @@ export function tabList(
     button.setAttribute("aria-controls", panelId(idPrefix, tab));
     button.tabIndex = tab === selected ? 0 : -1;
     button.textContent = tabWord(language, tab);
+    // The language for the browser's hyphenation of a long word ("Energie­diagramm").
+    button.lang = language;
     button.addEventListener("click", () => {
       if (tab !== selected) {
         onSelect(tab, false);
@@ -347,18 +349,18 @@ export const TAB_STYLES = `
     margin: 10px 0 0;
     border-bottom: 1px solid var(--divider-color, #e0e0e0);
   }
-  /* A tab shrinks to its longest word and wraps there, so a long language's four tabs stay in view at 360 px. */
+  /* A tab shrinks to its longest word and wraps between words, so a long language's four tabs stay in view at 360 px
+     without a scroll; a word is never broken. */
   .${T.tab} {
     flex: 1 1 auto;
     min-height: 40px;
-    padding: 6px 6px;
+    padding: 6px 4px;
     font: inherit;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     line-height: 1.2;
     white-space: normal;
-    min-width: 0;
-    overflow-wrap: anywhere;
     hyphens: auto;
+    -webkit-hyphens: auto;
     color: var(--secondary-text-color, #727272);
     background: transparent;
     border: 0;
@@ -467,7 +469,7 @@ export const TAB_STYLES = `
   }
   .${T.pickerKinds} > button {
     min-height: 30px;
-    padding: 0 9px;
+    padding: 0 7px;
     font: inherit;
     font-size: 0.85rem;
     color: var(--secondary-text-color, #727272);
