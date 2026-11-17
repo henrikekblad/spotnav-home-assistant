@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from custom_components.spotnav.api.sun import HOUR_KEYS, MAX_QUARTERS, QUARTER_KEYS, SUN_KEYS, sun_block_from
+from custom_components.spotnav.api.sun import HOUR_KEYS, PEAK_KEY, MAX_QUARTERS, QUARTER_KEYS, SUN_KEYS, peak_kw, sun_block_from
 from custom_components.spotnav.api.webhook import APP_DASHBOARD_BLOCK_READS, APP_READS_SUN, _for_app
 
 TZ = "Europe/Stockholm"
@@ -95,7 +95,7 @@ def test_the_block_reads_the_sites_corrected_forecast_and_measured_log(monkeypat
     made = _hour(6)
     log = SimpleNamespace(hours=lambda kind: {_hour(9): LoggedHour(1.0, made, 0.6)} if kind == KIND_SUN else {})
     controller = SimpleNamespace(house_forecast=SimpleNamespace(log=log), config={})
-    controller.solar_correction = SimpleNamespace(quarters={_hour(11): 1.234})
+    controller.solar_correction = SimpleNamespace(quarters={_hour(11): 1.234}, observed_max_kwh=10.1, array_kwp=16.65)
     forecast = SimpleNamespace(corrected={_hour(12): 0.8}, raw={_hour(12): 1.4})
     monkeypatch.setattr(dashboard, "site_binding", lambda _hass, _id: SimpleNamespace(entry_id="site"))
     monkeypatch.setattr(sun, "site_controller_for", lambda _hass, _id: controller)
@@ -107,6 +107,7 @@ def test_the_block_reads_the_sites_corrected_forecast_and_measured_log(monkeypat
             {"start": _hour(12).isoformat(), "kw": 0.8, "measured": False},
         ],
         "quarters": [{"start": _hour(11).isoformat(), "kw": 1.23}],
+        "peak_kw": 10.1,
     }
     assert sun.capture_sun(None, "charger", NOW, None) is None
     monkeypatch.setattr(sun, "_sun", lambda _hass, _controller: None)
@@ -126,7 +127,7 @@ def test_without_a_forecast_a_solar_capable_site_gets_the_measured_production_on
     controller = SimpleNamespace(
         config={CONF_MEASUREMENT_MODE: MEASUREMENT_MODE_DERIVED},
         solar_shadow=SimpleNamespace(history=history),
-        solar_correction=SimpleNamespace(quarters={_hour(10): 2.0}),
+        solar_correction=SimpleNamespace(quarters={_hour(10): 2.0}, observed_max_kwh=None, array_kwp=6.0),
     )
     monkeypatch.setattr(dashboard, "site_binding", lambda _hass, _id: SimpleNamespace(entry_id="site"))
     monkeypatch.setattr(sun, "site_controller_for", lambda _hass, _id: controller)
@@ -136,6 +137,24 @@ def test_without_a_forecast_a_solar_capable_site_gets_the_measured_production_on
     assert block == {
         "hours": [{"start": _hour(9).isoformat(), "kw": 0.6, "measured": True}],
         "quarters": [{"start": _hour(10).isoformat(), "kw": 2.0}],
+        # Nothing observed yet: the array's size stands in.
+        "peak_kw": 6.0,
     }
     controller.config = {}
     assert sun.capture_sun(None, "charger", NOW, TZ) is None
+
+
+def test_the_peak_is_the_highest_hour_ever_measured_before_anything_else() -> None:
+    assert peak_kw(9.8, 16.65) == 9.8
+    assert peak_kw(10.126, None) == 10.13
+    # The array's size only where nothing has been measured yet.
+    assert peak_kw(None, 16.65) == 16.65
+    assert peak_kw(0.0, None) is None
+    assert peak_kw(None, None) is None
+
+
+def test_the_block_carries_the_peak_only_where_one_is_known() -> None:
+    assert PEAK_KEY not in sun_block_from(NOW, TZ, {}, {})
+    block = sun_block_from(NOW, TZ, {_hour(9): 0.4}, {}, observed_max_kwh=10.1, array_kwp=16.65)
+    assert block[PEAK_KEY] == 10.1
+    assert tuple(block) == (*SUN_KEYS, PEAK_KEY)

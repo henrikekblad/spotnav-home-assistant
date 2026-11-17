@@ -532,6 +532,7 @@
   "graph.key.tomorrow": "Gråt: i morgen",
   "graph.key.plan": "Stribet: planlagt opladning",
   "graph.sun.short": "Sol",
+  "graph.sun.peak": "Sol, top {kw} kW",
   "graph.legend.selection": "Valgt interval",
   "graph.legend.cheap": "Billigere end dagens gennemsnit",
   "graph.legend.expensive": "Dyrere end dagens gennemsnit",

@@ -565,6 +565,7 @@
   "graph.key.tomorrow": "Grijs: morgen",
   "graph.key.plan": "Gestreept: geplande lading",
   "graph.sun.short": "Zon",
+  "graph.sun.peak": "Zon, piek {kw} kW",
   "graph.legend.selection": "Geselecteerd interval",
   "graph.legend.cheap": "Goedkoper dan het daggemiddelde",
   "graph.legend.expensive": "Duurder dan het daggemiddelde",

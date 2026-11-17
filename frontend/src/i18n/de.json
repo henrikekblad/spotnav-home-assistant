@@ -565,6 +565,7 @@
   "graph.key.tomorrow": "Grau: morgen",
   "graph.key.plan": "Gestreift: geplantes Laden",
   "graph.sun.short": "Sonne",
+  "graph.sun.peak": "Sonne, Spitze {kw} kW",
   "graph.legend.selection": "Ausgewähltes Intervall",
   "graph.legend.cheap": "Günstiger als der Tagesdurchschnitt",
   "graph.legend.expensive": "Teurer als der Tagesdurchschnitt",

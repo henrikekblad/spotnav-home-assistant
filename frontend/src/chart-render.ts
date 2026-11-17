@@ -36,6 +36,8 @@ export interface ChartLabels {
   price?(value: number, span: number): string;
   /** An hour label ("00" to "23") under the chart, every three hours or (`chart_detail`) every hour; the time label when omitted. */
   hour?(instantMs: number): string;
+  /** The sun's peak label ("Sun, peak 8.4 kW") at the chart's right edge; none drawn when omitted. */
+  sunPeak?(kw: number): string;
 }
 
 /** One hour label under the ordinary chart: where it sits, what it reads and how it is anchored. */
@@ -229,7 +231,7 @@ function polyline(points: ReadonlyArray<{ x: number; y: number }>): string {
  * The sun: per run of consecutive hours a light area from the baseline to the line through the hours' middles, the
  * line solid where measured and dashed from the last measured hour on (the forecast).
  */
-export function sunLayer(sun: SunSeries, scale: ChartScale): SVGGElement {
+export function sunLayer(sun: SunSeries, scale: ChartScale, peakLabel?: (kw: number) => string): SVGGElement {
   const layer = svg("g", { class: VISUAL_CLASSES.sun });
   const height = (scale.bottom - scale.top) * SUN_HEIGHT_SHARE;
   const place = (point: SunPoint): { x: number; y: number } => ({
@@ -265,6 +267,17 @@ export function sunLayer(sun: SunSeries, scale: ChartScale): SVGGElement {
         }),
       );
     }
+  }
+  // With a stated peak, a quiet label in the sun's colour at the right edge, just above where the peak would reach.
+  if (sun.peakKw !== null && peakLabel !== undefined) {
+    const text = svg("text", {
+      class: VISUAL_CLASSES.sunPeak,
+      x: scale.right,
+      y: scale.bottom - (sun.peakKw / sun.maxKw) * height - scale.axisTextSize * 0.3,
+      "text-anchor": "end",
+    });
+    text.textContent = peakLabel(sun.peakKw);
+    layer.append(text);
   }
   return layer;
 }
@@ -390,7 +403,7 @@ export function renderChart(input: ChartRenderInput): ChartRenderResult {
   }
   root.append(axis);
   if (input.sun !== undefined && input.sun !== null) {
-    root.append(sunLayer(input.sun, scale));
+    root.append(sunLayer(input.sun, scale, input.labels.sunPeak));
   }
   // Focus lines come before every mark in the DOM so they sit behind them; `applyFocus` decides
   // which one shows.

@@ -402,7 +402,7 @@ describe("the sun in Display", () => {
 
   it("has its words in every card language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["display.sun", "display.sun.help", "graph.legend.sun", "graph.legend.sunMeasured", "graph.key.tomorrow", "graph.key.plan", "graph.sun.short", "graph.readout.sun", "graph.readout.sunForecast"] as const) {
+      for (const key of ["display.sun", "display.sun.help", "graph.legend.sun", "graph.legend.sunMeasured", "graph.key.tomorrow", "graph.key.plan", "graph.sun.short", "graph.sun.peak", "graph.readout.sun", "graph.readout.sunForecast"] as const) {
         expect(translate(language, key).length, `${language} ${key}`).toBeGreaterThan(0);
       }
     }
@@ -458,5 +458,46 @@ describe("the sun preference", () => {
     chooseChartSun(true);
     expect(chartSunNow()).toBe(true);
     window.removeEventListener("spotnav-card-chart-sun", listener);
+  });
+});
+
+
+describe("the sun's scale against the site's peak", () => {
+  const sunLine = (root: ParentNode): string => root.querySelector(`.${C.sunLine}`)?.getAttribute("d") ?? "";
+  const topY = (path: string): number => Math.min(...[...path.matchAll(/[ML][\d.]+ ([\d.]+)/g)].map((m) => Number(m[1])));
+  const rendered = (sun: unknown): { y: number; label: string | null; maxKw: number } => {
+    const scene = model({ sun });
+    const result = view(scene);
+    const line = sunLine(result.root);
+    const label = result.root.querySelector(`.${C.sunPeak}`)?.textContent ?? null;
+    result.card.destroy();
+    return { y: topY(line), label, maxKw: scene.sun?.maxKw ?? 0 };
+  };
+
+  it("is read from the block, and a non-positive or stray peak is refused", () => {
+    expect(sunOrNull({ hours: [], peak_kw: 8.4 })?.peakKw).toBe(8.4);
+    expect(sunOrNull({ hours: [] })?.peakKw).toBeNull();
+    expect(sunOrNull({ hours: [], peak_kw: 0 })).toBeNull();
+    expect(sunOrNull({ hours: [], peak_kw: "8" })).toBeNull();
+  });
+
+  it("draws a dull day low against the peak, higher without one", () => {
+    const withPeak = rendered({ hours: SUN_HOURS, peak_kw: 10 });
+    const without = rendered({ hours: SUN_HOURS });
+    expect(withPeak.maxKw).toBe(10);
+    expect(without.maxKw).toBe(4.2);
+    // A larger y is lower on the chart.
+    expect(withPeak.y).toBeGreaterThan(without.y);
+    expect(without.label).toBeNull();
+    expect(withPeak.label).toBe(translate("sv", "graph.sun.peak", { kw: "10" }));
+  });
+
+  it("still fits a record hour above the stated peak", () => {
+    const scene = model({ sun: { hours: SUN_HOURS, peak_kw: 3 } });
+    expect(scene.sun?.maxKw).toBe(4.2);
+  });
+
+  it("keeps today's behaviour with no peak", () => {
+    expect(model({ sun: { hours: SUN_HOURS } }).sun?.peakKw).toBeNull();
   });
 });

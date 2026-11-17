@@ -1,7 +1,8 @@
 // The sun in the price chart: the dashboard's `sun` block (measured before now, the plan's corrected forecast after)
 // made into points on the chart's own time axis, and the runs the renderer draws as one light area with a line on
-// top. The sun has its own kW scale, never the price's: the tallest hour reaches `SUN_HEIGHT_SHARE` of the plot, so
-// the price marks and their axis are untouched. Pure: no clock, no DOM.
+// top. The sun has its own kW scale, never the price's: the site's peak production (or, with none known, the day's
+// own tallest hour) reaches `SUN_HEIGHT_SHARE` of the plot, so a dull day looks small and the price marks and their
+// axis are untouched. Pure: no clock, no DOM.
 
 import type { ChartSeries } from "./chart";
 import type { SunBlock } from "./validate";
@@ -25,8 +26,10 @@ export interface SunPoint {
 export interface SunSeries {
   /** Ascending by time, only the hours the chart's axis shows. */
   points: SunPoint[];
-  /** The tallest hour in kW, at least a small floor so a grey day does not fill the plot. */
+  /** The scale's top in kW: the site's peak, or the day's tallest hour where it is higher or no peak is known; at least a small floor. */
   maxKw: number;
+  /** The site's peak production in kW when the block states one (the scale is at least this): the chart names it. */
+  peakKw: number | null;
 }
 
 /** The scale's floor in kW: a day of 0.1 kW is drawn small, not as the whole plot. */
@@ -70,7 +73,9 @@ export function sunSeries(block: SunBlock | null, series: ChartSeries): SunSerie
     return null;
   }
   points.sort((left, right) => left.startMs - right.startMs);
-  return { points, maxKw: Math.max(MIN_MAX_KW, ...points.map((point) => point.kw)) };
+  const peakKw = block.peakKw !== null && block.peakKw > 0 ? block.peakKw : null;
+  // A record hour above the stated peak still fits.
+  return { points, maxKw: Math.max(MIN_MAX_KW, peakKw ?? 0, ...points.map((point) => point.kw)), peakKw };
 }
 
 /** Runs of spans that follow each other (an hour apart at most); a missing hour ends a run, so a gap is a gap. */
