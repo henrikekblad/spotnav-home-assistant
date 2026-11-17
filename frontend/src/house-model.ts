@@ -139,6 +139,14 @@ export interface BatteryView {
   } | null;
   soc_review: Score | null;
   estimates: string[];
+  /** What the battery does now, for the header: the action SpotNav's control runs (`null`: none, the battery's own
+   * self-consumption) and its measured power (kW, + charging); `null` from a backend before it. */
+  now: BatteryNow | null;
+}
+
+export interface BatteryNow {
+  action: string | null;
+  power_kw: number | null;
 }
 
 export interface ReviewDay {
@@ -488,7 +496,16 @@ function battery(value: unknown): BatteryView | null {
           },
     soc_review: score(source.soc_review),
     estimates: list(source.estimates).map(text),
+    now: additive(source, "now", batteryNow, null),
   };
+}
+
+function batteryNow(value: unknown): BatteryNow | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  return { action: textOrNull(source.action), power_kw: numberOrNull(source.power_kw) };
 }
 
 function reviewDay(value: unknown): ReviewDay {
