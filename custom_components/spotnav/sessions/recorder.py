@@ -124,6 +124,8 @@ class SessionFacts:
     register_entity: str | None = None
     #: Whether a stop now is SpotNav's own pause of the charge.
     pause: PauseFacts = PauseFacts()
+    #: When the car now connected was plugged in (`ChargingController.plugged_in_at`), `None` when unknown.
+    plugged_in_at: datetime | None = None
 
 
 def window_gap(windows: tuple[tuple[datetime, datetime], ...], stopped: datetime, now: datetime) -> tuple[bool, bool]:
@@ -342,6 +344,7 @@ class SessionRecorder:
             register_entity=facts.register_entity if facts.register_kwh is not None else None,
             last_sample_at=now,
             start_soc_percent=None if self._start_soc is None else finite_number(self._start_soc()),
+            plugged_in_at=facts.plugged_in_at if facts.plugged_in_at is not None and facts.plugged_in_at <= now else None,
         )
         self._session = session
         self._reset_idle()

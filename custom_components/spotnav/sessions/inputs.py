@@ -153,6 +153,7 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         solar_share=solar_share_of(hass, charger_id, strategy),
         vehicle_decided_by=None if identifier is None else identifier.method,
         pause=pause_facts(controller, settings, solar_execution_state(hass, charger_id)),
+        plugged_in_at=controller.plugged_in_at if adapter.vehicle_connected() is True else None,
     )
 
 
