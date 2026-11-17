@@ -30,7 +30,7 @@ most `MAX_RAISE_RUN` in a row, at most `MAX_RAISE_DAY` in 24 hours, starts at le
 ended, and leaves `RAISE_KEEPS_WRITES` of the day's writes (shared with lowering) for the lowering it comes before.
 A raise block (`RAISE_*`) ends a raise at once and starts none: the house at or above the band's high edge or the
 room-warm rule on, the cooler night or away (outside the return's warm-up), data that is not good, the raise's own
-check failed. **The raise check** (`RaiseCheck`) watches the first raises: the calculated supply up by
+check failed, a contact whose state is only assumed. **The raise check** (`RaiseCheck`) watches the first raises: the calculated supply up by
 `SUPPLY_RISE_C`, or the power up to `POWER_RISE_SHARE` of the baseline, within `EFFECT_GRACE`, on `SEEN` readings in
 a row. The supply alone can fail it (`failed:raise_not_observed`: raising is set aside, lowering goes on); the power
 alone passes on `POWER_PASSES` raises and never fails.
@@ -142,6 +142,9 @@ RAISE_SETTLING: Final = "raise_settling"
 RAISE_NOT_OBSERVED: Final = "raise_not_observed"
 #: A lowering holds A (or B's state is not known): B waits; the two are never closed together.
 RAISE_INTERLOCK: Final = "raise_interlock"
+#: A contact whose state is assumed (`assumed_state`: optimistic MQTT, KNX without a state address, a template
+#: switch) cannot show that it opened: no raise at all (in the diagnostics only).
+RAISE_ASSUMED_STATE: Final = "raise_assumed_state"
 
 #: The calculated supply's rise that shows a raise (°C): smaller than a block's fall, since a recommended raise moves
 #: the curve less than a block does on most pumps.

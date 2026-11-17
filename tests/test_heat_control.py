@@ -527,23 +527,18 @@ async def test_one_open_reading_while_held_is_no_foreign_change(hass: HomeAssist
     assert relay.calls == ["on"] and control.held and control.paused_until is None
 
 
-async def test_a_late_closed_reading_after_spotnavs_own_opening_is_opened_once(hass: HomeAssistant, freezer) -> None:
+async def test_a_closed_reading_after_spotnavs_confirmed_opening_is_someone_elses(hass: HomeAssistant, freezer) -> None:
+    # Only a closing of SpotNav's that was never read closed can land late; once its opening read back, a closed
+    # relay is the household's (by hand, a script), never opened by SpotNav.
     _site_, control, relay, now = await _running(hass, freezer, 0)
     await control.async_look(now)
     _plan(control, now + 50 * MIN)
     await control.async_look(now + 50 * MIN)
     assert relay.calls == ["on", "off"] and not control.held
-    # SpotNav's own closing reads again (a late or bounced reading): taken as its own and opened, no pause.
     hass.states.async_set(RELAY, "on")
     await control.async_look(now + 51 * MIN)
     await control.async_look(now + 52 * MIN)
-    assert relay.calls == ["on", "off", "off"] and relay.state == "off" and not control.held
-    assert control.paused_until is None
-    # Closed again after that one opening: someone else's, never fought.
-    hass.states.async_set(RELAY, "on")
-    await control.async_look(now + 53 * MIN)
-    await control.async_look(now + 54 * MIN)
-    assert relay.calls == ["on", "off", "off"] and control.status()["reason"] == "foreign_change"
+    assert relay.calls == ["on", "off"] and not control.held and control.status()["reason"] == "foreign_change"
 
 
 async def test_a_closing_that_takes_after_it_timed_out_is_opened(hass: HomeAssistant, freezer) -> None:
@@ -719,12 +714,19 @@ async def test_the_store_is_saved_only_when_its_data_changed(hass: HomeAssistant
     await control.async_look(now)
     saves: list[int] = []
     control._store.async_delay_save = lambda *_args, **_kw: saves.append(1)  # type: ignore[method-assign]  # noqa: SLF001
+    kept: list[dict[str, Any]] = []
+
+    async def save_now(data: dict[str, Any]) -> None:
+        kept.append(data)
+
+    control._store.async_save = save_now  # type: ignore[method-assign]  # noqa: SLF001
     for minute in range(1, 6):
         await control.async_look(now + minute * MIN)
-    assert saves == []
+    assert saves == [] and kept == []
     _plan(control, now + 6 * MIN, 0, 1)
     await control.async_look(now + 6 * MIN)
-    assert relay.calls == ["on"] and saves
+    # A closing is kept at once, before it is written.
+    assert relay.calls == ["on"] and len(kept) == 1 and kept[0]["held"] is True
 
 
 async def test_the_check_counts_toward_the_days_writes(hass: HomeAssistant, freezer) -> None:

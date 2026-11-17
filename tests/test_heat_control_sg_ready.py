@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
-from homeassistant.core import CoreState, Event, HomeAssistant, ServiceCall
+from homeassistant.core import CoreState, Event, HomeAssistant, ServiceCall, callback
 
 from custom_components.spotnav.const import CONF_HEAT
-from custom_components.spotnav.heat.control import HeatControl
+from custom_components.spotnav.heat.control import HeatControl, store_key
 from custom_components.spotnav.heat.relay_control import (
     MAX_RAISE_DAY,
     RaiseCheck,
@@ -25,6 +25,8 @@ from custom_components.spotnav.heat.relay_control import (
 from custom_components.spotnav.heat.shadow_rule import BandHour
 from custom_components.spotnav.runtime import site_controller_for
 
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
 from .test_demand_site import pilot_site
 from .test_heat_api import read
 
@@ -34,6 +36,7 @@ A = "switch.sg_a"
 B = "switch.sg_b"
 OUTDOOR = "sensor.ute"
 ROOM = "sensor.vardagsrum"
+SEC = timedelta(seconds=1)
 MIN = timedelta(minutes=1)
 H = timedelta(hours=1)
 
@@ -144,8 +147,12 @@ async def test_a_preheat_hour_raises_and_a_lowered_hour_lowers_through_normal(ha
     assert status["raised"] is True and status["raise_until"] == (now + H).isoformat() and status["lowered"] is False
     await _look(control, now + 30 * MIN)
     assert contacts.calls == [(B, "on")]
-    # The lowered run begins: B opens and is read back before A closes.
+    # The lowered run begins: B opens and is read back, and A closes only once B has read open for the dead time.
     await _look(control, now + H, {0: "lower", 1: "lower"})
+    assert contacts.calls == [(B, "on"), (B, "off")] and contacts.pair == (0, 0)
+    await _look(control, now + H + 5 * SEC, {0: "lower", 1: "lower"})
+    assert contacts.pair == (0, 0)
+    await _look(control, now + H + 30 * SEC, {0: "lower", 1: "lower"})
     assert contacts.calls == [(B, "on"), (B, "off"), (A, "on")] and contacts.pair == (1, 0)
     assert control.raised_minutes([now], now + 2 * H) == {now: 60}
     # And back to normal at the run's end.
@@ -158,7 +165,54 @@ async def test_a_lowering_ending_into_a_raise_opens_a_first(hass: HomeAssistant,
     await _look(control, now)
     assert contacts.pair == (1, 0)
     await _look(control, now + H, {0: "preheat"})
+    assert contacts.calls == [(A, "on"), (A, "off")] and contacts.pair == (0, 0)
+    await _look(control, now + H + 5 * SEC, {0: "preheat"})
+    assert contacts.pair == (0, 0)
+    await _look(control, now + H + 30 * SEC, {0: "preheat"})
     assert contacts.calls == [(A, "on"), (A, "off"), (B, "on")] and contacts.pair == (0, 1) and not contacts.both_on
+
+
+async def test_a_contact_that_reads_open_at_once_still_waits_the_dead_time(hass: HomeAssistant, freezer) -> None:
+    # The state follows the call at once (an optimistic switch): the read-back alone would let A close in the same
+    # instant B was asked to open. A waits until B has read open for the dead time.
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "lower", 2: "lower"})
+    await _look(control, now)
+    for seconds in (0, 3, 9):
+        await _look(control, now + H + seconds * SEC, {0: "lower", 1: "lower"})
+        assert contacts.pair == (0, 0), seconds
+    await _look(control, now + H + 10 * SEC, {0: "lower", 1: "lower"})
+    assert contacts.pair == (1, 0) and not contacts.both_on
+
+
+async def test_b_closed_and_opened_between_looks_starts_the_dead_time_again(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    hass.states.async_set(B, "on")
+    hass.states.async_set(B, "off")
+    await _look(control, now)
+    assert contacts.calls == []
+    await _look(control, now + 30 * SEC)
+    assert contacts.pair == (1, 0)
+
+
+@pytest.mark.parametrize("contact", [A, B])
+async def test_a_contact_with_an_assumed_state_never_raises(hass: HomeAssistant, freezer, contact: str) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "lower", 2: "lower"})
+    hass.states.async_set(contact, "off", {"assumed_state": True})
+    await _look(control, now)
+    assert contacts.calls == [] and control.diagnostics()["raise"]["reason"] == "raise_assumed_state"
+    assert "assumed" not in str(control.status())
+    # Lowering goes on.
+    await _look(control, now + H, {0: "lower", 1: "lower"})
+    assert contacts.pair == (1, 0)
+
+
+async def test_an_assumed_state_ends_a_raise(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "preheat"})
+    await _look(control, now)
+    assert contacts.pair == (0, 1)
+    hass.states.async_set(B, "on", {"assumed_state": True})
+    await _look(control, now + 5 * MIN)
+    assert contacts.pair == (0, 0) and not control.raised
 
 
 async def test_b_that_does_not_open_keeps_a_open(hass: HomeAssistant, freezer) -> None:
@@ -265,6 +319,193 @@ async def test_a_restart_opens_b_held_at_the_stop(hass: HomeAssistant, freezer) 
     assert contacts.pair == (0, 0) and not fresh.raised
 
 
+class _Crash(BaseException):
+    """Home Assistant gone at once, mid-write: nothing after it runs (no delayed save, no shutdown)."""
+
+
+async def _crash_at_the_closing(control: HeatControl, contact: str, hass_storage: dict[str, Any]) -> dict[str, Any]:
+    """Arm a crash that comes right after the closing of `contact` reaches the device; what the store holds then."""
+    real = control._async_call  # noqa: SLF001
+    kept: dict[str, Any] = {}
+
+    async def call(entity_id: str, closed: bool) -> None:
+        await real(entity_id, closed)
+        if entity_id == contact and closed:
+            kept.update(hass_storage[store_key(control.site.entry_id)]["data"])
+            raise _Crash
+
+    control._async_call = call  # type: ignore[method-assign]  # noqa: SLF001
+    return kept
+
+
+async def _restart(control: HeatControl, kept: dict[str, Any]) -> HeatControl:
+    fresh = HeatControl(control.hass, control.shadow)
+    fresh._restore(kept)  # noqa: SLF001 - what the store kept
+    fresh._loaded = True  # noqa: SLF001
+    fresh.checks[A] = {"result": "passed"}
+    return fresh
+
+
+async def test_a_crash_right_after_bs_closing_opens_b_at_the_restart(hass: HomeAssistant, freezer, hass_storage: dict[str, Any]) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "preheat"})
+    kept = await _crash_at_the_closing(control, B, hass_storage)
+    with pytest.raises(_Crash):
+        await control.async_look(now)
+    assert contacts.pair == (0, 1) and kept["raised"] is True and kept["raise_entity"] == B
+    await control.async_shutdown()  # only to stop the old one's timers: it holds nothing it knows of
+    hass.states.async_set(B, "on")
+    fresh = await _restart(control, kept)
+    assert fresh.raised
+    await _look(fresh, now + 5 * MIN, {0: "preheat"})
+    assert contacts.pair == (0, 0) and not fresh.raised
+
+
+async def test_a_crash_right_after_as_closing_opens_a_at_the_restart(hass: HomeAssistant, freezer, hass_storage: dict[str, Any]) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    kept = await _crash_at_the_closing(control, A, hass_storage)
+    with pytest.raises(_Crash):
+        await control.async_look(now)
+    assert contacts.pair == (1, 0) and kept["held"] is True and kept["relay"] == A
+    await control.async_shutdown()
+    hass.states.async_set(A, "on")
+    fresh = await _restart(control, kept)
+    await _look(fresh, now + 5 * MIN, {0: "lower"})
+    assert contacts.pair == (0, 0) and not fresh.held
+
+
+@pytest.mark.parametrize("contact", [A, B])
+async def test_a_closing_that_cannot_be_kept_is_not_written(hass: HomeAssistant, freezer, contact: str) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat" if contact == B else "lower"})
+
+    async def broken(_data: Any) -> None:
+        raise OSError("disk full")
+
+    control._store.async_save = broken  # type: ignore[method-assign]  # noqa: SLF001
+    await _look(control, now)
+    assert contacts.calls == [] and not control.held and not control.raised and control.pending is None and control.pending_b is None
+    assert control.writes.get(control._day(now), 0) == 0  # noqa: SLF001
+
+
+@pytest.mark.parametrize(("closed", "enabled"), [(A, True), (B, True), (A, False), (B, False)])
+async def test_a_store_that_cannot_be_read_opens_both_contacts_once(hass: HomeAssistant, freezer, closed: str, enabled: bool) -> None:
+    site, control, contacts, now = await _running(hass, freezer, {0: "normal"})
+    await control.async_shutdown()
+    if not enabled:
+        heat = site.data[CONF_HEAT]
+        hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {**heat, "control_enabled": False}})
+    # What SpotNav closed before the store was lost.
+    hass.states.async_set(closed, "on")
+    fresh = HeatControl(hass, control.shadow)
+
+    async def unreadable() -> Any:
+        raise ValueError("not JSON")
+
+    fresh._store.async_load = unreadable  # type: ignore[method-assign]  # noqa: SLF001
+    fresh._async_tick = callback(lambda _now: None)  # type: ignore[method-assign]  # noqa: SLF001
+    await fresh.async_start()
+    try:
+        while fresh._task is not None and not fresh._task.done():  # noqa: SLF001
+            await asyncio.sleep(0)
+        await _look(fresh, now + 30 * SEC)
+        if enabled:
+            assert contacts.pair == (0, 0) and contacts.calls == [(closed, "off")]
+            assert not fresh.held and not fresh.raised
+            # Once: closed again by the household, it is theirs.
+            hass.states.async_set(closed, "on")
+            for step in range(2, 6):
+                await _look(fresh, now + step * 30 * SEC)
+            assert contacts.calls == [(closed, "off")]
+        else:
+            # Without the opt-in nothing is written.
+            assert contacts.calls == []
+    finally:
+        await fresh.async_shutdown()
+
+
+def _both_held(hass: HomeAssistant, control: HeatControl, now: datetime) -> None:
+    """Both contacts closed and SpotNav's, as only a lost or old kept state can leave them: what an exit opens first."""
+    control.held, control.held_since, control.raised, control.raised_since = True, now, True, now
+    hass.states.async_set(A, "on")
+    hass.states.async_set(B, "on")
+
+
+@pytest.mark.parametrize("exit_", ["off", "pause", "block"])
+async def test_an_exit_opens_b_before_a(hass: HomeAssistant, freezer, exit_: str) -> None:
+    site, control, contacts, now = await _running(hass, freezer, {0: "normal"})
+    _both_held(hass, control, now)
+    if exit_ == "off":
+        heat = site.data[CONF_HEAT]
+        hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {**heat, "control_enabled": False}})
+    elif exit_ == "pause":
+        control.paused_until, control.paused_reason = now + H, "no_read_back"
+    else:
+        control._blocker = lambda _config, _relay: "automation"  # type: ignore[method-assign]  # noqa: SLF001
+    await _look(control, now)
+    assert contacts.calls == [(B, "off"), (A, "off")] and contacts.pair == (0, 0)
+
+
+async def test_a_restart_opens_b_before_a(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "normal"})
+    _both_held(hass, control, now)
+    fresh = await _restart(control, control._data())  # noqa: SLF001
+    await _look(fresh, now)
+    assert contacts.calls == [(B, "off"), (A, "off")] and contacts.pair == (0, 0)
+
+
+async def test_a_wait_for_b_is_logged_once(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "lower", 2: "lower"})
+    await _look(control, now)
+    contacts.ignore.add(B)
+    for step in range(0, 40):
+        await _look(control, now + H + step * 30 * SEC, {0: "lower", 1: "lower"})
+    waits = [entry for entry in control.log if entry["what"] == "close_waits_for_b"]
+    assert len(waits) == 1 and (A, "on") not in contacts.calls and len(control.log) < 20
+
+
+async def test_a_closed_by_hand_after_spotnavs_confirmed_opening_is_not_taken_as_its_own(hass: HomeAssistant, freezer) -> None:
+    # A lowering ends into a raise (A's opening read back); two minutes later the household closes A: B opens at
+    # once, and A is theirs (never opened by SpotNav).
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "preheat"})
+    await _look(control, now)
+    await _look(control, now + H, {0: "preheat"})
+    await _look(control, now + H + 30 * SEC, {0: "preheat"})
+    assert contacts.pair == (0, 1)
+    hass.states.async_set(A, "on")
+    for step in range(0, 6):
+        await _look(control, now + H + 2 * MIN + step * 30 * SEC, {0: "preheat"})
+    assert contacts.pair == (1, 0) and contacts.calls == [(A, "on"), (A, "off"), (B, "on"), (B, "off")]
+    assert control.paused_reason == "foreign_change"
+
+
+async def test_b_waits_while_a_closing_that_was_not_seen_could_still_land(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "normal"})
+    control._a_close_unseen_at = now - MIN  # noqa: SLF001
+    assert not control._a_clear(now)  # noqa: SLF001
+    assert not control._a_clear(now + 3 * MIN)  # noqa: SLF001
+    assert control._a_clear(now + 5 * MIN)  # noqa: SLF001
+    assert control._a_close_unseen_at is None  # noqa: SLF001
+
+
+async def test_a_closing_of_a_that_raised_keeps_b_open_through_the_plans_raise(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "preheat"})
+    contacts.fail.add(A)
+    await _look(control, now)
+    contacts.fail.clear()
+    for step in range(0, 10):
+        await _look(control, now + H + step * 30 * SEC, {0: "preheat"})
+    assert (B, "on") not in contacts.calls and not contacts.both_on
+
+
+async def test_b_closed_by_hand_while_a_is_lowered_opens_a(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    await _look(control, now)
+    assert contacts.pair == (1, 0)
+    hass.states.async_set(B, "on")
+    await _look(control, now + 10 * MIN + 30 * SEC)
+    assert contacts.pair == (0, 1) and control.status()["reason"] == "sg_ready_b"
+    assert (B, "off") not in contacts.calls
+
+
 async def test_an_unavailable_a_opens_b(hass: HomeAssistant, freezer) -> None:
     _site_, control, contacts, now = await _raised(hass, freezer)
     hass.states.async_set(A, "unavailable")
@@ -319,6 +560,78 @@ async def test_b_opened_by_someone_else_sets_raising_aside_for_the_day(hass: Hom
     # Lowering goes on.
     await _look(control, now + 2 * H + MIN, {0: "lower"})
     assert contacts.pair == (1, 0)
+
+
+async def test_a_closed_by_hand_while_b_is_raised_opens_b_at_the_next_look(hass: HomeAssistant, freezer) -> None:
+    # The household closes A (by hand, a script, Node-RED) while SpotNav holds B: B opens at once, not after A's
+    # change is confirmed a minute later.
+    _site_, control, contacts, now = await _raised(hass, freezer)
+    await _look(control, now + 10 * MIN)
+    hass.states.async_set(A, "on")
+    await _look(control, now + 10 * MIN + 30 * SEC)
+    assert contacts.pair == (1, 0) and not control.raised and contacts.calls == [(B, "on"), (B, "off")]
+    assert control.status()["state"] == "waiting" and control.raise_decision.reason == "raise_interlock"  # type: ignore[union-attr]
+    # Confirmed: SpotNav pauses and never touches A, which is the household's.
+    for step in range(2, 8):
+        await _look(control, now + 10 * MIN + step * 30 * SEC)
+    assert control.paused_reason == "foreign_change" and contacts.calls == [(B, "on"), (B, "off")] and contacts.pair == (1, 0)
+
+
+def _no_ticks(control: HeatControl) -> None:
+    """Only a watched contact's change can start a look from here on (the 30-second looks stop)."""
+    assert control._timer_cancel is not None  # noqa: SLF001
+    control._timer_cancel()  # noqa: SLF001
+    control._timer_cancel = None  # noqa: SLF001
+
+
+async def _seconds_later(hass: HomeAssistant, freezer: Any, control: HeatControl, seconds: int) -> None:
+    freezer.tick(timedelta(seconds=seconds))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    while control._task is not None and not control._task.done():  # noqa: SLF001
+        await asyncio.sleep(0)
+
+
+async def test_a_closed_by_hand_while_b_is_raised_opens_b_within_seconds(hass: HomeAssistant, freezer) -> None:
+    # The change is acted on when it happens (the contacts are watched), not at the next 30-second look.
+    _site_, control, contacts, now = await _raised(hass, freezer)
+    _no_ticks(control)
+    freezer.move_to(now + 10 * MIN)
+    await _look(control, now + 10 * MIN)
+    hass.states.async_set(A, "on")
+    await hass.async_block_till_done()
+    assert contacts.pair == (1, 1)  # the household's own write, for a moment
+    await _seconds_later(hass, freezer, control, 2)
+    assert contacts.pair == (1, 0) and not control.raised and contacts.calls == [(B, "on"), (B, "off")]
+
+
+async def test_spotnavs_own_writes_ask_for_no_extra_look(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "preheat"})
+    looks: list[datetime] = []
+    real = control.async_look
+
+    async def counted(at: datetime) -> None:
+        looks.append(at)
+        await real(at)
+
+    control.async_look = counted  # type: ignore[method-assign]
+    _no_ticks(control)
+    freezer.move_to(now)
+    await _look(control, now)
+    assert contacts.pair == (0, 1)
+    await _seconds_later(hass, freezer, control, 5)
+    assert looks == [now]
+
+
+async def test_a_closed_by_hand_while_a_closing_of_b_is_on_its_way_opens_b(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "preheat"})
+    contacts.ignore.add(B)
+    await _look(control, now)
+    assert control.pending_b is not None and control.pending_b.closed
+    contacts.ignore.clear()
+    hass.states.async_set(A, "on")
+    await _look(control, now + 30 * SEC)
+    assert contacts.calls[-1] == (B, "off") and contacts.state(B) == "off"
 
 
 async def test_b_closed_by_someone_else_is_never_taken_over_and_keeps_a_open(hass: HomeAssistant, freezer) -> None:
