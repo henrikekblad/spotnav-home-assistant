@@ -37,6 +37,11 @@ export interface HistoryDialogOptions<A> {
   width: () => number;
   decode: (raw: unknown) => { ok: true; value: A } | { ok: false; failure: "unsupported" | "malformed" };
   body: (input: HistoryBodyInput<A>) => HTMLElement;
+  /**
+   * House in the shown period's flow tapped: the history steps aside (hidden, its period kept) for what the house
+   * used, and `back` shows it again where it was.
+   */
+  flowHouse?: (answer: A, back: () => void) => void;
 }
 
 /** The browser's local date, for the pickers until the first answer gives the site's. */
@@ -51,6 +56,8 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
   private state: HistoryState<A> = { kind: "loading" };
   private ui: PeriodUi;
   private read = 0;
+  /** What opened the dialog, focused again when it closes. */
+  private opener: HTMLElement | null = null;
 
   constructor(options: HistoryDialogOptions<A>) {
     this.options = options;
@@ -84,6 +91,7 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
   open(opener: HTMLElement | null): void {
     this.ui = { ...this.ui, date: null, pending: false, selected: null };
     this.state = { kind: "loading" };
+    this.opener = opener;
     this.ensure().show({ title: this.title(), body: this.body(), opener });
     void this.load();
   }
@@ -113,7 +121,31 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
         writeDetailed(this.options.kind, detailed);
         this.paint();
       },
+      ...(this.options.flowHouse === undefined ? {} : { onFlowHouse: () => this.flowHouse() }),
     };
+  }
+
+  /** What the house used for the shown period, in place of the history until it is closed. */
+  private flowHouse(): void {
+    const flowHouse = this.options.flowHouse;
+    if (flowHouse === undefined || this.state.kind !== "ready" || this.dialog === null) {
+      return;
+    }
+    this.dialog.hide({ restoreFocus: false });
+    flowHouse(this.state.answer, () => this.back());
+  }
+
+  /** The history again as it was left, the house block focused. */
+  private back(): void {
+    const dialog = this.ensure();
+    if (dialog.isOpen()) {
+      return;
+    }
+    dialog.show({ title: this.title(), body: this.body(), opener: this.opener });
+    if (this.ui.pending) {
+      void this.load();
+    }
+    dialog.element.querySelector<HTMLElement>(".spotnav-house-flow-action")?.focus();
   }
 
   private body(): HTMLElement {

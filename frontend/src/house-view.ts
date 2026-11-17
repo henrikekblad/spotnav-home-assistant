@@ -47,6 +47,8 @@ export interface HouseHandlers {
   onSettings?(): void;
   /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
   onTest?(open: boolean): void;
+  /** House in the energy flow tapped: what the house used (`house-loads.ts`). Without it the block is no button. */
+  onHouseLoads?(opener: HTMLElement): void;
 }
 
 export interface HouseRenderInput {
@@ -782,7 +784,8 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
   }
   const { doc, language } = input;
   const past = answer.day !== null && !answer.day.today;
-  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix, past);
+  const onHouse = input.handlers.onHouseLoads?.bind(input.handlers) ?? null;
+  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix, past, onHouse);
   if (diagram === null && past) {
     return null;
   }
@@ -800,6 +803,9 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: through })));
   }
   section.append(diagram);
+  if (onHouse !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.loads.tap")));
+  }
   return section;
 }
 

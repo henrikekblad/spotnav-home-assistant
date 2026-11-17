@@ -5,6 +5,8 @@
 export const HOUSE_API_VERSION = 1;
 /** `spotnav/get_house_history`'s version (`house-history.ts`). */
 export const HOUSE_HISTORY_API_VERSION = 1;
+/** `spotnav/get_house_loads` (`house-loads.ts`). */
+export const HOUSE_LOADS_API_VERSION = 1;
 
 export type BatteryAction = "grid_charge" | "export_discharge" | "hold";
 const BATTERY_ACTIONS: readonly BatteryAction[] = ["grid_charge", "export_discharge", "hold"];

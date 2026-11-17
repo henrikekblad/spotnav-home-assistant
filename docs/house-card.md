@@ -85,6 +85,24 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
 * **Energy today so far**: a diagram of where today's energy came from and where it went (see Details for how it is
   counted), and the heat pump's share of the house where its meter is known.
 
+### What the house used
+
+Tap **House** in the energy flow (or focus it and press Enter) for a pie of the house's energy over the same day, or in
+the history the day, month or year shown:
+
+* each meter of Home Assistant's Energy dashboard under **Individual devices**, by its name there, and **Other**: the
+  house less those meters. A meter under 3 % of the house goes into Other and is named under the pie. There is no
+  setting: SpotNav reads the meters the Energy dashboard already has.
+* The car and the heat pump are not in it: the flow shows them on their own, so a charger's meter and the heat pump's
+  meter SpotNav uses are left out, and a device nested in another one counts once, in its parent.
+* Where the meters add up to more than the house (a device meter that also measures the car or the heat, or meters that
+  disagree), Other is shown as 0 and a line says by how much.
+* With no individual devices the pie is Other alone, with a line on where to add them: Settings → Dashboards → Energy →
+  Individual devices.
+
+The figures come from the recorder's statistics, by the hour and for today's running hour by five minutes, and are read
+only when the pie is opened.
+
 ### Details
 
 *Show details* opens, as far as the site has them:

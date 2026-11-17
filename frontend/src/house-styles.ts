@@ -201,6 +201,15 @@ export const HOUSE_STYLES = `
   .${H.flowChart} .spotnav-house-flow-share {
     font-size: 11px;
   }
+  /* The house block opens what the house used: a pointer, and a ring in the focus colour from the keyboard. */
+  .${H.flowChart} .spotnav-house-flow-action {
+    cursor: pointer;
+    outline: none;
+  }
+  .${H.flowChart} .spotnav-house-flow-action:focus-visible .spotnav-house-flow-block {
+    stroke: var(--primary-color, #03a9f4);
+    stroke-width: 3px;
+  }
   .${H.head} {
     display: flex;
     flex-wrap: wrap;

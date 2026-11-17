@@ -3,13 +3,15 @@
 // charger's in it, every `HOUSE_REFRESH_MS` (the forecasts change once an hour), and shows it (`house-view.ts`).
 // An administrator's gear opens the shared settings popover (`settings-popover.ts`): the house card is where a home
 // without a charger starts. The charging card stays about the car. The front shows today; the clock beside the gear
-// opens the history (`history-dialog.ts`, `house-history.ts`): a day, month or year.
+// opens the history (`history-dialog.ts`, `house-history.ts`): a day, month or year. House in the energy flow (the
+// front's and the history's) opens what the house used (`house-loads.ts`).
 //
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`.
 
 import { getHouse, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { entityWordsOf } from "./entity-words";
-import { decodeHouse } from "./house-model";
+import { LOADS_STYLES, LoadsPopover, type LoadsRequest } from "./house-loads";
+import { decodeHouse, type EnergyFlow } from "./house-model";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
 import { decodeHouseHistory, houseHistoryBody, type HouseHistory } from "./house-history";
@@ -57,6 +59,12 @@ export function parseHouseConfig(raw: unknown): HouseCardConfig {
   return config;
 }
 
+/** Whether the flow shows the car or the heat on its own (the pie says they are not in it). */
+function apart(flow: EnergyFlow | null): { car: boolean; heat: boolean } {
+  const nodes = flow?.nodes ?? [];
+  return { car: nodes.some((node) => node.role === "car"), heat: nodes.some((node) => node.role === "heat") };
+}
+
 let instances = 0;
 
 export class SpotnavHouseCard extends HTMLElement {
@@ -79,6 +87,7 @@ export class SpotnavHouseCard extends HTMLElement {
   private readonly layer: HTMLDivElement;
   private settingsPopover: SettingsPopover | null = null;
   private historyDialog: HistoryDialog<HouseHistory> | null = null;
+  private loadsPopover: LoadsPopover | null = null;
 
   constructor() {
     super();
@@ -87,7 +96,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.idPrefix = `spotnav-house-${instances}`;
     const doc = this.ownerDocument;
     this.styleNode = doc.createElement("style");
-    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES;
+    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
@@ -125,9 +134,39 @@ export class SpotnavHouseCard extends HTMLElement {
         width: () => this.width,
         decode: decodeHouseHistory,
         body: houseHistoryBody,
+        flowHouse: (answer, back) => {
+          const running = answer.today >= answer.date && answer.today < answer.end;
+          this.ensureLoads().open({ period: answer.period, date: answer.date, running, ...apart(answer.energy_flow) }, null, back);
+        },
       });
     }
     return this.historyDialog;
+  }
+
+  private ensureLoads(): LoadsPopover {
+    if (this.loadsPopover === null) {
+      this.loadsPopover = new LoadsPopover({
+        doc: this.ownerDocument,
+        owner: this.layer,
+        background: () => this.mount,
+        idPrefix: this.idPrefix,
+        hass: () => this.hassObject,
+        target: () => this.target(),
+        language: () => this.language ?? resolveLanguage(null),
+      });
+    }
+    return this.loadsPopover;
+  }
+
+  /** What the house used on the day the front shows (any user who sees the card). */
+  showLoads(opener: HTMLElement | null = null): void {
+    if (this.target() === null || this.state.kind !== "ready") {
+      return;
+    }
+    const answer = this.state.answer;
+    const past = answer.day !== null && !answer.day.today;
+    const request: LoadsRequest = { period: "day", date: past ? answer.day!.date : null, running: !past, ...apart(answer.energy_flow) };
+    this.ensureLoads().open(request, opener);
   }
 
   /** The history dialog: a day, month or year of the house (any user who sees the card). */
@@ -191,6 +230,8 @@ export class SpotnavHouseCard extends HTMLElement {
     this.settingsPopover = null;
     this.historyDialog?.destroy();
     this.historyDialog = null;
+    this.loadsPopover?.destroy();
+    this.loadsPopover = null;
   }
 
   getCardSize(): number {
@@ -225,6 +266,7 @@ export class SpotnavHouseCard extends HTMLElement {
       this.language = next;
       this.render();
       this.historyDialog?.repaint();
+      this.loadsPopover?.repaint();
       return;
     }
     void loadLanguage(next).then(() => {
@@ -232,6 +274,7 @@ export class SpotnavHouseCard extends HTMLElement {
         this.language = next;
         this.render();
         this.historyDialog?.repaint();
+        this.loadsPopover?.repaint();
       }
     });
   }
@@ -335,6 +378,7 @@ export class SpotnavHouseCard extends HTMLElement {
           },
           ...(admin ? { onSettings: () => this.showSettings() } : {}),
           onHistory: (opener) => this.showHistory(opener),
+          onHouseLoads: (opener) => this.showLoads(opener),
         },
         width: this.width,
         nowMs: Date.now(),

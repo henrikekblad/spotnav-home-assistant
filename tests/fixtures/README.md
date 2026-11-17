@@ -17,6 +17,10 @@ level it lifted the target to (`month_peak_kw`).
 a villa on 13 November 2026 at 17:20 with a week of reviewed forecasts, a small array and a 40 kWh battery running its
 own optimiser, planned beside it in shadow; `house_learning.json` a house alone whose forecast is two days old.
 
+`house_loads/*` are `spotnav/get_house_loads`'s answers, written by the pure answer (`tests/test_house_loads.py`):
+`villa_day.json` a villa's day with five individual devices, two of them under 3 % of the house; `meters_over_house.json`
+a month whose meters exceed the house (Övrigt clamped at 0); `no_devices.json` a year with no individual device.
+
 `heat_card/*` are `spotnav/get_heat`'s answers, written by the pure view (`tests/test_heat_view.py`): `villa.json` a
 villa on 16 November 2026 at 17:20 with three indoor sensors, three electric floor zones and an air-to-air heat pump,
 the heat pump's meter split into heat and hot water, and the cooler night on (an administrator's answer, with the

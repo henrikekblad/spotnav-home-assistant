@@ -405,7 +405,8 @@ function flowSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
   }
   const { doc, language } = input;
   const block = section(doc, translate(language, "hist.house.flow"), "energy-flow");
-  const diagram = renderFlow(doc, language, flow, Math.max(240, Math.floor(input.width) - 22), `${input.idPrefix}-history`, true);
+  const onHouse = input.handlers.onFlowHouse?.bind(input.handlers) ?? null;
+  const diagram = renderFlow(doc, language, flow, Math.max(240, Math.floor(input.width) - 22), `${input.idPrefix}-history`, true, onHouse);
   if (diagram === null) {
     block.append(note(doc, translate(language, "hist.house.noEnergy"), "no-energy"));
     return block;
@@ -413,6 +414,9 @@ function flowSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
   block.append(diagram, note(doc, translate(language, flow.step_min < 60 ? "house.flow.ruleQuarter" : "house.flow.rule")));
   if (flow.nodes.some((node) => node.role === "heat")) {
     block.append(note(doc, translate(language, flow.heat_hours < flow.hours ? "house.flow.heatPart" : "house.flow.heatRule")));
+  }
+  if (onHouse !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
+    block.append(note(doc, translate(language, "house.loads.tap"), "loads"));
   }
   return block;
 }
