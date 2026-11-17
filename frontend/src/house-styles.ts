@@ -502,6 +502,10 @@ export const HOUSE_STYLES = `
     padding-top: 6px;
     border-top: 1px solid var(--divider-color, #e0e0e0);
   }
+  /* The perfect share leads the details: the same room after it as between the details' sections. */
+  .${H.details} > .${H.compare} {
+    margin-bottom: 12px;
+  }
   .${H.section} + .${H.section} {
     margin-top: 10px;
   }
