@@ -806,7 +806,16 @@ itself (a capped amount, or a target at or above the car's own limit) it carries
 slider up to `room_kwh` when it is present; an older backend has neither field nor line. Under "Fill"
 (`fill_to_limit`) the status carries `filling_to_limit` (`kwh`, the room now) in place of
 `need_limited_by_room`, and, while no room is known, the notice `fill_room_unknown` (`kwh`, the stored amount
-planned instead). The card's slider goes past the room to `min(capacity to the car's limit, max(30 kWh,
+planned instead).
+
+**A learned battery size.** When no battery size comes from a setting, the car's integration or its profile, the
+size learned from the car's charges at this charger stands in for it: the learned wall kWh per percent x 100 x 0.9
+(battery side), used once one ended charge raised the level at least 10 points with at least 5 kWh and only between
+10 and 200 kWh. The `soc` block's `capacity_kwh` (and so `room_kwh` and `need_kwh`) then carries it, the status
+carries the normal fact `battery_size_learned` (`kwh`, whole kWh) whenever the plan's need was worked out with it
+(a target, "Fill" or an amount capped at the room), and a vehicle row carries the additive `learned_capacity_kwh`
+(one decimal, `null` when a size is stated or nothing is learned): a hint for the battery size setting, never its
+value; the row's `capacity_kwh` and `capacity_source` stay `null`. The card's slider goes past the room to `min(capacity to the car's limit, max(30 kWh,
 2 x room))`, rounded up to its half-kWh step, with a "full" mark at the room; its last step is "Fill".
 
 **A target's need.** The `soc` block's `need_kwh` is the wall energy the target needs, the same figure the plan

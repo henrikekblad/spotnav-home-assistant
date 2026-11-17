@@ -594,6 +594,11 @@ export interface Vehicle {
    * setting is not offered); absent on an older backend.
    */
   wake_for_reading?: boolean | null;
+  /**
+   * The battery size learned from charging while nobody states one (`null`: none, or a size is stated): a hint for
+   * the battery size setting, never its value; absent on an older backend.
+   */
+  learned_capacity_kwh?: number | null;
 }
 
 /** The percents a car's own charge limit takes: `min`..`max` in steps of `step`. */
@@ -1731,6 +1736,7 @@ export const STATUS_CODE_TABLE = {
   need_limited_by_room: ["normal", { kwh: "number" }],
   filling_to_limit: ["normal", { kwh: "number" }],
   fill_room_unknown: ["notice", { kwh: "number" }],
+  battery_size_learned: ["normal", { kwh: "number" }],
   charging_to_vehicle_limit: ["normal", { percent: "number" }],
   min_soc_charging: ["normal", { percent: "number" }],
   remaining_need_estimated: ["notice", { kwh: "number", basis: "text" }],
@@ -2540,7 +2546,14 @@ const CAPACITY_SOURCES = ["reported", "stored"] as const;
 
 export function decodeVehicle(raw: unknown): Vehicle {
   const source = record(raw);
-  const optional = ["identification", "target_percent", "min_percent", "charge_limit_range", "wake_for_reading"].filter((key) =>
+  const optional = [
+    "identification",
+    "target_percent",
+    "min_percent",
+    "charge_limit_range",
+    "wake_for_reading",
+    "learned_capacity_kwh",
+  ].filter((key) =>
     Object.prototype.hasOwnProperty.call(source, key),
   );
   exactKeys(source, [
@@ -2581,6 +2594,9 @@ export function decodeVehicle(raw: unknown): Vehicle {
       ? { charge_limit_range: chargeLimitRange(source["charge_limit_range"]) }
       : {}),
     ...(Object.prototype.hasOwnProperty.call(source, "wake_for_reading") ? { wake_for_reading: booleanOrNull(source, "wake_for_reading") } : {}),
+    ...(Object.prototype.hasOwnProperty.call(source, "learned_capacity_kwh")
+      ? { learned_capacity_kwh: boundedOrNull(source, "learned_capacity_kwh", 0, Number.POSITIVE_INFINITY, true) }
+      : {}),
   };
 }
 
