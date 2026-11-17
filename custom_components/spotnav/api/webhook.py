@@ -187,9 +187,16 @@ APP_DASHBOARD_BLOCK_READS: Final = {
 #: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
 #: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
 APP_READS_PRICE_PROVIDER: Final = "price_provider"
+#: A charger given a power (Sigenergy's DC charger): `current_range.kw_per_a`, the kW one ampere per phase is written
+#: as, is left out for an app that does not read `APP_READS_POWER_CHARGER` (its decoder refuses a range with an unknown
+#: key); such an app shows the planned current in amperes.
+APP_READS_POWER_CHARGER: Final = "power_charger"
 #: Each optional key inside a dashboard block an app released before it does not read, as `(block, key)`, with the
 #: `reads` name that opts into it.
-APP_DASHBOARD_NESTED_READS: Final = {("prices", "provider"): APP_READS_PRICE_PROVIDER}
+APP_DASHBOARD_NESTED_READS: Final = {
+    ("prices", "provider"): APP_READS_PRICE_PROVIDER,
+    ("current_range", "kw_per_a"): APP_READS_POWER_CHARGER,
+}
 #: The level the running hour is held under (`grid_tariff.demand.effective_target_kw`): left out for an app that does
 #: not read `APP_READS_EFFECTIVE_TARGET` (its decoder refuses a demand block with an unknown key), in the dashboard
 #: and in `update_grid_tariff`'s answer.
@@ -344,7 +351,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `grid_tariff.supplier_markup`, `.sell_adjustment` and `.sells`; `guest` for the guest
     car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle;
     `stop_unplug_unseen` for the status line of a person's Stop nothing can see end; `departure_calendar` for the
-    dashboard's `departure_calendar` block and the settings field);
+    dashboard's `departure_calendar` block and the settings field; `power_charger` for `current_range.kw_per_a`);
     anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)

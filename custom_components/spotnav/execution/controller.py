@@ -550,6 +550,20 @@ CURRENT_RANGE_SOURCE_STATION_MAXIMUM = "station_maximum"
 CURRENT_RANGE_SOURCE_DEFAULT = "default"
 
 
+def power_range(current: Any) -> dict[str, Any] | None:
+    """`current_range` for a charger given a power (`sigenergy.PowerCurrent`), else `None`."""
+    from .chargers.sigenergy import PowerCurrent  # noqa: PLC0415 - kept beside its only use
+
+    if not isinstance(current, PowerCurrent):
+        return None
+    maximum = current.max_a()
+    if maximum is None:
+        max_a, source = CURRENT_RANGE_DEFAULT_MAX_A, CURRENT_RANGE_SOURCE_DEFAULT
+    else:
+        max_a, source = max(CURRENT_RANGE_MIN_A, min(int(ABSOLUTE_MAX_AMPS), maximum)), CURRENT_RANGE_SOURCE_CURRENT_LIMIT
+    return {**current_range_dict(max_a, source), "kw_per_a": round(current.kw_per_a(), 4)}
+
+
 def current_range_dict(max_a: int, source: str) -> dict[str, Any]:
     """The dashboard's `current_range` block: `{min_a, max_a, source}`."""
     return {"min_a": CURRENT_RANGE_MIN_A, "max_a": max_a, "source": source}
@@ -4475,8 +4489,12 @@ class ChargingController:
         The single call site for reading this entity, so `setpoint_current_a` and `resolve_current` agree
         on validity. Two entities can answer, in order: the configured current-limit entity, then the OCPP
         session limit of this charger's target. The second is a diagnostic reading, not an actuator, and is
-        often `unavailable` outside a transaction (unknown, not zero).
+        often `unavailable` outside a transaction (unknown, not zero). A charger given a power (a DC charger) answers
+        with its power limit as the current per phase it is written from (`PowerCurrent.read_back_a`).
         """
+        if power_range(self.adapter.current) is not None:
+            amps = self.adapter.current.read_back_a()
+            return amps if amps is not None and ABSOLUTE_MIN_AMPS <= amps <= ABSOLUTE_MAX_AMPS else None
         if self.current_limit:
             value = _validate_current_limit_state(self.hass.states.get(self.current_limit))
             if value is not None:
@@ -4494,7 +4512,14 @@ class ChargingController:
         The ceiling is the lowest `max` stated by the configured current-limit number, the OCPP connector's
         session limit and the OCPP station maximum: each is a ceiling, so the smallest binds. `source` names
         the entity that supplied it. If none states one, the everyday 32 A; never above `ABSOLUTE_MAX_AMPS`.
+
+        A charger given a power (`CURRENT_CONTROL_POWER`, a DC charger) states its ceiling as its rating turned into
+        the current per phase it is (`PowerCurrent.max_a`), and adds `kw_per_a` (the kW one ampere per phase is
+        written as), so the card shows the power. The key is there for such a charger only.
         """
+        power = power_range(self.adapter.current) if self.adapter.current_enabled else None
+        if power is not None:
+            return power
         return charger_current_range(
             self.hass, self.current_limit, self.ocpp_controls, current_limit_none=self.current_limit_none
         )

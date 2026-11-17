@@ -460,7 +460,7 @@ class CapturedVehicle:
 class CapturedSummary:
     """The names a person would recognise the setup by, read once: friendly names, never entity ids.
 
-    `current_path` is `change_configuration`, `number`, `easee_dynamic_limit` or `none` (also when the
+    `current_path` is `change_configuration`, `number`, `easee_dynamic_limit`, `power` or `none` (also when the
     person has not opted in to SpotNav setting the current). `site` is `None` without a site.
     """
 
@@ -855,6 +855,7 @@ _CURRENT_PATH_CODES: Final = {
     "ocpp": "change_configuration",
     "number": "number",
     "service": "easee_dynamic_limit",
+    "power": "power",
 }
 
 
@@ -2306,7 +2307,7 @@ def serialize_summary(summary: CapturedSummary | None) -> dict[str, Any] | None:
     """The `summary` block: the setup in words, for a client that shows it without the entity editor.
 
     `charger`: `start_stop_name`, `current_path` (`change_configuration`, `number`,
-    `easee_dynamic_limit`, `none`), `current_entity_name`, `energy_name` (`null` while the energy
+    `easee_dynamic_limit`, `power`, `none`), `current_entity_name`, `energy_name` (`null` while the energy
     register is found automatically) and `energy_automatic`. `site` is `null` without a site, else
     `main_fuse_a`, `measurement_mode` and `battery_name`. `vehicles` maps a vehicle id to
     `soc_sensor_name`. Names are friendly names, never entity ids; every name may be `null`.
