@@ -15,9 +15,13 @@ Each sensor may have an offset against the house target (its room's own aim, `he
 the one whose reading less its offset is lowest, and that figure (`relative_c`) is what the house's comfort band is
 compared with. `value_c` stays the room's own reading.
 
-Whether the house is **too warm** (`warm_c`) is judged on the same figure, but never on a room that is rising fast
-itself: a sensor warmed by sun or a stove reads warm before the house is, and with one sensor (or all of them rising)
-the rule above leaves nothing out. The coldest counted room rising `LOCAL_RISE_C` over the window is no warm reading.
+**The safety figures never leave a room out.** The cold side (`coldest_c`, what the room-cold guard and safety
+compare) is the coldest readable room less its offset, left out or not: a cold room warming fast (an aired bedroom
+coming back) is still cold. Whether the house is **too warm** (`warm_c`) is judged on the coldest counted room, but
+never on a room that is rising fast itself (a sensor warmed by sun or a stove reads warm before the house is, and with
+one sensor, or all of them rising, the rule above leaves nothing out), and never while any readable room, left out or
+not, is below the band's high edge: `warm_c` is then that room's figure. The coldest counted room rising
+`LOCAL_RISE_C` over the window, or with its rise not known, is no warm reading.
 """
 
 from __future__ import annotations
@@ -146,6 +150,12 @@ def readable_relative(result: Indoor) -> list[float]:
     return [view.value_c - view.offset_c for view in result.sensors if view.value_c is not None]
 
 
+def coldest_c(result: Indoor) -> float | None:
+    """The coldest readable room less its offset, none left out: what the cold guard and safety compare."""
+    values = readable_relative(result)
+    return min(values) if values else None
+
+
 def warmest_c(result: Indoor) -> float | None:
     """The warmest readable room less its offset, none left out: SG Ready's raise never heats a house where any room
     is already at the band's high edge."""
@@ -154,11 +164,12 @@ def warmest_c(result: Indoor) -> float | None:
 
 
 def warm_c(result: Indoor) -> float | None:
-    """The figure the band's high edge is compared with (see the module): the coldest counted room less its offset,
-    `None` while that room rises fast or its rise is not known."""
+    """The figure the band's high edge is compared with (see the module): the coldest counted room less its offset, or
+    a colder readable room left out (so no room below the edge is ever hidden); `None` while the counted room rises
+    fast or its rise is not known."""
     if result.relative_c is None or result.coldest is None:
         return None
     sensor = next((view for view in result.sensors if view.entity_id == result.coldest), None)
     if sensor is None or sensor.rise_c is None or sensor.rise_c >= LOCAL_RISE_C:
         return None
-    return result.relative_c
+    return min([result.relative_c, *readable_relative(result)])

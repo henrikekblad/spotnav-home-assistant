@@ -68,7 +68,7 @@ from .relay_effect import (
 )
 from .relay_schedule import expected_closings, too_cold, unknown_closing
 from .review import review_day
-from .rooms import WINDOW, Indoor, SensorReading, indoor, warm_c, warmest_c
+from .rooms import WINDOW, Indoor, SensorReading, coldest_c, indoor, warm_c, warmest_c
 from .shadow_rule import ACTION_LOWER, REASON_ROOM_WARM, BandHour, RoomWarm, band, day_hours, would_do
 
 if TYPE_CHECKING:
@@ -586,10 +586,10 @@ class HeatShadow:
         return indoor(readings, now, frozenset()) if readings else None
 
     def coldest_now(self, config: HeatConfig) -> float | None:
-        """The coldest counted room now less its offset (what the comfort band is compared with), `None` without a
-        readable indoor sensor."""
+        """The coldest readable room now less its offset, none left out (`rooms.coldest_c`: a cold room warming fast
+        is still cold), what the cold guard and safety compare; `None` without a readable indoor sensor."""
         rooms = self.indoor_now(config)
-        return None if rooms is None else rooms.relative_c
+        return None if rooms is None else coldest_c(rooms)
 
     def warmest_now(self, config: HeatConfig) -> float | None:
         """The warmest readable room now less its offset, none left out (`rooms.warmest_c`), `None` without one."""

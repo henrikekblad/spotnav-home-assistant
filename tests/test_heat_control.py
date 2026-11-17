@@ -921,3 +921,29 @@ async def test_a_fast_rising_room_is_no_warm_reading(hass: HomeAssistant, freeze
         await hass.async_block_till_done()
         await control.async_look(now)
     assert not shadow.room_warm.active and relay.calls == []
+
+
+async def test_a_cold_room_warming_fast_still_releases_and_blocks_the_plan(hass: HomeAssistant, freezer) -> None:
+    """An aired bedroom coming back (16.0 -> 16.7 in half an hour) beside a quiet living room at 21.8: left out of the
+    coldest counted room as a local rise, but the cold safety and the plan's guard still see it."""
+    from collections import deque  # noqa: PLC0415
+
+    bed = "sensor.sovrum"
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, indoor_sensors=[ROOM, bed])
+    hass.states.async_set(ROOM, "21.8", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    hass.states.async_set(bed, "21.8", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    await control.async_look(now)
+    assert relay.calls == ["on"]
+    freezer.move_to(now + 30 * MIN)
+    hass.states.async_set(bed, "16.7", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    shadow = control.shadow
+    shadow._rooms = {  # noqa: SLF001 - the rooms' readings of the last window, as the looks note them
+        ROOM: deque([(now - 10 * MIN, 21.8), (now + 30 * MIN, 21.8)]),
+        bed: deque([(now - 10 * MIN, 16.0), (now + 30 * MIN, 16.7)]),
+    }
+    rooms = shadow.indoor_now(shadow.config(), now + 30 * MIN)
+    assert rooms is not None and rooms.coldest == ROOM
+    assert shadow.coldest_now(shadow.config()) == pytest.approx(16.7)
+    _plan(control, now + 30 * MIN, 0, 1)
+    await control.async_look(now + 30 * MIN)
+    assert relay.calls == ["on", "off"] and control.status()["reason"] == "room_cold"
