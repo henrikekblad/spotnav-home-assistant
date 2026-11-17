@@ -6,6 +6,7 @@
 // (a vehicle's name) is written with `textContent`, never parsed as markup.
 
 import { SESSIONS_API_VERSION } from "./types";
+import { scrubBars } from "./chart-scrub";
 import {
   dateLabel,
   DEFAULT_PRICE_UNIT,
@@ -508,6 +509,18 @@ function dayChart(
     plot.append(bar);
   });
   plot.addEventListener("mouseleave", () => show(days.find((day) => day.period === ui.day) ?? null));
+  scrubBars(
+    plot,
+    bars,
+    (index) => show(days[index] ?? null),
+    (index) => {
+      const day = days[index];
+      if (day !== undefined) {
+        ui.day = day.period;
+        show(day);
+      }
+    },
+  );
   const axis = element(doc, "div", C.historyAxis);
   axis.setAttribute("aria-hidden", "true");
   days.forEach((day, index) => {

@@ -2638,6 +2638,7 @@ export const VISUAL_STYLES = `
     align-items: stretch;
     gap: 2px;
     height: 7.5rem;
+    touch-action: pan-y;
     border-bottom: 1px solid var(--divider-color, #e0e0e0);
   }
   .${VISUAL_CLASSES.historyBar} {
