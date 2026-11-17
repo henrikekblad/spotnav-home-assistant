@@ -3,6 +3,7 @@
 // by side, the reviewed days, the sources and what was assumed). Built fresh for each state with `textContent` only;
 // every figure is the backend's.
 
+import { attachScrub } from "./chart-scrub";
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
@@ -730,9 +731,9 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   surface.setAttribute("role", "group");
   surface.setAttribute("aria-label", translate(language, "house.chart.label"));
   surface.append(chart.element);
+  // The hour a click, a tap, a drag or a key chose; a mouse hover or a drag under way only shows another one.
   let selected = ui.selected !== null && ui.selected < answer.hours.length ? ui.selected : null;
   const show = (index: number | null): void => {
-    selected = index;
     chart.select(index);
     const hour = index === null ? undefined : answer.hours[index];
     readout.textContent = hour === undefined ? translate(language, view === "energy" ? "house.hint.energy" : "house.hint") : hourFigures(language, answer, hour, nowMs, view, hidden);
@@ -744,17 +745,29 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     }
     return chart.hourAt(((event.clientX - box.left) / box.width) * chart.scale.width);
   };
-  surface.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "mouse") {
-      show(indexAt(event));
-    }
-  });
-  surface.addEventListener("pointerleave", () => show(selected === null ? null : selected));
-  surface.addEventListener("click", (event) => {
-    const index = indexAt(event);
+  const choose = (index: number | null): void => {
+    selected = index;
     show(index);
     handlers.onSelect(index);
+  };
+  // By the pointer's x alone, anywhere in the chart's height; a horizontal touch drag scrubs and keeps the
+  // hour it ends on, a vertical one scrolls the page (`touch-action: pan-y`).
+  let scrubbed: number | null = null;
+  attachScrub(surface, {
+    hover: (event) => show(indexAt(event) ?? selected),
+    leave: () => show(selected),
+    drag: (event) => {
+      scrubbed = indexAt(event) ?? scrubbed;
+      show(scrubbed);
+    },
+    end: () => {
+      if (scrubbed !== null) {
+        choose(scrubbed);
+      }
+      scrubbed = null;
+    },
   });
+  surface.addEventListener("click", (event) => choose(indexAt(event)));
   surface.addEventListener("keydown", (event) => {
     const last = answer.hours.length - 1;
     const current = answer.hours.findIndex((hour) => hour.startMs <= nowMs && nowMs < hour.startMs + HOUR_MS);
@@ -768,15 +781,13 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     } else if (event.key === "End") {
       next = last;
     } else if (event.key === "Escape") {
-      show(null);
-      handlers.onSelect(null);
+      choose(null);
       return;
     } else {
       return;
     }
     event.preventDefault();
-    show(next);
-    handlers.onSelect(next);
+    choose(next);
   });
   show(selected);
   const block = element(doc, "div");

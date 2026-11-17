@@ -167,6 +167,47 @@ describe("the front", () => {
     expect(kept.querySelector("[data-line='day-readout']")!.textContent).toMatch(/^04:00 · rummen /);
   });
 
+  it("lets a touch drag across the day chart update the readout, and a mouse pick by x alone", () => {
+    const onChartSelect = vi.fn();
+    const handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), onChartSelect };
+    const card = body(answer(), "sv", handlers);
+    document.body.append(card);
+    const surface = card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!;
+    const picture = surface.querySelector("svg")!;
+    const readout = card.querySelector("[data-line='day-readout']")!;
+    const hint = readout.textContent;
+    // jsdom lays nothing out: the chart is given a box at the page's origin.
+    picture.getBoundingClientRect = () => ({ left: 0, top: 0, right: 300, bottom: 150, width: 300, height: 150, x: 0, y: 0, toJSON: () => ({}) });
+    let captured = 0;
+    surface.setPointerCapture = () => void (captured += 1);
+    surface.releasePointerCapture = () => undefined;
+    const send = (type: string, clientX: number, clientY: number, pointerType = "touch"): PointerEvent => {
+      const event = new PointerEvent(type, { clientX, clientY, pointerType, pointerId: 1, bubbles: true, cancelable: true });
+      surface.dispatchEvent(event);
+      return event;
+    };
+    send("pointerdown", 30, 75);
+    expect(send("pointermove", 40, 75).defaultPrevented).toBe(true);
+    expect(captured).toBe(1);
+    const early = readout.textContent;
+    expect(early).not.toBe(hint);
+    send("pointermove", 200, 75);
+    expect(readout.textContent).not.toBe(early);
+    expect(onChartSelect).not.toHaveBeenCalled();
+    send("pointerup", 200, 75);
+    expect(onChartSelect).toHaveBeenCalledTimes(1);
+    const kept = readout.textContent;
+    // A mouse: the same x at the top and the bottom is the same time; leaving shows the kept one again.
+    send("pointermove", 120, 2, "mouse");
+    const top = readout.textContent;
+    send("pointermove", 120, 148, "mouse");
+    expect(readout.textContent).toBe(top);
+    expect(top).not.toBe(kept);
+    surface.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
+    expect(readout.textContent).toBe(kept);
+    card.remove();
+  });
+
   it("folds the chart away under its heading and tells the card", () => {
     const onChartCollapsed = vi.fn();
     const handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), onChartCollapsed };

@@ -825,8 +825,6 @@ function instantAtWallClock(
 }
 
 
-export const HIT_SLOP = 20;
-
 const NORMAL_DIAMETER_FRACTION = 0.68;
 const TOMORROW_RADIUS_RATIO = 0.8;
 const MIN_POINT_RADIUS = 2.2;
@@ -940,55 +938,31 @@ export function hitTargets(
   });
 }
 
-export function distanceToInk(target: ChartHitTarget, point: ChartPoint): number {
-  const dx = Math.abs(point.x - target.x);
-  const dy = Math.abs(point.y - target.y);
-  let distance =
-    target.radius > 0
-      ? Math.max(0, Math.hypot(dx, dy) - target.radius)
-      : Number.POSITIVE_INFINITY;
-  if (target.mark.hourly) {
-    distance = Math.min(
-      distance,
-      Math.hypot(Math.max(0, dx - target.halfLength), Math.max(0, dy - target.halfThickness)),
-    );
-  }
-  return distance;
-}
-
-function chooseMark(
-  targets: readonly ChartHitTarget[],
-  point: ChartPoint,
-  limit: number,
-): ChartMark | null {
-  let best: ChartHitTarget | null = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
+/**
+ * The mark under a pointer's x, anywhere in the plot's height: the target whose drawn span (an hourly
+ * segment's length, a dot's own x) is horizontally nearest. The y only tells apart records drawn at the
+ * same x (both days on the wall-clock overlay), and the earlier record wins a full tie.
+ */
+export function markAtX(targets: readonly ChartHitTarget[], point: ChartPoint): ChartMark | null {
+  const across = (target: ChartHitTarget): number =>
+    Math.max(0, Math.abs(point.x - target.x) - (target.mark.hourly ? target.halfLength : 0));
+  let nearest = Number.POSITIVE_INFINITY;
   for (const target of targets) {
-    const distance = distanceToInk(target, point);
-    if (distance > limit) {
+    nearest = Math.min(nearest, across(target));
+  }
+  let best: ChartHitTarget | null = null;
+  let bestDy = Number.POSITIVE_INFINITY;
+  for (const target of targets) {
+    if (across(target) > nearest + 0.01) {
       continue;
     }
-    const better =
-      distance < bestDistance ||
-      (distance === bestDistance && best !== null && target.mark.startMs < best.mark.startMs);
-    if (better) {
+    const dy = Math.abs(point.y - target.y);
+    if (dy < bestDy || (dy === bestDy && best !== null && target.mark.startMs < best.mark.startMs)) {
       best = target;
-      bestDistance = distance;
+      bestDy = dy;
     }
   }
   return best?.mark ?? null;
-}
-
-export function nearestMark(targets: readonly ChartHitTarget[], point: ChartPoint): ChartMark | null {
-  return chooseMark(targets, point, Number.POSITIVE_INFINITY);
-}
-
-export function hitTestMarks(
-  targets: readonly ChartHitTarget[],
-  point: ChartPoint,
-  slop: number = HIT_SLOP,
-): ChartMark | null {
-  return chooseMark(targets, point, slop);
 }
 
 export function walkMarks(

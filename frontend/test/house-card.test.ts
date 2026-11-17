@@ -830,6 +830,76 @@ describe("the readout", () => {
   });
 });
 
+describe("the chart under a pointer", () => {
+  /** jsdom lays nothing out: the chart's box is given its own drawn size, at the page's origin. */
+  function laidOut(card: HTMLElement): { surface: HTMLElement; svg: SVGSVGElement; readout: Element; width: number; height: number } {
+    const surface = card.querySelector<HTMLElement>(".spotnav-house-surface")!;
+    const svg = surface.querySelector("svg")!;
+    const [, , width, height] = (svg.getAttribute("viewBox") ?? "0 0 0 0").split(" ").map(Number) as [number, number, number, number];
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, right: width, bottom: height, width, height, x: 0, y: 0, toJSON: () => ({}) });
+    return { surface, svg, readout: card.querySelector(".spotnav-readout")!, width, height };
+  }
+  const move = (target: EventTarget, type: string, clientX: number, clientY: number, pointerType = "touch"): PointerEvent => {
+    const event = new PointerEvent(type, { clientX, clientY, pointerType, pointerId: 1, bubbles: true, cancelable: true });
+    target.dispatchEvent(event);
+    return event;
+  };
+
+  it("lets a touch drag across it update the readout and keeps the hour it ends on", () => {
+    const onSelect = vi.fn();
+    const card = body(answer(), {}, "en", { onDetails: vi.fn(), onSelect });
+    document.body.append(card);
+    const { surface, readout, width, height } = laidOut(card);
+    const captured: number[] = [];
+    surface.setPointerCapture = (id: number) => void captured.push(id);
+    surface.releasePointerCapture = () => undefined;
+    const y = height / 2;
+    move(surface, "pointerdown", width * 0.3, y);
+    const first = move(surface, "pointermove", width * 0.35, y);
+    expect(first.defaultPrevented).toBe(true);
+    expect(captured).toEqual([1]);
+    const early = readout.textContent;
+    expect(early).not.toBe(translate("en", "house.hint.energy"));
+    move(surface, "pointermove", width * 0.7, y);
+    expect(readout.textContent).not.toBe(early);
+    // Shown while the finger moves; told to the card once, when it lifts.
+    expect(onSelect).not.toHaveBeenCalled();
+    move(surface, "pointerup", width * 0.7, y);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    card.remove();
+  });
+
+  it("leaves a vertical gesture to the page's scroll", () => {
+    const onSelect = vi.fn();
+    const card = body(answer(), {}, "en", { onDetails: vi.fn(), onSelect });
+    document.body.append(card);
+    const { surface, readout, width, height } = laidOut(card);
+    move(surface, "pointerdown", width * 0.3, height * 0.2);
+    const scroll = move(surface, "pointermove", width * 0.3 + 1, height * 0.8);
+    expect(scroll.defaultPrevented).toBe(false);
+    expect(readout.textContent).toBe(translate("en", "house.hint.energy"));
+    move(surface, "pointerup", width * 0.3 + 1, height * 0.8);
+    expect(onSelect).not.toHaveBeenCalled();
+    card.remove();
+  });
+
+  it("follows a mouse's x at the top and the bottom alike, and shows the chosen hour again on leaving", () => {
+    const onSelect = vi.fn();
+    const card = body(answer(), {}, "en", { onDetails: vi.fn(), onSelect });
+    document.body.append(card);
+    const { surface, readout, width, height } = laidOut(card);
+    move(surface, "pointermove", width * 0.5, 2, "mouse");
+    const top = readout.textContent;
+    move(surface, "pointermove", width * 0.5, height - 2, "mouse");
+    expect(readout.textContent).toBe(top);
+    expect(top).not.toBe(translate("en", "house.hint.energy"));
+    surface.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
+    expect(readout.textContent).toBe(translate("en", "house.hint.energy"));
+    expect(onSelect).not.toHaveBeenCalled();
+    card.remove();
+  });
+});
+
 describe("today's energy flow", () => {
   it("decodes the nodes and links, takes a role it does not know and drops a link to a missing node", () => {
     const raw = read("house/villa_battery_sun.json");

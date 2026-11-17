@@ -8,6 +8,7 @@
 // hours) and in a history day (from the day's setpoint and hot-water runs). Every figure is the backend's; text is
 // written with `textContent` only.
 
+import { attachScrub } from "./chart-scrub";
 import { clock, formatFixed, hourLabel, type FormatContext } from "./format";
 import { roomName, type IndoorDay, type IndoorPoint } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
@@ -454,12 +455,23 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
     }
     return firstMs + ((event.clientX - box.left) / box.width) * (lastMs - firstMs);
   };
-  surface.addEventListener("pointermove", (event) => {
-    if (event.pointerType === "mouse") {
-      show(timeAt(event));
-    }
+  // By the pointer's x alone, anywhere in the chart's height; a horizontal touch drag scrubs and keeps the
+  // step it ends on, a vertical one scrolls the page (`touch-action: pan-y`).
+  let scrubbed: number | null = null;
+  attachScrub(surface, {
+    hover: (event) => show(timeAt(event)),
+    leave: () => show(chosen),
+    drag: (event) => {
+      scrubbed = timeAt(event) ?? scrubbed;
+      show(scrubbed);
+    },
+    end: () => {
+      if (scrubbed !== null) {
+        choose(scrubbed);
+      }
+      scrubbed = null;
+    },
   });
-  surface.addEventListener("pointerleave", () => show(chosen));
   surface.addEventListener("click", (event) => choose(timeAt(event)));
   surface.addEventListener("keydown", (event) => {
     const count = Math.max(1, Math.ceil((lastMs - firstMs) / stepMs));
