@@ -303,9 +303,9 @@ async def test_the_card_is_given_the_range_in_amperes_and_kw_per_ampere(hass: Ho
     adapter = adapter_for(hass, found)
 
     assert power_range(adapter.current) == {"min_a": 6, "max_a": 17, "source": "current_limit", "kw_per_a": 0.6928}
-    # Without its rating sensor the number's own maximum (100 kW) would be the rating: capped at 80 A.
+    # Without its rating sensor the rating last read stands, never the number's own maximum (100 kW).
     hass.states.async_remove(RATED)
-    assert power_range(adapter.current)["max_a"] == 80
+    assert power_range(adapter.current)["max_a"] == 17
 
 
 # -- careful timing ---------------------------------------------------------------------------------
