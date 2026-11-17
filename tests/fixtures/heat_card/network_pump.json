@@ -366,6 +366,7 @@
     "sensors": [],
     "value_c": null
   },
+  "indoor_day": null,
   "meter": null,
   "notes": [
     {

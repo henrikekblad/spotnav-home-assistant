@@ -30,6 +30,7 @@ from custom_components.spotnav.heat.meter_split import levels, split_day
 from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
 from custom_components.spotnav.heat.review import review_day
 from custom_components.spotnav.heat.rooms import SensorReading, indoor
+from custom_components.spotnav.heat.indoor_day import LIVE_STEP_MIN, indoor_day
 from custom_components.spotnav.heat.view import (
     BAND_HOUR_KEYS,
     HEAT_KEYS,
@@ -128,6 +129,21 @@ def villa_review() -> dict[str, Any]:
     )
 
 
+def villa_rooms() -> dict[str, dict[datetime, float]]:
+    """The indoor sensors' 5-minute means since midnight: the kitchen steady, upstairs (offset -1) a degree lower and
+    cooling half a degree through the lowered morning hours, the toilet a little below the kitchen."""
+    out: dict[str, dict[datetime, float]] = {"sensor.inomhus_kok_temperatur": {}, "sensor.ovanvaning_temperatur": {}, "sensor.toalett_nv_temperatur": {}}
+    moment = MIDNIGHT
+    while moment < NOW - timedelta(minutes=5):
+        hour = (moment - MIDNIGHT).total_seconds() / 3600
+        dip = 0.5 if 7 <= hour < 9 else 0.0
+        out["sensor.inomhus_kok_temperatur"][moment] = 21.3 - dip / 2
+        out["sensor.ovanvaning_temperatur"][moment] = 20.5 - dip
+        out["sensor.toalett_nv_temperatur"][moment] = 20.7
+        moment += timedelta(minutes=5)
+    return out
+
+
 def villa_answer(**overrides: Any) -> dict[str, Any]:
     config = HeatConfig(
         target_c=21.0,
@@ -224,6 +240,7 @@ def villa_answer(**overrides: Any) -> dict[str, Any]:
             automations=villa_automations(),
             names={"climate.golvvarme_toalett_nere": "Golvvärme toalett nedervåning"},
             review=villa_review(),
+            indoor_day=indoor_day(config, villa_rooms(), MIDNIGHT, MIDNIGHT + timedelta(days=1), NOW, LIVE_STEP_MIN),
             control=control_status(
                 "waiting",
                 "automation",
@@ -397,3 +414,17 @@ def test_the_network_pump_and_its_notes() -> None:
     # No relay path: the heat control was never turned on.
     assert answer["control"]["state"] == "off" and answer["shadow"] is True
     _write_or_compare("network_pump.json", answer)
+
+
+def test_the_villa_has_its_indoor_curve_up_to_now() -> None:
+    """The day's rooms by the quarter hour up to now, upstairs on the house's scale (offset -1), the lowered morning
+    showing as a dip; the band's hours carry the setpoint, so the curve has none of its own."""
+    curve = villa_answer()["indoor_day"]
+    assert curve["step_min"] == 15 and curve["setpoint"] is None
+    assert (curve["low_c"], curve["high_c"]) == (20.5, 21.5)
+    assert len(curve["points"]) == 17 * 4 + 1
+    assert all(point["start"] < NOW.isoformat() for point in curve["points"])
+    before, lowered = curve["points"][0], curve["points"][7 * 4]
+    assert (before["mean_c"], before["coldest_c"]) == (21.17, 20.7)
+    assert lowered["coldest_c"] == 20.7 and lowered["mean_c"] < before["mean_c"]
+    assert villa_answer(indoor_day=None)["indoor_day"] is None

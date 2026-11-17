@@ -160,6 +160,8 @@ async def test_the_read_on_the_pilot_site(hass: HomeAssistant, freezer) -> None:
     relays = [item["entity_id"] for item in choices["relay"]]
     assert "switch.larm_rele_1" in relays and not any(entity_id.startswith("switch.spotnav") for entity_id in relays)
     assert len(result["band"]["hours"]) == 24 and result["pump"] is None
+    # No recorder here: the indoor curve is there, empty.
+    assert result["indoor_day"]["points"] == [] and result["indoor_day"]["step_min"] == 15
     # Someone who is not an administrator reads the same without the choices.
     user = (await read(hass, False, api_version=1, site_id=site.entry_id))["result"]
     assert user["writable"] is False and user["choices"] is None
@@ -168,3 +170,27 @@ async def test_the_read_on_the_pilot_site(hass: HomeAssistant, freezer) -> None:
     for request, code in (({"site_id": site.entry_id}, "spotnav_unsupported_api_version"), ({"api_version": 1, "site_id": "x"}, "spotnav_unknown_site")):
         refused = await read(hass, **request)
         assert not refused["success"] and refused["error"]["code"] == code
+
+
+async def test_the_indoor_curve_is_read_once_per_five_minute_row(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.api import heat as heat_api
+
+    site = await pilot_site(hass, freezer)
+    _sensors(hass)
+    await update(hass, api_version=1, site_id=site.entry_id, changes={"indoor_sensors": ["sensor.kok"]})
+    reads: list[tuple[Any, ...]] = []
+
+    async def means(_hass: HomeAssistant, entity_ids: tuple[str, ...], start: Any, end: Any, period: str) -> dict[str, Any]:
+        reads.append((entity_ids, period))
+        return {"sensor.kok": {start: 21.2, start + timedelta(minutes=5): 21.4}}
+
+    monkeypatch.setattr(heat_api, "async_temperature_means", means)
+    first = (await read(hass, api_version=1, site_id=site.entry_id))["result"]["indoor_day"]
+    assert first["points"][0]["mean_c"] == 21.3 and reads == [(("sensor.kok",), "5minute")]
+    await read(hass, api_version=1, site_id=site.entry_id)
+    assert len(reads) == 1
+    freezer.tick(timedelta(minutes=5))
+    await read(hass, api_version=1, site_id=site.entry_id)
+    assert len(reads) == 2
