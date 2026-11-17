@@ -250,11 +250,13 @@ def test_the_day_against_its_perfect_plan(capsys: pytest.CaptureFixture[str]) ->
     made = result["facit"]
     # The record's price table holds the day only: the energy left is valued at the day's own end value, and says so.
     assert made["basis"] == "day_median" and made["mode"] == "balanced"
-    perfect = made["perfect"]["balanced"]["saving"]
-    assert perfect > 0
+    # Every way against one perfect plan: Max profit's where selling was possible, else one that does not sell.
+    assert made["rules"] in ("max_profit", "no_sell")
+    perfect = (made["perfect"]["max_profit"] if made["rules"] == "max_profit" else made["best"])["saving"]
+    assert made["best"]["saving"] == perfect > 0
     for name, item in made["candidates"].items():
         assert item["share"] is None or 0 <= item["share"] <= 100, name
         assert set(item["work"]) == {"discharged_kwh", "cycles", "switches", "grid_charge_kwh", "to_grid_kwh"}
-    assert made["candidates"]["own"]["perfect"] == perfect
+    assert all(item["perfect"] == perfect for item in made["candidates"].values())
     assert replay_day.main([str(FIXTURE), "--facit"]) == 0
-    assert "the perfect plan (balanced) saved" in capsys.readouterr().out
+    assert f"the perfect plan ({made['rules']} rules) saved" in capsys.readouterr().out
