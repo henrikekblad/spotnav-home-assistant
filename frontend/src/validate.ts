@@ -674,6 +674,8 @@ export interface ChargerCurrentRange {
   min_a: number;
   max_a: number;
   source: string;
+  /** A charger given a power (a DC charger): the kW one ampere per phase is written as; absent for any other. */
+  kw_per_a?: number;
 }
 
 export type DecodeFailure = "unsupported" | "malformed";
@@ -2591,7 +2593,8 @@ function decodePhaseDetection(source: Record<string, unknown>): PhaseDetection {
 
 /**
  * The `current_range`, or `null` when the block is unreadable. Independent like `charge_progress`:
- * exact keys, whole amps from 1 to 80 with the top not below the bottom.
+ * exact keys, whole amps from 1 to 80 with the top not below the bottom. `kw_per_a` is there only for a
+ * charger given a power (a DC charger): above 0 and at most 2 kW per ampere.
  */
 function currentRangeOrNull(root: Record<string, unknown>): ChargerCurrentRange | null {
   const value = root.current_range;
@@ -2599,9 +2602,14 @@ function currentRangeOrNull(root: Record<string, unknown>): ChargerCurrentRange 
     return null;
   }
   try {
-    exactKeys(value, ["min_a", "max_a", "source"]);
+    const powered = "kw_per_a" in value;
+    exactKeys(value, powered ? ["min_a", "max_a", "source", "kw_per_a"] : ["min_a", "max_a", "source"]);
     const min = value.min_a;
     const max = value.max_a;
+    const kwPerA = value.kw_per_a;
+    if (powered && (typeof kwPerA !== "number" || !Number.isFinite(kwPerA) || kwPerA <= 0 || kwPerA > 2)) {
+      return null;
+    }
     if (
       typeof min !== "number" ||
       typeof max !== "number" ||
@@ -2613,7 +2621,11 @@ function currentRangeOrNull(root: Record<string, unknown>): ChargerCurrentRange 
     ) {
       return null;
     }
-    return { min_a: min, max_a: max, source: text(value, "source") };
+    const range: ChargerCurrentRange = { min_a: min, max_a: max, source: text(value, "source") };
+    if (powered) {
+      range.kw_per_a = kwPerA as number;
+    }
+    return range;
   } catch {
     return null;
   }

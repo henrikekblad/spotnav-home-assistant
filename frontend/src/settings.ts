@@ -837,6 +837,18 @@ export function checkCurrent(text: string): FormCheck<number> {
 export interface CurrentRange {
   minA: number;
   maxA: number;
+  /** A charger given a power (a DC charger): the kW one ampere per phase is written as. */
+  kwPerA?: number;
+}
+
+/**
+ * The planned current as the reader is shown it: amperes, or for a charger given a power (`kwPerA`) the kW it is
+ * written as, one decimal.
+ */
+export function currentText(language: Language, amps: number, kwPerA: number | undefined, decimals = 0): string {
+  return kwPerA === undefined
+    ? `${formatNumber(language, amps, decimals)} A`
+    : `${formatNumber(language, amps * kwPerA, 1)} kW`;
 }
 
 /**
@@ -1176,6 +1188,8 @@ export function settingsSummaries(
   today: string | null = null,
   /** The departure the charger's calendar made the plan's (`model.calendarDeparture`), shown in place of the time. */
   calendar: { date: string; time: string } | null = null,
+  /** A charger given a power: its kW per ampere, so the current reads as kW. */
+  kwPerA?: number,
 ): SettingsSummaries {
   const energy = settings?.requested_kwh ?? null;
   const amps = settings?.amps ?? null;
@@ -1194,7 +1208,7 @@ export function settingsSummaries(
     current:
       amps === null || !Number.isFinite(amps)
         ? translate(language, "settings.current.unset")
-        : `${formatNumber(language, amps, 0)} A`,
+        : currentText(language, amps, kwPerA),
   };
 }
 
@@ -1219,8 +1233,9 @@ export function planSummaryParts(
   settings: SettingsRecord | null,
   today: string | null = null,
   calendar: { date: string; time: string } | null = null,
+  kwPerA?: number,
 ): string[] {
-  const summaries = settingsSummaries(language, settings, today, calendar);
+  const summaries = settingsSummaries(language, settings, today, calendar, kwPerA);
   // A target-SoC charger leads with the target (`80 %`), a manual one with its energy (`20 kWh`).
   const first =
     settings?.driver === SETTINGS_DRIVER_TARGET_SOC

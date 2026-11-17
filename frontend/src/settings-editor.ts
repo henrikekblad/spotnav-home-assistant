@@ -12,6 +12,7 @@ import {
   ENERGY_SLIDER_STEP_KWH,
   TARGET_PERCENT_MAX,
   TARGET_PERCENT_MIN,
+  currentText,
   energyFillTop,
   energySliderMaximum,
   nominalPowerKw,
@@ -720,9 +721,16 @@ export function settingsEditorBody(
     translate(language, count === 1 ? "settings.phases.one" : "settings.phases.three");
 
   const appendCurrent = (): void => {
+    // A charger given a power (a DC charger) is shown in kW: the stored value stays the current per phase it is
+    // written from, and phases do not apply to it.
+    const kwPerA = form.currentRange.kwPerA;
     const power = element(doc, "p", C.settingsPower);
     power.setAttribute("aria-live", "polite");
     const paintPower = (): void => {
+      if (kwPerA !== undefined) {
+        power.hidden = true;
+        return;
+      }
       const amps = storedNumber(currentValue);
       const phases = form.phases;
       const nominal = nominalPowerKw(amps, phases);
@@ -742,11 +750,17 @@ export function settingsEditorBody(
     };
     const currentRow = sliderRow(doc, {
       id: `${idPrefix}-current`,
-      labelText: translate(language, "settings.current.label"),
-      sliderLabel: translate(language, "settings.current.slider", {
-        min: formatNumber(language, form.currentRange.minA, 0),
-        max: formatNumber(language, form.currentRange.maxA, 0),
-      }),
+      labelText: translate(language, kwPerA === undefined ? "settings.current.label" : "settings.current.labelPower"),
+      sliderLabel:
+        kwPerA === undefined
+          ? translate(language, "settings.current.slider", {
+              min: formatNumber(language, form.currentRange.minA, 0),
+              max: formatNumber(language, form.currentRange.maxA, 0),
+            })
+          : translate(language, "settings.current.sliderPower", {
+              min: formatNumber(language, form.currentRange.minA * kwPerA, 1),
+              max: formatNumber(language, form.currentRange.maxA * kwPerA, 1),
+            }),
       minimum: form.currentRange.minA,
       step: CURRENT_SLIDER_STEP_A,
       maximum: form.currentRange.maxA,
@@ -759,7 +773,7 @@ export function settingsEditorBody(
     const showCurrent = (): void => {
       const amps = storedNumber(currentValue);
       currentRow.show(
-        Number.isFinite(amps) ? `${formatNumber(language, amps, 3)} A` : translate(language, "settings.value.unset"),
+        Number.isFinite(amps) ? currentText(language, amps, kwPerA, 3) : translate(language, "settings.value.unset"),
       );
     };
     currentRow.slider.addEventListener("input", () => {
@@ -770,7 +784,7 @@ export function settingsEditorBody(
     showCurrent();
     body.append(currentRow.group);
     body.append(power);
-    if (form.limitedBy === "vehicle") {
+    if (form.limitedBy === "vehicle" && kwPerA === undefined) {
       const reason = element(doc, "p", C.settingsNote, translate(language, "settings.phases.limitedByVehicle"));
       reason.dataset["part"] = "phases-reason";
       body.append(reason);
