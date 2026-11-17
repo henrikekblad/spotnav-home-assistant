@@ -324,3 +324,29 @@ async def test_the_quarters_are_read_in_the_executor_once_per_five_minutes_and_e
     rows.clear()
     await correction.async_refresh_quarters(step + timedelta(minutes=5))
     assert correction.quarters == {}
+
+
+async def test_a_running_read_of_the_quarters_is_cancelled_at_shutdown(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    entry = await pilot_site(hass, freezer, **{CONF_SOLAR_FORECAST_ENTRIES: ["forecast_solar_1"]})
+    correction = site_controller_for(hass, entry.entry_id).solar_correction
+    started = asyncio.Event()
+
+    async def energy_ids() -> tuple[tuple[str, ...], tuple[str, ...]]:
+        started.set()
+        await asyncio.Event().wait()  # a read that never ends
+        return (), ()
+
+    monkeypatch.setattr(correction, "_async_energy_ids", energy_ids)
+    correction._quarters_for = None
+    correction._quarters_task = None
+    correction._tick_quarters(datetime(2026, 9, 23, 10, 7, tzinfo=UTC))
+    task = correction._quarters_task
+    assert task is not None
+    await started.wait()
+    await correction.async_shutdown()
+    await asyncio.sleep(0)
+    assert task.cancelled()

@@ -257,8 +257,9 @@ class SiteSolarCorrection:
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
+        for task in (self._task, self._quarters_task):
+            if task is not None and not task.done():
+                task.cancel()
         await self._store.async_close()
 
     @staticmethod

@@ -10,13 +10,17 @@ thermostat or an air-to-air heat pump); its sensor is found on the climate's own
 2. a power sensor (device class `power`, else a W/kW/MW unit) with the state class `measurement` (the recorder has
    its hourly `mean`, integrated as the heat pump meter's power sensor is, `site/heat_meter.period_kwh`).
 
-Among several of one kind the one with `total_increasing` goes first, then the lowest entity id, so the pick is stable.
+Among several of one kind a cooling one (`cool` in its entity id or translation key: a Daikin's
+`ac_cool_energy_consumption`) goes last, the one with `total_increasing` first, then the unqualified total before a
+`heat` one, then the lowest entity id, so the pick is stable.
 
 **Counted once** (`resolve_zones`): a zone is left out (`unmeasured`, with why) when it has no such sensor
 (`no_sensor`), when its sensor is the heat pump's meter or on the heat pump meter's own device (`heat_meter`: the meter
 already holds it), when the Energy dashboard nests its sensor inside the heat pump's meter (`in_heat_meter`), when an
 earlier zone already counts the same sensor (`shared`: two thermostats of one device) or when the Energy dashboard
-nests it inside another zone's sensor (`in_zone`). Nothing is said to the household about a zone left out: it is
+nests it inside another zone's sensor (`in_zone`), or when the Energy dashboard nests the heat pump's meter inside its
+sensor (`holds_heat_meter`: a circuit meter moved to heat that the pump's meter is part of; counting both would count
+the pump twice). Nothing is said to the household about a zone left out: it is
 listed in the diagnostics only.
 
 **A meter the household moved to heat**: an Energy dashboard individual device whose belonging the household set
@@ -45,6 +49,7 @@ REASON_HEAT_METER: Final = "heat_meter"
 REASON_IN_HEAT_METER: Final = "in_heat_meter"
 REASON_SHARED: Final = "shared"
 REASON_IN_ZONE: Final = "in_zone"
+REASON_HOLDS_HEAT_METER: Final = "holds_heat_meter"
 
 #: The state classes an energy sensor's statistics keep a total by (its `change` per period).
 ENERGY_STATE_CLASSES: Final = frozenset({"total", "total_increasing"})
@@ -60,6 +65,16 @@ class DeviceSensor:
     device_class: str | None = None
     unit: str | None = None
     state_class: str | None = None
+    #: The integration's translation key (`None` without one).
+    key: str | None = None
+
+
+def _qualifier_rank(sensor: DeviceSensor) -> int:
+    """0 for an unqualified total, 1 for a `heat` one, 2 for a `cool` one (by its entity id or translation key)."""
+    text = f"{sensor.entity_id} {sensor.key or ''}".lower()
+    if "cool" in text:
+        return 2
+    return 1 if "heat" in text else 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,7 +138,15 @@ def pick_zone_sensor(sensors: Iterable[DeviceSensor]) -> tuple[str, str] | None:
             power.append(sensor)
     for found, kind in ((energy, KIND_ENERGY), (power, KIND_POWER)):
         if found:
-            best = min(found, key=lambda s: (s.state_class != "total_increasing", s.entity_id))
+            best = min(
+                found,
+                key=lambda s: (
+                    _qualifier_rank(s) == 2,
+                    s.state_class != "total_increasing",
+                    _qualifier_rank(s),
+                    s.entity_id,
+                ),
+            )
             return best.entity_id, kind
     return None
 
@@ -144,6 +167,13 @@ def resolve_zones(
     name, its device)`, after the zones."""
     nested = dict(nested or {})
     meters = {entity_id for entity_id in (*meter_ids, meter.entity_id if meter.found else None) if entity_id}
+    # The statistics the heat pump's meter is nested in, all the way up (a sensor among them holds the pump).
+    holders: set[str] = set()
+    for meter_id in meters:
+        parent = nested.get(meter_id)
+        while parent is not None and parent not in holders and parent not in meters:
+            holders.add(parent)
+            parent = nested.get(parent)
     sources: list[ZoneSource] = []
     unmeasured: list[tuple[str, str]] = []
     rows = [(entity_id, name, picked, device_id, ORIGIN_ZONE) for entity_id, name, picked, device_id in zones]
@@ -158,6 +188,8 @@ def resolve_zones(
             unmeasured.append((entity_id, REASON_HEAT_METER))
         elif parent is not None and parent in meters:
             unmeasured.append((entity_id, REASON_IN_HEAT_METER))
+        elif sensor_id in holders:
+            unmeasured.append((entity_id, REASON_HOLDS_HEAT_METER))
         elif any(source.sensor_id == sensor_id for source in sources):
             unmeasured.append((entity_id, REASON_SHARED))
         else:
@@ -202,6 +234,7 @@ def device_sensors(hass: HomeAssistant, entity_id: str) -> tuple[str | None, lis
                 attributes.get("device_class") or other.device_class or other.original_device_class,
                 attributes.get("unit_of_measurement") or other.unit_of_measurement,
                 attributes.get("state_class") or (other.capabilities or {}).get("state_class"),
+                other.translation_key,
             )
         )
     return entry.device_id, out

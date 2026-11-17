@@ -140,6 +140,14 @@ async def _read_periods(
 
 async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_date: Any) -> dict[str, Any]:
     """The answer for one site and period, or a `PowerMonthRefusal`."""
+    return (await history_with_periods(hass, site, raw_period, raw_date))[0]
+
+
+async def history_with_periods(
+    hass: HomeAssistant, site: Any, raw_period: Any, raw_date: Any
+) -> tuple[dict[str, Any], list[EnergyHour] | None]:
+    """`history_answer` and the energy periods it was made from (`None` when they could not be read), kept with it,
+    so the house pie (`api/house_loads.py`) judges its meters' hours without reading the period again."""
     controller = site_controller_for(hass, site.entry_id)
     if site.state is not ConfigEntryState.LOADED or controller is None:
         raise PowerMonthRefusal(ERROR_NO_SITE, "The site is not loaded")
@@ -152,11 +160,11 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
         raise PowerMonthRefusal(ERROR_INVALID_DATE, "The period is not one the house card can show") from err
     complete = period.end <= today
     mark: Any = today if complete else (five_slot(now) if period.kind == PERIOD_DAY else hour_start(now, tz))
-    cache: dict[tuple[Any, ...], tuple[Any, dict[str, Any]]] = hass.data.setdefault(_CACHE, {})
+    cache: dict[tuple[Any, ...], tuple[Any, dict[str, Any], list[EnergyHour] | None]] = hass.data.setdefault(_CACHE, {})
     key = (site.entry_id, period.kind, period.first)
     held = cache.get(key)
     if held is not None and held[0] == mark:
-        return held[1]
+        return held[1], held[2]
 
     try:
         periods, step, ids = await _read_periods(hass, site.entry_id, controller, period, now)
@@ -204,10 +212,10 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
         )
     )
     cache.pop(key, None)
-    cache[key] = (mark, answer)
+    cache[key] = (mark, answer, periods)
     while len(cache) > CACHE_SIZE:
         del cache[next(iter(cache))]
-    return answer
+    return answer, periods
 
 
 @callback

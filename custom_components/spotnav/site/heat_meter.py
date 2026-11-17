@@ -485,6 +485,9 @@ class SiteHeatMeter:
         self._read_for: str | None = None
         self.read_failed = False
         self.reads = 0
+        #: The main fuse's capacity (kW; `None` where it is not set), above which a zone's hour is a broken statistic
+        #: and left out of the forecast's hours (`site/heat_zones.async_zone_periods`). Set by the site.
+        self.cap_kw: Callable[[], float | None] = lambda: None
 
     async def async_detect(self) -> HeatMeter:
         """Find the meter (see the module) and keep it."""
@@ -608,7 +611,9 @@ class SiteHeatMeter:
         held = [start for start in self.zone_by_hour if start >= oldest]
         start = max(oldest, max(held) - timedelta(hours=REREAD_HOURS)) if held else oldest
         try:
-            read = summed_periods(await async_zone_periods(self.hass, self.zones, start, current))
+            read = summed_periods(
+                await async_zone_periods(self.hass, self.zones, start, current, "hour", self.cap_kw())
+            )
         except Exception:  # noqa: BLE001 - the hours wait for the next refresh
             _LOGGER.debug("SpotNav heat meter: the heat zones' hours could not be read", exc_info=True)
             return

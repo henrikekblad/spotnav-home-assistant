@@ -14,7 +14,7 @@ globe, or 0°/0°, Home Assistant's value before onboarding) sends nothing.
   hour): the hour starting at t takes the value stamped t + 1 h (the experiment's lag test: correlation 0.944 against
   0.893). Cloud cover and temperature are instantaneous at the stamp: the hour takes the mean of its two ends.
 * **Transport** (`async_fetch_json`): Home Assistant's shared aiohttp session, SpotNav's User-Agent, one overall
-  timeout and a bounded body; the outcome is a body or a stable error code, never an exception.
+  timeout, no redirects followed (a redirect is an HTTP error) and a bounded body; the outcome is a body or a stable error code, never an exception.
 * **Back-off** (`Backoff`): after a failure nothing is fetched for `BACKOFF_FIRST_S`, doubling with each failure in
   a row up to `BACKOFF_MAX_S` (at least a `Retry-After` the server gave, and at least an hour after a 429); one
   success resets it.
@@ -191,7 +191,9 @@ async def async_fetch_json(
     """One GET of `url`, its JSON body or a stable error code; never raises (but for cancellation)."""
     try:
         async with asyncio.timeout(REQUEST_TIMEOUT_S):
-            async with session.get(url, params=dict(params), headers={"User-Agent": user_agent}) as response:
+            async with session.get(
+                url, params=dict(params), headers={"User-Agent": user_agent}, allow_redirects=False
+            ) as response:
                 if response.status == 429:
                     return FetchResult(
                         error=ERROR_RATE_LIMITED,
@@ -234,7 +236,8 @@ class Backoff:
     def failed(self, now: float, result: FetchResult | None = None) -> float:
         """A failure: the wait before the next request (s)."""
         self.failures += 1
-        wait = min(BACKOFF_MAX_S, BACKOFF_FIRST_S * 2 ** (self.failures - 1))
+        # The exponent is clamped: the wait reaches `BACKOFF_MAX_S` long before, and an unbounded power overflows.
+        wait = min(BACKOFF_MAX_S, BACKOFF_FIRST_S * 2.0 ** min(self.failures - 1, 32))
         if result is not None:
             if result.error == ERROR_RATE_LIMITED:
                 wait = max(wait, BACKOFF_RATE_LIMITED_S)

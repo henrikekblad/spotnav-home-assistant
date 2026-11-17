@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -25,6 +26,7 @@ from custom_components.spotnav.site.heat_meter import (
 )
 from custom_components.spotnav.site.heat_zones import (
     REASON_HEAT_METER,
+    REASON_HOLDS_HEAT_METER,
     REASON_IN_HEAT_METER,
     REASON_IN_ZONE,
     REASON_NO_SENSOR,
@@ -57,6 +59,23 @@ def test_an_energy_sensor_goes_before_a_power_sensor_and_total_increasing_first(
     assert pick_zone_sensor(sensors) == ("sensor.golv_energy", KIND_ENERGY)
     assert pick_zone_sensor(sensors[:2]) == ("sensor.golv_energy_today", KIND_ENERGY)
     assert pick_zone_sensor(sensors[:1]) == ("sensor.golv_power", KIND_POWER)
+
+
+def test_the_cooling_energy_is_never_picked_before_the_total_or_the_heating() -> None:
+    # A Daikin's three energy sensors: the cooling one sorts lowest by id but goes last.
+    cool = DeviceSensor("sensor.daikin_ac_cool_energy_consumption", "energy", "kWh", "total_increasing")
+    total = DeviceSensor("sensor.daikin_ac_energy_consumption", "energy", "kWh", "total_increasing")
+    heat = DeviceSensor("sensor.daikin_ac_heat_energy_consumption", "energy", "kWh", "total_increasing")
+    assert pick_zone_sensor([cool, total, heat]) == ("sensor.daikin_ac_energy_consumption", KIND_ENERGY)
+    assert pick_zone_sensor([cool, heat]) == ("sensor.daikin_ac_heat_energy_consumption", KIND_ENERGY)
+    # A cooling total never goes first even with the better state class.
+    heat_total = DeviceSensor("sensor.daikin_ac_heat_energy_consumption", "energy", "kWh", "total")
+    assert pick_zone_sensor([cool, heat_total]) == ("sensor.daikin_ac_heat_energy_consumption", KIND_ENERGY)
+    assert pick_zone_sensor([cool]) == ("sensor.daikin_ac_cool_energy_consumption", KIND_ENERGY)
+    # Told by the translation key too.
+    keyed = DeviceSensor("sensor.daikin_a", "energy", "kWh", "total_increasing", key="cool_energy")
+    other = DeviceSensor("sensor.daikin_b", "energy", "kWh", "total_increasing")
+    assert pick_zone_sensor([keyed, other]) == ("sensor.daikin_b", KIND_ENERGY)
 
 
 def test_a_sensor_without_statistics_or_another_domain_is_no_source() -> None:
@@ -115,6 +134,21 @@ def test_without_a_heat_pump_meter_the_zones_are_the_heat_and_a_moved_meter_come
         ("sensor.shelly_golv", "meter"),
     ]
     assert dict(found.unmeasured) == {"sensor.tvattstuga_energy": REASON_SHARED}
+
+
+def test_a_moved_meter_that_holds_the_heat_pump_s_meter_is_left_out() -> None:
+    # The pump's energy is nested in a circuit meter the household moved to heat (and that one in the main meter).
+    nested = {"sensor.varme_energi": "sensor.krets_golv", "sensor.krets_golv": "sensor.huvud"}
+    moved = [("sensor.krets_golv", "Krets", "dev_krets"), ("sensor.huvud", "Huvud", "dev_huvud")]
+    found = resolve_zones([], PUMP, meter_ids=("sensor.varme_effekt", "sensor.varme_energi"), nested=nested, moved=moved)
+    assert found.sources == ()
+    assert dict(found.unmeasured) == {
+        "sensor.krets_golv": REASON_HOLDS_HEAT_METER,
+        "sensor.huvud": REASON_HOLDS_HEAT_METER,
+    }
+    # Without a heat pump meter the circuit meter is the heat.
+    alone = resolve_zones([], NO_METER, nested=nested, moved=moved[:1])
+    assert alone.sensor_ids == ("sensor.krets_golv",)
 
 
 def test_the_dashboard_pairs_a_power_sensor_with_its_statistic() -> None:
@@ -269,6 +303,33 @@ async def test_the_site_holds_the_zones_beside_the_meter(hass: HomeAssistant, mo
     climates.clear()
     assert await site.async_refresh(HOUR + timedelta(hours=3)) is True
     assert site.zone_by_hour == {} and site.combined_by_hour() == {}
+
+
+async def test_the_forecast_s_zone_hours_are_read_under_the_main_fuse(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site.heat_meter import SiteHeatMeter
+
+    zones = ZoneSources((ZoneSource("climate.a", "A", "sensor.a_energy", KIND_ENERGY),))
+    site = SiteHeatMeter(hass, lambda: None, lambda: ["climate.a"])
+    monkeypatch.setattr(site, "current_zones", lambda: zones)
+    site.cap_kw = lambda: 13.8
+    caps: list[float | None] = []
+
+    async def prefs(_hass):
+        return None
+
+    async def zone(_hass, _zones, start, end, _period="hour", cap=None):
+        caps.append(cap)
+        return {"sensor.a_energy": {HOUR: 0.5}}
+
+    monkeypatch.setattr(heat_meter_module, "async_energy_prefs", prefs)
+    monkeypatch.setattr(zones_module, "async_zone_periods", zone)
+    await site.async_refresh(HOUR + timedelta(hours=2))
+    assert caps == [13.8]
+    # The site sets it from its main fuse (16 A: 11.04 kW); without a fuse there is no cap.
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    assert SiteCapacityController._main_fuse_kw(SimpleNamespace(config={"main_fuse_a": 16})) == pytest.approx(11.04)  # type: ignore[arg-type]
+    assert SiteCapacityController._main_fuse_kw(SimpleNamespace(config={})) is None  # type: ignore[arg-type]
 
 
 def test_a_controller_reads_the_zones_and_the_moved_meters_from_its_entry() -> None:

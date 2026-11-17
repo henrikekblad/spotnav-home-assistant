@@ -139,10 +139,13 @@ class SolarHistory:
                 changed |= self._put_weather(run, hour_key(start), weather)
         return changed
 
-    def note_archive(self, run: int, by_hour: Mapping[datetime, Weather]) -> bool:
-        """An archived run: fills the hours that run has none for."""
+    def note_archive(self, run: int, by_hour: Mapping[datetime, Weather], first: date, last: date) -> bool:
+        """An archived run asked for the UTC dates `first`..`last`: fills the hours that run has none for; an hour
+        outside those dates is not the answer asked for and is left out."""
         changed = False
         for start, weather in by_hour.items():
+            if not first <= start.astimezone(timezone.utc).date() <= last:
+                continue
             changed |= self._put_weather(run, hour_key(start), weather)
         return changed
 

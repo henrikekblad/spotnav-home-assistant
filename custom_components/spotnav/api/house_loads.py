@@ -10,16 +10,18 @@ A command of its own, asked only when the pie is opened, so neither the front's 
 the history's carries the meters.
 
 The house's figure is the energy flow's house block for the period, as the card shows it: the history's answer for
-the period (`api/house_history.history_answer`, its cache), whose day is the front's day flow. The meters are the
-Energy dashboard's individual devices (`energy/get_prefs`); their statistics are read in the recorder's executor over
-the period's start up to the flow's `through`: by the hour, and for a day read by the quarter hour its 5-minute rows
-as well (the running hour). The answer is kept per site and period until the flow's `through` or the meters change.
+the period (`api/house_history.history_answer`, its cache), whose day is the front's day flow; each meter's hours are
+judged against the energy periods kept with that answer (never read again here). The meters are the Energy
+dashboard's individual devices (`energy/get_prefs`); their statistics are read in the recorder's executor over the
+period's start up to the flow's `through`: by the hour, and for a day read by the quarter hour its 5-minute rows as
+well (the running hour). A month's or a year's hour-by-hour passes (the site's use per hour, each meter's plausible
+hours) run in an executor job, not in the event loop. The answer is kept per site and period until the flow's `through` or the meters change.
 Refusals as `spotnav/get_house_history`, and `spotnav_read_failed` when the statistics cannot be read.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date, datetime, timezone
 import logging
 from typing import Any, Final
@@ -32,7 +34,7 @@ from homeassistant.helpers import entity_registry as er
 from ..const import CONF_CHARGE_CONTROL, CONF_CHARGER_ENTRY_IDS, CONF_METER_BELONGS, CONF_POWER_ENTITY
 from ..energy_register import _charger_device_id
 from ..runtime import controller_for, site_controller_for
-from ..site.energy_flow import ROLE_HEAT, ROLE_HOUSE, allocate_hour
+from ..site.energy_flow import ROLE_CAR, ROLE_HEAT, ROLE_HOUSE, allocate_hour
 from ..site.energy_statistics import async_energy_prefs, async_statistics
 from ..site.history_period import PERIOD_DAY, period_of, utc_bounds
 from ..site.heat_meter import async_heat_hours
@@ -55,7 +57,7 @@ from ..site.house_loads import (
 )
 from .common import send_unsupported_version
 from .house import fuse_kw
-from .house_history import _read_periods, history_answer
+from .house_history import history_with_periods
 from .power_month import PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -121,15 +123,25 @@ def charger_sensors(hass: HomeAssistant, controller: Any) -> tuple[set[str], set
     return entities, devices
 
 
-def _limits(periods: Any, roles: tuple[str, ...]) -> dict[datetime, float]:
-    """What `roles` used per UTC hour in the flow's periods (`site/energy_flow.allocate_hour`): the plausible most a
-    meter inside them can show for the hour (`site/house_loads.plausible_kwh`)."""
+#: The uses a meter's hour is judged against: the site's whole use (a dashboard device may also measure the car or
+#: the heat).
+SITE_USES: Final = (ROLE_HOUSE, ROLE_HEAT, ROLE_CAR)
+
+
+def _limits(periods: Any) -> dict[datetime, float]:
+    """What the whole site used (`SITE_USES`) per UTC hour in the flow's periods (`site/energy_flow.allocate_hour`):
+    what a meter's hour is judged against (`site/house_loads.plausible_kwh`)."""
     out: dict[datetime, float] = {}
     for item in periods or ():
         hour = item.start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
-        used = sum(kwh for (_source, use), kwh in allocate_hour(item).items() if use in roles)
+        used = sum(kwh for (_source, use), kwh in allocate_hour(item).items() if use in SITE_USES)
         out[hour] = out.get(hour, 0.0) + used
     return out
+
+
+async def _work(hass: HomeAssistant, heavy: bool, job: Callable[[], Any]) -> Any:
+    """`job()` in an executor job when `heavy` (a month's or a year's hours), else at once."""
+    return await hass.async_add_executor_job(job) if heavy else job()
 
 
 async def _read(
@@ -140,24 +152,29 @@ async def _read(
     five: bool,
     limits: Mapping[datetime, float] | None,
     cap_kwh: float | None,
+    heavy: bool = False,
 ) -> list[tuple[DashboardMeter, MeterRead]]:
     ids = [meter.statistic_id for meter in meters]
     hourly = await async_statistics(hass, ids, start, through, "hour")
     short = await async_statistics(hass, ids, start, through, "5minute") if five else {}
-    return [
-        (
-            meter,
-            plausible_kwh(
-                changes(hourly.get(meter.statistic_id) or []),
-                changes(short.get(meter.statistic_id) or []),
-                start,
-                through,
-                limits=limits,
-                cap_kwh=cap_kwh,
-            ),
-        )
-        for meter in meters
-    ]
+
+    def judge() -> list[tuple[DashboardMeter, MeterRead]]:
+        return [
+            (
+                meter,
+                plausible_kwh(
+                    changes(hourly.get(meter.statistic_id) or []),
+                    changes(short.get(meter.statistic_id) or []),
+                    start,
+                    through,
+                    limits=limits,
+                    cap_kwh=cap_kwh,
+                ),
+            )
+            for meter in meters
+        ]
+
+    return await _work(hass, heavy, judge)
 
 
 async def _read_heat(
@@ -169,19 +186,16 @@ async def _read_heat(
     five: bool,
     limits: Mapping[datetime, float] | None,
     cap_kwh: float | None,
+    heavy: bool = False,
 ) -> list[tuple[DashboardMeter, MeterRead]]:
     """The heat's sources (the heat pump's meter, each zone counted) and their plausible energy in the span."""
-    out: list[tuple[DashboardMeter, MeterRead]] = []
-
-    def read(hourly: Mapping[datetime, float], short: Mapping[datetime, float]) -> MeterRead:
-        return plausible_kwh(hourly, short, start, through, limits=limits, cap_kwh=cap_kwh)
-
+    figures: list[tuple[DashboardMeter, Mapping[datetime, float], Mapping[datetime, float]]] = []
     if meter.found and meter.entity_id:
         hourly = await async_heat_hours(hass, meter, start, through)
         short = await async_heat_hours(hass, meter, start, through, "5minute") if five else {}
         state = hass.states.get(meter.entity_id)
         name = meter.entity_id if state is None else state.name
-        out.append((DashboardMeter(meter.entity_id, name, source=SOURCE_HEAT_PUMP), read(hourly, short)))
+        figures.append((DashboardMeter(meter.entity_id, name, source=SOURCE_HEAT_PUMP), hourly, short))
     if zones.sources:
         hourly_zones = await async_zone_periods(hass, zones, start, through)
         short_zones = await async_zone_periods(hass, zones, start, through, "5minute") if five else {}
@@ -189,8 +203,15 @@ async def _read_heat(
             row = DashboardMeter(
                 source.sensor_id, source.name, source=SOURCE_ZONE if source.origin == ORIGIN_ZONE else SOURCE_METER
             )
-            out.append((row, read(hourly_zones.get(source.sensor_id, {}), short_zones.get(source.sensor_id, {}))))
-    return out
+            figures.append((row, hourly_zones.get(source.sensor_id, {}), short_zones.get(source.sensor_id, {})))
+
+    def judge() -> list[tuple[DashboardMeter, MeterRead]]:
+        return [
+            (row, plausible_kwh(hourly, short, start, through, limits=limits, cap_kwh=cap_kwh))
+            for row, hourly, short in figures
+        ]
+
+    return await _work(hass, heavy, judge)
 
 
 def _zone_devices(hass: HomeAssistant, climates: Any) -> set[str]:
@@ -207,7 +228,9 @@ async def loads_answer(
     hass: HomeAssistant, site: Any, raw_period: Any, raw_date: Any, kind: str = KIND_HOUSE
 ) -> dict[str, Any]:
     """The answer for one site, period and pie (`kind`), or a `PowerMonthRefusal`."""
-    history = await history_answer(hass, site, PERIOD_DAY if raw_period is None else raw_period, raw_date)
+    history, periods = await history_with_periods(
+        hass, site, PERIOD_DAY if raw_period is None else raw_period, raw_date
+    )
     controller = site_controller_for(hass, site.entry_id)
     if controller is None:  # unloaded between the two reads
         raise PowerMonthRefusal("spotnav_no_site", "The site is not loaded")
@@ -250,17 +273,14 @@ async def loads_answer(
     start = utc_bounds(period, tz)[0]
     reads: list[tuple[DashboardMeter, MeterRead]] = []
     if through is not None and through > start and (meters or kind == KIND_HEAT):
-        try:
-            periods, _step, _ids = await _read_periods(hass, site.entry_id, controller, period, controller.demand.now())
-        except Exception:  # noqa: BLE001 - without the flow's hours only the fuse bounds a meter's hour
-            _LOGGER.debug("SpotNav house loads: the flow's hours could not be read", exc_info=True)
-            periods = None
-        limits = _limits(periods, (ROLE_HOUSE, ROLE_HEAT) if kind == KIND_HEAT else (ROLE_HOUSE,)) if periods else None
+        # Without the flow's hours (they could not be read) only the fuse bounds a meter's hour.
+        heavy = period.kind != PERIOD_DAY
+        limits = await _work(hass, heavy, lambda: _limits(periods)) if periods else None
         cap = fuse_kw(controller)  # kW over an hour: kWh
         if kind == KIND_HEAT:
-            reads = await _read_heat(hass, meter, zones, start, through, five, limits, cap)
+            reads = await _read_heat(hass, meter, zones, start, through, five, limits, cap, heavy)
         else:
-            reads = await _read(hass, meters, start, through, five, limits, cap)
+            reads = await _read(hass, meters, start, through, five, limits, cap, heavy)
     elif kind == KIND_HEAT:
         reads = []
     if not reads and kind == KIND_HOUSE:

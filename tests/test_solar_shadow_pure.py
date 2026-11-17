@@ -159,9 +159,11 @@ class _Session:
     def __init__(self, answer: Any) -> None:
         self.answer = answer
         self.requests: list[tuple[str, dict[str, str], dict[str, str]]] = []
+        self.redirects: list[bool] = []
 
-    def get(self, url: str, params: dict[str, str], headers: dict[str, str]) -> Any:
+    def get(self, url: str, params: dict[str, str], headers: dict[str, str], allow_redirects: bool = True) -> Any:
         self.requests.append((url, params, headers))
+        self.redirects.append(allow_redirects)
         if isinstance(self.answer, BaseException):
             raise self.answer
         return self.answer
@@ -172,6 +174,10 @@ async def test_a_good_answer_is_parsed_with_the_user_agent_sent() -> None:
     result = await om.async_fetch_json(session, om.FORECAST_URL, {"latitude": "55.7"}, "SpotNav test")  # type: ignore[arg-type]
     assert result.error is None and result.body == _body()
     assert session.requests[0][2] == {"User-Agent": "SpotNav test"}
+    # A redirect is never followed: it is an HTTP error.
+    assert session.redirects == [False]
+    moved = await om.async_fetch_json(_Session(_Response(302, b"")), om.FORECAST_URL, {}, "ua")  # type: ignore[arg-type]
+    assert (moved.error, moved.status) == (om.ERROR_HTTP, 302)
 
 
 @pytest.mark.parametrize(
@@ -212,6 +218,9 @@ def test_the_back_off_doubles_to_its_cap_honours_the_server_and_resets() -> None
     assert backoff.ready(0.0) and backoff.failures == 0
     assert backoff.failed(0.0, FetchResult(error=om.ERROR_RATE_LIMITED)) == om.BACKOFF_RATE_LIMITED_S
     assert backoff.failed(0.0, FetchResult(error=om.ERROR_HTTP, retry_after_s=20000.0)) == 20000.0
+    # Thousands of failures in a row: still the cap, never an overflow.
+    backoff.failures = 5000
+    assert backoff.failed(0.0) == om.BACKOFF_MAX_S
 
 
 # ---------------------------------------------------------------------------------------------- the schedule
@@ -386,8 +395,14 @@ def test_a_fetch_fills_each_hours_run_by_its_lead_and_the_first_wins() -> None:
     assert not history.note_weather({hour: Weather(900.0, 800.0, 0.0, 20.0)}, hour - timedelta(hours=3))
     assert history.weather_at(1, hour_key(hour)).ghi == 200.0  # type: ignore[union-attr]
     # The archive fills only what is missing; a dark hour is not kept.
-    assert not history.note_archive(1, {hour: Weather(1.0, 0.0, 0.0, 0.0)})
-    assert not history.note_archive(1, {hour + timedelta(hours=12): Weather(0.0, 0.0, 0.0, 0.0)})
+    day = hour.date()
+    assert not history.note_archive(1, {hour: Weather(1.0, 0.0, 0.0, 0.0)}, day, day)
+    assert not history.note_archive(1, {hour + timedelta(hours=12): Weather(0.0, 0.0, 0.0, 0.0)}, day, day)
+    # An hour outside the dates asked for is not kept.
+    later = hour + timedelta(days=2)
+    assert not history.note_archive(1, {later: Weather(400.0, 200.0, 10.0, 12.0)}, day, day)
+    assert history.weather_at(1, hour_key(later)) is None
+    assert history.note_archive(1, {later: Weather(400.0, 200.0, 10.0, 12.0)}, day, later.date())
     assert history.note_provider({hour: 2.341}, hour - timedelta(hours=10))
     assert history.provider[1][hour_key(hour)] == 234
 
