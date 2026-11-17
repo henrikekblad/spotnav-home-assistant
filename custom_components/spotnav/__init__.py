@@ -134,6 +134,7 @@ from .battery.control import BatteryControl
 from .battery.runtime import BatteryShadow
 from .loads.runtime import SwitchLoadShadow
 from .site.solar_correction_shadow import SiteSolarCorrection
+from .site.solar_shadow import SiteSolarShadow
 from .heat.control import HeatControl
 from .heat.runtime import HeatShadow
 from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
@@ -934,6 +935,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await BatteryControl.async_remove_stored(hass, entry.entry_id, dict(entry.data))
         await SwitchLoadShadow.async_remove_stored(hass, entry.entry_id)
         await SiteSolarCorrection.async_remove_stored(hass, entry.entry_id)
+        await SiteSolarShadow.async_remove_stored(hass, entry.entry_id)
         await HeatShadow.async_remove_stored(hass, entry.entry_id)
         await HeatControl.async_remove_stored(hass, entry.entry_id)
         return

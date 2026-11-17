@@ -355,6 +355,11 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # rails found, the factors, the next hours raw and corrected, and the log with its nightly reviews. The
         # Hybrid strategy reads the raw forecast.
         "solar_correction": None if controller is None else _part_snapshot(controller.solar_correction.snapshot),
+        # The own solar forecast and the sun-position correction in shadow (`site/solar_shadow.py`): status, the
+        # Open-Meteo fetch and its back-off, what is kept, the fitted planes, the learned factors, every candidate's
+        # next hours, the last issues and the review (30-day summary per candidate and issue, the last week's days).
+        # Nothing here feeds a plan.
+        "solar_shadow": None if controller is None else _part_snapshot(controller.solar_shadow.snapshot),
         # Per member charger, the phase load balancing reckons it on and how that was decided: `chosen` in the
         # wiring, `measured` (an "Automatic" single-phase charger followed by its own measured current) or
         # `worst_case` (the phase with the least headroom).

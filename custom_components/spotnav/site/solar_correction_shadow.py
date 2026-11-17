@@ -427,6 +427,11 @@ class SiteSolarCorrection:
         )
         self.log.record_forecast(KIND_SUN, future, now)
         self.log.record_forecast(KIND_SUN_CORRECTED, corrected, now)
+        # The own solar forecast in shadow keeps the provider's forecast for its sun-position factor and issues the
+        # provider's candidates from it (`site/solar_shadow.py`).
+        shadow = getattr(self.site, "solar_shadow", None)
+        if shadow is not None:
+            shadow.note_provider(now, future, corrected)
         running = {start: kwh for start, kwh in raw.items() if start >= hour}
         learnt = self.state.status == CORRECTION_LEARNT
         self.sun_kwh = (
