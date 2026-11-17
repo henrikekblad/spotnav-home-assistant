@@ -213,3 +213,20 @@ def test_a_sun_rise_holds_off_the_warm_lowering() -> None:
     assert active_at == NOON + H + 51 * MIN
     # Without the exclusion it would have lowered from about 13:03 (an hour after the edge was crossed).
     assert active_at > NOON + H + 10 * MIN
+
+
+def test_a_warm_hour_without_a_price_plans_without_failing() -> None:
+    # The running hour's price is missing, the day's dear hours are elsewhere: the plan is made all the same.
+    now = MIDNIGHT + 16 * H + 10 * MIN
+    prices = {start: price for start, price in priced().items() if start != MIDNIGHT + 16 * H}
+    plan, _guard = band(CONFIG, HOURS, prices, now, ZONE, coldest_c=22.3, room_warm=True)
+    by_hour = {HOURS.index(hour.start): hour for hour in plan}
+    assert (by_hour[16].action, by_hour[16].reason) == ("lower", "room_warm")
+    assert by_hour[17].action == "lower"
+    run = longest = 0
+    for index in range(24):
+        run = run + 1 if by_hour[index].action == "lower" else 0
+        longest = max(longest, run)
+    assert longest <= 3
+    # And a pre-heat hour is still found before a priced run elsewhere, never before the warm one.
+    assert by_hour[15].action != "preheat"

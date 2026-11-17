@@ -175,7 +175,8 @@ def dear_hours(
     median = statistics.median(values)
     bar = max(_quantile(values, DEAR_QUANTILE), median * DEAR_OVER_MEDIAN if median > 0 else median)
     starts = sorted(prices)
-    index = {start: i for i, start in enumerate(starts)}
+    # The runs are counted over the hours `already` lowered too, priced or not (a warm hour without a price).
+    index = {start: i for i, start in enumerate(sorted(set(prices) | chosen))}
     # A tight hour in the cheap half of the day is left alone: the heat would come back dearer after it, and the
     # load there is what the cheap hour is for (a battery's grid charge, the car's night).
     pressed = {start for start in tight if start in prices and prices[start] >= median}
@@ -276,7 +277,10 @@ def band(
         if warm.intersection(run):
             continue
         before = run[0] - timedelta(hours=1)
-        mean = statistics.mean(day_prices[start] for start in run)
+        run_prices = [day_prices[start] for start in run if start in day_prices]
+        if not run_prices:
+            continue
+        mean = statistics.mean(run_prices)
         if before in day_prices and before not in fixed and before not in lowered and day_prices[before] <= mean * PREHEAT_SHARE:
             preheat.add(before)
 
