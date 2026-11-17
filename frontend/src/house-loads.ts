@@ -1,14 +1,14 @@
 // What the house used: the popover behind House in the energy flow (the card's front and the history's flow). It reads
 // `spotnav/get_house_loads` when opened (the backend's shape is `custom_components/spotnav/site/house_loads.py`, its
 // fixtures `tests/fixtures/house_loads/`) and shows the house's energy for the period as a pie: each of the Energy
-// dashboard's individual devices by name and "Other", the house less them.
+// dashboard's individual devices by name, "Other metered" (the small meters) and "Unknown" (the house less all meters).
 //
-// * A meter under `SMALL_SHARE` of the whole, or past the `SLOTS` colours, goes into Other and is named under the pie,
-//   so nothing is hidden; a meter with nothing in the period is named there too.
-// * The whole is the house, or the meters where they add up to more (Other is then 0, and a line says so).
+// * A meter under `SMALL_SHARE` of the whole, or past the `SLOTS` colours, goes into Other metered (a light grey) and
+//   is named under the pie, so nothing is hidden; a meter with nothing in the period is named there too.
+// * The whole is the house, or the meters where they add up to more (Unknown is then 0, and a line says so).
 // * The colours are one validated categorical order (`--spotnav-pie-1` …, readable on a light and a dark card), given
 //   to the shown meters by their statistic id, so a meter keeps its colour while the same meters are shown; Other is
-//   a neutral grey. Every figure is also in the list beside the pie (name, kWh, %), so colour never carries it alone.
+//   two neutral greys. Every figure is also in the list beside the pie (name, kWh, %), so colour never carries it alone.
 //
 // * `kind: "heat"` is the same pie behind Heat (where the heat holds more than one source): the heat pump's meter,
 //   each heat zone by its thermostat's name and each meter moved to heat; its centre says Heat.
@@ -32,10 +32,10 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/** A meter under this share of the whole is put into Other. */
-export const SMALL_SHARE = 0.03;
-/** The colours a pie has for meters; any further meter goes into Other. */
-export const SLOTS = 6;
+/** A meter under this share of the whole is put into Other metered. */
+export const SMALL_SHARE = 0.015;
+/** The colours a pie has for meters; any further meter goes into Other metered. */
+export const SLOTS = 8;
 /** The pie's size (px). */
 const PIE = 148;
 const OUTER = 72;
@@ -73,7 +73,10 @@ export const LOADS_STYLES = `
     --spotnav-pie-4: var(--spotnav-pie-4-colour, #c98500);
     --spotnav-pie-5: var(--spotnav-pie-5-colour, #d55181);
     --spotnav-pie-6: var(--spotnav-pie-6-colour, #9085e9);
-    --spotnav-pie-other: var(--spotnav-pie-other-colour, #8a8f98);
+    --spotnav-pie-7: var(--spotnav-pie-7-colour, #2aa3c4);
+    --spotnav-pie-8: var(--spotnav-pie-8-colour, #8aa02c);
+    --spotnav-pie-other-metered: var(--spotnav-pie-other-metered-colour, #b9bdc4);
+    --spotnav-pie-unknown: var(--spotnav-pie-unknown-colour, #747982);
     min-width: 0;
   }
   .${L.caption} {
@@ -356,7 +359,7 @@ export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
 // ------------------------------------------------------------------------------------------------ the slices
 
 export interface PieSlice {
-  /** The meter's statistic id, or `other`. */
+  /** The meter's statistic id, or `other-metered` (the small meters) or `unknown` (no meter explains it). */
   key: string;
   name: string;
   kwh: number;
@@ -370,12 +373,12 @@ export interface PieModel {
   /** The house, or the meters where they add up to more. */
   whole: number;
   slices: PieSlice[];
-  /** The meters put into Other (small, empty or past the colours), largest first. */
+  /** The meters put into Other metered (small, empty or past the colours), largest first. */
   merged: HouseLoad[];
 }
 
-/** The pie: the meters at or over `SMALL_SHARE` of the whole (at most `SLOTS`, largest first), then Other with the
- * rest; an empty slice is left out. The heat pie shows every source with energy however small (a floor heating loop
+/** The pie: the meters at or over `SMALL_SHARE` of the whole (at most `SLOTS`, largest first), then Other metered with
+ * the rest and Unknown (the house less every meter); an empty slice is left out. The heat pie shows every source with energy however small (a floor heating loop
  * is a few per cent of the heat pump), up to `SLOTS`. */
 export function pieModel(language: Language, answer: HouseLoads): PieModel {
   const whole = Math.max(answer.house_kwh ?? 0, answer.meters_kwh);
@@ -399,14 +402,24 @@ export function pieModel(language: Language, answer: HouseLoads): PieModel {
     share: whole > 0 ? load.kwh / whole : 0,
     colour: `var(--spotnav-pie-${byId.indexOf(load.statistic_id) + 1})`,
   }));
-  const other = (answer.other_kwh ?? 0) + merged.reduce((sum, load) => sum + load.kwh, 0);
-  if (other > 0 || slices.length === 0) {
+  const metered = merged.reduce((sum, load) => sum + load.kwh, 0);
+  const unknown = answer.other_kwh ?? 0;
+  if (metered > 0) {
     slices.push({
-      key: "other",
-      name: translate(language, "house.loads.other"),
-      kwh: other,
-      share: whole > 0 ? other / whole : 0,
-      colour: "var(--spotnav-pie-other)",
+      key: "other-metered",
+      name: translate(language, "house.loads.otherMetered"),
+      kwh: metered,
+      share: whole > 0 ? metered / whole : 0,
+      colour: "var(--spotnav-pie-other-metered)",
+    });
+  }
+  if (unknown > 0 || slices.length === 0) {
+    slices.push({
+      key: "unknown",
+      name: translate(language, "house.loads.unknown"),
+      kwh: unknown,
+      share: whole > 0 ? unknown / whole : 0,
+      colour: "var(--spotnav-pie-unknown)",
     });
   }
   return { whole, slices, merged };
@@ -484,7 +497,7 @@ export function renderPie(
   if (drawn.length <= 1) {
     // One slice, or none, is the whole ring (an arc cannot close on itself); none is a faint ring.
     const ring = svg(doc, "circle", { cx: PIE / 2, cy: PIE / 2, r: (OUTER + INNER) / 2, fill: "none", "stroke-width": OUTER - INNER, "data-key": drawn[0]?.key ?? "none" });
-    ring.style.setProperty("stroke", drawn[0]?.colour ?? "var(--spotnav-pie-other)");
+    ring.style.setProperty("stroke", drawn[0]?.colour ?? "var(--spotnav-pie-unknown)");
     if (drawn[0] === undefined) {
       ring.style.setProperty("stroke-opacity", "0.35");
     } else {

@@ -111,24 +111,25 @@ added today makes a step in the heat forecast's review, which settles within a w
 Tap **House** in the energy flow (or focus it and press Enter) for a pie of the house's energy over the same day, or in
 the history the day, month or year shown:
 
-* each meter of Home Assistant's Energy dashboard under **Individual devices**, by its name there, and **Other**: the
-  house less those meters. A meter under 3 % of the house goes into Other and is named under the pie. There is no
-  setting: SpotNav reads the meters the Energy dashboard already has.
+* each meter of Home Assistant's Energy dashboard under **Individual devices**, by its name there (at most eight
+  named slices). A meter under 1.5 % of the house, or past the eighth, goes into a light grey **Other metered** slice
+  and is named under the pie. A darker grey **Unknown** slice is what no meter explains: the house less all the meters.
+  There is no setting: SpotNav reads the meters the Energy dashboard already has.
 * The car and the heat are not in it: the flow shows them on their own. SpotNav sorts these meters out by itself and
   counts each only there: a meter whose sensor is a charger's, the heat pump meter's or a heating zone's, or that sits on
   the same Home Assistant device as a charger or a heating zone. (The heat pump's meter is told by its sensor alone: a
   clamp meter with several channels has the heat pump on one and other circuits, such as the stove, on the others.) A
   device nested in another one counts once, in its parent.
 * Where the meters add up to more than the house (a device meter that also measures the car or the heat, or meters that
-  disagree), Other is shown as 0 and a line says by how much.
+  disagree), Unknown is shown as 0 and a line says by how much.
 * An hour a meter cannot have used (more than the whole house used that hour, or more than the main fuse allows) is
   not counted: it is a broken statistic, typically a plug whose total drops and comes back, which Home Assistant counts
   as new energy each time. The meter is shown with its other hours, and one line names it and how many hours were left
   out, with where to repair it: Developer tools → Statistics. A meter with no believable hour is left out of the pie
   and the line says so. The same holds for the heat pie's sources.
 * Where the meters add up to more than the house (a device meter that also measures the car or the heat, or meters that
-  disagree), Other is shown as 0 and a line says by how much.
-* With no individual devices the pie is Other alone, with a line on where to add them: Settings → Dashboards → Energy →
+  disagree), Unknown is shown as 0 and a line says by how much.
+* With no individual devices the pie is Unknown alone, with a line on where to add them: Settings → Dashboards → Energy →
   Individual devices.
 
 The figures come from the recorder's statistics, by the hour and for today's running hour by five minutes, and are read

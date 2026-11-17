@@ -15,6 +15,7 @@ import {
   LoadsPopover,
   periodCaption,
   pieModel,
+  SLOTS,
   SMALL_SHARE,
   type HouseLoads,
   type LoadsControls,
@@ -54,43 +55,68 @@ describe("decoding the backend's own answer", () => {
 });
 
 describe("the pie", () => {
-  it("draws the meters over 3 % and puts the smaller ones into Other, named under the pie", () => {
+  it("draws the meters over 1.5 %, puts the smaller ones into Other metered and the rest into Unknown", () => {
     const model = pieModel("en", loads());
     expect(model.whole).toBe(14.62);
-    expect(model.slices.map((slice) => slice.name)).toEqual(["Torktumlare", "Diskmaskin", "Tvättmaskin", "Other"]);
+    expect(model.slices.map((slice) => slice.name)).toEqual(["Torktumlare", "Diskmaskin", "Tvättmaskin", "Other metered", "Unknown"]);
     expect(model.merged.map((load) => load.name)).toEqual(["Frys", "Router"]);
     expect(model.merged.every((load) => load.kwh / model.whole < SMALL_SHARE)).toBe(true);
-    // Other is the house less every meter, the small ones' energy in it.
-    expect(model.slices.at(-1)!.kwh).toBeCloseTo(9.6 + 0.21 + 0.12);
+    // Other metered is the small meters; Unknown is the house less every meter.
+    expect(model.slices.at(-2)!.kwh).toBeCloseTo(0.21 + 0.12);
+    expect(model.slices.at(-1)!.kwh).toBeCloseTo(9.6);
     expect(model.slices.reduce((sum, slice) => sum + slice.kwh, 0)).toBeCloseTo(14.62);
     // A meter's colour follows its statistic id, not its size.
     expect(model.slices[0]!.colour).toBe("var(--spotnav-pie-2)");
-    expect(model.slices.at(-1)!.colour).toBe("var(--spotnav-pie-other)");
+    expect(model.slices.at(-2)!.colour).toBe("var(--spotnav-pie-other-metered)");
+    expect(model.slices.at(-1)!.colour).toBe("var(--spotnav-pie-unknown)");
+  });
+
+  const meters = (kwhs: number[], house: number): HouseLoads => {
+    const base = loads();
+    const list = kwhs.map((kwh, index) => ({ changed: false, kwh, name: `M${index}`, source: "meter", statistic_id: `sensor.m${index}` }));
+    return { ...base, house_kwh: house, meters_kwh: kwhs.reduce((a, b) => a + b, 0), other_kwh: Math.max(0, house - kwhs.reduce((a, b) => a + b, 0)), loads: list } as HouseLoads;
+  };
+
+  it("puts the line at 1.5 % of the whole", () => {
+    // 100 kWh house: 1.5 is drawn, 1.49 is not.
+    const model = pieModel("en", meters([1.5, 1.49, 0], 100));
+    expect(model.slices.map((slice) => slice.name)).toEqual(["M0", "Other metered", "Unknown"]);
+    expect(model.merged.map((load) => load.name)).toEqual(["M1", "M2"]);
+  });
+
+  it("names at most eight meters and puts the rest into Other metered", () => {
+    expect(SLOTS).toBe(8);
+    const model = pieModel("en", meters([10, 9, 8, 7, 6, 5, 4, 3, 2.5, 2], 100));
+    expect(model.slices.filter((slice) => slice.key.startsWith("sensor."))).toHaveLength(8);
+    expect(model.merged.map((load) => load.name)).toEqual(["M8", "M9"]);
+    expect(model.slices.at(-2)!.kwh).toBeCloseTo(4.5);
+    expect(new Set(model.slices.map((slice) => slice.colour)).size).toBe(model.slices.length);
   });
 
   it("labels each slice with kWh and %, and names them all for a screen reader", () => {
     const body = loadsBody(document, "en", TODAY, { kind: "ready", answer: loads() });
     const rows = [...body.querySelectorAll("li")].map((row) => row.textContent);
     expect(rows[0]).toBe("Torktumlare2.3 kWh · 16 %");
-    expect(rows.at(-1)).toBe("Other9.9 kWh · 68 %");
+    expect(rows.at(-2)).toBe("Other metered0.33 kWh · 2 %");
+    expect(rows.at(-1)).toBe("Unknown9.6 kWh · 66 %");
     const pie = body.querySelector("svg[role='img']")!;
     expect(pie.getAttribute("aria-label")).toBe(
       translate("en", "house.loads.chart", {
-        list: "Torktumlare 2.3 kWh (16 %), Diskmaskin 1.4 kWh (10 %), Tvättmaskin 0.96 kWh (7 %), Other 9.9 kWh (68 %)",
+        list: "Torktumlare 2.3 kWh (16 %), Diskmaskin 1.4 kWh (10 %), Tvättmaskin 0.96 kWh (7 %), Other metered 0.33 kWh (2 %), Unknown 9.6 kWh (66 %)",
       }),
     );
-    expect(pie.querySelectorAll("path")).toHaveLength(4);
+    expect(pie.querySelectorAll("path")).toHaveLength(5);
     expect(body.querySelector("[data-line='merged']")!.textContent).toBe(translate("en", "house.loads.otherHolds", { list: "Frys 0.21 kWh, Router 0.12 kWh" }));
     expect(body.querySelector("[data-line='apart']")!.textContent).toBe(translate("en", "house.loads.carHeat"));
     expect(body.querySelector(".spotnav-house-loads-caption")!.textContent).toBe(translate("en", "house.loads.today"));
     expect(pie.querySelector(".spotnav-house-loads-centre")!.textContent).toBe("14.6 kWh");
   });
 
-  it("clamps Other at 0 with a line when the meters exceed the house", () => {
+  it("clamps Unknown at 0 with a line when the meters exceed the house", () => {
     const answer = loads("meters_over_house.json");
     const model = pieModel("en", answer);
     expect(model.whole).toBe(43.5);
-    expect(model.slices.map((slice) => slice.key)).not.toContain("other");
+    expect(model.slices.map((slice) => slice.key)).not.toContain("unknown");
     const body = loadsBody(document, "en", { ...TODAY, period: "month", running: false, heat: false }, { kind: "ready", answer });
     expect(body.querySelector("[data-line='over']")!.textContent).toBe(translate("en", "house.loads.over", { kwh: "3.5 kWh" }));
     // The middle says the house, the ring the meters that exceed it.
@@ -98,14 +124,14 @@ describe("the pie", () => {
     expect(body.querySelector("[data-line='apart']")!.textContent).toBe(translate("en", "house.loads.car"));
   });
 
-  it("shows Other alone and where to add meters when there are none", () => {
+  it("shows Unknown alone and where to add meters when there are none", () => {
     const body = loadsBody(document, "en", { ...TODAY, car: false, heat: false }, { kind: "ready", answer: loads("no_devices.json") });
-    expect([...body.querySelectorAll("li")].map((row) => row.dataset["key"])).toEqual(["other"]);
+    expect([...body.querySelectorAll("li")].map((row) => row.dataset["key"])).toEqual(["unknown"]);
     expect(body.querySelector("[data-line='none']")!.textContent).toBe(translate("en", "house.loads.none"));
     expect(body.querySelector("[data-line='apart']")).toBeNull();
     // One slice is the whole ring.
     expect(body.querySelector("path")).toBeNull();
-    expect(body.querySelector("circle")!.dataset["key"]).toBe("other");
+    expect(body.querySelector("circle")!.dataset["key"]).toBe("unknown");
   });
 
   it("says the period in words in every language", () => {
@@ -334,7 +360,7 @@ describe("the house card", () => {
     expect(dialog.textContent).toContain(translate("en", "house.loads.reading"));
     hass.resolveNext(read("house_loads", "villa_day.json"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(dialog.querySelectorAll("li")).toHaveLength(4);
+    expect(dialog.querySelectorAll("li")).toHaveLength(5);
     expect(dialog.querySelector("svg[role='img']")).not.toBeNull();
     dialog.querySelector<HTMLButtonElement>("button[aria-label]")!.click();
     expect(root.activeElement).toBe(house);
