@@ -34,6 +34,7 @@ A = "switch.sg_a"
 B = "switch.sg_b"
 OUTDOOR = "sensor.ute"
 ROOM = "sensor.vardagsrum"
+SEC = timedelta(seconds=1)
 MIN = timedelta(minutes=1)
 H = timedelta(hours=1)
 
@@ -319,6 +320,32 @@ async def test_b_opened_by_someone_else_sets_raising_aside_for_the_day(hass: Hom
     # Lowering goes on.
     await _look(control, now + 2 * H + MIN, {0: "lower"})
     assert contacts.pair == (1, 0)
+
+
+async def test_a_closed_by_hand_while_b_is_raised_opens_b_at_the_next_look(hass: HomeAssistant, freezer) -> None:
+    # The household closes A (by hand, a script, Node-RED) while SpotNav holds B: B opens at once, not after A's
+    # change is confirmed a minute later.
+    _site_, control, contacts, now = await _raised(hass, freezer)
+    await _look(control, now + 10 * MIN)
+    hass.states.async_set(A, "on")
+    await _look(control, now + 10 * MIN + 30 * SEC)
+    assert contacts.pair == (1, 0) and not control.raised and contacts.calls == [(B, "on"), (B, "off")]
+    assert control.status()["state"] == "waiting" and control.raise_decision.reason == "raise_interlock"  # type: ignore[union-attr]
+    # Confirmed: SpotNav pauses and never touches A, which is the household's.
+    for step in range(2, 8):
+        await _look(control, now + 10 * MIN + step * 30 * SEC)
+    assert control.paused_reason == "foreign_change" and contacts.calls == [(B, "on"), (B, "off")] and contacts.pair == (1, 0)
+
+
+async def test_a_closed_by_hand_while_a_closing_of_b_is_on_its_way_opens_b(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "preheat"})
+    contacts.ignore.add(B)
+    await _look(control, now)
+    assert control.pending_b is not None and control.pending_b.closed
+    contacts.ignore.clear()
+    hass.states.async_set(A, "on")
+    await _look(control, now + 30 * SEC)
+    assert contacts.calls[-1] == (B, "off") and contacts.state(B) == "off"
 
 
 async def test_b_closed_by_someone_else_is_never_taken_over_and_keeps_a_open(hass: HomeAssistant, freezer) -> None:

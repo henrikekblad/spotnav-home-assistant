@@ -559,8 +559,11 @@ class HeatControl:
         elif self._foreign is None or self._foreign[0] != foreign:
             self._foreign = (foreign, now)
             self._log(now, f"foreign_{foreign}_seen")
+            # Not running while it is confirmed: no raise goes on beside a contact someone else just changed.
+            self._set(STATE_WAITING, WAIT_RELAY_CLOSED if foreign == "close" else WAIT_FOREIGN_CHANGE)
             return
         elif now - self._foreign[1] < FOREIGN_CONFIRM:
+            self._set(STATE_WAITING, WAIT_RELAY_CLOSED if foreign == "close" else WAIT_FOREIGN_CHANGE)
             return
         else:
             self._foreign = None
@@ -864,6 +867,11 @@ class HeatControl:
 
     # ---- SG Ready's raise (contact B)
 
+    def _a_busy(self) -> bool:
+        """Whether A is anything but open and left alone: SpotNav holds it, a write is on its way, or it does not read
+        open. B never stays closed beside it."""
+        return self.relay is None or self.held or self.pending is not None or self._read(self.relay) is not False
+
     def _a_clear(self) -> bool:
         """Whether B may close: A reads open, SpotNav does not hold it and nothing is pending on it."""
         return self.relay is not None and not self.held and self.pending is None and self._read(self.relay) is False
@@ -964,6 +972,12 @@ class HeatControl:
             self._pause_raise(now, WAIT_FOREIGN_CHANGE)
         else:
             self._b_foreign = None
+        if self.raised and self._a_busy():
+            # A reads closed (by hand, a script, another writer), is held or has a write on its way while SpotNav holds
+            # B: B opens at once, never (1,1) (an opening is always safe).
+            self.raise_decision = Decision(False, RAISE_INTERLOCK)
+            await self._async_release_b(now, RAISE_INTERLOCK)
+            return
         if not self.raised and self.pending_b is None and read is True:
             if self._b_own_reopen_at is None and self._b_own_at is not None and now - self._b_own_at <= OWN_WINDOW:
                 # SpotNav's own closing read late or bounced: its own, opened once.
