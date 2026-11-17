@@ -15,6 +15,7 @@ from datetime import datetime, time, timedelta, timezone
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.spotnav.api.settings import replacement_mutator
 from custom_components.spotnav.planning.auto_settings import (
     DEFAULT_DEPARTURE,
     DEFAULT_MAX_PERIODS,
@@ -338,7 +339,15 @@ def test_a_record_with_a_later_release_departure_calendar_still_loads() -> None:
     raw["departure_calendar_only"] = True
     settings = AutoSettings.from_stored(raw)
     assert settings.amps == 10
-    assert "departure_calendar" not in settings.as_dict()
+    assert settings == AutoSettings(revision=2, area_id="SE4", amps=10), "the calendar plays no part here"
+    assert "calendar" not in repr(settings)
+    # A save in this release writes the calendar back as it was, through a change and a revision.
+    saved = replace(settings, amps=16, revision=3).validated().as_dict()
+    assert saved["departure_calendar"] == "calendar.work" and saved["departure_calendar_only"] is True
+    assert AutoSettings.from_stored(saved).as_dict() == saved
+    # A full replacement from the card or the app keeps it too.
+    replaced = replacement_mutator(AutoSettings(area_id="SE4", amps=13))(settings).as_dict()
+    assert replaced["amps"] == 13 and replaced["departure_calendar"] == "calendar.work"
 
 
 def test_a_complete_stored_record_round_trips_exactly() -> None:
