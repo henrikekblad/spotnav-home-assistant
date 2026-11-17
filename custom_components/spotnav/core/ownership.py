@@ -1099,10 +1099,16 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
     return s, ()
 
 
+#: The starts that leave a balancing pause as it is: the regulator's own resume, and a claim, which sends nothing.
+_STARTS_KEEPING_PAUSE: Final = frozenset({REASON_BALANCING_RESUME, REASON_CLAIM})
+
+
 def _started_after(session: ChargeSession, command: PendingCommand) -> bool:
-    """Whether a start other than load balancing's resume was asked for after `command` and awaits its result."""
+    """Whether a start that goes to the charger, other than load balancing's resume, was asked for after `command`
+    and awaits its result. A claim sends nothing (`_claim`): it never ends what load balancing holds back (a charger
+    that reported its charge once more between two pauses of it, 2026-11-17)."""
     later = session.pending[session.pending.index(command) + 1 :] if command in session.pending else ()
-    return any(item.command == "start" and item.reason != REASON_BALANCING_RESUME for item in later)
+    return any(item.command == "start" and item.reason not in _STARTS_KEEPING_PAUSE for item in later)
 
 
 def _command_result(session: ChargeSession, event: CommandResult, now: datetime) -> Decision:
