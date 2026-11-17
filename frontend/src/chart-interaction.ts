@@ -1,12 +1,13 @@
 // Pointer, touch, keyboard and resize ownership for one rendered chart. The controller owns the
 // selection, its listeners and the size it last drew for, and no data. Listeners attach once to the
-// stable wrapper (not the SVG a redraw replaces), a vertical gesture is left to page scroll until
-// a small threshold proves it horizontal, and `destroy()` releases everything and makes every
-// callback inert.
+// stable wrapper (not the SVG a redraw replaces), and `destroy()` releases everything and makes every
+// callback inert. The gesture policy is the shared one in `chart-scrub.ts`: a mouse previews the
+// interval under its x as it moves and a click keeps it; a touch tap selects, a horizontal drag scrubs
+// and a vertical one is left to the page's scroll. Every pointer picks by x alone, anywhere in the
+// plot's height.
 
 import {
-  hitTestMarks,
-  nearestMark,
+  markAtX,
   walkMarks,
   type ChartHitTarget,
   type ChartMark,
@@ -14,6 +15,7 @@ import {
   type ChartScale,
 } from "./chart";
 import { chartHeightForWidth, chartLocalPoint } from "./chart-render";
+import { attachScrub, SCRUB_THRESHOLD } from "./chart-scrub";
 import type { ChartDensityStyle } from "./visual-styles";
 
 export interface ChartGeometry {
@@ -84,12 +86,8 @@ export function nearestIntervalTo(
 
 export const FALLBACK_SIZE: ChartSize = { width: 320, height: 150 };
 
-/**
- * How far a gesture must travel before its direction is trusted, in CSS pixels. Small because a
- * quarter-hour slot is about 2.8 px wide on a 320 px graph; direction, not distance, protects the
- * dashboard's scroll (`touch-action: pan-y`).
- */
-const DEFAULT_DIRECTION_THRESHOLD = 4;
+/** How far past the plot's left and right edges a pointer still picks the edge interval, in SVG units. */
+const EDGE_SLOP = 12;
 
 /**
  * Default measurement: the viewport's layout width, with the height computed from it by the chart-height
@@ -112,7 +110,7 @@ function defaultObserve(host: HTMLElement, onResize: () => void): ChartObserverL
 }
 
 export function createChartInteraction(options: ChartInteractionOptions): ChartInteraction {
-  const threshold = options.directionThreshold ?? DEFAULT_DIRECTION_THRESHOLD;
+  const threshold = options.directionThreshold ?? SCRUB_THRESHOLD;
   const measure = options.measure ?? ((viewport: HTMLElement) => measureChart(viewport, options.density));
   const surfaceOf = options.surface;
   const now = options.now ?? (() => Date.now());
@@ -126,13 +124,9 @@ export function createChartInteraction(options: ChartInteractionOptions): ChartI
   let observer: ChartObserverLike | null = null;
   let observing = false;
 
-  let gesture: {
-    pointerId: number;
-    startX: number;
-    startY: number;
-    dragging: boolean;
-    captured: boolean;
-  } | null = null;
+  // The selection a click, a tap, a drag, a key or the card made; a mouse hover only previews over it
+  // and leaving the chart shows it again.
+  let pinned: ChartMark | null = null;
 
   function notify(): void {
     if (destroyed) {
@@ -141,9 +135,12 @@ export function createChartInteraction(options: ChartInteractionOptions): ChartI
     options.onSelectionChange(selected);
   }
 
-  function select(mark: ChartMark | null, notifyChange = true): void {
+  function select(mark: ChartMark | null, pin = true): void {
     if (destroyed) {
       return;
+    }
+    if (pin) {
+      pinned = mark;
     }
     if (selected === null && mark === null) {
       return;
@@ -152,111 +149,64 @@ export function createChartInteraction(options: ChartInteractionOptions): ChartI
       return;
     }
     selected = mark;
-    if (notifyChange) {
-      notify();
-    }
+    notify();
   }
 
-  function localPoint(event: PointerEvent): ChartPoint | null {
+  /** The interval under the pointer's x, or `null` when the pointer is outside the plot. */
+  function markAt(event: PointerEvent): ChartMark | null {
     if (geometry === null) {
       return null;
     }
     const surface = surfaceOf();
-    if (surface === null) {
+    // A folded chart picks nothing: its strip shares the host.
+    if (surface === null || options.viewport.hidden) {
       return null;
     }
-    return chartLocalPoint(surface, geometry.scale, event.clientX, event.clientY);
+    const scale = geometry.scale;
+    const point: ChartPoint = chartLocalPoint(surface, scale, event.clientX, event.clientY);
+    if (point.x < scale.left - EDGE_SLOP || point.x > scale.right + EDGE_SLOP || point.y < 0 || point.y > scale.height) {
+      return null;
+    }
+    return markAtX(geometry.targets, point);
   }
 
-  function onPointerDown(event: PointerEvent): void {
-    if (destroyed || geometry === null) {
-      return;
-    }
-    const point = localPoint(event);
-    if (point === null) {
-      return;
-    }
-    gesture = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      dragging: false,
-      captured: false,
-    };
-    const hit = hitTestMarks(geometry.targets, point);
-    if (hit !== null) {
-      select(hit);
-    }
-  }
-
-  function onPointerMove(event: PointerEvent): void {
-    if (destroyed || geometry === null || gesture === null || gesture.pointerId !== event.pointerId) {
-      return;
-    }
-    const dx = event.clientX - gesture.startX;
-    const dy = event.clientY - gesture.startY;
-    if (!gesture.dragging) {
-      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) >= threshold) {
-        gesture = null;
-        return;
-      }
-      if (Math.abs(dx) < threshold || Math.abs(dx) <= Math.abs(dy)) {
-        return;
-      }
-      gesture.dragging = true;
-      gesture.captured = capture(event, gesture.pointerId);
-    }
-    event.preventDefault();
-    const point = localPoint(event);
-    if (point === null) {
-      return;
-    }
-    const walked = nearestMark(geometry.targets, point);
-    if (walked !== null) {
-      select(walked);
-    }
-  }
-
-  function capture(event: PointerEvent, pointerId: number): boolean {
-    const target = event.currentTarget as Element | null;
-    if (target !== null && typeof target.setPointerCapture === "function") {
-      try {
-        target.setPointerCapture(pointerId);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  }
-
-  function endGesture(event: PointerEvent, cancelled: boolean): void {
-    if (gesture === null || gesture.pointerId !== event.pointerId) {
-      return;
-    }
-    const active = gesture;
-    gesture = null;
-    if (active.captured) {
-      const target = event.currentTarget as Element | null;
-      if (target !== null && typeof target.releasePointerCapture === "function") {
-        try {
-          target.releasePointerCapture(active.pointerId);
-        } catch {
+  const scrub = attachScrub(
+    options.host,
+    {
+      press(event) {
+        // A mouse click keeps what it points at; a touch waits to be a tap, so a scroll selects nothing.
+        if (!destroyed && event.pointerType === "mouse") {
+          const mark = markAt(event);
+          if (mark !== null) {
+            select(mark);
+          }
         }
-      }
-    }
-    if (cancelled && !active.dragging) {
-      return;
-    }
-  }
-
-  function onPointerUp(event: PointerEvent): void {
-    endGesture(event, false);
-  }
-
-  function onPointerCancel(event: PointerEvent): void {
-    endGesture(event, true);
-  }
+      },
+      tap(event) {
+        const mark = destroyed ? null : markAt(event);
+        if (mark !== null) {
+          select(mark);
+        }
+      },
+      hover(event) {
+        if (!destroyed) {
+          select(markAt(event) ?? pinned, false);
+        }
+      },
+      leave() {
+        if (!destroyed) {
+          select(pinned, false);
+        }
+      },
+      drag(event) {
+        const mark = destroyed ? null : markAt(event);
+        if (mark !== null) {
+          select(mark);
+        }
+      },
+    },
+    threshold,
+  );
 
   function onOutsidePointerDown(event: PointerEvent): void {
     if (destroyed || selected === null) {
@@ -335,10 +285,6 @@ export function createChartInteraction(options: ChartInteractionOptions): ChartI
     applySize(measured.width, measured.height);
   }
 
-  options.host.addEventListener("pointerdown", onPointerDown);
-  options.host.addEventListener("pointermove", onPointerMove);
-  options.host.addEventListener("pointerup", onPointerUp);
-  options.host.addEventListener("pointercancel", onPointerCancel);
   options.host.addEventListener("keydown", onKeydown);
   // Capture phase, so a handler inside the card cannot swallow the clear.
   options.host.ownerDocument.addEventListener("pointerdown", onOutsidePointerDown, true);
@@ -384,12 +330,9 @@ export function createChartInteraction(options: ChartInteractionOptions): ChartI
         return;
       }
       destroyed = true;
-      gesture = null;
       selected = null;
-      options.host.removeEventListener("pointerdown", onPointerDown);
-      options.host.removeEventListener("pointermove", onPointerMove);
-      options.host.removeEventListener("pointerup", onPointerUp);
-      options.host.removeEventListener("pointercancel", onPointerCancel);
+      pinned = null;
+      scrub.detach();
       options.host.removeEventListener("keydown", onKeydown);
       options.host.ownerDocument.removeEventListener("pointerdown", onOutsidePointerDown, true);
       observer?.disconnect();
