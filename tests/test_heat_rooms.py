@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from custom_components.spotnav.heat.rooms import SensorReading, indoor, rise
+from custom_components.spotnav.heat.rooms import SensorReading, coldest_c, indoor, rise, warm_c, warmest_c
 
 NOW = datetime(2026, 11, 16, 19, 0, tzinfo=timezone.utc)
 
@@ -77,3 +77,25 @@ def test_each_room_is_judged_against_its_own_aim() -> None:
     result = indoor([warm, reading("sensor.norr", 20.6, 20.6)], NOW)
     assert (result.coldest, result.value_c, result.relative_c) == ("sensor.kok", 20.9, 20.4)
     assert [sensor.offset_c for sensor in result.sensors] == [0.5, 0.0]
+
+
+def test_the_safety_figures_never_leave_a_cold_room_out() -> None:
+    # An aired bedroom coming back (16.0 -> 16.7 in half an hour) beside a quiet living room: left out of the coldest
+    # counted room as a local rise, but still the cold figure, and the house is not warm while it is cold.
+    living = reading("sensor.vardagsrum", 21.8, 21.8)
+    bedroom = reading("sensor.sovrum", 16.7, 16.0)
+    result = indoor([living, bedroom], NOW)
+    assert result.coldest == "sensor.vardagsrum" and result.relative_c == 21.8
+    assert coldest_c(result) == 16.7
+    assert warm_c(result) == 16.7
+    assert warmest_c(result) == 21.8
+
+
+def test_a_reading_taken_only_now_has_no_known_rise() -> None:
+    # The first look after a restart: the window holds only the reading just taken.
+    fresh = SensorReading("sensor.vardagsrum", "Vardagsrum", 22.3, ((NOW, 22.3),))
+    assert rise(fresh, NOW) is None
+    assert warm_c(indoor([fresh], NOW)) is None
+    # A reading from earlier in the window is a known rise.
+    later = SensorReading("sensor.vardagsrum", "Vardagsrum", 22.3, ((NOW - timedelta(minutes=1), 22.3), (NOW, 22.3)))
+    assert rise(later, NOW) == 0.0

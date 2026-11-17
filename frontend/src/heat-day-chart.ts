@@ -1,7 +1,8 @@
 // The heat card's day chart: one chart, one time axis, for what the day did and does. The measured rooms up to now
 // (their mean on the house's scale, and the coldest room where it differs; `indoor_day`,
 // `custom_components/spotnav/heat/indoor_day.py`), the comfort band shaded, SpotNav's setpoint as a dashed step, the
-// hours SpotNav lowered (solid columns) and plans to lower (light columns), the relay as anyone else closed it, hot
+// hours SpotNav lowered (solid columns) and plans to lower (light columns), on SG Ready with both contacts the hours it
+// raised and plans to raise (warm columns; "would raise" while SpotNav only watches), the relay as anyone else closed it, hot
 // water as droplets on the time axis and the car's charging as a thin bar under it. A pointer, a tap or the arrow keys
 // put a crosshair on a time and say its figures in words under the chart. Drawn on the live card (from the band's
 // hours) and in a history day (from the day's setpoint and hot-water runs). Every figure is the backend's; text is
@@ -40,6 +41,8 @@ export interface DayHour {
   reason?: string;
   /** Minutes SpotNav itself held the relay closed in the hour; `null` where nothing is known. */
   executed_min: number | null;
+  /** Minutes SpotNav held SG Ready's B (the raise) closed; `null` (or absent) where the pump cannot be raised. */
+  raised_min?: number | null;
   /** Minutes the relay was (or is expected to be) closed by anyone; `null` without a relay. */
   relay_min: number | null;
   relay_expected: boolean;
@@ -68,6 +71,8 @@ export interface DayChartInput {
   water: DaySpan[];
   width: number;
   nowMs: number | null;
+  /** SpotNav only watches (its control does not run): a planned raise reads "would raise". */
+  shadow?: boolean;
   /** The time the reader chose (a step's start), kept across a redraw; `null` for none. */
   selectedMs?: number | null;
   /** A time was chosen (`null`: let go), so the card can keep it across its next redraw. */
@@ -129,12 +134,28 @@ interface Lowering {
   /** The relay closed by anyone else, minutes, and whether that is only expected. */
   relay: number;
   relayExpected: boolean;
+  /** SpotNav's own raise on SG Ready's B, minutes (solid, warm). */
+  raised: number;
+  /** SpotNav's plan raises the hour (light, warm): a pre-heat or return hour where the pump can be raised. */
+  raisePlanned: boolean;
 }
+
+/** The plan's actions SG Ready's B raises in (`relay_control.RAISE_ACTIONS`). */
+const RAISE_ACTIONS = ["preheat", "return"];
 
 function loweringOf(hour: DayHour): Lowering {
   const executed = Math.min(60, Math.max(0, hour.executed_min ?? 0));
   const relay = executed > 0 ? 0 : Math.min(60, Math.max(0, hour.relay_min ?? 0));
-  return { executed, planned: hour.action === "lower", relay, relayExpected: relay > 0 && hour.relay_expected };
+  const raisable = hour.raised_min !== undefined && hour.raised_min !== null;
+  const raised = raisable ? Math.min(60, Math.max(0, hour.raised_min ?? 0)) : 0;
+  return {
+    executed,
+    planned: hour.action === "lower",
+    relay,
+    relayExpected: relay > 0 && hour.relay_expected,
+    raised,
+    raisePlanned: raisable && RAISE_ACTIONS.includes(hour.action),
+  };
 }
 
 const ACTION_KEYS: Record<string, TranslationKey> = {
@@ -187,6 +208,11 @@ export function dayFigures(input: DayChartInput, ms: number): string {
     }
     if (lowering.planned && lowering.executed === 0) {
       parts.push(translate(language, "heat.chart.plannedHour"));
+    }
+    if (lowering.raised > 0) {
+      parts.push(translate(language, "heat.band.raisedHour", { minutes: String(Math.round(lowering.raised)) }));
+    } else if (lowering.raisePlanned) {
+      parts.push(translate(language, input.shadow === true ? "heat.chart.wouldRaiseHour" : "heat.chart.plannedRaiseHour"));
     }
     if (lowering.planned && hour.reason === "room_warm") {
       parts.push(translate(language, "heat.chart.roomWarm"));
@@ -284,6 +310,13 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
       column("executed", lowering.executed / 60);
     } else if (lowering.relay > 0) {
       column(lowering.relayExpected ? "relay_expected" : "relay", lowering.relay / 60);
+    }
+    // SG Ready's raise: the plan light over the whole hour, what SpotNav did solid over its minutes.
+    if (lowering.raisePlanned) {
+      column("raise_planned", 1);
+    }
+    if (lowering.raised > 0) {
+      column("raised", lowering.raised / 60);
     }
   });
 
@@ -475,6 +508,12 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
   }
   if (lowerings.some((lowering) => lowering.planned)) {
     legend.append(legendItem(doc, "planned", translate(language, "heat.chart.planned")));
+  }
+  if (lowerings.some((lowering) => lowering.raised > 0)) {
+    legend.append(legendItem(doc, "raised", translate(language, "heat.band.raised")));
+  }
+  if (lowerings.some((lowering) => lowering.raisePlanned)) {
+    legend.append(legendItem(doc, "raise_planned", translate(language, input.shadow === true ? "heat.chart.wouldRaise" : "heat.chart.plannedRaise")));
   }
   if (lowerings.some((lowering) => lowering.relay > 0 && !lowering.relayExpected)) {
     legend.append(legendItem(doc, "relay", translate(language, "heat.band.relay")));

@@ -65,6 +65,7 @@ from ..heat.config import (
     comparable,
     read_config,
 )
+from ..heat.control import raise_entity
 from ..heat.detect import other_controllers, read_heat_pumps
 from ..heat.facts import HeatPumpFacts
 from ..heat.meter_split import levels, split_day
@@ -722,12 +723,14 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
     shadow = getattr(controller, "heat_shadow", None)
     relay, tight, outdoor_by_hour, kept, review, room_warm = None, frozenset(), {}, {}, None, False
     automations: tuple[Any, ...] = ()
-    control_status, executed = None, {}
+    control_status, executed, raised = None, {}, None
     control = getattr(controller, "heat_control", None)
     if control is not None:
         try:
             control_status = control.status()
             executed = control.executed_minutes(day_hours(day_start, zone_info), now)
+            if raise_entity(config) is not None:
+                raised = control.raised_minutes(day_hours(day_start, zone_info), now)
         except Exception:  # noqa: BLE001 - the card shows the rest
             _LOGGER.debug("SpotNav heat: the heat control could not be read", exc_info=True)
     if shadow is not None:
@@ -767,6 +770,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             review=review,
             control=control_status,
             executed=executed,
+            raised=raised,
             indoor_day=curve,
             room_warm=room_warm,
         )

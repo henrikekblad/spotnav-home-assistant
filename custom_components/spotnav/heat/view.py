@@ -15,7 +15,7 @@
              money} | null,
      status: {pump_state, pump_state_source, kw, would: {action, target_c, until, reason} | null, guard},
      band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car, relay_min, relay_expected,
-                           executed_min}], hot_water_pick} | null,
+                           executed_min, raised_min}], hot_water_pick} | null,
      indoor_day: the day's measured indoor curve up to now (`heat/indoor_day.py`, 15-minute steps, `setpoint` null:
                  the band's `target_c` is the setpoint) | null,
      notes: [{code, params}],
@@ -24,11 +24,13 @@
              effect: {lower_share, rebound, blocks}} | null,
      review: yesterday's review (`heat/review.py`) | null,
      control: {enabled, state: "off" | "verifying" | "running" | "waiting", reason, automation: {entity_id, name} | null,
-               check: "passed" | "failed" | null, lowered, since, until, paused_until} | null}
+               check: "passed" | "failed" | null, lowered, since, until, paused_until, raised, raise_until} | null}
 
 `control` is SpotNav's own switching of the relay (`heat/control.py`, `HeatControl.status`): `reason` is the check's
 phase while verifying, the rules' reason while running (`heat/relay_control.py`), what it waits for while waiting.
-Each band hour's `executed_min` is the minutes SpotNav itself held the relay closed (`null` without the control).
+Each band hour's `executed_min` is the minutes SpotNav itself held the relay closed (`null` without the control), its
+`raised_min` the minutes SpotNav held SG Ready's second contact (B, the raise) closed: `null` where the pump cannot be
+raised (any path but SG Ready with both contacts), so the card draws the plan's pre-heat hours as raises only there.
 
 The band is SpotNav's own plan (`heat/shadow_rule.band`, joint with the cars, the battery and the import cap: the
 `tight` hours); an hour already begun shows what was planned when it began (`kept`). Beside it each hour says how many
@@ -68,7 +70,7 @@ HEAT_KEYS: Final = (
 )
 BAND_HOUR_KEYS: Final = (
     "start", "action", "target_c", "reason", "price", "past", "hot_water", "car", "relay_min", "relay_expected",
-    "executed_min",
+    "executed_min", "raised_min",
 )
 
 KIND_FLOOR: Final = "floor"
@@ -170,6 +172,8 @@ class HeatViewInputs:
     #: The heat control's status (`HeatControl.status`) and the minutes it held the relay closed per hour.
     control: Mapping[str, Any] | None = None
     executed: Mapping[datetime, int] = field(default_factory=dict)
+    #: The minutes SpotNav held SG Ready's B (the raise) closed per hour; `None` where the pump cannot be raised.
+    raised: Mapping[datetime, int] | None = None
     #: The day's indoor curve (`heat/indoor_day.indoor_day`), `None` without indoor sensors.
     indoor_day: Mapping[str, Any] | None = None
     #: Whether the house is too warm now (the heat shadow's `RoomWarm`): the band lowers the running hours for it.
@@ -321,6 +325,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
                 "relay_min": None if relay is None else relay.minutes.get(hour.start, (0, False))[0],
                 "relay_expected": relay is not None and relay.minutes.get(hour.start, (0, False))[1],
                 "executed_min": None if inputs.control is None else inputs.executed.get(hour.start, 0),
+                "raised_min": None if inputs.raised is None else inputs.raised.get(hour.start, 0),
             }
             for hour in band_hours
         ],

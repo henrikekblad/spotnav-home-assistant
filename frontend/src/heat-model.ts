@@ -210,6 +210,7 @@ const ANSWER = O({
         relay_min: N("number"),
         relay_expected: "boolean",
         executed_min: N("number"),
+        raised_min: N("number"),
       }),
     ),
     hot_water_pick: N("string"),
@@ -251,6 +252,8 @@ const ANSWER = O({
       since: N("string"),
       until: N("string"),
       paused_until: N("string"),
+      raised: "boolean",
+      raise_until: N("string"),
     }),
   ),
 });
@@ -311,6 +314,8 @@ export interface HeatBandHour {
   relay_expected: boolean;
   /** Minutes SpotNav itself held the relay closed in the hour; `null` without the heat control. */
   executed_min: number | null;
+  /** Minutes SpotNav held SG Ready's second contact (B, the raise) closed; `null` where the pump cannot be raised. */
+  raised_min: number | null;
 }
 
 export interface HeatEffect {
@@ -356,6 +361,9 @@ export interface HeatControl {
   since: string | null;
   until: string | null;
   paused_until: string | null;
+  /** SpotNav holds SG Ready's B closed (the pump raises its heat), until when. */
+  raised: boolean;
+  raise_until: string | null;
 }
 
 export interface HeatZone {

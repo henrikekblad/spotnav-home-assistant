@@ -426,7 +426,9 @@ export function wouldLine(language: Language, answer: HeatAnswer): string | null
   }
   // A lowering's own reason; the dear hours are the plain one.
   const lowerKey = would.reason === "tight_hour" ? "heat.would.lowerTight" : would.reason === "room_warm" ? "heat.would.lowerWarm" : "heat.would.lower";
-  const key = would.action === "lower" ? lowerKey : `heat.would.${would.action}`;
+  // On SG Ready with both contacts, the pre-heat is a raise of the pump through its second contact.
+  const raisable = answer.config.control_path === "sg_ready" && answer.config.control_entity !== null && answer.config.control_entity_b !== null;
+  const key = would.action === "lower" ? lowerKey : would.action === "preheat" && raisable ? "heat.would.raise" : `heat.would.${would.action}`;
   return translate(language, key as TranslationKey, {
     temp: degrees(language, would.target_c),
     until: would.until === null ? "" : whenLabel(language, answer, Date.parse(would.until)),
@@ -537,6 +539,7 @@ function dayBlock(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | nul
       action: hour.action,
       reason: hour.reason,
       executed_min: hour.executed_min,
+      raised_min: hour.raised_min,
       relay_min: hour.relay_min,
       relay_expected: hour.relay_expected,
       car: hour.car,
@@ -544,6 +547,7 @@ function dayBlock(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | nul
     water: hours.filter((hour) => hour.hot_water).map((hour) => ({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS })),
     width: input.width,
     nowMs: input.nowMs,
+    shadow: answer.shadow,
     selectedMs: ui.chartSelectedMs ?? null,
     onSelect: (ms) => handlers.onChartSelect?.(ms),
   });
@@ -735,6 +739,11 @@ export function controlLine(language: Language, answer: HeatAnswer): string | nu
     return translate(language, control.reason === "wait" ? "heat.control.verifyingWait" : "heat.control.verifying");
   }
   if (control.state === "running") {
+    if (control.raised) {
+      return control.raise_until === null
+        ? translate(language, "heat.control.raisedNow")
+        : translate(language, "heat.control.raised", { until: whenLabel(language, answer, Date.parse(control.raise_until)) });
+    }
     if (control.lowered) {
       const warm = answer.status.would?.reason === "room_warm";
       return control.until === null

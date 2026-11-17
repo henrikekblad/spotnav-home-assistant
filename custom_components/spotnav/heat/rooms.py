@@ -15,9 +15,13 @@ Each sensor may have an offset against the house target (its room's own aim, `he
 the one whose reading less its offset is lowest, and that figure (`relative_c`) is what the house's comfort band is
 compared with. `value_c` stays the room's own reading.
 
-Whether the house is **too warm** (`warm_c`) is judged on the same figure, but never on a room that is rising fast
-itself: a sensor warmed by sun or a stove reads warm before the house is, and with one sensor (or all of them rising)
-the rule above leaves nothing out. The coldest counted room rising `LOCAL_RISE_C` over the window is no warm reading.
+**The safety figures never leave a room out.** The cold side (`coldest_c`, what the room-cold guard and safety
+compare) is the coldest readable room less its offset, left out or not: a cold room warming fast (an aired bedroom
+coming back) is still cold. Whether the house is **too warm** (`warm_c`) is judged on the coldest counted room, but
+never on a room that is rising fast itself (a sensor warmed by sun or a stove reads warm before the house is, and with
+one sensor, or all of them rising, the rule above leaves nothing out), and never while any readable room, left out or
+not, is below the band's high edge: `warm_c` is then that room's figure. The coldest counted room rising
+`LOCAL_RISE_C` over the window, or with its rise not known, is no warm reading.
 """
 
 from __future__ import annotations
@@ -95,12 +99,13 @@ def plausible(value: float | None) -> bool:
 
 def rise(reading: SensorReading, now: datetime) -> float | None:
     """How much the sensor rose over the window: now against the reading in force at the window's start (else its
-    first in the window); `None` without both."""
+    first in the window before now); `None` without both. A reading taken only now (the first look after a restart)
+    is no rise: it is not known yet."""
     if not plausible(reading.value_c):
         return None
     start = now - WINDOW
     before = [value for moment, value in reading.history if moment <= start and plausible(value)]
-    inside = [value for moment, value in reading.history if moment > start and plausible(value)]
+    inside = [value for moment, value in reading.history if start < moment < now and plausible(value)]
     base = before[-1] if before else (inside[0] if inside else None)
     if base is None:
         return None
@@ -141,12 +146,31 @@ def indoor(readings: Sequence[SensorReading], now: datetime, heating_areas: froz
     return Indoor(coldest.value_c, coldest.entity_id, coldest.name, views, relative)
 
 
+def readable_relative(result: Indoor) -> list[float]:
+    """Every readable room's reading less its offset, left out or not (a local heat source never hides a room)."""
+    return [view.value_c - view.offset_c for view in result.sensors if view.value_c is not None]
+
+
+def coldest_c(result: Indoor) -> float | None:
+    """The coldest readable room less its offset, none left out: what the cold guard and safety compare."""
+    values = readable_relative(result)
+    return min(values) if values else None
+
+
+def warmest_c(result: Indoor) -> float | None:
+    """The warmest readable room less its offset, none left out: SG Ready's raise never heats a house where any room
+    is already at the band's high edge."""
+    values = readable_relative(result)
+    return max(values) if values else None
+
+
 def warm_c(result: Indoor) -> float | None:
-    """The figure the band's high edge is compared with (see the module): the coldest counted room less its offset,
-    `None` while that room rises fast or its rise is not known."""
+    """The figure the band's high edge is compared with (see the module): the coldest counted room less its offset, or
+    a colder readable room left out (so no room below the edge is ever hidden); `None` while the counted room rises
+    fast or its rise is not known."""
     if result.relative_c is None or result.coldest is None:
         return None
     sensor = next((view for view in result.sensors if view.entity_id == result.coldest), None)
     if sensor is None or sensor.rise_c is None or sensor.rise_c >= LOCAL_RISE_C:
         return None
-    return result.relative_c
+    return min([result.relative_c, *readable_relative(result)])

@@ -8,6 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { HEAT_CARD_ELEMENT, instantToLocal, localToInstant, parseHeatConfig, SpotnavHeatCard, writeError } from "../src/heat-card";
 import { decodeHeat, decodeHeatWrite, type HeatAnswer } from "../src/heat-model";
+import { heatEditor } from "../src/heat-editors";
 import { controlLine, heatBody, heatSettingsSection, measuredLine, noteLines, pumpLine, relayLine, reviewLines, todayLine, wouldLine, type HeatState } from "../src/heat-view";
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
@@ -564,6 +565,52 @@ describe("SpotNav controlling the heat", () => {
         expect(controlLine(language, { ...controlled, control: { ...controlled.control!, state: "waiting", reason } })).not.toContain("heat.");
       }
     }
+  });
+
+  it("shows SG Ready's raise: would raise in shadow, raised hours and the line while controlling", () => {
+    const sgReady = (value: HeatAnswer, raised: (index: number) => number): HeatAnswer => ({
+      ...value,
+      config: { ...value.config, control_path: "sg_ready", control_entity: "switch.sg_a", control_entity_b: "switch.sg_b" },
+      band: { ...value.band, hours: value.band.hours.map((hour, index) => ({ ...hour, raised_min: raised(index) })) },
+    });
+    // In shadow: the pre-heat hour is a planned raise, "Skulle höja".
+    const villa = sgReady(answer(), () => 0);
+    const shadow = body(villa);
+    expect(shadow.querySelectorAll("[data-mark='raise_planned']")).toHaveLength(1);
+    expect([...shadow.querySelectorAll("li")].map((item) => item.textContent)).toContain("Skulle höja");
+    const surface = shadow.querySelector<HTMLElement>(".spotnav-heat-day-surface")!;
+    surface.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+    for (let step = 0; step < 6 * 4; step += 1) {
+      surface.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    }
+    expect(shadow.querySelector("[data-line='day-readout']")!.textContent).toContain("skulle höja");
+    const preheat = { ...villa, status: { ...villa.status, would: { action: "preheat", target_c: 21.5, until: "2026-11-16T17:00:00+00:00", reason: "cheap_before_dear" } } };
+    expect(wouldLine("sv", preheat)).toBe("Skulle höja värmen (SG Ready) till 21,5 °C till 18:00: billigt före dyra timmar");
+    // The relay path keeps its pre-heat words and draws no raise.
+    expect(wouldLine("sv", { ...preheat, config: answer().config })).toMatch(/^Skulle förvärma/);
+    expect(body(answer()).querySelectorAll("[data-mark^='raise']")).toHaveLength(0);
+    // Controlling: SpotNav raised 06:00-06:40, said in the chart, the legend and the switch's line.
+    const controlled = sgReady(answer("controlled.json"), (index) => (index === 6 ? 40 : 0));
+    const card = body(controlled);
+    expect(card.querySelectorAll("[data-mark='raised']")).toHaveLength(1);
+    const legend = [...card.querySelectorAll("li")].map((item) => item.textContent);
+    expect(legend).toContain("SpotNav höjde");
+    expect(legend).toContain("Planerad höjning");
+    const raising = { ...controlled, control: { ...controlled.control!, lowered: false, raised: true, raise_until: "2026-11-16T17:00:00+00:00" } };
+    expect(controlLine("sv", raising)).toBe("Styr: höjer värmen till 18:00.");
+    expect(controlLine("en", { ...raising, control: { ...raising.control, raise_until: null } })).toBe("Controlling: raising the heat now.");
+  });
+
+  it("explains SG Ready's two contacts in their editors", () => {
+    const value = answer();
+    const config = { ...value.config, control_path: "sg_ready", control_entity: "switch.sg_a", control_entity_b: "switch.sg_b" };
+    const input = { doc: document, language: "sv" as const, idPrefix: "t", answer: { ...value, config }, write: vi.fn(async () => null) };
+    const handlers = { onCancel: vi.fn(), onDone: vi.fn() };
+    const a = heatEditor(input as never, "control", handlers as never)!;
+    const b = heatEditor(input as never, "controlB", handlers as never)!;
+    expect(a.body.textContent).toContain("blockerar eller sänker");
+    expect(b.body.textContent).toContain("höja värmen i billiga timmar");
+    expect(b.body.textContent).toContain("aldrig båda samtidigt");
   });
 
   it("keeps the switch away from a path it cannot steer", () => {

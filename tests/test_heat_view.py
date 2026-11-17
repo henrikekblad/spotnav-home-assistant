@@ -278,6 +278,8 @@ def control_status(state: str, reason: str | None, **extra: Any) -> dict[str, An
         "since": None,
         "until": None,
         "paused_until": None,
+        "raised": False,
+        "raise_until": None,
         **extra,
     }
 

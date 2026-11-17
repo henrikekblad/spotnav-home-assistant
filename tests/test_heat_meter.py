@@ -301,3 +301,32 @@ async def test_without_a_meter_nothing_changes(hass: HomeAssistant, freezer) -> 
     assert controller.house_forecast.heat.meter == NO_METER and controller.house_forecast.heat_split is None
     answer = (await ask(hass, 1, api_version=1, site_id=site.entry_id))["result"]
     assert answer["heat"] is None
+
+
+async def test_the_relays_heat_is_the_pump_alone_without_the_zones(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The relay and SG Ready's contacts change only the pump: the heat shadow's heat per hour (the relay's effect,
+    the tight hours) is the split on the pump's meter alone, while the card keeps the meter plus the zones."""
+    hass.states.async_set("sensor.varme_effekt", "1093", {"unit_of_measurement": "W", "device_class": "power"})
+    site = await pilot_site(hass, freezer, heat_meter_entity="sensor.varme_effekt")
+    controller = site_controller_for(hass, site.entry_id)
+    forecast = controller.house_forecast
+    now = controller.demand.now()
+    rows, heat = _house(now, 10)
+    tracker = controller.demand.tracker
+    tracker.month = (now.year, now.month)
+    tracker.hours = [*rows, *tracker.hours]
+    monkeypatch.setattr(heat_module, "async_heat_hours", _fake_hours(heat))
+    await forecast.async_refresh()
+    # No zones: one split serves both.
+    assert forecast.heat_split is not None and forecast.pump_heat_split is forecast.heat_split
+    # Zones adding a kilowatt every hour: the combined split grows, the pump's does not.
+    pump_only = dict(forecast.heat.by_hour)
+    monkeypatch.setattr(forecast.heat, "combined_by_hour", lambda: {start: kw + 1.0 for start, kw in pump_only.items()})
+    await forecast.async_refresh()
+    combined, pump = forecast.heat_split, forecast.pump_heat_split
+    assert combined is not None and pump is not None and pump is not combined
+    hour = next(start for start, kw in pump.heat.known_by_hour().items() if kw is not None)
+    assert combined.heat.known_by_hour()[hour] > pump.heat.known_by_hour()[hour] + 0.5
+    assert controller.heat_shadow.heat_kw()(hour) == pump.heat.known_by_hour()[hour]
