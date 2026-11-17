@@ -86,6 +86,20 @@ def no_history_import(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_open_meteo(monkeypatch):
+    """The own solar forecast in shadow never reaches Open-Meteo from a test: a site with solar statistics in the
+    Energy dashboard would fetch at its first refresh. Every request answers as if the network were down;
+    `tests/test_solar_shadow.py` answers through its own world."""
+    from custom_components.spotnav.site import solar_shadow
+    from custom_components.spotnav.site.open_meteo import ERROR_NETWORK, FetchResult
+
+    async def _offline(*_args: Any, **_kwargs: Any) -> FetchResult:
+        return FetchResult(error=ERROR_NETWORK)
+
+    monkeypatch.setattr(solar_shadow, "async_fetch_json", _offline)
+
+
+@pytest.fixture(autouse=True)
 def no_blueprint_install(request, monkeypatch):
     """Setting the integration up writes no blueprints into the shared test configuration folder;
     `tests/test_blueprint_install.py` opts back in with the `blueprint_install` marker."""

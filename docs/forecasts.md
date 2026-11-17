@@ -81,6 +81,23 @@ corrected one once it has learnt. The Hybrid strategy keeps reading the raw fore
 site's *Solar forecast* sensor (diagnostic, `basis` is `raw` until learnt, then `corrected`) and as an option for the Energy
 dashboard (see [Home batteries](home-battery.md#forecasts-for-other-energy-tools)).
 
+## SpotNav's own solar forecast (background only)
+
+On a site with solar production in the Energy dashboard, SpotNav also makes its own solar forecast and a second correction
+of the provider's forecast, in the background. Neither feeds a plan yet: both are logged and scored each night beside the
+forecast the plan uses, and shown in the diagnostics, so a later version can switch only if a season of logs shows they are
+better. Why and how they were tested: [How the forecasts are tested](forecast-experiments.md#the-solar-forecast).
+
+* **What it reads.** The solar production statistics (a year back where they exist), and an irradiance forecast from
+  [Open-Meteo](https://open-meteo.com/) (weather data by Open-Meteo.com, CC BY 4.0), fetched by your own Home Assistant four
+  times a day, plus once a short archive of past forecasts to start from your history. Only Home Assistant's home position,
+  rounded to 0.1° (about 10 km), is sent; nothing else leaves your installation. Without a plausible home position it does
+  not fetch. If Open-Meteo cannot be reached, it uses the weather entity's cloud cover instead.
+* **What it learns.** The direction and tilt of your panels from their own history, and how much less they give at each sun
+  height and direction: a tree, a house or the horizon that shades the panels when the sun is low is learnt without any
+  setting.
+* There is no setting. It does nothing on a site without solar production.
+
 ## The expected solar surplus
 
 The site has an **Expected solar surplus** sensor: how much of the sun the house is not expected to use. It is the sun

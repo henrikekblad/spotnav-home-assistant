@@ -134,6 +134,7 @@ from .solar_capability import solar_capability
 from ..heat.control import HeatControl
 from ..heat.runtime import HeatShadow
 from .solar_correction_shadow import SiteSolarCorrection
+from .solar_shadow import SiteSolarShadow
 from .measurement_source import (
     combine_power_pair,
     grid_power_source_from_dict,
@@ -812,6 +813,9 @@ class SiteCapacityController:
         # The sun's forecast corrected per site in shadow (`site/solar_correction_shadow.py`): logged and reviewed
         # beside the raw one, read by nothing that plans.
         self.solar_correction = SiteSolarCorrection(hass, self)
+        # The own solar forecast and the sun-position correction in shadow (`site/solar_shadow.py`): logged and
+        # reviewed beside the forecast the plans use, read by nothing that plans.
+        self.solar_shadow = SiteSolarShadow(hass, self)
         # The heat pump's relay known to the plan and SpotNav's own heat plan in shadow (`heat/runtime.py`): the
         # relay's lowered hours change what the plans count on; nothing is ever written to a heating device.
         self.heat_shadow = HeatShadow(hass, self)
@@ -879,6 +883,7 @@ class SiteCapacityController:
         self.battery_control.async_launch(self.hass.config_entries.async_get_entry(self.entry_id))
         await self.switch_load.async_start()
         await self.solar_correction.async_start()
+        await self.solar_shadow.async_start()
         await self.heat_shadow.async_start()
         await self.heat_control.async_start()
         await self._history.async_load()
@@ -943,6 +948,7 @@ class SiteCapacityController:
             ("switched load", self.switch_load.async_shutdown),
             ("house forecast", self.house_forecast.async_close),
             ("solar correction", self.solar_correction.async_shutdown),
+            ("solar shadow", self.solar_shadow.async_shutdown),
             ("heat shadow", self.heat_shadow.async_shutdown),
             ("grid sign", self._async_save_grid_sign),
         )
