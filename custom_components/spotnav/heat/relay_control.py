@@ -19,7 +19,21 @@ planned lowered run: `planned_run_end`):
   `NO_LOWER_AT_C` (`too_cold`), a counted room below the comfort band (`room_cold`), data that is not good
   (`stale`: no fresh plan, no outdoor reading), SG Ready's second contact on (`sg_ready_b`). After data that was not
   good, a lowering starts only once it has been good for `GOOD_FOR` (`settling`).
-* Pre-heat is planning only: a relay can lower, not raise.
+* Pre-heat is planning only on the relay path: one contact can lower, not raise.
+
+**SG Ready's raise** (`decide_raise`, the second contact B, only where SG Ready has both contacts): the four states
+as (A, B) are (1,0) blocked or lowered, (0,0) normal, (0,1) recommended raise (the pump raises its curve or hot water
+within its own limits) and (1,1) forced raise, which SpotNav never uses. B closes only in the plan's raise hours
+(`RAISE_ACTIONS`: the cheap hour before a lowered run, and the warm-up before the return), never together with A:
+the shell switches through (0,0) and confirms each write before the next. A raise lasts at least `MIN_RAISE` and at
+most `MAX_RAISE_RUN` in a row, at most `MAX_RAISE_DAY` in 24 hours, starts at least `MIN_NORMAL` after the last raise
+ended, and leaves `RAISE_KEEPS_WRITES` of the day's writes (shared with lowering) for the lowering it comes before.
+A raise block (`RAISE_*`) ends a raise at once and starts none: the house at or above the band's high edge or the
+room-warm rule on, the cooler night or away (outside the return's warm-up), data that is not good, the raise's own
+check failed. **The raise check** (`RaiseCheck`) watches the first raises: the calculated supply up by
+`SUPPLY_RISE_C`, or the power up to `POWER_RISE_SHARE` of the baseline, within `EFFECT_GRACE`, on `SEEN` readings in
+a row. The supply alone can fail it (`failed:raise_not_observed`: raising is set aside, lowering goes on); the power
+alone passes on `POWER_PASSES` raises and never fails.
 
 **The check** (`Check`), before control runs, at the first start and after the relay entity changes: at a moment
 when the pump heats (its meter between its running level and a hot-water run) or its calculated supply temperature
@@ -43,7 +57,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final
 
-from .shadow_rule import ACTION_LOWER, BandHour
+from .shadow_rule import ACTION_LOWER, ACTION_PREHEAT, ACTION_RETURN, BandHour
 
 MIN_LOWER: Final = timedelta(minutes=45)
 MAX_RUN: Final = timedelta(hours=3)
@@ -92,6 +106,49 @@ PHASE_OPENED: Final = "opened"
 PASSED: Final = "passed"
 FAILED: Final = "failed"
 NOT_JUDGEABLE: Final = "not_judgeable"
+
+# ---- SG Ready's raise (contact B)
+
+#: The plan's actions B is closed in: the cheap hour before a lowered run (heat bought cheap and carried into the dear
+#: hours), and the warm-up before the household's return (the one raise allowed while away).
+RAISE_ACTIONS: Final = frozenset({ACTION_PREHEAT, ACTION_RETURN})
+#: A raise is shorter on the compressor than a block (it keeps running, a little harder), so a shorter least run than
+#: `MIN_LOWER` is enough to avoid blips, and it lets a raise start part way into a pre-heat hour.
+MIN_RAISE: Final = timedelta(minutes=30)
+#: The pump's own limits keep a raise safe, but a long raise only stores heat the house loses again: three hours in a
+#: row at most, as for lowering.
+MAX_RAISE_RUN: Final = timedelta(hours=3)
+#: A rolling day's raised time at most: more is no longer heat moved in time, it is just more heat.
+MAX_RAISE_DAY: Final = timedelta(hours=6)
+#: Writes a raise leaves of the day's `MAX_WRITES_DAY` (shared with lowering): the closing and opening of the lowering
+#: that follows the pre-heat, the saving the raise is for.
+RAISE_KEEPS_WRITES: Final = 2
+
+RAISE_PLANNED: Final = "raise_planned"
+RAISE_MIN: Final = "raise_min"
+RAISE_NONE: Final = "raise_none"
+RAISE_MAX_RUN: Final = "raise_max_run"
+RAISE_DAY_CAP: Final = "raise_day_cap"
+RAISE_REST: Final = "raise_rest"
+RAISE_TOO_SHORT: Final = "raise_too_short"
+RAISE_WRITE_CAP: Final = "raise_write_cap"
+#: The house at or above the band's high edge, or the room-warm rule on: no pre-heat into a warm house.
+RAISE_WARM: Final = "raise_warm"
+RAISE_NIGHT: Final = "raise_night"
+RAISE_AWAY: Final = "raise_away"
+RAISE_STALE: Final = "raise_stale"
+RAISE_SETTLING: Final = "raise_settling"
+#: The raise check saw no raise on the supply: raising is set aside (lowering goes on).
+RAISE_NOT_OBSERVED: Final = "raise_not_observed"
+#: A lowering holds A (or B's state is not known): B waits; the two are never closed together.
+RAISE_INTERLOCK: Final = "raise_interlock"
+
+#: The calculated supply's rise that shows a raise (°C): smaller than a block's fall, since a recommended raise moves
+#: the curve less than a block does on most pumps.
+SUPPLY_RISE_C: Final = 1.0
+#: The power that shows a raise: this share of the baseline, and at least `POWER_RISE_MIN_KW` more.
+POWER_RISE_SHARE: Final = 1.2
+POWER_RISE_MIN_KW: Final = 0.15
 
 STATE_HEATING: Final = "heating"
 STATE_HOT_WATER: Final = "hot_water"
@@ -232,6 +289,166 @@ def lowered_within(lowerings: Sequence[tuple[datetime, datetime | None]], start:
         if stop > first:
             total += stop - first
     return total
+
+
+# ------------------------------------------------------------------------------------------------ the raise
+
+
+def planned_raise_end(plan: Sequence[BandHour], now: datetime) -> datetime | None:
+    """The end of the plan's raise run that holds `now` (its hours in a row whose action is in `RAISE_ACTIONS`),
+    `None` when the running hour is no raise hour."""
+    end: datetime | None = None
+    for hour in sorted(plan, key=lambda item: item.start):
+        hour_end = hour.start + timedelta(hours=1)
+        if end is None:
+            if hour.start <= now < hour_end and hour.action in RAISE_ACTIONS:
+                end = hour_end
+        elif hour.start == end and hour.action in RAISE_ACTIONS:
+            end = hour_end
+        elif hour.start >= end:
+            break
+    return end
+
+
+@dataclass(frozen=True, slots=True)
+class RaiseSituation:
+    now: datetime
+    #: The end of the plan's raise run that holds now (`planned_raise_end`).
+    plan_until: datetime | None
+    #: Since when SpotNav's own raise runs (`None` while B is open).
+    held_since: datetime | None
+    #: When SpotNav's last raise ended.
+    last_end: datetime | None
+    #: SpotNav's raised time over the last 24 hours, the running raise's part included.
+    raised_24h: timedelta
+    #: The day's writes, both contacts.
+    writes_today: int
+    #: A reason that ends any raise at once and starts none (`RAISE_*`; `raise_settling` starts none only).
+    block: str | None = None
+
+
+def decide_raise(s: RaiseSituation) -> Decision:
+    """Whether B (the raise) is to be closed now, and why (see the module). The interlock with A is the shell's."""
+    day_left = max(timedelta(0), MAX_RAISE_DAY - s.raised_24h)
+    if s.held_since is not None:
+        if s.block is not None and s.block != RAISE_SETTLING:
+            return Decision(False, s.block)
+        if day_left <= timedelta(0):
+            return Decision(False, RAISE_DAY_CAP)
+        if s.now - s.held_since >= MAX_RAISE_RUN:
+            return Decision(False, RAISE_MAX_RUN)
+        hold_until = min(s.held_since + MAX_RAISE_RUN, s.now + day_left)
+        if s.plan_until is None or s.plan_until <= s.now:
+            if s.now - s.held_since < MIN_RAISE:
+                return Decision(True, RAISE_MIN, min(hold_until, s.held_since + MIN_RAISE))
+            return Decision(False, RAISE_NONE)
+        return Decision(True, RAISE_PLANNED, min(hold_until, s.plan_until))
+    if s.block is not None:
+        return Decision(False, s.block)
+    if s.plan_until is None or s.plan_until <= s.now:
+        return Decision(False, RAISE_NONE)
+    if s.last_end is not None and s.now - s.last_end < MIN_NORMAL:
+        return Decision(False, RAISE_REST)
+    until = min(s.plan_until, s.now + MAX_RAISE_RUN, s.now + day_left)
+    if until - s.now < MIN_RAISE:
+        return Decision(False, RAISE_TOO_SHORT)
+    if s.writes_today + 2 + RAISE_KEEPS_WRITES > MAX_WRITES_DAY:
+        return Decision(False, RAISE_WRITE_CAP)
+    return Decision(True, RAISE_PLANNED, until)
+
+
+@dataclass
+class RaiseCheck:
+    """Whether the pump answers B, judged on SpotNav's own first raises (no extra writes): kept by the shell across
+    restarts as `as_dict`. `result` is `passed`, `failed` (raising set aside) or `None` while not judged yet."""
+
+    result: str | None = None
+    last: str | None = None
+    power_passes: int = 0
+    #: While a raise is watched: since when, and the baseline from the looks before it.
+    since: datetime | None = None
+    baseline_kw: float | None = None
+    baseline_supply: float | None = None
+    seen: int = 0
+    supply_seen: bool = False
+    power_seen: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"result": self.result, "last": self.last, "power_passes": self.power_passes}
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> RaiseCheck:
+        check = cls()
+        if not isinstance(raw, dict):
+            return check
+        check.result = raw.get("result") if raw.get("result") in (PASSED, FAILED) else None
+        check.last = raw.get("last") if isinstance(raw.get("last"), str) else None
+        count = raw.get("power_passes")
+        check.power_passes = count if isinstance(count, int) and not isinstance(count, bool) else 0
+        return check
+
+    @property
+    def watching(self) -> bool:
+        return self.since is not None
+
+    def begin(self, now: datetime, before: Sequence[Sample]) -> None:
+        """A raise was confirmed: watch it, on a baseline from the looks before it (with B open). Nothing is watched
+        once judged, or without a usable baseline (`not_judgeable:no_readings`)."""
+        if self.result is not None:
+            return
+        usable = [sample for sample in before if sample.usable and sample.state != STATE_HOT_WATER]
+        kws = [sample.kw for sample in usable if sample.kw is not None and sample.state == STATE_HEATING]
+        supplies = [sample.supply_c for sample in usable if sample.supply_c is not None]
+        if not kws and not supplies:
+            self.last = f"{NOT_JUDGEABLE}:no_readings"
+            return
+        self.since, self.seen, self.supply_seen, self.power_seen = now, 0, False, False
+        self.baseline_kw = sum(kws) / len(kws) if kws else None
+        self.baseline_supply = sum(supplies) / len(supplies) if supplies else None
+
+    def _end(self, outcome: str) -> str:
+        self.since, self.seen = None, 0
+        self.last = outcome
+        if verdict(outcome) in (PASSED, FAILED):
+            self.result = verdict(outcome)
+        return outcome
+
+    def abort(self, why: str) -> str | None:
+        """The raise ended (or B opened) before a verdict; `None` when none was watched."""
+        if self.since is None:
+            return None
+        return self._end(f"{NOT_JUDGEABLE}:{why}")
+
+    def step(self, now: datetime, sample: Sample) -> str | None:
+        """One look while the raise holds: the outcome when the watch ended, else `None`."""
+        if self.since is None:
+            return None
+        if sample.state == STATE_HOT_WATER:
+            return self._end(f"{NOT_JUDGEABLE}:hot_water")
+        effect = False
+        if self.baseline_supply is not None and sample.supply_c is not None:
+            self.supply_seen = True
+            effect = sample.supply_c >= self.baseline_supply + SUPPLY_RISE_C
+        elif self.baseline_kw is not None and sample.kw is not None:
+            self.power_seen = True
+            effect = sample.kw >= self.baseline_kw * POWER_RISE_SHARE and sample.kw - self.baseline_kw >= POWER_RISE_MIN_KW
+        self.seen = self.seen + 1 if effect else 0
+        if self.seen >= SEEN:
+            if self.baseline_supply is not None and sample.supply_c is not None:
+                return self._end(PASSED)
+            self.power_passes += 1
+            if self.power_passes >= POWER_PASSES:
+                return self._end(PASSED)
+            return self._end(f"{NOT_JUDGEABLE}:power_once")
+        if now - self.since < EFFECT_GRACE:
+            return None
+        if self.supply_seen:
+            # The calculated supply follows the curve at once: no rise on it is a pump that does not answer B.
+            return self._end(f"{FAILED}:{RAISE_NOT_OBSERVED}")
+        if self.power_seen:
+            # The power alone proves little (the compressor cycles by itself): never a failure, watched again.
+            return self._end(f"{NOT_JUDGEABLE}:no_effect")
+        return self._end(f"{NOT_JUDGEABLE}:no_readings")
 
 
 # ------------------------------------------------------------------------------------------------ the check
