@@ -12,7 +12,7 @@ import { houseChartHeight, renderHouseChart } from "../src/house-chart";
 import { blockHeights, flowHeight, flowLabels, MIN_BAND, MIN_NODE } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { amount, hourFigures, houseBody, learningLines, reviewLine, savingLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
+import { amount, hourFigures, houseBody, learningLines, reviewLine, savingLine, savingTotalLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -283,15 +283,47 @@ describe("the body", () => {
   });
 });
 
+describe("what SpotNav saved", () => {
+  it("leaves the battery under its own control out of the total, and shows a single part without a split", () => {
+    expect(savingTotalLine("sv", answer())).toBe("SpotNav sparade 17 kr i dag");
+    const card = body(answer(), {}, "sv");
+    expect(card.querySelector("[data-line='spotnav-saving']")?.textContent).toBe("SpotNav sparade 17 kr i dag");
+    expect(savingTotalLine("sv", answer("house/house_learning.json"))).toBeNull();
+  });
+
+  it("splits a day with more than one part, leaving out a part the day does not have", () => {
+    const past = answer("house/villa_past_day.json");
+    // SpotNav controlled the battery all that day: no "own control" on its headline.
+    expect(todayLine("sv", past)).toBe("tors 12 nov.: batteriet tjänade 8,8 kr");
+    expect(savingTotalLine("sv", past)).toBe("tors 12 nov.: SpotNav sparade 54 kr · batteri 35 · bil 17 · värme 1,6");
+    const noHeat = { ...past, saving: { ...past.saving!, heat: null, total: 5210 } };
+    expect(savingTotalLine("en", noHeat)).toMatch(/: SpotNav saved 52 kr · battery 35 · car 17$/);
+  });
+
+  it("says in the details what each part is compared with, and that the heat is an estimate", () => {
+    const past = body(answer("house/villa_past_day.json"), OPEN, "sv");
+    const lines = [...past.querySelectorAll("[data-line='saving-details'] p")].map((line) => line.textContent);
+    expect(lines[0]).toBe("Det SpotNav sparade jämförs med:");
+    expect(lines.some((line) => line!.startsWith("Bil: att ladda direkt vid inkoppling"))).toBe(true);
+    expect(lines.some((line) => line!.startsWith("Värme (uppskattat)"))).toBe(true);
+    const today = body(answer(), OPEN, "sv");
+    const own = [...today.querySelectorAll("[data-line='saving-details'] p")].map((line) => line.textContent);
+    expect(own.some((line) => line!.startsWith("Batteri: det styrdes av sig självt"))).toBe(true);
+    expect(own.some((line) => line!.startsWith("Värme"))).toBe(false);
+  });
+});
+
 describe("the battery app's views, calm", () => {
   it("head the card with what the battery has earned, the battery app's measure, the cost under it and the mode beside the level", () => {
-    expect(todayLine("sv", answer())).toBe("Batteriet har tjänat 11 kr i dag");
+    // The fixture's battery runs under its own control (SpotNav in test): its earnings are said to be its own.
+    expect(todayLine("sv", answer())).toBe("Batteriet har tjänat 11 kr i dag (egen styrning)");
+    expect(todayLine("sv", { ...answer(), saving: null })).toBe("Batteriet har tjänat 11 kr i dag");
     expect(todayLine("sv", answer("house/house_learning.json"))).toBeNull();
     expect(todayDetail("sv", answer())).toBe("Elkostnad 38 kr");
     const value = answer();
     expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,2 kr");
     const card = body(answer(), {}, "sv");
-    expect(card.querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag");
+    expect(card.querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag (egen styrning)");
     // A Sigenergy battery: its app is verified to show the same measure, so the hint names it.
     expect(card.querySelector("[data-line='today-hint']")?.textContent).toBe("Samma mått som Sigenergy-appen.");
     expect(card.querySelector("[data-line='today-detail']")?.textContent).toBe("Elkostnad 38 kr");

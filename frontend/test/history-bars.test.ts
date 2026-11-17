@@ -254,3 +254,32 @@ describe("Support in the settings popover", () => {
     });
   }
 });
+
+describe("what SpotNav saved in the house history", () => {
+  it("has the total and a row per part over the days that have it, and the day's figure on its bar", () => {
+    const body = houseBody(house());
+    const block = body.querySelector("[data-part='spotnav-saving']")!;
+    const rows = [...block.querySelectorAll("[data-row]")].map((row) => row.textContent);
+    expect(block.querySelector("[data-row='total']")?.textContent).toContain("21 kr");
+    expect(block.querySelector("[data-row='car']")?.textContent).toContain("20 kr");
+    // The heat on two of the seven days, said to be an estimate; no battery row (its own control).
+    expect(block.querySelector("[data-row='heat']")?.textContent).toContain("Värme (uppskattat)");
+    expect(block.querySelector("[data-row='heat']")?.textContent).toContain("2 dygn");
+    expect(block.querySelector("[data-row='battery']")).toBeNull();
+    expect(rows.length).toBe(3);
+    expect(bar(body, "2026-11-12").getAttribute("aria-label") ?? bar(body, "2026-11-12").textContent).toContain("SpotNav sparade 3,3 kr");
+  });
+
+  it("is left out without any part, and an older answer without it still decodes", () => {
+    expect(houseBody(house((answer) => (answer.saving = null))).querySelector("[data-part='spotnav-saving']")).toBeNull();
+    const raw = read("house_history", "villa_month.json");
+    delete raw["saving"];
+    for (const item of raw["buckets"] as Record<string, unknown>[]) {
+      for (const key of ["saving", "saving_battery", "saving_car", "saving_heat"]) {
+        delete item[key];
+      }
+    }
+    const decoded = decodeHouseHistory(raw);
+    expect(decoded.ok && decoded.value.saving === null && decoded.value.buckets[0]!.saving === null).toBe(true);
+  });
+});
