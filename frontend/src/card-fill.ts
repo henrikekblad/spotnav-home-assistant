@@ -14,6 +14,11 @@ export interface FillReading {
   /** The status sentence's height in full, and its line height; zeros when there is no sentence. */
   statusHeight: number;
   lineHeight: number;
+  /**
+   * The height the card gives back in a box of fixed height: the readout line under the chart, which there is drawn
+   * over the chart's empty bottom edge instead of below it. Zero (or left out) when nothing is given back.
+   */
+  reclaimed?: number;
 }
 
 /**
@@ -61,7 +66,7 @@ export function planFill(reading: FillReading, chart: FillChart): FillPlan | nul
   if (!(box > 0) || !(natural > 0) || Math.abs(box - natural) < SAME_HEIGHT_PX) {
     return null;
   }
-  const others = natural - chart.basis;
+  const others = natural - chart.basis - Math.max(0, reading.reclaimed ?? 0);
   let room = box - others;
   let statusLines: number | null = null;
   if (room < chart.min && reading.statusHeight > 0 && reading.lineHeight > 0) {

@@ -1122,6 +1122,16 @@ export const VISUAL_STYLES = `
     line-clamp: var(--spotnav-status-lines, 1);
     overflow: hidden;
   }
+  /* The readout line of a tapped hour is drawn over the chart's empty bottom edge (below the axis labels), not
+     reserved below the chart, so the height it would take goes to the chart. Empty, it shows nothing. */
+  .${VISUAL_CLASSES.card}[data-fill] .${VISUAL_CLASSES.readout} {
+    position: relative;
+    margin: -1.4em 0 0;
+    background: var(--ha-card-background, var(--card-background-color, #ffffff));
+  }
+  .${VISUAL_CLASSES.card}[data-fill] .${VISUAL_CLASSES.readout}:empty {
+    background: transparent;
+  }
   .${VISUAL_CLASSES.card}[data-fill] .${VISUAL_CLASSES.actionBarWrap} {
     margin-top: calc(8px + var(--spotnav-fill-spare, 0px));
   }

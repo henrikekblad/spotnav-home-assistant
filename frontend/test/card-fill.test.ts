@@ -34,6 +34,11 @@ describe("planFill", () => {
     expect(plan).toEqual({ chartHeight: BASIS + 120, statusLines: null, spare: 0 });
   });
 
+  it("gives the chart the readout line's height too, since the line is drawn over the chart in a box", () => {
+    const plan = planFill({ ...reading(520, 400), reclaimed: 17 }, { basis: BASIS, min: MIN });
+    expect(plan).toEqual({ chartHeight: BASIS + 120 + 17, statusLines: null, spare: 0 });
+  });
+
   it("shrinks the chart in a shorter box, down to its minimum, before touching the status", () => {
     expect(planFill(reading(399, 400, 4), { basis: BASIS, min: MIN })).toEqual({
       chartHeight: BASIS - 1,
