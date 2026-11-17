@@ -105,6 +105,7 @@ from ..planning.learned_energy import efficiency_for, NOTHING_LEARNED, target_ne
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.phases import charging_phases, ChargingPhases, onboard_suggestion
 from ..planning.planner import chart_intervals, ChartInterval
+from .sun import capture_sun
 from ..sessions.inputs import sessions_block
 from ..planning.status_compose import (
     compose_status,
@@ -543,6 +544,9 @@ class CapturedDashboard:
     #: The departure calendar (`departure_calendar_block`): the calendars to choose from and what the plan made of the
     #: chosen one; `None` when there is no calendar to choose and none chosen.
     departure_calendar: dict[str, Any] | None = None
+    #: The sun for the price chart (`api/sun.py`): measured before now, the corrected forecast after; `None` without a
+    #: solar forecast.
+    sun: dict[str, Any] | None = None
     #: A smart plug's measured power now, in kW (`ChargingController.measured_power_w`).
     measured_power_kw: float | None = None
     #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
@@ -1305,6 +1309,7 @@ def _capture_dashboard(
         identification=_identification(hass, entry_id),
         camera_identification=_camera_identification(hass, entry_id, settings),
         departure_calendar=departure_calendar_block(hass, entry_id, settings),
+        sun=capture_sun(hass, entry_id, now, None if area_entry is None else area_entry.tz),
         guest=capture_guest(hass, entry_id, settings),
         guest_done=bool(controller is not None and is_guest(settings) and controller.guest_met),
         vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
@@ -2151,6 +2156,9 @@ def serialize_dashboard(
         # Additive, and only where there is a calendar to choose or one chosen. An app reads it only with
         # `reads: ["departure_calendar"]` (`api/webhook.py`).
         **({} if capture.departure_calendar is None else {"departure_calendar": capture.departure_calendar}),
+        # Additive, and only where the site has a solar forecast: the sun the price chart draws (`api/sun.py`). An app
+        # reads it only with `reads: ["sun"]` (`api/webhook.py`).
+        **({} if capture.sun is None else {"sun": capture.sun}),
     }
 
 

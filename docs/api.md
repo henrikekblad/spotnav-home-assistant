@@ -184,6 +184,12 @@ wins), `unavailable` (it cannot be read: the daily departure is used), `no_event
 has no event ahead: no departure), `off` (no departure, or a guest car), or `null` (none chosen, or not calculated
 yet).
 
+The additive root block `sun` is present where the site has a solar forecast (ask with `"reads": ["sun"]`):
+`{"hours": [{"start", "kw", "measured"}]}`, the sun's mean power per local hour of today and tomorrow in kW. Before the
+running hour `kw` is the measured production (`measured` true), from the running hour on the corrected forecast the plan
+uses (`measured` false); an hour with no figure is left out. The forecast reaches 24 hours ahead, so tomorrow is partly
+there.
+
 **Who may replace the settings.** An administrator may change any field. A user who is not one is refused with
 `spotnav_not_admin` while the charger's `users_change_plan` is off; while it is on, a replacement from them is
 accepted only when every field it changes is one of the strategy and plan fields: `strategy`, `requested_kwh`,

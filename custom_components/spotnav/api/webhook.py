@@ -170,6 +170,9 @@ APP_READS_STOP_UNPLUG_UNSEEN: Final = "stop_unplug_unseen"
 #: an app that does not read `APP_READS_DEPARTURE_CALENDAR`, as is the settings field of the same name (a replacement
 #: without it keeps the stored calendar).
 APP_READS_DEPARTURE_CALENDAR: Final = "departure_calendar"
+#: The sun for the price chart (`api/sun.py`): the dashboard's `sun` block is left out for an app that does not read
+#: `APP_READS_SUN`.
+APP_READS_SUN: Final = "sun"
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
@@ -179,6 +182,7 @@ APP_DASHBOARD_BLOCK_READS: Final = {
     "grid_tariff": APP_READS_GRID_TARIFF,
     "guest": APP_READS_GUEST,
     "departure_calendar": APP_READS_DEPARTURE_CALENDAR,
+    "sun": APP_READS_SUN,
 }
 #: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
 #: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
