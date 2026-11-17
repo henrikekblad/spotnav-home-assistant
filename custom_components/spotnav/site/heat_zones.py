@@ -10,7 +10,9 @@ thermostat or an air-to-air heat pump); its sensor is found on the climate's own
 2. a power sensor (device class `power`, else a W/kW/MW unit) with the state class `measurement` (the recorder has
    its hourly `mean`, integrated as the heat pump meter's power sensor is, `site/heat_meter.period_kwh`).
 
-Among several of one kind the one with `total_increasing` goes first, then the lowest entity id, so the pick is stable.
+Among several of one kind a cooling one (`cool` in its entity id or translation key: a Daikin's
+`ac_cool_energy_consumption`) goes last, the one with `total_increasing` first, then the unqualified total before a
+`heat` one, then the lowest entity id, so the pick is stable.
 
 **Counted once** (`resolve_zones`): a zone is left out (`unmeasured`, with why) when it has no such sensor
 (`no_sensor`), when its sensor is the heat pump's meter or on the heat pump meter's own device (`heat_meter`: the meter
@@ -60,6 +62,16 @@ class DeviceSensor:
     device_class: str | None = None
     unit: str | None = None
     state_class: str | None = None
+    #: The integration's translation key (`None` without one).
+    key: str | None = None
+
+
+def _qualifier_rank(sensor: DeviceSensor) -> int:
+    """0 for an unqualified total, 1 for a `heat` one, 2 for a `cool` one (by its entity id or translation key)."""
+    text = f"{sensor.entity_id} {sensor.key or ''}".lower()
+    if "cool" in text:
+        return 2
+    return 1 if "heat" in text else 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,7 +135,15 @@ def pick_zone_sensor(sensors: Iterable[DeviceSensor]) -> tuple[str, str] | None:
             power.append(sensor)
     for found, kind in ((energy, KIND_ENERGY), (power, KIND_POWER)):
         if found:
-            best = min(found, key=lambda s: (s.state_class != "total_increasing", s.entity_id))
+            best = min(
+                found,
+                key=lambda s: (
+                    _qualifier_rank(s) == 2,
+                    s.state_class != "total_increasing",
+                    _qualifier_rank(s),
+                    s.entity_id,
+                ),
+            )
             return best.entity_id, kind
     return None
 
@@ -202,6 +222,7 @@ def device_sensors(hass: HomeAssistant, entity_id: str) -> tuple[str | None, lis
                 attributes.get("device_class") or other.device_class or other.original_device_class,
                 attributes.get("unit_of_measurement") or other.unit_of_measurement,
                 attributes.get("state_class") or (other.capabilities or {}).get("state_class"),
+                other.translation_key,
             )
         )
     return entry.device_id, out

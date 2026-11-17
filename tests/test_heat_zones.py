@@ -59,6 +59,23 @@ def test_an_energy_sensor_goes_before_a_power_sensor_and_total_increasing_first(
     assert pick_zone_sensor(sensors[:1]) == ("sensor.golv_power", KIND_POWER)
 
 
+def test_the_cooling_energy_is_never_picked_before_the_total_or_the_heating() -> None:
+    # A Daikin's three energy sensors: the cooling one sorts lowest by id but goes last.
+    cool = DeviceSensor("sensor.daikin_ac_cool_energy_consumption", "energy", "kWh", "total_increasing")
+    total = DeviceSensor("sensor.daikin_ac_energy_consumption", "energy", "kWh", "total_increasing")
+    heat = DeviceSensor("sensor.daikin_ac_heat_energy_consumption", "energy", "kWh", "total_increasing")
+    assert pick_zone_sensor([cool, total, heat]) == ("sensor.daikin_ac_energy_consumption", KIND_ENERGY)
+    assert pick_zone_sensor([cool, heat]) == ("sensor.daikin_ac_heat_energy_consumption", KIND_ENERGY)
+    # A cooling total never goes first even with the better state class.
+    heat_total = DeviceSensor("sensor.daikin_ac_heat_energy_consumption", "energy", "kWh", "total")
+    assert pick_zone_sensor([cool, heat_total]) == ("sensor.daikin_ac_heat_energy_consumption", KIND_ENERGY)
+    assert pick_zone_sensor([cool]) == ("sensor.daikin_ac_cool_energy_consumption", KIND_ENERGY)
+    # Told by the translation key too.
+    keyed = DeviceSensor("sensor.daikin_a", "energy", "kWh", "total_increasing", key="cool_energy")
+    other = DeviceSensor("sensor.daikin_b", "energy", "kWh", "total_increasing")
+    assert pick_zone_sensor([keyed, other]) == ("sensor.daikin_b", KIND_ENERGY)
+
+
 def test_a_sensor_without_statistics_or_another_domain_is_no_source() -> None:
     assert pick_zone_sensor([DeviceSensor("sensor.golv_energy", "energy", "kWh", None)]) is None
     assert pick_zone_sensor([DeviceSensor("sensor.golv_power", "power", "W", None)]) is None
