@@ -178,11 +178,6 @@ interface OverviewSection {
   append: (body: HTMLElement) => void;
 }
 
-/**
- * Where the chart sits: over the car and the action bar (`top`), or under them (`bottom`). A layout trial, not a
- * setting: one of the two stays and the other goes.
- */
-export const CHART_POSITION: "top" | "bottom" = "top";
 
 export interface CardViewInput {
   model: CardModel;
@@ -206,8 +201,6 @@ export interface CardViewInput {
   observeHeader?: (block: HTMLElement, onResize: () => void) => ChartObserverLike | null;
   /** Reads the header for `statusFits`; injectable for tests, since a test DOM has no layout. */
   readStatusFit?: (row: HTMLElement) => StatusFitReading;
-  /** Overrides `CHART_POSITION`; for tests only. */
-  chartPosition?: "top" | "bottom";
   /** Reads the card's natural layout for the fit; injectable for tests, since a test DOM has no layout. */
   readFill?: (card: HTMLElement) => FillReading;
   setTimer?: (callback: () => void, delayMs: number) => number;
@@ -2140,10 +2133,6 @@ export function createCardView(input: CardViewInput): CardView {
   card.append(barWrap);
   if (actionButton !== null && actionButton.dataset["action"] === "start") {
     card.append(startHelp);
-  }
-  if ((input.chartPosition ?? CHART_POSITION) === "bottom") {
-    // The chart under the car and the cells: the same section, moved after them.
-    card.append(graph);
   }
 
 
