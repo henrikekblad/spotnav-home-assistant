@@ -1703,7 +1703,7 @@ export function createCardView(input: CardViewInput): CardView {
       keys.push("graph.legend.proposal");
     }
     if (current.sun !== null) {
-      keys.push("graph.legend.sun");
+      keys.push(current.sun.points.some((point) => !point.measured) ? "graph.legend.sun" : "graph.legend.sunMeasured");
     }
     if (!current.timesAvailable) {
       keys.push("graph.noZone");
@@ -2900,7 +2900,7 @@ export function createCardView(input: CardViewInput): CardView {
   /** The sun this view shows as chosen: the model's, then whatever was chosen here since. */
   let chartSunChoice: boolean = model.sunOn;
 
-  /** Display's "Solprognos": whether the price chart draws the sun. Offered only where the site has a sun source. */
+  /** Display's "Sol": whether the price chart draws the sun. Offered only where the site has a sun source. */
   function chartSunRow(): HTMLElement {
     const label = translate(model.language, "display.sun");
     const onOff = (on: boolean): string => translate(model.language, on ? "settings.value.on" : "settings.value.off");

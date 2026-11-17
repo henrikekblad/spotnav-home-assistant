@@ -301,6 +301,23 @@ describe("the sun layer", () => {
     card.destroy();
   });
 
+  it("is drawn from the measured hours alone where the site has no forecast, with the measured legend", () => {
+    const measuredOnly = SUN_HOURS.slice(0, 4);
+    const { card, root } = view(model({ sun: { hours: measuredOnly, quarters: [] } }));
+    expect(root.querySelector(`.${C.sun}`)).not.toBeNull();
+    expect(root.querySelector(`.${C.sunForecast}`)).toBeNull();
+    const legend = root.querySelector(`.${C.legend}`)?.textContent ?? "";
+    expect(legend).toContain(translate("sv", "graph.legend.sunMeasured"));
+    expect(legend).not.toContain(translate("sv", "graph.legend.sun"));
+    card.destroy();
+  });
+
+  it("is offered but draws nothing where a capable site has no measured hour yet", () => {
+    const scene = model({ sun: { hours: [], quarters: [] } });
+    expect(scene.sunOffered).toBe(true);
+    expect(scene.sun).toBeNull();
+  });
+
   it("is not drawn, and has no swatch, when switched off or when the site has none", () => {
     for (const scene of [model({ sun: { hours: SUN_HOURS }, chartSun: false }), model()]) {
       const { card, root } = view(scene);
@@ -347,7 +364,7 @@ describe("the sun in Display", () => {
     card.openSettingsOverview();
     const row = root.querySelector<HTMLButtonElement>("[data-section='display'] [data-edit='chart_sun']");
     expect(row?.textContent).toBe(translate("sv", "settings.value.on"));
-    expect(root.querySelector("[data-section='display']")?.textContent).toContain("Solprognos");
+    expect(root.querySelector("[data-section='display']")?.textContent).toContain(translate("sv", "display.sun"));
     row!.click();
     await choose(root, "off");
     expect(chosen).toEqual([false]);
@@ -374,7 +391,7 @@ describe("the sun in Display", () => {
 
   it("has its words in every card language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["display.sun", "display.sun.help", "graph.legend.sun", "graph.sun.short", "graph.readout.sun", "graph.readout.sunForecast"] as const) {
+      for (const key of ["display.sun", "display.sun.help", "graph.legend.sun", "graph.legend.sunMeasured", "graph.sun.short", "graph.readout.sun", "graph.readout.sunForecast"] as const) {
         expect(translate(language, key).length, `${language} ${key}`).toBeGreaterThan(0);
       }
     }

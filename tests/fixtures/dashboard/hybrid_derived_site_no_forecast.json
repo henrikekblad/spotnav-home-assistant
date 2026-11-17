@@ -2378,6 +2378,10 @@
     },
     "vehicles": {}
   },
+  "sun": {
+    "hours": [],
+    "quarters": []
+  },
   "target_vehicle_id": null,
   "vehicle_choices": [],
   "vehicles": []

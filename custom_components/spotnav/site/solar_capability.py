@@ -8,10 +8,11 @@ snapshot and the solar executor so they cannot disagree.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
-from ..const import MEASUREMENT_MODE_DERIVED, MEASUREMENT_MODE_DIRECT
+from ..const import CONF_GRID_POWER_SOURCE, CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DERIVED, MEASUREMENT_MODE_DIRECT
 from .measurement_source import grid_power_source_from_dict
 
 #: A direct site without the meter's total grid power.
@@ -37,3 +38,8 @@ def solar_capability(measurement_mode: Any, grid_power_source: Any) -> SolarCapa
             return SolarCapability(True)
         return SolarCapability(False, REASON_NEEDS_TOTAL_GRID_POWER)
     return SolarCapability(False, REASON_NEEDS_SURPLUS_MEASUREMENT)
+
+
+def site_solar_capable(config: Mapping[str, Any]) -> bool:
+    """Whether the site with this configuration can run solar and hybrid."""
+    return solar_capability(config.get(CONF_MEASUREMENT_MODE), config.get(CONF_GRID_POWER_SOURCE)).capable
