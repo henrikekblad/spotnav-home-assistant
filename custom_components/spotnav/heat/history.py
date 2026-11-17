@@ -14,7 +14,9 @@ written here.
      shadow: {days, lowered_hours, moved_kwh, value, kept_days, lower_share, rebound, blocks} | null,
      immersion: {hours, kwh} | null,
      runs: [{start, end, kwh, cause: "draw" | "standby" | null}],
-     review: the day's review (`heat/review.py`, a day only) | null}
+     review: the day's review (`heat/review.py`, a day only) | null,
+     indoor_day: the day's indoor curve by the hour with SpotNav's setpoint per hour (`heat/indoor_day.py`, a day
+                 only) | null}
 
 * **Use** (`energy`, `buckets`): the heat pump meter's energy (the recorder's hourly statistics of it, kept for good,
   `site/heat_meter.py`), each hour at its buy price with every fee as the battery plan prices it (the area's held day
@@ -52,6 +54,12 @@ written here.
   the week the 5-minute rows hold; `null` with fewer than `MIN_REFERENCE_RUNS` runs to compare with. Without a tank
   sensor this is an estimate from the energy alone, and the card says so.
 
+* **The day's indoor curve** (`indoor_day`, a day only): the indoor sensors' hourly means on the house's scale
+  (each less its offset), their mean and the coldest, up to the last hour, beside the comfort band and SpotNav's
+  setpoint per hour: the hours as it planned them when each began where the heat shadow kept the day, else the plan
+  run again with the day's prices and the settings as they are now (night setback included; away is not known for a
+  past day).
+
 Money is in the area's minor unit. Shadow only: nothing here controls a heating device.
 """
 
@@ -78,12 +86,13 @@ from ..site.history_period import (
 from .config import BAND_C, HeatConfig
 from .meter_split import HotWaterRun, split_day
 from .relay_effect import AFTER, Effect
+from .indoor_day import HISTORY_STEP_MIN, indoor_day
 from .shadow_rule import ACTION_LOWER, ACTION_PREHEAT, band, day_hours
 
 HEAT_HISTORY_API_VERSION: Final = 1
 HISTORY_KEYS: Final = (
     "api_version", "site_id", "time_zone", "generated_at", "period", "date", "end", "today", "complete", "money",
-    "meter", "energy", "buckets", "degree_days", "comfort", "shadow", "immersion", "runs", "review",
+    "meter", "energy", "buckets", "degree_days", "comfort", "shadow", "immersion", "runs", "review", "indoor_day",
 )
 #: The degree-day base (°C): the outdoor temperature above which a house needs no heating.
 BASE_C: Final = 17.0
@@ -351,6 +360,43 @@ def comfort_block(inputs: HeatHistoryInputs, start: datetime, end: datetime) -> 
     }
 
 
+def day_setpoint(inputs: HeatHistoryInputs, day: date, outdoor_c: float | None) -> list[tuple[datetime, float, str]]:
+    """SpotNav's target per hour of `day` (see the module): the kept plan's actions where the day was kept, else the
+    plan run again; a lowered hour aims at the band's lower edge, a preheat at its upper."""
+    zone = time_zones.require_zone(inputs.tz)
+    hours = day_hours(midnight_utc(day, inputs.tz), zone)
+    rule = replace(inputs.config, mode="home", away_until=None)
+    priced = hour_prices(inputs.prices)
+    end = hours[-1] + timedelta(hours=1)
+    banded, _guard = band(rule, hours, {hour: priced[hour] for hour in hours if hour in priced}, min(end, inputs.now), zone, outdoor_c=outdoor_c)
+    kept = inputs.kept.get(day) or {}
+    target = rule.target_c
+    out: list[tuple[datetime, float, str]] = []
+    for hour in banded:
+        action = kept.get(hour.start, hour.action)
+        aim = {ACTION_LOWER: target - BAND_C, ACTION_PREHEAT: target + BAND_C}.get(action, hour.target_c)
+        out.append((hour.start, aim, action))
+    return out
+
+
+def day_indoor(inputs: HeatHistoryInputs, outdoor_by_day: Mapping[date, float]) -> dict[str, Any] | None:
+    """The `indoor_day` block of a day (see the module), `None` for a month or a year and without indoor sensors."""
+    period = inputs.period
+    if period.kind != PERIOD_DAY:
+        return None
+    readings = {entity_id: {moment: values[0] for moment, values in hours.items()} for entity_id, (_name, hours) in inputs.indoor.items()}
+    start, end = midnight_utc(period.first, inputs.tz), midnight_utc(period.end, inputs.tz)
+    return indoor_day(
+        inputs.config,
+        readings,
+        start,
+        end,
+        inputs.now,
+        HISTORY_STEP_MIN,
+        day_setpoint(inputs, period.first, outdoor_by_day.get(period.first)),
+    )
+
+
 def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
     """The whole answer (`HISTORY_KEYS`)."""
     period, tz = inputs.period, inputs.tz
@@ -491,4 +537,5 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         "immersion": immersion,
         "runs": runs,
         "review": dict(inputs.reviews[period.first]) if period.kind == PERIOD_DAY and period.first in inputs.reviews else None,
+        "indoor_day": day_indoor(inputs, outdoor_by_day),
     }

@@ -126,6 +126,7 @@
   },
   "generated_at": "2026-11-16T13:20:00+00:00",
   "immersion": null,
+  "indoor_day": null,
   "meter": {
     "entity_id": "sensor.varme_effekt",
     "name": "Elmätare värme"
