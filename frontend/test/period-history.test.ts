@@ -220,6 +220,16 @@ describe("the heat history", () => {
     expect(decodeHeatHistory({ ...read("heat_history/villa_day.json"), runs: [{ start: "x", end: "y", kwh: 1, cause: null }] }).ok).toBe(false);
   });
 
+  it("says how much of the heat the zones' own meters hold and from which day", () => {
+    const answer = heat("heat_history/villa_month.json");
+    const plain = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(plain.querySelector("[data-row='zones']")).toBeNull();
+    const zoned = { ...answer, energy: { ...answer.energy!, zones_kwh: 26.4, zones_from: "2026-11-05" } };
+    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: zoned }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(body.querySelector("[data-part='use'] [data-row='zones']")?.textContent).toContain("26,4 kWh");
+    expect(body.querySelector("[data-line='zones-from']")?.textContent).toContain(translate("sv", "hist.heat.zonesFrom", { date: "" }).split("{date}")[0]!.slice(0, 20));
+  });
+
   it("shows a month's use and cost by default, and degree-days with the trend, comfort and the shadow with Detailed", () => {
     const answer = heat("heat_history/villa_month.json");
     const plain = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });

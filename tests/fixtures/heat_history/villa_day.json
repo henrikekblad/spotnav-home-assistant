@@ -8,7 +8,8 @@
       "key": "2026-11-15T00:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -17,7 +18,8 @@
       "key": "2026-11-15T01:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 149.4,
@@ -26,7 +28,8 @@
       "key": "2026-11-15T02:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 149.4,
@@ -35,7 +38,8 @@
       "key": "2026-11-15T03:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 149.4,
@@ -44,7 +48,8 @@
       "key": "2026-11-15T04:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -53,7 +58,8 @@
       "key": "2026-11-15T05:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -62,7 +68,8 @@
       "key": "2026-11-15T06:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -71,7 +78,8 @@
       "key": "2026-11-15T07:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -80,7 +88,8 @@
       "key": "2026-11-15T08:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -89,7 +98,8 @@
       "key": "2026-11-15T09:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -98,7 +108,8 @@
       "key": "2026-11-15T10:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 198.8,
@@ -107,7 +118,8 @@
       "key": "2026-11-15T11:00:00+01:00",
       "kwh": 1.42,
       "outdoor_c": 6.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 198.8,
@@ -116,7 +128,8 @@
       "key": "2026-11-15T12:00:00+01:00",
       "kwh": 1.42,
       "outdoor_c": 6.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 198.8,
@@ -125,7 +138,8 @@
       "key": "2026-11-15T13:00:00+01:00",
       "kwh": 1.42,
       "outdoor_c": 6.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 198.8,
@@ -134,7 +148,8 @@
       "key": "2026-11-15T14:00:00+01:00",
       "kwh": 1.42,
       "outdoor_c": 6.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 198.8,
@@ -143,7 +158,8 @@
       "key": "2026-11-15T15:00:00+01:00",
       "kwh": 1.42,
       "outdoor_c": 6.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 127.8,
@@ -152,7 +168,8 @@
       "key": "2026-11-15T16:00:00+01:00",
       "kwh": 1.42,
       "outdoor_c": 6.0,
-      "shadow_value": -37.624
+      "shadow_value": -37.624,
+      "zones_kwh": null
     },
     {
       "cost": 431.6,
@@ -161,7 +178,8 @@
       "key": "2026-11-15T17:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 85.829
+      "shadow_value": 85.829,
+      "zones_kwh": null
     },
     {
       "cost": 431.6,
@@ -170,7 +188,8 @@
       "key": "2026-11-15T18:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 85.829
+      "shadow_value": 85.829,
+      "zones_kwh": null
     },
     {
       "cost": 431.6,
@@ -179,7 +198,8 @@
       "key": "2026-11-15T19:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -188,7 +208,8 @@
       "key": "2026-11-15T20:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -197,7 +218,8 @@
       "key": "2026-11-15T21:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -206,7 +228,8 @@
       "key": "2026-11-15T22:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     },
     {
       "cost": 232.4,
@@ -215,7 +238,8 @@
       "key": "2026-11-15T23:00:00+01:00",
       "kwh": 1.66,
       "outdoor_c": 4.0,
-      "shadow_value": 0.0
+      "shadow_value": 0.0,
+      "zones_kwh": null
     }
   ],
   "comfort": {
@@ -252,7 +276,9 @@
     "hours": 24,
     "priced_hours": 24,
     "split_days": 1,
-    "total_kwh": 38.4
+    "total_kwh": 38.4,
+    "zones_from": null,
+    "zones_kwh": null
   },
   "generated_at": "2026-11-16T13:20:00+00:00",
   "immersion": {

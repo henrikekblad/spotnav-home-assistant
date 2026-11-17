@@ -12,8 +12,10 @@ again once per new 5-minute row per site with the finished hours kept in `hass.d
 again; `async_day_flow`); the cars' hours of the chart come from the same reads. And, at most every
 `FLOW_REFRESH_S` and between hours kept, the battery's SoC at the end of each shown past hour its plan's log has no level for (the recorder's
 statistics of its SoC sensor, `async_recorded_soc`). Where the heat pump's meter is found or set
-(`site/heat_meter.py`), the energy flow reads its statistics too (a `heat` use split out of the house), and the
-hours and the `heat` block take its hours (the flow's reads over the house forecast's own) and the heat forecast the house forecast keeps (`_heat`).
+(`site/heat_meter.py`), or a heat zone has a sensor of its own (`site/heat_zones.py`), the energy flow reads their
+statistics too (a `heat` use split out of the house, the meter and the zones together), and the hours and the `heat`
+block take those hours (the flow's reads over the house forecast's own) and the heat forecast the house forecast
+keeps (`_heat`).
 
 Refusals (WebSocket errors): `spotnav_unsupported_api_version`, `spotnav_invalid_date` (not a date, in the future or
 before `day.first`), `spotnav_charger_required` (neither id), the charger
@@ -35,7 +37,7 @@ from homeassistant.core import callback, HomeAssistant
 
 from ..battery.plan_model import DEFAULT_MODE
 from .. import time_zones
-from ..const import CONF_CHARGER_ENTRY_IDS, CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
+from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MAIN_FUSE_A, CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
 from ..planning.demand_charge import hour_start
 from ..site.energy_flow import (
     SETTLE,
@@ -57,7 +59,8 @@ from ..site.energy_statistics import (
 )
 from ..pricing.price_source import site_price_source
 from ..runtime import controller_for, site_controller_for
-from ..site.heat_meter import SOURCE_SETTING, STATUS_NONE, async_heat_hours, needs_setting
+from ..site.heat_meter import SOURCE_SETTING, STATUS_NONE, async_heat_periods, needs_setting
+from ..site.heat_zones import NO_ZONES, ZoneSources
 from ..site.house_view import (
     HOUSE_API_VERSION,
     BatteryInputs,
@@ -211,9 +214,17 @@ def _heat(hass: HomeAssistant, controller: Any, read: Mapping[datetime, float] |
         source=meter.source,
         candidates=meter.candidates,
         setting_offered=needs_setting(heat.detected) or meter.source == SOURCE_SETTING,
-        actual={**heat.by_hour, **(read or {})},
+        actual={**heat.combined_by_hour(), **(read or {})},
         forecast={} if split is None else split.heat.by_hour(),
     )
+
+
+def fuse_kw(controller: Any) -> float | None:
+    """The main fuse's capacity (kW, three phases at 230 V); `None` where it is not set."""
+    fuse = controller.config.get(CONF_MAIN_FUSE_A)
+    if isinstance(fuse, bool) or not isinstance(fuse, (int, float)) or fuse <= 0:
+        return None
+    return float(fuse) * 3 * 230.0 / 1000.0
 
 
 def _bucket_car(controller: Any) -> dict[datetime, float]:
@@ -339,6 +350,7 @@ async def _quarter_periods(
     car_ids: tuple[str, ...],
     meter: Any,
     held: _HeldDay | None,
+    zones: ZoneSources = NO_ZONES,
 ) -> list[EnergyHour]:
     """The periods of `hours` read by the quarter hour (`site/energy_flow.quarter_hours`): the finished hours `held`
     has from it, the rest from the recorder's 5-minute rows (one read), and a finished hour that lacks a quarter by
@@ -350,11 +362,10 @@ async def _quarter_periods(
         first, end = to_read[0], min(now, to_read[-1] + timedelta(hours=1))
         rows = await async_statistics(hass, (*ids.all(), *car_ids), first, end, "5minute")
         heat = None
-        if meter.found:
-            try:
-                heat = await async_heat_hours(hass, meter, first, end, "5minute")
-            except Exception:  # noqa: BLE001 - without the heat figures, heat stays in the house
-                _LOGGER.debug("SpotNav house view: the heat meter's 5-minute rows could not be read", exc_info=True)
+        try:
+            heat = await async_heat_periods(hass, meter, zones, first, end, "5minute", fuse_kw(controller))
+        except Exception:  # noqa: BLE001 - without the heat figures, heat stays in the house
+            _LOGGER.debug("SpotNav house view: the heat's 5-minute rows could not be read", exc_info=True)
         has_battery = bool(ids.battery_in)
         five = FlowSeries(
             grid_in=summed(rows, ids.grid_in),
@@ -371,7 +382,7 @@ async def _quarter_periods(
         read, missing = quarter_hours(to_read, five, now)
         if missing:
             read += await _hourly_periods(
-                hass, controller, missing, missing[-1] + timedelta(hours=1), ids, car_ids, meter
+                hass, controller, missing, missing[-1] + timedelta(hours=1), ids, car_ids, meter, zones
             )
     for hour in to_read:
         mine = tuple(sorted((p for p in read if hour <= p.start < hour + timedelta(hours=1)), key=lambda p: p.start))
@@ -390,15 +401,15 @@ async def _hourly_periods(
     ids: FlowIds,
     car_ids: tuple[str, ...],
     meter: Any,
+    zones: ZoneSources = NO_ZONES,
 ) -> list[EnergyHour]:
     """The hours of `starts` (completed, before `end`) from the recorder's hourly rows."""
     rows = await async_statistics(hass, (*ids.all(), *car_ids), starts[0], end, "hour")
     heat = None
-    if meter.found:
-        try:
-            heat = await async_heat_hours(hass, meter, starts[0], end)
-        except Exception:  # noqa: BLE001 - without the heat figures, heat stays in the house
-            _LOGGER.debug("SpotNav house view: the heat meter's hours could not be read", exc_info=True)
+    try:
+        heat = await async_heat_periods(hass, meter, zones, starts[0], end, cap_kw=fuse_kw(controller))
+    except Exception:  # noqa: BLE001 - without the heat figures, heat stays in the house
+        _LOGGER.debug("SpotNav house view: the heat's hours could not be read", exc_info=True)
     has_battery = bool(ids.battery_in)
     return energy_hours(
         starts,
@@ -438,17 +449,24 @@ async def async_day_flow(
         return None
     car_ids = _car_register_ids(hass, controller)
     meter = controller.house_forecast.heat.meter
+    zones = await controller.house_forecast.heat.async_current_zones()
     hours = []
     moment = midnight
     while moment < end:
         hours.append(moment)
         moment += timedelta(hours=1)
     if quarters:
-        signature = (ids, car_ids, meter.entity_id if meter.found else None, meter.kind if meter.found else None)
+        signature = (
+            ids,
+            car_ids,
+            meter.entity_id if meter.found else None,
+            meter.kind if meter.found else None,
+            zones.signature(),
+        )
         held = None if site_entry_id is None else _held_day(hass, (site_entry_id, day), signature)
-        periods = await _quarter_periods(hass, controller, now, hours, ids, car_ids, meter, held)
+        periods = await _quarter_periods(hass, controller, now, hours, ids, car_ids, meter, held, zones)
     else:
-        periods = await _hourly_periods(hass, controller, hours, end, ids, car_ids, meter)
+        periods = await _hourly_periods(hass, controller, hours, end, ids, car_ids, meter, zones)
     has_battery = bool(ids.battery_in)
     soc = None
     if has_battery and day == today:
@@ -465,7 +483,8 @@ async def async_day_flow(
         has_solar=bool(ids.solar),
         has_battery=has_battery,
         soc_pct=soc,
-        has_heat=meter.found,
+        has_heat=meter.found or bool(zones.sources),
+        heat_sources=(1 if meter.found else 0) + len(zones.sources),
         step_min=15 if quarters else 60,
         since=since,
     )

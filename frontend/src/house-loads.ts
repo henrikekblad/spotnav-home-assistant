@@ -10,9 +10,19 @@
 //   to the shown meters by their statistic id, so a meter keeps its colour while the same meters are shown; Other is
 //   a neutral grey. Every figure is also in the list beside the pie (name, kWh, %), so colour never carries it alone.
 //
+// * `kind: "heat"` is the same pie behind Heat (where the heat holds more than one source): the heat pump's meter,
+//   each heat zone by its thermostat's name and each meter moved to heat; its centre says Heat.
+// * Where a meter belongs (administrators only): a meter SpotNav could not tie to a load by itself is the house's
+//   until it is moved. Tapping its slice, or its row's button by the keyboard, opens "Belongs to: House (default) /
+//   Heat / Car / Don't count", written with `spotnav/update_site_settings` (`meter_belongs`, compare-and-set on the
+//   mapping last read). A moved meter is marked "changed by you" in the pie it went to, and the meters moved out of
+//   the house pie are listed under it with a button to bring each back.
+// * A meter with hours that cannot be (above what the block used in the hour, or above the main fuse) is counted
+//   without them, and one line per meter says so and where Home Assistant repairs its statistics.
+//
 // Text is written with `textContent` only.
 
-import { getHouseLoads, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { getHouseLoads, SpotnavApiError, UNSUPPORTED_API_VERSION, updateMeterBelongs } from "./api";
 import { createDialog, type DialogHandle } from "./dialog";
 import { dateLabel, formatFixed, formatNumber } from "./format";
 import { HOUSE_LOADS_API_VERSION } from "./house-model";
@@ -45,6 +55,12 @@ export const LOADS_CLASSES = {
   name: "spotnav-house-loads-name",
   value: "spotnav-house-loads-value",
   note: "spotnav-house-loads-note",
+  choose: "spotnav-house-loads-choose",
+  mark: "spotnav-house-loads-mark",
+  menu: "spotnav-house-loads-menu",
+  option: "spotnav-house-loads-option",
+  moved: "spotnav-house-loads-moved",
+  action: "spotnav-house-loads-action",
 } as const;
 
 const L = LOADS_CLASSES;
@@ -123,20 +139,110 @@ export const LOADS_STYLES = `
     margin: 8px 0 0;
     font-size: 0.82rem;
   }
+  .${L.choose} {
+    all: unset;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  .${L.choose}:focus-visible,
+  .${L.option}:focus-visible,
+  .${L.action}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${L.mark} {
+    margin-left: 6px;
+    font-size: 0.75rem;
+    color: var(--secondary-text-color, #727272);
+  }
+  .${L.slice}[data-choosable] {
+    cursor: pointer;
+  }
+  .${L.menu} {
+    margin: 10px 0 0;
+    padding: 8px 10px;
+    border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
+    border-radius: 8px;
+    min-width: 0;
+  }
+  .${L.menu} legend {
+    font-size: 0.85rem;
+    padding: 0 4px;
+  }
+  .${L.menu} div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .${L.option},
+  .${L.action} {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.2));
+    background: transparent;
+    color: var(--primary-text-color, #212121);
+    cursor: pointer;
+  }
+  .${L.option}[aria-pressed="true"] {
+    background: var(--primary-color, #03a9f4);
+    border-color: var(--primary-color, #03a9f4);
+    color: var(--text-primary-color, #ffffff);
+  }
+  .${L.moved} {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.85rem;
+  }
+  .${L.moved} li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 2px 0;
+  }
 `;
 
 // ------------------------------------------------------------------------------------------------ the answer
 
 export type LoadsPeriod = "day" | "month" | "year";
+export type LoadsKind = "house" | "heat";
+/** Where a meter belongs: the house (the default, never stored), the heat, the car, or nowhere. */
+export type Belongs = "house" | "heat" | "car" | "none";
+export const BELONGS: readonly Belongs[] = ["house", "heat", "car", "none"];
 
 export interface HouseLoad {
   statistic_id: string;
   name: string;
   kwh: number;
+  /** An Energy dashboard device (`meter`, whose belonging may be chosen), the heat pump's meter or a heat zone. */
+  source: "meter" | "heat_pump" | "zone";
+  /** The household moved it here (its belonging is not the default). */
+  changed: boolean;
+}
+
+export interface MovedLoad {
+  statistic_id: string;
+  name: string;
+  belongs: Exclude<Belongs, "house">;
+}
+
+export interface ImplausibleLoad {
+  statistic_id: string;
+  name: string;
+  /** The hours not counted. */
+  hours: number;
+  /** No plausible hour was left: the meter is not in the pie. */
+  left_out: boolean;
 }
 
 export interface HouseLoads {
   site_id: string;
+  kind: LoadsKind;
   period: LoadsPeriod;
   date: string;
   end: string;
@@ -146,6 +252,10 @@ export interface HouseLoads {
   other_kwh: number | null;
   over_kwh: number;
   loads: HouseLoad[];
+  moved: MovedLoad[];
+  /** The stored choices, as read (the compare-and-set's `expected`). */
+  belongs: Record<string, Exclude<Belongs, "house">>;
+  implausible: ImplausibleLoad[];
 }
 
 export type HouseLoadsDecode = { ok: true; value: HouseLoads } | { ok: false; failure: "unsupported" | "malformed" };
@@ -178,6 +288,19 @@ function period(value: unknown): LoadsPeriod {
   return value === "day" || value === "month" || value === "year" ? value : bad();
 }
 
+function movedBelongs(value: unknown): Exclude<Belongs, "house"> {
+  return value === "heat" || value === "car" || value === "none" ? value : bad();
+}
+
+function sourceOf(value: unknown): HouseLoad["source"] {
+  return value === undefined || value === "meter" ? "meter" : value === "heat_pump" || value === "zone" ? value : bad();
+}
+
+/** A list a backend before it did not send: empty. */
+function optionalList(value: unknown): unknown[] {
+  return value === undefined ? [] : Array.isArray(value) ? value : bad();
+}
+
 /** The answer, strictly typed; extra keys are allowed (additive fields), a missing or mistyped one is not. */
 export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
   try {
@@ -192,6 +315,7 @@ export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
       ok: true,
       value: {
         site_id: text(source.site_id),
+        kind: source.kind === undefined || source.kind === "house" ? "house" : source.kind === "heat" ? "heat" : bad(),
         period: period(source.period),
         date: day(source.date),
         end: day(source.end),
@@ -202,7 +326,25 @@ export function decodeHouseLoads(raw: unknown): HouseLoadsDecode {
         over_kwh: number(source.over_kwh),
         loads: (source.loads as unknown[]).map((item) => {
           const load = record(item);
-          return { statistic_id: text(load.statistic_id), name: text(load.name), kwh: Math.max(0, number(load.kwh)) };
+          return {
+            statistic_id: text(load.statistic_id),
+            name: text(load.name),
+            kwh: Math.max(0, number(load.kwh)),
+            source: sourceOf(load.source),
+            changed: load.changed === undefined ? false : load.changed === true ? true : load.changed === false ? false : bad(),
+          };
+        }),
+        moved: optionalList(source.moved).map((item) => {
+          const row = record(item);
+          return { statistic_id: text(row.statistic_id), name: text(row.name), belongs: movedBelongs(row.belongs) };
+        }),
+        belongs: Object.fromEntries(
+          Object.entries(source.belongs === undefined ? {} : record(source.belongs)).map(([key, value]) => [key, movedBelongs(value)]),
+        ),
+        implausible: optionalList(source.implausible).map((item) => {
+          const row = record(item);
+          const hours = number(row.hours);
+          return { statistic_id: text(row.statistic_id), name: text(row.name), hours: Math.max(0, Math.round(hours)), left_out: row.left_out === true };
         }),
       },
     };
@@ -233,14 +375,16 @@ export interface PieModel {
 }
 
 /** The pie: the meters at or over `SMALL_SHARE` of the whole (at most `SLOTS`, largest first), then Other with the
- * rest; an empty slice is left out. */
+ * rest; an empty slice is left out. The heat pie shows every source with energy however small (a floor heating loop
+ * is a few per cent of the heat pump), up to `SLOTS`. */
 export function pieModel(language: Language, answer: HouseLoads): PieModel {
   const whole = Math.max(answer.house_kwh ?? 0, answer.meters_kwh);
   const loads = [...answer.loads].sort((a, b) => b.kwh - a.kwh);
   const shown: HouseLoad[] = [];
   const merged: HouseLoad[] = [];
   for (const load of loads) {
-    if (whole > 0 && load.kwh / whole >= SMALL_SHARE && shown.length < SLOTS) {
+    const big = answer.kind === "heat" ? load.kwh > 0 : load.kwh / whole >= SMALL_SHARE;
+    if (whole > 0 && big && shown.length < SLOTS) {
       shown.push(load);
     } else {
       merged.push(load);
@@ -313,7 +457,15 @@ function arc(from: number, to: number): string {
 }
 
 /** The pie as a ring, the house's kWh (`house`) in its middle; `role="img"` with every slice in its label. */
-export function renderPie(doc: Document, language: Language, model: PieModel, house: number): SVGSVGElement {
+export function renderPie(
+  doc: Document,
+  language: Language,
+  model: PieModel,
+  house: number,
+  kind: LoadsKind = "house",
+  onSlice: ((key: string) => void) | null = null,
+  choosable: ReadonlySet<string> = new Set(),
+): SVGSVGElement {
   const root = svg(doc, "svg", { viewBox: `0 0 ${PIE} ${PIE}`, width: PIE, height: PIE, role: "img", class: L.pie });
   root.setAttribute(
     "aria-label",
@@ -337,6 +489,11 @@ export function renderPie(doc: Document, language: Language, model: PieModel, ho
       ring.style.setProperty("stroke-opacity", "0.35");
     } else {
       titled(ring, drawn[0]);
+      if (onSlice !== null && choosable.has(drawn[0].key)) {
+        const key = drawn[0].key;
+        ring.setAttribute("data-choosable", "");
+        ring.addEventListener("click", () => onSlice(key));
+      }
     }
     root.append(ring);
   }
@@ -345,18 +502,25 @@ export function renderPie(doc: Document, language: Language, model: PieModel, ho
     const path = svg(doc, "path", { d: arc(angle, angle + sweep), class: L.slice, "data-key": slice.key });
     path.style.setProperty("fill", slice.colour);
     titled(path, slice);
+    if (onSlice !== null && choosable.has(slice.key)) {
+      // A pointer's way in; the keyboard's is the row's button beside the pie.
+      path.setAttribute("data-choosable", "");
+      path.addEventListener("click", () => onSlice(slice.key));
+    }
     root.append(path);
     angle += sweep;
   }
   const value = svg(doc, "text", { x: PIE / 2, y: PIE / 2 + 2, "text-anchor": "middle", class: L.centre, "aria-hidden": "true" });
   value.textContent = kwhText(language, house);
   const label = svg(doc, "text", { x: PIE / 2, y: PIE / 2 + 17, "text-anchor": "middle", class: L.centreSmall, "aria-hidden": "true" });
-  label.textContent = translate(language, "house.flow.house");
+  label.textContent = translate(language, kind === "heat" ? "house.flow.heat" : "house.flow.house");
   root.append(value, label);
   return root;
 }
 
 export interface LoadsRequest {
+  /** Which block's pie (absent: the house's). */
+  kind?: LoadsKind;
   period: LoadsPeriod;
   /** A day inside the period (`YYYY-MM-DD`); `null` for today's. */
   date: string | null;
@@ -392,8 +556,44 @@ export function periodCaption(language: Language, answer: Pick<HouseLoads, "peri
   return format.format(new Date(Date.UTC(year!, month! - 1, 15, 12)));
 }
 
+/** An administrator's way to move a meter (`null`: the pie without the menu). */
+export interface LoadsControls {
+  /** The meter whose menu is open, or `null`. */
+  chosen: string | null;
+  /** A write is on its way (the options wait). */
+  saving: boolean;
+  /** The last write's refusal, as a sentence key, or `null`. */
+  failure: TranslationKey | null;
+  onChoose(statisticId: string | null): void;
+  onBelong(statisticId: string, belongs: Belongs): void;
+}
+
+const BELONG_WORDS: Record<Belongs, TranslationKey> = {
+  house: "house.loads.belongHouse",
+  heat: "house.loads.belongHeat",
+  car: "house.loads.belongCar",
+  none: "house.loads.belongNone",
+};
+
+const MOVED_WORDS: Record<Exclude<Belongs, "house">, TranslationKey> = {
+  heat: "house.loads.movedHeat",
+  car: "house.loads.movedCar",
+  none: "house.loads.movedNone",
+};
+
+/** Where a meter of this answer belongs now. */
+export function belongsOf(answer: HouseLoads, statisticId: string): Belongs {
+  return answer.belongs[statisticId] ?? "house";
+}
+
 /** The popover's body for one state. */
-export function loadsBody(doc: Document, language: Language, request: LoadsRequest, state: LoadsState): HTMLElement {
+export function loadsBody(
+  doc: Document,
+  language: Language,
+  request: LoadsRequest,
+  state: LoadsState,
+  controls: LoadsControls | null = null,
+): HTMLElement {
   const root = element(doc, "div", L.root);
   root.dataset["part"] = "house-loads";
   const note = (key: TranslationKey, values?: Record<string, string>, line?: string): HTMLElement => {
@@ -417,40 +617,153 @@ export function loadsBody(doc: Document, language: Language, request: LoadsReque
     return root;
   }
   const model = pieModel(language, answer);
+  const heat = answer.kind === "heat";
   root.append(element(doc, "p", L.caption, periodCaption(language, answer, request.running)));
   const figure = element(doc, "div", L.figure);
   const list = element(doc, "ul", L.list);
+  const byKey = new Map(answer.loads.map((load) => [load.statistic_id, load]));
+  // Only an Energy dashboard device the household may move (never the heat pump's meter or a zone).
+  const choosable = new Set(controls === null ? [] : answer.loads.filter((load) => load.source === "meter").map((load) => load.statistic_id));
   for (const slice of model.slices) {
     const row = element(doc, "li", L.row);
     row.dataset["key"] = slice.key;
     const swatch = element(doc, "span", L.swatch);
     swatch.style.setProperty("background", slice.colour);
     swatch.setAttribute("aria-hidden", "true");
-    row.append(
-      swatch,
-      element(doc, "span", L.name, slice.name),
-      element(doc, "span", L.value, `${kwhText(language, slice.kwh)} · ${shareText(language, slice.share)}`),
-    );
+    const load = byKey.get(slice.key);
+    let name: HTMLElement;
+    if (controls !== null && choosable.has(slice.key)) {
+      const button = element(doc, "button", L.choose, slice.name);
+      button.type = "button";
+      button.dataset["choose"] = slice.key;
+      button.setAttribute("aria-expanded", controls.chosen === slice.key ? "true" : "false");
+      button.setAttribute("aria-label", translate(language, "house.loads.chooseFor", { name: slice.name }));
+      button.addEventListener("click", () => controls.onChoose(controls.chosen === slice.key ? null : slice.key));
+      name = element(doc, "span", L.name);
+      name.append(button);
+    } else {
+      name = element(doc, "span", L.name, slice.name);
+    }
+    if (load?.changed === true) {
+      const mark = element(doc, "span", L.mark, translate(language, "house.loads.changed"));
+      mark.dataset["mark"] = "changed";
+      name.append(mark);
+    }
+    row.append(swatch, name, element(doc, "span", L.value, `${kwhText(language, slice.kwh)} · ${shareText(language, slice.share)}`));
     list.append(row);
   }
-  figure.append(renderPie(doc, language, model, answer.house_kwh), list);
+  const onSlice = controls === null ? null : (key: string) => controls.onChoose(controls.chosen === key ? null : key);
+  figure.append(renderPie(doc, language, model, answer.house_kwh, answer.kind, onSlice, choosable), list);
   root.append(figure);
-  if (model.merged.length > 0) {
+  if (controls !== null && controls.chosen !== null) {
+    const chosen = byKey.get(controls.chosen) ?? answer.loads.find((load) => load.statistic_id === controls.chosen);
+    if (chosen !== undefined) {
+      root.append(belongMenu(doc, language, answer, chosen, controls));
+    }
+  }
+  if (controls?.failure != null) {
+    root.append(note(controls.failure, undefined, "write"));
+  }
+  for (const item of answer.implausible) {
     root.append(
-      note("house.loads.otherHolds", { list: model.merged.map((load) => `${load.name} ${kwhText(language, load.kwh)}`).join(", ") }, "merged"),
+      note(
+        item.left_out ? "house.loads.implausibleOut" : "house.loads.implausible",
+        { name: item.name, hours: formatNumber(language, item.hours, 0) },
+        "implausible",
+      ),
     );
+  }
+  if (model.merged.length > 0) {
+    const line = note("house.loads.otherHolds", { list: model.merged.map((load) => `${load.name} ${kwhText(language, load.kwh)}`).join(", ") }, "merged");
+    root.append(line);
+    // A meter too small for a slice may be moved too: its name as a button under the line.
+    const movable = controls === null ? [] : model.merged.filter((load) => choosable.has(load.statistic_id));
+    if (controls !== null && movable.length > 0) {
+      const buttons = element(doc, "p", L.note);
+      buttons.dataset["line"] = "merged-choose";
+      for (const load of movable) {
+        const button = element(doc, "button", L.action, load.name);
+        button.type = "button";
+        button.dataset["choose"] = load.statistic_id;
+        button.setAttribute("aria-expanded", controls.chosen === load.statistic_id ? "true" : "false");
+        button.setAttribute("aria-label", translate(language, "house.loads.chooseFor", { name: load.name }));
+        button.addEventListener("click", () => controls.onChoose(controls.chosen === load.statistic_id ? null : load.statistic_id));
+        buttons.append(button, " ");
+      }
+      root.append(buttons);
+    }
   }
   if (answer.over_kwh > 0) {
     root.append(note("house.loads.over", { kwh: kwhText(language, answer.over_kwh) }, "over"));
   }
-  if (answer.loads.length === 0) {
+  if (answer.loads.length === 0 && !heat) {
     root.append(note("house.loads.none", undefined, "none"));
   }
-  const apart: TranslationKey | null = request.car && request.heat ? "house.loads.carHeat" : request.car ? "house.loads.car" : request.heat ? "house.loads.heat" : null;
+  if (!heat && answer.moved.length > 0) {
+    root.append(movedList(doc, language, answer, controls));
+  }
+  const apart: TranslationKey | null = heat
+    ? null
+    : request.car && request.heat
+      ? "house.loads.carHeat"
+      : request.car
+        ? "house.loads.car"
+        : request.heat
+          ? "house.loads.heat"
+          : null;
   if (apart !== null) {
     root.append(note(apart, undefined, "apart"));
   }
   return root;
+}
+
+/** "Belongs to": the four places, the meter's own pressed; a write disables them until it is answered. */
+function belongMenu(doc: Document, language: Language, answer: HouseLoads, load: HouseLoad, controls: LoadsControls): HTMLElement {
+  const menu = element(doc, "fieldset", L.menu);
+  menu.dataset["part"] = "belongs";
+  menu.dataset["key"] = load.statistic_id;
+  menu.append(element(doc, "legend", undefined, translate(language, "house.loads.belongs", { name: load.name })));
+  const options = element(doc, "div");
+  const current = belongsOf(answer, load.statistic_id);
+  for (const belongs of BELONGS) {
+    const button = element(doc, "button", L.option, translate(language, BELONG_WORDS[belongs]));
+    button.type = "button";
+    button.dataset["belongs"] = belongs;
+    button.setAttribute("aria-pressed", belongs === current ? "true" : "false");
+    button.disabled = controls.saving;
+    button.addEventListener("click", () => {
+      if (belongs === current) {
+        controls.onChoose(null);
+      } else {
+        controls.onBelong(load.statistic_id, belongs);
+      }
+    });
+    options.append(button);
+  }
+  menu.append(options);
+  return menu;
+}
+
+/** The meters moved out of the house pie, each with where it went and (administrators) a way back. */
+function movedList(doc: Document, language: Language, answer: HouseLoads, controls: LoadsControls | null): HTMLElement {
+  const list = element(doc, "ul", `${C.muted} ${L.moved}`);
+  list.dataset["line"] = "moved";
+  for (const item of answer.moved) {
+    const row = element(doc, "li");
+    row.dataset["key"] = item.statistic_id;
+    row.append(element(doc, "span", undefined, translate(language, MOVED_WORDS[item.belongs], { name: item.name })));
+    if (controls !== null) {
+      const back = element(doc, "button", L.action, translate(language, "house.loads.bringBack"));
+      back.type = "button";
+      back.dataset["back"] = item.statistic_id;
+      back.disabled = controls.saving;
+      back.setAttribute("aria-label", translate(language, "house.loads.bringBackNamed", { name: item.name }));
+      back.addEventListener("click", () => controls.onBelong(item.statistic_id, "house"));
+      row.append(back);
+    }
+    list.append(row);
+  }
+  return list;
 }
 
 // ------------------------------------------------------------------------------------------------ the popover
@@ -473,6 +786,9 @@ export class LoadsPopover {
   private state: LoadsState = { kind: "loading" };
   private back: (() => void) | null = null;
   private read = 0;
+  private chosen: string | null = null;
+  private saving = false;
+  private failure: TranslationKey | null = null;
 
   constructor(options: LoadsPopoverOptions) {
     this.options = options;
@@ -510,14 +826,21 @@ export class LoadsPopover {
     this.request = request;
     this.back = back;
     this.state = { kind: "loading" };
-    this.ensure().show({ title: translate(this.options.language(), "house.loads.title"), body: this.body(), opener });
+    this.chosen = null;
+    this.saving = false;
+    this.failure = null;
+    this.ensure().show({ title: this.title(), body: this.body(), opener });
     void this.load();
   }
 
   /** Paint again (a new language); nothing is read. */
   repaint(): void {
     if (this.isOpen()) {
-      this.dialog?.show({ title: translate(this.options.language(), "house.loads.title"), body: this.body() });
+      const focused = this.focusKey();
+      this.dialog?.show({ title: this.title(), body: this.body() });
+      if (focused !== null) {
+        this.dialog?.element.querySelector<HTMLElement>(focused)?.focus();
+      }
     }
   }
 
@@ -528,8 +851,77 @@ export class LoadsPopover {
     this.dialog = null;
   }
 
+  private title(): string {
+    return translate(this.options.language(), this.request?.kind === "heat" ? "house.loads.titleHeat" : "house.loads.title");
+  }
+
+  /** The control focused before a repaint, as a selector, so the keyboard stays where it was. */
+  private focusKey(): string | null {
+    const active = this.options.doc.activeElement as HTMLElement | null;
+    const root = this.dialog?.element;
+    if (active === null || root === undefined || !root.contains(active)) {
+      return null;
+    }
+    for (const key of ["choose", "belongs", "back"]) {
+      const value = active.dataset?.[key];
+      if (value !== undefined) {
+        return `[data-${key}="${CSS.escape(value)}"]`;
+      }
+    }
+    return null;
+  }
+
+  private admin(): boolean {
+    return this.options.hass()?.user?.is_admin === true;
+  }
+
   private body(): HTMLElement {
-    return loadsBody(this.options.doc, this.options.language(), this.request!, this.state);
+    const controls: LoadsControls | null = this.admin()
+      ? {
+          chosen: this.chosen,
+          saving: this.saving,
+          failure: this.failure,
+          onChoose: (statisticId) => {
+            this.chosen = statisticId;
+            this.failure = null;
+            this.repaint();
+            if (statisticId !== null) {
+              this.dialog?.element.querySelector<HTMLElement>(`[data-part="belongs"] [aria-pressed="true"]`)?.focus();
+            }
+          },
+          onBelong: (statisticId, belongs) => void this.write(statisticId, belongs),
+        }
+      : null;
+    return loadsBody(this.options.doc, this.options.language(), this.request!, this.state, controls);
+  }
+
+  /** Move a meter (compare-and-set on the choices last read), then read the pie again. */
+  private async write(statisticId: string, belongs: Belongs): Promise<void> {
+    const hass = this.options.hass();
+    const target = this.options.target();
+    if (hass === null || target === null || this.state.kind !== "ready" || this.saving) {
+      return;
+    }
+    this.saving = true;
+    this.failure = null;
+    this.repaint();
+    let failure: TranslationKey | null = null;
+    try {
+      const answer = (await updateMeterBelongs(hass, target, this.state.answer.belongs, { [statisticId]: belongs })) as { ok?: unknown; error?: unknown } | null;
+      if (answer === null || answer.ok !== true) {
+        failure = answer?.error === "spotnav_conflict" ? "house.loads.writeConflict" : "house.loads.writeFailed";
+      }
+    } catch {
+      failure = "house.loads.writeFailed";
+    }
+    this.saving = false;
+    this.failure = failure;
+    if (failure === null) {
+      this.chosen = null;
+    }
+    this.repaint();
+    // Read again either way: a conflict means the choices changed elsewhere.
+    await this.load();
   }
 
   private async load(): Promise<void> {
@@ -542,7 +934,7 @@ export class LoadsPopover {
     const read = ++this.read;
     let next: LoadsState;
     try {
-      const decoded = decodeHouseLoads(await getHouseLoads(hass, target, request.period, request.date));
+      const decoded = decodeHouseLoads(await getHouseLoads(hass, target, request.period, request.date, request.kind ?? "house"));
       next = decoded.ok
         ? { kind: "ready", answer: decoded.value }
         : { kind: "failed", sentenceKey: decoded.failure === "unsupported" ? "house.loads.unsupported" : "house.loads.failed" };

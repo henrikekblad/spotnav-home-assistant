@@ -136,6 +136,34 @@ def test_month_use_and_cost() -> None:
     assert next(bucket for bucket in answer["buckets"] if bucket["key"] == "2026-11-20")["kwh"] is None
 
 
+def test_the_zones_add_to_the_use_from_the_day_they_came_but_not_to_the_degree_days() -> None:
+    plain = heat_history(month_inputs())
+    # Floor heating counted from 5 November 06:00 local: 0.1 kWh an hour.
+    zones_from = datetime(2026, 11, 5, 5, tzinfo=timezone.utc)
+    zone_hours = {moment: 0.1 for moment in hours(zones_from, datetime(2026, 11, 16, 13, tzinfo=timezone.utc))}
+    with_zones = heat_history(month_inputs(zone_hours=zone_hours))
+    added = sum(zone_hours.values())
+    energy = with_zones["energy"]
+    assert energy["zones_kwh"] == pytest.approx(added, abs=0.01)
+    assert energy["total_kwh"] == pytest.approx(plain["energy"]["total_kwh"] + added, abs=0.01)
+    assert energy["zones_from"] == "2026-11-05"
+    assert energy["cost"] > plain["energy"]["cost"]
+    before = {bucket["key"]: bucket for bucket in plain["buckets"]}
+    for bucket in with_zones["buckets"]:
+        old = before[bucket["key"]]
+        if bucket["key"] < "2026-11-05" or old["kwh"] is None:
+            assert (bucket["kwh"], bucket["zones_kwh"]) == (old["kwh"], None)
+        elif bucket["key"] < "2026-11-16":
+            day_kwh = 1.8 if bucket["key"] == "2026-11-05" else 2.4
+            assert bucket["zones_kwh"] == pytest.approx(day_kwh, abs=0.01)
+            assert bucket["kwh"] == pytest.approx(old["kwh"] + day_kwh, abs=0.01)
+    # Hot water, the degree-day trend and the shadow stay the heat pump's.
+    assert with_zones["degree_days"] == plain["degree_days"]
+    assert energy["hot_water_kwh"] == plain["energy"]["hot_water_kwh"]
+    assert with_zones["shadow"] == plain["shadow"]
+    assert (plain["energy"]["zones_kwh"], plain["energy"]["zones_from"]) == (None, None)
+
+
 def test_degree_days_and_the_trend_across_new_year() -> None:
     answer = heat_history(month_inputs())
     degree = answer["degree_days"]

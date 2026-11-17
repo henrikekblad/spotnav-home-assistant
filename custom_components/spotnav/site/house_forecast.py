@@ -78,7 +78,7 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from functools import partial
 import logging
@@ -357,6 +357,8 @@ class SiteHouseForecast:
         flat_kw: Callable[[], float | None],
         has_battery: Callable[[], bool] = lambda: False,
         heat_setting: Callable[[], str | None] = lambda: None,
+        heat_zones: Callable[[], Sequence[str]] = lambda: (),
+        heat_moved: Callable[[], Sequence[str]] = lambda: (),
     ) -> None:
         self.hass = hass
         self._demand = demand
@@ -369,7 +371,7 @@ class SiteHouseForecast:
         self.history = HouseHistory()
         #: The heat pump's meter and its hours (`site/heat_meter.py`), and the house forecast split into heat and the
         #: rest where it is (`None` without a meter or its hours). Shown and logged only.
-        self.heat = SiteHeatMeter(hass, heat_setting)
+        self.heat = SiteHeatMeter(hass, heat_setting, heat_zones, heat_moved)
         self.heat_split: HeatSplit | None = None
         #: The house figure's forecast (shown, logged), its median (the battery plan's and the expected surplus's)
         #: and, on a site whose house figure is the whole load, the import less the chargers for the import target
@@ -707,7 +709,8 @@ class SiteHouseForecast:
             if await self.heat.async_refresh(now):
                 for kind in (KIND_HEAT, KIND_HOUSE_SPLIT):
                     self.log.drop_unreviewed(kind)
-            heat = dict(self.heat.by_hour) if self.heat.meter.found else {}
+            # The house card's heat: the meter and the chosen zones together (`site/heat_zones.py`).
+            heat = self.heat.combined_by_hour()
             split = None
             if heat:
                 split = await self.hass.async_add_executor_job(

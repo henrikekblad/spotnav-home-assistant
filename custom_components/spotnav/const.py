@@ -130,6 +130,9 @@ CONF_HEAT_METER_ENTITY = "heat_meter_entity"
 #: The heat card's settings (`heat/config.py`): the wanted temperature, home or away, the cooler night, the sensors,
 #: the control paths and the zones. Shadow only: nothing is written to any heating device.
 CONF_HEAT = "heat"
+#: Where an Energy dashboard individual device the house pie cannot tie to a load belongs, as the household chose
+#: (`site/house_loads.py`): `{statistic id: "heat" | "car" | "none"}`; absent is the house.
+CONF_METER_BELONGS = "meter_belongs"
 CONF_MEASUREMENT_MODE = "measurement_mode"
 CONF_CHARGER_ENTRY_IDS = "charger_entry_ids"
 # A charger's place in its site's allocation order, on the charger entry: "first" is served before

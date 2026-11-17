@@ -8,7 +8,8 @@
       "key": "2026-01",
       "kwh": 1815.0,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -17,7 +18,8 @@
       "key": "2026-02",
       "kwh": 1559.16,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -26,7 +28,8 @@
       "key": "2026-03",
       "kwh": 1456.58,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -35,7 +38,8 @@
       "key": "2026-04",
       "kwh": 1066.56,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -44,7 +48,8 @@
       "key": "2026-05",
       "kwh": 655.92,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -53,7 +58,8 @@
       "key": "2026-06",
       "kwh": 288.96,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -62,7 +68,8 @@
       "key": "2026-07",
       "kwh": 75.12,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -71,7 +78,8 @@
       "key": "2026-08",
       "kwh": 141.12,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -80,7 +88,8 @@
       "key": "2026-09",
       "kwh": 459.84,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -89,7 +98,8 @@
       "key": "2026-10",
       "kwh": 833.5,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     },
     {
       "cost": 87640.6,
@@ -98,7 +108,8 @@
       "key": "2026-11",
       "kwh": 598.04,
       "outdoor_c": null,
-      "shadow_value": 6349.5
+      "shadow_value": 6349.5,
+      "zones_kwh": null
     },
     {
       "cost": null,
@@ -107,7 +118,8 @@
       "key": "2026-12",
       "kwh": null,
       "outdoor_c": null,
-      "shadow_value": null
+      "shadow_value": null,
+      "zones_kwh": null
     }
   ],
   "comfort": null,
@@ -122,7 +134,9 @@
     "hours": 7670,
     "priced_hours": 374,
     "split_days": 7,
-    "total_kwh": 8949.8
+    "total_kwh": 8949.8,
+    "zones_from": null,
+    "zones_kwh": null
   },
   "generated_at": "2026-11-16T13:20:00+00:00",
   "immersion": null,

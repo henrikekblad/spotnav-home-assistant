@@ -402,6 +402,7 @@
     "car_hours": 96,
     "date": "2026-11-15",
     "heat_hours": 96,
+    "heat_sources": 1,
     "hours": 96,
     "links": [
       {

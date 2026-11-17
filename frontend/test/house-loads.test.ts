@@ -9,7 +9,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUSE_CARD_ELEMENT, SpotnavHouseCard } from "../src/house-card";
 import { renderFlow } from "../src/house-flow";
-import { decodeHouseLoads, loadsBody, periodCaption, pieModel, SMALL_SHARE, type HouseLoads, type LoadsRequest } from "../src/house-loads";
+import {
+  decodeHouseLoads,
+  loadsBody,
+  LoadsPopover,
+  periodCaption,
+  pieModel,
+  SMALL_SHARE,
+  type HouseLoads,
+  type LoadsControls,
+  type LoadsRequest,
+} from "../src/house-loads";
 import { decodeHouse } from "../src/house-model";
 import { LANGUAGES, translate } from "../src/i18n";
 import { FakeHass } from "./helpers";
@@ -32,7 +42,7 @@ const TODAY: LoadsRequest = { period: "day", date: null, running: true, car: tru
 
 describe("decoding the backend's own answer", () => {
   it("reads every fixture and refuses another version or a mistyped field", () => {
-    for (const name of ["villa_day.json", "meters_over_house.json", "no_devices.json"]) {
+    for (const name of ["villa_day.json", "meters_over_house.json", "no_devices.json", "heat_villa_day.json", "moved_and_implausible_month.json"]) {
       expect(decodeHouseLoads(read("house_loads", name)).ok).toBe(true);
     }
     const raw = read("house_loads", "villa_day.json");
@@ -110,6 +120,140 @@ describe("the pie", () => {
   });
 });
 
+describe("the heat pie, where a meter belongs and meters that jump", () => {
+  const controls = (overrides: Partial<LoadsControls> = {}): LoadsControls => ({
+    chosen: null,
+    saving: false,
+    failure: null,
+    onChoose: vi.fn(),
+    onBelong: vi.fn(),
+    ...overrides,
+  });
+
+  it("decodes an older answer as the house's with nothing moved", () => {
+    const raw = read("house_loads", "villa_day.json");
+    const { kind: _kind, moved: _moved, belongs: _belongs, implausible: _implausible, ...older } = raw;
+    const decoded = decodeHouseLoads({ ...older, loads: (raw["loads"] as Record<string, unknown>[]).map(({ statistic_id, name, kwh }) => ({ statistic_id, name, kwh })) });
+    expect(decoded.ok && decoded.value.kind).toBe("house");
+    expect(decoded.ok && [decoded.value.moved, decoded.value.belongs, decoded.value.implausible]).toEqual([[], {}, []]);
+    expect(decoded.ok && decoded.value.loads[0]!.source).toBe("meter");
+    expect(decodeHouseLoads({ ...raw, kind: "garage" }).ok).toBe(false);
+    expect(decodeHouseLoads({ ...raw, moved: [{ statistic_id: "a", name: "A", belongs: "kitchen" }] }).ok).toBe(false);
+  });
+
+  it("shows the heat pump and each zone by name, Heat in its middle, and no house lines", () => {
+    const body = loadsBody(document, "sv", { ...TODAY, kind: "heat" }, { kind: "ready", answer: loads("heat_villa_day.json") });
+    const names = [...body.querySelectorAll(".spotnav-house-loads-name")].map((name) => name.textContent);
+    expect(names).toEqual([
+      "Elmätare värme (Nibe + panna) Effekt",
+      "Golvvärme tvättstuga",
+      "Golvvärme toalett nedervåning",
+      `Shelly golvvärme hall${translate("sv", "house.loads.changed")}`,
+    ]);
+    expect(body.querySelector(".spotnav-house-loads-centre-small")!.textContent).toBe(translate("sv", "house.flow.heat"));
+    expect(body.querySelector("[data-line='apart']")).toBeNull();
+    expect(body.querySelector("[data-line='none']")).toBeNull();
+    // A household member sees no menu.
+    expect(body.querySelector("button")).toBeNull();
+    // An administrator may move only the dashboard's meter, never the heat pump or a zone.
+    const admin = loadsBody(document, "sv", { ...TODAY, kind: "heat" }, { kind: "ready", answer: loads("heat_villa_day.json") }, controls());
+    expect([...admin.querySelectorAll<HTMLButtonElement>("button[data-choose]")].map((button) => button.dataset["choose"])).toEqual(["sensor.shelly_golv_energy"]);
+  });
+
+  it("offers House (default), Heat, Car and Don't count for a meter, by its slice or its row", () => {
+    const answer = loads("moved_and_implausible_month.json");
+    const onChoose = vi.fn();
+    const closed = loadsBody(document, "en", TODAY, { kind: "ready", answer }, controls({ onChoose }));
+    const row = closed.querySelector<HTMLButtonElement>("button[data-choose='sensor.diskmaskin_energi']")!;
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    row.click();
+    expect(onChoose).toHaveBeenLastCalledWith("sensor.diskmaskin_energi");
+    closed.querySelector<SVGPathElement>("path[data-key='sensor.torktumlare_energi']")!.dispatchEvent(new MouseEvent("click"));
+    expect(onChoose).toHaveBeenLastCalledWith("sensor.torktumlare_energi");
+    const onBelong = vi.fn();
+    const open = loadsBody(document, "en", TODAY, { kind: "ready", answer }, controls({ chosen: "sensor.diskmaskin_energi", onBelong }));
+    const options = [...open.querySelectorAll<HTMLButtonElement>("[data-part='belongs'] button")];
+    expect(options.map((button) => [button.textContent, button.getAttribute("aria-pressed")])).toEqual([
+      [translate("en", "house.loads.belongHouse"), "true"],
+      [translate("en", "house.loads.belongHeat"), "false"],
+      [translate("en", "house.loads.belongCar"), "false"],
+      [translate("en", "house.loads.belongNone"), "false"],
+    ]);
+    options[3]!.click();
+    expect(onBelong).toHaveBeenCalledWith("sensor.diskmaskin_energi", "none");
+    // A meter too small for its own slice is moved from its name under the pie.
+    const small = loadsBody(document, "en", TODAY, { kind: "ready", answer: loads() }, controls());
+    expect([...small.querySelectorAll<HTMLButtonElement>("[data-line='merged-choose'] button")].map((button) => button.textContent)).toEqual(["Frys", "Router"]);
+    const saving = loadsBody(document, "en", TODAY, { kind: "ready", answer }, controls({ chosen: "sensor.diskmaskin_energi", saving: true }));
+    expect([...saving.querySelectorAll<HTMLButtonElement>("[data-part='belongs'] button")].every((button) => button.disabled)).toBe(true);
+  });
+
+  it("lists the meters moved out of the house with a way back, and the jumping meter's line", () => {
+    const answer = loads("moved_and_implausible_month.json");
+    const onBelong = vi.fn();
+    const body = loadsBody(document, "sv", TODAY, { kind: "ready", answer }, controls({ onBelong }));
+    const moved = body.querySelector("[data-line='moved']")!;
+    expect([...moved.querySelectorAll("li > span")].map((item) => item.textContent)).toEqual([
+      translate("sv", "house.loads.movedHeat", { name: "Shelly golvvärme hall" }),
+      translate("sv", "house.loads.movedNone", { name: "UPS" }),
+    ]);
+    moved.querySelector<HTMLButtonElement>("button[data-back='sensor.ups_energy']")!.click();
+    expect(onBelong).toHaveBeenCalledWith("sensor.ups_energy", "house");
+    expect(body.querySelector("[data-line='implausible']")!.textContent).toBe(
+      "NAS: 12 timmar med orimliga värden räknas inte (mätaren hoppar). Rätta statistiken i Home Assistant under Utvecklarverktyg → Statistik.",
+    );
+    // A household member sees the list without the buttons.
+    const member = loadsBody(document, "sv", TODAY, { kind: "ready", answer });
+    expect(member.querySelector("[data-line='moved'] button")).toBeNull();
+    const out = { ...answer, implausible: [{ ...answer.implausible[0]!, left_out: true }] };
+    expect(loadsBody(document, "en", TODAY, { kind: "ready", answer: out }).querySelector("[data-line='implausible']")!.textContent).toBe(
+      translate("en", "house.loads.implausibleOut", { name: "NAS" }),
+    );
+  });
+
+  it("writes an administrator's choice compare-and-set and reads the pie again", async () => {
+    vi.useFakeTimers();
+    try {
+      const hass = new FakeHass();
+      const snapshot = hass.snapshot("s", "en");
+      snapshot.user = { is_admin: true };
+      const owner = document.createElement("div");
+      document.body.append(owner);
+      const popover = new LoadsPopover({
+        doc: document,
+        owner,
+        background: () => null,
+        idPrefix: "t",
+        hass: () => snapshot,
+        target: () => ({ site: "site_villa" }),
+        language: () => "en",
+      });
+      popover.open({ ...TODAY, kind: "house", period: "month", date: "2026-10-01", running: false }, null);
+      await vi.advanceTimersByTimeAsync(0);
+      hass.resolveNext(read("house_loads", "moved_and_implausible_month.json"));
+      await vi.advanceTimersByTimeAsync(0);
+      owner.querySelector<HTMLButtonElement>("button[data-choose='sensor.diskmaskin_energi']")!.click();
+      owner.querySelector<HTMLButtonElement>("[data-part='belongs'] button[data-belongs='heat']")!.click();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(hass.messages.at(-1)).toEqual({
+        type: "spotnav/update_site_settings",
+        api_version: 1,
+        site_id: "site_villa",
+        expected: { meter_belongs: { "sensor.shelly_golv_energy": "heat", "sensor.ups_energy": "none" } },
+        changes: { meter_belongs: { "sensor.diskmaskin_energi": "heat" } },
+      });
+      hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_conflict", site: null, restore: null });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(owner.querySelector("[data-line='write']")!.textContent).toBe(translate("en", "house.loads.writeConflict"));
+      expect(hass.messages.at(-1)).toEqual({ type: "spotnav/get_house_loads", api_version: 1, site_id: "site_villa", period: "month", date: "2026-10-01" });
+      popover.destroy();
+      owner.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("House in the flow", () => {
   const flow = (() => {
     const decoded = decodeHouse(read("house", "villa_battery_sun.json"));
@@ -134,7 +278,23 @@ describe("House in the flow", () => {
     house.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
     house.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(opened).toHaveBeenCalledTimes(3);
-    expect(opened).toHaveBeenCalledWith(house);
+    expect(opened).toHaveBeenCalledWith(house, "house");
+  });
+
+  it("makes Heat a button too only when the heat holds more than one source", () => {
+    const heatFlow = {
+      ...flow,
+      nodes: [...flow.nodes.filter((node) => node.role !== "heat"), { id: "use.heat", side: "use" as const, role: "heat", kwh: 6, soc_pct: null }],
+      links: [...flow.links.filter((link) => link.to !== "use.heat"), { from: "source.grid", to: "use.heat", kwh: 6 }],
+    };
+    const opened = vi.fn();
+    const one = renderFlow(document, "en", { ...heatFlow, heat_sources: 1 }, 340, "t", false, opened)!;
+    expect([...one.querySelectorAll<SVGGElement>("[role='button']")].map((button) => button.dataset["role"])).toEqual(["house"]);
+    const two = renderFlow(document, "en", { ...heatFlow, heat_sources: 3 }, 340, "t", false, opened)!;
+    const heat = two.querySelector<SVGGElement>("[role='button'][data-role='heat']")!;
+    expect(heat.getAttribute("aria-label")).toContain(translate("en", "house.loads.openHeat", { figures: "" }).slice(2));
+    heat.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(opened).toHaveBeenCalledWith(heat, "heat");
   });
 });
 

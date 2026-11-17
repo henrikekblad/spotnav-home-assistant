@@ -385,6 +385,7 @@
     "car_hours": 17,
     "date": "2026-11-12",
     "heat_hours": 0,
+    "heat_sources": 0,
     "hours": 17,
     "links": [
       {

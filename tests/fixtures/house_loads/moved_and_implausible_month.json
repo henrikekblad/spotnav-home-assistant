@@ -1,0 +1,60 @@
+{
+  "api_version": 1,
+  "belongs": {
+    "sensor.shelly_golv_energy": "heat",
+    "sensor.ups_energy": "none"
+  },
+  "date": "2026-10-01",
+  "end": "2026-11-01",
+  "house_kwh": 1030.0,
+  "implausible": [
+    {
+      "hours": 12,
+      "left_out": false,
+      "name": "NAS",
+      "statistic_id": "sensor.smart_energy_switch_electric_consumption_kwh"
+    }
+  ],
+  "kind": "house",
+  "loads": [
+    {
+      "changed": false,
+      "kwh": 44.2,
+      "name": "Torktumlare",
+      "source": "meter",
+      "statistic_id": "sensor.torktumlare_energi"
+    },
+    {
+      "changed": false,
+      "kwh": 31.0,
+      "name": "Diskmaskin",
+      "source": "meter",
+      "statistic_id": "sensor.diskmaskin_energi"
+    },
+    {
+      "changed": false,
+      "kwh": 8.6,
+      "name": "NAS",
+      "source": "meter",
+      "statistic_id": "sensor.smart_energy_switch_electric_consumption_kwh"
+    }
+  ],
+  "meters_kwh": 83.8,
+  "moved": [
+    {
+      "belongs": "heat",
+      "name": "Shelly golvvärme hall",
+      "statistic_id": "sensor.shelly_golv_energy"
+    },
+    {
+      "belongs": "none",
+      "name": "UPS",
+      "statistic_id": "sensor.ups_energy"
+    }
+  ],
+  "other_kwh": 946.2,
+  "over_kwh": 0.0,
+  "period": "month",
+  "site_id": "site_villa",
+  "through": "2026-11-01T00:00:00+00:00"
+}

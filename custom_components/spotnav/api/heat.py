@@ -94,7 +94,8 @@ from ..site.heat_meter import (
 )
 from ..site.house_forecast import to_celsius
 from .common import ERROR_NOT_ADMIN, is_admin, send_unsupported_version
-from .house import async_cached_car_hours, five_slot
+from ..site.heat_zones import async_zone_periods, summed_periods
+from .house import async_cached_car_hours, five_slot, fuse_kw
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -540,6 +541,20 @@ async def read_meter(hass: HomeAssistant, site_id: str, controller: Any, now: da
     last = window_kw[max(window_kw)] if window_kw else None
     day_end = day_start + timedelta(days=1, hours=1)
     split = split_day(window_kw, day_start, day_end) if periods else None
+    zone_periods: dict[datetime, float] | None = None
+    zones = await heat.async_current_zones()
+    if meter.found and zones.sources:
+        try:
+            zone_periods = summed_periods(
+                await _cached(
+                    hass,
+                    (site_id, "zones"),
+                    (zones.signature(), five_slot(now)),
+                    lambda: async_zone_periods(hass, zones, day_start, now, "5minute", fuse_kw(controller)),
+                )
+            )
+        except Exception:  # noqa: BLE001 - without the zones' rows today is the heat pump's alone
+            _LOGGER.debug("SpotNav heat: the heat zones' 5-minute rows could not be read", exc_info=True)
     state = None if meter.entity_id is None else hass.states.get(meter.entity_id)
     return MeterInputs(
         status=meter.status,
@@ -553,6 +568,7 @@ async def read_meter(hass: HomeAssistant, site_id: str, controller: Any, now: da
         levels=found,
         split=split,
         periods={start: kwh for start, kwh in periods.items() if start >= day_start},
+        zone_periods=zone_periods,
     )
 
 

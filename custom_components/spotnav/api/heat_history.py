@@ -4,7 +4,9 @@
 `spotnav/get_house_history` (`api/house_history.py`, which says why a command of its own). Any user who can see the
 card may read. The answer is `heat/history.py:heat_history` (its docstring has the shape).
 
-What is read, in the recorder's executor and kept: the heat pump meter's hourly statistics from the degree-day
+What is read, in the recorder's executor and kept: the heat zones' sensors' hourly statistics over the same span
+(`site/heat_zones.py`: their energy is heat, added to the use; the degree-day trend, hot water and the shadow stay
+the heat pump meter's), the heat pump meter's hourly statistics from the degree-day
 trend's first month (eleven months before the period's last) to the last completed hour, its 5-minute rows where the
 recorder still holds them (the period's days and the week before, for the hot-water split and its runs), the outdoor
 sensor's, the chosen indoor sensors' and the immersion heater's hourly means (and the indoor minimums). The prices
@@ -38,7 +40,10 @@ from ..heat.history import (
 from ..planning.demand_charge import hour_start
 from ..pricing.price_source import site_price_source
 from ..runtime import site_controller_for
+from ..const import CONF_METER_BELONGS
 from ..site.heat_meter import async_heat_hours
+from ..site.heat_zones import async_zone_periods, summed_periods
+from ..site.house_loads import stored_belongs
 from ..site.history_period import (
     PERIOD_DAY,
     PERIOD_MONTH,
@@ -52,7 +57,7 @@ from ..site.history_period import (
 )
 from .common import send_unsupported_version
 from .heat import _name, stored_config
-from .house import five_slot, short_term_days
+from .house import five_slot, fuse_kw, short_term_days
 from .house_history import ERROR_INVALID_DATE, period_price_slots
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
@@ -159,6 +164,8 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
     config = stored_config(site)
     shadow_mark = getattr(getattr(controller, "heat_shadow", None), "effect", None)
     key = (site.entry_id, period.kind, period.first, repr(config), repr(shadow_mark))
+    # A zone moved to or from heat in the house pie changes the figures too.
+    key += (tuple(stored_belongs(site.data, CONF_METER_BELONGS).items()),)
     held = cache.get(key)
     if held is not None and held[0] == mark:
         return held[1]
@@ -183,6 +190,15 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
                     five = await async_heat_hours(hass, meter, five_from, five_to, "5minute")
         except Exception:  # noqa: BLE001 - without the meter's rows the rest is shown
             _LOGGER.debug("SpotNav heat history: the heat meter could not be read", exc_info=True)
+    zone_hours: dict[datetime, float] = {}
+    zones = await controller.house_forecast.heat.async_current_zones()
+    if meter.found and zones.sources:
+        try:
+            zone_hours = summed_periods(
+                await async_zone_periods(hass, zones, read_from, read_to, cap_kw=fuse_kw(controller))
+            )
+        except Exception:  # noqa: BLE001 - without the zones' rows the heat is the heat pump's
+            _LOGGER.debug("SpotNav heat history: the heat zones could not be read", exc_info=True)
     outdoor_from = outdoor_source(config, controller, pump)
     immersion_ids = set()
     if pump is not None and pump.sources.get("immersion_power"):
@@ -240,6 +256,7 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             config=config,
             meter=(meter.entity_id, None if state is None else state.name) if meter.found and meter.entity_id else None,
             heat_hours=heat_hours,
+            zone_hours=zone_hours,
             five=five,
             prices=tuple((slot.start, slot.end, slot.buy) for slot in period_price_slots(hass, site.entry_id, period))
             if heat_hours

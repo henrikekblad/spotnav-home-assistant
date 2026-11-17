@@ -203,6 +203,9 @@ export interface EnergyFlow {
   car_hours: number;
   /** The hours that had the heat pump meter's figure (0 without a heat node or from a backend before heat). */
   heat_hours: number;
+  /** How many sources the heat holds (the heat pump's meter, each heat zone and meter moved to heat; 0 without a heat
+   * node, 1 from a backend before zones): with more than one, Heat opens their pie. */
+  heat_sources: number;
   nodes: FlowNode[];
   links: FlowLink[];
 }
@@ -547,6 +550,7 @@ function energyFlow(value: unknown): EnergyFlow | null {
     step_min: additive(source, "step_min", count, 60),
     car_hours: count(source.car_hours),
     heat_hours: additive(source, "heat_hours", count, 0),
+    heat_sources: additive(source, "heat_sources", count, nodes.some((node) => node.role === "heat") ? 1 : 0),
     nodes,
     // A link to a node the answer does not have is not drawn.
     links: links.filter((link) => ids.has(link.from) && ids.has(link.to)),

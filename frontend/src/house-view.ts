@@ -5,7 +5,7 @@
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
-import { renderFlow } from "./house-flow";
+import { renderFlow, type LoadsKind } from "./house-flow";
 import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { hiddenIn, type HiddenSeries } from "./house-series";
 import { settingsGearButton, testChip } from "./heat-view";
@@ -48,7 +48,7 @@ export interface HouseHandlers {
   /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
   onTest?(open: boolean): void;
   /** House in the energy flow tapped: what the house used (`house-loads.ts`). Without it the block is no button. */
-  onHouseLoads?(opener: HTMLElement): void;
+  onHouseLoads?(opener: HTMLElement, kind: LoadsKind): void;
 }
 
 export interface HouseRenderInput {
@@ -821,7 +821,8 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
   }
   section.append(diagram);
   if (onHouse !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
-    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.loads.tap")));
+    const heat = diagram.querySelector(".spotnav-house-flow-action[data-role='heat']") !== null;
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, heat ? "house.loads.tapHeat" : "house.loads.tap")));
   }
   return section;
 }

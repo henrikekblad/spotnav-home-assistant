@@ -584,13 +584,16 @@ function dayBlock(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | nul
 
 // ------------------------------------------------------------------------------------------------ today and notes
 
-/** "I dag · värme 13,9 kWh · varmvatten 1,7 kWh · 19 kr". */
+/** "I dag · värme 13,9 kWh · varav zoner 0,8 kWh · varmvatten 1,7 kWh · 19 kr": heat holds the zones' own energy. */
 export function todayLine(language: Language, answer: HeatAnswer): string | null {
   const today = answer.today;
   if (today === null) {
     return null;
   }
   const parts = [translate(language, "heat.today.label"), translate(language, "heat.today.heat", { kwh: kwh(language, today.heat_kwh) })];
+  if (today.zones_kwh !== null && today.zones_kwh > 0) {
+    parts.push(translate(language, "heat.today.zones", { kwh: kwh(language, today.zones_kwh) }));
+  }
   if (today.hot_water_kwh !== null) {
     parts.push(translate(language, "heat.today.water", { kwh: kwh(language, today.hot_water_kwh) }));
   }

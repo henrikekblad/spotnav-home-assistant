@@ -702,6 +702,7 @@ export async function getHouseLoads(
   target: { site: string } | { charger: string },
   period: "day" | "month" | "year",
   date: string | null,
+  kind: "house" | "heat" = "house",
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/get_house_loads",
@@ -709,6 +710,28 @@ export async function getHouseLoads(
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     period,
     ...(date === null ? {} : { date }),
+    // Sent only for the heat pie, so the house pie's request is the same to an older integration.
+    ...(kind === "heat" ? { kind } : {}),
+  });
+}
+
+/**
+ * Where meters of the house pie belong (`meter_belongs` through `spotnav/update_site_settings`, administrators only):
+ * `expected` is the mapping last read, `changes` the meters moved (`house` brings one back). Answers the settings'
+ * envelope (`ok`, `error`, `meter_belongs`); a conflict is a value, not an exception.
+ */
+export async function updateMeterBelongs(
+  hass: HomeAssistantLike,
+  target: { site: string } | { charger: string },
+  expected: Record<string, string>,
+  changes: Record<string, "house" | "heat" | "car" | "none">,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_site_settings",
+    api_version: SITE_SETTINGS_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    expected: { meter_belongs: expected },
+    changes: { meter_belongs: changes },
   });
 }
 
