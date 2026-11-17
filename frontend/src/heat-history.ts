@@ -8,7 +8,7 @@
 
 import { clock, formatFixed, formatNumber, type FormatContext } from "./format";
 import { fits, HEAT_HISTORY_API_VERSION, INDOOR_DAY, REVIEW, roomName, type HeatReview, type IndoorDay } from "./heat-model";
-import { indoorChart, setpointOf } from "./heat-indoor";
+import { dayChart, hoursOf } from "./heat-day-chart";
 import { bucketWords, isoDay, periodKind } from "./house-history";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -512,16 +512,40 @@ function shadowSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElemen
   return block;
 }
 
-/** The day's review: the relay's real lowering and SpotNav's plan, money and the coldest room, side by side. */
-/** A day's rooms over the day beside SpotNav's setpoint and the comfort band; `null` without the curve. */
-function indoorSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
+/**
+ * A day's chart (`heat-day-chart.ts`): the rooms over the day, SpotNav's setpoint and planned lowering, the comfort
+ * band and the hot-water runs on one time axis; `null` without the curve.
+ */
+function daySection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
   const day = answer.indoor_day;
   if (day === null) {
     return null;
   }
-  const context: FormatContext = { language: input.language, timeZone: answer.time_zone, unit: "kWh", currency: null, majorUnit: null };
-  return indoorChart(input.doc, input.language, context, day, setpointOf(day), input.width, null);
+  const { doc, language } = input;
+  const ctx: FormatContext = { language, timeZone: answer.time_zone, unit: "kWh", currency: null, majorUnit: null };
+  const chart = dayChart({
+    doc,
+    language,
+    ctx,
+    startMs: Date.parse(day.start),
+    endMs: Date.parse(day.end),
+    day,
+    low_c: day.low_c,
+    high_c: day.high_c,
+    hours: hoursOf(day),
+    water: answer.runs.map((run) => ({ startMs: Date.parse(run.start), endMs: Date.parse(run.end) })),
+    width: input.width,
+    nowMs: null,
+  });
+  if (chart === null) {
+    return null;
+  }
+  const block = section(doc, translate(language, "heat.band.title"), "indoor");
+  block.append(chart);
+  return block;
 }
+
+/** The day's review: the relay's real lowering and SpotNav's plan, money and the coldest room, side by side. */
 
 function reviewSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
   const review = answer.review;
@@ -615,7 +639,7 @@ export function heatHistoryBody(input: HeatHistoryInput): HTMLElement {
     // By default the bars, the use and what it cost; the rest with Detailed.
     heatBars(input, shownAnswer),
     useSection(input, shownAnswer),
-    indoorSection(input, shownAnswer),
+    daySection(input, shownAnswer),
     ui.detailed ? degreeSection(input, shownAnswer) : null,
     ui.detailed ? comfortSection(input, shownAnswer) : null,
     ui.detailed ? shadowSection(input, shownAnswer) : null,

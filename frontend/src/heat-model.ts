@@ -435,7 +435,7 @@ export interface HeatAnswer {
     guard: string | null;
   };
   band: { date: string; hours: HeatBandHour[]; hot_water_pick: string | null };
-  /** The day's measured indoor curve up to now (`heat-indoor.ts`); `null` without indoor sensors. */
+  /** The day's measured indoor curve up to now (`heat-day-chart.ts`); `null` without indoor sensors. */
   indoor_day: IndoorDay | null;
   notes: { code: string; params: Record<string, unknown> }[];
   choices: {

@@ -1,6 +1,7 @@
 // The heat card's own classes and styles, on top of the charging card's (`visual-styles.ts`) and the house card's
-// (`house-styles.ts`: the header, the chip, the lines and notes), which the heat card loads too. The band's actions
-// have a colour each, as custom properties a theme may set; each keeps 3:1 against a light and a dark card.
+// (`house-styles.ts`: the header, the chip, the lines and notes), which the heat card loads too. The day chart's
+// colours are custom properties a theme may set (`--spotnav-heat-lower-colour`, `--spotnav-heat-relay-colour`,
+// `--spotnav-heat-water-colour`, `--spotnav-heat-indoor-colour`), each with its own fallback.
 
 export const HEAT_CLASSES = {
   card: "spotnav-heat",
@@ -20,15 +21,19 @@ export const HEAT_CLASSES = {
   awayLine: "spotnav-heat-away-line",
   status: "spotnav-heat-status",
   shadow: "spotnav-heat-shadow",
-  band: "spotnav-heat-band",
-  bandCell: "spotnav-heat-band-cell",
-  bandReadout: "spotnav-heat-band-readout",
-  bandMark: "spotnav-heat-band-mark",
-  bandRelay: "spotnav-heat-band-relay",
-  bandAxis: "spotnav-heat-band-axis",
-  bandNow: "spotnav-heat-band-now",
-  indoor: "spotnav-heat-indoor",
-  indoorHeading: "spotnav-heat-indoor-heading",
+  daySection: "spotnav-heat-day-section",
+  dayToggle: "spotnav-heat-day-toggle",
+  dayTitle: "spotnav-heat-day-title",
+  daySurface: "spotnav-heat-day-surface",
+  day: "spotnav-heat-day",
+  dayReadout: "spotnav-heat-day-readout",
+  dayColumn: "spotnav-heat-day-column",
+  dayMark: "spotnav-heat-day-mark",
+  dayAxis: "spotnav-heat-day-axis",
+  dayBaseline: "spotnav-heat-day-baseline",
+  dayNow: "spotnav-heat-day-now",
+  dayCross: "spotnav-heat-day-cross",
+  dayDot: "spotnav-heat-day-dot",
   indoorComfort: "spotnav-heat-indoor-comfort",
   indoorEdge: "spotnav-heat-indoor-edge",
   indoorSetpoint: "spotnav-heat-indoor-setpoint",
@@ -46,16 +51,6 @@ const X = HEAT_CLASSES;
 export const HEAT_STYLES = `
   .${X.card} {
     --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
-    --spotnav-heat-lower: var(--spotnav-heat-lower-colour, #2f80c8);
-    --spotnav-heat-preheat: var(--spotnav-heat-preheat-colour, var(--spotnav-heat-colour));
-    --spotnav-heat-night: var(--spotnav-heat-night-colour, #7b61d1);
-    --spotnav-heat-away: var(--spotnav-heat-away-colour, #8a8f98);
-    --spotnav-heat-return: var(--spotnav-heat-return-colour, #e8890c);
-    --spotnav-heat-normal: color-mix(in srgb, var(--secondary-text-color, #727272) 22%, transparent);
-    --spotnav-heat-water: var(--spotnav-heat-water-colour, #1e88e5);
-    --spotnav-heat-car: var(--spotnav-flow-car-colour, #f08c3a);
-    /* The relay that really lowers the heat now (the blueprint or anyone): teal, apart from the plan's blue. */
-    --spotnav-heat-relay: var(--spotnav-heat-relay-colour, #14808f);
   }
   .${X.settingsButton} {
     flex: none;
@@ -200,47 +195,78 @@ export const HEAT_STYLES = `
     margin: 2px 0 0;
     font-size: 0.78rem;
   }
-  .${X.band} {
+  /* The day's chart (\`heat-day-chart.ts\`): one time axis for the rooms (the heat colour), the comfort band (a faint
+     green), the setpoint (dashed, the text's colour), the lowered hours as columns (SpotNav's plan light, what it did
+     solid, the relay as anyone else closed it teal), hot water as droplets on the axis and the car as a bar under it.
+     It is drawn in the history dialog too, so each colour carries its own fallback. */
+  .${X.daySection} { margin-top: 10px; }
+  .${X.dayToggle} {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--secondary-text-color, #727272);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .${X.dayToggle}:focus-visible,
+  .${X.daySurface}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+  .${X.dayTitle} { margin: 0; }
+  .${X.daySurface} {
+    touch-action: pan-y;
+    cursor: crosshair;
+    border-radius: 4px;
+  }
+  .${X.day} {
     display: block;
     width: 100%;
-    margin-top: 10px;
+    margin-top: 2px;
     overflow: visible;
   }
-  .${X.bandCell}[data-action="lower"] { fill: var(--spotnav-heat-lower); }
-  .${X.bandCell}[data-action="preheat"] { fill: var(--spotnav-heat-preheat); }
-  .${X.bandCell}[data-action="night"] { fill: var(--spotnav-heat-night); }
-  .${X.bandCell}[data-action="away"] { fill: var(--spotnav-heat-away); }
-  .${X.bandCell}[data-action="return"] { fill: var(--spotnav-heat-return); }
-  /* An ordinary hour: faint, with a thin outline so the band's hours still show on the card. */
-  .${X.bandCell}[data-action="normal"] { fill: var(--spotnav-heat-normal); stroke: var(--divider-color, #e0e0e0); stroke-width: 1; }
-  .${X.bandCell} { cursor: pointer; }
-  .${X.bandReadout} { margin: 2px 0 0; font-size: 0.85rem; }
-  .${X.bandReadout}:empty { display: none; }
-  .${X.bandCell}[data-past="true"] { opacity: 0.45; }
-  .${X.bandMark}[data-mark="hot_water"] { fill: var(--spotnav-heat-water); }
-  .${X.bandMark}[data-mark="car"] { fill: var(--spotnav-heat-car); }
-  /* What the relay did (solid) and is expected to do (outlined), under SpotNav's plan. */
-  .${X.bandRelay}[data-mark="relay"] { fill: var(--spotnav-heat-relay); }
-  .${X.bandRelay}[data-mark="relay_expected"] { fill: none; stroke: var(--spotnav-heat-relay); stroke-width: 1.5; }
-  .${X.bandRelay}[data-mark="executed"] { fill: var(--spotnav-heat-lower); }
-  .${X.bandAxis} {
+  /* Two lines kept for the readout, so nothing below moves when a time is chosen. */
+  .${X.dayReadout} { margin: 2px 0 0; min-height: 2.6em; font-size: 0.85rem; overflow-wrap: break-word; }
+  .${X.dayColumn}[data-mark="planned"] { fill: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 18%, transparent); }
+  .${X.dayColumn}[data-mark="executed"] { fill: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 38%, transparent); }
+  .${X.dayColumn}[data-mark="relay"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
+  .${X.dayColumn}[data-mark="relay_expected"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
+  .${X.dayMark}[data-mark="hot_water"] {
+    fill: var(--spotnav-heat-water-colour, #1e88e5);
+    stroke: var(--card-background-color, #fff);
+    stroke-width: 1.5;
+  }
+  .${X.dayMark}[data-mark="car"] { fill: var(--spotnav-flow-car-colour, #f08c3a); }
+  .${X.dayAxis} {
     fill: var(--secondary-text-color, #727272);
     font-size: 10px;
   }
-  .${X.bandNow} {
+  .${X.dayBaseline} {
+    stroke: var(--divider-color, #e0e0e0);
+    stroke-width: 1;
+  }
+  .${X.dayNow} {
     stroke: var(--primary-text-color, #212121);
     stroke-width: 1.5;
   }
-  /* The indoor curve (\`heat-indoor.ts\`): the rooms in the heat colour, the comfort band a faint green, the setpoint
-     dashed in the text's colour. It is drawn in the history dialog too, outside the card's element, so each colour
-     carries its own fallback rather than the card's custom properties. */
-  .${X.indoorHeading} { margin: 10px 0 0; font-size: 0.85rem; }
-  .${X.indoor} {
-    display: block;
-    width: 100%;
-    margin-top: 4px;
-    overflow: visible;
+  .${X.dayCross} {
+    stroke: var(--secondary-text-color, #727272);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
   }
+  .${X.dayDot} {
+    fill: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b));
+    stroke: var(--card-background-color, #fff);
+    stroke-width: 2;
+  }
+  .${X.dayDot}[data-line="coldest"] { opacity: 0.7; }
   .${X.indoorComfort} { fill: color-mix(in srgb, var(--success-color, #43a047) 18%, transparent); }
   .${X.indoorEdge} { text-anchor: end; }
   .${X.indoorSetpoint} {
@@ -279,16 +305,12 @@ export const HEAT_STYLES = `
     height: 10px;
     border-radius: 2px;
   }
-  .${X.swatch}[data-action="lower"] { background: var(--spotnav-heat-lower); }
-  .${X.swatch}[data-action="preheat"] { background: var(--spotnav-heat-preheat); }
-  .${X.swatch}[data-action="night"] { background: var(--spotnav-heat-night); }
-  .${X.swatch}[data-action="away"] { background: var(--spotnav-heat-away); }
-  .${X.swatch}[data-action="return"] { background: var(--spotnav-heat-return); }
-  .${X.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water); border-radius: 50%; }
-  .${X.swatch}[data-action="car"] { background: var(--spotnav-heat-car); }
-  .${X.swatch}[data-action="relay"] { background: var(--spotnav-heat-relay); height: 6px; }
-  .${X.swatch}[data-action="relay_expected"] { border: 1.5px solid var(--spotnav-heat-relay); height: 6px; box-sizing: border-box; }
-  .${X.swatch}[data-action="executed"] { background: var(--spotnav-heat-lower); height: 6px; }
+  .${X.swatch}[data-action="hot_water"] { background: var(--spotnav-heat-water-colour, #1e88e5); border-radius: 50% 0 50% 50%; transform: rotate(-45deg) scale(0.85); }
+  .${X.swatch}[data-action="car"] { background: var(--spotnav-flow-car-colour, #f08c3a); height: 4px; }
+  .${X.swatch}[data-action="relay"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
+  .${X.swatch}[data-action="relay_expected"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
+  .${X.swatch}[data-action="executed"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 38%, transparent); }
+  .${X.swatch}[data-action="planned"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 18%, transparent); }
   .${X.swatch}[data-action="indoor_mean"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 3px; }
   .${X.swatch}[data-action="indoor_coldest"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 2px; opacity: 0.55; }
   .${X.swatch}[data-action="setpoint"] { border-top: 2px dashed var(--primary-text-color, #212121); height: 0; border-radius: 0; opacity: 0.75; }
@@ -315,7 +337,7 @@ export const HEAT_STYLES = `
   }
   @media (forced-colors: active) {
     .${X.indoorLine}, .${X.indoorSetpoint} { stroke: CanvasText; }
-    .${X.bandCell}, .${X.bandMark}, .${X.bandRelay}, .${X.dialValue}, .${X.swatch} {
+    .${X.dayColumn}, .${X.dayMark}, .${X.dayDot}, .${X.dialValue}, .${X.swatch} {
       fill: CanvasText;
       stroke: CanvasText;
       background: CanvasText;
