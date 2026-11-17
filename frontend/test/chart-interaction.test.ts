@@ -6,7 +6,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { nearestMark, walkMarks, type ChartMark, type ChartPoint } from "../src/chart";
+import { markAtX, walkMarks, type ChartMark, type ChartPoint } from "../src/chart";
 import {
   createChartInteraction,
   nearestIntervalTo,
@@ -52,10 +52,17 @@ function pointer(
   clientX: number,
   clientY: number,
   target: EventTarget,
+  pointerType = "touch",
 ): PointerEvent {
-  const event = new PointerEvent(type, { clientX, clientY, bubbles: true, cancelable: true, pointerId: 1 });
+  const event = new PointerEvent(type, { clientX, clientY, bubbles: true, cancelable: true, pointerId: 1, pointerType });
   target.dispatchEvent(event);
   return event;
+}
+
+/** A touch tap: a press lifted where it landed. */
+function tap(clientX: number, clientY: number, target: EventTarget): void {
+  pointer("pointerdown", clientX, clientY, target);
+  pointer("pointerup", clientX, clientY, target);
 }
 
 function keyboard(key: string, target: EventTarget, shiftKey = false): KeyboardEvent {
@@ -135,37 +142,78 @@ function at(target: { x: number; y: number }): ChartPoint {
 }
 
 describe("pointer and touch", () => {
-  it("selects the nearest visible ink on a press, and reports it once", () => {
+  it("selects the interval under a tap, and reports it once", () => {
     const h = harness();
     const target = h.drawn.targets[1];
     expect(target).toBeDefined();
     if (target === undefined) {
       return;
     }
+    // A press alone is not yet a tap: it may still become a scroll.
     pointer("pointerdown", target.x, target.y, h.host);
+    expect(h.selections).toHaveLength(0);
+    pointer("pointerup", target.x, target.y, h.host);
     expect(h.interaction.selection()?.startMs).toBe(target.mark.startMs);
     expect(h.selections).toHaveLength(1);
     expect(h.selections[0]?.startMs).toBe(target.mark.startMs);
   });
 
-  it("leaves the selection alone when the press lands in empty space", () => {
+  it("selects by x alone, anywhere in the plot's height", () => {
+    const h = harness();
+    const target = h.drawn.targets[5];
+    if (target === undefined) {
+      return;
+    }
+    const { top, bottom } = h.drawn.scale;
+    tap(target.x, top + 1, h.host);
+    expect(h.interaction.selection()?.startMs).toBe(target.mark.startMs);
+    tap(target.x, bottom - 1, h.host);
+    expect(h.interaction.selection()?.startMs).toBe(target.mark.startMs);
+    expect(h.selections).toHaveLength(1);
+  });
+
+  it("leaves the selection alone when the tap lands outside the plot", () => {
     const h = harness();
     const target = h.drawn.targets[0];
     if (target === undefined) {
       return;
     }
-    pointer("pointerdown", target.x, target.y, h.host);
+    tap(target.x, target.y, h.host);
     const before = h.selections.length;
-    pointer("pointerdown", 10, 140, h.host);
+    tap(target.x, h.drawn.scale.height + 10, h.host);
     expect(h.interaction.selection()?.startMs).toBe(target.mark.startMs);
     expect(h.selections).toHaveLength(before);
   });
 
-  it("walks marks continuously during a horizontal drag and captures the pointer", () => {
-    // A flat series, so a horizontal drag is unambiguously horizontal: on a steep series the accepted
-    // rule (`nearestMark`, which is two-dimensional) needs the finger to trace the series itself,
-    // and a mostly-vertical movement is exactly the scroll gesture this controller must not consume.
-    const h = harness(quarterModel(() => ({}), [100, 100.2, 100.1, 100.05]));
+  it("follows a mouse's x at the top and the bottom of the plot alike, and shows the click again on leaving", () => {
+    const h = harness();
+    const clicked = h.drawn.targets[2];
+    const hovered = h.drawn.targets[9];
+    if (clicked === undefined || hovered === undefined) {
+      return;
+    }
+    const { top, bottom } = h.drawn.scale;
+    pointer("pointerdown", clicked.x, bottom - 1, h.host, "mouse");
+    pointer("pointerup", clicked.x, bottom - 1, h.host, "mouse");
+    expect(h.interaction.selection()?.startMs).toBe(clicked.mark.startMs);
+    pointer("pointermove", hovered.x, top + 1, h.host, "mouse");
+    const atTop = h.interaction.selection()?.startMs;
+    pointer("pointermove", hovered.x, bottom - 1, h.host, "mouse");
+    expect(h.interaction.selection()?.startMs).toBe(atTop);
+    expect(atTop).toBe(hovered.mark.startMs);
+    // Over the readout under the chart the hover is over; leaving the chart shows the click again.
+    pointer("pointermove", hovered.x, h.drawn.scale.height + 10, h.host, "mouse");
+    expect(h.interaction.selection()?.startMs).toBe(clicked.mark.startMs);
+    pointer("pointermove", hovered.x, top + 1, h.host, "mouse");
+    h.host.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse", pointerId: 1 }));
+    expect(h.interaction.selection()?.startMs).toBe(clicked.mark.startMs);
+    // A hover is never a gesture: nothing is captured.
+    expect(h.captures).toBe(0);
+  });
+
+  it("walks marks by x during a horizontal drag and captures the pointer", () => {
+    // A steep series: the drag follows the finger's x, never the nearest ink in two dimensions.
+    const h = harness(quarterModel(() => ({}), [100, 300, 50, 250]));
     const first = h.drawn.targets[0];
     const later = h.drawn.targets[2];
     if (first === undefined || later === undefined) {
@@ -173,12 +221,12 @@ describe("pointer and touch", () => {
     }
     pointer("pointerdown", first.x, first.y, h.host);
     const before = h.selections.length;
-    // A drag stays at the finger's own y: an early vertical move is a scroll, not a walk.
     const along = { x: later.x, y: first.y };
-    pointer("pointermove", along.x, along.y, h.host);
+    const event = pointer("pointermove", along.x, along.y, h.host);
+    expect(event.defaultPrevented).toBe(true);
     expect(h.captures).toBe(1);
-    const expected = nearestMark(h.drawn.targets, at(along));
-    expect(h.interaction.selection()?.startMs).toBe(expected?.startMs ?? -1);
+    expect(h.interaction.selection()?.startMs).toBe(later.mark.startMs);
+    expect(markAtX(h.drawn.targets, at(along))?.startMs).toBe(later.mark.startMs);
     expect(h.selections).toHaveLength(before + 1);
     const third = h.drawn.targets[3];
     if (third === undefined) {
@@ -187,8 +235,9 @@ describe("pointer and touch", () => {
     pointer("pointermove", third.x, first.y, h.host);
     // The walk keeps following the finger, one mark at a time, in chronological order.
     expect(h.selections).toHaveLength(before + 2);
-    expect(h.interaction.selection()?.startMs).toBe(nearestMark(h.drawn.targets, at(third))?.startMs ?? -1);
-    expect(h.interaction.selection()?.startMs).toBeGreaterThan(expected?.startMs ?? 0);
+    expect(h.interaction.selection()?.startMs).toBe(third.mark.startMs);
+    pointer("pointerup", third.x, first.y, h.host);
+    expect(h.interaction.selection()?.startMs).toBe(third.mark.startMs);
   });
 
   it("lets a vertical gesture scroll instead of selecting, and does not consume it", () => {
@@ -206,6 +255,9 @@ describe("pointer and touch", () => {
     // The gesture is abandoned: a later sideways move does not resurrect it.
     const after = pointer("pointermove", first.x + 120, first.y + 60, h.host);
     expect(after.defaultPrevented).toBe(false);
+    expect(h.selections).toHaveLength(before);
+    // Nor is a scroll a tap when it lifts.
+    pointer("pointerup", first.x + 120, first.y + 60, h.host);
     expect(h.selections).toHaveLength(before);
   });
 
@@ -233,7 +285,7 @@ describe("pointer and touch", () => {
     if (target === undefined) {
       return;
     }
-    pointer("pointerdown", target.x, target.y, h.host);
+    tap(target.x, target.y, h.host);
     pointer("pointerdown", 5, 5, h.readout);
     expect(h.interaction.selection()).not.toBeNull();
     pointer("pointerdown", 5, 5, h.drawn.element);
@@ -481,7 +533,7 @@ describe("two instances are isolated", () => {
     if (target === undefined) {
       return;
     }
-    pointer("pointerdown", target.x, target.y, first.host);
+    tap(target.x, target.y, first.host);
     expect(first.interaction.selection()).not.toBeNull();
     expect(second.interaction.selection()).toBeNull();
     expect(first.interaction.size()).toEqual({ width: 320, height: 150 });
@@ -491,7 +543,7 @@ describe("two instances are isolated", () => {
     // The survivor keeps working: its listeners were never the other one's.
     keyboard("ArrowRight", second.viewport);
     expect(second.interaction.selection()).not.toBeNull();
-    pointer("pointerdown", target.x, target.y, first.host);
+    tap(target.x, target.y, first.host);
     expect(first.selections).toHaveLength(1);
   });
 
@@ -503,7 +555,7 @@ describe("two instances are isolated", () => {
     const second = harness();
     const target = second.drawn.targets[0];
     if (target !== undefined) {
-      pointer("pointerdown", target.x, target.y, second.host);
+      tap(target.x, target.y, second.host);
     }
     second.interaction.destroy();
     const outsideAdds = added.mock.calls.filter((call) => call[0] === "pointerdown");
@@ -514,7 +566,7 @@ describe("two instances are isolated", () => {
 
     const selections = second.selections.length;
     if (target !== undefined) {
-      pointer("pointerdown", target.x, target.y, second.host);
+      tap(target.x, target.y, second.host);
     }
     keyboard("ArrowRight", second.viewport);
     pointer("pointerdown", 5, 5, doc.body);

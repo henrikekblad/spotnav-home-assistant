@@ -10,12 +10,11 @@ import {
   currentMarkFor,
   gutterLabels,
   hitTargets,
-  hitTestMarks,
   intervalIdentity,
   localMidnightAt,
   localDayLengthMs,
   markGeometry,
-  nearestMark,
+  markAtX,
   nextIntervalBoundary,
   plannedBands,
   walkMarks,
@@ -337,9 +336,11 @@ describe("marks, hit testing and shading", () => {
     if (target === undefined) {
       return;
     }
-    expect(hitTestMarks(targets, { x: target.x, y: target.y })).toBe(target.mark);
-    expect(hitTestMarks(targets, { x: target.x, y: target.y + 500 })).toBeNull();
-    expect(nearestMark(targets, { x: target.x, y: target.y })).toBe(target.mark);
+    expect(markAtX(targets, { x: target.x, y: target.y })).toBe(target.mark);
+    // By x alone: far above or below the ink is the same interval.
+    expect(markAtX(targets, { x: target.x, y: target.y + 500 })).toBe(target.mark);
+    expect(markAtX(targets, { x: target.x, y: -500 })).toBe(target.mark);
+    expect(markAtX([], { x: target.x, y: target.y })).toBeNull();
   });
 
   it("walks intervals chronologically and stops at the edges", () => {
@@ -384,16 +385,16 @@ describe("marks, hit testing and shading", () => {
     const targets = hitTargets(series, scale, null);
     const [todayTarget, tomorrowTarget] = targets as ChartHitTarget[];
     expect(todayTarget?.x).toBeCloseTo(tomorrowTarget?.x as number, 12);
-    // A press on tomorrow's own ink selects tomorrow and reports its date and price...
-    const atTomorrow = hitTestMarks(targets, {
+    // Where two records share an x, the y tells them apart: a pointer on tomorrow's ink selects tomorrow...
+    const atTomorrow = markAtX(targets, {
       x: tomorrowTarget?.x as number,
       y: tomorrowTarget?.y as number,
     });
     expect(atTomorrow).toBe(tomorrowTarget?.mark);
     expect(atTomorrow?.dayKey).toBe("2026-09-23");
-    expect(nearestMark(targets, { x: tomorrowTarget?.x as number, y: tomorrowTarget?.y as number })?.price).toBe(90);
-    // ...and a press on today's selects today, with the earlier instant winning only an exact tie.
-    const atToday = hitTestMarks(targets, { x: todayTarget?.x as number, y: todayTarget?.y as number });
+    expect(atTomorrow?.price).toBe(90);
+    // ...and one on today's selects today, with the earlier instant winning only an exact tie.
+    const atToday = markAtX(targets, { x: todayTarget?.x as number, y: todayTarget?.y as number });
     expect(atToday).toBe(todayTarget?.mark);
     expect(atToday?.dayKey).toBe(SEPT);
     expect(atToday?.price).toBe(10);
