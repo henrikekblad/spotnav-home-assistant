@@ -15,6 +15,8 @@
      status: {pump_state, pump_state_source, kw, would: {action, target_c, until, reason} | null, guard},
      band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car, relay_min, relay_expected,
                            executed_min}], hot_water_pick} | null,
+     indoor_day: the day's measured indoor curve up to now (`heat/indoor_day.py`, 15-minute steps, `setpoint` null:
+                 the band's `target_c` is the setpoint) | null,
      notes: [{code, params}],
      choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter} | null (administrators only),
      relay: {entity_id, name, closed, since, source, automation: {entity_id, name} | null,
@@ -61,7 +63,7 @@ from .shadow_rule import ACTION_LOWER, ACTION_NORMAL, ACTION_PREHEAT, BandHour, 
 HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
-    "zones", "pump", "meter", "today", "status", "band", "notes", "choices", "relay", "review", "control",
+    "zones", "pump", "meter", "today", "status", "band", "indoor_day", "notes", "choices", "relay", "review", "control",
 )
 BAND_HOUR_KEYS: Final = (
     "start", "action", "target_c", "reason", "price", "past", "hot_water", "car", "relay_min", "relay_expected",
@@ -164,6 +166,8 @@ class HeatViewInputs:
     #: The heat control's status (`HeatControl.status`) and the minutes it held the relay closed per hour.
     control: Mapping[str, Any] | None = None
     executed: Mapping[datetime, int] = field(default_factory=dict)
+    #: The day's indoor curve (`heat/indoor_day.indoor_day`), `None` without indoor sensors.
+    indoor_day: Mapping[str, Any] | None = None
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -401,6 +405,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
             "guard": guard,
         },
         "band": band_block,
+        "indoor_day": None if inputs.indoor_day is None else dict(inputs.indoor_day),
         "notes": notes(
             inputs.pump,
             inputs.other_controllers,

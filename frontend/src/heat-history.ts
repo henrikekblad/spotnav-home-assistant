@@ -7,7 +7,8 @@
 // the backend's; text is written with `textContent` only.
 
 import { clock, formatFixed, formatNumber, type FormatContext } from "./format";
-import { fits, HEAT_HISTORY_API_VERSION, REVIEW, roomName, type HeatReview } from "./heat-model";
+import { fits, HEAT_HISTORY_API_VERSION, INDOOR_DAY, REVIEW, roomName, type HeatReview, type IndoorDay } from "./heat-model";
+import { indoorChart, setpointOf } from "./heat-indoor";
 import { bucketWords, isoDay, periodKind } from "./house-history";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -91,6 +92,9 @@ export interface HeatHistory {
   runs: HeatRun[];
   /** The day's review (a day only): the relay's real lowering beside SpotNav's plan. */
   review: HeatReview | null;
+  /** A day's indoor curve by the hour with SpotNav's setpoint per hour; `null` for a month or a year and without
+   * indoor sensors. */
+  indoor_day: IndoorDay | null;
 }
 
 export type HeatHistoryDecode = { ok: true; value: HeatHistory } | { ok: false; failure: "unsupported" | "malformed" };
@@ -225,6 +229,7 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
         })),
         immersion: nullable(source.immersion, (item) => ({ hours: count(item.hours), kwh: number(item.kwh) })),
         review: source.review === null ? null : fits(source.review, REVIEW) ? (source.review as HeatReview) : bad(),
+        indoor_day: source.indoor_day === null ? null : fits(source.indoor_day, INDOOR_DAY) ? (source.indoor_day as IndoorDay) : bad(),
         runs: list(source.runs).map((raw): HeatRun => {
           const item = record(raw);
           const cause = item.cause;
@@ -508,6 +513,16 @@ function shadowSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElemen
 }
 
 /** The day's review: the relay's real lowering and SpotNav's plan, money and the coldest room, side by side. */
+/** A day's rooms over the day beside SpotNav's setpoint and the comfort band; `null` without the curve. */
+function indoorSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
+  const day = answer.indoor_day;
+  if (day === null) {
+    return null;
+  }
+  const context: FormatContext = { language: input.language, timeZone: answer.time_zone, unit: "kWh", currency: null, majorUnit: null };
+  return indoorChart(input.doc, input.language, context, day, setpointOf(day), input.width, null);
+}
+
 function reviewSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
   const review = answer.review;
   if (answer.period !== "day" || review === null) {
@@ -600,6 +615,7 @@ export function heatHistoryBody(input: HeatHistoryInput): HTMLElement {
     // By default the bars, the use and what it cost; the rest with Detailed.
     heatBars(input, shownAnswer),
     useSection(input, shownAnswer),
+    indoorSection(input, shownAnswer),
     ui.detailed ? degreeSection(input, shownAnswer) : null,
     ui.detailed ? comfortSection(input, shownAnswer) : null,
     ui.detailed ? shadowSection(input, shownAnswer) : null,

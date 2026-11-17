@@ -27,6 +27,12 @@ export const HEAT_CLASSES = {
   bandRelay: "spotnav-heat-band-relay",
   bandAxis: "spotnav-heat-band-axis",
   bandNow: "spotnav-heat-band-now",
+  indoor: "spotnav-heat-indoor",
+  indoorHeading: "spotnav-heat-indoor-heading",
+  indoorComfort: "spotnav-heat-indoor-comfort",
+  indoorEdge: "spotnav-heat-indoor-edge",
+  indoorSetpoint: "spotnav-heat-indoor-setpoint",
+  indoorLine: "spotnav-heat-indoor-line",
   legend: "spotnav-heat-legend",
   legendItem: "spotnav-heat-legend-item",
   swatch: "spotnav-heat-swatch",
@@ -225,6 +231,33 @@ export const HEAT_STYLES = `
     stroke: var(--primary-text-color, #212121);
     stroke-width: 1.5;
   }
+  /* The indoor curve (\`heat-indoor.ts\`): the rooms in the heat colour, the comfort band a faint green, the setpoint
+     dashed in the text's colour. It is drawn in the history dialog too, outside the card's element, so each colour
+     carries its own fallback rather than the card's custom properties. */
+  .${X.indoorHeading} { margin: 10px 0 0; font-size: 0.85rem; }
+  .${X.indoor} {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    overflow: visible;
+  }
+  .${X.indoorComfort} { fill: color-mix(in srgb, var(--success-color, #43a047) 18%, transparent); }
+  .${X.indoorEdge} { text-anchor: end; }
+  .${X.indoorSetpoint} {
+    fill: none;
+    stroke: var(--primary-text-color, #212121);
+    stroke-width: 1.25;
+    stroke-dasharray: 4 3;
+    opacity: 0.75;
+  }
+  .${X.indoorLine} {
+    fill: none;
+    stroke: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b));
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+  .${X.indoorLine}[data-line="coldest"] { stroke-width: 1.25; opacity: 0.55; }
   .${X.legend} {
     display: flex;
     flex-wrap: wrap;
@@ -256,6 +289,10 @@ export const HEAT_STYLES = `
   .${X.swatch}[data-action="relay"] { background: var(--spotnav-heat-relay); height: 6px; }
   .${X.swatch}[data-action="relay_expected"] { border: 1.5px solid var(--spotnav-heat-relay); height: 6px; box-sizing: border-box; }
   .${X.swatch}[data-action="executed"] { background: var(--spotnav-heat-lower); height: 6px; }
+  .${X.swatch}[data-action="indoor_mean"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 3px; }
+  .${X.swatch}[data-action="indoor_coldest"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 2px; opacity: 0.55; }
+  .${X.swatch}[data-action="setpoint"] { border-top: 2px dashed var(--primary-text-color, #212121); height: 0; border-radius: 0; opacity: 0.75; }
+  .${X.swatch}[data-action="comfort"] { background: color-mix(in srgb, var(--success-color, #43a047) 18%, transparent); }
   .${X.error} {
     margin: 6px 0 0;
     text-align: center;
@@ -277,6 +314,7 @@ export const HEAT_STYLES = `
     color: var(--primary-text-color, #212121);
   }
   @media (forced-colors: active) {
+    .${X.indoorLine}, .${X.indoorSetpoint} { stroke: CanvasText; }
     .${X.bandCell}, .${X.bandMark}, .${X.bandRelay}, .${X.dialValue}, .${X.swatch} {
       fill: CanvasText;
       stroke: CanvasText;

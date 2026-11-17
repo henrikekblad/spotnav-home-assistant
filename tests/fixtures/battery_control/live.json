@@ -43,6 +43,7 @@
     },
     "days_counted": 0,
     "days_needed": 14,
+    "days_left": 14,
     "hours": 3,
     "minutes": 106,
     "heat_peak_w": {

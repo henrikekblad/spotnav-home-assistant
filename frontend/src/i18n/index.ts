@@ -132,6 +132,11 @@ export function pluralForm(language: Language, count: number): PluralCategory {
   return rulesFor(language).select(count) === "one" ? "one" : "other";
 }
 
+/** "13 dygn kvar": a learning period's whole days left. */
+export function daysLeft(language: Language, days: number): string {
+  return translate(language, `learning.daysLeft.${pluralForm(language, days)}`, { days: String(days) });
+}
+
 /** Small counts as words, 1 to 12, in each language's form for a count of things (1 is the common or masculine form). */
 const NUMBER_WORDS: Record<Language, readonly string[]> = {
   en: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"],

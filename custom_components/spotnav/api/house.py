@@ -73,6 +73,7 @@ from ..site.house_view import (
 from ..site.forecast_log import KIND_SUN
 from ..battery.plan_shadow import KIND_BATTERY, MIN_COVERED_SHARE
 from ..site.house_forecast import BASIS_GROSS
+from ..site.solar_correction import STATUS_LEARNING
 from ..site.solar_correction_shadow import STATUS_NO_FORECAST
 from ..battery.shadow import parse_aware_datetime
 from .common import send_unsupported_version
@@ -118,7 +119,24 @@ def _sun(hass: HomeAssistant, controller: Any) -> SunInputs | None:
         entry = hass.config_entries.async_get_entry(entry_id)
         if entry is not None:
             names.append(entry.title)
-    return SunInputs(status=correction.status, raw=raw, corrected=corrected, forecast_names=tuple(names))
+    days_left = correction.state.days_left if correction.status == STATUS_LEARNING else None
+    return SunInputs(
+        status=correction.status, raw=raw, corrected=corrected, forecast_names=tuple(names), days_left=days_left
+    )
+
+
+def _learning(controller: Any, now: datetime) -> tuple[dict[str, Any], ...]:
+    """The learning periods that hold something back now (`BatteryControl.learning_hold`); none where the site has
+    no battery control or it cannot be read."""
+    control = getattr(controller, "battery_control", None)
+    if control is None:
+        return ()
+    try:
+        hold = control.learning_hold(now)
+    except Exception:  # noqa: BLE001 - the house view never fails on a status line
+        _LOGGER.debug("SpotNav house view: the learning period could not be read", exc_info=True)
+        return ()
+    return () if hold is None else (hold,)
 
 
 def _production(controller: Any) -> dict[Any, float]:
@@ -640,6 +658,7 @@ def house_answer(
             soc_recorded=soc or {},
             car_actual=car or {},
             heat=_heat(hass, controller, heat or {}),
+            learning=_learning(controller, demand.now()),
         )
     )
 

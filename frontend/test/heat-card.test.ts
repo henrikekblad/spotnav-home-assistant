@@ -128,7 +128,7 @@ describe("the front", () => {
     expect(card.querySelectorAll("[data-mark='hot_water']")).toHaveLength(2);
     expect(card.querySelectorAll("[data-mark='car']")).toHaveLength(4);
     expect(card.querySelector(".spotnav-heat-band-now")).not.toBeNull();
-    const legend = [...card.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
+    const legend = [...card.querySelectorAll("[data-block='band'] .spotnav-heat-legend-item")].map((item) => item.textContent);
     expect(legend).toEqual(["Sänkt", "Förvärmning", "Natt", "Reläet sänkte", "Reläet väntas sänka", "Varmvatten", "Bilen laddar"]);
     // The relay's row under SpotNav's plan: closed 07-09 and since 16:00, expected until 19:00.
     expect(card.querySelectorAll("[data-mark='relay']")).toHaveLength(3);
@@ -467,5 +467,46 @@ describe("SpotNav controlling the heat", () => {
     const pump = answer("network_pump.json");
     const section = heatSettingsSection(document, "sv", pump, () => undefined);
     expect(section.querySelector("[data-row='steer']")).toBeNull();
+  });
+});
+
+describe("the indoor curve under the band", () => {
+  it("draws the rooms up to now, the coldest room, the band's setpoint as a step and the comfort band", () => {
+    const value = answer();
+    expect(value.indoor_day?.points.length).toBe(69);
+    const block = body(value).querySelector("[data-block='indoor']")!;
+    expect(block.previousElementSibling?.getAttribute("data-block")).toBe("band");
+    const mean = block.querySelector("[data-line='mean']")!.getAttribute("d")!;
+    expect(mean.startsWith("M")).toBe(true);
+    expect(mean.match(/M/g)).toHaveLength(1);
+    expect(block.querySelector("[data-line='coldest']")).not.toBeNull();
+    // The setpoint follows the band's hours over the whole day: 24 levels, dropping in the lowered hours.
+    const setpoint = block.querySelector("[data-line='setpoint']")!.getAttribute("d")!;
+    expect(setpoint.match(/L/g)).toHaveLength(24 * 2 - 1);
+    expect(block.querySelector(".spotnav-heat-indoor-comfort")).not.toBeNull();
+    expect(block.querySelector(".spotnav-heat-band-now")).not.toBeNull();
+    const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
+    expect(legend).toEqual(["Rummen, medel", "Kallaste rummet", "Börvärde (SpotNav sänker)", "Komfortband 20,5–21,5 °C"]);
+  });
+
+  it("says plain setpoint when nothing is lowered, leaves out a coldest room that never differs, and draws nothing without points", () => {
+    const value = answer();
+    const flat = {
+      ...value,
+      band: { ...value.band, hours: value.band.hours.map((hour) => ({ ...hour, action: "normal", target_c: 21 })) },
+      indoor_day: { ...value.indoor_day!, points: value.indoor_day!.points.map((point) => ({ ...point, coldest_c: point.mean_c })) },
+    };
+    const block = body(flat, "en").querySelector("[data-block='indoor']")!;
+    const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
+    expect(legend).toEqual(["Rooms, mean", "Setpoint", "Comfort band 20.5–21.5 °C"]);
+    expect(block.querySelector("[data-line='coldest']")).toBeNull();
+    expect(body({ ...value, indoor_day: { ...value.indoor_day!, points: [] } }).querySelector("[data-block='indoor']")).toBeNull();
+    expect(body({ ...value, indoor_day: null }).querySelector("[data-block='indoor']")).toBeNull();
+  });
+
+  it("refuses an unknown key in the curve", () => {
+    const raw = read("villa.json");
+    const day = raw["indoor_day"] as Record<string, unknown>;
+    expect(decodeHeat({ ...raw, indoor_day: { ...day, outdoor_c: 4 } }).ok).toBe(false);
   });
 });

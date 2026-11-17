@@ -80,6 +80,33 @@ export const REVIEW = O({
   plan: O({ hours: "number", value: "number", saved_kwh: "number", overlap_hours: "number", ...COMFORT }),
 });
 
+export interface IndoorPoint {
+  start: string;
+  mean_c: number;
+  coldest_c: number;
+}
+
+export interface IndoorDay {
+  start: string;
+  end: string;
+  step_min: number;
+  low_c: number;
+  high_c: number;
+  points: IndoorPoint[];
+  /** The history's setpoint per hour; `null` on the live card, whose band hours carry it. */
+  setpoint: { start: string; target_c: number; action: string }[] | null;
+}
+
+export const INDOOR_DAY = O({
+  start: "string",
+  end: "string",
+  step_min: "number",
+  low_c: "number",
+  high_c: "number",
+  points: A(O({ start: "string", mean_c: "number", coldest_c: "number" })),
+  setpoint: N(A(O({ start: "string", target_c: "number", action: "string" }))),
+});
+
 const ANSWER = O({
   api_version: "number",
   site_id: "string",
@@ -181,6 +208,7 @@ const ANSWER = O({
     ),
     hot_water_pick: N("string"),
   }),
+  indoor_day: N(INDOOR_DAY),
   notes: A(O({ code: "string", params: "any" })),
   choices: N(
     O({
@@ -402,6 +430,8 @@ export interface HeatAnswer {
     guard: string | null;
   };
   band: { date: string; hours: HeatBandHour[]; hot_water_pick: string | null };
+  /** The day's measured indoor curve up to now (`heat-indoor.ts`); `null` without indoor sensors. */
+  indoor_day: IndoorDay | null;
   notes: { code: string; params: Record<string, unknown> }[];
   choices: {
     indoor: HeatChoice[];

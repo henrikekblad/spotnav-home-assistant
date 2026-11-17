@@ -1751,5 +1751,18 @@
   "hist.heat.causeUnknown": "cause inconnue",
   "hist.heat.runsNote": "Déduit de la seule énergie (pas de sonde de ballon) : un cycle nettement au-dessus du petit habituel est un puisage, de même taille environ c'est le ballon refroidi sans puisage.",
   "hist.heat.noRuns": "Aucun cycle d'eau chaude trouvé ce jour-là.",
-  "hist.heat.footnote": "Coûts calculés avec les prix enregistrés et les frais actuels."
+  "hist.heat.footnote": "Coûts calculés avec les prix enregistrés et les frais actuels.",
+  "learning.daysLeft.one": "encore {days} jour",
+  "learning.daysLeft.other": "encore {days} jours",
+  "house.learning.noGridCharge": "Ne charge pas encore depuis le réseau",
+  "house.learning.gridChargeCapped": "Au plus {kw} kW depuis le réseau pour l'instant",
+  "house.learning.phasePeaks": "apprend les pointes de la maison par phase, {left}",
+  "house.sources.solarLearning": "Prévision solaire : {names} · correction en apprentissage, {left}",
+  "heat.indoor.title": "Température intérieure",
+  "heat.indoor.label": "Température intérieure sur la journée face à la plage de confort et à la consigne",
+  "heat.indoor.mean": "Pièces, moyenne",
+  "heat.indoor.coldest": "Pièce la plus froide",
+  "heat.indoor.setpoint": "Consigne",
+  "heat.indoor.setpointLowers": "Consigne (SpotNav abaisse)",
+  "heat.indoor.comfort": "Plage de confort {low}–{high} °C"
 }

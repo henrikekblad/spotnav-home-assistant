@@ -1751,5 +1751,18 @@
   "hist.heat.causeUnknown": "orsak okänd",
   "hist.heat.runsNote": "Bedömt från energin enbart (ingen tankgivare): en körning klart över den vanliga lilla är en tappning, ungefär lika stor är tanken som svalnat utan att någon tappat.",
   "hist.heat.noRuns": "Ingen varmvattenkörning hittades den här dagen.",
-  "hist.heat.footnote": "Kostnader är till sparade priser med dagens avgifter."
+  "hist.heat.footnote": "Kostnader är till sparade priser med dagens avgifter.",
+  "learning.daysLeft.one": "{days} dygn kvar",
+  "learning.daysLeft.other": "{days} dygn kvar",
+  "house.learning.noGridCharge": "Laddar inte från nätet än",
+  "house.learning.gridChargeCapped": "Högst {kw} kW från nätet än så länge",
+  "house.learning.phasePeaks": "lär sig husets toppar per fas, {left}",
+  "house.sources.solarLearning": "Solprognos: {names} · korrigeringen lär sig, {left}",
+  "heat.indoor.title": "Inomhustemperatur",
+  "heat.indoor.label": "Inomhustemperaturen under dygnet mot komfortbandet och börvärdet",
+  "heat.indoor.mean": "Rummen, medel",
+  "heat.indoor.coldest": "Kallaste rummet",
+  "heat.indoor.setpoint": "Börvärde",
+  "heat.indoor.setpointLowers": "Börvärde (SpotNav sänker)",
+  "heat.indoor.comfort": "Komfortband {low}–{high} °C"
 }

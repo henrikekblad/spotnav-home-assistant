@@ -336,3 +336,28 @@ describe("the words", () => {
     }
   });
 });
+
+describe("the heat history's indoor curve", () => {
+  it("draws a day's rooms beside SpotNav's setpoint and the comfort band; a month has none", () => {
+    const answer = heat("heat_history/villa_day.json");
+    expect(answer.indoor_day?.points).toHaveLength(24);
+    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const block = body.querySelector("[data-block='indoor']")!;
+    expect(block.querySelector("[data-line='mean']")).not.toBeNull();
+    expect(block.querySelector("[data-line='coldest']")).not.toBeNull();
+    expect(block.querySelector("[data-line='setpoint']")?.getAttribute("d")).toMatch(/^M0\.00 /);
+    const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
+    expect(legend).toEqual(["Rummen, medel", "Kallaste rummet", "Börvärde (SpotNav sänker)", "Komfortband 20,5–21,5 °C"]);
+    const month = heat("heat_history/villa_month.json");
+    expect(month.indoor_day).toBeNull();
+    const monthBody = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: month }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(monthBody.querySelector("[data-block='indoor']")).toBeNull();
+  });
+
+  it("refuses a mistyped or unknown key in the curve", () => {
+    const raw = read("heat_history/villa_day.json");
+    const day = raw["indoor_day"] as Record<string, unknown>;
+    expect(decodeHeatHistory({ ...raw, indoor_day: { ...day, extra: 1 } }).ok).toBe(false);
+    expect(decodeHeatHistory({ ...raw, indoor_day: { ...day, low_c: "20.5" } }).ok).toBe(false);
+  });
+});

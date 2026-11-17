@@ -344,3 +344,33 @@ def test_comfort_counts_each_room_against_its_own_aim() -> None:
     comfort = heat_history(month_inputs(config=config))["comfort"]
     assert comfort["coldest"]["entity_id"] == "sensor.kok" and comfort["coldest"]["mean_c"] == 21.4
     assert comfort["hours_below"] == 0
+
+
+def test_a_day_has_its_indoor_curve_and_spotnavs_setpoint() -> None:
+    """A kept day: the rooms by the hour, their mean and the coldest, beside the kept plan's setpoint (lowered 16-18
+    local to the band's lower edge); a month has none."""
+    day = date(2026, 11, 15)
+    answer = heat_history(month_inputs(period=period_of(PERIOD_DAY, day), kept=kept_days(range(15, 16))))
+    curve = answer["indoor_day"]
+    start, end = utc_bounds(period_of(PERIOD_DAY, day), TZ)
+    assert (curve["start"], curve["end"], curve["step_min"]) == (start.isoformat(), end.isoformat(), 60)
+    assert (curve["low_c"], curve["high_c"]) == (20.5, 21.5)
+    assert len(curve["points"]) == 24
+    night, noon = curve["points"][3], curve["points"][12]
+    assert (night["mean_c"], night["coldest_c"]) == (20.85, 20.3)
+    assert (noon["mean_c"], noon["coldest_c"]) == (21.1, 20.8)
+    setpoint = {item["start"]: (item["target_c"], item["action"]) for item in curve["setpoint"]}
+    assert len(setpoint) == 24
+    assert setpoint[(start + timedelta(hours=16)).isoformat()] == (20.5, "lower")
+    assert setpoint[(start + timedelta(hours=12)).isoformat()] == (21.0, "normal")
+    assert heat_history(month_inputs())["indoor_day"] is None
+
+
+def test_a_day_not_kept_takes_the_plan_run_again_with_the_night_setback() -> None:
+    config = replace(CONFIG, night=Night(True, 1.0, "23:00", "06:00"))
+    day = date(2026, 11, 10)
+    curve = heat_history(month_inputs(config=config, period=period_of(PERIOD_DAY, day)))["indoor_day"]
+    start, _ = utc_bounds(period_of(PERIOD_DAY, day), TZ)
+    setpoint = {item["start"]: (item["target_c"], item["action"]) for item in curve["setpoint"]}
+    assert setpoint[(start + timedelta(hours=2)).isoformat()] == (20.0, "night")
+    assert any(action == "lower" and target == 20.5 for target, action in setpoint.values())

@@ -6,7 +6,8 @@ the relay, and a write makes it look at once (turned off, it opens what it holds
 `spotnav/get_heat` (API v1): `{api_version: 1, site_id | charger_id}`, any user who can see the card; the answer is
 `heat/view.py:heat_view` (its docstring has the shape; `writable` and `choices` only for an administrator). Read from
 what Home Assistant holds: the settings, the chosen sensors' states and their last half hour from the recorder
-(`heat/rooms.py`, read again every `ROOM_REFRESH_S`), the zones' climate entities and a power sensor on each one's
+(`heat/rooms.py`, read again every `ROOM_REFRESH_S`) and their 5-minute statistics since midnight for the day's
+indoor curve (`heat/indoor_day.py`, read again once per new 5-minute row), the zones' climate entities and a power sensor on each one's
 device, the heat pump's facts (`heat/detect.py`), the heat pump meter's 5-minute rows of the last day
 (`heat/meter_split.py`, read again once per new 5-minute row), the prices with their fees as the battery plan holds
 them, the cars' measured hours and installed plans, and the site's heat shadow (`heat/runtime.py`: the relay, its
@@ -66,6 +67,7 @@ from ..heat.config import (
 from ..heat.detect import other_controllers, read_heat_pumps
 from ..heat.facts import HeatPumpFacts
 from ..heat.meter_split import levels, split_day
+from ..heat.indoor_day import LIVE_STEP_MIN, indoor_day, means_by_start
 from ..heat.rooms import WINDOW, Indoor, SensorReading, indoor
 from ..heat.shadow_rule import day_hours
 from ..heat.view import (
@@ -466,6 +468,43 @@ async def read_indoor(hass: HomeAssistant, site_id: str, config: HeatConfig, zon
     return indoor(readings, now, heating_areas)
 
 
+async def async_temperature_means(
+    hass: HomeAssistant, entity_ids: tuple[str, ...], start: datetime, end: datetime, period: str
+) -> dict[str, dict[datetime, float]]:
+    """The temperature sensors' statistics means (°C) per period start in `[start, end)`, in the recorder's executor."""
+    if not entity_ids or end <= start:
+        return {}
+    from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
+    from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
+
+    def read() -> dict[str, list[dict[str, Any]]]:
+        return statistics_during_period(hass, start, end, set(entity_ids), period, {"temperature": "°C"}, {"mean"})
+
+    rows = await get_instance(hass).async_add_executor_job(read)
+    return {entity_id: means_by_start(series) for entity_id, series in rows.items()}
+
+
+async def read_indoor_day(
+    hass: HomeAssistant, site_id: str, config: HeatConfig, now: datetime, day_start: datetime, day_end: datetime
+) -> dict[str, Any] | None:
+    """Today's indoor curve up to now (`heat/indoor_day.py`) from the sensors' 5-minute statistics, read again once
+    per new 5-minute row; `None` without indoor sensors."""
+    if not config.indoor_sensors:
+        return None
+    sensors = config.indoor_sensors
+    try:
+        readings = await _cached(
+            hass,
+            (site_id, "indoor_day"),
+            (sensors, day_start, five_slot(now)),
+            lambda: async_temperature_means(hass, sensors, day_start, now, "5minute"),
+        )
+    except Exception:  # noqa: BLE001 - without the recorder the curve is empty, the rest is shown
+        _LOGGER.debug("SpotNav heat: the indoor sensors' 5-minute statistics could not be read", exc_info=True)
+        readings = {}
+    return indoor_day(config, readings, day_start, day_end, now, LIVE_STEP_MIN)
+
+
 def _meter_kw_now(hass: HomeAssistant, entity_id: str | None, kind: str | None) -> float | None:
     if entity_id is None or kind != KIND_POWER:
         return None
@@ -646,6 +685,9 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
     zones = read_zones(hass, config)
     rooms = await read_indoor(hass, site.entry_id, config, zones, now)
     meter = await read_meter(hass, site.entry_id, controller, now, day_start)
+    following = local.date() + timedelta(days=1)
+    day_end = datetime(following.year, following.month, following.day, tzinfo=zone_info).astimezone(timezone.utc)
+    curve = await read_indoor_day(hass, site.entry_id, config, now, day_start, day_end)
     measured_car: Mapping[datetime, float] = {}
     try:
         measured_car = await async_cached_car_hours(hass, site.entry_id, controller) or {}
@@ -701,6 +743,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             review=review,
             control=control_status,
             executed=executed,
+            indoor_day=curve,
         )
     )
     return answer

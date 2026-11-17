@@ -398,6 +398,7 @@
     "hours": 3,
     "kwh": 6.0
   },
+  "indoor_day": null,
   "meter": {
     "entity_id": "sensor.varme_effekt",
     "name": "Elmätare värme"

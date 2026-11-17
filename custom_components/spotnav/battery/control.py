@@ -1205,6 +1205,28 @@ class BatteryControl:
             "learned": None if learned is None else learned.as_dict(),
         }
 
+    def learning_hold(self, now: datetime) -> dict[str, Any] | None:
+        """The learning of the house's per-phase peaks while it holds the grid charge back, for the house card's status
+        line: `{what: "phase_peaks", days_left, cap_kw}` (`cap_kw` 0 when no grid charge can run), `None` when it
+        holds nothing back: grid charging not allowed, the peaks learned, the plant's import limit guarding the fuse,
+        or the cautious cap still at least the battery's own rated charge."""
+        options = self.options()
+        if ACTION_GRID_CHARGE not in self.allowed(options):
+            return None
+        learned = self._learned(now)
+        status = self._cap_status(now, options)
+        cap = status["cap_kw"]
+        if learned is None or learned.ready or status["rule"] != "conservative" or cap is None:
+            return None
+        rated = self.facts.max_charge_kw
+        if rated is not None and cap >= rated:
+            return None
+        return {
+            "what": "phase_peaks",
+            "days_left": learned.days_left,
+            "cap_kw": 0.0 if cap < gate.MIN_RATE_KW else cap,
+        }
+
     def _export_cap_kw(self) -> float:
         """The fuse rule on the export side (`gate.export_discharge_cap_kw`) on the site's phases now."""
         volts = stored_voltage_between_phases_v(self.site.config)

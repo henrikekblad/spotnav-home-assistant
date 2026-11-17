@@ -12,7 +12,7 @@ import { houseChartHeight, renderHouseChart } from "../src/house-chart";
 import { blockHeights, flowHeight, flowLabels, MIN_BAND, MIN_NODE } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { amount, hourFigures, houseBody, reviewLine, savingLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
+import { amount, hourFigures, houseBody, learningLines, reviewLine, savingLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -216,7 +216,7 @@ describe("the body", () => {
     expect(open.querySelector("[data-line='review']")?.textContent).toContain("±0,09 kW");
     const sources = Array.from(open.querySelectorAll(".spotnav-house-facts li")).map((item) => item.textContent);
     expect(sources).toContain("Utetemperatur: sensor.nibe_bt1_outdoor_temperature");
-    expect(sources).toContain("Solprognos: Forecast.Solar");
+    expect(sources).toContain("Solprognos: Forecast.Solar · korrigeringen lär sig, 2 dygn kvar");
     expect(open.textContent).toContain("Batteriet styrs av sin egen optimerare");
     expect(open.textContent).toContain("Antaget hittills: batteriets lägsta nivå.");
   });
@@ -1167,5 +1167,55 @@ describe("the element", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(hass.messages).toEqual([]);
     expect(element.shadowRoot!.textContent).toContain(translate("en", "house.unconfigured"));
+  });
+});
+
+describe("a learning period that holds something back", () => {
+  it("decodes the learning and the sun's days left, and an older backend without them", () => {
+    const full = answer();
+    expect(full.learning).toEqual([{ what: "phase_peaks", days_left: 13, cap_kw: 0 }]);
+    expect(full.sun?.days_left).toBe(2);
+    expect(answer("house/villa_past_day.json").learning).toEqual([]);
+    const older = read("house/villa_battery_sun.json");
+    delete older["learning"];
+    delete (older["sun"] as Record<string, unknown>)["days_left"];
+    const decoded = decodeHouse(older);
+    expect(decoded.ok && decoded.value.learning).toEqual([]);
+    expect(decoded.ok && decoded.value.sun?.days_left).toBeNull();
+    const broken = read("house/villa_battery_sun.json");
+    broken["learning"] = [{ what: "phase_peaks", days_left: -1, cap_kw: 0 }];
+    expect(decodeHouse(broken).ok).toBe(false);
+  });
+
+  it("says it at the top of the card, in Swedish as the owner asked", () => {
+    expect(learningLines("sv", answer())).toEqual(["Laddar inte från nätet än · lär sig husets toppar per fas, 13 dygn kvar"]);
+    const capped = { ...answer(), learning: [{ what: "phase_peaks", days_left: 1, cap_kw: 2.4 }] };
+    expect(learningLines("en", capped)).toEqual(["At most 2.4 kW from the grid for now · learning the house's peaks per phase, 1 day left"]);
+    const line = body(answer(), {}, "sv").querySelector<HTMLElement>('[data-line="learning"]');
+    expect(line?.textContent).toContain("13 dygn kvar");
+    expect(line?.parentElement?.children[1]).toBe(line);
+  });
+
+  it("shows nothing when nothing is held back, or a kind it does not know", () => {
+    expect(body({ ...answer(), learning: [] }).querySelector('[data-line="learning"]')).toBeNull();
+    expect(learningLines("en", { ...answer(), learning: [{ what: "something_new", days_left: 3, cap_kw: 0 }] })).toEqual([]);
+  });
+
+  it("says the sun correction's days left where the solar forecast is named", () => {
+    const sv = body(answer(), { detailsOpen: true }, "sv").textContent ?? "";
+    expect(sv).toContain("Solprognos: Forecast.Solar · korrigeringen lär sig, 2 dygn kvar");
+    const learnt = { ...answer(), sun: { ...answer().sun!, status: "shadow", days_left: null } };
+    const en = body(learnt, { detailsOpen: true }).textContent ?? "";
+    expect(en).toContain("Solar forecast: Forecast.Solar");
+    expect(en).not.toContain("correction learning");
+  });
+
+  it("has the lines in every language", () => {
+    for (const language of LANGUAGES) {
+      for (const line of learningLines(language, answer())) {
+        expect(line, language).toMatch(/13/);
+        expect(line, language).not.toContain("{");
+      }
+    }
   });
 });

@@ -332,11 +332,13 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
             holiday_calendar="calendar.sverige",
         ),
         sun=SunInputs(
-            status="active",
+            status="learning",
             raw={start: round(sun_kwh(start) * 1.3, 3) for start in ahead},
             corrected={start: round(sun_kwh(start) * 1.05, 3) for start in ahead},
             forecast_names=("Forecast.Solar",),
+            days_left=2,
         ),
+        learning=({"what": "phase_peaks", "days_left": 13, "cap_kw": 0.0},),
         battery=BatteryInputs(
             brand="sigenergy",
             label="Sigenergy SigenStor",
@@ -445,6 +447,9 @@ def test_the_full_site_and_its_fixture() -> None:
     assert view["house"]["basis"] == "gross"
     sun = view["sun"]
     assert sun["review"]["mae"] > sun["review_corrected"]["mae"] > 0
+    # Learning: the sun's correction says its days left; the per-phase peaks while they hold the grid charge back.
+    assert sun["days_left"] == 2
+    assert view["learning"] == [{"what": "phase_peaks", "days_left": 13, "cap_kw": 0.0}]
     battery = view["battery"]
     assert battery["review"]["days"] == 7
     assert battery["review"]["plan_saving"] > battery["review"]["own_saving"] > 0
@@ -515,6 +520,7 @@ def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
     assert all(row["house_kw"] is not None and row["sun_kwh"] is not None and row["soc_pct"] is not None for row in hours)
     assert all(row["battery_action"] is None for row in hours)
     assert view["day"] == {"date": "2026-11-12", "today": False, "first": "2026-10-31", "has_data": True}
+    assert view["learning"] == []
     assert view["today"]["date"] == "2026-11-12"
     assert view["flow"] is None and view["energy_flow"]["date"] == "2026-11-12"
     review = next(item for item in full_inputs().battery.reviews if item.day == yesterday)
@@ -584,7 +590,7 @@ def test_a_house_alone_still_learning() -> None:
             money=("SEK", "kr", "öre"),
         )
     )
-    assert view["sun"] is None and view["battery"] is None and view["days"] == []
+    assert view["sun"] is None and view["battery"] is None and view["days"] == [] and view["learning"] == []
     assert view["house"]["review"] is None and view["house"]["counts_battery"] is False
     hours = view["hours"]
     # The past hours have their outcome but no logged forecast (none was made for them).
@@ -669,3 +675,12 @@ def test_reviewed_days_skip_parts_the_site_does_not_have() -> None:
         day["sun_mae"] is None and day["soc_mae"] is None and day["plan_saving"] is None for day in no_sun["days"]
     )
     assert date.fromisoformat(no_sun["days"][0]["date"]) == (NOW + CET).date() - timedelta(days=1)
+
+
+def test_a_sun_correction_says_days_left_only_while_learning() -> None:
+    from dataclasses import replace
+
+    inputs = full_inputs()
+    assert inputs.sun is not None
+    shadow = replace(inputs, sun=replace(inputs.sun, status="shadow", days_left=None))
+    assert house_view(shadow)["sun"]["days_left"] is None
