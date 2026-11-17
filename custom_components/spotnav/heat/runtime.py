@@ -68,7 +68,7 @@ from .relay_effect import (
 )
 from .relay_schedule import expected_closings, too_cold, unknown_closing
 from .review import review_day
-from .rooms import WINDOW, Indoor, SensorReading, indoor, warm_c
+from .rooms import WINDOW, Indoor, SensorReading, indoor, warm_c, warmest_c
 from .shadow_rule import ACTION_LOWER, REASON_ROOM_WARM, BandHour, RoomWarm, band, day_hours, would_do
 
 if TYPE_CHECKING:
@@ -590,6 +590,11 @@ class HeatShadow:
         readable indoor sensor."""
         rooms = self.indoor_now(config)
         return None if rooms is None else rooms.relative_c
+
+    def warmest_now(self, config: HeatConfig) -> float | None:
+        """The warmest readable room now less its offset, none left out (`rooms.warmest_c`), `None` without one."""
+        rooms = self.indoor_now(config)
+        return None if rooms is None else warmest_c(rooms)
 
     def _step_warm(self, config: HeatConfig, now: datetime) -> None:
         """Note each room's reading for the window and step whether the house is too warm."""

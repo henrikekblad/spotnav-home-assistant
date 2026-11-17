@@ -32,7 +32,16 @@ first contact only. Nothing is written without it. The rules and the check are p
    sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)
    below the band, SG Ready's second contact on or unreadable.
 
-**Every exit opens the relay** SpotNav holds (open = the pump's normal curve): the switch off, a block, a pause, a
+7. **SG Ready's raise** (contact B, where SG Ready has both contacts): after the lowering's look,
+   `relay_control.decide_raise` on the plan's raise hours (the cheap hour before a lowered run, the warm-up before the
+   return) while control runs. **(1,1) never occurs**: B closes only while A reads open with nothing pending and
+   SpotNav does not hold it (`_a_clear`), and A closes only while B reads open with nothing pending and SpotNav does
+   not hold it (`_b_clear`); a lowering due while B is closed opens B first and closes A once B reads open. Each write
+   is read back before the next. B is read back, never fought (a change SpotNav did not make sets raising aside for
+   the day), and checked on the first raises (`relay_control.RaiseCheck`): no raise seen on the supply sets raising
+   aside (`raise_not_observed`, in the diagnostics only) while lowering goes on.
+
+**Every exit opens both contacts** SpotNav holds (B first, then A); the relay path's (open = the pump's normal curve): the switch off, a block, a pause, a
 safety reason, a changed relay entity, unload and Home Assistant's stop (`async_shutdown`, bounded); what could not be
 opened then is opened at the next start before anything else. Kept in `spotnav.heat_control.<entry>`: whether SpotNav
 holds the relay closed, the lowerings and writes of the last days, the checks per relay, the pause.
@@ -57,6 +66,7 @@ from .. import time_zones
 from ..const import DOMAIN
 from .automations import SteeringAutomation, steering_automations
 from .config import BAND_C, PATH_SG_READY, HeatConfig
+from .shadow_rule import RETURN_HOURS
 from .meter_split import Levels, levels, state_now
 from .relay_control import (
     closings_ahead as relay_closings_ahead,
@@ -65,6 +75,15 @@ from .relay_control import (
     MAX_WRITES_DAY,
     NO_LOWER_AT_C,
     PASSED,
+    RAISE_AWAY,
+    RAISE_INTERLOCK,
+    RAISE_NIGHT,
+    RAISE_NOT_OBSERVED,
+    RAISE_SETTLING,
+    RAISE_STALE,
+    RAISE_WARM,
+    BASELINE,
+    PHASE_WAIT,
     SAFETY_ROOM_COLD,
     SAFETY_SETTLING,
     SAFETY_SG_READY_B,
@@ -72,10 +91,14 @@ from .relay_control import (
     SAFETY_TOO_COLD,
     Check,
     Decision,
+    RaiseCheck,
+    RaiseSituation,
     Sample,
     Situation,
     decide,
+    decide_raise,
     lowered_within,
+    planned_raise_end,
     planned_run_end,
     verdict,
 )
@@ -130,9 +153,18 @@ WAIT_NO_SIGNAL: Final = "no_signal"
 WAIT_CHECK_FAILED: Final = "check_failed"
 WAIT_FOREIGN_CHANGE: Final = "foreign_change"
 WAIT_NO_READ_BACK: Final = "no_read_back"
+#: The raise's reason while the lowering's control does not run (off, verifying or waiting): B stays open.
+RAISE_OFF: Final = "raise_off"
 
 #: The relay's states that read as closed.
 CLOSED: Final = frozenset({"on"})
+
+
+def raise_entity(config: HeatConfig) -> str | None:
+    """SG Ready's second contact (B, the raise) where SG Ready has both contacts; `None` on any other path."""
+    if config.control_path == PATH_SG_READY and config.control_entity and config.control_entity_b:
+        return config.control_entity_b
+    return None
 
 
 def store_key(entry_id: str) -> str:
@@ -178,7 +210,30 @@ class HeatControl:
         self.check = Check()
         self.paused_until: datetime | None = None
         self.paused_reason: str | None = None
+        #: SG Ready's raise (contact B): the contact SpotNav may hold, whether it holds it closed and since when, the
+        #: raises of the last days, the raise check and raising set aside until the next day.
+        self.raise_entity: str | None = None
+        self.raised = False
+        self.raised_since: datetime | None = None
+        self.raise_last_end: datetime | None = None
+        self.raisings: list[list[datetime | None]] = []
+        self.raise_check = RaiseCheck()
+        self.raise_paused_until: datetime | None = None
+        self.raise_paused_reason: str | None = None
         # Seen.
+        self.pending_b: Pending | None = None
+        self.raise_decision: Decision | None = None
+        self._reopen_b = False
+        self._b_retry_open_at: datetime | None = None
+        self._b_open_failures = 0
+        self._b_foreign: datetime | None = None
+        self._b_own_at: datetime | None = None
+        self._b_own_reopen_at: datetime | None = None
+        #: A closing of B written but never read closed: it may still take, so A waits `OWN_WINDOW` after it.
+        self._b_close_unseen_at: datetime | None = None
+        self._was_enabled_raise: bool | None = None
+        #: The check's readings of the last `BASELINE` while B was open: a raise's baseline.
+        self._recent: deque[tuple[datetime, Sample]] = deque()
         self.pending: Pending | None = None
         self.state = STATE_OFF
         self.reason: str | None = None
@@ -251,6 +306,20 @@ class HeatControl:
             # starts only after the rest that follows any lowering.
             self._reopen = True
             _LOGGER.info("SpotNav heat control: the relay %s was held at the last stop; opening it", self.relay)
+        self.raise_entity = raw.get("raise_entity") if isinstance(raw.get("raise_entity"), str) else None
+        self.raised = raw.get("raised") is True and self.raise_entity is not None
+        self.raised_since = _instant(raw.get("raised_since"))
+        self.raise_last_end = _instant(raw.get("raise_last_end"))
+        for item in raw.get("raisings") or []:
+            if isinstance(item, list) and len(item) == 2 and (start := _instant(item[0])) is not None:
+                self.raisings.append([start, _instant(item[1])])
+        self.raise_check = RaiseCheck.from_dict(raw.get("raise_check"))
+        self.raise_paused_until = _instant(raw.get("raise_paused_until"))
+        self.raise_paused_reason = raw.get("raise_paused_reason") if isinstance(raw.get("raise_paused_reason"), str) else None
+        if self.raised:
+            # B held at the last stop: opened at the first look, before A may close.
+            self._reopen_b = True
+            _LOGGER.info("SpotNav heat control: the raise contact %s was held at the last stop; opening it", self.raise_entity)
 
     def _data(self) -> dict[str, Any]:
         return {
@@ -264,6 +333,14 @@ class HeatControl:
             "check": self.check.as_dict(),
             "paused_until": None if self.paused_until is None else self.paused_until.isoformat(),
             "paused_reason": self.paused_reason,
+            "raise_entity": self.raise_entity,
+            "raised": self.raised,
+            "raised_since": None if self.raised_since is None else self.raised_since.isoformat(),
+            "raise_last_end": None if self.raise_last_end is None else self.raise_last_end.isoformat(),
+            "raisings": [[start.isoformat(), None if end is None else end.isoformat()] for start, end in self.raisings],  # type: ignore[union-attr]
+            "raise_check": self.raise_check.as_dict(),
+            "raise_paused_until": None if self.raise_paused_until is None else self.raise_paused_until.isoformat(),
+            "raise_paused_reason": self.raise_paused_reason,
         }
 
     def _save(self) -> None:
@@ -292,6 +369,17 @@ class HeatControl:
                 _LOGGER.warning("SpotNav heat control: a look did not end at the stop")
         if not self._loaded:
             return
+        if self.raised and self.raise_entity is not None:
+            # B first: opening never makes (1,1), and the pump is back to normal before A is touched.
+            try:
+                await self._async_call(self.raise_entity, False)
+                async with asyncio.timeout(SHUTDOWN_WAIT_S):
+                    while self._read(self.raise_entity) is True:
+                        await asyncio.sleep(0.2)
+                if self._read(self.raise_entity) is False:
+                    self._end_raise(dt_util.utcnow())
+            except Exception:  # noqa: BLE001 - kept held: opened at the next start
+                _LOGGER.warning("SpotNav heat control: the raise contact could not be opened at the stop", exc_info=True)
         if self.held and self.relay is not None:
             try:
                 await self._async_call(self.relay, False)
@@ -343,10 +431,21 @@ class HeatControl:
             raise
         except Exception:  # noqa: BLE001 - the next look tries again; the relay is opened where it can be
             _LOGGER.warning("SpotNav heat control: a look failed", exc_info=True)
+            self._set(STATE_WAITING, "error")
             try:
                 await self._async_give_back(now, "error")
             except Exception:  # noqa: BLE001 - tried again at the next look
                 _LOGGER.warning("SpotNav heat control: the relay could not be given back", exc_info=True)
+        try:
+            await self._async_raise_look(now)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - the next look tries again; B is opened where it can be
+            _LOGGER.warning("SpotNav heat control: the raise's look failed", exc_info=True)
+            try:
+                await self._async_release_b(now, "error")
+            except Exception:  # noqa: BLE001 - tried again at the next look
+                _LOGGER.warning("SpotNav heat control: the raise contact could not be opened", exc_info=True)
         self._trim(now)
         self._save()
 
@@ -516,6 +615,12 @@ class HeatControl:
             await self._async_write(self.decision.closed, now, why=self.decision.reason)
 
     async def _async_verify(self, now: datetime, relay: str, read: bool, safety: str | None) -> None:
+        if not self._b_clear(now):
+            # The check closes A: B opens first (never (1,1)), and the check waits for it.
+            self.check.abort(RAISE_INTERLOCK)
+            await self._async_release_b(now, "check")
+            self._set(STATE_VERIFYING, PHASE_WAIT)
+            return
         sample = await self.async_sample(now)
         if not self.signal:
             self.check.abort(WAIT_NO_SIGNAL)
@@ -593,7 +698,9 @@ class HeatControl:
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
         if config.control_path == PATH_SG_READY and config.control_entity_b is not None:
-            if self._read(config.control_entity_b) is not False:
+            # B closed by SpotNav's own raise is no safety reason: the interlock opens it before A closes.
+            own = config.control_entity_b == self.raise_entity and (self.raised or self.pending_b is not None)
+            if self._read(config.control_entity_b) is not False and not own:
                 return SAFETY_SG_READY_B
         if now - self._good_since < GOOD_FOR:
             return SAFETY_SETTLING
@@ -661,6 +768,13 @@ class HeatControl:
         relay = self.relay
         if relay is None:
             return
+        if closed and not self._b_clear(now):
+            # Never (1,1): B opens first, and A closes only once B reads open (in this look where it reads back at
+            # once, else at a later one).
+            await self._async_release_b(now, RAISE_INTERLOCK)
+            if not self._b_clear(now):
+                self._log(now, "close_waits_for_b", why=why)
+                return
         if not closed and self._retry_open_at is not None and now < self._retry_open_at:
             return
         self.pending = Pending(closed, now)
@@ -748,6 +862,300 @@ class HeatControl:
         self.check.abort(reason)
         _LOGGER.info("SpotNav heat control: paused until %s (%s)", self.paused_until.isoformat(), reason)
 
+    # ---- SG Ready's raise (contact B)
+
+    def _a_clear(self) -> bool:
+        """Whether B may close: A reads open, SpotNav does not hold it and nothing is pending on it."""
+        return self.relay is not None and not self.held and self.pending is None and self._read(self.relay) is False
+
+    def _b_clear(self, now: datetime) -> bool:
+        """Whether A may close: SpotNav holds no B and nothing is pending on it, the chosen B (if any) reads open, and
+        no closing of B that never read closed was written within `OWN_WINDOW` (it could still take late)."""
+        if self.raised or self.pending_b is not None:
+            return False
+        if self._b_close_unseen_at is not None:
+            if now - self._b_close_unseen_at <= OWN_WINDOW:
+                return False
+            self._b_close_unseen_at = None
+        config = self.shadow.config()
+        if config.control_path != PATH_SG_READY or config.control_entity_b is None:
+            return True
+        return self._read(config.control_entity_b) is False
+
+    async def _async_raise_look(self, now: datetime) -> None:
+        """B's look, after A's (see the module, 7)."""
+        config = self.shadow.config()
+        b = raise_entity(config)
+        if self.raise_entity is not None and b != self.raise_entity:
+            # The old B is given back first, as the old A is.
+            old = self.raise_entity
+            if self.pending_b is not None and self._read(old) == self.pending_b.closed:
+                self._confirm_b(self.pending_b, now)
+            if self.raised and (self.hass.states.get(old) is None or self._b_open_failures >= OPEN_TRIES):
+                _LOGGER.warning("SpotNav heat control: the raise contact %s, held closed, could not be opened; let go", old)
+                self._log(now, "raise_let_go", relay=old)
+                self.pending_b = None
+                self._end_raise(now)
+            if self.raised:
+                if self.pending_b is None or now - self.pending_b.at > READ_BACK or self.pending_b.closed:
+                    if self.pending_b is not None and not self.pending_b.closed:
+                        self._b_open_failures += 1
+                    self.pending_b = None
+                    await self._async_write_b(False, now, why="relay_changed")
+                if self.raised:
+                    self.raise_decision = Decision(False, "relay_changed")
+                    return
+            self.pending_b = None
+        if b != self.raise_entity:
+            self.raise_entity = b
+            self.raise_check = RaiseCheck()
+            self._recent.clear()
+        enabled = config.control_enabled
+        if enabled and self._was_enabled_raise is False:
+            # Turned on again: a raise check that saw nothing, and raising set aside, are tried afresh.
+            if self.raise_check.result == FAILED:
+                self.raise_check = RaiseCheck()
+            self.raise_paused_until = self.raise_paused_reason = None
+        self._was_enabled_raise = enabled
+        if b is None:
+            self.raise_decision = None
+            return
+        read = self._read(b)
+        if self.pending_b is not None:
+            if read == self.pending_b.closed:
+                self._confirm_b(self.pending_b, now)
+            elif now - self.pending_b.at > READ_BACK and read is None:
+                self._log(now, "raise_not_read_back", why=WAIT_RELAY_UNAVAILABLE)
+                self.pending_b = None
+                if self.raised:
+                    self._reopen_b = True
+            elif now - self.pending_b.at > READ_BACK:
+                await self._async_failed_b(now, "not_read_back")
+                return
+            elif not self.pending_b.closed:
+                # An opening on its way: read back at the next looks.
+                return
+            # A closing on its way goes on below: an exit opens it at once (opening is always safe).
+        if read is None:
+            # Nothing is written to a B that does not read: opened at its first readable look.
+            if self.raised:
+                self._reopen_b = True
+            self.raise_check.abort(WAIT_RELAY_UNAVAILABLE)
+            self.raise_decision = Decision(False, WAIT_RELAY_UNAVAILABLE)
+            return
+        if self._reopen_b:
+            if self.raised and read is True:
+                await self._async_write_b(False, now, why="restart")
+                self.raise_decision = Decision(False, "restart")
+                return
+            self._end_raise(now)
+            self._reopen_b = False
+        # Never fight another writer: B opened by someone else while SpotNav held it (read on looks a minute apart).
+        if self.raised and self.pending_b is None and read is False:
+            if self._b_foreign is None:
+                self._b_foreign = now
+                self._log(now, "foreign_open_b_seen")
+                return
+            if now - self._b_foreign < FOREIGN_CONFIRM:
+                return
+            self._b_foreign = None
+            self._log(now, "foreign_open_b")
+            self._end_raise(now)
+            self._pause_raise(now, WAIT_FOREIGN_CHANGE)
+        else:
+            self._b_foreign = None
+        if not self.raised and self.pending_b is None and read is True:
+            if self._b_own_reopen_at is None and self._b_own_at is not None and now - self._b_own_at <= OWN_WINDOW:
+                # SpotNav's own closing read late or bounced: its own, opened once.
+                self._log(now, "own_late_close_b")
+                self._b_own_reopen_at = now
+                self.raised, self.raised_since = True, now
+                self.raisings.append([now, None])
+                await self._async_write_b(False, now, why="own_late_close")
+                self.raise_decision = Decision(False, "own_late_close")
+                return
+            # Closed by someone else: never taken over (A's safety reason `sg_ready_b` keeps A open).
+            self.raise_decision = Decision(False, SAFETY_SG_READY_B)
+            return
+        decision = self._raise_decision(config, now)
+        self.raise_decision = decision
+        if decision.closed and not self.raised:
+            if not self._a_clear():
+                # A is closed, held or pending: B waits (lowering wins; never (1,1)).
+                self.raise_decision = Decision(False, RAISE_INTERLOCK)
+            else:
+                await self._async_write_b(True, now, why=decision.reason)
+        elif not decision.closed and self.raised:
+            await self._async_write_b(False, now, why=decision.reason)
+        await self._async_raise_watch(now)
+
+    def _raise_decision(self, config: HeatConfig, now: datetime) -> Decision:
+        if not config.control_enabled or self.state != STATE_RUNNING:
+            return Decision(False, RAISE_OFF)
+        return decide_raise(
+            RaiseSituation(
+                now=now,
+                plan_until=planned_raise_end(self.shadow.plan, now),
+                held_since=(self.raised_since or now) if self.raised else None,
+                last_end=self.raise_last_end,
+                raised_24h=self.raised_24h(now),
+                writes_today=self.writes.get(self._day(now), 0),
+                block=self._raise_block(config, now),
+            )
+        )
+
+    def _raise_block(self, config: HeatConfig, now: datetime) -> str | None:
+        """A reason that ends any raise and starts none (`relay_control.RAISE_*`), `None` when raising may go on."""
+        if self.raise_check.result == FAILED:
+            return RAISE_NOT_OBSERVED
+        if self.raise_paused_until is not None:
+            if now < self.raise_paused_until:
+                return self.raise_paused_reason
+            self.raise_paused_until = self.raise_paused_reason = None
+        if self.safety == SAFETY_STALE:
+            return RAISE_STALE
+        if self.shadow.room_warm.active or self._room_at_high_edge(config):
+            return RAISE_WARM
+        away_end = config.away_end()
+        returning = away_end is not None and away_end - timedelta(hours=RETURN_HOURS) <= now < away_end
+        if away_end is not None and now < away_end - timedelta(hours=RETURN_HOURS):
+            return RAISE_AWAY
+        if config.night.on and not returning:
+            local = now.astimezone(time_zones.require_zone(self.shadow.tz))
+            if config.night.covers(local.hour * 60 + local.minute):
+                return RAISE_NIGHT
+        if self.safety == SAFETY_SETTLING:
+            return RAISE_SETTLING
+        return None
+
+    def _room_at_high_edge(self, config: HeatConfig) -> bool:
+        """Whether a counted room (its offset counted) reads at or above the band's high edge: no pre-heat into a warm
+        house, and a raise ends there."""
+        warmest = self.shadow.warmest_now(config)
+        return warmest is not None and warmest >= config.target_c + BAND_C
+
+    async def _async_raise_watch(self, now: datetime) -> None:
+        """The raise check's readings: the baseline while B is open, a step while the raise holds."""
+        if self.raise_check.result is not None or self.state != STATE_RUNNING:
+            return
+        sample = await self.async_sample(now)
+        if self.raised and self.pending_b is None:
+            outcome = self.raise_check.step(now, sample)
+            if outcome is not None:
+                self._log(now, "raise_check", outcome=outcome)
+                _LOGGER.info("SpotNav heat control: the raise check of %s ended: %s", self.raise_entity, outcome)
+            return
+        if not self.raised:
+            self._recent.append((now, sample))
+            while self._recent and now - self._recent[0][0] > BASELINE:
+                self._recent.popleft()
+
+    async def _async_write_b(self, closed: bool, now: datetime, *, why: str) -> None:
+        """Switch B and read it back. A closing only while A is clear (`_a_clear`); an opening is never refused."""
+        b = self.raise_entity
+        if b is None:
+            return
+        if closed and not self._a_clear():
+            self._log(now, "raise_waits_for_a", why=why)
+            return
+        if not closed and self._b_retry_open_at is not None and now < self._b_retry_open_at:
+            return
+        self.pending_b = Pending(closed, now)
+        self._b_own_at = now
+        if closed:
+            self._b_own_reopen_at = None
+            self._b_close_unseen_at = now
+            self.raised, self.raised_since = True, now
+            self.raisings.append([now, None])
+        day = self._day(now)
+        self.writes[day] = self.writes.get(day, 0) + 1
+        self._log(now, "raise" if closed else "raise_end", why=why)
+        self._save()
+        try:
+            await self._async_call(b, closed)
+        except Exception as err:  # noqa: BLE001 - any error is a write not taken
+            _LOGGER.warning("SpotNav heat control: switching %s %s failed: %s", b, "on" if closed else "off", err)
+            await self._async_failed_b(now, "write_failed")
+            return
+        if self.pending_b is not None and self._read(b) == closed:
+            self._confirm_b(self.pending_b, now)
+
+    def _confirm_b(self, pending: Pending, now: datetime) -> None:
+        self.pending_b = None
+        if pending.closed:
+            self._b_close_unseen_at = None
+            self.raise_check.begin(pending.at, [sample for _moment, sample in self._recent])
+        else:
+            self._end_raise(pending.at)
+            self._b_retry_open_at = None
+            self._b_open_failures = 0
+
+    def _end_raise(self, at: datetime) -> None:
+        if self.raised:
+            self.raise_last_end = at
+        self.raised, self.raised_since = False, None
+        self._b_open_failures = 0
+        for item in self.raisings:
+            if item[1] is None:
+                item[1] = at
+        outcome = self.raise_check.abort("ended")
+        if outcome is not None:
+            self._log(at, "raise_check", outcome=outcome)
+        self._recent.clear()
+
+    async def _async_failed_b(self, now: datetime, why: str) -> None:
+        """A B write that raised or was not read back: raising is set aside for the day (lowering goes on); an opening
+        is tried again while SpotNav may hold B, a closing not seen is opened all the same."""
+        pending = self.pending_b
+        self.pending_b = None
+        self._log(now, "raise_failed", why=why)
+        self._pause_raise(now, WAIT_NO_READ_BACK)
+        if pending is not None and not pending.closed:
+            self._b_open_failures += 1
+            self._b_retry_open_at = now + RETRY_OPEN
+        elif self.raised and self.raise_entity is not None:
+            await self._async_write_b(False, now, why=why)
+            if self.raised and self._read(self.raise_entity) is False:
+                self.pending_b, self._b_retry_open_at = None, None
+                self._end_raise(now)
+
+    async def _async_release_b(self, now: datetime, why: str) -> None:
+        """Open B where SpotNav holds it (no write otherwise). A B that does not read is opened at its first
+        readable look; a closing still on its way is opened at once."""
+        if not self.raised or self.raise_entity is None:
+            return
+        if self._read(self.raise_entity) is None:
+            self._reopen_b = True
+            return
+        if self.pending_b is not None and not self.pending_b.closed:
+            if now - self.pending_b.at <= READ_BACK:
+                return
+            self._b_open_failures += 1
+            self.pending_b = None
+        await self._async_write_b(False, now, why=why)
+
+    def _pause_raise(self, now: datetime, reason: str) -> None:
+        if self.raise_paused_until is not None:
+            return
+        zone = time_zones.require_zone(self.shadow.tz)
+        tomorrow = now.astimezone(zone).date() + timedelta(days=1)
+        self.raise_paused_until = datetime(tomorrow.year, tomorrow.month, tomorrow.day, tzinfo=zone).astimezone(now.tzinfo)
+        self.raise_paused_reason = reason
+        _LOGGER.info("SpotNav heat control: raising set aside until %s (%s)", self.raise_paused_until.isoformat(), reason)
+
+    def raised_24h(self, now: datetime) -> timedelta:
+        """SpotNav's raised time over the last 24 hours (a rolling day)."""
+        return lowered_within([(item[0], item[1]) for item in self.raisings], now - timedelta(days=1), now)  # type: ignore[misc]
+
+    def raised_minutes(self, hours: list[datetime], now: datetime) -> dict[datetime, int]:
+        """Per hour: the minutes SpotNav held B (the raise) closed (up to now)."""
+        intervals = [(item[0], item[1]) for item in self.raisings]
+        out: dict[datetime, int] = {}
+        for hour in hours:
+            minutes = lowered_within(intervals, hour, min(now, hour + timedelta(hours=1))) if hour < now else timedelta(0)  # type: ignore[arg-type]
+            out[hour] = round(minutes.total_seconds() / 60)
+        return out
+
     # ---- figures
 
     def _day(self, now: datetime) -> str:
@@ -800,6 +1208,7 @@ class HeatControl:
         self.lowerings = [item for item in self.lowerings if item[1] is None or item[1] >= oldest]  # type: ignore[operator]
         first = self._day(oldest)
         self.writes = {day: count for day, count in self.writes.items() if day >= first}
+        self.raisings = [item for item in self.raisings if item[1] is None or item[1] >= oldest]  # type: ignore[operator]
 
     # ---- what is shown
 
@@ -818,6 +1227,14 @@ class HeatControl:
             if not self.held or self.decision is None or self.decision.until is None or self.state != STATE_RUNNING
             else self.decision.until.isoformat(),
             "paused_until": None if self.paused_until is None else self.paused_until.isoformat(),
+            "raised": self.raised,
+            "raise_until": None
+            if not self.raised
+            or self.raise_decision is None
+            or not self.raise_decision.closed
+            or self.raise_decision.until is None
+            or self.state != STATE_RUNNING
+            else self.raise_decision.until.isoformat(),
         }
 
     def diagnostics(self) -> dict[str, Any]:
@@ -826,5 +1243,13 @@ class HeatControl:
             "kept": self._data(),
             "pending": None if self.pending is None else {"closed": self.pending.closed, "at": self.pending.at.isoformat()},
             "levels": None if self._levels is None else {"running_kw": self._levels.running_kw, "baseline_kw": self._levels.baseline_kw},
+            "raise": {
+                "entity": self.raise_entity,
+                "reason": None if self.raise_decision is None else self.raise_decision.reason,
+                "pending": None if self.pending_b is None else {"closed": self.pending_b.closed, "at": self.pending_b.at.isoformat()},
+                # A pump that does not answer B: told here only, never as an alert (lowering goes on).
+                "observed": "raise_not_observed" if self.raise_check.result == FAILED else self.raise_check.result,
+                "check_last": self.raise_check.last,
+            },
             "log": list(self.log),
         }

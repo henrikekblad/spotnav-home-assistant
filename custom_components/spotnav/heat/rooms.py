@@ -141,6 +141,18 @@ def indoor(readings: Sequence[SensorReading], now: datetime, heating_areas: froz
     return Indoor(coldest.value_c, coldest.entity_id, coldest.name, views, relative)
 
 
+def readable_relative(result: Indoor) -> list[float]:
+    """Every readable room's reading less its offset, left out or not (a local heat source never hides a room)."""
+    return [view.value_c - view.offset_c for view in result.sensors if view.value_c is not None]
+
+
+def warmest_c(result: Indoor) -> float | None:
+    """The warmest readable room less its offset, none left out: SG Ready's raise never heats a house where any room
+    is already at the band's high edge."""
+    values = readable_relative(result)
+    return max(values) if values else None
+
+
 def warm_c(result: Indoor) -> float | None:
     """The figure the band's high edge is compared with (see the module): the coldest counted room less its offset,
     `None` while that room rises fast or its rise is not known."""
