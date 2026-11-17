@@ -515,3 +515,35 @@ async def test_the_relay_path_never_raises(hass: HomeAssistant, freezer) -> None
     answer = (await read(hass, api_version=1, site_id=site.entry_id))["result"]
     assert all(hour["raised_min"] is None for hour in answer["band"]["hours"])
     assert answer["control"]["raised"] is False
+
+
+async def test_a_warm_house_is_lowered_through_a_and_never_raised(hass: HomeAssistant, freezer) -> None:
+    """The room-warm rule lowers on SG Ready as on the relay path: (1,0) through A, and no raise while it holds."""
+    _site_, control, contacts = await _site(hass, freezer, target_c=21.0)
+    shadow = control.shadow
+    start = control.site.demand.now().replace(second=0, microsecond=0)
+
+    async def at(minute: int, room: str) -> datetime:
+        now = start + minute * MIN
+        freezer.move_to(now)
+        hass.states.async_set(ROOM, room, {"unit_of_measurement": "°C", "device_class": "temperature"})
+        hass.states.async_set(OUTDOOR, "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+        shadow.tick(now)
+        await hass.async_block_till_done()
+        await control.async_look(now)
+        return now
+
+    for minute in range(0, 60, 5):
+        await at(minute, "22.3")
+    assert contacts.calls == [] and not shadow.room_warm.active
+    now = await at(61, "22.3")
+    assert shadow.room_warm.active and contacts.calls == [(A, "on")] and contacts.pair == (1, 0)
+    running = next(hour for hour in shadow.plan if hour.start <= now < hour.start + H)
+    assert (running.action, running.reason) == ("lower", "room_warm")
+    # Even an hour the plan would pre-heat raises nothing while the rule holds.
+    _plan(control, now + 50 * MIN, {0: "preheat"})
+    control.shadow.made_at = now + 50 * MIN
+    shadow.tick = lambda _now: None  # type: ignore[method-assign]
+    await control.async_look(now + 50 * MIN)
+    assert (B, "on") not in contacts.calls and not contacts.both_on
+    assert control.raise_decision is not None and control.raise_decision.reason in ("raise_warm", "raise_interlock")
