@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { FILL_MIN_CHART_PX, planFill, type FillReading } from "../src/card-fill";
+import { FILL_FLOOR_CHART_PX, FILL_MIN_CHART_PX, planFill, type FillReading } from "../src/card-fill";
 import { createCardView, type CardView, type CardViewInput } from "../src/card-view";
 import type { ChartObserverLike } from "../src/chart-interaction";
 import { chartHeightForWidth } from "../src/chart-render";
@@ -188,32 +188,35 @@ describe("the card in a box", () => {
     view.destroy();
   });
 
-  it("shrinks the chart to its minimum in a shorter box, then clamps the status with its full text as title", () => {
+  it("clamps the status to two lines, with its full text as title, then lets the chart go below its minimum", () => {
     const sim = layout({ box: 380, statusLines: 5 });
     const { view, root, fire } = fillView(sim.read);
     const { viewport, status, svg } = parts(root);
     fire();
-    // Natural: 260 + 122 + 100 = 482; 380 with the chart at its minimum is 100 short: five lines, one kept.
+    // Natural: 260 + 122 + 100 = 482; 380 leaves 20 for the chart: five lines go to two (60 px), the chart then has
+    // 80 px, under its floor, so the second line goes too and the chart stands at its floor.
     expect(status?.dataset["lines"]).toBe("1");
     expect(status?.style.getPropertyValue("--spotnav-status-lines")).toBe("1");
     expect(status?.title).toBe(status?.textContent);
-    expect(viewport?.style.height).toBe(`${MIN}px`);
-    expect(svg()?.getAttribute("viewBox")).toBe(`0 0 ${WIDTH} ${MIN}`);
+    expect(viewport?.style.height).toBe(`${FILL_FLOOR_CHART_PX}px`);
+    expect(svg()?.getAttribute("viewBox")).toBe(`0 0 ${WIDTH} ${FILL_FLOOR_CHART_PX}`);
     view.destroy();
   });
 
-  it("lets the chart shrink to 100 px before a two-line status gives up a line, and clamps at the limit", () => {
-    // Others 260, two status lines (40): natural 260 + 140 + 40 = 440.
+  it("keeps two status lines and lets the chart go below its minimum, down to its floor, before the second goes", () => {
+    // Others 300 with two status lines (40) in the natural 440 (chart 140).
     const natural = 440;
-    const chart = { basis: 140, min: FILL_MIN_CHART_PX };
+    const chart = { basis: 140, min: FILL_MIN_CHART_PX, floor: FILL_FLOOR_CHART_PX };
     const lines2 = (box: number): FillReading => ({ box, natural, statusHeight: 2 * LINE, lineHeight: LINE });
-    expect(FILL_MIN_CHART_PX).toBe(100);
-    // 400 - 260 - 40 = 100 for the chart: both lines stay.
+    expect(FILL_MIN_CHART_PX).toBe(120);
+    expect(planFill(lines2(420), chart)).toEqual({ chartHeight: 120, statusLines: null, spare: 0 });
+    // 20 px under the minimum (at the floor): both lines stay, the chart gives up the height.
     expect(planFill(lines2(400), chart)).toEqual({ chartHeight: 100, statusLines: null, spare: 0 });
-    // One pixel less would leave the chart under 100: a line goes and the chart takes its room back.
-    expect(planFill(lines2(399), chart)).toEqual({ chartHeight: 119, statusLines: 1, spare: 0 });
-    // The chart never goes below the limit.
-    expect(planFill(lines2(300), chart)?.chartHeight).toBe(100);
+    // Under the floor: the second line goes and the chart stops at its floor.
+    expect(planFill(lines2(300), chart)).toEqual({ chartHeight: FILL_FLOOR_CHART_PX, statusLines: 1, spare: 0 });
+    // A three-line status is clamped to two before the chart goes below its minimum.
+    const lines3: FillReading = { box: 400, natural: 460, statusHeight: 3 * LINE, lineHeight: LINE };
+    expect(planFill(lines3, chart)).toEqual({ chartHeight: 100, statusLines: 2, spare: 0 });
   });
 
   it("keeps the lines that fit and lets the chart take what the clamp freed", () => {
@@ -221,9 +224,9 @@ describe("the card in a box", () => {
     const { view, root, fire } = fillView(sim.read);
     const { viewport, status } = parts(root);
     fire();
-    // 450 - 260 = 190 for chart and status: 100 for the chart leaves 90, four lines (80); the chart gets 110.
-    expect(status?.dataset["lines"]).toBe("4");
-    expect(viewport?.style.height).toBe("110px");
+    // 90 left for the chart: five lines go to three (40 px freed), the chart gets 130.
+    expect(status?.dataset["lines"]).toBe("3");
+    expect(viewport?.style.height).toBe("130px");
     view.destroy();
   });
 
@@ -270,8 +273,8 @@ describe("the card in a box", () => {
     expect(viewport?.style.height).toBe(`${520 - others - 3 * LINE}px`);
     box = 400;
     fire();
-    // 400 - 320 = 80 for the chart, 20 short of its minimum: one of the three lines goes.
-    expect(viewport?.style.height).toBe(`${MIN}px`);
+    // 400 - 320 = 80 for the chart, 40 short of its minimum: the status goes to two lines, the chart gets 100.
+    expect(viewport?.style.height).toBe("100px");
     expect(status?.dataset["lines"]).toBe("2");
     box = null;
     fire();

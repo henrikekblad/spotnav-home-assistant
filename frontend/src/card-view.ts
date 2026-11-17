@@ -19,7 +19,7 @@ import {
   type ChartObserverLike,
   type ChartSize,
 } from "./chart-interaction";
-import { FILL_MIN_CHART_PX, planFill, type FillReading } from "./card-fill";
+import { FILL_FLOOR_CHART_PX, FILL_MIN_CHART_PX, planFill, type FillReading } from "./card-fill";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
@@ -2209,6 +2209,7 @@ export function createCardView(input: CardViewInput): CardView {
     const plan = planFill((input.readFill ?? readFillFromLayout)(card), {
       basis,
       min: collapsed ? 0 : FILL_MIN_CHART_PX,
+      floor: collapsed ? 0 : FILL_FLOOR_CHART_PX,
     });
     fillHeight = plan === null || collapsed ? null : plan.chartHeight;
     if (plan !== null) {
