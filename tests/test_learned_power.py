@@ -43,18 +43,18 @@ def _sessions(*pairs: tuple[float, float]) -> list[Session]:
 # ------------------------------------------------------------------ the rule
 
 
-def test_not_trusted_before_twenty_minutes_over_two_plug_ins() -> None:
+def test_trusted_from_fifteen_minutes_of_one_plug_in() -> None:
     one = learned_from("charger", _sessions((60, 7.0)), LOW_KW, PLANNED_KW)
-    assert one.kw == pytest.approx(7.0) and not one.trusted and one.cap_kw is None
-    short = learned_from("charger", _sessions((8, 1.0), (8, 1.0)), LOW_KW, PLANNED_KW)
-    assert not short.trusted, "16 minutes is too few"
+    assert one.kw == pytest.approx(7.0) and one.trusted and one.cap_kw == pytest.approx(7.0)
+    short = learned_from("charger", _sessions((7, 1.0), (7, 1.0)), LOW_KW, PLANNED_KW)
+    assert not short.trusted and short.cap_kw is None, "14 minutes is too few"
     two = learned_from("charger", _sessions((10, 7.0 / 6), (10, 7.0 / 6)), LOW_KW, PLANNED_KW)
     assert two.trusted and two.cap_kw == pytest.approx(7.0)
 
 
 def test_a_plug_in_of_a_few_minutes_gives_no_power_of_its_own() -> None:
     learned = learned_from("charger", _sessions((3, 1.0), (30, 3.5)), LOW_KW, PLANNED_KW)
-    assert learned.sessions == 1 and learned.kw == pytest.approx(7.0) and not learned.trusted
+    assert learned.sessions == 1 and learned.kw == pytest.approx(7.0)
 
 
 def test_the_median_of_the_plug_ins() -> None:
@@ -143,6 +143,41 @@ async def test_the_sampler_counts_clean_stretches_only(hass: HomeAssistant) -> N
     assert learned.minutes == pytest.approx(2.0)
 
 
+async def test_the_sampler_counts_between_the_registers_posts(hass: HomeAssistant) -> None:
+    """A register that posts every five minutes: each post's energy counts over the time since the last post, from
+    the first post made inside the stretch (the one before it holds minutes that were not clean)."""
+    store = LearnedPowerStore(hass, "entry")
+    sampler = PowerSampler(store)
+    start = datetime(2026, 9, 22, 1, tzinfo=timezone.utc)
+    kw = 11.0
+    posts = {minute: 10.0 + kw * minute / 60 for minute in range(-5, 31, 5)}
+    for minute in range(0, 31):
+        posted = minute - minute % 5
+        sampler.sample(
+            PowerSample(
+                at=start + timedelta(minutes=minute), kwh=posts[posted], session="p", subject="c", wiring=WIRING,
+                posted_at=start + timedelta(minutes=posted),
+            ),
+            PLANNED_KW,
+        )
+    learned = store.power("c", WIRING, 0.1, PLANNED_KW)
+    assert learned.minutes == pytest.approx(30.0)
+    assert learned.kw == pytest.approx(kw)
+
+
+def test_a_plug_ins_car_limit_counts_beside_its_clean_minutes() -> None:
+    limited = Session(id="a", minutes=4.0, kwh=0.5, limit_kw=9.0, limit_minutes=20.0)
+    assert limited.kw == pytest.approx(9.0) and limited.evidence_minutes == 20.0
+    learned = learned_from("charger", [limited], LOW_KW, PLANNED_KW)
+    assert learned.trusted and learned.cap_kw == pytest.approx(9.0)
+    # A plug-in's power is the higher of the two: never less than the car was seen to take.
+    assert Session(id="b", minutes=30.0, kwh=5.0, limit_kw=9.0, limit_minutes=10.0).kw == pytest.approx(10.0)
+    stored = {"subjects": {"charger": {"wiring": WIRING.as_dict(), "sessions": [
+        limited.as_stored(), {"id": "c", "minutes": 0, "kwh": 0}, {"id": "d", "minutes": 0, "kwh": 0, "limit_kw": -1},
+    ]}}}
+    assert parse_stored(stored) == {"charger": (WIRING, [limited])}
+
+
 # ------------------------------------------------------------------ the planner
 
 
@@ -182,13 +217,13 @@ async def test_the_plan_counts_on_learned_power_once_trusted_and_not_before(
         first = preview.snapshot().proposal
         assert first.power_kw == pytest.approx(PLANNED_KW)
 
-        store.add(subject_for(device_id), WIRING, "one", PLANNED_KW / 2 * 0.5, 30)
+        store.add(subject_for(device_id), WIRING, "one", PLANNED_KW / 2 * 10 / 60, 10)
         await preview.async_recalculate()
-        assert preview.snapshot().proposal.power_kw == pytest.approx(PLANNED_KW), "one plug-in is not enough"
+        assert preview.snapshot().proposal.power_kw == pytest.approx(PLANNED_KW), "ten minutes are not enough"
         facts = preview.plan_watch_facts()["learned_power"]
         assert facts["sessions"] == 1 and not facts["trusted"] and not facts["planned_with"]
 
-        store.add(subject_for(device_id), WIRING, "two", PLANNED_KW / 2 * 0.5, 30)
+        store.add(subject_for(device_id), WIRING, "one", PLANNED_KW / 2 * 10 / 60, 10)
         await preview.async_recalculate()
         proposal = preview.snapshot().proposal
         assert proposal.power_kw == pytest.approx(PLANNED_KW / 2)
@@ -216,7 +251,7 @@ async def test_a_plan_charge_at_full_current_is_learned_from(hass: HomeAssistant
         learned = preview._learned.power(subject_for(device_id), WIRING, LOW_KW, PLANNED_KW)  # noqa: SLF001
     assert learned.minutes >= 20
     assert learned.kw == pytest.approx(drawn, rel=0.02)
-    assert not learned.trusted, "one plug-in"
+    assert learned.trusted, "one plug-in of twenty minutes and more is enough"
 
 
 async def test_a_malformed_store_on_disk_plans_as_before(
