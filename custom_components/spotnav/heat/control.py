@@ -84,6 +84,7 @@ from .relay_control import (
     RAISE_WARM,
     BASELINE,
     PHASE_WAIT,
+    RAISE_ASSUMED_STATE,
     SAFETY_ROOM_COLD,
     SAFETY_SETTLING,
     SAFETY_SG_READY_B,
@@ -120,6 +121,9 @@ RETRY_OPEN: Final = timedelta(minutes=5)
 FOREIGN_CONFIRM: Final = timedelta(seconds=60)
 #: A closed reading this soon after SpotNav's own write is SpotNav's own closing (late or bounced): opened once.
 OWN_WINDOW: Final = timedelta(minutes=5)
+#: SG Ready: a contact must have read open this long (since its opening was confirmed, or since it was first seen open)
+#: before the other one closes, so a slow relay or a stale state never makes (1,1), not even for an instant.
+DEAD_TIME: Final = timedelta(seconds=10)
 #: Openings of a relay no longer chosen that were not read back before SpotNav lets it go.
 OPEN_TRIES: Final = 3
 #: How long a service call may take.
@@ -233,6 +237,8 @@ class HeatControl:
         self._b_own_reopen_at: datetime | None = None
         #: A closing of B written but never read closed: it may still take, so A waits `OWN_WINDOW` after it.
         self._b_close_unseen_at: datetime | None = None
+        #: Per contact: since when it has read open without a break (see `DEAD_TIME`).
+        self._open_since: dict[str, datetime] = {}
         self._was_enabled_raise: bool | None = None
         #: The check's readings of the last `BASELINE` while B was open: a raise's baseline.
         self._recent: deque[tuple[datetime, Sample]] = deque()
@@ -454,6 +460,8 @@ class HeatControl:
         if old is not None and new is not None and old.state == new.state:
             return
         closed = None if new is None or new.state in ("unavailable", "unknown") else new.state in CLOSED
+        if closed is not False:
+            self._open_since.pop(entity_id, None)
         own = (entity_id == self.relay and self.pending is not None and self.pending.closed == closed) or (
             entity_id == self.raise_entity and self.pending_b is not None and self.pending_b.closed == closed
         )
@@ -509,6 +517,9 @@ class HeatControl:
         from .runtime import relay_entity  # noqa: PLC0415 - the runtime imports this module
 
         relay = relay_entity(config)
+        for entity_id in {relay, raise_entity(config), self.relay, self.raise_entity}:
+            if entity_id is not None:
+                self._seen_open(entity_id, now)
         if self.relay is not None and relay != self.relay:
             # The old relay is given back first: opened where SpotNav holds it, read back at the next looks.
             if self.pending is not None and self._read(self.relay) == self.pending.closed:
@@ -673,6 +684,10 @@ class HeatControl:
             await self._async_write(self.decision.closed, now, why=self.decision.reason)
 
     async def _async_verify(self, now: datetime, relay: str, read: bool, safety: str | None) -> None:
+        if not self._b_clear(now) and self._b_open(now):
+            # B reads open, only not for `DEAD_TIME` yet: the check waits a look.
+            self._set(STATE_VERIFYING, self.check.phase)
+            return
         if not self._b_clear(now):
             # The check closes A: B opens first (never (1,1)), and the check waits for it.
             self.check.abort(RAISE_INTERLOCK)
@@ -866,6 +881,8 @@ class HeatControl:
             self._end_lowering(pending.at)
             self._retry_open_at = None
             self._open_failures = 0
+            if self.relay is not None:
+                self._open_since[self.relay] = now
 
     def _end_lowering(self, at: datetime) -> None:
         if self.held:
@@ -927,13 +944,35 @@ class HeatControl:
         open. B never stays closed beside it."""
         return self.relay is None or self.held or self.pending is not None or self._read(self.relay) is not False
 
-    def _a_clear(self) -> bool:
-        """Whether B may close: A reads open, SpotNav does not hold it and nothing is pending on it."""
-        return self.relay is not None and not self.held and self.pending is None and self._read(self.relay) is False
+    def _seen_open(self, entity_id: str, now: datetime) -> datetime | None:
+        """Since when `entity_id` has read open without a break (from now if this is the first such reading), `None`
+        while it does not read open."""
+        if self._read(entity_id) is not False:
+            self._open_since.pop(entity_id, None)
+            return None
+        return self._open_since.setdefault(entity_id, now)
+
+    def _open_long_enough(self, entity_id: str, now: datetime) -> bool:
+        since = self._seen_open(entity_id, now)
+        return since is not None and now - since >= DEAD_TIME
+
+    def _a_clear(self, now: datetime) -> bool:
+        """Whether B may close: A has read open for `DEAD_TIME`, SpotNav does not hold it and nothing is pending on
+        it."""
+        return self.relay is not None and not self.held and self.pending is None and self._open_long_enough(self.relay, now)
 
     def _b_clear(self, now: datetime) -> bool:
-        """Whether A may close: SpotNav holds no B and nothing is pending on it, the chosen B (if any) reads open, and
-        no closing of B that never read closed was written within `OWN_WINDOW` (it could still take late)."""
+        """Whether A may close: B is open (`_b_open`) and has read open for `DEAD_TIME`."""
+        config = self.shadow.config()
+        if not self._b_open(now):
+            return False
+        if config.control_path != PATH_SG_READY or config.control_entity_b is None:
+            return True
+        return self._open_long_enough(config.control_entity_b, now)
+
+    def _b_open(self, now: datetime) -> bool:
+        """SpotNav holds no B and nothing is pending on it, the chosen B (if any) reads open, and no closing of B that
+        never read closed was written within `OWN_WINDOW` (it could still take late)."""
         if self.raised or self.pending_b is not None:
             return False
         if self._b_close_unseen_at is not None:
@@ -1049,7 +1088,7 @@ class HeatControl:
         decision = self._raise_decision(config, now)
         self.raise_decision = decision
         if decision.closed and not self.raised:
-            if not self._a_clear():
+            if not self._a_clear(now):
                 # A is closed, held or pending: B waits (lowering wins; never (1,1)).
                 self.raise_decision = Decision(False, RAISE_INTERLOCK)
             else:
@@ -1075,6 +1114,11 @@ class HeatControl:
 
     def _raise_block(self, config: HeatConfig, now: datetime) -> str | None:
         """A reason that ends any raise and starts none (`relay_control.RAISE_*`), `None` when raising may go on."""
+        for entity_id in (self.relay, self.raise_entity):
+            state = None if entity_id is None else self.hass.states.get(entity_id)
+            if state is not None and state.attributes.get("assumed_state") is True:
+                # Its state only says what was last sent, never that it opened: the interlock cannot be trusted.
+                return RAISE_ASSUMED_STATE
         if self.raise_check.result == FAILED:
             return RAISE_NOT_OBSERVED
         if self.raise_paused_until is not None:
@@ -1124,7 +1168,7 @@ class HeatControl:
         b = self.raise_entity
         if b is None:
             return
-        if closed and not self._a_clear():
+        if closed and not self._a_clear(now):
             self._log(now, "raise_waits_for_a", why=why)
             return
         if not closed and self._b_retry_open_at is not None and now < self._b_retry_open_at:
@@ -1158,6 +1202,8 @@ class HeatControl:
             self._end_raise(pending.at)
             self._b_retry_open_at = None
             self._b_open_failures = 0
+            if self.raise_entity is not None:
+                self._open_since[self.raise_entity] = now
 
     def _end_raise(self, at: datetime) -> None:
         if self.raised:

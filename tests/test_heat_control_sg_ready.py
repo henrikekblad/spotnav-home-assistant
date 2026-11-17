@@ -147,8 +147,12 @@ async def test_a_preheat_hour_raises_and_a_lowered_hour_lowers_through_normal(ha
     assert status["raised"] is True and status["raise_until"] == (now + H).isoformat() and status["lowered"] is False
     await _look(control, now + 30 * MIN)
     assert contacts.calls == [(B, "on")]
-    # The lowered run begins: B opens and is read back before A closes.
+    # The lowered run begins: B opens and is read back, and A closes only once B has read open for the dead time.
     await _look(control, now + H, {0: "lower", 1: "lower"})
+    assert contacts.calls == [(B, "on"), (B, "off")] and contacts.pair == (0, 0)
+    await _look(control, now + H + 5 * SEC, {0: "lower", 1: "lower"})
+    assert contacts.pair == (0, 0)
+    await _look(control, now + H + 30 * SEC, {0: "lower", 1: "lower"})
     assert contacts.calls == [(B, "on"), (B, "off"), (A, "on")] and contacts.pair == (1, 0)
     assert control.raised_minutes([now], now + 2 * H) == {now: 60}
     # And back to normal at the run's end.
@@ -161,7 +165,54 @@ async def test_a_lowering_ending_into_a_raise_opens_a_first(hass: HomeAssistant,
     await _look(control, now)
     assert contacts.pair == (1, 0)
     await _look(control, now + H, {0: "preheat"})
+    assert contacts.calls == [(A, "on"), (A, "off")] and contacts.pair == (0, 0)
+    await _look(control, now + H + 5 * SEC, {0: "preheat"})
+    assert contacts.pair == (0, 0)
+    await _look(control, now + H + 30 * SEC, {0: "preheat"})
     assert contacts.calls == [(A, "on"), (A, "off"), (B, "on")] and contacts.pair == (0, 1) and not contacts.both_on
+
+
+async def test_a_contact_that_reads_open_at_once_still_waits_the_dead_time(hass: HomeAssistant, freezer) -> None:
+    # The state follows the call at once (an optimistic switch): the read-back alone would let A close in the same
+    # instant B was asked to open. A waits until B has read open for the dead time.
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "lower", 2: "lower"})
+    await _look(control, now)
+    for seconds in (0, 3, 9):
+        await _look(control, now + H + seconds * SEC, {0: "lower", 1: "lower"})
+        assert contacts.pair == (0, 0), seconds
+    await _look(control, now + H + 10 * SEC, {0: "lower", 1: "lower"})
+    assert contacts.pair == (1, 0) and not contacts.both_on
+
+
+async def test_b_closed_and_opened_between_looks_starts_the_dead_time_again(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    hass.states.async_set(B, "on")
+    hass.states.async_set(B, "off")
+    await _look(control, now)
+    assert contacts.calls == []
+    await _look(control, now + 30 * SEC)
+    assert contacts.pair == (1, 0)
+
+
+@pytest.mark.parametrize("contact", [A, B])
+async def test_a_contact_with_an_assumed_state_never_raises(hass: HomeAssistant, freezer, contact: str) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "lower", 2: "lower"})
+    hass.states.async_set(contact, "off", {"assumed_state": True})
+    await _look(control, now)
+    assert contacts.calls == [] and control.diagnostics()["raise"]["reason"] == "raise_assumed_state"
+    assert "assumed" not in str(control.status())
+    # Lowering goes on.
+    await _look(control, now + H, {0: "lower", 1: "lower"})
+    assert contacts.pair == (1, 0)
+
+
+async def test_an_assumed_state_ends_a_raise(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "preheat"})
+    await _look(control, now)
+    assert contacts.pair == (0, 1)
+    hass.states.async_set(B, "on", {"assumed_state": True})
+    await _look(control, now + 5 * MIN)
+    assert contacts.pair == (0, 0) and not control.raised
 
 
 async def test_b_that_does_not_open_keeps_a_open(hass: HomeAssistant, freezer) -> None:
