@@ -16,7 +16,9 @@ kept (`site/solar_shadow_store.py`); this is the thin shell around them, one per
   `FETCH_HOURS` (so 13:00's day-ahead issue and 06:00's morning issue are made from a fresh one), and after a start;
   four calls a day. Once, while the learned factors have no weather for the measured history, the archived runs of
   up to a year are fetched, `ARCHIVE_CHUNK_DAYS` per refresh, at most one request per refresh. A failure backs off
-  (15 min doubling to 6 h); the issues then use the last fetch while it covers the hours.
+  (15 min doubling to 6 h); the issues then use the last fetch while it covers the hours. The archive backs off on
+  its own (`archive_backoff`), so its failures never hold back the forecast's fetches, and a chunk that fails
+  `ARCHIVE_CHUNK_TRIES` times in a row is skipped (its days learn without archived weather).
 * **Fallback**: an issued hour without fetched irradiance gets only the cloud-only candidate, from the weather
   entity's hourly cloud cover (`weather.get_forecasts`), marked in the issue (`inputs.weather_entity`).
 * **Issues**: the day-ahead issue at the first refresh from 13:00 local (the next local day), the morning issue at
@@ -105,6 +107,8 @@ DAY_AHEAD_HOUR: Final = 13
 PV_READ_HOURS: Final = 48
 #: The archive is fetched back this far (the sun-position factor's window).
 ARCHIVE_DAYS: Final = 365
+#: Failures in a row on one archive chunk before it is skipped.
+ARCHIVE_CHUNK_TRIES: Final = 5
 #: The planes need this much history; under `YOUNG_DAYS` they are refitted weekly, then monthly.
 FIT_MIN_DAYS: Final = 7
 YOUNG_DAYS: Final = 60
@@ -199,6 +203,9 @@ class SiteSolarShadow:
         self.weather: dict[datetime, Weather] = {}
         self.fetched_at: datetime | None = None
         self.backoff = Backoff()
+        #: The archive's own back-off, and the failures in a row on the chunk it asks for (not kept over a restart).
+        self.archive_backoff = Backoff()
+        self.archive_chunk_failures = 0
         self.last_error: str | None = None
         self.last_status: int | None = None
         self.calls: dict[str, int] = {}
@@ -360,7 +367,7 @@ class SiteSolarShadow:
             return
         if fetch_due(self.fetched_at, now, tz) and self.backoff.ready(now.timestamp()):
             changed |= await self._async_fetch(position, now, local.date())
-        elif self.backoff.ready(now.timestamp()):
+        elif self.archive_backoff.ready(now.timestamp()):
             changed |= await self._async_archive_step(position, now)
         if self._closed:
             return
@@ -389,8 +396,8 @@ class SiteSolarShadow:
         day = now.astimezone(time_zones.require_zone(self._tz or "UTC")).date().isoformat()
         self.calls = {day: self.calls.get(day, 0) + 1}
 
-    def _failed(self, now: datetime, result: FetchResult) -> None:
-        wait = self.backoff.failed(now.timestamp(), result)
+    def _failed(self, now: datetime, result: FetchResult, backoff: Backoff | None = None) -> None:
+        wait = (self.backoff if backoff is None else backoff).failed(now.timestamp(), result)
         self.last_error, self.last_status = result.error, result.status
         _LOGGER.debug(
             "SpotNav solar shadow: Open-Meteo answered %s (%s); next try in %.0f s", result.error, result.status, wait
@@ -433,9 +440,22 @@ class SiteSolarShadow:
         result = await self._async_get(ARCHIVE_URL, archive_params(position, first, last))
         runs = {} if result.body is None else parse_archive(result.body)
         if not any(runs.values()):
-            self._failed(now, result if result.error else FetchResult(error=ERROR_BODY, status=result.status))
-            return False
-        self.backoff.succeeded()
+            failure = result if result.error else FetchResult(error=ERROR_BODY, status=result.status)
+            self._failed(now, failure, self.archive_backoff)
+            self.archive_chunk_failures += 1
+            if self.archive_chunk_failures < ARCHIVE_CHUNK_TRIES:
+                return False
+            _LOGGER.debug(
+                "SpotNav solar shadow: archived weather %s..%s skipped after %d failures",
+                first,
+                last,
+                self.archive_chunk_failures,
+            )
+            self.archive_chunk_failures = 0
+            self.archive_from = first
+            return True
+        self.archive_backoff.succeeded()
+        self.archive_chunk_failures = 0
         self.last_error, self.last_status = None, result.status
         for run, by_hour in runs.items():
             self.history.note_archive(run, by_hour)
@@ -585,6 +605,8 @@ class SiteSolarShadow:
                 "from": None if self.archive_from is None else self.archive_from.isoformat(),
                 "upto": None if self.archive_upto is None else self.archive_upto.isoformat(),
                 "done": self.archive_done,
+                "backoff": self.archive_backoff.as_dict(now.timestamp()),
+                "chunk_failures": self.archive_chunk_failures,
             },
             "kept": self.history.diagnostics(),
             "planes": planes_as_rows(self.planes),

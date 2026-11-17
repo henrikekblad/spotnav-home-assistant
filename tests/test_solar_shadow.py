@@ -57,9 +57,12 @@ def _om_body(first: datetime, hours: int, suffixes: tuple[str, ...]) -> dict[str
 class World:
     """The Energy dashboard's solar statistic, the recorder's hours of it, and Open-Meteo (or its failure)."""
 
-    def __init__(self, shadow: Any, monkeypatch: pytest.MonkeyPatch, *, fail: bool = False) -> None:
+    def __init__(
+        self, shadow: Any, monkeypatch: pytest.MonkeyPatch, *, fail: bool = False, fail_archive: bool = False
+    ) -> None:
         self.requests: list[tuple[str, dict[str, str]]] = []
         self.fail = fail
+        self.fail_archive = fail_archive
         self.clock: datetime | None = None
 
         async def energy_ids() -> tuple[str, ...]:
@@ -77,6 +80,8 @@ class World:
             self.requests.append((url, dict(params)))
             if self.fail:
                 return FetchResult(error=om.ERROR_TIMEOUT)
+            if url == om.ARCHIVE_URL and self.fail_archive:
+                return FetchResult(error=om.ERROR_HTTP, status=500)
             if url == om.ARCHIVE_URL:
                 first = datetime.fromisoformat(params["start_date"]).replace(tzinfo=UTC)
                 last = datetime.fromisoformat(params["end_date"]).replace(tzinfo=UTC)
@@ -209,6 +214,35 @@ async def test_a_failing_fetch_backs_off_and_the_issue_falls_back_to_cloud_cover
     assert meta["inputs"]["open_meteo"] == 0 and meta["inputs"]["weather_entity"] > 10
     logged = {name for name, issue, day in shadow.log.forecasts if day == "2026-06-02"}
     assert logged == {"cloud_only"}
+
+
+async def test_a_failing_archive_backs_off_on_its_own_and_skips_a_chunk_that_keeps_failing(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _entry, controller = await _site(hass, freezer)
+    shadow = controller.solar_shadow
+    world = World(shadow, monkeypatch, fail_archive=True)
+    await world.hours(shadow, datetime(2026, 5, 31, 22, 5, tzinfo=UTC), 3 * 24, freezer)
+
+    # The forecast is fetched four times a day all along: the archive's failures never hold it back.
+    assert len(world.forecast_calls()) == 3 * 4
+    assert shadow.backoff.failures == 0 and shadow.snapshot()["fetch"]["backoff"]["failures"] == 0
+    # The archive backs off on its own; the first chunk was skipped after its tries, and later chunks go on.
+    archive = world.archive_calls()
+    assert len(archive) >= shell.ARCHIVE_CHUNK_TRIES
+    assert archive[0]["end_date"] == archive[shell.ARCHIVE_CHUNK_TRIES - 1]["end_date"]
+    assert shadow.archive_from is not None
+    assert shadow.archive_from.isoformat() <= archive[0]["start_date"]
+    assert len(archive) < 3 * 24 - 12
+    snapshot = shadow.snapshot()["archive"]
+    assert snapshot["backoff"]["failures"] >= 1 and snapshot["chunk_failures"] < shell.ARCHIVE_CHUNK_TRIES
+    # Once the archive answers again it goes on where it was (the skipped chunks are not asked again) and ends.
+    world.fail_archive = False
+    shadow.archive_backoff.succeeded()
+    await world.hours(shadow, datetime(2026, 6, 3, 22, 5, tzinfo=UTC), 24, freezer)
+    later = world.archive_calls()[len(archive) :]
+    assert later and all(call["end_date"] <= archive[-1]["end_date"] for call in later)
+    assert shadow.archive_done
 
 
 @pytest.mark.parametrize(("lat", "lon"), [(0.0, 0.0), (float("nan"), 13.0)])
