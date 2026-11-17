@@ -5,7 +5,8 @@
 **The opt-in**: the heat settings' `control_enabled` ("Styr värmen", off by default), on the relay path or SG Ready's
 first contact only. Nothing is written without it. The rules and the check are pure (`heat/relay_control.py`).
 
-**Each look** (`LOOK_S`, and at once after a heat settings write), never raises:
+**Each look** (`LOOK_S`, at once after a heat settings write, and within `CONTACT_DEBOUNCE_S` of a contact's change
+SpotNav did not make), never raises:
 
 1. A relay entity that changed is given back first (the old one opened if SpotNav holds it), and checked again.
 2. Off, no relay path, a pause or a block: SpotNav's closing is given back (opened) and nothing else is written.
@@ -19,8 +20,8 @@ first contact only. Nothing is written without it. The rules and the check are p
    opened at its first readable look.
 4. **Never fight another writer**: a change SpotNav did not make (the relay opened while SpotNav held it, or closed
    while it was open), read on every look for `FOREIGN_CONFIRM`, gives the relay up (nothing written) and pauses
-   control until the next local day (`foreign_change`). A closed reading within `OWN_WINDOW` of SpotNav's own write
-   (a closing that failed, timed out or was just given up) is SpotNav's own: opened once, and only if it stays
+   control until the next local day (`foreign_change`). A closed reading within `OWN_WINDOW` of a closing of SpotNav's
+   that never read closed (it failed, timed out or was given up) is SpotNav's own: opened once, and only if it stays
    closed after that is it someone else's. SpotNav's own closing is never left unbounded.
 5. **The check** before control runs, at the first start and after the relay entity changes (kept per entity): the
    meter's power now and its levels (read again every hour from its 5-minute rows) or the pump's calculated supply
@@ -34,16 +35,19 @@ first contact only. Nothing is written without it. The rules and the check are p
 
 7. **SG Ready's raise** (contact B, where SG Ready has both contacts): after the lowering's look,
    `relay_control.decide_raise` on the plan's raise hours (the cheap hour before a lowered run, the warm-up before the
-   return) while control runs. **(1,1) never occurs**: B closes only while A reads open with nothing pending and
-   SpotNav does not hold it (`_a_clear`), and A closes only while B reads open with nothing pending and SpotNav does
-   not hold it (`_b_clear`); a lowering due while B is closed opens B first and closes A once B reads open. Each write
-   is read back before the next. B is read back, never fought (a change SpotNav did not make sets raising aside for
+   return) while control runs. **(1,1) never occurs**: B closes only while A has read open for `DEAD_TIME` with
+   nothing pending and SpotNav does not hold it (`_a_clear`), and A closes only while B has (`_b_clear`); a lowering
+   due while B is closed opens B first and closes A at a later look. Each write is read back before the next, and a
+   closing is kept in the store before it is written. B held while A reads anything but open (closed by someone
+   else, held or written) is opened at once. No raise through a contact whose state is only assumed
+   (`raise_assumed_state`, in the diagnostics only). B is read back, never fought (a change SpotNav did not make sets raising aside for
    the day), and checked on the first raises (`relay_control.RaiseCheck`): no raise seen on the supply sets raising
    aside (`raise_not_observed`, in the diagnostics only) while lowering goes on.
 
 **Every exit opens both contacts** SpotNav holds (B first, then A); the relay path's (open = the pump's normal curve): the switch off, a block, a pause, a
 safety reason, a changed relay entity, unload and Home Assistant's stop (`async_shutdown`, bounded); what could not be
-opened then is opened at the next start before anything else. Kept in `spotnav.heat_control.<entry>`: whether SpotNav
+opened then is opened at the next start before anything else; a kept state that cannot be read opens both contacts
+once (behind the opt-in). Kept in `spotnav.heat_control.<entry>`: whether SpotNav
 holds the relay closed, the lowerings and writes of the last days, the checks per relay, the pause.
 """
 
@@ -119,7 +123,7 @@ READ_BACK: Final = timedelta(seconds=90)
 RETRY_OPEN: Final = timedelta(minutes=5)
 #: A change SpotNav did not make must read on looks this far apart (and on every look between) to count.
 FOREIGN_CONFIRM: Final = timedelta(seconds=60)
-#: A closed reading this soon after SpotNav's own write is SpotNav's own closing (late or bounced): opened once.
+#: A closed reading this soon after a closing of SpotNav's that never read closed is that closing, late: opened once.
 OWN_WINDOW: Final = timedelta(minutes=5)
 #: SG Ready: a contact must have read open this long (since its opening was confirmed, or since it was first seen open)
 #: before the other one closes, so a slow relay or a stale state never makes (1,1), not even for an instant.
