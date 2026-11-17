@@ -1,0 +1,24 @@
+{
+  "api_version": 1,
+  "date": "2026-11-01",
+  "end": "2026-12-01",
+  "house_kwh": 40.0,
+  "loads": [
+    {
+      "kwh": 25.0,
+      "name": "Diskmaskin",
+      "statistic_id": "sensor.diskmaskin_energi"
+    },
+    {
+      "kwh": 18.5,
+      "name": "Torktumlare",
+      "statistic_id": "sensor.torktumlare_energi"
+    }
+  ],
+  "meters_kwh": 43.5,
+  "other_kwh": 0.0,
+  "over_kwh": 3.5,
+  "period": "month",
+  "site_id": "site_villa",
+  "through": "2026-11-17T13:00:00+00:00"
+}
