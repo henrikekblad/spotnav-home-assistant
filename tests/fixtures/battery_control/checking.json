@@ -40,6 +40,7 @@
         "peaks_a": {"L1": 7.7, "L2": 5.7, "L3": 6.7},
         "days_counted": 15,
         "days_needed": 14,
+        "days_left": 0,
         "hours": 360,
         "minutes": 21000,
         "heat_peak_w": {"L1": 800.0, "L2": 800.0, "L3": 800.0},

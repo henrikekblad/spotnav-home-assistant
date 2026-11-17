@@ -1019,7 +1019,11 @@ async def test_the_learned_per_phase_house_peaks_replace_the_one_phase_rule_afte
     assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW
     cap = control.status()["grid_charge_cap"]
     assert cap["rule"] == "conservative" and cap["cap_kw"] < gate.MIN_RATE_KW and cap["main_fuse_a"] == 20.0
-    assert cap["learned"]["ready"] is False
+    assert cap["learned"]["ready"] is False and cap["learned"]["days_left"] == READY_DAYS
+    # The house card's status line: the learning holds the grid charge back once grid charging is allowed.
+    assert control.learning_hold(now) is None
+    monkeypatch.setattr(BatteryControl, "allowed", lambda self, options=None: frozenset({"grid_charge"}))
+    assert control.learning_hold(now) == {"what": "phase_peaks", "days_left": READY_DAYS, "cap_kw": 0.0}
     # Two weeks of counted hours: L3 at most 9 A.
     hour = int(now.timestamp() // 3600)
     marks = controller.phase_peaks.peaks.hours
@@ -1033,6 +1037,7 @@ async def test_the_learned_per_phase_house_peaks_replace_the_one_phase_rule_afte
     assert cap["rule"] == "learned" and cap["cap_kw"] == pytest.approx(expected, abs=0.01)
     assert cap["learned"]["peaks_a"] == {"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 9.0 + MARGIN_A}
     assert control.snapshot()["status"]["grid_charge_cap"]["learned"]["days_counted"] == READY_DAYS
+    assert control.learning_hold(now) is None
 
 
 async def test_the_site_samples_its_house_per_phase_without_raising(
