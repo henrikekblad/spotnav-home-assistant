@@ -12,7 +12,7 @@ import { houseChartHeight, renderHouseChart } from "../src/house-chart";
 import { blockHeights, flowHeight, flowLabels, MIN_BAND, MIN_NODE } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { amount, hourFigures, houseBody, reviewLine, savingLine, todayDetail, todayLine, type HouseState, type HouseUi } from "../src/house-view";
+import { amount, hourFigures, houseBody, reviewLine, savingLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -288,9 +288,20 @@ describe("the battery app's views, calm", () => {
     expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,2 kr");
     const card = body(answer(), {}, "sv");
     expect(card.querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag");
-    expect(card.querySelector("[data-line='today-hint']")?.textContent).toBe("Samma mått som batteriets app.");
+    // A Sigenergy battery: its app is verified to show the same measure, so the hint names it.
+    expect(card.querySelector("[data-line='today-hint']")?.textContent).toBe("Samma mått som Sigenergy-appen.");
     expect(card.querySelector("[data-line='today-detail']")?.textContent).toBe("Elkostnad 38 kr");
     expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe("Batteri 48 % · läge Balanserad");
+  });
+
+  it("explain the headline's measure plainly for a battery whose app is not verified to match", () => {
+    const value = answer();
+    for (const brand of ["huawei", null]) {
+      const other = { ...value, battery: { ...value.battery!, brand } };
+      expect(todayHint("sv", other)).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade.");
+      expect(body(other, {}, "en").querySelector("[data-line='today-hint']")?.textContent).toBe("What the battery gave back, at the price then, less what charging it cost.");
+    }
+    expect(todayHint("en", value)).toBe("The same measure as the Sigenergy app.");
   });
 
   it("switch the chart between energy and price with the battery, the price view drawing both prices and no bars", () => {
@@ -541,17 +552,6 @@ describe("the shares of the perfect plan", () => {
     expect(part.textContent).not.toContain("kr");
   });
 
-  it("say on a single day that what was left at midnight counted", () => {
-    const card = body(answer("house/villa_past_day.json"), {}, "sv");
-    const part = card.querySelector("[data-part='modes']")!;
-    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Andel av perfekt, tors 12 nov/);
-    expect(part.querySelector("[data-line='perfect-midnight']")?.textContent).toBe("Räknat med det som fanns kvar i batteriet vid midnatt.");
-    expect(part.querySelector("[data-line='perfect-provisional']")?.textContent).toBe(
-      "Det som fanns kvar vid midnatt räknas med dygnets eget pris tills nästa dygns priser finns.",
-    );
-  });
-
-  it("name a share clamped to 0-100 % and a way with too small a difference to compare", () => {
   it("say which rules the perfect plan kept: may sell, does not sell, or a day stored before as the mode's", () => {
     const value = answer();
     const explain = (rules: string | null): string | null | undefined => {
@@ -564,6 +564,17 @@ describe("the shares of the perfect plan", () => {
     expect(explain("mode")).toBe("Perfekt: bästa möjliga i efterhand, med samma regler.");
   });
 
+  it("say on a single day that what was left at midnight counted", () => {
+    const card = body(answer("house/villa_past_day.json"), {}, "sv");
+    const part = card.querySelector("[data-part='modes']")!;
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Andel av perfekt, tors 12 nov/);
+    expect(part.querySelector("[data-line='perfect-midnight']")?.textContent).toBe("Räknat med det som fanns kvar i batteriet vid midnatt.");
+    expect(part.querySelector("[data-line='perfect-provisional']")?.textContent).toBe(
+      "Det som fanns kvar vid midnatt räknas med dygnets eget pris tills nästa dygns priser finns.",
+    );
+  });
+
+  it("name a share clamped to 0-100 % and a way with too small a difference to compare", () => {
     const value = answer();
     const perfect = value.battery!.review!.perfect!;
     const clamped = { ...perfect, clamped: ["own"], shares: { ...perfect.shares, own: 100, max_profit: null } };
@@ -745,7 +756,7 @@ describe("a past day's answer", () => {
 
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.heading.other", "house.compare.headingNone", "house.compare.inForce", "house.compare.none", "house.compare.spotnav", "house.compare.own", "house.todayHint", "house.todayCost", "house.compare.days.other"] as const) {
+      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.heading.other", "house.compare.headingNone", "house.compare.inForce", "house.compare.none", "house.compare.spotnav", "house.compare.own", "house.todayHint", "house.todayHintApp", "house.todayCost", "house.compare.days.other"] as const) {
         expect(translate(language, key, { day: "d", days: "2", amount: "", mode: "" })).not.toBe(key);
       }
     }
