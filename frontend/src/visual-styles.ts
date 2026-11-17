@@ -249,7 +249,6 @@ export const VISUAL_CLASSES = {
   readout: "spotnav-readout",
   readoutHint: "spotnav-readout-hint",
   legend: "spotnav-legend",
-  chartKey: "spotnav-chart-key",
   summary: "spotnav-summary",
   figures: "spotnav-figures",
   figure: "spotnav-figure",
@@ -1917,11 +1916,6 @@ export const VISUAL_STYLES = `
     width: 0;
     margin-left: -1px;
     border-left: 2px solid ${focusLineColour("now")};
-  }
-  .${VISUAL_CLASSES.chartKey} {
-    margin: 2px 0 0;
-    font-size: 0.78rem;
-    color: var(--secondary-text-color, #727272);
   }
   .${VISUAL_CLASSES.stripLabels} {
     position: relative;
