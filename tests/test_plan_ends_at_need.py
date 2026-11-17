@@ -135,6 +135,47 @@ def test_a_plan_short_of_its_departure_is_unchanged() -> None:
     assert result.need_met_at is None
 
 
+def test_a_plan_a_sliver_short_of_its_need_is_unchanged_and_says_what_it_delivers() -> None:
+    """18:00 to a 19:00 departure holds four quarters, half a percent less than the need: near enough to be ready
+    (not short of the departure), but the count never reaches the need, so every quarter runs whole. The plan keeps
+    the energy its quarters deliver and is not one that ends at its need; the status and the card's plan say that
+    energy and nothing about a shortfall."""
+    requested = 4 * PER_SLOT_KWH * 1.005
+    whole = _plan(requested, departure="19:00")
+    assert whole.has_plan and whole.short_of_deadline is False
+    assert whole.delivered_kwh == pytest.approx(4 * PER_SLOT_KWH)
+
+    result = ending_at_need(whole)
+
+    assert result == whole
+    assert result.ends_at_need is False and result.need_met_at is None
+    assert result.shown_periods == whole.periods
+
+    section = _proposal_section(_capture(result, applied=True))
+    assert section["planned_kwh"] == pytest.approx(4 * PER_SLOT_KWH)
+    assert section["periods"][-1]["end"] == whole.periods[-1][1].astimezone(dt_util.UTC).isoformat()
+
+    lines = compose_status(
+        StatusFacts(
+            now=whole.now,
+            has_settings=True,
+            departure_enabled=True,
+            proposal=ProposalFacts(
+                periods=result.shown_periods,
+                planned_kwh=result.delivered_kwh,
+                requested_kwh=result.requested_kwh,
+                short_of_deadline=result.short_of_deadline,
+                need_met_at=result.need_met_at,
+            ),
+            relation_applied=True,
+        )
+    )["lines"]
+    codes = [line["code"] for line in lines]
+    assert "departure_shortfall" not in codes
+    energy = next(line for line in lines if line["code"] == "plan_energy")
+    assert energy["params"]["kwh"] == pytest.approx(round(4 * PER_SLOT_KWH, 3))
+
+
 # ------------------------------------------------------------------------------------------- the status
 
 
