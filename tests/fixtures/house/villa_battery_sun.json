@@ -1061,6 +1061,13 @@
       "reason": "too_few_hours"
     }
   },
+  "learning": [
+    {
+      "cap_kw": 0.0,
+      "days_left": 13,
+      "what": "phase_peaks"
+    }
+  ],
   "money": {
     "currency": "SEK",
     "major_unit": "kr",
@@ -1081,6 +1088,7 @@
   },
   "state": "shadow",
   "sun": {
+    "days_left": 2,
     "review": {
       "big_under_share": 0.0,
       "hours": 168,
@@ -1093,7 +1101,7 @@
       "mae": 0.016,
       "under_share": 0.0
     },
-    "status": "active"
+    "status": "learning"
   },
   "time_zone": "Europe/Stockholm",
   "today": {

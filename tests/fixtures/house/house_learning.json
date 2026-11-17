@@ -603,6 +603,7 @@
       "reason": "too_few_hours"
     }
   },
+  "learning": [],
   "money": {
     "currency": "SEK",
     "major_unit": "kr",

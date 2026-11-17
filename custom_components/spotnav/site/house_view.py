@@ -24,6 +24,10 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   without the dashboard's grid meter, also on a site without a battery; empty in today's first minutes); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
   All three are `None` without a battery. Each hour also has its mean buy and sell price (`buy`, `sell`, minor per
   kWh) where the battery plan priced it.
+* **`learning`**: each learning period that holds something back now, on today only (empty otherwise): the
+  house's per-phase peaks (`site/phase_peaks.py`) while their cautious rule keeps the battery's grid charge below
+  its rating, `{what: "phase_peaks", days_left, cap_kw}` (`cap_kw` 0: no grid charge at all). The sun's correction
+  says its own days left in `sun.days_left` while its status is `learning` (`null` otherwise).
 * **`day`**: the day shown (`date`), whether it is today, the first day that may be asked for (`first`: the forecast
   log keeps `KEEP_HOURS_DAYS` days of hours) and whether anything was measured on it (`has_data`). A past day
   (`HouseInputs.day`) shows its own local hours, all of them past (its outcomes beside its first forecasts), its money
@@ -110,6 +114,7 @@ HOUSE_KEYS: Final = (
     "hours",
     "house",
     "sun",
+    "learning",
     "battery",
     "today",
     "flow",
@@ -174,6 +179,8 @@ class SunInputs:
     raw: Mapping[datetime, float] = field(default_factory=dict)
     corrected: Mapping[datetime, float] = field(default_factory=dict)
     forecast_names: tuple[str, ...] = ()
+    #: While the correction is learning, the days of evidence it still needs (`SolarCorrection.days_left`).
+    days_left: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +263,9 @@ class HouseInputs:
     #: The cars' energy per completed hour (kWh = mean kW, by UTC hour start), the energy flow's own figures; empty
     #: where the cars could not be measured.
     car_actual: Mapping[datetime, float] = field(default_factory=dict)
+    #: A learning period that holds something back now (`BatteryControl.learning_hold`): `{what, days_left, cap_kw}`;
+    #: shown on today only.
+    learning: tuple[Mapping[str, Any], ...] = ()
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -504,6 +514,7 @@ def _sun_block(sun: SunInputs, log: ForecastLog) -> dict[str, Any]:
         "status": sun.status,
         "review": _score(log.last_week(KIND_SUN)),
         "review_corrected": _score(log.last_week(KIND_SUN_CORRECTED)),
+        "days_left": sun.days_left if sun.status == "learning" else None,
     }
 
 
@@ -739,6 +750,7 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
         "hours": hours,
         "house": _house_block(inputs),
         "sun": None if inputs.sun is None else _sun_block(inputs.sun, inputs.log),
+        "learning": [] if inputs.day is not None else [dict(item) for item in inputs.learning],
         "battery": None if inputs.battery is None else _battery_block(inputs.battery, inputs.log),
         "today": None if inputs.battery is None else today_money(inputs.battery, inputs.now, inputs.tz, inputs.day),
         "flow": None
