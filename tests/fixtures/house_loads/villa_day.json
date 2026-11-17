@@ -1,36 +1,50 @@
 {
   "api_version": 1,
+  "belongs": {},
   "date": "2026-11-17",
   "end": "2026-11-18",
   "house_kwh": 14.62,
+  "implausible": [],
+  "kind": "house",
   "loads": [
     {
+      "changed": false,
       "kwh": 2.31,
       "name": "Torktumlare",
+      "source": "meter",
       "statistic_id": "sensor.torktumlare_energi"
     },
     {
+      "changed": false,
       "kwh": 1.42,
       "name": "Diskmaskin",
+      "source": "meter",
       "statistic_id": "sensor.diskmaskin_energi"
     },
     {
+      "changed": false,
       "kwh": 0.96,
       "name": "Tvättmaskin",
+      "source": "meter",
       "statistic_id": "sensor.tvattmaskin_energi"
     },
     {
+      "changed": false,
       "kwh": 0.21,
       "name": "Frys",
+      "source": "meter",
       "statistic_id": "sensor.frys_energi"
     },
     {
+      "changed": false,
       "kwh": 0.12,
       "name": "Router",
+      "source": "meter",
       "statistic_id": "sensor.router_energi"
     }
   ],
   "meters_kwh": 5.02,
+  "moved": [],
   "other_kwh": 9.6,
   "over_kwh": 0.0,
   "period": "day",

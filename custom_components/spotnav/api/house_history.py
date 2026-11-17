@@ -10,7 +10,7 @@ What is read, all off the event loop and kept:
 
 * A day: its energy flow as `spotnav/get_house` reads a day (`api/house.async_cached_day_flow`: by the quarter hour
   within the recorder's short-term statistics, its finished hours kept, else by the hour).
-* A month or a year: the Energy dashboard's meters, the chargers' registers and the heat pump's meter by the hour
+* A month or a year: the Energy dashboard's meters, the chargers' registers, the heat pump's meter and the heat zones' sensors by the hour
   from the recorder's long-term statistics (kept for good), in the recorder's executor, up to the last completed hour.
 * The prices: the area's held day documents (`PriceRepository.day_snapshot`, in memory) with the fees as set now.
 * The battery's reviewed days: the battery plan's own (30 days), and for an older day of the period its file in the
@@ -134,8 +134,8 @@ async def _read_periods(
         hours.append(moment)
         moment += timedelta(hours=1)
     car_ids = _car_register_ids(hass, controller)
-    meter = controller.house_forecast.heat.meter
-    return await _hourly_periods(hass, controller, hours, end, ids, car_ids, meter), 60, ids
+    heat = controller.house_forecast.heat
+    return await _hourly_periods(hass, controller, hours, end, ids, car_ids, heat.meter, await heat.async_current_zones()), 60, ids
 
 
 async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_date: Any) -> dict[str, Any]:
@@ -181,7 +181,9 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
         archived = frozenset(found)
     source = site_price_source(hass, site.entry_id)
     area = None if source is None else source.area
-    meter = controller.house_forecast.heat.meter
+    heat = controller.house_forecast.heat
+    zones = await heat.async_current_zones()
+    heat_sources = (1 if heat.meter.found else 0) + len(zones.sources)
     answer = house_history(
         HouseHistoryInputs(
             site_id=site.entry_id,
@@ -191,7 +193,8 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             periods=periods,
             has_solar=bool(ids is not None and ids.solar),
             has_battery=bool(ids is not None and ids.battery_in),
-            has_heat=bool(meter.found),
+            has_heat=heat_sources > 0,
+            heat_sources=heat_sources,
             step_min=step,
             prices=period_price_slots(hass, site.entry_id, period) if periods else (),
             money=None if area is None else (area.currency, area.major_unit, area.minor_unit),

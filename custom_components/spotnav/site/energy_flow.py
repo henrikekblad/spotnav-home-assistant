@@ -13,7 +13,11 @@ hour (`energy_hours`). The
 house is the balance: `sun + import + discharge - export - charge - cars - heat`, never below 0 (when the meters
 disagree and it would be, the missing energy is taken off the uses in the order export, battery charge, cars, heat).
 **Heat** is the heat pump's own use, where its meter is found or set (`site/heat_meter.py`, the recorder's hourly
-statistics of it): a use of its own, split out of the house; an hour without its figure leaves it in the house.
+statistics of it), and the heat zones' own (electric floor heating, an air-to-air heat pump: a sensor on each chosen
+zone's device, `site/heat_zones.py`), each counted once: a use of its own, split out of the house (which drops by
+the same energy); an hour without its figure leaves it in the house. `heat_sources` is how many sources it holds
+(the meter and each zone counted), so the card offers their split (`spotnav/get_house_loads` `kind: "heat"`) only
+when there is more than one.
 
 **What is not measured** is which source fed which use: no meter says whether the sun or the grid charged the
 battery. The flows are allocated by one rule, period by period (quarter hour or hour) so a sunny midday quarter and a
@@ -60,7 +64,7 @@ SIDE_USE: Final = "use"
 
 NODE_KEYS: Final = ("id", "side", "role", "kwh", "soc_pct")
 LINK_KEYS: Final = ("from", "to", "kwh")
-FLOW_KEYS: Final = ("date", "through", "hours", "car_hours", "heat_hours", "nodes", "links", "step_min")
+FLOW_KEYS: Final = ("date", "through", "hours", "car_hours", "heat_hours", "heat_sources", "nodes", "links", "step_min")
 
 #: Each source's uses in the order it fills them (see the module); the sources are taken in this order. A car that
 #: gives energy back (V2H) would be a source here after the battery: `(ROLE_CAR, (ROLE_GRID, ROLE_HOUSE))`.
@@ -151,6 +155,7 @@ def energy_flow(
     has_battery: bool,
     soc_pct: float | None = None,
     has_heat: bool = False,
+    heat_sources: int = 1,
     step_min: int = 60,
     since: datetime | None = None,
 ) -> dict[str, Any] | None:
@@ -195,6 +200,7 @@ def energy_flow(
         "hours": len(hours),
         "car_hours": sum(1 for hour in hours if hour.car is not None),
         "heat_hours": sum(1 for hour in hours if hour.heat is not None),
+        "heat_sources": max(1, heat_sources) if has_heat else 0,
         "nodes": nodes,
         "links": links,
         "step_min": step_min,

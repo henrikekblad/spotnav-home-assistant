@@ -258,11 +258,17 @@ async def test_the_unload_forgets_the_sites_cached_flow(hass: HomeAssistant, fre
 def _flow_controller(now_box: list) -> Any:
     from types import SimpleNamespace
 
+    from custom_components.spotnav.site.heat_zones import NO_ZONES
+
     meter = SimpleNamespace(found=False, entity_id=None, kind=None)
+
+    async def zones() -> Any:
+        return NO_ZONES
+
     return SimpleNamespace(
         demand=SimpleNamespace(tracker=SimpleNamespace(tz="Europe/Stockholm"), now=lambda: now_box[0]),
         battery_shadow=SimpleNamespace(facts=SimpleNamespace(battery_entity_id=None, soc_pct=None)),
-        house_forecast=SimpleNamespace(heat=SimpleNamespace(meter=meter)),
+        house_forecast=SimpleNamespace(heat=SimpleNamespace(meter=meter, async_current_zones=zones)),
         config={},
     )
 

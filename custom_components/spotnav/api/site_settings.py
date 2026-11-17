@@ -22,6 +22,12 @@ A compare-and-set over one site config entry's stored data, reusing the dashboar
   recompute). `expected` may name it (the value last seen, `null` for none) for the compare-and-set. A write that
   names it answers with `import_target_kw` beside the `site` block (the value stored now); one that does not is
   answered as before, and leaves the stored target as it is.
+* `meter_belongs` (since 3.0, the house pie's "belongs to" choice, `site/house_loads.py`): `{statistic id: "house" |
+  "heat" | "car" | "none"}`, merged into the stored choices (`house` removes one: the default), at most
+  `MAX_BELONGS` kept; written without a reload (read where the pies and the flow are read). `expected` may name the
+  whole stored mapping as last seen (`{}` for none) for the compare-and-set. A write that names it answers with
+  `meter_belongs` beside the `site` block (the mapping stored now). WebSocket only: over the webhook it is
+  `spotnav_not_permitted_over_webhook`.
 * Refusals are stable codes in the success envelope shape: `not_admin`, `no_site`, `conflict`,
   `invalid_value`, `unavailable`, `active_control_unavailable` (may be turned off, never newly on)
   and `confirmation_failed` (the read-back state was not the requested one; the previous value
@@ -43,6 +49,7 @@ from homeassistant.core import callback, HomeAssistant
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_IMPORT_TARGET_KW,
+    CONF_METER_BELONGS,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     DEFAULT_SOLAR_PRIORITY,
@@ -50,6 +57,7 @@ from ..const import (
 )
 from ..planning.hybrid_forecast import async_forecast_capable_domains
 from ..runtime import site_controller_for
+from ..site.house_loads import merged_belongs, stored_belongs
 from ..site.site_capacity_controller import (
     ENABLE_ALREADY,
     ENABLE_ENABLED,
@@ -59,6 +67,11 @@ from ..site.site_capacity_controller import (
 )
 from .common import ERROR_NOT_ADMIN, ERROR_UNSUPPORTED_VERSION, is_admin, lookup_site, send_unsupported_version
 from .entity_fields import import_target_error, stored_import_target_kw
+from .heat import forget_cached_heat
+from .heat_history import forget_cached_heat_history
+from .house import forget_cached_flow
+from .house_history import forget_cached_history
+from .house_loads import forget_cached_loads
 from .dashboard import (
     capture_site,
     DashboardFailure,
@@ -89,7 +102,10 @@ _SOLAR_PRIORITY: Final = "solar_priority"
 _SOLAR_FORECAST: Final = "solar_forecast"
 _ACTIVE_CONTROL: Final = CONF_ACTIVE_CONTROL_ENABLED
 _IMPORT_TARGET: Final = "import_target_kw"
-_WRITABLE_FIELDS: Final = (_SOLAR_PRIORITY, _SOLAR_FORECAST, _ACTIVE_CONTROL, _IMPORT_TARGET)
+_METER_BELONGS: Final = CONF_METER_BELONGS
+_WRITABLE_FIELDS: Final = (_SOLAR_PRIORITY, _SOLAR_FORECAST, _ACTIVE_CONTROL, _IMPORT_TARGET, _METER_BELONGS)
+#: What the webhook's secret may never name.
+_NOT_OVER_WEBHOOK: Final = (_ACTIVE_CONTROL, _METER_BELONGS)
 
 
 class SiteSettingsRefusal(Exception):
@@ -218,7 +234,7 @@ async def async_update_site_settings(
     forecast_domains = await async_forecast_capable_domains(hass)
 
     if not active_control_writable and any(
-        isinstance(named, dict) and _ACTIVE_CONTROL in named for named in (changes, expected)
+        isinstance(named, dict) and any(field in named for field in _NOT_OVER_WEBHOOK) for named in (changes, expected)
     ):
         # The webhook carrier (`active_control_writable=False`): naming load balancing at
         # all is refused before anything is compared.
@@ -313,6 +329,19 @@ async def _update_locked(
         if expected_active != controller.active_control_enabled:
             await _refuse(ERROR_CONFLICT)
 
+    current_belongs = stored_belongs(site_entry.data, CONF_METER_BELONGS)
+    if _METER_BELONGS in expected and (
+        not isinstance(expected[_METER_BELONGS], dict) or stored_belongs(expected, _METER_BELONGS) != current_belongs
+        or len(expected[_METER_BELONGS]) != len(current_belongs)
+    ):
+        await _refuse(ERROR_CONFLICT)
+    new_belongs = current_belongs
+    if _METER_BELONGS in changes:
+        merged = merged_belongs(current_belongs, changes[_METER_BELONGS])
+        if merged is None:
+            await _refuse(ERROR_INVALID_VALUE)
+        new_belongs = merged  # type: ignore[assignment]
+
     current_target = stored_import_target_kw(site_entry.data)
     if _IMPORT_TARGET in expected and expected[_IMPORT_TARGET] != current_target:
         await _refuse(ERROR_CONFLICT)
@@ -359,6 +388,16 @@ async def _update_locked(
         else:
             target_data[CONF_IMPORT_TARGET_KW] = new_target
         hass.config_entries.async_update_entry(site_entry, data=target_data)
+
+    if new_belongs != current_belongs:
+        # In the entry's data, with no reload: the pies, the flow and the heat read it where they are read.
+        belongs_data = dict(site_entry.data)
+        if new_belongs:
+            belongs_data[CONF_METER_BELONGS] = dict(new_belongs)
+        else:
+            belongs_data.pop(CONF_METER_BELONGS, None)
+        hass.config_entries.async_update_entry(site_entry, data=belongs_data)
+        _forget_energy_reads(hass, site_entry.entry_id)
 
     if (new_priority, new_forecast) != (current_priority, current_forecast):
         updated_data = dict(site_entry.data)
@@ -457,12 +496,19 @@ async def _change_active_control(
     )
 
 
+def _forget_energy_reads(hass: HomeAssistant, site_entry_id: str) -> None:
+    """Drop the site's kept energy flow, histories and pies: a meter moved between the house and the heat changes
+    them at once, not at the next 5-minute row."""
+    for forget in (forget_cached_flow, forget_cached_history, forget_cached_loads, forget_cached_heat, forget_cached_heat_history):
+        forget(hass, site_entry_id)
+
+
 def _with_target(
     hass: HomeAssistant, charger_id: Any, changes: Any, answer: dict[str, Any], site_id: Any = None
 ) -> dict[str, Any]:
     """`answer` with the site's import target as stored now (`import_target_kw`), where the request named it: the
     `site` block does not carry it (the dashboard's `grid_tariff.demand.import_target_kw` does)."""
-    if not isinstance(changes, dict) or _IMPORT_TARGET not in changes:
+    if not isinstance(changes, dict) or (_IMPORT_TARGET not in changes and _METER_BELONGS not in changes):
         return answer
     if site_id is not None:
         site_entry = lookup_site(hass, site_id)[0]
@@ -470,7 +516,12 @@ def _with_target(
         site_entry = site_binding(hass, charger_id)
     else:
         return answer
-    return {**answer, _IMPORT_TARGET: None if site_entry is None else stored_import_target_kw(site_entry.data)}
+    out = dict(answer)
+    if _IMPORT_TARGET in changes:
+        out[_IMPORT_TARGET] = None if site_entry is None else stored_import_target_kw(site_entry.data)
+    if _METER_BELONGS in changes:
+        out[_METER_BELONGS] = {} if site_entry is None else stored_belongs(site_entry.data, CONF_METER_BELONGS)
+    return out
 
 
 def _envelope(site: dict[str, Any] | None, restore: dict[str, Any] | None) -> dict[str, Any]:

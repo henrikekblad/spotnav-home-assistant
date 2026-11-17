@@ -21,6 +21,12 @@ counted: a device called "NIBE" also holds the pump's partial sensors, and a met
 a power sensor's mean (kW), an energy sensor's change (kWh in the hour, the same figure). Kept per site in memory
 for the forecast's window (`SiteHeatMeter`) and read again from the last few hours on at each refresh (an hour's
 statistics are compiled a few minutes after it).
+
+**The heat zones** (`site/heat_zones.py`): the zones chosen in the heat settings with a sensor of their own on their
+device (electric floor heating, an air-to-air heat pump) are held beside the meter (`SiteHeatMeter.zones`, their
+hours `zone_by_hour`), each counted once. The house card's heat is the meter and the zones together
+(`combined_by_hour`, `async_heat_periods`); the heat card's control, its pump state and the day record read the meter
+alone (`by_hour`).
 """
 
 from __future__ import annotations
@@ -331,9 +337,69 @@ def heat_split(
 # ------------------------------------------------------------------------------------------------ Home Assistant
 
 
-async def async_dashboard_devices(hass: HomeAssistant) -> list[DashboardDevice]:
+def dashboard_nesting(prefs: Any) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """The Energy dashboard's individual devices as `({statistic: the statistic it is included in}, {power sensor:
+    its energy statistic}, {statistic: the name the dashboard gives it, "" without})`; empty without the Energy
+    integration."""
+    devices = prefs.get("device_consumption") if isinstance(prefs, Mapping) else None
+    nested: dict[str, str] = {}
+    pairs: dict[str, str] = {}
+    names: dict[str, str] = {}
+    for device in devices if isinstance(devices, list) else []:
+        if not isinstance(device, Mapping) or not isinstance(device.get("stat_consumption"), str):
+            continue
+        stat = device["stat_consumption"]
+        names[stat] = device["name"].strip() if isinstance(device.get("name"), str) else ""
+        if isinstance(device.get("included_in_stat"), str):
+            nested[stat] = device["included_in_stat"]
+        if isinstance(device.get("stat_rate"), str):
+            pairs[device["stat_rate"]] = stat
+            if stat in nested:
+                nested[device["stat_rate"]] = nested[stat]
+    return nested, pairs, names
+
+
+async def async_heat_periods(
+    hass: HomeAssistant,
+    meter: HeatMeter,
+    zones: Any,
+    start: datetime,
+    end: datetime,
+    period: str = "hour",
+    cap_kw: float | None = None,
+) -> dict[datetime, float] | None:
+    """The heat the house card counts per `period` in `[start, end)` (kWh): the meter's energy plus the zones'
+    (`site/heat_zones.ZoneSources`), a period the meter lacks left out (its heat stays in the house); the zones' alone
+    without a meter; `None` with neither. `cap_kw`: the main fuse's capacity, above which a zone's period is left
+    out (`site/heat_zones.async_zone_periods`)."""
+    from .heat_zones import async_zone_periods, summed_periods  # noqa: PLC0415 - it imports this module
+
+    has_zones = zones is not None and bool(zones.sources)
+    if not meter.found and not has_zones:
+        return None
+    pump = await async_heat_hours(hass, meter, start, end, period) if meter.found else None
+    zone = (
+        summed_periods(await async_zone_periods(hass, zones, start, end, period, cap_kw)) if has_zones else None
+    )
+    if pump is None:
+        return zone
+    if zone is None:
+        return pump
+    return {moment: kwh + zone.get(moment, 0.0) for moment, kwh in pump.items()}
+
+
+def combine_hours(pump: Mapping[datetime, float] | None, zones: Mapping[datetime, float]) -> dict[datetime, float]:
+    """The meter's hours plus the zones' (`async_heat_periods`' rule): the meter's hours with the zones' added, or the
+    zones' alone without a meter (`pump` `None`)."""
+    if pump is None:
+        return dict(zones)
+    return {moment: kw + zones.get(moment, 0.0) for moment, kw in pump.items()}
+
+
+async def async_dashboard_devices(hass: HomeAssistant, prefs: Any = None) -> list[DashboardDevice]:
     """The Energy dashboard's individual devices with their names and platforms; none without the Energy integration."""
-    prefs = await async_energy_prefs(hass)
+    if prefs is None:
+        prefs = await async_energy_prefs(hass)
     devices = prefs.get("device_consumption") if isinstance(prefs, Mapping) else None
     if not isinstance(devices, list):
         return []
@@ -389,9 +455,28 @@ class SiteHeatMeter:
     """One site's heat meter (see the module): found again at each refresh, its hours kept for the forecast's window.
     Never raises into the site."""
 
-    def __init__(self, hass: HomeAssistant, setting: Callable[[], str | None]) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        setting: Callable[[], str | None],
+        zones: Callable[[], Sequence[str]] = lambda: (),
+        moved: Callable[[], Sequence[str]] = lambda: (),
+    ) -> None:
         self.hass = hass
         self._setting = setting
+        self._zone_climates = zones
+        #: The Energy dashboard devices the household moved to heat in the house pie (their statistics).
+        self._moved = moved
+        from .heat_zones import NO_ZONES  # noqa: PLC0415 - it imports this module
+
+        #: The chosen zones counted in heat and those left out (`site/heat_zones.py`), as of the last detection.
+        self.zones = NO_ZONES
+        #: The zones' energy together per completed hour (kW, UTC hour starts), the forecast's window.
+        self.zone_by_hour: dict[datetime, float] = {}
+        self._zones_read_for: tuple[Any, ...] = ()
+        self._nested: dict[str, str] = {}
+        self._pairs: dict[str, str] = {}
+        self._names: dict[str, str] = {}
         self.meter: HeatMeter = NO_METER
         #: The meter found without the setting (`needs_setting` reads it).
         self.detected: HeatMeter = NO_METER
@@ -404,7 +489,9 @@ class SiteHeatMeter:
     async def async_detect(self) -> HeatMeter:
         """Find the meter (see the module) and keep it."""
         try:
-            dashboard = dashboard_candidates(await async_dashboard_devices(self.hass))
+            prefs = await async_energy_prefs(self.hass)
+            dashboard = dashboard_candidates(await async_dashboard_devices(self.hass, prefs))
+            self._nested, self._pairs, self._names = dashboard_nesting(prefs)
         except Exception:  # noqa: BLE001 - the Energy dashboard cannot be read now: the integration tier still counts
             _LOGGER.debug("SpotNav heat meter: the Energy dashboard could not be read", exc_info=True)
             dashboard = []
@@ -419,20 +506,84 @@ class SiteHeatMeter:
                 "SpotNav heat meter: %s (%s, %s)", meter.entity_id or meter.status, meter.kind, meter.source
             )
         self.meter = meter
+        self.zones = self.current_zones()
         return meter
 
+    def current_zones(self) -> Any:
+        """The chosen zones' sources as the settings and the registries are now (`site/heat_zones.find_zones`), the
+        Energy dashboard's nesting as of the last detection; no zone when they cannot be read."""
+        from .heat_zones import NO_ZONES, find_zones  # noqa: PLC0415 - it imports this module
+
+        try:
+            climates = list(self._zone_climates())
+            # A moved meter counts only while it is still on the Energy dashboard.
+            moved = [(stat, self._meter_name(stat)) for stat in self._moved() if stat in self._names]
+            if not climates and not moved:
+                return NO_ZONES
+            meter = self.meter
+            paired = [] if meter.entity_id is None else [
+                other for rate, stat in self._pairs.items() for other in (rate, stat) if meter.entity_id in (rate, stat)
+            ]
+            return find_zones(self.hass, climates, meter, meter_ids=paired, nested=self._nested, moved=moved)
+        except Exception:  # noqa: BLE001 - heat is shown only: without the zones it is the meter's
+            _LOGGER.debug("SpotNav heat meter: the heat zones could not be read", exc_info=True)
+            return NO_ZONES
+
+    def zone_climates(self) -> tuple[str, ...]:
+        """The climates chosen as zones in the heat settings; none when they cannot be read."""
+        try:
+            return tuple(self._zone_climates())
+        except Exception:  # noqa: BLE001 - shown only
+            return ()
+
+    async def async_current_zones(self) -> Any:
+        """`current_zones` with the Energy dashboard read again (a device just moved to heat counts at once)."""
+        try:
+            self._nested, self._pairs, self._names = dashboard_nesting(await async_energy_prefs(self.hass))
+        except Exception:  # noqa: BLE001 - the dashboard as last read
+            _LOGGER.debug("SpotNav heat meter: the Energy dashboard could not be read", exc_info=True)
+        return self.current_zones()
+
+    def _meter_name(self, stat: str) -> str:
+        """A dashboard device's name: the dashboard's, else its sensor's, else the statistic id."""
+        if self._names.get(stat):
+            return self._names[stat]
+        state = self.hass.states.get(stat)
+        if state is not None:
+            return state.name
+        entry = er.async_get(self.hass).async_get(stat)
+        return (entry.name or entry.original_name or stat) if entry is not None else stat
+
+    def combined_by_hour(self) -> dict[datetime, float]:
+        """The meter's hours plus the zones' (`combine_hours`): the house card's heat; empty with neither."""
+        if not self.meter.found and not self.zones.sources:
+            return {}
+        return combine_hours(self.by_hour if self.meter.found else None, self.zone_by_hour)
+
+    @property
+    def source_count(self) -> int:
+        """How many sources the house card's heat holds: the meter where found, and each zone counted."""
+        return (1 if self.meter.found else 0) + len(self.zones.sources)
+
     async def async_refresh(self, now: datetime) -> bool:
-        """Find the meter and read its completed hours not yet held (the last `REREAD_HOURS` again); whether its hours
-        changed what they measure (another sensor: the old hours are dropped)."""
+        """Find the meter and the zones and read their completed hours not yet held (the last `REREAD_HOURS` again);
+        whether their hours changed what they measure (another sensor, a zone added or gone: the old hours are
+        dropped)."""
         meter = await self.async_detect()
         changed = meter.entity_id != self._read_for
         if changed:
             self.by_hour = {}
             self._read_for = meter.entity_id
-        if not meter.found:
-            return changed
         current = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
         oldest = current - timedelta(days=WINDOW_DAYS)
+        zones_changed = self.zones.signature() != self._zones_read_for
+        if zones_changed:
+            self.zone_by_hour = {}
+            self._zones_read_for = self.zones.signature()
+        await self._async_read_zones(current, oldest)
+        changed = changed or zones_changed
+        if not meter.found:
+            return changed
         held = [start for start in self.by_hour if start >= oldest]
         start = max(oldest, max(held) - timedelta(hours=REREAD_HOURS)) if held else oldest
         try:
@@ -448,8 +599,26 @@ class SiteHeatMeter:
             del self.by_hour[stale]
         return changed
 
+    async def _async_read_zones(self, current: datetime, oldest: datetime) -> None:
+        """The zones' completed hours not yet held, as the meter's."""
+        from .heat_zones import async_zone_periods, summed_periods  # noqa: PLC0415 - it imports this module
+
+        if not self.zones.sources:
+            return
+        held = [start for start in self.zone_by_hour if start >= oldest]
+        start = max(oldest, max(held) - timedelta(hours=REREAD_HOURS)) if held else oldest
+        try:
+            read = summed_periods(await async_zone_periods(self.hass, self.zones, start, current))
+        except Exception:  # noqa: BLE001 - the hours wait for the next refresh
+            _LOGGER.debug("SpotNav heat meter: the heat zones' hours could not be read", exc_info=True)
+            return
+        self.zone_by_hour.update(read)
+        for stale in [moment for moment in self.zone_by_hour if moment < oldest]:
+            del self.zone_by_hour[stale]
+
     def diagnostics(self) -> dict[str, Any]:
         return {
+            "zones": {**self.zones.diagnostics(), "hours": len(self.zone_by_hour)},
             **self.meter.as_dict(),
             "detected": self.detected.as_dict(),
             "hours": len(self.by_hour),

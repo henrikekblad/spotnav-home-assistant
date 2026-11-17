@@ -275,3 +275,66 @@ async def test_an_unsupported_version_is_the_stable_refusal(
 
     assert frame["success"] is False
     assert frame["error"]["code"] == "spotnav_unsupported_api_version"
+
+
+# ------------------------------------------------------------------------------------------------ where meters belong
+
+
+async def test_where_a_meter_belongs_is_written_compare_and_set_without_a_reload(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    """The house pie's choice (`meter_belongs`): merged into the stored mapping, `house` bringing one back, answered
+    with the mapping stored now; a stale `expected` is a conflict and an unknown place invalid, each writing nothing."""
+    charger, site = await setup_site_with_charger(hass)
+    client = await admin(hass, hass_ws_client)
+
+    async def write(expected: Any, changes: Any) -> dict[str, Any]:
+        frame = await ws_call(
+            client, update_site_settings_message(charger_id=charger.entry_id, expected=expected, changes=changes)
+        )
+        assert frame["success"] is True
+        return frame["result"]
+
+    first = await write({"meter_belongs": {}}, {"meter_belongs": {"sensor.shelly_golv": "heat", "sensor.nas": "none"}})
+    assert first["ok"] is True and first["meter_belongs"] == {"sensor.shelly_golv": "heat", "sensor.nas": "none"}
+    stored = hass.config_entries.async_get_entry(site.entry_id)
+    assert stored.data["meter_belongs"] == {"sensor.shelly_golv": "heat", "sensor.nas": "none"}
+
+    stale = await write({"meter_belongs": {}}, {"meter_belongs": {"sensor.nas": "car"}})
+    assert stale["ok"] is False and stale["error"] == ERROR_CONFLICT
+    assert hass.config_entries.async_get_entry(site.entry_id).data["meter_belongs"]["sensor.nas"] == "none"
+
+    for bad in ({"sensor.nas": "kitchen"}, {"": "heat"}, ["sensor.nas"], {}):
+        refused = await write({}, {"meter_belongs": bad})
+        assert refused["ok"] is False and refused["error"] == ERROR_INVALID_VALUE, bad
+
+    back = await write(
+        {"meter_belongs": {"sensor.shelly_golv": "heat", "sensor.nas": "none"}},
+        {"meter_belongs": {"sensor.shelly_golv": "house", "sensor.nas": "house"}},
+    )
+    assert back["ok"] is True and back["meter_belongs"] == {}
+    assert "meter_belongs" not in hass.config_entries.async_get_entry(site.entry_id).data
+
+
+async def test_a_non_admin_cannot_move_a_meter(
+    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str
+) -> None:
+    charger, site = await setup_site_with_charger(hass)
+    client = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
+    frame = await ws_call(
+        client,
+        update_site_settings_message(
+            charger_id=charger.entry_id, expected={}, changes={"meter_belongs": {"sensor.nas": "none"}}
+        ),
+    )
+    assert frame["result"]["ok"] is False and frame["result"]["error"] == ERROR_NOT_ADMIN
+    assert "meter_belongs" not in hass.config_entries.async_get_entry(site.entry_id).data
+
+
+async def test_the_webhook_may_not_move_a_meter(hass: HomeAssistant) -> None:
+    charger, site = await setup_site_with_charger(hass)
+    status, body = await site_settings_module.async_webhook_update_site_settings(
+        hass, charger, {"changes": {"meter_belongs": {"sensor.nas": "none"}}, "expected": {}}
+    )
+    assert status == 403 and body["error"] == site_settings_module.ERROR_NOT_PERMITTED_OVER_WEBHOOK
+    assert "meter_belongs" not in hass.config_entries.async_get_entry(site.entry_id).data

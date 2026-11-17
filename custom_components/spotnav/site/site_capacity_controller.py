@@ -38,6 +38,8 @@ from ..const import (
     DEFAULT_CHARGER_PRIORITY,
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_HEAT,
+    CONF_METER_BELONGS,
     CONF_HEAT_METER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
     CONF_BATTERY_PER_PHASE_SOURCE,
@@ -70,6 +72,8 @@ from ..const import (
     SOLAR_PRIORITY_BATTERY_FIRST,
     SOLAR_PRIORITY_CAR_FIRST,
 )
+from ..heat.config import read_config as read_heat_config
+from .house_loads import BELONG_HEAT, stored_belongs
 from .phase_peaks import SAMPLE_S as PHASE_PEAKS_SAMPLE_S, SitePhasePeaks
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
@@ -712,6 +716,8 @@ class SiteCapacityController:
             flat_kw=self._typical_house_kw,
             has_battery=self.has_battery_reading,
             heat_setting=self._heat_meter_setting,
+            heat_zones=self._heat_zones,
+            heat_moved=self._heat_moved_meters,
         )
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
@@ -5276,6 +5282,19 @@ class SiteCapacityController:
 
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         return stored_import_target_kw(self.config if entry is None else entry.data)
+
+    def _heat_zones(self) -> tuple[str, ...]:
+        """The climates chosen as zones in the heat settings (`heat/config.py`), read from the entry: they are written
+        without a reload."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        raw = None if entry is None else entry.data.get(CONF_HEAT)
+        return tuple(zone.entity_id for zone in read_heat_config(raw).zones)
+
+    def _heat_moved_meters(self) -> tuple[str, ...]:
+        """The Energy dashboard devices the household moved to heat in the house pie (`CONF_METER_BELONGS`)."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        belongs = stored_belongs(None if entry is None else entry.data, CONF_METER_BELONGS)
+        return tuple(stat for stat, value in belongs.items() if value == BELONG_HEAT)
 
     def _heat_meter_setting(self) -> str | None:
         """The heat pump meter chosen in the site settings (`None`: found by itself or none), read from the entry: it

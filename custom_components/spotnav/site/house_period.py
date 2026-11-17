@@ -117,6 +117,8 @@ class HouseHistoryInputs:
     has_solar: bool = False
     has_battery: bool = False
     has_heat: bool = False
+    #: The heat's sources (the heat pump's meter and each heat zone counted, `site/energy_flow.py`).
+    heat_sources: int = 1
     step_min: int = 60
     prices: Sequence[PriceSlot] = ()
     #: The area's money words `(currency, major, minor)`; `None` without a price source.
@@ -353,6 +355,7 @@ def house_history(inputs: HouseHistoryInputs) -> dict[str, Any]:
             has_solar=inputs.has_solar,
             has_battery=inputs.has_battery,
             has_heat=inputs.has_heat,
+            heat_sources=inputs.heat_sources,
             step_min=inputs.step_min,
         )
     money = inputs.money
