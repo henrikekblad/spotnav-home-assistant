@@ -7148,7 +7148,7 @@ async def async_release_held_charges(hass: HomeAssistant, charger_entry_ids: Seq
 
 def _source_entity_ids(source: PhaseMeasurementSource) -> set[str]:
     """Every entity a `PhaseMeasurementSource` reads from."""
-    if source.kind == "attributes":
+    if source.kind in ("attributes", "power"):
         return {source.entity_id} if source.entity_id else set()
     return set((source.entity_ids or {}).values())
 

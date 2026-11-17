@@ -340,7 +340,7 @@ def _source_roles(
     source = source_from_dict(source_data)
     if source is None:
         return
-    if source.kind == "attributes" and source.entity_id:
+    if source.kind in ("attributes", "power") and source.entity_id:
         item = found.setdefault(source.entity_id, {"roles": set(), "attributes": set()})
         item["roles"].add(role)
         item["attributes"].update((source.attributes or {}).values())
