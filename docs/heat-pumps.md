@@ -153,7 +153,8 @@ SpotNav never turns an automation off. Another heat optimiser (EffektGuard) or t
 control from starting.
 
 **What you see**: the line under the switch (off; checking; controlling and until when; or what it waits for), the
-heat card's header chip **Styr värmen** instead of "Test" while it runs, and SpotNav's own lowerings as solid columns
+heat card's header saying what the control does now after its name (**· Sänker till 20,5 °C**, **· Sänker**,
+**· Höjer** for SG Ready's raise, **· Normal**) instead of **· Test**, and SpotNav's own lowerings as solid columns
 in the day's chart (**SpotNav sänkte**), beside the plan's lighter ones, the rooms and the setpoint. Tap or point at
 the chart for a time's figures; tap its heading to fold it away (each browser remembers that per site). The diagnostics (`heat_settings.control`) keep the switchings, the check's
 results and why each decision was made.
