@@ -17,7 +17,7 @@ from homeassistant.helpers import entity_registry as er
 
 from ..battery.coexist import coexistence_for
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_GRID_POWER_SOURCE, CONF_MEASUREMENT_MODE, CONF_SOLAR_FORECAST_ENTRIES
-from ..execution.charger_profiles import PROFILES
+from ..execution.charger_profiles import entity_matches_keys, PROFILES
 from .detected import (
     BatteryOffer,
     ChargerIntegration,
@@ -41,6 +41,18 @@ from .house_forecast import DEFAULT_WEATHER, OUTDOOR_SENSORS, pick_weather_entit
 from .measurement_source import grid_power_source_from_dict
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _has_charger(registry: er.EntityRegistry, entry: ConfigEntry) -> bool:
+    """Whether a charger integration's entry has a charger at all: always, unless its profile names the keys only a
+    charger carries (`PlatformProfile.device_keys`): a Sigenergy plant without a DC charger is no charger left out."""
+    profile = PROFILES[entry.domain]
+    if not profile.device_keys:
+        return True
+    return any(
+        entity_matches_keys(translation_key=item.translation_key, unique_id=item.unique_id, keys=profile.device_keys)
+        for item in er.async_entries_for_config_entry(registry, entry.entry_id)
+    )
 
 
 def _chargers(hass: HomeAssistant, site: ConfigEntry) -> Detected:
@@ -73,7 +85,7 @@ def _chargers(hass: HomeAssistant, site: ConfigEntry) -> Detected:
     integrations = [
         ChargerIntegration(entry.domain, entry.title, PROFILES[entry.domain].role, entry.entry_id in used_entries)
         for entry in hass.config_entries.async_entries()
-        if entry.domain in PROFILES
+        if entry.domain in PROFILES and _has_charger(registry, entry)
     ]
     return chargers(rows, integrations)
 

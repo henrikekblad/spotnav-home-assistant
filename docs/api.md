@@ -486,6 +486,13 @@ moves with it. A write of the tariff as stored (all off where nothing is stored)
 writes nothing: `write_revision` stays and nothing replans. The settings record itself never carries the grid tariff: its `overrides` rows keep exactly their
 four keys, and a full `settings` replacement from a client that does not know the tariff leaves it as stored.
 
+**A charger given a power.** The dashboard's `current_range` (`{min_a, max_a, source}`, whole amperes) carries an
+additive `kw_per_a` for a charger SpotNav gives a power rather than a current (Sigenergy's DC charger): the kW one
+ampere per phase is written as, `sqrt(3)` times the voltage between phases (0.6928 at 400 V). `max_a` is then the
+charger's rating as a current per phase. The key is absent for every other charger, and sent to the webhook only when
+the request asks for it (`"reads": ["power_charger"]`); a client without it shows the current in amperes, which stays
+what `settings.amps` stores. The summary's `current_path` is then `power`.
+
 **Where the prices come from.** The dashboard's `prices` block carries an additive `provider` object, sent to the
 webhook only when the request asks for it (`"reads": ["price_provider"]`):
 

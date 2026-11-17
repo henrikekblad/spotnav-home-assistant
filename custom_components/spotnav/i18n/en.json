@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "three entities",
-    "attributes": "attributes"
+    "attributes": "attributes",
+    "power": "power spread over three phases"
   },
   "choice": {
     "manual": "Choose manually",
@@ -115,6 +116,7 @@
     "none": "Do not set a current",
     "change_configuration": "ChangeConfiguration (AssignedCurrent)",
     "number": "The charger's current number, within its write limits",
-    "easee_dynamic_limit": "Easee dynamic current limit (rate limited)"
+    "easee_dynamic_limit": "Easee dynamic current limit (rate limited)",
+    "power": "The charger's power limit in kW (a DC charger)"
   }
 }

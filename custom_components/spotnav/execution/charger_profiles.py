@@ -240,9 +240,31 @@ class PlatformProfile:
     #: register a `PhaseSwitch` (`execution/chargers/registry.py`).
     phase_switching: str = ""
 
+    #: A charger given a power, not a current (`CURRENT_CONTROL_POWER`): the number that takes it, in kW or W.
+    #: SpotNav's current per phase is written as the power three phases carry at the site's voltage
+    #: (`execution/chargers/sigenergy.py`).
+    power_keys: tuple[str, ...] = ()
+    #: The sensor of what such a charger delivers now (kW or W), read as its draw spread over three phases, and the
+    #: sensor of the most it can deliver (its rating).
+    output_power_keys: tuple[str, ...] = ()
+    rated_power_keys: tuple[str, ...] = ()
+    #: The integration's devices are not all chargers (Sigenergy's plant, inverters and battery share the platform):
+    #: a device is offered and detected as a charger only when it carries an entity of one of these keys. `()`: every
+    #: device of the platform may be one.
+    device_keys: tuple[str, ...] = ()
+    #: Status values in which the charger's own reading of the car's state of charge is live. Outside them it reads
+    #: something that is not the car's level (Sigenergy's DC charger reads 0 % before a session), so it is taken as
+    #: unknown. `()`: the charger's reading is live whenever it has one.
+    soc_live_values: tuple[str, ...] = ()
+
     @property
     def can_set_current(self) -> bool:
-        return bool(self.current_keys) or self.easee_current
+        return bool(self.current_keys) or self.easee_current or bool(self.power_keys)
+
+    @property
+    def power_controlled(self) -> bool:
+        """Whether the charger is given a power rather than a current (a DC charger)."""
+        return bool(self.power_keys)
 
 
 def _switch(*keys: str, inverted: bool = False) -> StartStop:
@@ -772,6 +794,40 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         note="Start and stop only; read only on older Home Assistant. No current control: switched on and off "
         "whole, at the current SpotNav learns it draws. The switch's state is assumed for up to 20 s after a "
         "command, so SpotNav reads the charger's status meanwhile.",
+    ),
+    # Sigenergy's DC charger (EVDC) on its hybrid inverter, through the TypQxQ "Sigenergy ESS" integration (2.0.3,
+    # `sigen`): device "<inverter> DC Charger", model "DC Charger". The platform also carries the plant, the
+    # inverters, the battery and an AC charger, so only a device with the DC charger's start button is one
+    # (`device_keys`). Start and Stop write register 41000; the power limit (kW, 41002) is what SpotNav sets.
+    # The running state (Modbus v2.8, appendix 14) says whether a car is there; `ended` says nothing either way
+    # (`charger_connection.py`). The lifetime register is `total` (protected against resets by the integration).
+    PlatformProfile(
+        platform="sigen",
+        name="Sigenergy DC charger",
+        start_stop=_buttons(("dc_charger_start",), ("dc_charger_stop",)),
+        power_keys=("dc_charger_max_charging_power_limit",),
+        output_power_keys=("dc_charger_output_power",),
+        rated_power_keys=("dc_charger_rated_charging_power",),
+        device_keys=("dc_charger_start",),
+        # A pause is the Stop button until the tester has said whether a 0 kW limit pauses it; never faster than
+        # every 10 s (`execution/chargers/sigenergy.py` adds a settle time before a raise).
+        policy=WritePolicy(min_interval_s=10.0, zero_pauses=True),
+        energy_keys=("dc_charger_total_charging_capacity",),
+        energy_state_classes=("total_increasing", "total"),
+        session_energy_keys=("dc_charger_current_charging_capacity",),
+        excluded_energy_keys=(
+            "dc_charger_total_discharging_capacity",
+            "dc_charger_current_discharging_capacity",
+        ),
+        status_keys=("dc_charger_running_state",),
+        charging_values=("charging",),
+        soc_live_values=("charging", "discharging"),
+        note="A DC charger given a power (kW), not a current: SpotNav's current per phase is written as the power "
+        "three phases carry at the site's voltage (16 A is 11.1 kW at 400 V), within the charger's rating. It "
+        "draws through the inverter, from the battery, the sun or the grid, so load balancing reads the site's "
+        "grid meter and the charger's own output power. A pause presses Stop. The car's level is read from the "
+        "charger only while it charges; before a session it reads 0 %, which is taken as unknown, and a car "
+        "integration is preferred where there is one.",
     ),
     PlatformProfile(platform="evcc_intg", name="evcc", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="openwb2mqtt", name="openWB", role=ROLE_EXTERNAL_CONTROLLER),

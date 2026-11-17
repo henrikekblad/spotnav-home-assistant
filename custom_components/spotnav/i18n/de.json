@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "drei Entitäten",
-    "attributes": "Attribute"
+    "attributes": "Attribute",
+    "power": "Leistung auf drei Phasen verteilt"
   },
   "choice": {
     "manual": "Manuell wählen",
@@ -115,6 +116,7 @@
     "none": "Keinen Strom setzen",
     "change_configuration": "ChangeConfiguration (AssignedCurrent)",
     "number": "Die Strom-Zahl der Ladestation, innerhalb ihrer Schreibgrenzen",
-    "easee_dynamic_limit": "Dynamische Stromgrenze von Easee (begrenzte Änderungsrate)"
+    "easee_dynamic_limit": "Dynamische Stromgrenze von Easee (begrenzte Änderungsrate)",
+    "power": "Leistungsgrenze des Laders in kW (ein DC-Lader)"
   }
 }

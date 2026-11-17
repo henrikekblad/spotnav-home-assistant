@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "tre entiteter",
-    "attributes": "attributter"
+    "attributes": "attributter",
+    "power": "effekt fordelt på tre faser"
   },
   "choice": {
     "manual": "Velg manuelt",
@@ -115,6 +116,7 @@
     "none": "Ikke still inn noen strøm",
     "change_configuration": "ChangeConfiguration (AssignedCurrent)",
     "number": "Laderens nummerentitet for strøm, innenfor skrivegrensene",
-    "easee_dynamic_limit": "Easees dynamiske strømgrense (begrenset skrivefrekvens)"
+    "easee_dynamic_limit": "Easees dynamiske strømgrense (begrenset skrivefrekvens)",
+    "power": "Laderens effektgrense i kW (en DC-lader)"
   }
 }

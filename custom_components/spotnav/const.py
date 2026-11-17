@@ -87,6 +87,10 @@ CURRENT_CONTROL_CHANGE_CONFIGURATION = "change_configuration"
 CURRENT_CONTROL_NUMBER = "number"
 # Set the current through Easee's own services (`easee.set_charger_dynamic_limit`).
 CURRENT_CONTROL_EASEE = "easee_dynamic_limit"
+# Set a power, not a current: a number in kW (Sigenergy's DC charger, `execution/chargers/sigenergy.py`). SpotNav's
+# current per phase is turned into the power three phases carry at the site's voltage, so the plan, load balancing
+# and the sun keep reckoning in amperes.
+CURRENT_CONTROL_POWER = "power"
 PLATFORMS = ["binary_sensor", "button", "date", "event", "number", "select", "sensor", "switch", "time"]
 
 MAX_SCHEDULE_PERIODS = 8

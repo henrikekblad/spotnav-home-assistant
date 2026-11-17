@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "kolme entiteettiä",
-    "attributes": "attribuutit"
+    "attributes": "attribuutit",
+    "power": "teho jaettuna kolmelle vaiheelle"
   },
   "choice": {
     "manual": "Valitse manuaalisesti",
@@ -115,6 +116,7 @@
     "none": "Älä aseta virtaa",
     "change_configuration": "ChangeConfiguration (AssignedCurrent)",
     "number": "Laturin virta-asetus, sen kirjoitusrajojen puitteissa",
-    "easee_dynamic_limit": "Easee: dynaaminen virtaraja (rajoitettu muutostiheys)"
+    "easee_dynamic_limit": "Easee: dynaaminen virtaraja (rajoitettu muutostiheys)",
+    "power": "Laturin tehoraja kW:na (DC-laturi)"
   }
 }

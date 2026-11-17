@@ -2,7 +2,10 @@
 
 A source is either one entity per phase ("separate_entities") or one entity
 carrying all three phases as attributes ("attributes"), with configurable
-attribute names since integrations disagree ("L1" vs "Phase A"). The mapping is
+attribute names since integrations disagree ("L1" vs "Phase A"), or, for a
+charger given a power rather than a current (a DC charger behind a hybrid
+inverter), one power sensor read as the same current on all three phases
+("power": `P / (sqrt(3) x V)` at the stored voltage between phases). The mapping is
 always stored explicitly, never inferred at read time
 (`vehicles/discovery.py` may only suggest one). Validation is delegated to the
 `classify_*` functions in `site_capacity.py`.
@@ -22,7 +25,11 @@ from homeassistant.util import dt as dt_util
 from .site_capacity import normalized_ampere_unit, PhaseName, PhaseProblem, PHASES, PhaseValue
 
 
-MeasurementSourceKind = Literal["separate_entities", "attributes"]
+MeasurementSourceKind = Literal["separate_entities", "attributes", "power"]
+
+#: The voltages between phases a `power` source may be stored with (an IT and a TN network, and around them).
+_POWER_VOLTAGE_RANGE = (200.0, 480.0)
+_POWER_UNIT_KW = {"kw": 1.0, "w": 0.001, "mw": 1000.0}
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +45,10 @@ class PhaseMeasurementSource:
     describes its state, not necessarily its attributes); otherwise unknown,
     which `classify_*` rejects.
 
+    `power`: `entity_id` is a power sensor (kW or W) of a charger given a power (Sigenergy's DC
+    charger); each phase reads `P / (sqrt(3) x voltage_between_phases_v)` amperes, a negative power
+    (the car giving energy back) as 0 A drawn.
+
     `signed_current`: the source reports export as a negative current (HomeWizard P1,
     Huawei, Fronius, SolarEdge Modbus, Deye external CT ...). Its magnitude is what the
     fuse carries, so each reading is taken as |value| before classifying; without the
@@ -51,6 +62,8 @@ class PhaseMeasurementSource:
     attribute_unit_override: str | None = None
     trust_entity_unit_for_attributes: bool = False
     signed_current: bool = False
+    #: `power`: the voltage between phases the power is spread over three phases at.
+    voltage_between_phases_v: float | None = None
 
 
 ClassifyFn = Callable[[Any, str | None], tuple[float | None, PhaseProblem | None]]
@@ -124,6 +137,11 @@ def _magnitude(raw: Any) -> Any:
 def _raw_phase_value(
     hass: HomeAssistant, source: PhaseMeasurementSource, phase: PhaseName
 ) -> tuple[Any, str | None, float | None, float | None]:
+    if source.kind == "power":
+        state = hass.states.get(source.entity_id) if source.entity_id else None
+        if state is None:
+            return None, None, None, None
+        return _power_as_amps(state, source.voltage_between_phases_v), "A", _age_s(state), _report_age_s(state)
     if source.kind == "separate_entities":
         entity_id = (source.entity_ids or {}).get(phase)
         state = hass.states.get(entity_id) if entity_id else None
@@ -150,6 +168,19 @@ def _raw_phase_value(
     else:
         unit = None
     return raw, unit, _age_s(state), _report_age_s(state)
+
+
+def _power_as_amps(state: State, voltage_between_phases_v: float | None) -> Any:
+    """A power state as the current per phase of three phases, or the raw state (classified as missing or
+    invalid) when it is not a finite power."""
+    factor = _POWER_UNIT_KW.get(str(state.attributes.get("unit_of_measurement") or "").strip().lower())
+    try:
+        kw = float(state.state)
+    except (TypeError, ValueError):
+        return state.state
+    if factor is None or not math.isfinite(kw) or not voltage_between_phases_v:
+        return None
+    return max(0.0, kw * factor) * 1000.0 / (math.sqrt(3.0) * voltage_between_phases_v)
 
 
 def _age_s(state: State) -> float:
@@ -213,6 +244,8 @@ def source_to_dict(source: PhaseMeasurementSource | None) -> dict[str, Any] | No
     if source.signed_current:
         # Written only when set, so a source stored before the flag existed still compares equal.
         stored["signed_current"] = True
+    if source.kind == "power":
+        stored["voltage_between_phases_v"] = source.voltage_between_phases_v
     return stored
 
 
@@ -257,8 +290,22 @@ def source_from_dict(data: Any) -> PhaseMeasurementSource | None:
     if not isinstance(data, Mapping):
         return None
     kind = data.get("kind")
-    if kind not in ("separate_entities", "attributes"):
+    if kind not in ("separate_entities", "attributes", "power"):
         return None
+    if kind == "power":
+        voltage = data.get("voltage_between_phases_v")
+        if (
+            data.get("entity_ids") is not None
+            or data.get("attributes") is not None
+            or not _is_valid_entity_id(data.get("entity_id"))
+            or isinstance(voltage, bool)
+            or not isinstance(voltage, (int, float))
+            or not _POWER_VOLTAGE_RANGE[0] <= float(voltage) <= _POWER_VOLTAGE_RANGE[1]
+        ):
+            return None
+        return PhaseMeasurementSource(
+            kind="power", entity_id=data["entity_id"], voltage_between_phases_v=float(voltage)
+        )
 
     unit_override = data.get("attribute_unit_override")
     if unit_override is not None and normalized_ampere_unit(unit_override) is None:

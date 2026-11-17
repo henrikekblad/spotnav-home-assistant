@@ -273,6 +273,8 @@ def _profile_phase_entity_candidates(
 
 #: The voltage between phases that means an IT network, where a platform may map its terminals differently.
 _IT_VOLTAGE_BETWEEN_PHASES_V = 230.0
+#: The voltage between phases a power is spread at when none is given (a TN network).
+_TN_VOLTAGE_BETWEEN_PHASES_V = 400.0
 
 
 def profile_attribute_source(
@@ -296,6 +298,19 @@ def profile_attribute_source(
     entries = er.async_entries_for_device(registry, device_id)
     for platform in dict.fromkeys(entry.platform for entry in entries):
         profile = profile_for(platform)
+        if profile is not None and profile.power_controlled and profile.output_power_keys:
+            # A DC charger: its output power, read as the same current on all three phases.
+            matcher = EntityMatcher(hass, [e for e in entries if e.platform == platform], profile)
+            output = matcher.first("sensor", profile.output_power_keys)
+            if phases != 3 or output is None or output.disabled_by is not None:
+                continue
+            if require_state and hass.states.get(output.entity_id) is None:
+                continue
+            return PhaseMeasurementSource(
+                kind="power",
+                entity_id=output.entity_id,
+                voltage_between_phases_v=float(voltage_between_phases_v or _TN_VOLTAGE_BETWEEN_PHASES_V),
+            )
         if profile is None or not profile.current_attribute_sensor_key:
             continue
         is_it = voltage_between_phases_v == _IT_VOLTAGE_BETWEEN_PHASES_V

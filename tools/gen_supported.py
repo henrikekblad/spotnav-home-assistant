@@ -73,6 +73,8 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     ("charger", "wallbox"): "Since mid-2025 the Wallbox cloud allows about one request a minute per account, and "
     "Home Assistant's own polling already uses it: keep one charger per account, or use OCPP, which is recommended "
     "for Wallbox.",
+    ("charger", "sigen"): "Driven carefully until tested on real hardware: see [Sigenergy DC charger]"
+    "(setup.md#sigenergy-dc-charger).",
     ("charger", "smartevse"): "Use firmware 3.10.1 or newer: on 3.9.3 to 3.10.0 some cars do not resume after a pause.",
     ("charger", "zaptec"): "Firmware 2.3 and newer ends a session after 20 restarts plus one per hour of the session, "
     "which solar on a cloudy day can reach. With APM or in stand-alone mode the charger ignores current writes "
@@ -271,6 +273,8 @@ def _start_stop_kind_text(profile: cp.PlatformProfile) -> str:
 def current_text(profile: cp.PlatformProfile) -> str:
     if profile.easee_current:
         return "Easee dynamic limit service"
+    if profile.power_keys:
+        return "Power limit number (kW)"
     if profile.current_keys:
         return "Number entity"
     return "None"

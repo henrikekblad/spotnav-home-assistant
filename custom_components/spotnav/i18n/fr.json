@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "trois entités",
-    "attributes": "attributs"
+    "attributes": "attributs",
+    "power": "puissance répartie sur trois phases"
   },
   "choice": {
     "manual": "Choisir manuellement",
@@ -115,6 +116,7 @@
     "none": "Ne pas régler de courant",
     "change_configuration": "ChangeConfiguration (AssignedCurrent)",
     "number": "L'entité de courant de la borne, dans ses limites d'écriture",
-    "easee_dynamic_limit": "Limite de courant dynamique Easee (fréquence limitée)"
+    "easee_dynamic_limit": "Limite de courant dynamique Easee (fréquence limitée)",
+    "power": "Limite de puissance de la borne en kW (une borne DC)"
   }
 }

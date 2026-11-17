@@ -758,13 +758,20 @@ export function activeControlReasonText(
 export interface CurrentRangeFacts {
   minA: number;
   maxA: number;
+  /** A charger given a power (a DC charger): the kW one ampere per phase is written as, so the card shows kW. */
+  kwPerA?: number;
 }
 
 export const DEFAULT_CURRENT_RANGE: CurrentRangeFacts = { minA: 6, maxA: 32 };
 
 export function currentRangeFor(dashboard: Dashboard): CurrentRangeFacts {
   const range = dashboard.current_range;
-  return range === null ? DEFAULT_CURRENT_RANGE : { minA: range.min_a, maxA: range.max_a };
+  if (range === null) {
+    return DEFAULT_CURRENT_RANGE;
+  }
+  return range.kw_per_a === undefined
+    ? { minA: range.min_a, maxA: range.max_a }
+    : { minA: range.min_a, maxA: range.max_a, kwPerA: range.kw_per_a };
 }
 
 export function socFor(dashboard: Dashboard): Soc | null {

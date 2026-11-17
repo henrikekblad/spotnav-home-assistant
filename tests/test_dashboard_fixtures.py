@@ -193,6 +193,41 @@ async def _state_charger_states_its_maximum(hass: HomeAssistant) -> dict[str, An
     return await _payload(hass, charger, can_act=True)
 
 
+async def _state_dc_charger_power(hass: HomeAssistant) -> dict[str, Any]:
+    """Sigenergy's DC charger, given a power: `current_range` states its 12 kW rating as 17 A a phase and adds
+    `kw_per_a`, so the card shows the planned current in kW (no other fixture has the key). A car is plugged in
+    before its session: the charger's 0 % is read as no level (`soc.value` null)."""
+    from custom_components.spotnav.const import CURRENT_CONTROL_POWER
+    from custom_components.spotnav.flows.charger_detection import detect_charger
+    from tests.charger_helpers import detected_config
+    from tests.charger_shapes import register_shape, SHAPES
+
+    ids = register_shape(hass, SHAPES["sigen"])
+    found = detect_charger(hass, ids["device_id"])
+    assert found is not None
+    # A car plugged in, no session yet: the charger reads 0 %, which is no level at all.
+    hass.states.async_set("sensor.sigen_dc_charger_running_state", "occupied", {"device_class": "enum"})
+    hass.states.async_set(
+        "sensor.sigen_dc_charger_vehicle_soc", "0", {"device_class": "battery", "unit_of_measurement": "%"}
+    )
+    hass.states.async_set("sensor.sigen_dc_charger_output_power", "0", {"device_class": "power", "unit_of_measurement": "kW"})
+    data = detected_config(found)
+    charger = make_entry(
+        hass,
+        entry_id="dc_charger",
+        charge_control=str(found.charge_control),
+        current_limit=found.current_limit,
+        webhook_id="webhook-dc_charger",
+        title="dc_charger",
+        current_control=CURRENT_CONTROL_POWER,
+        extra={key: value for key, value in data.items() if key not in ("charge_control", "current_limit")},
+    )
+    assert await hass.config_entries.async_setup(charger.entry_id)
+    await hass.async_block_till_done()
+    await go_auto(hass, charger.entry_id, strategy=STRATEGY_CHEAPEST)
+    return await _payload(hass, charger, can_act=True)
+
+
 async def _direct_site_charger(hass: HomeAssistant, *, entry_id: str) -> MockConfigEntry:
     charger = await _setup_charger(hass, entry_id=entry_id)
     site = make_site_entry(hass, entry_id=f"{entry_id}_site", charger_entry_ids=[charger.entry_id])
@@ -367,6 +402,8 @@ async def test_the_committed_strategy_and_site_fixtures_are_the_serializers_own_
         ),
         # Last: a charger set up earlier shows in every later payload's `chargers` list.
         "solar_direct_site_with_total.json": await _state_solar_direct_site_with_total(hass),
+        # After the last one, so no older fixture's `chargers` list changes.
+        "dc_charger_power.json": await _state_dc_charger_power(hass),
     }
     for name, payload in produced.items():
         assert payload["api_version"] == 1, name
@@ -394,6 +431,7 @@ EXPECTED_FIXTURES: Final = frozenset(
         "cheapest_direct_site_admin.json",
         "cheapest_direct_site_read_only.json",
         "charger_states_its_maximum.json",
+        "dc_charger_power.json",
         "solar_derived_site.json",
         "solar_direct_site_with_total.json",
         "hybrid_derived_site_no_forecast.json",

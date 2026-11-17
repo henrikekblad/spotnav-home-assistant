@@ -148,11 +148,16 @@ class ButtonPath(StartStopPath):
         super().__init__(hass)
         self.start_entity_id = start_entity_id
         self.stop_entity_id = stop_entity_id
+        #: Told `"start"` or `"stop"` after a press went out, for a charger that keeps a timing log of its own
+        #: (Sigenergy's DC charger, `sigenergy.PowerTiming`); `None` for every other.
+        self.pressed: Callable[[str], None] | None = None
 
     async def _press(self, entity_id: str) -> bool:
         if _entity_unavailable(self.hass, entity_id):
             return _not_executed(entity_id)
         await call_service(self.hass, "button", "press", {"entity_id": entity_id}, blocking=True)
+        if self.pressed is not None:
+            self.pressed("start" if entity_id == self.start_entity_id else "stop")
         return True
 
     async def async_start(self, amps: int | None = None) -> bool:

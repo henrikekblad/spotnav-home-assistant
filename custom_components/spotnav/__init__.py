@@ -81,7 +81,14 @@ from .execution.solar_execution import (
     async_setup_solar_execution,
     solar_execution_state,
 )
-from .execution.target_stop import resolve_charger_soc_reading, resolve_soc_reading, SOC_FRESH_MAX_AGE_S, SocReading
+from .execution.target_stop import (
+    charger_soc_live,
+    choose_soc_reading,
+    resolve_charger_soc_reading,
+    resolve_soc_reading,
+    SOC_FRESH_MAX_AGE_S,
+    SocReading,
+)
 from .planning.auto_controller import (
     async_remove_auto_state,
     AutoPlannerController,
@@ -353,12 +360,13 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         car yields a reading with no usable value, not "no vehicle".
         """
         charger_reading = resolve_charger_soc_reading(hass, controller.charge_control)
-        if charger_reading is not None and charger_reading.soc_percent is not None:
+        live = charger_soc_live(hass, dict(entry.data))
+        if live is None and charger_reading is not None and charger_reading.soc_percent is not None:
             return charger_reading
-        return resolve_soc_reading(
-            hass,
-            vehicle_id=vehicle_id,
-            entity_id=vehicle_soc_entity_id(hass, vehicle_id),
+        return choose_soc_reading(
+            charger_reading,
+            resolve_soc_reading(hass, vehicle_id=vehicle_id, entity_id=vehicle_soc_entity_id(hass, vehicle_id)),
+            charger_live=live,
         )
 
     # A detected charger stored without its lifetime register gets the one detection finds now, before

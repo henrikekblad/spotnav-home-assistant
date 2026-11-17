@@ -60,6 +60,7 @@ from ..const import (
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     CURRENT_CONTROL_EASEE,
     CURRENT_CONTROL_NUMBER,
+    CURRENT_CONTROL_POWER,
     DEFAULT_MAX_AGE_S,
     DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
     DEFAULT_YIELD_STEPPING_ENABLED,
@@ -119,7 +120,7 @@ from ..vehicles.vehicle_discovery import discover_ambiguous_vehicles
 from ..execution.chargers.ocpp import assigned_amps_for_connector, read_assigned_current_value
 from ..execution.charger_entities import control_path_for_entity, own_mode_conflicts
 from .charger_wiring import ChargerWiringSteps
-from .charger_detection import detect_charger, DetectedCharger, identifier_domains
+from .charger_detection import detect_charger, DetectedCharger, identifier_domains, is_charger_device
 from .labels import current_control_selector, MANUAL_ATTRIBUTES_CHOICE, SKIP_CHOICE
 from .measured_source import (
     async_charger_measured_candidates,
@@ -779,6 +780,7 @@ class SpotNavChargingConfigFlow(
             for kind, applies in (
                 (CURRENT_CONTROL_NUMBER, profile is not None and bool(profile.current_keys)),
                 (CURRENT_CONTROL_EASEE, profile is not None and profile.easee_current),
+                (CURRENT_CONTROL_POWER, profile is not None and profile.power_controlled),
             )
             if applies
         )
@@ -832,7 +834,7 @@ class SpotNavChargingConfigFlow(
         if path is None:
             errors[CONF_CHARGE_CONTROL] = "control_path_unknown"
         control = user_input.get(CONF_CURRENT_CONTROL) or ""
-        if control == CURRENT_CONTROL_NUMBER and not user_input.get(CONF_CURRENT_LIMIT):
+        if control in (CURRENT_CONTROL_NUMBER, CURRENT_CONTROL_POWER) and not user_input.get(CONF_CURRENT_LIMIT):
             errors[CONF_CURRENT_CONTROL] = "current_limit_required"
         if control == CURRENT_CONTROL_EASEE and (path is None or path.get("kind") != "easee"):
             errors[CONF_CURRENT_CONTROL] = "current_control_unsupported"
@@ -1457,6 +1459,13 @@ class SpotNavChargingConfigFlow(
                 entities, device.id
             ):
                 continue
+            else:
+                profile = profile_for(domains.get(device.config_entry_id))
+                if profile is not None and not is_charger_device(
+                    profile, er.async_entries_for_device(entities, device.id, include_disabled_entities=True)
+                ):
+                    # A Sigenergy plant, inverter or battery: the platform's other devices are not chargers.
+                    continue
             label = device.name_by_user or device.name or device.id
             area = areas.async_get_area(device.area_id) if device.area_id else None
             if area is not None:

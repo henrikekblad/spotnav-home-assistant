@@ -203,6 +203,49 @@ site**, which is on by default. Otherwise the dialog says SpotNav cannot tell ho
 wired, so it is not added automatically; add it from the site's settings (see [Change these
 choices later](#change-these-choices-later)).
 
+### Sigenergy DC charger
+
+Sigenergy's DC charger (EVDC) on a hybrid inverter is added like any other charger, through the
+[Sigenergy ESS integration](https://github.com/TypQxQ/Sigenergy-Local-Modbus) (2.0.3 or newer). In
+**Automatic**, pick the device named after the inverter with **DC Charger** at the end: the
+integration's plant, inverter and battery devices are not offered. SpotNav suggests its Start and Stop
+buttons, its **Max Charging Power Limit** with **The charger's power limit in kW**, its total charged
+energy and its running state.
+
+How it differs from an AC charger:
+
+- **Power, not current.** SpotNav still plans and balances in amperes per phase, and writes the power
+  three phases carry at the site's voltage between phases: one ampere is 0.69 kW at 400 V, so 16 A is
+  11.1 kW. The charger's rating is the most it is given, and the card shows the planned power in kW.
+  The lowest step is SpotNav's usual 6 A, 4.2 kW at 400 V.
+- **Load balancing.** The charger draws through the inverter, from the battery, the sun or the grid,
+  so the fuse sees only what the inverter imports. Load balancing reads the site's grid meter as
+  always, and reads the charger's own output power as its draw, spread evenly over the three phases.
+  When the site would go over its fuse, the power limit is lowered as a current would be. The house
+  card shows the car as a load of its own, so the battery plan does not take its energy for the house.
+- **The car's level.** The charger reads the car's state of charge only while it charges. Before a
+  session it shows 0 %, which SpotNav takes as unknown. A car integration, where there is one, is
+  preferred; the charger's reading fills in during a charge when the car's is not fresh.
+- **No phases.** A DC charger charges the battery past the car's own charger, so the car's onboard
+  phases do not limit it and there is no phase switching.
+
+Until it has been tested on real hardware, SpotNav drives it carefully:
+
+- a pause presses **Stop**; SpotNav never writes 0 kW to pause it;
+- it never writes a power limit below 1.5 kW;
+- it writes the limit at most every 10 s, and waits 30 s after a write before it raises the power;
+- the running state **Ended** is read as neither a car plugged in nor a car gone.
+
+**For the tester.** The debug report (gear, **Settings**, **Support**) shows every power limit,
+Start and Stop SpotNav sent, with the charger's output power 5, 15, 30 and 60 s later. With it, these
+can be answered:
+
+1. Does a limit of 0 kW pause the charge, or must Stop be pressed?
+2. What is the lowest power it holds? Set the limit to 1.5, 3 and 4 kW and note the output.
+3. How fast does it follow a new limit, up and down?
+4. What does the grid meter show while the car charges from the house battery?
+5. What does the running state show after Stop with the car still plugged in, and after it is unplugged?
+
 ### Renaming a charger
 
 Renaming a charger's entry under **Settings, Devices & services, SpotNav** changes the name shown

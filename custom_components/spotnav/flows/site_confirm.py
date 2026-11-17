@@ -42,7 +42,7 @@ def candidate_label(hass, candidate: MeterCandidate) -> str:
 
 
 def source_name(hass, mapping: Any) -> str:
-    if mapping.kind == "attributes" and mapping.entity_id:
+    if mapping.kind in ("attributes", "power") and mapping.entity_id:
         return entity_name(hass, mapping.entity_id)
     entity_ids = sorted((mapping.entity_ids or {}).values())
     return entity_name(hass, entity_ids[0]) if entity_ids else ""

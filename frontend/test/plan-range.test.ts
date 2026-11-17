@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_CURRENT_RANGE, currentRangeFor } from "../src/model";
-import { checkCurrentInRange, formFromRecord, planSummaryParts, replacementFor } from "../src/settings";
+import { checkCurrentInRange, currentText, formFromRecord, planSummaryParts, replacementFor } from "../src/settings";
 import { decodeDashboard, type Dashboard } from "../src/validate";
 import type { SettingsRecord } from "../src/types";
 
@@ -43,6 +43,22 @@ const record: SettingsRecord = {
 describe("the range from the dashboard", () => {
   it("is the charger's own when it states one", () => {
     expect(currentRangeFor(decoded("charger_states_its_maximum"))).toEqual({ minA: 6, maxA: 16 });
+  });
+
+  it("carries the kW per ampere of a charger given a power (a DC charger)", () => {
+    expect(currentRangeFor(decoded("dc_charger_power"))).toEqual({ minA: 6, maxA: 17, kwPerA: 0.6928 });
+  });
+
+  it.each([
+    ["zero", 0],
+    ["above 2 kW", 2.5],
+    ["text", "0.69"],
+    ["null", null],
+  ])("refuses a kW per ampere that is %s", (_name, value) => {
+    const dashboard = decoded("dc_charger_power", (raw) => {
+      (raw["current_range"] as Record<string, unknown>)["kw_per_a"] = value;
+    });
+    expect(currentRangeFor(dashboard)).toEqual(DEFAULT_CURRENT_RANGE);
   });
 
   it("is the everyday range for a charger that states none", () => {
@@ -104,5 +120,11 @@ describe("judging the current", () => {
 
   it("writes the Plan cell as one line of three parts", () => {
     expect(planSummaryParts("en", null)).toEqual(["Not set", "No deadline", "Not set"]);
+  });
+
+  it("names a DC charger's planned current as the power it is written as", () => {
+    expect(planSummaryParts("en", record)[2]).toBe("16 A");
+    expect(planSummaryParts("en", record, null, null, 0.6928)[2]).toBe("11.1 kW");
+    expect(currentText("sv", 17, 0.6928)).toBe("11,8 kW");
   });
 });
