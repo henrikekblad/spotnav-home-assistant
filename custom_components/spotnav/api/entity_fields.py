@@ -79,6 +79,7 @@ from ..const import (
     CONF_MODE,
     CONF_PHASE_SWITCHING,
     CURRENT_CONTROL_NUMBER,
+    CURRENT_CONTROL_POWER,
     DEFAULT_CHARGER_PRIORITY,
     DEFAULT_MAX_AGE_S,
     DOMAIN,
@@ -593,7 +594,7 @@ def current_limit_none_allowed(entry: ConfigEntry) -> bool:
     """Whether SpotNav can do without a current limit: not while the current is set through that
     number (`CURRENT_CONTROL_NUMBER`), which then is the actuator.
     """
-    return entry.data.get(CONF_CURRENT_CONTROL) != CURRENT_CONTROL_NUMBER
+    return entry.data.get(CONF_CURRENT_CONTROL) not in (CURRENT_CONTROL_NUMBER, CURRENT_CONTROL_POWER)
 
 
 def _voltage_text(entry: ConfigEntry) -> str:
@@ -927,7 +928,7 @@ def _measured_source_text(hass: HomeAssistant, charger_entry_id: str) -> str | N
     source = source_from_dict(wiring.get(CONF_MEASURED_CURRENT_SOURCE))
     if source is None:
         return None
-    if source.kind == "attributes":
+    if source.kind in ("attributes", "power"):
         return source.entity_id
     return ", ".join((source.entity_ids or {})[phase] for phase in PHASES if phase in (source.entity_ids or {}))
 

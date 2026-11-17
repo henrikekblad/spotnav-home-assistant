@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "tres entidades",
-    "attributes": "atributos"
+    "attributes": "atributos",
+    "power": "potencia repartida en tres fases"
   },
   "choice": {
     "manual": "Elegir manualmente",
@@ -115,6 +116,7 @@
     "none": "No fijar una corriente",
     "change_configuration": "ChangeConfiguration (AssignedCurrent)",
     "number": "El número de corriente del cargador, dentro de sus límites de escritura",
-    "easee_dynamic_limit": "Límite dinámico de corriente de Easee (con límite de frecuencia)"
+    "easee_dynamic_limit": "Límite dinámico de corriente de Easee (con límite de frecuencia)",
+    "power": "Límite de potencia del cargador en kW (un cargador de CC)"
   }
 }

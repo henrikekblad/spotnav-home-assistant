@@ -12,6 +12,7 @@ from ..const import (
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     CURRENT_CONTROL_EASEE,
     CURRENT_CONTROL_NUMBER,
+    CURRENT_CONTROL_POWER,
 )
 from ..texts import table
 from ..vehicles.choices import entity_option, flow_language
@@ -106,7 +107,7 @@ def current_control_selector(
     charger, the number and Easee's service for a detected one. "Do not set a current" is always first.
     """
     text = table(flow_language(hass), "current_control")
-    allowed = (CURRENT_CONTROL_CHANGE_CONFIGURATION, CURRENT_CONTROL_NUMBER, CURRENT_CONTROL_EASEE)
+    allowed = (CURRENT_CONTROL_CHANGE_CONFIGURATION, CURRENT_CONTROL_NUMBER, CURRENT_CONTROL_EASEE, CURRENT_CONTROL_POWER)
     return selector.SelectSelector(
         selector.SelectSelectorConfig(
             options=[
@@ -158,11 +159,15 @@ def _candidate_label(hass, candidate: DiscoveryCandidate) -> str:
     """
     lang = flow_language(hass)
     mapping = candidate.mapping
-    if mapping.kind == "attributes":
+    if mapping.kind in ("attributes", "power"):
         state = hass.states.get(mapping.entity_id)
         name = state.name if state else mapping.entity_id
         entity_part = mapping.entity_id
-        phase_part = ", ".join(f"{phase}={attr}" for phase, attr in sorted((mapping.attributes or {}).items()))
+        phase_part = (
+            "L1, L2, L3"
+            if mapping.kind == "power"
+            else ", ".join(f"{phase}={attr}" for phase, attr in sorted((mapping.attributes or {}).items()))
+        )
     else:
         entity_ids = mapping.entity_ids or {}
         first_id = sorted(entity_ids.values())[0] if entity_ids else candidate.candidate_id

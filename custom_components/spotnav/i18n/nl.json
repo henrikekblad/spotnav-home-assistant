@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "drie entiteiten",
-    "attributes": "attributen"
+    "attributes": "attributen",
+    "power": "vermogen verdeeld over drie fasen"
   },
   "choice": {
     "manual": "Handmatig kiezen",
@@ -115,6 +116,7 @@
     "none": "Geen stroom instellen",
     "change_configuration": "ChangeConfiguration (AssignedCurrent)",
     "number": "De stroomentiteit van de laadpaal, binnen de schrijflimieten",
-    "easee_dynamic_limit": "Dynamische stroomlimiet van Easee (beperkt aantal wijzigingen)"
+    "easee_dynamic_limit": "Dynamische stroomlimiet van Easee (beperkt aantal wijzigingen)",
+    "power": "Vermogenslimiet van de lader in kW (een DC-lader)"
   }
 }

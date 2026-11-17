@@ -21,7 +21,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from ..const import CURRENT_CONTROL_EASEE, CURRENT_CONTROL_NUMBER
+from ..const import CURRENT_CONTROL_EASEE, CURRENT_CONTROL_NUMBER, CURRENT_CONTROL_POWER
 from ..execution.chargers.easee import EASEE_LIMIT_SENSOR_KEY
 from ..execution.chargers.registry import external_balancer
 from ..execution.chargers.zaptec import single_charger_installation
@@ -33,6 +33,7 @@ from ..execution.charger_entities import (
 )
 from ..execution.other_controllers import other_controllers, OtherController
 from ..execution.charger_profiles import (
+    entity_matches_keys,
     PlatformProfile,
     PATH_BUTTONS,
     PATH_BUTTONS_TOGGLE,
@@ -55,6 +56,7 @@ from ..execution.charger_profiles import (
 _LOGGER = logging.getLogger(__name__)
 
 _AMPERE_UNITS: Final = ("a", "amp", "amps", "ampere", "amperes", "ma")
+_POWER_UNITS: Final = ("kw", "w")
 _PHASE_LIMIT: Final = 3
 
 
@@ -145,6 +147,26 @@ def _unit_is_amps(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
     return bool(unit) and str(unit).strip().lower() in _AMPERE_UNITS
 
 
+def _unit_is_power(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
+    """Whether a number takes a power (kW or W), by its state's unit or, before it has one, its registry unit."""
+    state = hass.states.get(entry.entity_id)
+    unit = state.attributes.get("unit_of_measurement") if state is not None else None
+    unit = unit or entry.unit_of_measurement
+    return bool(unit) and str(unit).strip().lower() in _POWER_UNITS
+
+
+def is_charger_device(profile: PlatformProfile, entries: list[er.RegistryEntry]) -> bool:
+    """Whether a device of the profile's platform is a charger: any device, unless the profile names the keys only a
+    charger's device carries (`PlatformProfile.device_keys`: Sigenergy's plant and inverters share its platform)."""
+    if not profile.device_keys:
+        return True
+    return any(
+        entry.platform == profile.platform
+        and entity_matches_keys(translation_key=entry.translation_key, unique_id=entry.unique_id, keys=profile.device_keys)
+        for entry in entries
+    )
+
+
 def _detect_start_stop(
     hass: HomeAssistant, found: DetectedCharger, matcher: EntityMatcher, device: dr.DeviceEntry
 ) -> None:
@@ -225,6 +247,21 @@ def _detect_current(
     hass: HomeAssistant, found: DetectedCharger, matcher: EntityMatcher, device: dr.DeviceEntry
 ) -> None:
     profile = matcher.profile
+    if profile.power_keys:
+        # A power, not a current (a DC charger): the number in kW is the control, written as the power of three
+        # phases (`execution/chargers/sigenergy.py`).
+        power = matcher.first("number", profile.power_keys)
+        if power is None:
+            found.notes.append("no_current_number")
+            return
+        if not _unit_is_power(hass, power):
+            found.notes.append("current_unit_not_power")
+            return
+        found.current_limit = power.entity_id
+        found.current_control = CURRENT_CONTROL_POWER
+        if power.disabled_by is not None:
+            found.disabled_useful.append(power.entity_id)
+        return
     if profile.easee_current:
         if found.control_path is not None:
             found.current_control = CURRENT_CONTROL_EASEE
@@ -472,6 +509,10 @@ def detect_charger(hass: HomeAssistant, device_id: str) -> DetectedCharger | Non
     found = DetectedCharger(device_id=device_id, device_name=name, platform=platform, role=None)
     if profile is None:
         found.notes.append("platform_not_known")
+        return found
+    if not is_charger_device(profile, all_entries):
+        # Another device of a platform that also has chargers (a Sigenergy inverter or battery).
+        found.notes.append("not_a_charger_device")
         return found
     found.role = profile.role
     if profile.role == ROLE_EXTERNAL_CONTROLLER:

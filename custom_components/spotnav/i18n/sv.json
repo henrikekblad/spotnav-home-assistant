@@ -103,7 +103,8 @@
   },
   "candidate_representation": {
     "separate_entities": "tre entiteter",
-    "attributes": "attribut"
+    "attributes": "attribut",
+    "power": "effekt fördelad på tre faser"
   },
   "choice": {
     "manual": "Välj manuellt",
@@ -115,6 +116,7 @@
     "none": "Sätt ingen ström",
     "change_configuration": "Ändra via ChangeConfiguration (AssignedCurrent)",
     "number": "Laddarens strömnummer, inom dess skrivgränser",
-    "easee_dynamic_limit": "Easee dynamisk strömgräns (med begränsad skrivfrekvens)"
+    "easee_dynamic_limit": "Easee dynamisk strömgräns (med begränsad skrivfrekvens)",
+    "power": "Laddarens effektgräns i kW (en DC-laddare)"
   }
 }
