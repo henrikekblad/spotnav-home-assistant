@@ -282,14 +282,15 @@ export const TAB_STYLES = `
     scrollbar-width: none;
   }
   .${T.list}::-webkit-scrollbar { display: none; }
+  /* A tab shrinks to its longest word and wraps there, so a long language's four tabs stay in view at 360 px. */
   .${T.tab} {
-    flex: 1 0 auto;
+    flex: 1 1 auto;
     min-height: 40px;
-    padding: 6px 8px;
+    padding: 6px 6px;
     font: inherit;
     font-size: 0.85rem;
     line-height: 1.2;
-    white-space: nowrap;
+    white-space: normal;
     color: var(--secondary-text-color, #727272);
     background: transparent;
     border: 0;
