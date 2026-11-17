@@ -57,8 +57,9 @@ from ..site.energy_statistics import (
     soc_at_hour_ends,
     summed,
 )
+from ..site.session_car import car_energy_from_sessions
 from ..pricing.price_source import site_price_source
-from ..runtime import controller_for, site_controller_for
+from ..runtime import controller_for, domain_data, site_controller_for
 from ..site.heat_meter import SOURCE_SETTING, STATUS_NONE, async_heat_periods, needs_setting
 from ..site.heat_zones import NO_ZONES, ZoneSources
 from ..site.house_view import (
@@ -247,11 +248,33 @@ def _car_register_ids(hass: HomeAssistant, controller: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(r for r in registers if r)) if registers and all(registers) else ()
 
 
-def _car_hours(controller: Any, rows: Any, car_ids: tuple[str, ...]) -> dict[datetime, float]:
-    """The cars' energy per hour (kWh, UTC hour starts): the battery plan's measure, the chargers' registers over it."""
+def _session_car(
+    hass: HomeAssistant, controller: Any, starts: Sequence[datetime], step: timedelta
+) -> dict[datetime, float]:
+    """The cars' energy per period from the site's chargers' own charging sessions (`site/session_car.py`): the
+    fallback for a charger whose energy register keeps no long-term statistics."""
+    store = getattr(domain_data(hass), "session_store", None)
+    if store is None:
+        return {}
+    sessions: list[Any] = []
+    for charger_entry_id in controller.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        sessions.extend(store.closed_raw(charger_entry_id))
+        if (open_session := store.open_raw(charger_entry_id)) is not None:
+            sessions.append(open_session)
+    return car_energy_from_sessions(sessions, starts, step)
+
+
+def _car_hours(
+    hass: HomeAssistant, controller: Any, rows: Any, car_ids: tuple[str, ...], starts: Sequence[datetime] = ()
+) -> dict[datetime, float]:
+    """The cars' energy per hour (kWh, UTC hour starts): the battery plan's measure, the chargers' registers over it,
+    and for the hours of `starts` neither has, the charging sessions' own energy."""
     car = _bucket_car(controller) if controller.battery_shadow.facts.battery_entity_id is not None else {}
     if car_ids:
         car = {**car, **summed(rows, car_ids)}
+    missing = [start for start in starts if start not in car]
+    if missing:
+        car = {**_session_car(hass, controller, missing, timedelta(hours=1)), **car}
     return car
 
 
@@ -281,7 +304,8 @@ async def async_car_hours(
     car_ids = _car_register_ids(hass, controller)
     rows = await async_statistics(hass, car_ids, left[0], left[-1] + timedelta(hours=1), "hour") if car_ids else {}
     wanted = set(left)
-    return {**{start: kwh for start, kwh in _car_hours(controller, rows, car_ids).items() if start in wanted}, **known}
+    car = _car_hours(hass, controller, rows, car_ids, left)
+    return {**{start: kwh for start, kwh in car.items() if start in wanted}, **known}
 
 
 def short_term_days(hass: HomeAssistant) -> int | None:
@@ -312,6 +336,17 @@ def _bucket_car_quarters(controller: Any, now: datetime) -> dict[datetime, float
         elif bucket.covered_s >= MIN_COVERED_SHARE * max(1.0, (now - bucket.start).total_seconds()):
             out[bucket.start] = bucket.scaled(bucket.car_kwh)
     return out
+
+
+def _car_quarters(
+    hass: HomeAssistant, controller: Any, now: datetime, car_ids: tuple[str, ...], hours: Sequence[datetime]
+) -> dict[datetime, float] | None:
+    """The cars' energy per quarter hour where the chargers' registers give none: the battery plan's measure (where
+    the chargers have no register), else the charging sessions' own energy."""
+    if not car_ids and controller.battery_shadow.facts.battery_entity_id is not None:
+        return _bucket_car_quarters(controller, now)
+    quarters = [hour + index * timedelta(minutes=15) for hour in hours for index in range(4)]
+    return _session_car(hass, controller, quarters, timedelta(minutes=15)) or None
 
 
 @dataclass(slots=True)
@@ -375,9 +410,7 @@ async def _quarter_periods(
             battery_out=summed(rows, ids.battery_out) if has_battery else None,
             car=summed(rows, car_ids) if car_ids else None,
             heat=heat,
-            car_quarters=_bucket_car_quarters(controller, now)
-            if not car_ids and controller.battery_shadow.facts.battery_entity_id is not None
-            else None,
+            car_quarters=_car_quarters(hass, controller, now, car_ids, to_read),
         )
         read, missing = quarter_hours(to_read, five, now)
         if missing:
@@ -418,7 +451,7 @@ async def _hourly_periods(
         summed(rows, ids.solar) if ids.solar else None,
         summed(rows, ids.battery_in) if has_battery else None,
         summed(rows, ids.battery_out) if has_battery else None,
-        _car_hours(controller, rows, car_ids),
+        _car_hours(hass, controller, rows, car_ids, starts),
         heat,
     )
 
