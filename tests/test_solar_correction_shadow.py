@@ -195,6 +195,9 @@ async def test_a_week_on_a_site_learns_in_shadow_logs_both_and_reviews_them(
     sunny = [hour for hour in block["next_hours"] if hour["raw_kwh"] > 0]
     assert sunny and all(hour["corrected_kwh"] < hour["raw_kwh"] for hour in sunny)
     assert all(hour["corrected_kwh"] >= 1.5 for hour in sunny)
+    # The running hour is shown too, so the card's sun has no gap at it.
+    last_refresh = correction.last_refresh
+    assert block["next_hours"][0]["start"] == last_refresh.replace(minute=0, second=0, microsecond=0).isoformat()
     log = block["log"]
     assert set(log["kinds"]) == {KIND_SUN, KIND_SUN_CORRECTED}
     assert log["kinds"][KIND_SUN]["reviews"] and log["kinds"][KIND_SUN_CORRECTED]["reviews"]

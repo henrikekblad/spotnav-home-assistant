@@ -31,6 +31,18 @@ def test_measured_before_the_running_hour_and_corrected_forecast_from_it_on() ->
     assert len(block["hours"]) == 4
 
 
+def test_the_running_hour_has_a_forecast_so_the_hours_run_without_a_gap() -> None:
+    measured = {_hour(9): 0.4, _hour(10): 0.7}
+    forecast = {_hour(11): 0.9, _hour(12): 0.5}
+    block = sun_block_from(NOW, TZ, measured, forecast)
+    assert [(hour["start"], hour["measured"]) for hour in block["hours"]] == [
+        (_hour(9).isoformat(), True),
+        (_hour(10).isoformat(), True),
+        (_hour(11).isoformat(), False),
+        (_hour(12).isoformat(), False),
+    ]
+
+
 def test_an_hour_with_no_figure_is_left_out_and_nothing_is_negative() -> None:
     block = sun_block_from(NOW, TZ, {_hour(8): -0.2}, {})
     assert block["hours"] == [{"start": _hour(8).isoformat(), "kw": 0.0, "measured": True}]

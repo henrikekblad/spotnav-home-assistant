@@ -434,13 +434,10 @@ class SiteSolarCorrection:
             shadow.note_provider(now, future, corrected)
         running = {start: kwh for start, kwh in raw.items() if start >= hour}
         learnt = self.state.status == CORRECTION_LEARNT
-        self.sun_kwh = (
-            self.state.correct(
-                running, observed_max_kwh=self.observed_max_kwh, array_kwp=self.array_kwp, cloud_pct=clouds
-            )
-            if learnt
-            else running
+        corrected_running = self.state.correct(
+            running, observed_max_kwh=self.observed_max_kwh, array_kwp=self.array_kwp, cloud_pct=clouds
         )
+        self.sun_kwh = corrected_running if learnt else running
         self.sun_basis = "corrected" if learnt else "raw"
         detail = read_detail(self.hass, entries)
         self.detail_hours = 0 if detail is None else len(detail["p50"])
@@ -450,15 +447,17 @@ class SiteSolarCorrection:
         self.log.review(now)
         self.site.house_forecast.log_changed()
         self.state.prune(now)
+        # For display only: the running hour is shown too (its forecast is still the best figure for the hour that
+        # is not finished), so the charger card's sun has no gap between the measured hours and the forecast.
         self.next_hours = [
             {
                 "start": start.isoformat(),
-                "raw_kwh": round(future[start], 3),
-                "corrected_kwh": round(corrected[start], 3),
+                "raw_kwh": round(running[start], 3),
+                "corrected_kwh": round(corrected_running[start], 3),
                 "kind": kind_of(clouds.get(start)),
             }
-            for start in sorted(future)[:SHOWN_HOURS]
-            if start in corrected
+            for start in sorted(running)[:SHOWN_HOURS]
+            if start in corrected_running
         ]
         self.status = self.state.status if solar_ids else STATUS_NO_PRODUCTION
         self._retry_at = None if complete else now + timedelta(seconds=RETRY_S)

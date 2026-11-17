@@ -183,6 +183,11 @@ describe("runs and lookup", () => {
     expect(sunRuns(scene.sun!.points).map((run) => run.length)).toEqual([2, 2]);
   });
 
+  it("joins the measured hours and the forecast from the running hour into one run", () => {
+    const scene = model({ sun: { hours: [hour(10, 2.4, true), hour(11, 3.0, true), hour(12, 3.6, false), hour(13, 4.2, false)] } });
+    expect(sunRuns(scene.sun!.points).map((run) => run.length)).toEqual([4]);
+  });
+
   it("finds the hour under an instant", () => {
     const scene = model({ sun: { hours: SUN_HOURS } });
     expect(sunAt(scene.sun, Date.parse("2026-10-11T12:45:00+02:00"))?.kw).toBe(3.6);
