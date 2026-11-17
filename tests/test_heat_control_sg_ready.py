@@ -403,21 +403,107 @@ async def test_a_store_that_cannot_be_read_opens_both_contacts_once(hass: HomeAs
     fresh._store.async_load = unreadable  # type: ignore[method-assign]  # noqa: SLF001
     fresh._async_tick = callback(lambda _now: None)  # type: ignore[method-assign]  # noqa: SLF001
     await fresh.async_start()
-    while fresh._task is not None and not fresh._task.done():  # noqa: SLF001
-        await asyncio.sleep(0)
-    await _look(fresh, now + 30 * SEC)
-    if enabled:
-        assert contacts.pair == (0, 0) and contacts.calls == [(closed, "off")]
-        assert not fresh.held and not fresh.raised
-        # Once: closed again by the household, it is theirs.
-        hass.states.async_set(closed, "on")
-        for step in range(2, 6):
-            await _look(fresh, now + step * 30 * SEC)
-        assert contacts.calls == [(closed, "off")]
+    try:
+        while fresh._task is not None and not fresh._task.done():  # noqa: SLF001
+            await asyncio.sleep(0)
+        await _look(fresh, now + 30 * SEC)
+        if enabled:
+            assert contacts.pair == (0, 0) and contacts.calls == [(closed, "off")]
+            assert not fresh.held and not fresh.raised
+            # Once: closed again by the household, it is theirs.
+            hass.states.async_set(closed, "on")
+            for step in range(2, 6):
+                await _look(fresh, now + step * 30 * SEC)
+            assert contacts.calls == [(closed, "off")]
+        else:
+            # Without the opt-in nothing is written.
+            assert contacts.calls == []
+    finally:
+        await fresh.async_shutdown()
+
+
+def _both_held(hass: HomeAssistant, control: HeatControl, now: datetime) -> None:
+    """Both contacts closed and SpotNav's, as only a lost or old kept state can leave them: what an exit opens first."""
+    control.held, control.held_since, control.raised, control.raised_since = True, now, True, now
+    hass.states.async_set(A, "on")
+    hass.states.async_set(B, "on")
+
+
+@pytest.mark.parametrize("exit_", ["off", "pause", "block"])
+async def test_an_exit_opens_b_before_a(hass: HomeAssistant, freezer, exit_: str) -> None:
+    site, control, contacts, now = await _running(hass, freezer, {0: "normal"})
+    _both_held(hass, control, now)
+    if exit_ == "off":
+        heat = site.data[CONF_HEAT]
+        hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {**heat, "control_enabled": False}})
+    elif exit_ == "pause":
+        control.paused_until, control.paused_reason = now + H, "no_read_back"
     else:
-        # Without the opt-in nothing is written.
-        assert contacts.calls == []
-    await fresh.async_shutdown()
+        control._blocker = lambda _config, _relay: "automation"  # type: ignore[method-assign]  # noqa: SLF001
+    await _look(control, now)
+    assert contacts.calls == [(B, "off"), (A, "off")] and contacts.pair == (0, 0)
+
+
+async def test_a_restart_opens_b_before_a(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "normal"})
+    _both_held(hass, control, now)
+    fresh = await _restart(control, control._data())  # noqa: SLF001
+    await _look(fresh, now)
+    assert contacts.calls == [(B, "off"), (A, "off")] and contacts.pair == (0, 0)
+
+
+async def test_a_wait_for_b_is_logged_once(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "lower", 2: "lower"})
+    await _look(control, now)
+    contacts.ignore.add(B)
+    for step in range(0, 40):
+        await _look(control, now + H + step * 30 * SEC, {0: "lower", 1: "lower"})
+    waits = [entry for entry in control.log if entry["what"] == "close_waits_for_b"]
+    assert len(waits) == 1 and (A, "on") not in contacts.calls and len(control.log) < 20
+
+
+async def test_a_closed_by_hand_after_spotnavs_confirmed_opening_is_not_taken_as_its_own(hass: HomeAssistant, freezer) -> None:
+    # A lowering ends into a raise (A's opening read back); two minutes later the household closes A: B opens at
+    # once, and A is theirs (never opened by SpotNav).
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "preheat"})
+    await _look(control, now)
+    await _look(control, now + H, {0: "preheat"})
+    await _look(control, now + H + 30 * SEC, {0: "preheat"})
+    assert contacts.pair == (0, 1)
+    hass.states.async_set(A, "on")
+    for step in range(0, 6):
+        await _look(control, now + H + 2 * MIN + step * 30 * SEC, {0: "preheat"})
+    assert contacts.pair == (1, 0) and contacts.calls == [(A, "on"), (A, "off"), (B, "on"), (B, "off")]
+    assert control.paused_reason == "foreign_change"
+
+
+async def test_b_waits_while_a_closing_that_was_not_seen_could_still_land(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "normal"})
+    control._a_close_unseen_at = now - MIN  # noqa: SLF001
+    assert not control._a_clear(now)  # noqa: SLF001
+    assert not control._a_clear(now + 3 * MIN)  # noqa: SLF001
+    assert control._a_clear(now + 5 * MIN)  # noqa: SLF001
+    assert control._a_close_unseen_at is None  # noqa: SLF001
+
+
+async def test_a_closing_of_a_that_raised_keeps_b_open_through_the_plans_raise(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "preheat"})
+    contacts.fail.add(A)
+    await _look(control, now)
+    contacts.fail.clear()
+    for step in range(0, 10):
+        await _look(control, now + H + step * 30 * SEC, {0: "preheat"})
+    assert (B, "on") not in contacts.calls and not contacts.both_on
+
+
+async def test_b_closed_by_hand_while_a_is_lowered_opens_a(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    await _look(control, now)
+    assert contacts.pair == (1, 0)
+    hass.states.async_set(B, "on")
+    await _look(control, now + 10 * MIN + 30 * SEC)
+    assert contacts.pair == (0, 1) and control.status()["reason"] == "sg_ready_b"
+    assert (B, "off") not in contacts.calls
 
 
 async def test_an_unavailable_a_opens_b(hass: HomeAssistant, freezer) -> None:

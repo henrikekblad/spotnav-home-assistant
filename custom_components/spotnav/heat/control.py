@@ -233,7 +233,6 @@ class HeatControl:
         self._b_retry_open_at: datetime | None = None
         self._b_open_failures = 0
         self._b_foreign: datetime | None = None
-        self._b_own_at: datetime | None = None
         self._b_own_reopen_at: datetime | None = None
         #: A closing of B written but never read closed: it may still take, so A waits `OWN_WINDOW` after it.
         self._b_close_unseen_at: datetime | None = None
@@ -258,9 +257,12 @@ class HeatControl:
         self._retry_open_at: datetime | None = None
         #: A change SpotNav did not make, as first read: `(open|close, since)`.
         self._foreign: tuple[str, datetime] | None = None
-        #: SpotNav's last write, and when it opened a late reading of its own closing (once per closing).
-        self._own_at: datetime | None = None
+        #: A closing of A written but never read closed (it may still take: B waits `OWN_WINDOW` after it, and a closed
+        #: reading within it is SpotNav's own), and when SpotNav opened such a late closing (once per closing).
+        self._a_close_unseen_at: datetime | None = None
         self._own_reopen_at: datetime | None = None
+        #: The waits logged (`close_waits_for_b`, `raise_waits_for_a`) and why: logged again only when that changes.
+        self._waits: dict[str, str] = {}
         #: Openings in a row not read back.
         self._open_failures = 0
         self._levels: Levels | None = None
@@ -524,7 +526,7 @@ class HeatControl:
             _LOGGER.warning("SpotNav heat control: a look failed", exc_info=True)
             self._set(STATE_WAITING, "error")
             try:
-                await self._async_give_back(now, "error")
+                await self._async_exit(now, "error")
             except Exception:  # noqa: BLE001 - tried again at the next look
                 _LOGGER.warning("SpotNav heat control: the relay could not be given back", exc_info=True)
         try:
@@ -613,7 +615,7 @@ class HeatControl:
                     self._set(STATE_OFF, None)
                 return
         if not enabled or relay is None:
-            await self._async_give_back(now, "off")
+            await self._async_exit(now, "off")
             self._set(STATE_OFF if not enabled else STATE_WAITING, None if not enabled else WAIT_NO_RELAY)
             self._expect = None
             return
@@ -630,7 +632,7 @@ class HeatControl:
             # Held at the last stop, or while the relay did not read: opened before anything else (a relay found
             # open was reset meanwhile).
             if self.held and read is True:
-                await self._async_give_back(now, "restart")
+                await self._async_exit(now, "restart")
                 return
             self._end_lowering(now)
             self._reopen = False
@@ -668,7 +670,7 @@ class HeatControl:
                 self._end_lowering(now)
             self._pause(now, WAIT_FOREIGN_CHANGE)
         if self.paused_until is not None:
-            await self._async_give_back(now, self.paused_reason or "paused")
+            await self._async_exit(now, self.paused_reason or "paused")
             self._expect = None
             self._set(STATE_WAITING, self.paused_reason)
             return
@@ -681,7 +683,7 @@ class HeatControl:
                 self._log(now, "found_closed")
                 _LOGGER.info("SpotNav heat control: %s is closed by something else; nothing is written", relay)
         if blocker is not None:
-            await self._async_give_back(now, blocker)
+            await self._async_exit(now, blocker)
             self._expect = None
             self.check.abort(blocker)
             self._set(STATE_WAITING, blocker)
@@ -876,7 +878,7 @@ class HeatControl:
             # once, else at a later one).
             await self._async_release_b(now, RAISE_INTERLOCK)
             if not self._b_clear(now):
-                self._log(now, "close_waits_for_b", why=why)
+                self._log_wait(now, "close_waits_for_b", why)
                 return
         if not closed and self._retry_open_at is not None and now < self._retry_open_at:
             return
@@ -896,9 +898,10 @@ class HeatControl:
                 self._log(now, "close_not_written", why=why)
                 self._save()
                 return
-        self._own_at = now
+        self._waits.pop("close_waits_for_b", None)
         if closed:
             self._own_reopen_at = None
+            self._a_close_unseen_at = now
         self._log(now, "close" if closed else "open", why=why)
         self._save()
         try:
@@ -912,11 +915,17 @@ class HeatControl:
 
     def _own_late(self, now: datetime) -> bool:
         """Whether a closed reading now is SpotNav's own closing read late (see `OWN_WINDOW`), not opened yet."""
-        return self._own_reopen_at is None and self._own_at is not None and now - self._own_at <= OWN_WINDOW
+        return (
+            self._own_reopen_at is None
+            and self._a_close_unseen_at is not None
+            and now - self._a_close_unseen_at <= OWN_WINDOW
+        )
 
     def _confirm(self, pending: Pending, now: datetime) -> None:
         self.pending = None
         self._expect = pending.closed
+        if pending.closed:
+            self._a_close_unseen_at = None
         if not pending.closed:
             self._end_lowering(pending.at)
             self._retry_open_at = None
@@ -951,6 +960,16 @@ class HeatControl:
             if self.held and self._read(self.relay) is False:
                 self.pending, self._retry_open_at = None, None
                 self._end_lowering(now)
+
+    async def _async_exit(self, now: datetime, why: str) -> None:
+        """An exit: B opened first (back to (0,0) through (1,0) at worst, never through (1,1)), then A given back. A B
+        that reads open with nothing on its way is left to the raise's look (no write)."""
+        b = self.raise_entity
+        try:
+            if b is not None and (self.pending_b is not None or self._read(b) is not False):
+                await self._async_release_b(now, why)
+        finally:
+            await self._async_give_back(now, why)
 
     async def _async_give_back(self, now: datetime, why: str, *, unreadable_too: bool = False) -> None:
         """Open the relay SpotNav holds (no write otherwise), and end a running check. A write not read back within
@@ -997,8 +1016,12 @@ class HeatControl:
         return since is not None and now - since >= DEAD_TIME
 
     def _a_clear(self, now: datetime) -> bool:
-        """Whether B may close: A has read open for `DEAD_TIME`, SpotNav does not hold it and nothing is pending on
-        it."""
+        """Whether B may close: A has read open for `DEAD_TIME`, SpotNav does not hold it, nothing is pending on it,
+        and no closing of A that never read closed was written within `OWN_WINDOW` (it could still take late)."""
+        if self._a_close_unseen_at is not None:
+            if now - self._a_close_unseen_at <= OWN_WINDOW:
+                return False
+            self._a_close_unseen_at = None
         return self.relay is not None and not self.held and self.pending is None and self._open_long_enough(self.relay, now)
 
     def _b_clear(self, now: datetime) -> bool:
@@ -1113,7 +1136,8 @@ class HeatControl:
             await self._async_release_b(now, RAISE_INTERLOCK)
             return
         if not self.raised and self.pending_b is None and read is True:
-            if self._b_own_reopen_at is None and self._b_own_at is not None and now - self._b_own_at <= OWN_WINDOW:
+            unseen = self._b_close_unseen_at
+            if self._b_own_reopen_at is None and unseen is not None and now - unseen <= OWN_WINDOW:
                 # SpotNav's own closing read late or bounced: its own, opened once.
                 self._log(now, "own_late_close_b")
                 self._b_own_reopen_at = now
@@ -1209,7 +1233,7 @@ class HeatControl:
         if b is None:
             return
         if closed and not self._a_clear(now):
-            self._log(now, "raise_waits_for_a", why=why)
+            self._log_wait(now, "raise_waits_for_a", why)
             return
         if not closed and self._b_retry_open_at is not None and now < self._b_retry_open_at:
             return
@@ -1228,7 +1252,7 @@ class HeatControl:
                 self._log(now, "raise_not_written", why=why)
                 self._save()
                 return
-        self._b_own_at = now
+        self._waits.pop("raise_waits_for_a", None)
         if closed:
             self._b_own_reopen_at = None
             self._b_close_unseen_at = now
@@ -1367,6 +1391,13 @@ class HeatControl:
 
     def _log(self, now: datetime, what: str, **extra: Any) -> None:
         self.log.append({"at": now.isoformat(), "what": what, **extra})
+
+    def _log_wait(self, now: datetime, what: str, why: str) -> None:
+        """A write that waits is logged once, not at every look it still waits (the log keeps `LOG_SIZE`)."""
+        if self._waits.get(what) == why:
+            return
+        self._waits[what] = why
+        self._log(now, what, why=why)
 
     def _trim(self, now: datetime) -> None:
         oldest = now - timedelta(days=DAYS_KEPT)
