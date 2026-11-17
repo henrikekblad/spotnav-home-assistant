@@ -355,6 +355,12 @@ class Learned:
     exact_minutes: int = 0
 
     @property
+    def days_left(self) -> int:
+        """The days still to count before the learned peaks count (0 once `ready`): whole days, so already rounded
+        up, and at least, since a day counts only with `DAY_MINUTES` counted minutes."""
+        return 0 if self.ready else max(READY_DAYS - self.days, 1)
+
+    @property
     def basis(self) -> str:
         """What the peaks rest on: `exact` (the plant's per-phase power alone), `mixed` or `band`; `none` without."""
         if self.peaks_a is None:
@@ -377,6 +383,7 @@ class Learned:
             "peaks_a": per_phase(self.peaks_a),
             "days_counted": self.days,
             "days_needed": READY_DAYS,
+            "days_left": self.days_left,
             "hours": self.hours,
             "minutes": self.minutes,
             "heat_peak_w": per_phase(self.heat_w, 0),

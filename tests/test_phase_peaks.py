@@ -175,12 +175,14 @@ def test_the_learned_peaks_count_only_after_two_weeks_with_enough_minutes() -> N
     learned = peaks.learned(now)
     assert not learned.ready and learned.phase_peaks() is None
     assert learned.days == READY_DAYS - 1
+    assert learned.days_left == 1 and learned.as_dict()["days_left"] == 1
+    assert PhasePeaks().learned(now).days_left == READY_DAYS
     # A day with too few minutes does not count.
     _days(peaks, 1, minutes_a_day=DAY_MINUTES - 10, start=now)
     assert not peaks.learned(now + 86400).ready
     now = _days(peaks, 1, start=now + 86400)
     learned = peaks.learned(now)
-    assert learned.ready and learned.days == READY_DAYS
+    assert learned.ready and learned.days == READY_DAYS and learned.days_left == 0
     assert learned.phase_peaks() == pytest.approx({"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 8.0 + MARGIN_A})
 
 

@@ -117,6 +117,11 @@ def test_a_kind_needs_three_days_before_it_moves() -> None:
 
     assert state.factors[KIND_CLEAR] == 1.0
     assert state.status == sc.STATUS_LEARNING
+    # Days left: the kind closest to three days decides; none once a kind has them.
+    assert state.days_left == 1
+    assert SolarCorrection().days_left == sc.MIN_DAYS
+    state.nightly(day_evidence(_days(3, 2.0, 1.0), TZ), TODAY + timedelta(days=1), curtailed=None)
+    assert state.status == sc.STATUS_SHADOW and state.days_left is None
 
 
 def test_cloudy_and_clear_hours_learn_apart() -> None:

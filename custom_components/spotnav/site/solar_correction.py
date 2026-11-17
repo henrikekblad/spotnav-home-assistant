@@ -373,6 +373,14 @@ class SolarCorrection:
             return STATUS_LEARNING
         return STATUS_SHADOW
 
+    @property
+    def days_left(self) -> int | None:
+        """While `learning`, the days of evidence still needed before the first kind's factor moves (`MIN_DAYS` less
+        the kind closest to it; whole days, at least 1); `None` otherwise."""
+        if self.status != STATUS_LEARNING:
+            return None
+        return max(MIN_DAYS - max(self.days.get(kind, 0) for kind in KINDS), 1)
+
     def note_hour(self, start: datetime, *, cloud_pct: float | None, negative_price: bool | None) -> None:
         """Keep an hour's cloud cover as first seen with its forecast, and its price's sign once known."""
         info = self.meta.get(start)
