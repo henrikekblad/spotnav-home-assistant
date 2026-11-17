@@ -2,11 +2,11 @@
   "api_version": 1,
   "buckets": [
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -25,11 +25,11 @@
       "use": 595.2
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -48,11 +48,11 @@
       "use": 537.6
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -71,11 +71,11 @@
       "use": 595.2
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -94,11 +94,11 @@
       "use": 576.0
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -117,11 +117,11 @@
       "use": 595.2
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -140,11 +140,11 @@
       "use": 576.0
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -163,11 +163,11 @@
       "use": 595.2
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -186,11 +186,11 @@
       "use": 595.2
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,
@@ -209,11 +209,11 @@
       "use": 576.0
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": 162.5,
       "car": 0.0,
       "cost": 3120.0,
@@ -232,11 +232,11 @@
       "use": 595.2
     },
     {
+      "arbitrage": 5250.0,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": 162.5,
       "car": 0.0,
       "cost": 46800.0,
@@ -255,11 +255,11 @@
       "use": 288.0
     },
     {
+      "arbitrage": null,
       "battery_days": 0,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
-      "battery_value": null,
       "buy": null,
       "car": 0.0,
       "cost": null,

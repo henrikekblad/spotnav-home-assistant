@@ -7,7 +7,7 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      day), end (the first day after it), today, complete, money: {currency, major_unit, minor_unit} | null,
      energy_flow: (as `spotnav/get_house`'s, `site/energy_flow.py`) | null,
      buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods,
-                battery_saving, battery_days, saving, saving_battery, saving_car, saving_heat, battery_value, buy,
+                battery_saving, battery_days, saving, saving_battery, saving_car, saving_heat, arbitrage, buy,
                 sell}],
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
@@ -28,9 +28,9 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   what the day cost against the same day with no battery; negative: the battery made it dearer), over
   `battery_days` of them; `null` and 0 where no day of the bucket is reviewed, and always for the hours of a day (the
   review is a whole day's). The card's bar is `cost` filled and `cost + battery_saving` whole. A bucket's
-  `battery_value` is what the battery's energy was worth over its priced periods (`battery_value`, the battery app's
-  "energy value", the house card's kr bars): what it gave at the buy price (to the grid at the sell price) less what it
-  took from the grid at the buy price and from the sun at the sell price; `null` without a battery or a priced period.
+  `arbitrage` is what the battery earned in it, the house card's headline measure (`battery/stored_value.py`, the same
+  as the battery's own app shows): an hour of a day from the day's hourly tally (kept 40 days), a day or a month from
+  the days' totals (kept 400 days); `null` without a battery or where nothing is kept.
   `buy` and `sell` are the bucket's mean prices over its priced periods (minor unit per kWh, every fee in the buy
   price), weighted by their minutes; `null` where none is priced (the house card's price lines for a past day).
 * **Cost** (`cost`): each period's import at its buy price with every fee and its export at its sell price, as the
@@ -70,7 +70,7 @@ from typing import Any, Final
 
 from ..battery.plan_model import MODES
 from ..battery.plan_shadow import KIND_BATTERY, DayReview, PriceSlot
-from .energy_flow import ROLE_BATTERY, ROLE_GRID, EnergyHour, allocate_hour, energy_flow
+from .energy_flow import EnergyHour, allocate_hour, energy_flow
 from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED
 from .perfect_view import perfect_block
 from .spotnav_saving import DaySaving, period_sums
@@ -114,7 +114,7 @@ BUCKET_KEYS: Final = (
     "saving_battery",
     "saving_car",
     "saving_heat",
-    "battery_value",
+    "arbitrage",
     "buy",
     "sell",
 )
@@ -152,6 +152,10 @@ class HouseHistoryInputs:
     forecast_mae: Mapping[str, Mapping[date, float]] = field(default_factory=dict)
     #: What SpotNav saved on each of the period's days up to today (`site/spotnav_saving.py`); empty without.
     savings: Mapping[date, DaySaving] = field(default_factory=dict)
+    #: The battery's arbitrage per local day and per UTC hour (`battery/stored_value.py`), the house card's headline
+    #: measure; empty without a battery.
+    arbitrage_days: Mapping[date, float] = field(default_factory=dict)
+    arbitrage_hours: Mapping[datetime, float] = field(default_factory=dict)
 
 
 def _r(value: float, digits: int = 2) -> float:
@@ -208,23 +212,10 @@ def _empty_bucket(key: str) -> dict[str, Any]:
         "saving_battery": None,
         "saving_car": None,
         "saving_heat": None,
-        "battery_value": None,
+        "arbitrage": None,
         "buy": None,
         "sell": None,
     }
-
-
-def battery_value(flows: Mapping[tuple[str, str], float], buy: float, sell: float) -> float:
-    """What the battery's energy in one period was worth (minor unit; the battery app's "energy value"): what it gave
-    the house, the heat and the car at the buy price and the grid at the sell price, less what it took from the grid
-    at the buy price and from the sun at the sell price (the export it stood in for)."""
-    given = sum(kwh * (sell if use == ROLE_GRID else buy) for (source, use), kwh in flows.items() if source == ROLE_BATTERY)
-    taken = sum(
-        kwh * (buy if source == ROLE_GRID else sell)
-        for (source, use), kwh in flows.items()
-        if use == ROLE_BATTERY and source != ROLE_BATTERY
-    )
-    return given - taken
 
 
 def _add(bucket: dict[str, Any], key: str, value: float | None) -> None:
@@ -276,8 +267,6 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             kwh_in += item.grid_in
             kwh_out += item.grid_out
             priced += 1
-            if inputs.has_battery:
-                _add(bucket, "battery_value", battery_value(flows, prices[0], prices[1]))
             weight = weights.setdefault(key, [0.0, 0.0, 0.0])
             weight[0] += item.minutes
             weight[1] += prices[0] * item.minutes
@@ -302,6 +291,18 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
                 _add(target, "saving_battery", day_saving.battery)
                 _add(target, "saving_car", day_saving.car)
                 _add(target, "saving_heat", day_saving.heat)
+    # The battery's arbitrage: a day's by its hours, a month's and a year's by their days.
+    if period.kind == PERIOD_DAY:
+        for hour, value in inputs.arbitrage_hours.items():
+            target = buckets.get(bucket_key(period, hour, tz))
+            if target is not None:
+                _add(target, "arbitrage", value)
+    else:
+        for day, value in inputs.arbitrage_days.items():
+            if period.contains(day):
+                target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
+                if target is not None:
+                    _add(target, "arbitrage", value)
     for key, (minutes, buy, sell) in weights.items():
         if minutes > 0:
             buckets[key]["buy"] = buy / minutes

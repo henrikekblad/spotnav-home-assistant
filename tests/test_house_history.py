@@ -35,7 +35,6 @@ from custom_components.spotnav.site.house_period import (
     BUCKET_KEYS,
     HISTORY_KEYS,
     HouseHistoryInputs,
-    battery_value,
     house_history,
     slot_prices,
 )
@@ -160,6 +159,22 @@ def test_requested_period_refuses_what_it_cannot_show() -> None:
 # ------------------------------------------------------------------------------------------------ energy and cost
 
 
+#: The villa's arbitrage on each day from the 3rd to the 16th (öre): the evening's four hours and a morning hour sold
+#: below what it was stored at.
+ARBITRAGE_HOURS = {17: 120.0, 18: 140.0, 19: 90.0, 20: 40.0, 7: -15.0}
+DAY_ARBITRAGE = sum(ARBITRAGE_HOURS.values())
+
+
+def villa_arbitrage() -> tuple[dict[date, float], dict[datetime, float]]:
+    days: dict[date, float] = {}
+    hours: dict[datetime, float] = {}
+    for day in range(3, 17):
+        days[date(2026, 11, day)] = DAY_ARBITRAGE
+        for local, value in ARBITRAGE_HOURS.items():
+            hours[datetime(2026, 11, day, local - 1, tzinfo=timezone.utc)] = value
+    return days, hours
+
+
 def month_inputs(**extra: Any) -> HouseHistoryInputs:
     period = period_of(PERIOD_MONTH, date(2026, 11, 1))
     start, _end = utc_bounds(period, TZ)
@@ -198,6 +213,8 @@ def month_inputs(**extra: Any) -> HouseHistoryInputs:
         ],
         archived=frozenset({date(2026, 11, 3)}),
         forecast_mae={"house_kw": {date(2026, 11, 14): 0.4, date(2026, 11, 15): 0.6, date(2026, 10, 31): 9.0}},
+        arbitrage_days=villa_arbitrage()[0],
+        arbitrage_hours=villa_arbitrage()[1],
     )
     base.update(extra)
     return HouseHistoryInputs(**base)  # type: ignore[arg-type]
@@ -244,22 +261,19 @@ def test_cost_prices_each_hour_and_counts_the_unpriced() -> None:
     assert next(bucket for bucket in later["buckets"] if bucket["key"] == "2026-11-05")["cost"] is None
 
 
-def test_the_battery_value_is_what_it_gave_less_what_it_took_at_the_hour_prices() -> None:
-    flows = {("battery", "house"): 1.0, ("battery", "grid"): 0.5, ("grid", "battery"): 2.0, ("solar", "battery"): 1.0}
-    assert battery_value(flows, 200.0, 50.0) == pytest.approx(1.0 * 200 + 0.5 * 50 - 2.0 * 200 - 1.0 * 50)
-    answer = house_history(month_inputs())
-    full = next(bucket for bucket in answer["buckets"] if bucket["key"] == "2026-11-10")
-    # The villa's day: 4 sunny hours store 0.5 kWh each, 0.3 of it the sun's (at the sell price) once the house and the
-    # heat have theirs and 0.2 the grid's (at the buy price); 4 evening hours give 0.6 kWh at 250 (three) and 150 öre.
-    expected = 3 * 0.6 * 250.0 + 0.6 * 150.0 - 4 * (0.3 * 60.0 + 0.2 * 150.0)
-    assert full["battery_value"] == pytest.approx(expected, abs=0.01)
-    assert next(bucket for bucket in answer["buckets"] if bucket["key"] == "2026-11-20")["battery_value"] is None
+def test_a_bucket_has_the_batterys_arbitrage_by_the_hour_or_by_its_days() -> None:
     day = house_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 10))))
-    assert sum(bucket["battery_value"] or 0 for bucket in day["buckets"]) == pytest.approx(expected, abs=0.05)
-    no_battery = house_history(month_inputs(has_battery=False))
-    assert all(bucket["battery_value"] is None for bucket in no_battery["buckets"])
-    unpriced = house_history(month_inputs(money=None, prices=()))
-    assert all(bucket["battery_value"] is None for bucket in unpriced["buckets"])
+    by_hour = {bucket["key"][11:13]: bucket["arbitrage"] for bucket in day["buckets"]}
+    assert (by_hour["17"], by_hour["20"], by_hour["07"], by_hour["03"]) == (120.0, 40.0, -15.0, None)
+    assert sum(value or 0 for value in by_hour.values()) == pytest.approx(DAY_ARBITRAGE)
+    month = house_history(month_inputs())
+    by_day = {bucket["key"]: bucket["arbitrage"] for bucket in month["buckets"]}
+    assert by_day["2026-11-10"] == pytest.approx(DAY_ARBITRAGE) and by_day["2026-11-02"] is None
+    year = house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 11, 1))))
+    by_month = {bucket["key"]: bucket["arbitrage"] for bucket in year["buckets"]}
+    assert by_month["2026-11"] == pytest.approx(14 * DAY_ARBITRAGE) and by_month["2026-10"] is None
+    alone = house_history(month_inputs(arbitrage_days={}, arbitrage_hours={}))
+    assert all(bucket["arbitrage"] is None for bucket in alone["buckets"])
 
 
 def test_a_bucket_has_its_mean_prices_where_priced() -> None:

@@ -61,6 +61,17 @@ _CACHE: Final = "spotnav_house_history"
 CACHE_SIZE: Final = 24
 
 
+def _arbitrage(controller: Any, has_battery: bool) -> dict[str, Any]:
+    """The battery's arbitrage per day and per hour as its stored value keeps it (`battery/stored_value.py`); none
+    without a battery or its tally."""
+    stored = getattr(getattr(controller.battery_shadow, "plan", None), "stored", None)
+    if not has_battery or controller.battery_shadow.facts.battery_entity_id is None or stored is None:
+        return {}
+    days = {day: money.arbitrage for day, money in stored.days.items()}
+    hours = {hour: value for money in stored.days.values() for hour, value in money.hours.items()}
+    return {"arbitrage_days": days, "arbitrage_hours": hours}
+
+
 def period_price_slots(hass: HomeAssistant, site_entry_id: str, period: Period) -> list[PriceSlot]:
     """The period's price slots with the fees as set now, from the day documents held (nothing is fetched); none
     without a price source, its area or its fees. A day either side is read too (an area on another clock)."""
@@ -220,6 +231,7 @@ async def history_with_periods(
             archived=archived,
             forecast_mae=forecast_maes(controller.house_forecast.log),
             savings=savings,
+            **_arbitrage(controller, bool(ids is not None and ids.battery_in)),
         )
     )
     cache.pop(key, None)
