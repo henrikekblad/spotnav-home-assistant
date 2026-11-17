@@ -15,8 +15,14 @@ Pure. Per local hour of the day, one action and the temperature it aims at:
   day's dearer half, since in a cheap hour the heat would come back dearer after it), then the day's
   **dearest** hours (`REASON_DEAR`: price at or above the day's `DEAR_QUANTILE` and at least `DEAR_OVER_MEDIAN` x its
   median), dearest first;
+  Also **too warm indoors** (`REASON_ROOM_WARM`, whatever the price): while the house is above its comfort band
+  (`RoomWarm`: the coldest counted room, its offset counted, above the band's high edge for `ROOM_WARM_AFTER`, until
+  it is back `ROOM_WARM_BACK_C` inside it), the running hour and the next (`ROOM_WARM_HOURS`, made again as it
+  changes); these hours count in the day's `MAX_LOWERED_DAY` and runs like the others, so an hour both dear and
+  warm is one lowered hour (it keeps its price reason);
 * `preheat` (the band's high edge, the target plus 0.5 °C) the hour before a lowered run, when that hour is at most
-  `PREHEAT_SHARE` of the run's mean price (the heat bought there is worth carrying);
+  `PREHEAT_SHARE` of the run's mean price (the heat bought there is worth carrying); never before a run with a warm
+  hour;
 * `normal` (the target) otherwise.
 
 Guards that keep the house at `normal` instead of `lower` (and say why): no prices (`no_prices`), outdoors at or
@@ -48,6 +54,12 @@ NO_LOWER_BELOW_C: Final = -15.0
 #: The coldest counted room below the target less this: no lowering (the comfort band's low edge).
 ROOM_COLD_C: Final = BAND_C
 ROOM_COLD_HOURS: Final = 2
+#: The house above the band's high edge this long: lowered whatever the price (`RoomWarm`).
+ROOM_WARM_AFTER: Final = timedelta(hours=1)
+#: How far back inside the band the house must come before the warm lowering ends (no flapping at the edge).
+ROOM_WARM_BACK_C: Final = 0.2
+#: The hours lowered from the running one on while the house is too warm (the plan is made again as it changes).
+ROOM_WARM_HOURS: Final = 2
 
 ACTION_NORMAL: Final = "normal"
 ACTION_LOWER: Final = "lower"
@@ -66,6 +78,7 @@ REASON_NORMAL: Final = "normal"
 REASON_NO_PRICES: Final = "no_prices"
 REASON_TOO_COLD: Final = "too_cold"
 REASON_ROOM_COLD: Final = "room_cold"
+REASON_ROOM_WARM: Final = "room_warm"
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +117,30 @@ class WouldDo:
         }
 
 
+@dataclass(slots=True)
+class RoomWarm:
+    """Whether the house is too warm (see the module), stepped on each look with the coldest counted room less its
+    offset (`None`: no trustworthy reading, which ends it) and the band's high edge."""
+
+    #: Since when the reading has been above the high edge (`None` while it is not).
+    since: datetime | None = None
+    active: bool = False
+
+    def step(self, now: datetime, value_c: float | None, high_c: float) -> bool:
+        if value_c is None:
+            self.since, self.active = None, False
+        elif self.active:
+            if value_c <= high_c - ROOM_WARM_BACK_C:
+                self.since, self.active = None, False
+        elif value_c > high_c:
+            if self.since is None:
+                self.since = now
+            self.active = now - self.since >= ROOM_WARM_AFTER
+        else:
+            self.since = None
+        return self.active
+
+
 def day_hours(day_start: datetime, zone: ZoneInfo) -> list[datetime]:
     """The local day's hour starts (UTC-aware, 23 to 25 of them)."""
     local = day_start.astimezone(zone)
@@ -124,12 +161,16 @@ def _quantile(values: Sequence[float], share: float) -> float:
 
 
 def dear_hours(
-    prices: Mapping[datetime, float], blocked: set[datetime], tight: Iterable[datetime] = ()
+    prices: Mapping[datetime, float],
+    blocked: set[datetime],
+    tight: Iterable[datetime] = (),
+    already: Iterable[datetime] = (),
 ) -> set[datetime]:
-    """The hours the rule lowers in (see the module), never one in `blocked`: the tight hours first, then the dear
-    ones, dearest first."""
+    """The hours the rule lowers in (see the module), never one in `blocked`: `already` (lowered for another reason,
+    counted in the day's hours and runs), then the tight hours, then the dear ones, dearest first."""
+    chosen: set[datetime] = set(already)
     if len(prices) < 6:
-        return set()
+        return chosen
     values = list(prices.values())
     median = statistics.median(values)
     bar = max(_quantile(values, DEAR_QUANTILE), median * DEAR_OVER_MEDIAN if median > 0 else median)
@@ -138,8 +179,7 @@ def dear_hours(
     # A tight hour in the cheap half of the day is left alone: the heat would come back dearer after it, and the
     # load there is what the cheap hour is for (a battery's grid charge, the car's night).
     pressed = {start for start in tight if start in prices and prices[start] >= median}
-    candidates = [s for s in starts if (prices[s] >= bar or s in pressed) and s not in blocked]
-    chosen: set[datetime] = set()
+    candidates = [s for s in starts if (prices[s] >= bar or s in pressed) and s not in blocked and s not in chosen]
     for start in sorted(candidates, key=lambda s: (s not in pressed, -prices[s], s)):
         if len(chosen) >= MAX_LOWERED_DAY:
             break
@@ -183,9 +223,11 @@ def band(
     coldest_c: float | None = None,
     tight: Iterable[datetime] = (),
     outdoor_by_hour: Mapping[datetime, float] | None = None,
+    room_warm: bool = False,
 ) -> tuple[list[BandHour], str | None]:
     """The day's band (see the module) and the guard that stood lowering down (`None` when none did). `tight` are the
-    hours whose joint load reaches the import cap, `outdoor_by_hour` the outdoor forecast (°C, UTC hour starts)."""
+    hours whose joint load reaches the import cap, `outdoor_by_hour` the outdoor forecast (°C, UTC hour starts),
+    `room_warm` whether the house is too warm now (`RoomWarm`)."""
     target = config.target_c
     away_end = config.away_end()
     current = now.replace(minute=0, second=0, microsecond=0)
@@ -215,11 +257,24 @@ def band(
         guard = REASON_ROOM_COLD
         blocked |= {start for start in hours if current <= start < current + timedelta(hours=ROOM_COLD_HOURS)}
     pressed = frozenset(start for start in tight if start in day_prices and day_prices[start] >= statistics.median(day_prices.values()))
-    lowered = set() if guard in (REASON_NO_PRICES, REASON_TOO_COLD) else dear_hours(day_prices, blocked, pressed)
+    warm: set[datetime] = set()
+    if room_warm and guard not in (REASON_TOO_COLD, REASON_ROOM_COLD):
+        # Too warm lowers whatever the price, with prices or without.
+        warm = {start for start in hours if current <= start < current + timedelta(hours=ROOM_WARM_HOURS) and start not in blocked}
+    if guard == REASON_TOO_COLD:
+        lowered: set[datetime] = set()
+    elif guard == REASON_NO_PRICES:
+        lowered = set(warm)
+    else:
+        lowered = dear_hours(day_prices, blocked, pressed, warm)
+    # A warm hour the prices alone would lower keeps its price reason.
+    priced_low = dear_hours(day_prices, blocked, pressed) if warm and guard is None else set()
 
     preheat: set[datetime] = set()
     starts = sorted(hours)
     for run in _runs(lowered, starts):
+        if warm.intersection(run):
+            continue
         before = run[0] - timedelta(hours=1)
         mean = statistics.mean(day_prices[start] for start in run)
         if before in day_prices and before not in fixed and before not in lowered and day_prices[before] <= mean * PREHEAT_SHARE:
@@ -231,7 +286,13 @@ def band(
         if start in fixed:
             action, aim, reason = fixed[start]
         elif start in lowered:
-            action, aim, reason = ACTION_LOWER, target - BAND_C, REASON_TIGHT if start in pressed else REASON_DEAR
+            if start in pressed:
+                reason = REASON_TIGHT
+            elif start in priced_low or start not in warm:
+                reason = REASON_DEAR
+            else:
+                reason = REASON_ROOM_WARM
+            action, aim = ACTION_LOWER, target - BAND_C
         elif start in preheat:
             action, aim, reason = ACTION_PREHEAT, target + BAND_C, REASON_CHEAP_BEFORE
         elif start in cold_hours and start >= current:
