@@ -565,6 +565,7 @@
   "graph.key.tomorrow": "Gris: mañana",
   "graph.key.plan": "Rayado: carga prevista",
   "graph.sun.short": "Sol",
+  "graph.sun.peak": "Sol, pico {kw} kW",
   "graph.legend.selection": "Intervalo seleccionado",
   "graph.legend.cheap": "Más barato que la media del día",
   "graph.legend.expensive": "Más caro que la media del día",

@@ -142,6 +142,7 @@ export const VISUAL_CLASSES = {
   sunArea: "spotnav-sun-area",
   sunLine: "spotnav-sun-line",
   sunForecast: "spotnav-sun-forecast",
+  sunPeak: "spotnav-sun-peak",
   summaryArrow: "spotnav-summary-arrow",
   chartToggle: "spotnav-chart-toggle",
   chartToggleGlyph: "spotnav-chart-toggle-glyph",
@@ -1678,6 +1679,11 @@ export const VISUAL_STYLES = `
     stroke-linecap: round;
     vector-effect: non-scaling-stroke;
   }
+  .${VISUAL_CLASSES.sunPeak} {
+    fill: var(--spotnav-sun, #e8a200);
+    font-size: ${CHART_DENSITY.normal.axisFontPx}px;
+    opacity: 0.85;
+  }
   .${VISUAL_CLASSES.sunLine}.${VISUAL_CLASSES.sunForecast} {
     stroke-dasharray: 4 3;
   }
@@ -1738,6 +1744,7 @@ export const VISUAL_STYLES = `
     stroke-width: ${CHART_DENSITY.detail.gridWidth};
   }
   .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.axisLabel},
+  .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.sunPeak},
   .${VISUAL_CLASSES.svg}[data-density="detail"] .${VISUAL_CLASSES.tickLabel} {
     font-size: ${CHART_DENSITY.detail.axisFontPx}px;
   }

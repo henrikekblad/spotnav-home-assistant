@@ -532,6 +532,7 @@
   "graph.key.tomorrow": "Harmaa: huomenna",
   "graph.key.plan": "Raidallinen: suunniteltu lataus",
   "graph.sun.short": "Aurinko",
+  "graph.sun.peak": "Aurinko, huippu {kw} kW",
   "graph.legend.selection": "Valittu jakso",
   "graph.legend.cheap": "Halvempi kuin päivän keskiarvo",
   "graph.legend.expensive": "Kalliimpi kuin päivän keskiarvo",

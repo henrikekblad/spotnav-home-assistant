@@ -325,6 +325,8 @@ export interface SunBlock {
   hours: Array<{ startMs: number; kw: number; measured: boolean }>;
   /** Today's measured mean power per quarter hour up to now, finer than the hours; empty from an older backend. */
   quarters: Array<{ startMs: number; kw: number }>;
+  /** The site's peak production (the most one hour has produced) in kW the sun is scaled against; `null` where unknown or from an older backend. */
+  peakKw: number | null;
 }
 
 /** The dashboard's `guest` block: a guest car planned for now, the amount the next one starts from, and its place
@@ -2014,7 +2016,11 @@ export function sunOrNull(value: unknown): SunBlock | null {
     return null;
   }
   try {
-    exactKeys(value, "quarters" in value ? ["hours", "quarters"] : ["hours"]);
+    exactKeys(value, ["hours", ...("quarters" in value ? ["quarters"] : []), ...("peak_kw" in value ? ["peak_kw"] : [])]);
+    const peakKw = "peak_kw" in value ? numberValue(value, "peak_kw") : null;
+    if (peakKw !== null && peakKw <= 0) {
+      return bad();
+    }
     const quarters = ("quarters" in value ? arrayValue(value, "quarters") : []).map((entry) => {
       const item = record(entry);
       exactKeys(item, ["start", "kw"]);
@@ -2039,6 +2045,7 @@ export function sunOrNull(value: unknown): SunBlock | null {
     return {
       hours: hours.sort((left, right) => left.startMs - right.startMs),
       quarters: quarters.sort((left, right) => left.startMs - right.startMs),
+      peakKw,
     };
   } catch {
     return null;

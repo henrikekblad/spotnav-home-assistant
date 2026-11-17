@@ -1770,6 +1770,7 @@ export function createCardView(input: CardViewInput): CardView {
       day: (instantMs) => dayCue(model.format, instantMs),
       hour: (instantMs) => hourLabel(model.format, instantMs),
       price: (value, span) => priceAxisLabel(model.format, value, span),
+      sunPeak: (kw) => translate(model.language, "graph.sun.peak", { kw: formatNumber(model.language, kw, 1) }),
     };
     const result = renderChart({
       series: model.chart,
