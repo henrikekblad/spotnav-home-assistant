@@ -16,8 +16,10 @@ from custom_components.spotnav.planning.learned_energy import (
     EnergySample,
     EnergySampler,
     fits,
+    learned_capacity_kwh,
     learned_from,
     LearnedEnergyStore,
+    MIN_CAPACITY_SAMPLE_KWH,
     MIN_DELTA_PERCENT,
     parse_stored,
     SocSeen,
@@ -183,7 +185,30 @@ def test_the_learned_ratio_as_a_battery_size() -> None:
     size = with_learned(learned, CAPACITY)
     assert size is not None and size / CHARGE_EFFICIENCY / 100.0 == pytest.approx(RATIO)
     untrusted = learned_from(CAR, [EnergySample("s", RATIO * 50.0, 50.0, START)])
-    assert with_learned(untrusted, CAPACITY) == CAPACITY and with_learned(untrusted, None) is None
+    assert with_learned(untrusted, CAPACITY) == CAPACITY, "a stated size wins over one untrusted sample"
+    # Without a stated size, one ended plug-in's sample stands in for it.
+    assert with_learned(untrusted, None) == pytest.approx(RATIO * 100.0 * CHARGE_EFFICIENCY)
+    assert with_learned(learned_from(CAR, []), None) is None
+
+
+def test_a_learned_battery_size_for_a_car_whose_size_nobody_states() -> None:
+    # The user's car: about 0.83 wall kWh per percent, so about 75 kWh battery-side at the fixed efficiency.
+    one = learned_from(CAR, [EnergySample("s1", 29.1, 35.0, START)])
+    assert not one.trusted
+    assert learned_capacity_kwh(one, None) == pytest.approx(29.1 / 35.0 * 100.0 * CHARGE_EFFICIENCY)
+    assert learned_capacity_kwh(one, 80.0) is None, "a stated size always wins"
+    # Too little energy (a small battery's 10 %) is not enough on its own.
+    small = learned_from(CAR, [EnergySample("s1", MIN_CAPACITY_SAMPLE_KWH - 0.5, 12.0, START)])
+    assert learned_capacity_kwh(small, None) is None
+    # The open plug-in's own sample waits until it ends.
+    pending = learned_from(CAR, [EnergySample("s1", 29.1, 35.0, START)], open_session="s1")
+    assert learned_capacity_kwh(pending, None) is None
+    # An insane figure (a 400 kWh battery) is never used, even trusted.
+    huge = learned_from(CAR, [EnergySample(f"s{i}", 4.5 * 40.0, 40.0, START) for i in range(3)])
+    assert huge.trusted and learned_capacity_kwh(huge, None) is None
+    assert huge.kwh_per_percent_for(None) == pytest.approx(4.5), "trusted: the need counts on it as before"
+    insane_one = learned_from(CAR, [EnergySample("s1", 4.5 * 40.0, 40.0, START)])
+    assert insane_one.kwh_per_percent_for(None) is None and with_learned(insane_one, None) is None
 
 
 # ------------------------------------------------------------------ the sampler

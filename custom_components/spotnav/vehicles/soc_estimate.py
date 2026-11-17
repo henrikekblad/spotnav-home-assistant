@@ -1174,8 +1174,9 @@ class SocReader:
 
     def _estimate_capacity_kwh(self, vehicle_id: str | None) -> float | None:
         """The battery size the estimate carries a level forward with: the car's own, or, once its wall kWh per
-        percent is learned and trusted, the size that takes that at `CHARGE_EFFICIENCY` (so the estimate, the replan
-        from it and the stop on it count as the need does: `learned_energy.with_learned`)."""
+        percent is learned and trusted (or, without a size, learned at all: `learned_energy.learned_capacity_kwh`),
+        the size that takes that at `CHARGE_EFFICIENCY` (so the estimate, the replan from it and the stop on it count
+        as the need does: `learned_energy.with_learned`)."""
         capacity = self.capacity_kwh(vehicle_id)
         if self._learned_kwh_per_percent is None or not vehicle_id:
             return capacity

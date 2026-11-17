@@ -322,10 +322,11 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     # With no register at all, a detected charger whose integration has none counts the energy from its own power.
     charger_power = charger_power_counted(hass, dict(entry.data))
     def _learned_kwh_per_percent(vehicle_id: str | None, capacity: float | None) -> float | None:
-        # The planner's learned figure for the car it plans for, once trusted (`planning/learned_energy.py`); the
-        # preview is made after the reader, so nothing is learned before it exists.
+        # The planner's learned figure for the car it plans for, once trusted, or standing in for a battery size
+        # nobody states (`planning/learned_energy.py`); the preview is made after the reader, so nothing is learned
+        # before it exists.
         preview = data.preview
-        return None if preview is None else preview.learned_energy(vehicle_id, capacity).use_kwh_per_percent
+        return None if preview is None else preview.learned_energy(vehicle_id, capacity).kwh_per_percent_for(capacity)
 
     # The one state-of-charge source both the planner and the stop decision read.
     soc_reader = SocReader(
