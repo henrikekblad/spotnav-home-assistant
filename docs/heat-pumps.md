@@ -69,14 +69,22 @@ again after checking the wiring.
 
 **The rules** (fixed, no settings):
 
-* SpotNav lowers only where its plan lowers (the dear hours, or the hours the import target or the fuse is tight), and
-  each lowering lasts at least **45 minutes** (no quarter-hour blips), at most **3 hours in a row**, with at least
+* SpotNav lowers only where its plan lowers (the dear hours, the hours the import target or the fuse is tight, or
+  while the house is too warm: below), and each lowering lasts at least **45 minutes** (no quarter-hour blips), at most **3 hours in a row**, with at least
   **1 hour** of normal heat between lowerings and at most **6 hours a day**.
+* **Too warm indoors lowers too, whatever the price.** When the coldest counted room (its offset counted) has been
+  above the comfort band (the wanted temperature plus half a degree) for **an hour**, the plan lowers the running hour
+  and the next, until the room is back **0.2 °C** inside the band; then the lowering ends once its 45 minutes have
+  passed. A room whose own sensor rises fast (0.6 °C in half an hour: a sensor warmed by sun or a stove) does not
+  count as warm while it rises, also with a single sensor. All the other rules hold, and an hour both dear and warm
+  is one lowering, not two. The day's band shows these hours as lowered with the reason **för varmt inne** (too warm
+  indoors), as "would lower" while the switch is off. The hour above the band is counted in memory and starts again
+  after a restart.
 * Never at **−15 °C or colder** outdoors.
 * **Released at once** when a counted room (its offset counted) falls below the comfort band, when the plan or the
   outdoor reading is missing or old (and nothing starts again until they have been good for 10 minutes), or when SG
   Ready's second contact is on.
-* At most 16 relay switchings a day.
+* At most 6 relay switchings a day.
 * Pre-heating stays planning only: a relay can lower the curve, not raise it.
 
 **Every write is read back**: the relay must show the new state within 90 seconds. A switching that fails or is not
