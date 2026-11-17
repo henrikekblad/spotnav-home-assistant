@@ -72,7 +72,10 @@ function openDialog(element: Element): HTMLElement | null {
 const banner = (element: Element): HTMLElement | null =>
   shadow(element).querySelector<HTMLElement>("[data-banner='identify']");
 const carLine = (element: Element): HTMLElement | null =>
-  shadow(element).querySelector<HTMLElement>("[data-vehicle-line]");
+  shadow(element).querySelector<HTMLElement>("[data-car-button]");
+/** Whether the car button opens Byt bil (its accessible name ends with it). */
+const opensChangeCar = (element: Element): boolean =>
+  /(Byt bil|Change car)$/.test(carLine(element)?.getAttribute("aria-label") ?? "");
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -148,7 +151,7 @@ describe("the question", () => {
 describe("Byt bil", () => {
   it("is offered at a one-car charger while a car is plugged in, with Guest car at the end", async () => {
     const { hass, element } = await mounted(dashboard({ oneCar: true }), "sv", false);
-    expect(carLine(element)?.tagName).toBe("BUTTON");
+    expect(opensChangeCar(element)).toBe(true);
     carLine(element)!.click();
     await settle();
     const dialog = openDialog(element)!;
@@ -167,7 +170,7 @@ describe("Byt bil", () => {
     const payload = dashboard({ oneCar: true });
     payload["connection"] = { state: "disconnected", source: null };
     const { element } = await mounted(payload);
-    expect(carLine(element)?.tagName).not.toBe("BUTTON");
+    expect(opensChangeCar(element)).toBe(false);
     document.body.innerHTML = "";
     const two = dashboard();
     two["connection"] = { state: "disconnected", source: null };

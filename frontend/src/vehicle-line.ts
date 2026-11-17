@@ -1,5 +1,6 @@
-// The vehicle line under the charger name: the one vehicle the charger plans for, with its charge,
-// and the list the switcher dialog shows. Pure facts from the dashboard; the view only draws them.
+// The planned vehicle as the car button above the action bar shows it, with its charge, how old its reading is
+// (shown only in the dialog the button opens), and the list the switcher dialog shows. Pure facts from the
+// dashboard; the view only draws them.
 //
 // Nothing here invents a figure: no vehicle chosen or no reading means no line at all.
 
@@ -7,9 +8,6 @@ import { formatNumber, percentAmount } from "./format";
 import { translate, type Language } from "./i18n";
 import { SETTINGS_DRIVER_TARGET_SOC, type ConnectionState, type SettingsRecord } from "./types";
 import { GUEST_VEHICLE_ID, type Soc, type Vehicle } from "./validate";
-
-/** A reading older than this (seconds), that is not an estimate, says how old it is on the line. */
-export const STALE_READING_S = 3600;
 
 export interface VehicleLineFacts {
   vehicleId: string;
@@ -19,11 +17,8 @@ export interface VehicleLineFacts {
   charge: string;
   /** `~` while the figure is an estimate between readings. */
   estimatePrefix: string;
-  /** `3 h ago`, only for a stale, non-estimated reading. */
-  age: string | null;
-  /** The tooltip of an estimate: `Estimated between readings, read 12 min ago`. */
-  estimateTitle: string | null;
-  ariaLabel: string;
+  /** `~62 % · read 3 h ago`: the charge and the age of its reading, for the car dialog; `null` without an age. */
+  reading: string | null;
 }
 
 export interface VehicleChoice {
@@ -71,20 +66,19 @@ export function vehicleLineFor(
       ? now
       : translate(language, "vehicleLine.ofTarget", { level: now, target: percentAmount(language, target) });
   const estimatePrefix = soc.estimated ? "~" : "";
-  const age = !soc.estimated && soc.age_s !== null && soc.age_s > STALE_READING_S ? ageSentence(language, soc.age_s) : null;
-  const estimateTitle =
-    soc.estimated && soc.age_s !== null
-      ? translate(language, "vehicleLine.estimateTitle", { age: ageSentence(language, soc.age_s) })
-      : null;
-  const spoken = [`${estimatePrefix}${charge}`, estimateTitle ?? age].filter((part) => part !== null).join(", ");
+  const reading =
+    soc.age_s === null
+      ? null
+      : translate(language, "vehicleLine.reading", {
+          charge: `${estimatePrefix}${charge}`,
+          age: ageSentence(language, soc.age_s),
+        });
   return {
     vehicleId: soc.vehicle_id,
     name,
     charge,
     estimatePrefix,
-    age,
-    estimateTitle,
-    ariaLabel: translate(language, "vehicleLine.aria", { name: vehicleName(language, soc.vehicle_name), summary: spoken }),
+    reading,
   };
 }
 
@@ -98,9 +92,7 @@ export function guestLineFor(language: Language, settings: SettingsRecord | null
     name,
     charge,
     estimatePrefix: "",
-    age: null,
-    estimateTitle: null,
-    ariaLabel: charge === "" ? name : translate(language, "vehicleLine.aria", { name, summary: charge }),
+    reading: null,
   };
 }
 

@@ -1,4 +1,4 @@
-// The vehicle line under the charger name and the dialog that switches the planned vehicle.
+// The car button over the action bar, the reading's age in the dialog it opens, and the charger's status after its name.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -54,8 +54,12 @@ async function mounted(payload: Record<string, unknown>, language = "en", admin 
   return { hass, element };
 }
 
-const line = (element: Element): HTMLElement | null =>
-  shadow(element).querySelector<HTMLElement>("[data-vehicle-line]");
+const car = (element: Element): HTMLButtonElement | null =>
+  shadow(element).querySelector<HTMLButtonElement>("[data-car-button]");
+/** The button's visible car words (the line under the caption): "EV6 · 62 %". */
+const carWords = (element: Element): string =>
+  (car(element)?.querySelector(".spotnav-bar-value")?.textContent ?? "").replace(/\s/g, " ");
+const header = (element: Element): HTMLElement => shadow(element).querySelector<HTMLElement>(".spotnav-header")!;
 const openDialog = (element: Element): HTMLElement | null =>
   Array.from(shadow(element).querySelectorAll<HTMLElement>("[role='dialog']")).find(
     (dialog) => dialog.closest("[hidden]") === null,
@@ -78,53 +82,62 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the vehicle line", () => {
-  it("shows the planned vehicle and its charge under the charger name", async () => {
-    // One car at this charger: the line only states it (with two it is Byt bil, `vehicle-identification.test`).
-    const { element } = await mounted(
-      withSoc({ value: 92, vehicle_name: "e-Outback" }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
-    );
-    const button = line(element)!;
-    expect(button.textContent).toBe("e-Outback·92 %");
+describe("the car button", () => {
+  /** One car at this charger: the button opens the car's reading (with two it is Byt bil, `vehicle-identification.test`). */
+  const oneCar = (soc: Record<string, unknown>, settings: Record<string, unknown> = {}) =>
+    withSoc(soc, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"], ...settings });
+
+  it("shows the planned vehicle and its charge right over the action bar, not in the header", async () => {
+    const { element } = await mounted(oneCar({ value: 92, vehicle_name: "e-Outback" }));
+    const button = car(element)!;
+    expect(button.querySelector(".spotnav-bar-caption")?.textContent).toBe("Car");
+    expect(button.querySelector(".spotnav-car-button-name")?.textContent).toBe("e-Outback");
+    expect(carWords(element)).toBe("e-Outback · 92 %");
     expect(button.querySelector("svg")).not.toBeNull();
-    expect(button.title).toBe("");
-    expect(button.getAttribute("aria-label")).toBe("e-Outback, 92 %");
-    const name = shadow(element).querySelector(".spotnav-header .spotnav-name")!;
-    // The name (with the charger's status after it) on one row, the vehicle line under it.
-    expect(name.parentElement?.classList.contains("spotnav-name-row")).toBe(true);
-    expect(name.parentElement?.nextElementSibling).toBe(button);
+    // Its own full-width row at the top of the action bar's block, the cells after it.
+    expect(button.parentElement?.classList.contains("spotnav-action-bar-wrap")).toBe(true);
+    expect(button.nextElementSibling?.classList.contains("spotnav-action-bar")).toBe(true);
+    expect(header(element).textContent).not.toContain("e-Outback");
+    expect(header(element).textContent).not.toContain("92 %");
+  });
+
+  it("is a real button with a label, reached and opened from the keyboard", async () => {
+    const { element } = await mounted(oneCar({ value: 92, vehicle_name: "e-Outback" }));
+    const button = car(element)!;
+    expect(button.tagName).toBe("BUTTON");
+    expect(button.type).toBe("button");
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(button.getAttribute("aria-label")).toBe("Car. e-Outback, 92 %");
+    // A native button: Tab reaches it and Enter or Space press it. The dialog's Escape gives the focus back to it.
+    button.focus();
+    expect(shadow(element).activeElement).toBe(button);
+    button.click();
+    await settle();
+    expect(openDialog(element)).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await settle();
+    expect(openDialog(element)).toBeNull();
+    expect(shadow(element).activeElement).toBe(button);
   });
 
   it("joins only the parts that exist, never with a leading or doubled separator", async () => {
-    const parts = async (changes: Record<string, unknown>, connection: boolean) => {
-      const payload = withSoc(changes, { driver: "manual_kwh" });
-      if (!connection) {
-        payload["connection"] = { state: "unknown" };
-      }
-      const { element } = await mounted(payload);
-      const leaves = ".spotnav-vehicle-line-name, .spotnav-vehicle-line-charge, .spotnav-vehicle-line-age, .spotnav-vehicle-line-separator";
-      const spans = Array.from(line(element)!.querySelectorAll(leaves)).map((span) => span.textContent ?? "");
-      return spans.join(" ").replace(/\s+/g, " ").trim();
-    };
     for (const name of [null, "", "  "]) {
-      const text = await parts({ value: 64, vehicle_name: name }, true);
-      expect(text.startsWith("\u00b7")).toBe(false);
-      expect(text).not.toContain("\u00b7 \u00b7");
-      expect(text.startsWith("64 %")).toBe(true);
+      document.body.innerHTML = "";
+      const { element } = await mounted(withSoc({ value: 64, vehicle_name: name }, { driver: "manual_kwh" }));
+      expect(carWords(element)).toBe("64 %");
     }
-    const named = await parts({ value: 64, vehicle_name: "Kia" }, false);
-    expect(named).toBe("Kia \u00b7 64 %");
-    const old = await parts({ value: 64, vehicle_name: null, age_s: 7200, estimated: false }, false);
-    expect(old).toBe("64 % \u00b7 2 h ago");
+    const named = await mounted(withSoc({ value: 64, vehicle_name: "Kia", age_s: 7200 }, { driver: "manual_kwh" }));
+    expect(carWords(named.element)).toBe("Kia · 64 %");
   });
 
   it("words the charge as a share of the target while the target drives the plan", async () => {
     const { element } = await mounted(withSoc({ value: 62 }));
-    expect(line(element)!.textContent).toContain("62 % of 80 % target");
-    expect(line(element)!.textContent).not.toContain("→");
+    expect(carWords(element)).toContain("62 % of 80 % target");
+    expect(carWords(element)).not.toContain("→");
     // Above the target, the line never reads as if the level would drop to it.
     const above = await mounted(withSoc({ value: 100 }), "sv");
-    expect(line(above.element)!.textContent).toContain("100 % av 80 % mål");
+    expect(carWords(above.element)).toContain("100 % av 80 % mål");
   });
 
   it.each([
@@ -139,37 +152,12 @@ describe("the vehicle line", () => {
     ["fr", "62 % sur un objectif de 80 %"],
   ])("words the charge of the target in %s", async (language, words) => {
     const { element } = await mounted(withSoc({ value: 62 }), language as "en");
-    const text = (line(element)!.textContent ?? "").replace(/\s/g, " ");
-    expect(text).toContain(words);
+    expect(carWords(element)).toContain(words);
   });
 
   it("keeps the estimate's ~ before the level of the target", async () => {
     const { element } = await mounted(withSoc({ value: 62, estimated: true, age_s: 12 * 60 }));
-    expect(line(element)!.textContent).toContain("~62 % of 80 % target");
-  });
-
-  it("marks an estimate with ~ and says in a tooltip how old the reading is", async () => {
-    const { element } = await mounted(withSoc({ value: 62, estimated: true, age_s: 12 * 60 }, { driver: "manual_kwh" }));
-    const button = line(element)!;
-    expect(button.textContent).toContain("~62 %");
-    expect(button.title).toBe("Estimated between readings, read 12 min ago");
-    expect(button.querySelector(".spotnav-vehicle-line-age")).toBeNull();
-  });
-
-  it("adds the age of a stale reading, but not of a fresh one or of an estimate", async () => {
-    const stale = await mounted(withSoc({ value: 62, age_s: 3 * 3600 + 120 }, { driver: "manual_kwh" }));
-    expect(line(stale.element)!.querySelector(".spotnav-vehicle-line-age")?.textContent).toBe("3 h ago");
-    const fresh = await mounted(withSoc({ value: 62, age_s: 3600 }, { driver: "manual_kwh" }));
-    expect(line(fresh.element)!.querySelector(".spotnav-vehicle-line-age")).toBeNull();
-  });
-
-  it("is in the card's language", async () => {
-    const { element } = await mounted(
-      withSoc({ value: 62, age_s: 7200 }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
-      "sv",
-    );
-    expect(line(element)!.getAttribute("aria-label")).toBe("EV6, 62 %, för 2 h sedan");
-    expect(line(element)!.textContent).toContain("för 2 h sedan");
+    expect(carWords(element)).toContain("~62 % of 80 % target");
   });
 
   it.each<[string, Record<string, unknown>]>([
@@ -177,7 +165,7 @@ describe("the vehicle line", () => {
     ["there is no charge reading", { value: null, missing: ["soc"] }],
   ])("is not rendered at all when %s", async (_name, changes) => {
     const { element } = await mounted(withSoc(changes));
-    expect(line(element)).toBeNull();
+    expect(car(element)).toBeNull();
     expect(shadow(element).querySelector(".spotnav-name-block")).toBeNull();
     expect(shadow(element).querySelector(".spotnav-header .spotnav-name")?.textContent).toBe("Wallbox");
   });
@@ -186,7 +174,68 @@ describe("the vehicle line", () => {
     const payload = twoVehicles();
     payload["soc"] = null;
     const { element } = await mounted(payload);
-    expect(line(element)).toBeNull();
+    expect(car(element)).toBeNull();
+  });
+});
+
+describe("the reading's age", () => {
+  const oneCar = (soc: Record<string, unknown>) =>
+    withSoc({ value: 62, vehicle_name: "EV6", ...soc }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] });
+
+  it("is in the dialog the button opens, and nowhere on the card", async () => {
+    const { element } = await mounted(oneCar({ age_s: 3 * 3600 + 120 }));
+    const card = shadow(element).querySelector<HTMLElement>(".spotnav-card")!;
+    expect(card.textContent).not.toContain("3 h ago");
+    expect(car(element)!.getAttribute("aria-label")).not.toContain("ago");
+    expect(car(element)!.title).toBe("");
+    car(element)!.click();
+    await settle();
+    const dialog = openDialog(element)!;
+    expect(dialog.querySelector("[data-reading='vehicle_ev6']")?.textContent).toBe("62 % · read 3 h ago");
+    // The car's name is the dialog's title; nothing to choose at a one-car charger.
+    expect(dialog.textContent).toContain("EV6");
+    expect(dialog.querySelectorAll("input[type='radio']")).toHaveLength(0);
+  });
+
+  it("is said for a fresh reading and for an estimate too, the estimate with its ~", async () => {
+    const fresh = await mounted(oneCar({ age_s: 5 * 60 }));
+    car(fresh.element)!.click();
+    await settle();
+    expect(openDialog(fresh.element)!.querySelector("[data-reading]")?.textContent).toBe("62 % · read 5 min ago");
+    document.body.innerHTML = "";
+    const estimate = await mounted(oneCar({ age_s: 12 * 60, estimated: true }));
+    expect(carWords(estimate.element)).toBe("EV6 · ~62 %");
+    car(estimate.element)!.click();
+    await settle();
+    expect(openDialog(estimate.element)!.querySelector("[data-reading]")?.textContent).toBe("~62 % · read 12 min ago");
+  });
+
+  it.each<[string, string]>([
+    ["en", "62 % · read 2 h ago"],
+    ["sv", "62 % · avläst för 2 h sedan"],
+    ["nb", "62 % · avlest"],
+    ["da", "62 % · aflæst"],
+    ["fi", "62 % · luettu"],
+    ["de", "62 % · gelesen"],
+    ["nl", "62 % · gelezen"],
+    ["fr", "62 % · relevé"],
+    ["es", "62 % · leído"],
+  ])("is in the card's language (%s)", async (language, words) => {
+    const { element } = await mounted(oneCar({ age_s: 7200 }), language as "en");
+    car(element)!.click();
+    await settle();
+    expect((openDialog(element)!.querySelector("[data-reading]")?.textContent ?? "").replace(/\s/g, " ")).toContain(words);
+  });
+
+  it("is under the planned car's radio in Change car", async () => {
+    const { element } = await mounted(withSoc({ value: 62, vehicle_name: "EV6", age_s: 7200 }, { driver: "manual_kwh" }));
+    car(element)!.click();
+    await settle();
+    const dialog = openDialog(element)!;
+    const reading = dialog.querySelector<HTMLElement>("[data-reading='vehicle_ev6']")!;
+    expect(reading.textContent).toBe("62 % · read 2 h ago");
+    expect(reading.previousElementSibling?.querySelector("input")?.value).toBe("vehicle_ev6");
+    expect(dialog.querySelectorAll("[data-reading]")).toHaveLength(1);
   });
 });
 
@@ -216,14 +265,14 @@ describe("the charger status in the header line", () => {
     ["connected", "fi", "Kytketty"],
   ])("puts the %s status after the charger's name in %s, not on the vehicle line", async (state, language, words) => {
     const { element } = await mounted(withConnection(state), language as "en");
-    expect(line(element)!.textContent).toBe("EV6·96 %");
+    expect(carWords(element)).toBe("EV6 · 96 %");
     expect(status(element)!.textContent).toBe(`· ${words}`);
     const row = status(element)!.parentElement!;
     expect(row.classList.contains("spotnav-name-row")).toBe(true);
     expect(row.firstElementChild?.textContent).toBe("Wallbox");
     expect(row.textContent).toBe(`Wallbox· ${words}`);
-    expect(line(element)!.contains(status(element))).toBe(false);
-    expect(line(element)!.getAttribute("aria-label")).not.toContain(words);
+    expect(car(element)!.contains(status(element))).toBe(false);
+    expect(car(element)!.getAttribute("aria-label")).not.toContain(words);
   });
 
   it("reads the status word without its leading dot", async () => {
@@ -270,7 +319,7 @@ describe("the charger status in the header line", () => {
   it("shows nothing for an unknown state, a missing block or an unreadable one", async () => {
     const unknown = await mounted(withConnection("unknown"));
     expect(status(unknown.element)).toBeNull();
-    expect(line(unknown.element)!.textContent).toBe("EV6·96 %");
+    expect(carWords(unknown.element)).toBe("EV6 · 96 %");
     const missing = withConnection("charging");
     delete missing["connection"];
     expect(status((await mounted(missing)).element)).toBeNull();
@@ -288,7 +337,7 @@ describe("the charger status in the header line", () => {
 
   it("shows the status after the name when there is no vehicle", async () => {
     const { element } = await mounted(withConnection("disconnected", { vehicle_id: null, vehicle_name: null, value: null }));
-    expect(line(element)).toBeNull();
+    expect(car(element)).toBeNull();
     const block = shadow(element).querySelector(".spotnav-name-block")!;
     expect(block.querySelector(".spotnav-name")?.textContent).toBe("Wallbox");
     expect(status(element)!.textContent).toBe("· Not connected");
@@ -296,43 +345,25 @@ describe("the charger status in the header line", () => {
   });
 });
 
-describe("the vehicle line at a narrow width", () => {
-  it("leads each later part with its own dot, so a wrapped row clips it, and keeps the charge with the swap icon", async () => {
-    const { element } = await mounted(withSoc({ value: 45, vehicle_name: "EV6" }));
-    const inner = line(element)!.querySelector(".spotnav-vehicle-line-inner")!;
-    expect(inner.parentElement?.classList.contains("spotnav-vehicle-line-clip")).toBe(true);
-    for (const separator of Array.from(inner.querySelectorAll(".spotnav-vehicle-line-separator"))) {
-      expect(separator.parentElement?.classList.contains("spotnav-vehicle-line-part")).toBe(true);
-      expect(separator.parentElement?.firstElementChild).toBe(separator);
-    }
-    const tail = inner.lastElementChild!;
-    expect(tail.classList.contains("spotnav-vehicle-line-tail")).toBe(true);
-    expect(tail.querySelector(".spotnav-vehicle-line-charge")?.textContent).toContain("45 %");
-    expect(tail.lastElementChild?.getAttribute("data-icon")).toBe("swap");
-  });
-
-  it("clips the strip a row's leading dot sits in", () => {
-    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-clip \{[^}]*overflow: hidden;/);
-    expect(VISUAL_STYLES).toMatch(
-      /\.spotnav-vehicle-line-inner \{[^}]*margin-inline-start: calc\(-1 \* var\(--spotnav-line-separator, 0\.9em\)\);/,
-    );
-    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-head \{[^}]*margin-inline-start: var\(--spotnav-line-separator, 0\.9em\);/);
-    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-separator \{[^}]*width: var\(--spotnav-line-separator, 0\.9em\);/);
-  });
-});
-
-describe("the vehicle line with one car at the charger", () => {
-  it("is no button and has no swap icon: there is nothing to change at this charger", async () => {
+describe("the car button with one car at the charger", () => {
+  it("opens the car's reading, not Change car: there is nothing to change at this charger", async () => {
     for (const admin of [true, false]) {
       document.body.innerHTML = "";
       const payload = twoVehicles();
       payload["settings"]["vehicle_ids"] = ["vehicle_ev6"];
       const { element } = await mounted(payload, "en", admin);
-      expect(line(element)?.tagName).not.toBe("BUTTON");
-      expect(line(element)?.querySelector("[data-icon='swap']")).toBeNull();
-      line(element)!.click();
+      expect(car(element)!.getAttribute("aria-label")).toBe("Car. EV6, 40 % of 80 % target");
+      car(element)!.click();
       await settle();
-      expect(openDialog(element)).toBeNull();
+      expect(openDialog(element)!.querySelector("[data-change-car-form]")).toBeNull();
+      expect(openDialog(element)!.querySelector("[data-reading]")?.textContent).toBe("40 % of 80 % target · read just now");
     }
+  });
+});
+
+describe("the car button's look", () => {
+  it("is the cells' look at the row's full width, marked in the accent while the question is open", () => {
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-car-button \{[^}]*width: 100%;/);
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-car-button\[data-asking="true"\] \{[^}]*border: 2px solid var\(--primary-color/);
   });
 });

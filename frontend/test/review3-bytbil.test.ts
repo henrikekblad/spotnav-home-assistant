@@ -106,8 +106,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const changeCar = (element: Element): HTMLButtonElement | null =>
-  shadow(element).querySelector<HTMLButtonElement>("button[data-vehicle-line]");
+/** The car button where it opens Byt bil (its accessible name ends with it), else `null`. */
+const changeCar = (element: Element): HTMLButtonElement | null => {
+  const button = shadow(element).querySelector<HTMLButtonElement>("button[data-car-button]");
+  return button !== null && /Byt bil$/.test(button.getAttribute("aria-label") ?? "") ? button : null;
+};
 
 describe("review3: Byt bil for a user who is not an administrator, no car plugged in", () => {
   it("is either not offered or does something visible", async () => {
@@ -141,16 +144,16 @@ describe("Byt bil and who may change the car", () => {
     expect(changeCar(admin.element)).not.toBeNull();
   });
 
-  it("is the plain car line for a reader with no car plugged in", async () => {
+  it("opens only the car's reading for a reader with no car plugged in", async () => {
     const payload = dashboard(false);
     payload["connection"] = { state: "disconnected", source: null };
     const { element } = await mounted(payload, "sv", false);
     expect(changeCar(element)).toBeNull();
-    expect(shadow(element).querySelector("[data-vehicle-line]")).not.toBeNull();
+    expect(shadow(element).querySelector("[data-car-button]")).not.toBeNull();
   });
 });
 
-describe("the car line with identification off", () => {
+describe("the car button with identification off", () => {
   it("says no method when the block names none", async () => {
     const payload = dashboard(false);
     payload["identification"] = {
@@ -165,7 +168,7 @@ describe("the car line with identification off", () => {
       evidence: [],
     };
     const { element } = await mounted(payload, "sv", true);
-    const line = shadow(element).querySelector<HTMLElement>("[data-vehicle-line]")!;
+    const line = shadow(element).querySelector<HTMLElement>("[data-car-button]")!;
     expect(line.textContent).not.toContain(translate("sv", "vehicleLine.method.manual"));
     expect(line.textContent).not.toContain(translate("sv", "vehicleLine.method.assumed"));
   });
