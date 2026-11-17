@@ -1,6 +1,6 @@
 // The heat card's own classes and styles, on top of the charging card's (`visual-styles.ts`) and the house card's
 // (`house-styles.ts`: the header, the chip, the lines and notes), which the heat card loads too. The day chart's
-// colours are custom properties a theme may set (`--spotnav-heat-lower-colour`, `--spotnav-heat-relay-colour`,
+// colours are custom properties a theme may set (`--spotnav-heat-lower-colour`, `--spotnav-heat-relay-colour`, `--spotnav-heat-raise-colour`,
 // `--spotnav-heat-water-colour`, `--spotnav-heat-indoor-colour`), each with its own fallback.
 
 export const HEAT_CLASSES = {
@@ -237,6 +237,8 @@ export const HEAT_STYLES = `
   .${X.dayReadout} { margin: 2px 0 0; min-height: 1.4em; font-size: 0.85rem; line-height: 1.4; overflow-wrap: break-word; }
   .${X.dayColumn}[data-mark="planned"] { fill: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 18%, transparent); }
   .${X.dayColumn}[data-mark="executed"] { fill: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 38%, transparent); }
+  .${X.dayColumn}[data-mark="raise_planned"] { fill: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 18%, transparent); }
+  .${X.dayColumn}[data-mark="raised"] { fill: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 40%, transparent); }
   .${X.dayColumn}[data-mark="relay"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
   .${X.dayColumn}[data-mark="relay_expected"] { fill: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
   .${X.dayMark}[data-mark="hot_water"] {
@@ -311,6 +313,8 @@ export const HEAT_STYLES = `
   .${X.swatch}[data-action="relay"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 34%, transparent); }
   .${X.swatch}[data-action="relay_expected"] { background: color-mix(in srgb, var(--spotnav-heat-relay-colour, #14808f) 18%, transparent); }
   .${X.swatch}[data-action="executed"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 38%, transparent); }
+  .${X.swatch}[data-action="raised"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 40%, transparent); }
+  .${X.swatch}[data-action="raise_planned"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 18%, transparent); }
   .${X.swatch}[data-action="planned"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 18%, transparent); }
   .${X.swatch}[data-action="indoor_mean"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 3px; }
   .${X.swatch}[data-action="indoor_coldest"] { background: var(--spotnav-heat-indoor-colour, var(--spotnav-heat, #e5554b)); height: 2px; opacity: 0.55; }

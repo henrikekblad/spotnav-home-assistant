@@ -134,9 +134,11 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
     case "controlB": {
       const group = config.control_path === "offset" ? choices.offset : config.control_path === "setpoint" ? choices.setpoint : choices.relay;
       const field = key === "control" ? "control_entity" : "control_entity_b";
+      // On SG Ready, each contact's own job in plain words: A blocks or lowers, B raises, and how they are wired.
+      const help = config.control_path !== "sg_ready" ? undefined : t(key === "control" ? "heat.settings.controlSgReadyHelp" : "heat.settings.controlBHelp");
       return pick(t(key === "control" ? "heat.settings.control" : "heat.settings.controlB"), [none, ...group.map(option)], config[field], (value) =>
         input.write({ control_path: config.control_path, [field]: value }),
-      );
+      help);
     }
     case "hotWater":
       return pick(t("heat.settings.hotWater"), [none, ...choices.hot_water.map(option)], config.hot_water_entity, (value) => input.write({ hot_water_entity: value }), t("heat.settings.hotWaterHelp"));

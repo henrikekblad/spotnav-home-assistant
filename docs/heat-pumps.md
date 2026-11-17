@@ -102,9 +102,46 @@ again after checking the wiring.
 * Never at **−15 °C or colder** outdoors.
 * **Released at once** when a counted room (its offset counted) falls below the comfort band, when the plan or the
   outdoor reading is missing or old (and nothing starts again until they have been good for 10 minutes), or when SG
-  Ready's second contact is on.
-* At most 6 relay switchings a day.
-* Pre-heating stays planning only: a relay can lower the curve, not raise it.
+  Ready's second contact is on by someone else.
+* At most 6 switchings a day (both SG Ready contacts together).
+* On the relay path pre-heating stays planning only: one relay can lower the curve, not raise it. SG Ready with both
+  contacts can raise as well (below).
+
+### SG Ready: the four states and what SpotNav uses
+
+An SG Ready heat pump has two inputs, A and B. An electrician wires a relay that Home Assistant can switch to each:
+one to input 1 (**A**, the **Control output** in the settings) and one to input 2 (**B**, the **Second contact**).
+The pair gives four states, written (A, B):
+
+| State | A | B | What the pump does | SpotNav |
+|---|---|---|---|---|
+| Blocked or lowered | closed | open | blocks the compressor or lowers its curve, as set in the pump | the plan's lowered hours |
+| Normal | open | open | its own curve | every other hour, and every way out |
+| Recommended raise | open | closed | raises its curve or its hot water, within its own limits | the plan's pre-heat hours |
+| Forced raise | closed | closed | heats as hard as it may | **never** |
+
+**(1,1) never happens**, not even for a moment: SpotNav switches through the normal state, opening one contact and
+reading it back as open before it closes the other. A contact that does not open in time keeps the other one open.
+With only A chosen, SG Ready works like the relay path: it lowers, never raises.
+
+**When SpotNav raises** (with the switch on and the check passed): in the plan's **pre-heat** hours (the cheap hour
+before a lowered run, when it costs at most 85 % of the run's mean price) and in the warm-up hours before the return
+from away. Each raise lasts at least **30 minutes** and at most **3 hours in a row**, with at least an hour between
+raises and at most **6 hours** in 24 hours, and a raise starts only while the day's switchings leave room for the
+lowering that follows it. **Never** into a warm house: no raise while any room (its offset counted) is at or above
+the comfort band's upper edge or the too-warm rule is lowering, and a raise ends at once when a room reaches the
+edge. Never during the cooler night or while away, except the warm-up before the return. Nothing raises while the
+plan or the outdoor reading is missing or old.
+
+**The raise is checked on its first runs**, like the lowering: within 20 minutes the calculated supply temperature
+should rise by 1 °C, or the heat pump meter's power by a fifth. A pump whose supply does not rise is noted as **raise
+not observed** in the diagnostics (`heat_settings.control.raise`); SpotNav then stops raising and keeps lowering,
+without a note on the card. The power alone never fails the check (the compressor starts and stops by itself), and
+it passes only after two raises that both show it. Turning the switch off and on tries the raise again.
+
+The day chart shows SpotNav's raises as solid warm columns (**SpotNav höjde**) and the planned ones lighter
+(**Planerad höjning**, or **Skulle höja** while the switch is off), and the line under the switch says **Styr: höjer
+värmen till …** while a raise runs.
 
 **Every write is read back**: the relay must show the new state within 90 seconds. A switching that fails or is not
 seen pauses control for the rest of the day; an opening is tried again every five minutes until the relay reads open.
