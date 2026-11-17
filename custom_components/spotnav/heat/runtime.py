@@ -18,7 +18,10 @@ this plan and tells what it will close ahead (`control.closings_ahead`).
   recorder's short-term days), kept (`relay_effect.KEEP_BLOCKS`), and the effect learned again.
 * **SpotNav's plan** (`heat/shadow_rule.band`, in the executor): today and tomorrow, every hour and when the prices
   change, with the joint plan's tight hours (the house forecast without the relay's change, the cars' installed plans
-  and the battery plan's grid charge, against the import cap), the outdoor forecast and the coldest counted room now.
+  and the battery plan's grid charge, against the import cap), the outdoor forecast and the coldest counted room now,
+  and again at once when the house turns too warm or back (`shadow_rule.RoomWarm`, stepped every look on the rooms'
+  readings of the last `rooms.WINDOW`, kept in memory: a sensor rising fast is left out as the card leaves it out, and
+  the hour above the band starts again after a restart).
   What it would do now is logged at each change (`log`), and each hour's action is kept for the day as it was planned
   when the hour began (`days`).
 * **The review** (`heat/review.py`): each day kept with a plan, once the three hours after its end have passed and
@@ -65,8 +68,8 @@ from .relay_effect import (
 )
 from .relay_schedule import expected_closings, too_cold, unknown_closing
 from .review import review_day
-from .rooms import SensorReading, indoor
-from .shadow_rule import ACTION_LOWER, BandHour, band, day_hours, would_do
+from .rooms import WINDOW, Indoor, SensorReading, indoor, warm_c
+from .shadow_rule import ACTION_LOWER, REASON_ROOM_WARM, BandHour, RoomWarm, band, day_hours, would_do
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -204,6 +207,7 @@ def plan_days(
     coldest_c: float | None,
     tight: frozenset[datetime],
     outdoor_by_hour: Mapping[datetime, float],
+    room_warm: bool = False,
 ) -> tuple[list[BandHour], str | None]:
     """SpotNav's plan for the days given (the executor's part): each day's band, and today's guard."""
     hours: list[BandHour] = []
@@ -219,6 +223,7 @@ def plan_days(
             coldest_c=coldest_c,
             tight=tight,
             outdoor_by_hour=outdoor_by_hour,
+            room_warm=room_warm and index == 0,
         )
         if index == 0:
             guard = day_guard
@@ -277,6 +282,9 @@ class HeatShadow:
         self._delta: dict[datetime, float] = {}
         #: SpotNav's own switching of the relay (`heat/control.py`), set by the site.
         self.control: HeatControl | None = None
+        #: Whether the house is too warm (`shadow_rule.RoomWarm`), and the rooms' readings of the last window.
+        self.room_warm = RoomWarm()
+        self._rooms: dict[str, deque[tuple[datetime, float]]] = {}
 
     # ---- life cycle
 
@@ -453,8 +461,9 @@ class HeatShadow:
             self.relay_states.append((since, closed_now))
         watched = [entity for entity in (relay, config.control_entity_b, *(zone.entity_id for zone in config.zones)) if entity]
         self.automations = steering_automations(self.hass, watched)
+        self._step_warm(config, now)
         self._log_would(now, config)
-        key = self._prices_key(now)
+        key = (self._prices_key(now), self.room_warm.active)
         if self._running or (hour_of(now) == self._for_hour and key == self._plan_key):
             return
         self._running = True
@@ -561,9 +570,10 @@ class HeatShadow:
             self.blocks = sorted(self.blocks, key=lambda block: block.start)[-KEEP_BLOCKS:]
             self.effect = learn(self.blocks)
 
-    def coldest_now(self, config: HeatConfig) -> float | None:
-        """The coldest counted room now less its offset (what the comfort band is compared with), `None` without a
-        readable indoor sensor (a frozen one does not read)."""
+    def indoor_now(self, config: HeatConfig, now: datetime | None = None) -> Indoor | None:
+        """The rooms now (`rooms.indoor`) on the readings of the last window as seen on the looks, `None` without
+        indoor sensors (a frozen one does not read)."""
+        now = dt_util.utcnow() if now is None else now
         readings = []
         for entity_id in config.indoor_sensors:
             state = fresh_state(self.hass, entity_id)
@@ -571,8 +581,39 @@ class HeatShadow:
                 value = None if state is None else float(state.state)
             except ValueError:
                 value = None
-            readings.append(SensorReading(entity_id, entity_id, value, (), None, config.offset_of(entity_id)))
-        return indoor(readings, dt_util.utcnow(), frozenset()).relative_c if readings else None
+            history = tuple(self._rooms.get(entity_id, ()))
+            readings.append(SensorReading(entity_id, entity_id, value, history, None, config.offset_of(entity_id)))
+        return indoor(readings, now, frozenset()) if readings else None
+
+    def coldest_now(self, config: HeatConfig) -> float | None:
+        """The coldest counted room now less its offset (what the comfort band is compared with), `None` without a
+        readable indoor sensor."""
+        rooms = self.indoor_now(config)
+        return None if rooms is None else rooms.relative_c
+
+    def _step_warm(self, config: HeatConfig, now: datetime) -> None:
+        """Note each room's reading for the window and step whether the house is too warm."""
+        oldest = now - WINDOW - timedelta(minutes=5)
+        for entity_id in list(self._rooms):
+            if entity_id not in config.indoor_sensors:
+                del self._rooms[entity_id]
+        for entity_id in config.indoor_sensors:
+            state = fresh_state(self.hass, entity_id)
+            try:
+                value = None if state is None else float(state.state)
+            except ValueError:
+                value = None
+            series = self._rooms.setdefault(entity_id, deque())
+            if value is not None:
+                series.append((now, value))
+            # Keep the last reading before the window: what was in force at its start.
+            while len(series) > 1 and series[1][0] <= oldest:
+                series.popleft()
+        rooms = self.indoor_now(config, now)
+        was = self.room_warm.active
+        self.room_warm.step(now, None if rooms is None else warm_c(rooms), config.target_c + BAND_C)
+        if self.room_warm.active != was:
+            _LOGGER.debug("SpotNav heat: the house is %s", "above its band, lowering" if self.room_warm.active else "back in its band")
 
     def joint_inputs(self, now: datetime) -> tuple[frozenset[datetime], dict[datetime, float]]:
         """The joint plan's tight hours and the outdoor forecast (see the module)."""
@@ -622,6 +663,7 @@ class HeatShadow:
                 coldest_c=self.coldest_now(config),
                 tight=tight,
                 outdoor_by_hour=outdoor_by_hour,
+                room_warm=self.room_warm.active,
             )
         )
         if self._closed:
@@ -638,7 +680,10 @@ class HeatShadow:
             return
         day = current.astimezone(time_zones.require_zone(self.tz)).date().isoformat()
         plan = self.days.setdefault(day, {"plan": {}, "review": None}).setdefault("plan", {})
-        plan.setdefault(current.isoformat(), [hour.action, hour.reason])
+        kept = plan.setdefault(current.isoformat(), [hour.action, hour.reason])
+        if hour.reason == REASON_ROOM_WARM and kept[0] != ACTION_LOWER:
+            # Too warm began within the hour: the day shows the hour lowered for it.
+            plan[current.isoformat()] = [hour.action, hour.reason]
 
     def kept_actions(self, day: date) -> dict[datetime, tuple[str, str]]:
         """A day's kept hours: `{hour start: (action, reason)}`."""
@@ -751,6 +796,7 @@ class HeatShadow:
             "automations": [item.as_dict() for item in self.automations],
             "made_at": None if self.made_at is None else self.made_at.isoformat(),
             "guard": self.guard,
+            "room_warm": {"active": self.room_warm.active, "since": None if self.room_warm.since is None else self.room_warm.since.isoformat()},
             "tight": sorted(hour.isoformat() for hour in self.tight),
             "plan": [hour.as_dict() for hour in self.plan],
             "days": self.days,

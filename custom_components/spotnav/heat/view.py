@@ -168,6 +168,8 @@ class HeatViewInputs:
     executed: Mapping[datetime, int] = field(default_factory=dict)
     #: The day's indoor curve (`heat/indoor_day.indoor_day`), `None` without indoor sensors.
     indoor_day: Mapping[str, Any] | None = None
+    #: Whether the house is too warm now (the heat shadow's `RoomWarm`): the band lowers the running hours for it.
+    room_warm: bool = False
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -284,6 +286,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         coldest_c=inputs.indoor.relative_c,
         tight=inputs.tight,
         outdoor_by_hour=inputs.outdoor_by_hour,
+        room_warm=inputs.room_warm,
     )
     current = now.replace(minute=0, second=0, microsecond=0)
     band_hours = [
