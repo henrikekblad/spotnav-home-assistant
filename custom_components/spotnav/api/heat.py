@@ -56,6 +56,7 @@ from .. import time_zones
 from ..battery.plan_runtime import site_car_windows
 from ..const import CONF_HEAT, CONF_HEAT_METER_ENTITY, DOMAIN
 from ..heat.config import (
+    F_ZONES,
     FIELDS,
     USER_FIELDS,
     FieldError,
@@ -223,6 +224,11 @@ def write_heat(hass: HomeAssistant, site: ConfigEntry, changes: Any, expected: A
     if data != dict(site.data):
         hass.config_entries.async_update_entry(site, data=data)
         _LOGGER.debug("SpotNav heat settings changed: %s", sorted(changes))
+        if F_ZONES in changes or F_METER in changes:
+            # The zones and the meter decide what the flow and the pies count as heat: read them again at once.
+            from .site_settings import _forget_energy_reads  # noqa: PLC0415 - site_settings imports this module's peers
+
+            _forget_energy_reads(hass, site.entry_id)
     controller = site_controller_for(hass, site.entry_id)
     if F_METER in changes and controller is not None:
         controller.house_forecast.request_refresh()

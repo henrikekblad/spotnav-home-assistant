@@ -194,3 +194,20 @@ async def test_the_indoor_curve_is_read_once_per_five_minute_row(
     freezer.tick(timedelta(minutes=5))
     await read(hass, api_version=1, site_id=site.entry_id)
     assert len(reads) == 2
+
+
+async def test_a_zone_or_meter_write_drops_the_kept_energy_reads(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """The zones and the meter decide what the flow and the pies count as heat: a write reads them again at once,
+    a write of anything else keeps them."""
+    from custom_components.spotnav.api import site_settings
+
+    site = await pilot_site(hass, freezer)
+    _sensors(hass)
+    dropped: list[str] = []
+    monkeypatch.setattr(site_settings, "_forget_energy_reads", lambda _hass, entry_id: dropped.append(entry_id))
+    await update(hass, api_version=1, site_id=site.entry_id, changes={"target_c": 21.5})
+    assert dropped == []
+    await update(hass, api_version=1, site_id=site.entry_id, changes={"zones": [{"entity_id": "climate.golvvarme", "offset_c": 0.0}]})
+    assert dropped == [site.entry_id]
+    await update(hass, api_version=1, site_id=site.entry_id, changes={"heat_meter_entity": "sensor.varme_effekt"})
+    assert dropped == [site.entry_id, site.entry_id]
