@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
@@ -302,6 +303,33 @@ async def test_the_site_holds_the_zones_beside_the_meter(hass: HomeAssistant, mo
     climates.clear()
     assert await site.async_refresh(HOUR + timedelta(hours=3)) is True
     assert site.zone_by_hour == {} and site.combined_by_hour() == {}
+
+
+async def test_the_forecast_s_zone_hours_are_read_under_the_main_fuse(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site.heat_meter import SiteHeatMeter
+
+    zones = ZoneSources((ZoneSource("climate.a", "A", "sensor.a_energy", KIND_ENERGY),))
+    site = SiteHeatMeter(hass, lambda: None, lambda: ["climate.a"])
+    monkeypatch.setattr(site, "current_zones", lambda: zones)
+    site.cap_kw = lambda: 13.8
+    caps: list[float | None] = []
+
+    async def prefs(_hass):
+        return None
+
+    async def zone(_hass, _zones, start, end, _period="hour", cap=None):
+        caps.append(cap)
+        return {"sensor.a_energy": {HOUR: 0.5}}
+
+    monkeypatch.setattr(heat_meter_module, "async_energy_prefs", prefs)
+    monkeypatch.setattr(zones_module, "async_zone_periods", zone)
+    await site.async_refresh(HOUR + timedelta(hours=2))
+    assert caps == [13.8]
+    # The site sets it from its main fuse (16 A: 11.04 kW); without a fuse there is no cap.
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    assert SiteCapacityController._main_fuse_kw(SimpleNamespace(config={"main_fuse_a": 16})) == pytest.approx(11.04)  # type: ignore[arg-type]
+    assert SiteCapacityController._main_fuse_kw(SimpleNamespace(config={})) is None  # type: ignore[arg-type]
 
 
 def test_a_controller_reads_the_zones_and_the_moved_meters_from_its_entry() -> None:

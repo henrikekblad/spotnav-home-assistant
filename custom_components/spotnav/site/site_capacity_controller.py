@@ -719,6 +719,8 @@ class SiteCapacityController:
             heat_zones=self._heat_zones,
             heat_moved=self._heat_moved_meters,
         )
+        # A broken statistic hour of a heat zone stays out of the heat split's learning.
+        self.house_forecast.heat.cap_kw = self._main_fuse_kw
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
         # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the
@@ -5295,6 +5297,13 @@ class SiteCapacityController:
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         belongs = stored_belongs(None if entry is None else entry.data, CONF_METER_BELONGS)
         return tuple(stat for stat, value in belongs.items() if value == BELONG_HEAT)
+
+    def _main_fuse_kw(self) -> float | None:
+        """The main fuse's capacity (kW, three phases at 230 V); `None` where it is not set."""
+        fuse = self.config.get(CONF_MAIN_FUSE_A)
+        if isinstance(fuse, bool) or not isinstance(fuse, (int, float)) or fuse <= 0:
+            return None
+        return float(fuse) * 3 * 230.0 / 1000.0
 
     def _heat_meter_setting(self) -> str | None:
         """The heat pump meter chosen in the site settings (`None`: found by itself or none), read from the entry: it
