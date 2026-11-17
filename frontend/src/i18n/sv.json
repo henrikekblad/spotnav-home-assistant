@@ -1741,5 +1741,12 @@
   "house.learning.noGridCharge": "Laddar inte från nätet än",
   "house.learning.gridChargeCapped": "Högst {kw} kW från nätet än så länge",
   "house.learning.phasePeaks": "lär sig husets toppar per fas, {left}",
-  "house.sources.solarLearning": "Solprognos: {names} · korrigeringen lär sig, {left}"
+  "house.sources.solarLearning": "Solprognos: {names} · korrigeringen lär sig, {left}",
+  "heat.indoor.title": "Inomhustemperatur",
+  "heat.indoor.label": "Inomhustemperaturen under dygnet mot komfortbandet och börvärdet",
+  "heat.indoor.mean": "Rummen, medel",
+  "heat.indoor.coldest": "Kallaste rummet",
+  "heat.indoor.setpoint": "Börvärde",
+  "heat.indoor.setpointLowers": "Börvärde (SpotNav sänker)",
+  "heat.indoor.comfort": "Komfortband {low}–{high} °C"
 }

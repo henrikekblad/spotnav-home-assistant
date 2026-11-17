@@ -7,6 +7,7 @@
 import { historyHeaderButton } from "./period-history";
 import { clock, dateLabel, formatFixed, hourLabel, type FormatContext } from "./format";
 import { roomName, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
+import { indoorChart } from "./heat-indoor";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -732,6 +733,14 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
     card.append(line);
   }
   card.append(bandBlock(doc, language, answer, input.width, input.nowMs));
+  if (answer.indoor_day !== null) {
+    // The rooms over the day under the band: what a lowering did, beside the band's setpoint per hour.
+    const setpoint = answer.band.hours.map((hour) => ({ startMs: hour.startMs, target_c: hour.target_c, action: hour.action }));
+    const indoor = indoorChart(doc, language, context(language, answer), answer.indoor_day, setpoint, input.width, input.nowMs);
+    if (indoor !== null) {
+      card.append(indoor);
+    }
+  }
   const today = todayLine(language, answer);
   if (today !== null) {
     const line = element(doc, "p", H.line, today);

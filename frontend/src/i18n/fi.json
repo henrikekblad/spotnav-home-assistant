@@ -1741,5 +1741,12 @@
   "house.learning.noGridCharge": "Ei vielä lataa verkosta",
   "house.learning.gridChargeCapped": "Enintään {kw} kW verkosta toistaiseksi",
   "house.learning.phasePeaks": "opettelee talon vaihekohtaisia huippuja, {left}",
-  "house.sources.solarLearning": "Aurinkoennuste: {names} · korjaus oppii, {left}"
+  "house.sources.solarLearning": "Aurinkoennuste: {names} · korjaus oppii, {left}",
+  "heat.indoor.title": "Sisälämpötila",
+  "heat.indoor.label": "Sisälämpötila vuorokauden aikana mukavuusalueeseen ja asetusarvoon verrattuna",
+  "heat.indoor.mean": "Huoneet, keskiarvo",
+  "heat.indoor.coldest": "Kylmin huone",
+  "heat.indoor.setpoint": "Asetusarvo",
+  "heat.indoor.setpointLowers": "Asetusarvo (SpotNav laskee)",
+  "heat.indoor.comfort": "Mukavuusalue {low}–{high} °C"
 }

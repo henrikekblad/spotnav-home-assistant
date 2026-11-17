@@ -1741,5 +1741,12 @@
   "house.learning.noGridCharge": "Lädt noch nicht aus dem Netz",
   "house.learning.gridChargeCapped": "Vorerst höchstens {kw} kW aus dem Netz",
   "house.learning.phasePeaks": "lernt die Spitzen des Hauses je Phase, {left}",
-  "house.sources.solarLearning": "Solarprognose: {names} · Korrektur lernt, {left}"
+  "house.sources.solarLearning": "Solarprognose: {names} · Korrektur lernt, {left}",
+  "heat.indoor.title": "Innentemperatur",
+  "heat.indoor.label": "Innentemperatur über den Tag gegenüber dem Komfortband und dem Sollwert",
+  "heat.indoor.mean": "Räume, Mittel",
+  "heat.indoor.coldest": "Kältester Raum",
+  "heat.indoor.setpoint": "Sollwert",
+  "heat.indoor.setpointLowers": "Sollwert (SpotNav senkt)",
+  "heat.indoor.comfort": "Komfortband {low}–{high} °C"
 }

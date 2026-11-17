@@ -1741,5 +1741,12 @@
   "house.learning.noGridCharge": "Todavía no carga desde la red",
   "house.learning.gridChargeCapped": "Como mucho {kw} kW de la red por ahora",
   "house.learning.phasePeaks": "aprende los picos de la casa por fase, {left}",
-  "house.sources.solarLearning": "Previsión solar: {names} · la corrección aprende, {left}"
+  "house.sources.solarLearning": "Previsión solar: {names} · la corrección aprende, {left}",
+  "heat.indoor.title": "Temperatura interior",
+  "heat.indoor.label": "Temperatura interior a lo largo del día frente a la banda de confort y la consigna",
+  "heat.indoor.mean": "Habitaciones, media",
+  "heat.indoor.coldest": "Habitación más fría",
+  "heat.indoor.setpoint": "Consigna",
+  "heat.indoor.setpointLowers": "Consigna (SpotNav baja)",
+  "heat.indoor.comfort": "Banda de confort {low}–{high} °C"
 }

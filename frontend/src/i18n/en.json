@@ -1741,5 +1741,12 @@
   "house.learning.noGridCharge": "Not charging from the grid yet",
   "house.learning.gridChargeCapped": "At most {kw} kW from the grid for now",
   "house.learning.phasePeaks": "learning the house's peaks per phase, {left}",
-  "house.sources.solarLearning": "Solar forecast: {names} · correction learning, {left}"
+  "house.sources.solarLearning": "Solar forecast: {names} · correction learning, {left}",
+  "heat.indoor.title": "Indoor temperature",
+  "heat.indoor.label": "Indoor temperature over the day against the comfort band and the setpoint",
+  "heat.indoor.mean": "Rooms, mean",
+  "heat.indoor.coldest": "Coldest room",
+  "heat.indoor.setpoint": "Setpoint",
+  "heat.indoor.setpointLowers": "Setpoint (SpotNav lowers)",
+  "heat.indoor.comfort": "Comfort band {low}–{high} °C"
 }

@@ -1741,5 +1741,12 @@
   "house.learning.noGridCharge": "Laadt nog niet uit het net",
   "house.learning.gridChargeCapped": "Voorlopig hoogstens {kw} kW uit het net",
   "house.learning.phasePeaks": "leert de pieken van het huis per fase, {left}",
-  "house.sources.solarLearning": "Zonnevoorspelling: {names} · correctie leert, {left}"
+  "house.sources.solarLearning": "Zonnevoorspelling: {names} · correctie leert, {left}",
+  "heat.indoor.title": "Binnentemperatuur",
+  "heat.indoor.label": "Binnentemperatuur over de dag tegenover de comfortband en het setpoint",
+  "heat.indoor.mean": "Kamers, gemiddeld",
+  "heat.indoor.coldest": "Koudste kamer",
+  "heat.indoor.setpoint": "Setpoint",
+  "heat.indoor.setpointLowers": "Setpoint (SpotNav verlaagt)",
+  "heat.indoor.comfort": "Comfortband {low}–{high} °C"
 }

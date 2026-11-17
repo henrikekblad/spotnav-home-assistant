@@ -1741,5 +1741,12 @@
   "house.learning.noGridCharge": "Lader ikke fra nettet endnu",
   "house.learning.gridChargeCapped": "Højst {kw} kW fra nettet indtil videre",
   "house.learning.phasePeaks": "lærer husets spidser pr. fase, {left}",
-  "house.sources.solarLearning": "Solprognose: {names} · korrektionen lærer, {left}"
+  "house.sources.solarLearning": "Solprognose: {names} · korrektionen lærer, {left}",
+  "heat.indoor.title": "Indetemperatur",
+  "heat.indoor.label": "Indetemperaturen gennem døgnet mod komfortbåndet og setpunktet",
+  "heat.indoor.mean": "Rummene, gennemsnit",
+  "heat.indoor.coldest": "Koldeste rum",
+  "heat.indoor.setpoint": "Setpunkt",
+  "heat.indoor.setpointLowers": "Setpunkt (SpotNav sænker)",
+  "heat.indoor.comfort": "Komfortbånd {low}–{high} °C"
 }
