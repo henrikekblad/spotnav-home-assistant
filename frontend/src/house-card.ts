@@ -40,7 +40,7 @@ export const HOUSE_REFRESH_MS = 300_000;
 /** The Now tab's live flows are read this often while it is shown (the charging card's own refresh). */
 export const LIVE_REFRESH_MS = 30_000;
 /** The least the shown tab's picture is drawn in a box of fixed height. */
-export const FILL_MIN_PX = 120;
+export const FILL_MIN_PX = 150;
 /** Periods kept read while the card lives (the oldest go first). */
 const PERIODS_KEPT = 12;
 /** The chart's width before the card has been measured (and in a DOM that lays nothing out). */
@@ -644,12 +644,18 @@ export class SpotnavHouseCard extends HTMLElement {
     if (target === null || Math.abs(box - natural) < 2) {
       return;
     }
-    const basis = (target as HTMLElement).getBoundingClientRect().height;
-    const fill = Math.max(FILL_MIN_PX, Math.floor(basis + box - natural));
+    // A tab draws itself more compactly in a box (fewer words): read it so, at its picture's natural height, then
+    // give the picture what is left.
+    const basis = Math.round((target as HTMLElement).getBoundingClientRect().height);
+    this.paint(basis);
+    const compact = this.mount.firstElementChild as HTMLElement | null;
+    const picture = compact?.querySelector<HTMLElement | SVGElement>(FILL_TARGETS) ?? null;
+    const compactBasis = picture === null ? basis : (picture as HTMLElement).getBoundingClientRect().height;
+    const fill = Math.max(FILL_MIN_PX, Math.floor(compactBasis + box - (compact?.offsetHeight ?? natural)));
     this.paint(fill);
     const filled = this.mount.firstElementChild as HTMLElement | null;
     if (filled !== null) {
-      filled.dataset["fill"] = "true";
+      filled.dataset["box"] = "true";
     }
   }
 

@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when}: batteriets laddning kostade {amount}",
   "house.value.total": "Batteriets energi var värd {amount}",
   "house.value.totalCost": "Batteriets energi kostade {amount} mer än den gav",
-  "house.value.note": "Varje stapel: det batteriet gav till köppriset (till nätet till säljpriset), minus det det tog från nätet till köppriset och från solen till säljpriset, som batteriets egen app räknar energivärdet.",
+  "house.value.note": "Det batteriet gav minus vad laddningen kostade, till varje timmes priser.",
   "hist.house.recent": "De senaste dygnen, som kortet granskar dem",
   "house.editor.site": "Anläggning (eller en laddare i den)",
   "house.editor.tab": "Visa bara flik",

@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when} : la charge de la batterie a coûté {amount}",
   "house.value.total": "L'énergie de la batterie valait {amount}",
   "house.value.totalCost": "L'énergie de la batterie a coûté {amount} de plus qu'elle n'a rapporté",
-  "house.value.note": "Chaque barre : ce que la batterie a fourni au prix d'achat (au réseau au prix de vente), moins ce qu'elle a pris au réseau au prix d'achat et au soleil au prix de vente, comme l'application de la batterie compte sa valeur énergétique.",
+  "house.value.note": "Ce que la batterie a fourni moins ce qu'a coûté sa charge, aux prix de chaque heure.",
   "hist.house.recent": "Les derniers jours, tels que la carte les examine",
   "house.editor.site": "Site (ou une borne de ce site)",
   "house.editor.tab": "Afficher seulement l'onglet",

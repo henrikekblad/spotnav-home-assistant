@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when}: das Laden der Batterie kostete {amount}",
   "house.value.total": "Die Energie der Batterie war {amount} wert",
   "house.value.totalCost": "Die Energie der Batterie kostete {amount} mehr, als sie brachte",
-  "house.value.note": "Jeder Balken: was die Batterie zum Bezugspreis abgab (ins Netz zum Verkaufspreis), abzüglich dessen, was sie aus dem Netz zum Bezugspreis und von der Sonne zum Verkaufspreis nahm, wie die App der Batterie ihren Energiewert rechnet.",
+  "house.value.note": "Was die Batterie abgab, abzüglich der Ladekosten, zu den Preisen jeder Stunde.",
   "hist.house.recent": "Die letzten Tage, wie die Karte sie prüft",
   "house.editor.site": "Standort (oder eine Wallbox darin)",
   "house.editor.tab": "Nur Reiter zeigen",

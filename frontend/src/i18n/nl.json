@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when}: het laden van de batterij kostte {amount}",
   "house.value.total": "De energie van de batterij was {amount} waard",
   "house.value.totalCost": "De energie van de batterij kostte {amount} meer dan ze opleverde",
-  "house.value.note": "Elke staaf: wat de batterij leverde tegen de inkoopprijs (aan het net tegen de verkoopprijs), min wat ze uit het net nam tegen de inkoopprijs en van de zon tegen de verkoopprijs, zoals de eigen app van de batterij de energiewaarde rekent.",
+  "house.value.note": "Wat de batterij leverde min wat het laden kostte, tegen de prijzen van elk uur.",
   "hist.house.recent": "De laatste dagen, zoals de kaart ze beoordeelt",
   "house.editor.site": "Locatie (of een laadpaal erin)",
   "house.editor.tab": "Alleen tabblad tonen",

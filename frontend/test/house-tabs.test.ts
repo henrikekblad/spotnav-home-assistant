@@ -439,6 +439,25 @@ describe("the card element's tabs", () => {
     again.remove();
   });
 
+  it("keeps the deep analysis in the history dialog: with Detailed on, the last days as the front once had them", async () => {
+    const hass = new FakeHass();
+    const element = await mount({}, hass);
+    const root = element.shadowRoot!;
+    root.querySelector<HTMLButtonElement>("button[data-history='open']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveNext(read("house_history", "villa_month.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
+    expect(dialog.querySelector("[data-part='recent']")).toBeNull();
+    dialog.querySelector<HTMLButtonElement>("[data-detailed]")!.click();
+    const recent = dialog.querySelector<HTMLElement>("[data-part='recent']")!;
+    expect(recent.querySelector("h4")?.textContent).toBe(translate("en", "hist.house.recent"));
+    expect(recent.querySelector("[data-part='modes'][data-view='perfect']")).not.toBeNull();
+    expect(recent.querySelector("[data-line='review']")).not.toBeNull();
+    expect(recent.querySelectorAll(".spotnav-house-facts li").length).toBeGreaterThan(3);
+    element.remove();
+  });
+
   it("shows only the locked tab, without the row, and neither reads nor writes the remembered one", async () => {
     const store = new Map<string, string>([["spotnav-house-card.tab.site_villa", "now"]]);
     const setItem = vi.fn((key: string, value: string) => void store.set(key, value));

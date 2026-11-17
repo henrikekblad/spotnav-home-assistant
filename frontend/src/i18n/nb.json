@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when}: batteriets lading kostet {amount}",
   "house.value.total": "Batteriets energi var verdt {amount}",
   "house.value.totalCost": "Batteriets energi kostet {amount} mer enn den ga",
-  "house.value.note": "Hver søyle: det batteriet ga til kjøpsprisen (til nettet til salgsprisen), minus det det tok fra nettet til kjøpsprisen og fra solen til salgsprisen, slik batteriets egen app regner energiverdien.",
+  "house.value.note": "Det batteriet ga minus hva ladingen kostet, til hver times priser.",
   "hist.house.recent": "De siste døgnene, slik kortet vurderer dem",
   "house.editor.site": "Anlegg (eller en lader i det)",
   "house.editor.tab": "Vis bare fane",

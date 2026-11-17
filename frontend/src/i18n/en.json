@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when}: the battery's charging cost {amount}",
   "house.value.total": "The battery's energy was worth {amount}",
   "house.value.totalCost": "The battery's energy cost {amount} more than it gave",
-  "house.value.note": "Each bar: what the battery gave at the buy price (to the grid at the sell price), less what it took from the grid at the buy price and from the sun at the sell price, as the battery's own app counts its energy value.",
+  "house.value.note": "What the battery gave less what its charging cost, at each hour's prices.",
   "hist.house.recent": "The last days, as the card reviews them",
   "house.editor.site": "Site (or a charger in it)",
   "house.editor.tab": "Show only tab",

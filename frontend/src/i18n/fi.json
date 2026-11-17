@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when}: akun lataus maksoi {amount}",
   "house.value.total": "Akun energia oli arvoltaan {amount}",
   "house.value.totalCost": "Akun energia maksoi {amount} enemmän kuin tuotti",
-  "house.value.note": "Jokainen pylväs: mitä akku antoi ostohintaan (verkkoon myyntihintaan), miinus mitä se otti verkosta ostohintaan ja auringosta myyntihintaan, kuten akun oma sovellus laskee energian arvon.",
+  "house.value.note": "Mitä akku antoi miinus mitä lataus maksoi, kunkin tunnin hinnoin.",
   "hist.house.recent": "Viime päivät kortin arvioimina",
   "house.editor.site": "Kohde (tai sen laturi)",
   "house.editor.tab": "Näytä vain välilehti",

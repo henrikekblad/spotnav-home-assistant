@@ -1367,11 +1367,15 @@ function flowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElem
     panel.append(section);
     return;
   }
-  if (running && choice.period === "day") {
+  if (running && choice.period === "day" && (input.ui.fill === null || input.ui.fill === undefined)) {
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: clock(context(language, answer), Date.parse(flow.through)) })));
   }
   section.append(diagram);
-  panel.append(section, tilesBlock(doc, language, flow));
+  panel.append(section);
+  // In a box of fixed height the diagram takes the room and carries the figures; elsewhere the tiles under it.
+  if (input.ui.fill === null || input.ui.fill === undefined) {
+    panel.append(tilesBlock(doc, language, flow));
+  }
   if (loads !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
     const heat = diagram.querySelector(".spotnav-house-flow-action[data-role='heat']") !== null;
     panel.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, heat ? "house.loads.tapHeat" : "house.loads.tap")));
@@ -1473,9 +1477,16 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
       );
       line.dataset["line"] = "value-total";
       panel.append(line);
-      const bars = valueBars(doc, language, history.answer, choice.period === "day" ? 110 : barsHeight(input), (minor) => amount(language, minor, answer.money), input.ui.bar ?? null, input.handlers.onBar?.bind(input.handlers));
+      // In a box of fixed height (a wall screen) the price chart takes the room; the kr bars stay low and the words
+      // that explain them go.
+      const boxed = input.ui.fill !== null && input.ui.fill !== undefined;
+      // A day in a box: the price chart and the total; the kr bars would not fit beside it.
+      const bars = boxed && choice.period === "day" ? null : valueBars(doc, language, history.answer, choice.period === "day" ? 110 : barsHeight(input), (minor) => amount(language, minor, answer.money), input.ui.bar ?? null, input.handlers.onBar?.bind(input.handlers));
       if (bars !== null) {
-        panel.append(bars, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.value.note")));
+        panel.append(bars);
+        if (!boxed) {
+          panel.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.value.note")));
+        }
       }
     }
     const cost = history.answer.cost;
@@ -1495,7 +1506,7 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
   } else if (choice.period !== "day" && history !== null && history.kind === "failed") {
     historyOrStatus(input, panel);
   }
-  if (choice.period === "day" && choice.date === null && answer.battery !== null) {
+  if (choice.period === "day" && choice.date === null && answer.battery !== null && (input.ui.fill === null || input.ui.fill === undefined)) {
     // Today's money in words: what the headline counts, the day's cost, the week's reviewed sentence.
     const hint = element(doc, "p", `${C.muted} ${H.todayDetail}`, todayHint(language, answer));
     hint.dataset["line"] = "today-hint";

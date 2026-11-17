@@ -71,6 +71,11 @@ export const HOUSE_CLASSES = {
 const H = HOUSE_CLASSES;
 
 export const HOUSE_STYLES = `
+  /* In a box of fixed height (a wall screen): the card is the box's height, the shown tab's picture drawn to fill it. */
+  .${H.card}[data-box] {
+    height: 100%;
+    overflow: hidden;
+  }
   /* The colours, also in the history dialog, which lives outside the card. */
   .${H.card},
   .spotnav-history-body {

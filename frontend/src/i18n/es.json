@@ -1898,7 +1898,7 @@
   "house.value.barCost": "{when}: la carga de la batería costó {amount}",
   "house.value.total": "La energía de la batería valió {amount}",
   "house.value.totalCost": "La energía de la batería costó {amount} más de lo que dio",
-  "house.value.note": "Cada barra: lo que la batería dio al precio de compra (a la red al precio de venta), menos lo que tomó de la red al precio de compra y del sol al precio de venta, como la app de la batería cuenta su valor energético.",
+  "house.value.note": "Lo que dio la batería menos lo que costó cargarla, a los precios de cada hora.",
   "hist.house.recent": "Los últimos días, como la tarjeta los revisa",
   "house.editor.site": "Instalación (o un cargador de ella)",
   "house.editor.tab": "Mostrar solo la pestaña",
