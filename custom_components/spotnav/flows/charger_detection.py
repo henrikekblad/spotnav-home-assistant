@@ -261,6 +261,11 @@ def _detect_current(
         found.current_control = CURRENT_CONTROL_POWER
         if power.disabled_by is not None:
             found.disabled_useful.append(power.entity_id)
+        # Its rating bounds every write and its output power is its draw: offered to be enabled when disabled.
+        for keys in (profile.rated_power_keys, profile.output_power_keys):
+            sensor = matcher.first("sensor", keys) if keys else None
+            if sensor is not None and sensor.disabled_by is not None:
+                found.disabled_useful.append(sensor.entity_id)
         return
     if profile.easee_current:
         if found.control_path is not None:
