@@ -469,15 +469,16 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
     arrow.dataset["tone"] = line.tone;
     arrow.dataset["k"] = `arrow-${line.role}`;
     wires.append(arrow);
-    // The kW beside the middle, away from the house's centre line, on a halo in the card's colour.
+    // The kW beside the middle, on a halo in the card's colour.
     let normal = { x: -(to.y - from.y), y: to.x - from.x };
     const length = Math.hypot(normal.x, normal.y) || 1;
     normal = { x: normal.x / length, y: normal.y / length };
+    // Above its line (the heat's short line: to its right), so the lower lines' labels stay clear of the heat's.
     if (line.role === "heat") {
       normal = { x: 1, y: 0 };
     } else if (row) {
       normal = { x: 0, y: -1 };
-    } else if ((normal.y > 0) !== (mid.y > spots.house.y)) {
+    } else if (normal.y > 0) {
       normal = { x: -normal.x, y: -normal.y };
     }
     const offset = line.role === "heat" ? 10 : 13;
