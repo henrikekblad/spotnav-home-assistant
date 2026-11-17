@@ -146,8 +146,73 @@ What the table says:
 
 ## The solar forecast
 
-An experiment comparing our own solar forecast with Solcast is running. This section will be filled in when it is
-done.
+The battery and the cars also plan on tomorrow's sun. We tested whether SpotNav can make that forecast itself, so
+that a site without a solar forecast integration gets one, and how it compares with a provider's forecast (Solcast
+on the developer's house).
+
+**What was compared**
+
+* The provider forecast as it is, and with SpotNav's correction (a clear/cloudy ratio learned from the panel's own
+  history).
+* Our own forecast: an irradiance forecast (from Open-Meteo), turned into power for panel planes learned from the
+  history, times a learned ratio per cloudiness and sun elevation.
+* Simpler variants of it: irradiance times a recent factor, our own raw forecast with SpotNav's correction, cloud
+  cover only.
+* Naive baselines: yesterday's PV, and a clear-sky curve.
+
+**How.** As for the house load: each forecast is *issued at 13:00 for tomorrow*, using the weather as it was
+forecast then. Constants were chosen on a tuning year and scored on later days. Only a rounded position was sent to
+the weather service. The money test reruns the battery planner on the 76 frozen autumn days; the provider's
+forecast exists for 47 of them (30 September to 15 November), and only a day total survives from before SpotNav
+logged it, so the provider's hourly shape is an estimate that flatters it.
+
+**Results**
+
+* **Our own forecast is indistinguishable from the provider's corrected forecast.** On the 47 days the hourly error
+  is 0.506 kW against 0.508 kW, and in money the difference is within about 15 kr on both data sets, with no
+  consistent sign.
+* **The raw provider forecast is the costly one.** It forecast 1.57 times the PV that was measured in autumn. On
+  the data set where the car's charging is taken out of the house load it lost 42 kr (Max vinst) and 28 kr
+  (Balanserad) to the corrected forecast, every week the same way. On the other data set the loss was 18 and 7 kr
+  and not significant. The true loss is probably larger, because of the estimate above.
+* **Over a year our own forecast beats the simple alternatives** (441 days, hourly error).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/forecast-experiments/solar-error-dark.png">
+  <img src="images/forecast-experiments/solar-error-light.png" alt="Horizontal bar chart of the solar forecast error in kW over 441 days, sorted: sun-position factor 0.650 (highlighted), own forecast 0.693, forecast irradiance times a learned factor 0.715, own raw forecast with SpotNav's correction 0.745, cloud cover only 0.802, yesterday's PV 1.218.">
+</picture>
+
+*Solar forecast error per approach, 13:00 for tomorrow, 441 days. Yesterday's PV is the naive baseline.*
+
+* **The low sun is shaded, and a learned factor catches it.** Measured over modelled PV is about 1.0 above 20
+  degrees of sun elevation in every season, and 0.2 to 0.6 below 15 to 20. In October to February the loss is
+  deepest with the sun due south to south-southeast, which looks like an obstruction. A factor learned per sun
+  elevation and direction, from a year of the panel's own history, cuts the error from 0.693 to 0.650 kW (about 6 %).
+  It is better in every season and in 100 % of resamples. With only 60 days of history it gains nothing: it needs
+  to have seen each sun position. Most sites can start from the Energy dashboard's statistics.
+* **A new site starts well.** With no history the first week's error is about 40 % above a full history's, and
+  still well under yesterday's PV. It is within about 5 % from week 2 to 4.
+
+Autumn has little sun, so the money at stake was small: a perfect sun forecast would have earned 34 kr (Max vinst)
+over today's on the 76 days. Summer is untested at decision level; the forecast-level result above covers the year.
+
+**Tried and rejected**
+
+* **Fitted panel planes as an orientation check.** The idea was to tell a user when the panel directions they
+  entered look wrong. On this house the fit cannot tell the direction (a nearly flat array fits almost equally well at
+  any azimuth from 15 to 75 degrees) and it mistakes shading for tilt. It is not used.
+* **A faster start for the provider correction.** An early read blamed the five weeks it took to come down from
+  +57 % on the correction being slow. It was not: the correction reaches a fixed target in about 14 nights, but the
+  target itself fell from about 0.67 in October to 0.45 in November as the sun sank. The sun-position factor is the
+  remedy, not a faster correction.
+* **"The provider is misoriented."** A first round said so, because the azimuths in the provider's setup did not
+  match the panels' names. It was withdrawn as a finding and is a hypothesis. The provider's low-sun overshoot is
+  not an orientation effect (changing the directions leaves the day total unchanged). Still, check that a provider
+  setting was not typed in the wrong azimuth convention: Solcast counts from north, east negative.
+
+**What comes next.** Both our own forecast and the sun-position factor run in the background only, and feed no
+plan. The irradiance is fetched from Open-Meteo by the user's own install, at a position rounded to 0.1 degrees.
+They are promoted only after a season of logs shows they earn money.
 
 ## Caveats
 
