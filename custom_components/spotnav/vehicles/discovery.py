@@ -190,6 +190,8 @@ def discover_charger_current_sources(
     """
     if not charger_device_id:
         return []
+    if _power_controlled_device(hass, charger_device_id):
+        return _ranked(_profile_attribute_candidates(hass, charger_device_id, [], voltage_between_phases_v=voltage_between_phases_v))
     candidates = _discover_attribute_candidates(hass, "charger_current", only_device_id=charger_device_id)
     candidates += _discover_separate_entity_candidates(
         hass, "charger_current", only_device_id=charger_device_id
@@ -211,6 +213,8 @@ async def async_discover_charger_current_sources(
     """
     if not charger_device_id:
         return []
+    if _power_controlled_device(hass, charger_device_id):
+        return _ranked(_profile_attribute_candidates(hass, charger_device_id, [], voltage_between_phases_v=voltage_between_phases_v))
     candidates = await _async_discover_attribute_candidates(
         hass, "charger_current", only_device_id=charger_device_id
     )
@@ -222,6 +226,18 @@ async def async_discover_charger_current_sources(
         hass, charger_device_id, candidates, voltage_between_phases_v=voltage_between_phases_v
     )
     return _ranked(candidates)
+
+
+def _power_controlled_device(hass: HomeAssistant, device_id: str) -> bool:
+    """Whether the device is a charger given a power (a DC charger). Its own current sensors (Sigenergy's
+    `dc_charger_charging_current`) are on the car's battery side, never a phase current: only its output power, read
+    over three phases, is offered."""
+    registry = er.async_get(hass)
+    for platform in {entry.platform for entry in er.async_entries_for_device(registry, device_id)}:
+        profile = profile_for(platform)
+        if profile is not None and profile.power_controlled:
+            return True
+    return False
 
 
 def _profile_phase_entity_candidates(

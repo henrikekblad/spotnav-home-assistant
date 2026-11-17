@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Each phase needs its own entity.",
       "fee_value_required": "Enter your own figure, or choose the suggestion.",
       "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing.",
-      "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu.",
+      "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing.",
       "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu.",
       "switch_load_incomplete": "Give the load's rated power and its runtime.",
-      "switch_load_floor_pair": "The temperature sensor and the lowest temperature go together: give both or neither."
+      "switch_load_floor_pair": "The temperature sensor and the lowest temperature go together: give both or neither.",
+      "dc_charger_three_phase": "A DC charger is driven only on three phases: SpotNav writes it the power of three phases, which on one phase would draw three times the current it counts. Choose 3."
     }
   },
   "selector": {

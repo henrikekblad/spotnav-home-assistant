@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Cada fase necesita su propia entidad.",
       "fee_value_required": "Introduce tu propia cifra, o elige la sugerencia.",
       "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada.",
-      "entsoe_key_rejected": "ENTSO-E no aceptó esta clave. Compruébala o genera una nueva en transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E no aceptó esta clave. Compruébala o genera una nueva en transparency.entsoe.eu.",
+      "dc_charger_three_phase": "Un cargador DC solo se controla en trifásico: SpotNav le escribe la potencia de tres fases, que en una sola fase consumiría tres veces la corriente calculada. Elija 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada.",
       "entsoe_key_rejected": "ENTSO-E no aceptó esta clave. Compruébala o genera una nueva en transparency.entsoe.eu.",
       "switch_load_incomplete": "Indica la potencia nominal y el tiempo de funcionamiento de la carga.",
-      "switch_load_floor_pair": "El sensor de temperatura y la temperatura mínima van juntos: indica los dos o ninguno."
+      "switch_load_floor_pair": "El sensor de temperatura y la temperatura mínima van juntos: indica los dos o ninguno.",
+      "dc_charger_three_phase": "Un cargador DC solo se controla en trifásico: SpotNav le escribe la potencia de tres fases, que en una sola fase consumiría tres veces la corriente calculada. Elija 3."
     }
   },
   "selector": {

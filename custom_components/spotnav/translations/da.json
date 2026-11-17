@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Hver fase skal have sin egen entitet.",
       "fee_value_required": "Indtast dit eget tal, eller vælg forslaget.",
       "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet.",
-      "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu.",
+      "dc_charger_three_phase": "En DC-lader styres kun på tre faser: SpotNav skriver effekten for tre faser, som på én fase ville trække tre gange den strøm, der regnes med. Vælg 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet.",
       "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu.",
       "switch_load_incomplete": "Angiv belastningens mærkeeffekt og driftstid.",
-      "switch_load_floor_pair": "Temperaturføleren og den laveste temperatur hører sammen: angiv begge eller ingen."
+      "switch_load_floor_pair": "Temperaturføleren og den laveste temperatur hører sammen: angiv begge eller ingen.",
+      "dc_charger_three_phase": "En DC-lader styres kun på tre faser: SpotNav skriver effekten for tre faser, som på én fase ville trække tre gange den strøm, der regnes med. Vælg 3."
     }
   },
   "selector": {

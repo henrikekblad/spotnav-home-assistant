@@ -321,7 +321,8 @@
       "manual_entities_duplicate": "Varje fas behöver en egen entitet.",
       "fee_value_required": "Ange en egen siffra, eller välj förslaget.",
       "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget.",
-      "entsoe_key_rejected": "ENTSO-E godtog inte nyckeln. Kontrollera den, eller skapa en ny på transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E godtog inte nyckeln. Kontrollera den, eller skapa en ny på transparency.entsoe.eu.",
+      "dc_charger_three_phase": "En DC-laddare styrs bara på tre faser: SpotNav skriver effekten för tre faser, som på en fas skulle dra tre gånger den ström som räknas. Välj 3."
     }
   },
   "options": {
@@ -525,7 +526,8 @@
       "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget.",
       "entsoe_key_rejected": "ENTSO-E godtog inte nyckeln. Kontrollera den, eller skapa en ny på transparency.entsoe.eu.",
       "switch_load_incomplete": "Ange lastens märkeffekt och drifttid.",
-      "switch_load_floor_pair": "Temperaturgivaren och den lägsta temperaturen hör ihop: ange båda eller ingen."
+      "switch_load_floor_pair": "Temperaturgivaren och den lägsta temperaturen hör ihop: ange båda eller ingen.",
+      "dc_charger_three_phase": "En DC-laddare styrs bara på tre faser: SpotNav skriver effekten för tre faser, som på en fas skulle dra tre gånger den ström som räknas. Välj 3."
     }
   },
   "selector": {

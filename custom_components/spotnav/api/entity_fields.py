@@ -89,7 +89,7 @@ from ..const import (
     MODE_DETECTED,
 )
 from ..planning.first_run import charger_phases_from_entry, site_for_charger
-from ..planning.phases import charger_wiring, DEFAULT_WIRING_PHASES
+from ..planning.phases import charger_wiring, dc_charger, DEFAULT_WIRING_PHASES
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
 from ..site.heat_meter import needs_setting
@@ -735,6 +735,9 @@ def charger_field_errors(
             # The site's phase wiring holds it for its chargers.
             errors.append(FieldError(FIELD_CHARGER_PHASES, ERR_NOT_WRITABLE))
         elif isinstance(changes[FIELD_CHARGER_PHASES], bool) or str(changes[FIELD_CHARGER_PHASES]) not in CHARGER_PHASES_CHOICES:
+            errors.append(FieldError(FIELD_CHARGER_PHASES, ERR_INVALID_VALUE))
+        elif str(changes[FIELD_CHARGER_PHASES]) == "1" and dc_charger(hass, entry.entry_id):
+            # A DC charger is driven only on three phases (`execution/chargers/sigenergy.py`).
             errors.append(FieldError(FIELD_CHARGER_PHASES, ERR_INVALID_VALUE))
 
     if FIELD_CHARGER_PRIORITY in changes:
