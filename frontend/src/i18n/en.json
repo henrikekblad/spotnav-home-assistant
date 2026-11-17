@@ -562,7 +562,6 @@
   "graph.legend.current": "Current interval",
   "graph.legend.sun": "Sun power: measured before now, forecast after",
   "graph.legend.sunMeasured": "Sun power, measured",
-  "graph.key.tomorrow": "Grey: tomorrow",
   "graph.key.plan": "Striped: planned charging",
   "graph.sun.short": "Sun",
   "graph.sun.peak": "Sun, peak {kw} kW",

@@ -1718,10 +1718,8 @@ export function createCardView(input: CardViewInput): CardView {
   const chartKey = element(doc, "p", C.chartKey);
   chartKey.dataset["part"] = "chart-key";
   function paintChartKey(): void {
+    // Tomorrow's prices are drawn in the same colours as today's, so only the striped plan window needs a key.
     const parts: string[] = [];
-    if (model.chart.days.some((day) => day.role === "future")) {
-      parts.push(translate(model.language, "graph.key.tomorrow"));
-    }
     if (model.bands.installed.length > 0 || model.bands.proposal.length > 0) {
       parts.push(translate(model.language, "graph.key.plan"));
     }

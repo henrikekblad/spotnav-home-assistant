@@ -529,7 +529,6 @@
   "graph.legend.current": "Nykyinen jakso",
   "graph.legend.sun": "Auringon teho: mitattu ennen nyt-hetkeä, ennuste sen jälkeen",
   "graph.legend.sunMeasured": "Auringon teho, mitattu",
-  "graph.key.tomorrow": "Harmaa: huomenna",
   "graph.key.plan": "Raidallinen: suunniteltu lataus",
   "graph.sun.short": "Aurinko",
   "graph.sun.peak": "Aurinko, huippu {kw} kW",

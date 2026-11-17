@@ -562,7 +562,6 @@
   "graph.legend.current": "Intervalo actual",
   "graph.legend.sun": "Potencia solar: medida antes de ahora, prevista después",
   "graph.legend.sunMeasured": "Potencia solar, medida",
-  "graph.key.tomorrow": "Gris: mañana",
   "graph.key.plan": "Rayado: carga prevista",
   "graph.sun.short": "Sol",
   "graph.sun.peak": "Sol, pico {kw} kW",

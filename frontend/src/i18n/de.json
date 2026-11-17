@@ -562,7 +562,6 @@
   "graph.legend.current": "Aktuelles Intervall",
   "graph.legend.sun": "Sonnenleistung: gemessen vor jetzt, Prognose danach",
   "graph.legend.sunMeasured": "Sonnenleistung, gemessen",
-  "graph.key.tomorrow": "Grau: morgen",
   "graph.key.plan": "Gestreift: geplantes Laden",
   "graph.sun.short": "Sonne",
   "graph.sun.peak": "Sonne, Spitze {kw} kW",

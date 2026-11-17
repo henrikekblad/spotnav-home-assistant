@@ -529,7 +529,6 @@
   "graph.legend.current": "Aktuellt intervall",
   "graph.legend.sun": "Solens effekt: uppmätt före nu, prognos efter",
   "graph.legend.sunMeasured": "Solens effekt, uppmätt",
-  "graph.key.tomorrow": "Grått: imorgon",
   "graph.key.plan": "Randigt: planerad laddning",
   "graph.sun.short": "Sol",
   "graph.sun.peak": "Sol, topp {kw} kW",
