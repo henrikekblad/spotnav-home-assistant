@@ -27,7 +27,7 @@ import type { SiteSettingsRequest } from "./site-settings";
 import type { GridTariffBody } from "./grid-tariff";
 import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
 import { HEAT_API_VERSION, HEAT_HISTORY_API_VERSION } from "./heat-model";
-import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION } from "./house-model";
+import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION, HOUSE_LOADS_API_VERSION } from "./house-model";
 import { BATTERY_CONTROL_API_VERSION, SITE_VIEW_API_VERSION } from "./site-model";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
@@ -687,6 +687,25 @@ export async function getPeriodHistory(
   return await call<unknown>(hass, {
     type: kind === "house" ? "spotnav/get_house_history" : "spotnav/get_heat_history",
     api_version: kind === "house" ? HOUSE_HISTORY_API_VERSION : HEAT_HISTORY_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    period,
+    ...(date === null ? {} : { date }),
+  });
+}
+
+/**
+ * What the house's known meters used over one day, month or year (`spotnav/get_house_loads`): the pie behind House in
+ * the energy flow, read only when it is opened; `unknown` until `decodeHouseLoads()` decodes it. Read-only.
+ */
+export async function getHouseLoads(
+  hass: HomeAssistantLike,
+  target: { site: string } | { charger: string },
+  period: "day" | "month" | "year",
+  date: string | null,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_house_loads",
+    api_version: HOUSE_LOADS_API_VERSION,
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     period,
     ...(date === null ? {} : { date }),

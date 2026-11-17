@@ -13,6 +13,8 @@
 //   energy back would come as `car` on the source side and is drawn as the car.
 // * The colours are custom properties a theme may set (`--spotnav-flow-solar` and so on), each fill bright enough for
 //   the dark words on it on a light and a dark card.
+// * With `onHouse`, the house block is a button (tap, Enter or Space): the card opens what the house used
+//   (`house-loads.ts`).
 
 import { formatFixed, formatNumber } from "./format";
 import type { EnergyFlow, FlowLink, FlowNode } from "./house-model";
@@ -126,7 +128,15 @@ export function flowLabels(language: Language, total: number, past = false): Flo
 }
 
 /** The diagram, `width` px wide; `null` when nothing is left to draw. */
-export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, width: number, idPrefix: string, past = false): SVGSVGElement | null {
+export function renderFlow(
+  doc: Document,
+  language: Language,
+  flow: EnergyFlow,
+  width: number,
+  idPrefix: string,
+  past = false,
+  onHouse: ((opener: HTMLElement) => void) | null = null,
+): SVGSVGElement | null {
   const big = new Set(flow.nodes.filter((node) => node.kwh >= MIN_SHOWN_KWH).map((node) => node.id));
   const linked = new Set(flow.links.filter((link) => link.kwh > 0 && big.has(link.from) && big.has(link.to)).flatMap((link) => [link.from, link.to]));
   const shown = flow.nodes.filter((node) => linked.has(node.id));
@@ -256,8 +266,28 @@ export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, 
       const title = svg(doc, "title");
       title.textContent = `${name} ${labels.kwh(node.kwh)} (${labels.share(node.kwh)})`;
       group.append(title);
+      if (onHouse !== null && node.role === "house" && node.side === "use") {
+        houseButton(group, language, `${name} ${labels.kwh(node.kwh)} (${labels.share(node.kwh)})`, onHouse);
+      }
       root.append(group);
     }
   }
   return root;
+}
+
+/** The house block as a button: focusable, named, opened by a tap, Enter or Space. */
+function houseButton(group: SVGGElement, language: Language, figures: string, onHouse: (opener: HTMLElement) => void): void {
+  group.setAttribute("role", "button");
+  group.setAttribute("tabindex", "0");
+  group.setAttribute("aria-label", translate(language, "house.loads.open", { figures }));
+  group.classList.add("spotnav-house-flow-action");
+  // An SVG element focuses and is told apart from a removed one as an HTML element is.
+  const opener = group as unknown as HTMLElement;
+  group.addEventListener("click", () => onHouse(opener));
+  group.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onHouse(opener);
+    }
+  });
 }
