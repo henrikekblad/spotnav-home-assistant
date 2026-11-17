@@ -53,6 +53,11 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   beside them (`import_kw`), and when the house figure changes what it is, the house kinds' days not yet reviewed are
   dropped. The log is the site's one forecast log: the battery plan and the solar correction log their kinds in it
   too (`log_changed`).
+* **Temperatures kept for a year** (`site/temperature_history.py`): each completed hour's outdoor temperature as the
+  history holds it, where it was read from (change markers), and the weather entity's forecast temperature per hour as
+  known at the day-ahead issue and at the last refresh before the hour; ~400 days, in a store of their own
+  (`spotnav.temperature_history.<entry>`) written at most once an hour (`TEMPERATURE_SAVE_DELAY_S`) and at an unload.
+  Nothing reads them back into the forecast yet: they are what cannot be fetched later. Counted in the diagnostics.
 * **Heat** (`site/heat_meter.py`, shown only): where the heat pump's meter is found (or set), its hours are read from
   the recorder at each refresh and the house figure is forecast a second time split in two, heat (learned against
   the outdoor temperature by the same model) and the rest (the house less heat), each logged with its outcome
@@ -103,6 +108,7 @@ from .forecast_band import FORM_ADDITIVE, learn as learn_band, pairs_from_log, v
 from .heat_meter import HeatSplit, SiteHeatMeter, heat_split
 from .house_history import HouseHistory
 from .load_forecast import forecast_house_load, LoadForecast, WINDOW_DAYS
+from .temperature_history import source_marker, SOURCE_SENSOR, SOURCE_WEATHER, TemperatureHistory
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -116,6 +122,9 @@ RETRY_S: Final = 600.0
 ATTRIBUTE_HOURS: Final = 24
 #: The log's store waits this long before it is written (it changes once an hour).
 SAVE_DELAY_S: Final = 30.0
+#: The kept temperatures' store waits this long before it is written: their hours change once an hour, and a year of
+#: them is no reason to write more often (an unload writes what waits).
+TEMPERATURE_SAVE_DELAY_S: Final = 3600.0
 #: A forecast older than this (a refresh that keeps failing) is not counted on by a plan: the flat figure is.
 PLAN_MAX_AGE_S: Final = 3 * 3600.0
 
@@ -159,6 +168,10 @@ OUTDOOR_SENSORS: Final[dict[str, re.Pattern[str]]] = {
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.load_forecast.{entry_id}"
+
+
+def temperature_store_key(entry_id: str) -> str:
+    return f"{DOMAIN}.temperature_history.{entry_id}"
 
 
 def house_basis(*, battery: bool, solar: bool, gross_ready: bool) -> str:
@@ -388,9 +401,18 @@ class SiteHouseForecast:
         self._rows: list[tuple[datetime, float]] = []
         self.refreshes = 0
         self._loaded = entry_id is None
+        #: The outdoor temperatures kept for a year (`site/temperature_history.py`), in their own store.
+        self.temperature_history = TemperatureHistory()
         self._store: DayStore | None = None
+        self._temperature_store: DayStore | None = None
         if entry_id is not None:
             self._store = DayStore(hass, store_key(entry_id), self._stored, save_delay_s=SAVE_DELAY_S)
+            self._temperature_store = DayStore(
+                hass,
+                temperature_store_key(entry_id),
+                self.temperature_history.as_dict,
+                save_delay_s=TEMPERATURE_SAVE_DELAY_S,
+            )
 
     def _stored(self) -> dict[str, Any]:
         """What the store keeps: the log, and the forecast's own history beside it."""
@@ -409,6 +431,13 @@ class SiteHouseForecast:
                 self.history.restore(raw.get("history") if isinstance(raw, dict) else None)
             except Exception:  # noqa: BLE001 - a history that cannot be read is taken from the tracker again
                 _LOGGER.debug("SpotNav house forecast: the kept history could not be read", exc_info=True)
+        if self._temperature_store is not None:
+            raw = await self._temperature_store.async_load()
+            try:
+                self.temperature_history.restore(raw, dt_util.utcnow())
+            except Exception:  # noqa: BLE001 - temperatures that cannot be read start again
+                self.temperature_history = TemperatureHistory()
+                _LOGGER.debug("SpotNav house forecast: the kept temperatures could not be read", exc_info=True)
         self._loaded = True
 
     def log_changed(self) -> None:
@@ -422,11 +451,14 @@ class SiteHouseForecast:
             self._task.cancel()
         if self._store is not None:
             await self._store.async_close()
+        if self._temperature_store is not None:
+            await self._temperature_store.async_close()
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
-        """The site is gone for good: forget its log."""
+        """The site is gone for good: forget its log and its kept temperatures."""
         await DayStore.async_remove(hass, store_key(entry_id))
+        await DayStore.async_remove(hass, temperature_store_key(entry_id))
 
     # ---- sources
 
@@ -463,6 +495,19 @@ class SiteHouseForecast:
             celsius = to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
         self.outdoor_source = None if celsius is None else OUTDOOR_WEATHER
         return celsius
+
+    def history_marker(self) -> str | None:
+        """Where the outdoor temperature now is read from, as a source marker (`sensor:<id>`, `weather:<id>`), as of
+        the last `outdoor_c`; `None` without a reading."""
+        if self.outdoor_source == OUTDOOR_SENSOR:
+            return source_marker(SOURCE_SENSOR, self.outdoor_entity_id)
+        if self.outdoor_source == OUTDOOR_WEATHER:
+            return source_marker(SOURCE_WEATHER, self._weather_entity())
+        return None
+
+    def forecast_marker(self) -> str | None:
+        """The weather entity the forecast temperatures come from, as a source marker; `None` without one."""
+        return source_marker(SOURCE_WEATHER, self.weather_entity_id)
 
     def _holiday_entity(self) -> str | None:
         return pick_holiday_calendar(self.holiday_candidates(), self.hass.config.country)
@@ -580,6 +625,7 @@ class SiteHouseForecast:
             current = hour_start(now, tz)
             if running_outdoor is not None:
                 temperatures.setdefault(current, running_outdoor)
+            self._keep_temperatures(tracked, now, current, tz)
             net_flat = self._flat_kw()
             forecast, median, import_forecast = await self.hass.async_add_executor_job(
                 partial(
@@ -619,6 +665,21 @@ class SiteHouseForecast:
             _LOGGER.debug("SpotNav house forecast: the refresh failed", exc_info=True)
         finally:
             self._running = False
+
+    def _keep_temperatures(self, tracked: Iterable[Any], now: datetime, current: datetime, tz: str) -> None:
+        """Keep the completed hours' temperatures, their source, and the forecast just fetched (see the module); the
+        store is told only when something changed. Never raises: the forecast goes on without them."""
+        try:
+            kept = self.temperature_history
+            changed = kept.merge_measured(tracked, now)
+            changed |= kept.mark_source(self.history_marker(), current)
+            if self.weather_status == WEATHER_OK:
+                # Fetched by this refresh: a failed fetch keeps the last forecast, which is no new issue.
+                changed |= kept.record_forecast(self._temperatures, self.forecast_marker(), now, tz)
+            if changed and self._temperature_store is not None:
+                self._temperature_store.changed()
+        except Exception:  # noqa: BLE001 - kept for a later model only
+            _LOGGER.debug("SpotNav house forecast: the temperatures could not be kept", exc_info=True)
 
     async def _async_heat(
         self, hours: list[Any], now: datetime, tz: str, temperatures: Mapping[datetime, float]
@@ -852,6 +913,8 @@ class SiteHouseForecast:
             # The outdoor temperature now, recorded per hour: from the heat pump's sensor or the weather entity.
             "outdoor": {"source": self.outdoor_source, "sensor": self.outdoor_entity_id},
             "forecast_temperatures": len(self._temperatures),
+            # The temperatures kept for a year: how many hours, from when, and from which sources.
+            "temperature_history": self.temperature_history.diagnostics(),
             "holidays": self.holiday_entity_id or HOLIDAYS_NONE,
             "holiday_dates": None if self.holidays is None else sorted(day.isoformat() for day in self.holidays),
             "refreshes": self.refreshes,

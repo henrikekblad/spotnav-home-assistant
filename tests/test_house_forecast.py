@@ -258,6 +258,34 @@ async def test_the_log_survives_a_restart(hass: HomeAssistant, freezer) -> None:
     assert again.house_forecast.log.as_dict()["kinds"] == logged["kinds"]
 
 
+async def test_the_temperatures_are_kept_in_their_own_store_and_survive_a_restart(
+    hass: HomeAssistant, freezer, hass_storage: dict[str, Any]
+) -> None:
+    """The measured hours' temperatures, their source and the forecast as issued are kept beside the log, counted in
+    the diagnostics, written at the unload and back after a restart."""
+    weather(hass, 4.0)
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    seed(controller, days=3)
+    await run(hass, freezer, 125, 1500.0)
+    await hass.async_block_till_done()
+    house = controller.house_forecast
+    key = house_forecast_module.temperature_store_key(entry.entry_id)
+    block = (await async_get_config_entry_diagnostics(hass, entry))["load_forecast"]["temperature_history"]
+    assert block["measured_hours"] >= 3 * 24
+    assert block["sources"] and block["sources"][0][1] == "weather:weather.forecast_home"
+    assert block["forecast_sources"] == [[block["forecast_sources"][0][0], "weather:weather.forecast_home"]]
+    assert block["last_hours"] >= 47
+    kept = house.temperature_history.as_dict()
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    # The unload wrote what waited.
+    assert hass_storage[key]["data"]["measured"] == kept["measured"]
+    again = site_controller_for(hass, entry.entry_id).house_forecast
+    assert again.temperature_history.as_dict()["measured"][: len(kept["measured"])] == kept["measured"]
+    assert again.temperature_history.sources == house.temperature_history.sources
+
+
 async def test_the_history_takes_the_tracker_over_and_outlives_its_months(hass: HomeAssistant, freezer) -> None:
     """The first refresh takes the tracker's hours over; when the tracker drops a month the forecast still reads them,
     and the history comes back after a restart."""
