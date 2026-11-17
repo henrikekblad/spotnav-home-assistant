@@ -228,12 +228,31 @@ How it differs from an AC charger:
   preferred; the charger's reading fills in during a charge when the car's is not fresh.
 - **No phases.** A DC charger charges the battery past the car's own charger, so the car's onboard
   phases do not limit it and there is no phase switching.
+- **Three-phase only.** Sigenergy's hybrid inverters with a DC charger are three-phase installations,
+  and SpotNav writes the power of three phases. On one phase the same power would draw three times
+  the current SpotNav counts, so the site's wiring step does not accept one phase for a DC charger,
+  and a charger wired as one phase is never given a power limit.
+- **Its rating.** The most it is given is its **Rated Charging Power** sensor. When that sensor is
+  unavailable, reads 0 or is disabled, SpotNav uses the last rating it read (kept across restarts);
+  with none, it never raises the limit above what the charger already carries. Keep the rated and
+  output power sensors enabled; SpotNav offers to enable them when they are not.
+- **Never above the fuse.** Load balancing measures what the inverter imports, after the battery and
+  the sun, so with a home battery the room can look far larger than the fuse. When the battery
+  reaches its floor, all of the car's power lands on the grid at once. So SpotNav never gives a DC
+  charger more than the power of three phases at the main fuse less the safety margin: on a 20 A
+  fuse with a 1 A margin at 400 V, 19 A, 13.2 kW. Once the site's own battery import limit has been
+  confirmed to act (battery control, test T3), that limit holds the grid and the cap is lifted.
+- **Started only with its limit set.** SpotNav presses **Start** only once the power limit for the
+  session is in effect, or the limit the charger already carries is no higher than what the site
+  allows. Otherwise the charger would start at whatever its limit was, up to its whole rating.
 
 Until it has been tested on real hardware, SpotNav drives it carefully:
 
 - a pause presses **Stop**; SpotNav never writes 0 kW to pause it;
 - it never writes a power limit below 1.5 kW;
 - it writes the limit at most every 10 s, and waits 30 s after a write before it raises the power;
+- when the fuse needs the power lowered within those 10 s, it presses **Stop** instead. The log says
+  "DC charger stopped to protect the fuse (write interval)", and the debug report counts these stops;
 - the running state **Ended** is read as neither a car plugged in nor a car gone.
 
 **For the tester.** The debug report (gear, **Settings**, **Support**) shows every power limit,
