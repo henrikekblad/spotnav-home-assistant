@@ -378,7 +378,9 @@ class SiteSolarShadow:
         first = hour - (timedelta(days=KEEP_DAYS) if not self.warm else timedelta(hours=PV_READ_HOURS))
         hourly = summed(await self._async_statistics(ids, first, hour), ids)
         changed = self.history.merge_pv(hourly)
-        if not self.warm:
+        if not self.warm and hourly:
+            # Warm once the year was read with something in it; until then (no production yet, or the recorder not
+            # ready) the whole span is asked for again at the next refresh.
             self.warm = True
             changed = True
         return changed
@@ -420,7 +422,9 @@ class SiteSolarShadow:
             return False
         target_from = self._archive_target_from(now)
         last = self.archive_upto if self.archive_from is None else self.archive_from - timedelta(days=1)
-        if target_from is None or last < target_from:
+        if target_from is None:
+            return False  # no production kept yet: nothing to learn the archive against
+        if last < target_from:
             self.archive_done = True
             self.learned_on = None  # relearn with the whole archive at the next refresh
             return True
