@@ -360,6 +360,37 @@ describe("the element", () => {
     return { element, messages, root: element.shadowRoot! };
   }
 
+  it("remembers the folded day chart for the site in this browser, and shows it when storage fails", async () => {
+    const stored = new Map<string, string>();
+    const store = { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => void stored.set(key, value) };
+    const { hass } = fakeHass();
+    const element = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
+    element.store = () => store;
+    element.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa" });
+    element.hass = hass as never;
+    document.body.append(element);
+    await vi.advanceTimersByTimeAsync(0);
+    const root = element.shadowRoot!;
+    expect(root.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(false);
+    root.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!.click();
+    expect([...stored.entries()]).toEqual([["spotnav-heat-card.chart.site_villa", "hidden"]]);
+    // The next read redraws the card folded.
+    await element.refresh();
+    expect(root.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
+    element.remove();
+    const failing = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
+    failing.store = () => {
+      throw new Error("blocked");
+    };
+    failing.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa" });
+    failing.hass = hass as never;
+    document.body.append(failing);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(failing.shadowRoot!.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(false);
+    failing.shadowRoot!.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!.click();
+    expect(failing.shadowRoot!.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
+  });
+
   it("is in the card picker", () => {
     expect(window.customCards?.some((entry) => entry.type === HEAT_PICKER_ENTRY.type)).toBe(true);
     expect(parseHeatConfig({ type: "custom:spotnav-heat-card", charger: "c1" })).toEqual({ type: "custom:spotnav-heat-card", charger: "c1" });
