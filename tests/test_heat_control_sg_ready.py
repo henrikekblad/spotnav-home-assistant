@@ -25,6 +25,8 @@ from custom_components.spotnav.heat.relay_control import (
 from custom_components.spotnav.heat.shadow_rule import BandHour
 from custom_components.spotnav.runtime import site_controller_for
 
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
 from .test_demand_site import pilot_site
 from .test_heat_api import read
 
@@ -335,6 +337,52 @@ async def test_a_closed_by_hand_while_b_is_raised_opens_b_at_the_next_look(hass:
     for step in range(2, 8):
         await _look(control, now + 10 * MIN + step * 30 * SEC)
     assert control.paused_reason == "foreign_change" and contacts.calls == [(B, "on"), (B, "off")] and contacts.pair == (1, 0)
+
+
+def _no_ticks(control: HeatControl) -> None:
+    """Only a watched contact's change can start a look from here on (the 30-second looks stop)."""
+    assert control._timer_cancel is not None  # noqa: SLF001
+    control._timer_cancel()  # noqa: SLF001
+    control._timer_cancel = None  # noqa: SLF001
+
+
+async def _seconds_later(hass: HomeAssistant, freezer: Any, control: HeatControl, seconds: int) -> None:
+    freezer.tick(timedelta(seconds=seconds))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    while control._task is not None and not control._task.done():  # noqa: SLF001
+        await asyncio.sleep(0)
+
+
+async def test_a_closed_by_hand_while_b_is_raised_opens_b_within_seconds(hass: HomeAssistant, freezer) -> None:
+    # The change is acted on when it happens (the contacts are watched), not at the next 30-second look.
+    _site_, control, contacts, now = await _raised(hass, freezer)
+    _no_ticks(control)
+    freezer.move_to(now + 10 * MIN)
+    await _look(control, now + 10 * MIN)
+    hass.states.async_set(A, "on")
+    await hass.async_block_till_done()
+    assert contacts.pair == (1, 1)  # the household's own write, for a moment
+    await _seconds_later(hass, freezer, control, 2)
+    assert contacts.pair == (1, 0) and not control.raised and contacts.calls == [(B, "on"), (B, "off")]
+
+
+async def test_spotnavs_own_writes_ask_for_no_extra_look(hass: HomeAssistant, freezer) -> None:
+    _site_, control, contacts, now = await _running(hass, freezer, {0: "preheat", 1: "preheat"})
+    looks: list[datetime] = []
+    real = control.async_look
+
+    async def counted(at: datetime) -> None:
+        looks.append(at)
+        await real(at)
+
+    control.async_look = counted  # type: ignore[method-assign]
+    _no_ticks(control)
+    freezer.move_to(now)
+    await _look(control, now)
+    assert contacts.pair == (0, 1)
+    await _seconds_later(hass, freezer, control, 5)
+    assert looks == [now]
 
 
 async def test_a_closed_by_hand_while_a_closing_of_b_is_on_its_way_opens_b(hass: HomeAssistant, freezer) -> None:

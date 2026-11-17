@@ -57,8 +57,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Final
 
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.helpers.event import async_call_later, async_track_state_change_event, async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -110,6 +110,8 @@ _LOGGER = logging.getLogger(__name__)
 
 STORE_VERSION: Final = 1
 LOOK_S: Final = 30.0
+#: A contact's change SpotNav did not make is looked at this soon (changes within it make one look).
+CONTACT_DEBOUNCE_S: Final = 1.0
 #: A write not seen on the relay within this long is a failure.
 READ_BACK: Final = timedelta(seconds=90)
 #: After a failed opening, how often it is tried again while SpotNav may hold the relay closed.
@@ -269,6 +271,10 @@ class HeatControl:
         self._again = False
         self._task: asyncio.Task[None] | None = None
         self._timer_cancel: Callable[[], None] | None = None
+        #: The contacts watched for changes SpotNav did not make, and the look such a change asked for.
+        self._watched: tuple[str, ...] = ()
+        self._watch_cancel: Callable[[], None] | None = None
+        self._debounce_cancel: Callable[[], None] | None = None
 
     # ---- life cycle
 
@@ -280,6 +286,7 @@ class HeatControl:
         self._saved = self._data()
         self._loaded = True
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=LOOK_S))
+        self._watch_contacts()
         self.request_look()
 
     def _restore(self, raw: Any) -> None:
@@ -359,6 +366,7 @@ class HeatControl:
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
+        self._unwatch_contacts()
         if self._task is not None and not self._task.done():
             # The running look ends first (a write it was making is over), so the opening below is the last word.
             self._task.cancel()
@@ -413,6 +421,51 @@ class HeatControl:
         self._looking = True
         self._task = self.hass.async_create_background_task(self._async_looks(), f"{DOMAIN} heat control {self.site.entry_id}")
 
+    def _watch_contacts(self) -> None:
+        """Watch the contacts SpotNav may write (the chosen ones, and those it still holds): a change it did not make
+        is looked at within `CONTACT_DEBOUNCE_S`, not at the next look."""
+        from .runtime import relay_entity  # noqa: PLC0415 - the runtime imports this module
+
+        config = self.shadow.config()
+        wanted = tuple(sorted({e for e in (relay_entity(config), raise_entity(config), self.relay, self.raise_entity) if e}))
+        if wanted == self._watched and (self._watch_cancel is not None or not wanted):
+            return
+        if self._watch_cancel is not None:
+            self._watch_cancel()
+            self._watch_cancel = None
+        self._watched = wanted
+        if wanted:
+            self._watch_cancel = async_track_state_change_event(self.hass, list(wanted), self._contact_changed)
+
+    def _unwatch_contacts(self) -> None:
+        if self._watch_cancel is not None:
+            self._watch_cancel()
+            self._watch_cancel = None
+        self._watched = ()
+        if self._debounce_cancel is not None:
+            self._debounce_cancel()
+            self._debounce_cancel = None
+
+    @callback
+    def _contact_changed(self, event: Event[EventStateChangedData]) -> None:
+        """A watched contact changed: a look soon, unless it is what SpotNav itself just wrote (never fought)."""
+        entity_id = event.data["entity_id"]
+        old, new = event.data["old_state"], event.data["new_state"]
+        if old is not None and new is not None and old.state == new.state:
+            return
+        closed = None if new is None or new.state in ("unavailable", "unknown") else new.state in CLOSED
+        own = (entity_id == self.relay and self.pending is not None and self.pending.closed == closed) or (
+            entity_id == self.raise_entity and self.pending_b is not None and self.pending_b.closed == closed
+        )
+        if own or self._closed or self._debounce_cancel is not None:
+            return
+        self._debounce_cancel = async_call_later(self.hass, CONTACT_DEBOUNCE_S, self._contact_look)
+
+    @callback
+    def _contact_look(self, _now: datetime) -> None:
+        self._debounce_cancel = None
+        self.request_look()
+
     async def _async_looks(self) -> None:
         try:
             while True:
@@ -448,6 +501,8 @@ class HeatControl:
                 _LOGGER.warning("SpotNav heat control: the raise contact could not be opened", exc_info=True)
         self._trim(now)
         self._save()
+        if not self._closed:
+            self._watch_contacts()
 
     async def _async_look(self, now: datetime) -> None:
         config = self.shadow.config()
