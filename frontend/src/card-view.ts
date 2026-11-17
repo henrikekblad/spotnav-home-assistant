@@ -19,7 +19,7 @@ import {
   type ChartObserverLike,
   type ChartSize,
 } from "./chart-interaction";
-import { FILL_MIN_CHART_PX, planFill, type FillReading } from "./card-fill";
+import { FILL_FLOOR_CHART_PX, FILL_MIN_CHART_PX, planFill, type FillReading } from "./card-fill";
 import { sunAt } from "./chart-sun";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
@@ -2218,6 +2218,8 @@ export function createCardView(input: CardViewInput): CardView {
       natural: target.offsetHeight,
       statusHeight: statusNode?.offsetHeight ?? 0,
       lineHeight: Number.isFinite(lineHeight) ? lineHeight : 0,
+      // The readout line is out of the flow in a box of fixed height (see `[data-fill]` in visual-styles.ts).
+      reclaimed: readout.hidden ? 0 : readout.offsetHeight + Number.parseFloat(getComputedStyle(readout).marginTop || "0"),
     };
   }
 
@@ -2255,6 +2257,7 @@ export function createCardView(input: CardViewInput): CardView {
     const plan = planFill((input.readFill ?? readFillFromLayout)(card), {
       basis,
       min: collapsed ? 0 : FILL_MIN_CHART_PX,
+      floor: collapsed ? 0 : FILL_FLOOR_CHART_PX,
     });
     fillHeight = plan === null || collapsed ? null : plan.chartHeight;
     if (plan !== null) {
