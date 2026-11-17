@@ -157,9 +157,11 @@ export const HOUSE_STYLES = `
     font-weight: 600;
     overflow-wrap: break-word;
   }
+  /* One line kept for the readout (the hint, or a short hour) so the legend does not move on a hover; a longer hour
+   * wraps below it. */
   .${H.readout} {
     height: auto;
-    min-height: 2.8em;
+    min-height: 1.4em;
     margin: 4px 0 2px;
     white-space: normal;
     text-overflow: clip;
