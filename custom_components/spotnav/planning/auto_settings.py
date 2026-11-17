@@ -661,6 +661,11 @@ def _stored_instant(value: Any, what: str) -> datetime | None:
 ALL_WEEKDAYS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
 
 
+#: Written by 3.0 once a departure calendar is chosen. Read past here, so going back keeps the charger's record:
+#: the calendar is not used, and a save in this release writes it back as it was (`AutoSettings._later_release`).
+_LATER_RELEASE_FIELDS: Final = ("departure_calendar", "departure_calendar_only")
+
+
 @dataclass(frozen=True, slots=True)
 class AutoSettings:
     """One charger's Auto settings, as stored. Frozen, so a revision is a new value.
@@ -715,6 +720,9 @@ class AutoSettings:
     users_change_plan: bool = False
     #: If the car cannot be ready by the departure under the site's import target (`IF_NOT_READY_CHOICES`).
     if_not_ready: str = IF_NOT_READY_ASK
+    #: Fields a later release stored that this one reads past (`_LATER_RELEASE_FIELDS`), as they were: not used
+    #: here, but written back so a save in this release does not lose them. Not part of equality or the repr.
+    _later_release: tuple[tuple[str, Any], ...] = field(default=(), compare=False, repr=False)
 
     @property
     def execution_paused(self) -> bool:
@@ -901,6 +909,8 @@ class AutoSettings:
         if self.if_not_ready != IF_NOT_READY_ASK:
             # Additive: written only once chosen.
             stored["if_not_ready"] = self.if_not_ready
+        # What a later release stored and this one leaves alone, written back as it was read.
+        stored.update(self._later_release)
         return stored
 
     @classmethod
@@ -919,9 +929,7 @@ class AutoSettings:
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
                     "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
-                    # Written by 3.0 once a departure calendar is chosen: read past here, so going back keeps the
-                    # charger's record (its calendar is not used, and the next save leaves it out).
-                    "departure_calendar", "departure_calendar_only",
+                    *_LATER_RELEASE_FIELDS,
                 }
             ),
         )
@@ -992,6 +1000,7 @@ class AutoSettings:
             identify_camera=identify_camera,
             users_change_plan=stored.get("users_change_plan", False),
             if_not_ready=stored.get("if_not_ready", IF_NOT_READY_ASK),
+            _later_release=tuple((key, stored[key]) for key in _LATER_RELEASE_FIELDS if key in stored),
         ).validated()
 
 
