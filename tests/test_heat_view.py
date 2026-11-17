@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from custom_components.spotnav.api.heat import config_block
 from custom_components.spotnav.heat.automations import SteeringAutomation
 from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset, Zone
@@ -144,7 +146,17 @@ def villa_rooms() -> dict[str, dict[datetime, float]]:
     return out
 
 
-def villa_answer(**overrides: Any) -> dict[str, Any]:
+def villa_zone_periods() -> dict[datetime, float]:
+    """The floor heating's own meters since midnight: 0.6 kW together through the night, off by day."""
+    out: dict[datetime, float] = {}
+    moment = MIDNIGHT
+    while moment < NOW - timedelta(minutes=5):
+        out[moment] = 0.05 if moment.hour < 6 else 0.0
+        moment += timedelta(minutes=5)
+    return out
+
+
+def villa_answer(zone_periods: Any = "villa", **overrides: Any) -> dict[str, Any]:
     config = HeatConfig(
         target_c=21.0,
         night=Night(True, 1.0, "23:00", "06:00"),
@@ -224,6 +236,7 @@ def villa_answer(**overrides: Any) -> dict[str, Any]:
                 levels=found,
                 split=split,
                 periods={start: kw / 12.0 for start, kw in window.items() if start >= MIDNIGHT},
+                zone_periods=villa_zone_periods() if zone_periods == "villa" else zone_periods,
             ),
             prices=_slots(),
             money=("SEK", "kr", "öre"),
@@ -377,6 +390,12 @@ def test_the_villa() -> None:
     assert hot == [(MIDNIGHT + timedelta(hours=h)).isoformat() for h in (5, 7)]
     today = answer["today"]
     assert today["hot_water_kwh"] > 1.5 and today["cost"] > 0 and today["money"]["minor"] == "öre"
+    # Heat holds the zones' own meters (6 hours at 0.6 kW); hot water stays the heat pump meter's own split.
+    alone = villa_answer(zone_periods=None)["today"]
+    assert (today["zones_kwh"], alone["zones_kwh"]) == (3.6, None)
+    assert today["heat_kwh"] == pytest.approx(alone["heat_kwh"] + 3.6, abs=0.001)
+    assert today["total_kwh"] == pytest.approx(alone["total_kwh"] + 3.6, abs=0.001)
+    assert today["hot_water_kwh"] == alone["hot_water_kwh"] and today["cost"] > alone["cost"]
     # The zones aim at the house's aim plus their own offset.
     assert [zone["aim_c"] for zone in answer["zones"]] == [20.5, 20.5, 19.5, 20.0]
     # One note per automation that references a chosen relay or zone; the relay's own blueprint says so.

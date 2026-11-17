@@ -1052,9 +1052,9 @@
   "time_zone": "Europe/Stockholm",
   "today": {
     "baseline_kw": 1.12,
-    "cost": 1892.7,
+    "cost": 2199.3,
     "date": "2026-11-16",
-    "heat_kwh": 13.946,
+    "heat_kwh": 17.546,
     "hot_water_kwh": 1.671,
     "money": {
       "currency": "SEK",
@@ -1073,7 +1073,8 @@
         "start": "2026-11-16T06:25:00+00:00"
       }
     ],
-    "total_kwh": 15.617
+    "total_kwh": 19.217,
+    "zones_kwh": 3.6
   },
   "writable": true,
   "zones": [

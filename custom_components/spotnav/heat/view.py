@@ -11,7 +11,8 @@
      pump: {integration, brand, label, priority, compressor_running, supply_c, hot_water_c, degree_minutes,
             immersion_on, price_control, control, capabilities: [kind], disabled: [entity ids], device_id} | null,
      meter: {status, entity_id, name, source, setting_offered, candidates, kw_now, state, baseline_kw} | null,
-     today: {date, total_kwh, heat_kwh, hot_water_kwh, runs: [{start, end, kwh}], baseline_kw, cost, money} | null,
+     today: {date, total_kwh, heat_kwh, hot_water_kwh, zones_kwh, runs: [{start, end, kwh}], baseline_kw, cost,
+             money} | null,
      status: {pump_state, pump_state_source, kw, would: {action, target_c, until, reason} | null, guard},
      band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car, relay_min, relay_expected,
                            executed_min}], hot_water_pick} | null,
@@ -115,6 +116,9 @@ class MeterInputs:
     split: DaySplit | None
     #: Today's 5-minute energy (kWh per period start), for the cost.
     periods: Mapping[datetime, float] = field(default_factory=dict)
+    #: The heat zones' own energy today (`site/heat_zones.py`, kWh per 5-minute period start, together); `None`
+    #: without a zone counted.
+    zone_periods: Mapping[datetime, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,10 +339,22 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
 
     today = None
     if meter is not None and split is not None:
-        cost = _cost(meter.periods, inputs.prices) if inputs.money is not None else None
+        # Heat is the heat pump's and the zones' (electric floor heating, an air-to-air pump); hot water and its runs
+        # stay the heat pump meter's own split.
+        zones = meter.zone_periods
+        zones_kwh = None if zones is None else sum(zones.values())
+        spent: dict[datetime, float] = dict(meter.periods)
+        for start, kwh in (zones or {}).items():
+            spent[start] = spent.get(start, 0.0) + kwh
+        cost = _cost(spent, inputs.prices) if inputs.money is not None else None
+        figures = split.as_dict()
+        if zones_kwh is not None:
+            figures["total_kwh"] = round(split.total_kwh + zones_kwh, 3)
+            figures["heat_kwh"] = round(split.heat_kwh + zones_kwh, 3)
         today = {
             "date": band_block["date"],
-            **split.as_dict(),
+            **figures,
+            "zones_kwh": None if zones_kwh is None else round(zones_kwh, 3),
             "cost": None if cost is None else round(cost, 2),
             "money": None if inputs.money is None else {"currency": inputs.money[0], "major": inputs.money[1], "minor": inputs.money[2]},
         }

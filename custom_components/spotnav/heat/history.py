@@ -6,8 +6,8 @@ written here.
     {api_version: 1, site_id, time_zone, generated_at, period, date, end, today, complete,
      money: {currency, major, minor} | null,
      meter: {entity_id, name} | null,
-     energy: {total_kwh, hours, hot_water_kwh, split_days, days, cost, priced_hours} | null,
-     buckets: [{key, kwh, hot_water_kwh, cost, degree_days, outdoor_c, shadow_value}],
+     energy: {total_kwh, hours, hot_water_kwh, split_days, days, cost, priced_hours, zones_kwh, zones_from} | null,
+     buckets: [{key, kwh, hot_water_kwh, zones_kwh, cost, degree_days, outdoor_c, shadow_value}],
      degree_days: {base_c, outdoor: {entity_id, source} | null, sum, days, kwh, kwh_per_degree_day,
                    trend: [{month, kwh, degree_days, kwh_per_degree_day}]} | null,
      comfort: {low_c, sensors, coldest: {entity_id, name, mean_c, min_c} | null, hours, hours_below} | null,
@@ -26,6 +26,12 @@ written here.
   month of a year (`site/history_period.py`). A bucket's `shadow_value` is the part of the shadow's `value` that falls
   in its hours (the lowered hour's, the saving counted where the heat was used), `null` where no day of the bucket was
   evaluated: the card's hatched upper bound on top of the bucket's cost.
+* **The heat zones** (`zones_kwh`, `site/heat_zones.py`): the energy of the heat zones counted (electric floor
+  heating, an air-to-air heat pump, a meter moved to heat in the house pie) is heat too: added to each bucket's `kwh`
+  and its cost and to `total_kwh` and `cost`, and given apart (`zones_kwh`, `null` without a zone counted).
+  `zones_from` is the first local day the read hours have a zone's energy on (the trend's first month at the
+  earliest): the use steps up from that day, which the card says. Degree-days, hot water, the shadow and the
+  immersion heater stay the heat pump meter's: the weather-neutral trend must not step when a zone is added.
 * **Degree-days** (`degree_days`): per local day `max(0, BASE_C - the day's mean outdoor temperature)`, the mean of
   its hourly means (a day with fewer than `MIN_DAY_HOURS` of them has none). The weather-neutral figure is the meter's
   whole energy (hot water included: older days have no split) over the days that have both, per degree-day:
@@ -124,6 +130,8 @@ class HeatHistoryInputs:
     meter: tuple[str, str | None] | None = None
     #: The meter's energy per UTC hour start (kWh), from the trend's first month to the period's end.
     heat_hours: Mapping[datetime, float] = field(default_factory=dict)
+    #: The heat zones' energy together per UTC hour start (kWh), as `heat_hours`; empty without a zone counted.
+    zone_hours: Mapping[datetime, float] = field(default_factory=dict)
     #: The meter's 5-minute energy (kWh per period start) the recorder still holds, the period's and the week before.
     five: Mapping[datetime, float] = field(default_factory=dict)
     #: Buy price with every fee per slot `(start, end, minor per kWh)`.
@@ -411,7 +419,7 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
     kwh_by_day = day_kwh(inputs.heat_hours, tz)
     complete = _complete_days(inputs.heat_hours, tz, today)
 
-    buckets = {key: {"key": key, "kwh": None, "hot_water_kwh": None, "cost": None, "degree_days": None, "outdoor_c": None, "shadow_value": None} for key in bucket_keys(period, tz)}
+    buckets = {key: {"key": key, "kwh": None, "hot_water_kwh": None, "zones_kwh": None, "cost": None, "degree_days": None, "outdoor_c": None, "shadow_value": None} for key in bucket_keys(period, tz)}
     cost = 0.0
     priced_hours = 0
     for moment, kwh in in_period.items():
@@ -424,6 +432,18 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
             bucket["cost"] = (bucket["cost"] or 0.0) + kwh * price
             cost += kwh * price
             priced_hours += 1
+    # The zones' energy, in the hours the meter has (as the house card's flow counts it).
+    zones_in = {moment: kwh for moment, kwh in inputs.zone_hours.items() if moment in in_period}
+    for moment, kwh in zones_in.items():
+        bucket = buckets.get(bucket_key(period, moment, tz))
+        if bucket is None:
+            continue
+        bucket["kwh"] = (bucket["kwh"] or 0.0) + kwh
+        bucket["zones_kwh"] = (bucket["zones_kwh"] or 0.0) + kwh
+        price = priced.get(moment)
+        if price is not None:
+            bucket["cost"] = (bucket["cost"] or 0.0) + kwh * price
+            cost += kwh * price
     outdoor_groups: dict[str, list[float]] = {}
     if period.kind == PERIOD_DAY:
         for moment, value in inputs.outdoor.items():
@@ -465,14 +485,17 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
     energy = None
     if inputs.meter is not None:
         hot = [split[day][0] for day in days if day in split]
+        zone_days = sorted(local_date(moment, tz) for moment, kwh in inputs.zone_hours.items() if kwh > 0)
         energy = {
-            "total_kwh": _r(sum(in_period.values()), 3),
+            "total_kwh": _r(sum(in_period.values()) + sum(zones_in.values()), 3),
             "hours": len(in_period),
             "hot_water_kwh": _r(sum(hot), 3) if hot else None,
             "split_days": len(hot),
             "days": len({local_date(moment, tz) for moment in in_period}),
             "cost": _r(cost) if inputs.money is not None and priced_hours > 0 else None,
             "priced_hours": priced_hours,
+            "zones_kwh": _r(sum(zones_in.values()), 3) if inputs.zone_hours else None,
+            "zones_from": zone_days[0].isoformat() if zone_days else None,
         }
 
     degree = None
