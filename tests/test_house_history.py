@@ -262,6 +262,20 @@ def test_the_battery_value_is_what_it_gave_less_what_it_took_at_the_hour_prices(
     assert all(bucket["battery_value"] is None for bucket in unpriced["buckets"])
 
 
+def test_a_bucket_has_its_mean_prices_where_priced() -> None:
+    day = house_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 10))))
+    by_hour = {bucket["key"][11:13]: bucket for bucket in day["buckets"]}
+    assert (by_hour["17"]["buy"], by_hour["17"]["sell"]) == (250.0, 60.0)
+    assert (by_hour["03"]["buy"], by_hour["03"]["sell"]) == (150.0, 60.0)
+    month = house_history(month_inputs())
+    full = next(bucket for bucket in month["buckets"] if bucket["key"] == "2026-11-10")
+    # Three dear hours of 24.
+    assert full["buy"] == pytest.approx((21 * 150.0 + 3 * 250.0) / 24, abs=0.01)
+    assert next(bucket for bucket in month["buckets"] if bucket["key"] == "2026-11-20")["buy"] is None
+    unpriced = house_history(month_inputs(money=None, prices=()))
+    assert all(bucket["buy"] is None and bucket["sell"] is None for bucket in unpriced["buckets"])
+
+
 def test_an_hour_priced_by_quarters_is_their_mean_and_a_gap_leaves_it_unpriced() -> None:
     start = datetime(2026, 11, 10, 10, tzinfo=timezone.utc)
     slots = [PriceSlot(start + timedelta(minutes=15 * q), start + timedelta(minutes=15 * (q + 1)), 100.0 + 40 * q, 50.0) for q in range(4)]

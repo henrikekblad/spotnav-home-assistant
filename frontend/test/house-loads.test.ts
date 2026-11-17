@@ -345,6 +345,9 @@ describe("the house card", () => {
     await vi.advanceTimersByTimeAsync(0);
     hass.resolveNext(read("house", "villa_battery_sun.json"));
     await vi.advanceTimersByTimeAsync(0);
+    // Today's energy flow is in the Energy flow tab.
+    element.shadowRoot!.querySelector<HTMLButtonElement>("[role='tab'][data-tab='flow']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
     return { element, root: element.shadowRoot! };
   }
 

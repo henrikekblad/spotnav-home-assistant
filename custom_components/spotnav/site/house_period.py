@@ -7,7 +7,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      day), end (the first day after it), today, complete, money: {currency, major_unit, minor_unit} | null,
      energy_flow: (as `spotnav/get_house`'s, `site/energy_flow.py`) | null,
      buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods,
-                battery_saving, battery_days, saving, saving_battery, saving_car, saving_heat, battery_value}],
+                battery_saving, battery_days, saving, saving_battery, saving_car, saving_heat, battery_value, buy,
+                sell}],
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
@@ -30,6 +31,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   `battery_value` is what the battery's energy was worth over its priced periods (`battery_value`, the battery app's
   "energy value", the house card's kr bars): what it gave at the buy price (to the grid at the sell price) less what it
   took from the grid at the buy price and from the sun at the sell price; `null` without a battery or a priced period.
+  `buy` and `sell` are the bucket's mean prices over its priced periods (minor unit per kWh, every fee in the buy
+  price), weighted by their minutes; `null` where none is priced (the house card's price lines for a past day).
 * **Cost** (`cost`): each period's import at its buy price with every fee and its export at its sell price, as the
   battery plan prices a quarter hour (`battery/plan_shadow.price_slots`: the area's held day prices with the fees as
   they are set now, so a corrected fee corrects the history). An hour read by the hour is priced at the mean of its
@@ -112,6 +115,8 @@ BUCKET_KEYS: Final = (
     "saving_car",
     "saving_heat",
     "battery_value",
+    "buy",
+    "sell",
 )
 #: The forecast log's kinds the history scores, by the answer's name.
 FORECAST_KINDS: Final = (
@@ -204,6 +209,8 @@ def _empty_bucket(key: str) -> dict[str, Any]:
         "saving_car": None,
         "saving_heat": None,
         "battery_value": None,
+        "buy": None,
+        "sell": None,
     }
 
 
@@ -236,6 +243,8 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
     bought = sold = kwh_in = kwh_out = 0.0
     priced = 0
     count = 0
+    # Per bucket: the priced minutes and the prices weighted by them, for its mean buy and sell price.
+    weights: dict[str, list[float]] = {}
     for item in inputs.periods or ():
         key = bucket_key(period, item.start, tz)
         bucket = buckets.get(key)
@@ -269,6 +278,10 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             priced += 1
             if inputs.has_battery:
                 _add(bucket, "battery_value", battery_value(flows, prices[0], prices[1]))
+            weight = weights.setdefault(key, [0.0, 0.0, 0.0])
+            weight[0] += item.minutes
+            weight[1] += prices[0] * item.minutes
+            weight[2] += prices[1] * item.minutes
     if period.kind != PERIOD_DAY:
         seen: set[date] = set()
         for review in inputs.reviews or ():
@@ -289,6 +302,10 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
                 _add(target, "saving_battery", day_saving.battery)
                 _add(target, "saving_car", day_saving.car)
                 _add(target, "saving_heat", day_saving.heat)
+    for key, (minutes, buy, sell) in weights.items():
+        if minutes > 0:
+            buckets[key]["buy"] = buy / minutes
+            buckets[key]["sell"] = sell / minutes
     rows = []
     for bucket in buckets.values():
         rows.append({key: (_r(value, 3) if isinstance(value, float) else value) for key, value in bucket.items()})

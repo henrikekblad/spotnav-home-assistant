@@ -55,6 +55,10 @@ export interface HouseBucket {
    * value": what it gave less what it took, at the period's prices); `null` without a battery, a price, and from a
    * backend before it. */
   battery_value: number | null;
+  /** The bucket's mean buy and sell price over its priced periods (minor unit per kWh); `null` unpriced and from a
+   * backend before them. */
+  buy: number | null;
+  sell: number | null;
 }
 
 /** What SpotNav saved over the period: each part over the days that have it, with the days counted. */
@@ -229,6 +233,8 @@ function bucket(value: unknown): HouseBucket {
     saving_car: newNumber(source, "saving_car"),
     saving_heat: newNumber(source, "saving_heat"),
     battery_value: newNumber(source, "battery_value"),
+    buy: newNumber(source, "buy"),
+    sell: newNumber(source, "sell"),
   };
 }
 

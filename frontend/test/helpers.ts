@@ -53,6 +53,11 @@ export class FakeHass implements HomeAssistantLike {
   readonly siteMessages: Record<string, unknown>[] = [];
   siteHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
+  /** `spotnav/get_house_now`, the house card's live flows polled while its Now tab is shown, on its own line too; the
+   * default never answers. */
+  readonly liveMessages: Record<string, unknown>[] = [];
+  liveHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
   }
@@ -66,6 +71,10 @@ export class FakeHass implements HomeAssistantLike {
     if (typeof message["type"] === "string" && /^spotnav\/(camera_snapshot|save_camera_frame|\w+_reference_picture|reference_picture)$/.test(message["type"])) {
       this.cameraMessages.push(message);
       return (this.cameraHandler === null ? new Promise<unknown>(() => undefined) : this.cameraHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/get_house_now") {
+      this.liveMessages.push(message);
+      return (this.liveHandler === null ? new Promise<unknown>(() => undefined) : this.liveHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_blueprints") {
       this.blueprintMessages.push(message);

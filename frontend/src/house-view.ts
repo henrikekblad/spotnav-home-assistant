@@ -23,7 +23,7 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 
 const HOUR_MS = 3_600_000;
 /** The Energy flow tab's diagram at most (px) outside a box; its blocks' words still fit (`house-flow.ts`). */
-const TAB_FLOW_PX = 290;
+const TAB_FLOW_PX = 320;
 
 export type HouseState =
   | { kind: "unconfigured" }
@@ -1289,7 +1289,8 @@ function nowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEleme
     notes.push(translate(language, "house.nowTab.recent"));
   }
   if (notes.length > 0) {
-    const line = element(doc, "p", `${C.muted} ${H.sub}`, notes.join(" · "));
+    const joined = notes.join(" · ");
+    const line = element(doc, "p", `${C.muted} ${H.sub}`, joined.charAt(0).toLocaleUpperCase(language) + joined.slice(1));
     line.dataset["line"] = "battery-sub";
     panel.append(line);
   }
@@ -1353,7 +1354,9 @@ function flowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElem
     return;
   }
   const onHouse = input.handlers.onHouseLoads?.bind(input.handlers) ?? null;
-  const loads = onHouse === null ? null : (opener: HTMLElement, kind: LoadsKind) => onHouse(opener, kind, { period: choice.period, date, running });
+  // Today's day as before (no date asked); another period by its own.
+  const isToday = choice.period === "day" && choice.date === null;
+  const loads = onHouse === null ? null : (opener: HTMLElement, kind: LoadsKind) => onHouse(opener, kind, isToday ? null : { period: choice.period, date, running });
   // Lower than the old front's own diagram, the tiles under it carry the figures; a box gives it its spare room.
   const flowWidth = Math.max(260, Math.floor(input.width));
   const diagram = renderFlow(doc, language, flow, flowWidth, input.idPrefix, !running || choice.period !== "day", loads, input.ui.fill ?? Math.min(flowHeight(flowWidth, 5), TAB_FLOW_PX));
@@ -1426,6 +1429,22 @@ function graphPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
   panel.append(bars ?? statusParagraph(input.doc, input.language, "hist.house.noEnergy", "no-energy"));
 }
 
+/** A past day's hours with the history's prices where the day's own answer has none (the battery plan keeps only the
+ * prices around now; the history prices every period it holds). */
+export function withPrices(day: HouseAnswer, history: HouseHistory | null): HouseAnswer {
+  if (history === null || history.period !== "day" || day.hours.some((hour) => hour.buy !== null)) {
+    return day;
+  }
+  const byStart = new Map(history.buckets.map((bucket) => [Date.parse(bucket.key), bucket]));
+  return {
+    ...day,
+    hours: day.hours.map((hour) => {
+      const bucket = byStart.get(hour.startMs);
+      return bucket === undefined ? hour : { ...hour, buy: bucket.buy, sell: bucket.sell };
+    }),
+  };
+}
+
 /** The prices with the battery, and what the battery's energy was worth: a day's hours, a month's days, a year's months. */
 function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
   const { doc, language } = input;
@@ -1436,8 +1455,10 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
     if (shown === undefined) {
       return;
     }
-    if (shown !== null && shown.hours.some((hour) => hour.buy !== null)) {
-      panel.append(chartBlock({ ...input, nowMs: shown === answer ? input.nowMs : Date.parse(`${choice.date}T23:59:59Z`) + 86_400_000 }, shown, "price", input.ui.fill ?? null));
+    const history = input.tabs?.history ?? null;
+    const priced = shown === null || shown === answer ? shown : withPrices(shown, history?.kind === "ready" ? history.answer : null);
+    if (priced !== null && priced.hours.some((hour) => hour.buy !== null)) {
+      panel.append(chartBlock({ ...input, nowMs: shown === answer ? input.nowMs : Date.parse(`${choice.date}T23:59:59Z`) + 86_400_000 }, priced, "price", input.ui.fill ?? null));
     }
   }
   const history = input.tabs?.history ?? null;
