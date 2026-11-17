@@ -323,6 +323,8 @@ export interface Dashboard {
  */
 export interface SunBlock {
   hours: Array<{ startMs: number; kw: number; measured: boolean }>;
+  /** Today's measured mean power per quarter hour up to now, finer than the hours; empty from an older backend. */
+  quarters: Array<{ startMs: number; kw: number }>;
 }
 
 /** The dashboard's `guest` block: a guest car planned for now, the amount the next one starts from, and its place
@@ -2010,7 +2012,19 @@ export function sunOrNull(value: unknown): SunBlock | null {
     return null;
   }
   try {
-    exactKeys(value, ["hours"]);
+    exactKeys(value, "quarters" in value ? ["hours", "quarters"] : ["hours"]);
+    const quarters = ("quarters" in value ? arrayValue(value, "quarters") : []).map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["start", "kw"]);
+      const kw = numberValue(item, "kw");
+      if (kw < 0) {
+        return bad();
+      }
+      return { startMs: instantMs(item["start"]), kw };
+    });
+    if (quarters.length > 96) {
+      return bad();
+    }
     const hours = arrayValue(value, "hours").map((entry) => {
       const item = record(entry);
       exactKeys(item, ["start", "kw", "measured"]);
@@ -2020,7 +2034,10 @@ export function sunOrNull(value: unknown): SunBlock | null {
       }
       return { startMs: instantMs(item["start"]), kw, measured: booleanValue(item, "measured") };
     });
-    return { hours: hours.sort((left, right) => left.startMs - right.startMs) };
+    return {
+      hours: hours.sort((left, right) => left.startMs - right.startMs),
+      quarters: quarters.sort((left, right) => left.startMs - right.startMs),
+    };
   } catch {
     return null;
   }

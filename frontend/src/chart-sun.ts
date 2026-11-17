@@ -7,16 +7,17 @@ import type { ChartSeries } from "./chart";
 import type { SunBlock } from "./validate";
 
 const HOUR_MS = 3_600_000;
+const QUARTER_MS = 900_000;
 
 /** How much of the plot's height the tallest sun hour reaches. */
 export const SUN_HEIGHT_SHARE = 0.8;
 
-/** One hour of sun: its span, its mean power in kW, and where the chart draws its middle (0 left edge, 1 right edge). */
+/** One span of sun (an hour, or a measured quarter hour): its span, its mean power in kW, and where the chart draws its middle (0 left edge, 1 right edge). */
 export interface SunPoint {
   startMs: number;
   endMs: number;
   kw: number;
-  /** Measured production (before the running hour) rather than the forecast. */
+  /** Measured production (up to now) rather than the forecast. */
   measured: boolean;
   position: number;
 }
@@ -42,21 +43,28 @@ export function sunSeries(block: SunBlock | null, series: ChartSeries): SunSerie
   const time = series.time;
   const today = series.days.find((day) => day.role === "today") ?? null;
   const points: SunPoint[] = [];
+  const add = (startMs: number, lengthMs: number, kw: number, measured: boolean): void => {
+    const endMs = startMs + lengthMs;
+    if (!time.shows(startMs, endMs)) {
+      return;
+    }
+    if (time.overlay && (today === null || startMs < today.startMs || startMs >= today.startMs + today.lengthMs)) {
+      return;
+    }
+    points.push({ startMs, endMs, kw, measured, position: time.position(startMs + lengthMs / 2) });
+  };
+  // The measured quarters replace the hours they cover; the forecast starts where the last quarter ends.
+  const quarters = block.quarters;
+  const covered = new Set(quarters.map((quarter) => Math.floor(quarter.startMs / HOUR_MS)));
+  const measuredUntil = quarters.reduce((latest, quarter) => Math.max(latest, quarter.startMs + QUARTER_MS), 0);
   for (const hour of block.hours) {
-    const endMs = hour.startMs + HOUR_MS;
-    if (!time.shows(hour.startMs, endMs)) {
+    if (hour.measured ? covered.has(Math.floor(hour.startMs / HOUR_MS)) : hour.startMs < measuredUntil) {
       continue;
     }
-    if (time.overlay && (today === null || hour.startMs < today.startMs || hour.startMs >= today.startMs + today.lengthMs)) {
-      continue;
-    }
-    points.push({
-      startMs: hour.startMs,
-      endMs,
-      kw: hour.kw,
-      measured: hour.measured,
-      position: time.position(hour.startMs + HOUR_MS / 2),
-    });
+    add(hour.startMs, HOUR_MS, hour.kw, hour.measured);
+  }
+  for (const quarter of quarters) {
+    add(quarter.startMs, QUARTER_MS, quarter.kw, true);
   }
   if (points.length === 0) {
     return null;
@@ -65,7 +73,7 @@ export function sunSeries(block: SunBlock | null, series: ChartSeries): SunSerie
   return { points, maxKw: Math.max(MIN_MAX_KW, ...points.map((point) => point.kw)) };
 }
 
-/** Runs of hours that follow each other; a missing hour ends a run, so a gap is a gap in the drawing. */
+/** Runs of spans that follow each other (an hour apart at most); a missing hour ends a run, so a gap is a gap. */
 export function sunRuns(points: readonly SunPoint[]): SunPoint[][] {
   const runs: SunPoint[][] = [];
   for (const point of points) {

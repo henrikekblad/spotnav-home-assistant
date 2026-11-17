@@ -121,6 +121,10 @@ describe("the dashboard's sun block", () => {
     expect(sunOrNull({ hours: [{ start: "2026-10-11T08:00:00+02:00", kw: -1, measured: true }] })).toBeNull();
     expect(sunOrNull({ hours: [{ start: "2026-10-11T08:00:00+02:00", kw: 1, measured: true, extra: 1 }] })).toBeNull();
     expect(sunOrNull({ hours: [], extra: true })).toBeNull();
+    expect(sunOrNull({ hours: [], quarters: [{ start: "2026-10-11T08:00:00+02:00", kw: -1 }] })).toBeNull();
+    expect(sunOrNull({ hours: [], quarters: [{ start: "2026-10-11T08:00:00+02:00", kw: 1, extra: 1 }] })).toBeNull();
+    expect(sunOrNull({ hours: [], quarters: [{ start: "2026-10-11T08:00:00+02:00", kw: 1 }] })?.quarters).toHaveLength(1);
+    expect(sunOrNull({ hours: [] })?.quarters).toEqual([]);
     expect(sunOrNull({ hours: [{ start: "soon", kw: 1, measured: true }] })).toBeNull();
   });
 
@@ -186,6 +190,44 @@ describe("runs and lookup", () => {
   it("joins the measured hours and the forecast from the running hour into one run", () => {
     const scene = model({ sun: { hours: [hour(10, 2.4, true), hour(11, 3.0, true), hour(12, 3.6, false), hour(13, 4.2, false)] } });
     expect(sunRuns(scene.sun!.points).map((run) => run.length)).toEqual([4]);
+  });
+
+  it("draws measured quarters up to now in place of the hours they cover, and the forecast on from there", () => {
+    const quarter = (minutes: number, kw: number): { start: string; kw: number } => ({
+      start: `2026-10-11T11:${String(minutes).padStart(2, "0")}:00+02:00`,
+      kw,
+    });
+    const scene = model({
+      sun: {
+        hours: [hour(10, 2.4, true), hour(11, 9.9, false), hour(12, 3.6, false)],
+        quarters: [quarter(0, 2.8), quarter(15, 3.0), quarter(30, 3.2)],
+      },
+    });
+    const points = scene.sun!.points;
+    // The hourly measured 10:00 stays (no quarters in it); the running hour's forecast gives way to the quarters.
+    expect(points.map((point) => [point.endMs - point.startMs, point.measured])).toEqual([
+      [HOUR_MS, true],
+      [900_000, true],
+      [900_000, true],
+      [900_000, true],
+      [HOUR_MS, false],
+    ]);
+    expect(sunRuns(points).map((run) => run.length)).toEqual([5]);
+    const { element } = renderChart({
+      series: scene.chart,
+      bands: scene.bands,
+      now: nowFor(scene),
+      width: 360,
+      height: 160,
+      selected: null,
+      title: "t",
+      description: "d",
+      labels: TEST_LABELS,
+      sun: scene.sun,
+      ids: { title: "s-title", description: "s-desc", hatch: "s-hatch" },
+    });
+    expect(element.querySelectorAll(`.${C.sunArea}`)).toHaveLength(1);
+    expect(element.querySelectorAll(`.${C.sunLine}.${C.sunForecast}`)).toHaveLength(1);
   });
 
   it("finds the hour under an instant", () => {
