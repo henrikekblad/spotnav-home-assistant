@@ -956,7 +956,7 @@
         "step": {
           "pick": {
             "title": "Which limit should a change set?",
-            "description": "**{device}** reports more than one charge limit, so SpotNav will not guess which one a change should set. Choose the limit this vehicle's changes should use. It is written through the vehicle's own integration, and takes effect when that integration next reads it.",
+            "description": "**{device}** reports more than one charge limit, so SpotNav will not guess which one a change should set. Choose the limit this vehicle's changes should use. It is written through the vehicle's own integration, and takes effect when that integration next reads it. If {device} is not a vehicle, say so instead, which stops it being asked about.",
             "data": {
               "choice": "Charge limit"
             }

@@ -956,7 +956,7 @@
         "step": {
           "pick": {
             "title": "Quelle limite une modification doit-elle régler ?",
-            "description": "**{device}** indique plusieurs limites de charge, SpotNav ne devinera donc pas laquelle une modification doit régler. Choisissez la limite que les modifications de ce véhicule doivent utiliser. Elle est écrite via l'intégration propre au véhicule et prend effet lorsque cette intégration la lit à nouveau.",
+            "description": "**{device}** indique plusieurs limites de charge, SpotNav ne devinera donc pas laquelle une modification doit régler. Choisissez la limite que les modifications de ce véhicule doivent utiliser. Elle est écrite via l'intégration propre au véhicule et prend effet lorsque cette intégration la lit à nouveau. Si {device} n'est pas un véhicule, indiquez-le plutôt : SpotNav cessera alors de poser la question.",
             "data": {
               "choice": "Limite de charge"
             }

@@ -31,7 +31,7 @@ from custom_components.spotnav.repairs import (
 )
 
 from .helpers import add_ambiguous_vehicle_device
-from .world import one_charger, vehicle_device
+from .world import one_charger, plain_config_entry, vehicle_device, vehicle_entity
 from custom_components.spotnav.runtime import domain_data
 
 
@@ -216,7 +216,7 @@ async def test_the_fix_flow_offers_the_live_candidates_and_records_the_choice(
     field = next(iter(form["data_schema"].schema))
     assert field.schema == "choice"
     options = form["data_schema"].schema[field].config["options"]
-    assert [option["value"] for option in options] == sorted(limit_device["limits"])
+    assert [option["value"] for option in options] == [*sorted(limit_device["limits"]), DISMISS_VEHICLE_CHOICE]
 
     result = await manager.async_configure(
         form["flow_id"], {"choice": limit_device["limits"][0]}
@@ -292,6 +292,80 @@ async def test_the_state_of_charge_flow_offers_the_dismissal_and_dismisses(
     # Dismissed, and nothing confirmed: different decisions.
     assert store.is_dismissed(DECISION_DOMAIN_VEHICLE, device_id) is True
     assert store.confirmed_payload(DECISION_DOMAIN_VEHICLE, device_id) is None
+    assert _issues(hass) == {}
+
+
+async def test_the_charge_limit_flow_offers_the_dismissal_and_dismisses(
+    hass: HomeAssistant,
+) -> None:
+    """A charge-limit question may be about something that is not a vehicle (GitHub issue #3), so it can be dismissed too.
+
+    The dismissal is the device's, as from the state-of-charge flow: no limit is confirmed and the issue goes.
+    """
+    await one_charger(hass)
+    limit_device = vehicle_device(
+        hass,
+        unique_id="car_limit",
+        name="Two-limit car",
+        limits=(("limit_a", "80"), ("limit_b", "100")),
+    )
+    await async_sync_resolution_repairs(hass)
+    manager = repairs_flow_manager(hass)
+    form = await manager.async_init(
+        DOMAIN, data={"issue_id": issue_id_for("charge_limit", limit_device["device_id"])}
+    )
+
+    result = await manager.async_configure(form["flow_id"], {"choice": DISMISS_VEHICLE_CHOICE})
+
+    assert result["type"] == "create_entry"
+    store = domain_data(hass).decision_store
+    assert store.is_dismissed(DECISION_DOMAIN_VEHICLE, limit_device["device_id"]) is True
+    assert store.confirmed_payload(DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT, limit_device["device_id"]) is None
+    assert _issues(hass) == {}
+
+
+async def test_a_charge_limit_issue_left_by_an_earlier_release_is_deleted(
+    hass: HomeAssistant,
+) -> None:
+    """An issue an earlier release raised for a device that no longer qualifies (a presence sensor: a distance and
+    percent settings, no state of charge) is in the registry after an upgrade; the first sync deletes it."""
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=plain_config_entry(hass),
+        identifiers={("test", "presence")},
+        name="Hall presence",
+    )
+    vehicle_entity(
+        hass,
+        device_id=device.id,
+        domain="sensor",
+        object_id="detection_distance",
+        state="142",
+        attributes={"device_class": "distance", "unit_of_measurement": "cm"},
+    )
+    for object_id, state in (("g0_move_threshold", "50"), ("g0_still_threshold", "40")):
+        vehicle_entity(
+            hass,
+            device_id=device.id,
+            domain="number",
+            object_id=object_id,
+            state=state,
+            attributes={"unit_of_measurement": "%", "min": 0, "max": 100},
+        )
+    stale = issue_id_for("charge_limit", device.id)
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        stale,
+        translation_key="vehicle_charge_limit_needs_decision",
+        translation_placeholders={"device": "Hall presence"},
+        is_fixable=True,
+        severity=ir.IssueSeverity.WARNING,
+        data={"kind": "charge_limit", "device_id": device.id},
+    )
+    assert stale in _issues(hass)
+
+    await async_sync_resolution_repairs(hass)
+
     assert _issues(hass) == {}
 
 

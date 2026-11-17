@@ -956,7 +956,7 @@
         "step": {
           "pick": {
             "title": "Hvilken grense skal en endring sette?",
-            "description": "**{device}** rapporterer mer enn én ladegrense, så SpotNav gjetter ikke hvilken en endring skal sette. Velg grensen som endringer for dette kjøretøyet skal bruke. Den skrives via kjøretøyets egen integrasjon og trer i kraft neste gang integrasjonen leser den.",
+            "description": "**{device}** rapporterer mer enn én ladegrense, så SpotNav gjetter ikke hvilken en endring skal sette. Velg grensen som endringer for dette kjøretøyet skal bruke. Den skrives via kjøretøyets egen integrasjon og trer i kraft neste gang integrasjonen leser den. Hvis {device} ikke er et kjøretøy, kan du oppgi det i stedet, så slutter SpotNav å spørre om det.",
             "data": {
               "choice": "Ladegrense"
             }

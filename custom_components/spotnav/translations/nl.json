@@ -956,7 +956,7 @@
         "step": {
           "pick": {
             "title": "Welke limiet moet een wijziging instellen?",
-            "description": "**{device}** geeft meer dan één laadlimiet door, dus SpotNav gaat niet raden welke een wijziging moet instellen. Kies de limiet die de wijzigingen voor deze auto moeten gebruiken. Die wordt geschreven via de eigen integratie van de auto en gaat in zodra die integratie hem de volgende keer leest.",
+            "description": "**{device}** geeft meer dan één laadlimiet door, dus SpotNav gaat niet raden welke een wijziging moet instellen. Kies de limiet die de wijzigingen voor deze auto moeten gebruiken. Die wordt geschreven via de eigen integratie van de auto en gaat in zodra die integratie hem de volgende keer leest. Is {device} geen auto, geef dat dan aan, zodat SpotNav er niet meer naar vraagt.",
             "data": {
               "choice": "Laadlimiet"
             }

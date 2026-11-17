@@ -956,7 +956,7 @@
         "step": {
           "pick": {
             "title": "Minkä rajan muutos asettaa?",
-            "description": "**{device}** ilmoittaa useamman kuin yhden latausrajan, joten SpotNav ei arvaa, mikä niistä muutoksen pitäisi asettaa. Valitse raja, jota tämän ajoneuvon muutokset käyttävät. Se kirjoitetaan ajoneuvon oman integraation kautta ja tulee voimaan, kun integraatio seuraavan kerran lukee sen.",
+            "description": "**{device}** ilmoittaa useamman kuin yhden latausrajan, joten SpotNav ei arvaa, mikä niistä muutoksen pitäisi asettaa. Valitse raja, jota tämän ajoneuvon muutokset käyttävät. Se kirjoitetaan ajoneuvon oman integraation kautta ja tulee voimaan, kun integraatio seuraavan kerran lukee sen. Jos {device} ei ole ajoneuvo, ilmoita se sen sijaan, jolloin SpotNav lakkaa kysymästä siitä.",
             "data": {
               "choice": "Latausraja"
             }
