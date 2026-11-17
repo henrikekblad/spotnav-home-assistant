@@ -49,6 +49,16 @@ describe("the grid charge cap block", () => {
     expect(gridChargeCapLine("sv", status({ rule: "conservative" }))).toContain("(försiktigt tills två veckor är inlärda)");
   });
 
+  it("says the days left while the cautious rule counts", () => {
+    const learned = { ...fixture("checking.json")["status"].grid_charge_cap.learned, ready: false, days_counted: 1, days_left: 13 };
+    expect(gridChargeCapLine("sv", status({ rule: "conservative", cap_kw: 0, learned }))).toBe(
+      "Ingen laddning från nätet: huset kan nå säkringen själv (försiktigt tills två veckor är inlärda, 13 dygn kvar).",
+    );
+    expect(gridChargeCapLine("en", status({ rule: "conservative", learned: { ...learned, days_left: 1 } }))).toContain(
+      "(cautious until two weeks are learned, 1 day left)",
+    );
+  });
+
   it("says when the house can reach the fuse by itself", () => {
     expect(gridChargeCapLine("sv", status({ cap_kw: 0 }))).toBe(
       "Ingen laddning från nätet: huset kan nå säkringen själv (inlärt per fas).",

@@ -1735,5 +1735,11 @@
   "hist.heat.causeUnknown": "årsak ukjent",
   "hist.heat.runsNote": "Vurdert ut fra energien alene (ingen tankgiver): en kjøring klart over den vanlige lille er en tapping, omtrent like stor er tanken som har kjølnet uten tapping.",
   "hist.heat.noRuns": "Ingen varmtvannskjøring funnet denne dagen.",
-  "hist.heat.footnote": "Kostnadene er beregnet med lagrede priser og dagens avgifter."
+  "hist.heat.footnote": "Kostnadene er beregnet med lagrede priser og dagens avgifter.",
+  "learning.daysLeft.one": "{days} døgn igjen",
+  "learning.daysLeft.other": "{days} døgn igjen",
+  "house.learning.noGridCharge": "Lader ikke fra nettet ennå",
+  "house.learning.gridChargeCapped": "Høyst {kw} kW fra nettet foreløpig",
+  "house.learning.phasePeaks": "lærer husets topper per fase, {left}",
+  "house.sources.solarLearning": "Solprognose: {names} · korreksjonen lærer, {left}"
 }

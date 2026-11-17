@@ -12,7 +12,7 @@ import { settingsGearButton, testChip } from "./heat-view";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { historyHeaderButton } from "./period-history";
 import { HOUSE_CLASSES as H } from "./house-styles";
-import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { daysLeft, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 const HOUR_MS = 3_600_000;
@@ -277,6 +277,23 @@ export function heatLine(language: Language, answer: HouseAnswer, words?: Entity
     house: kwh(language, day.house_kwh),
     share: pctOf(language, day.heat_kwh, day.house_kwh),
   });
+}
+
+/** The status lines of the learning periods that hold something back now, one each ("Laddar inte från nätet än · lär
+ * sig husets toppar per fas, 13 dygn kvar"); none when nothing is held back. */
+export function learningLines(language: Language, answer: HouseAnswer): string[] {
+  const lines: string[] = [];
+  for (const hold of answer.learning) {
+    if (hold.what !== "phase_peaks") {
+      continue;
+    }
+    const held =
+      hold.cap_kw > 0
+        ? translate(language, "house.learning.gridChargeCapped", { kw: formatNumber(language, hold.cap_kw, 1) })
+        : translate(language, "house.learning.noGridCharge");
+    lines.push(`${held} · ${translate(language, "house.learning.phasePeaks", { left: daysLeft(language, hold.days_left) })}`);
+  }
+  return lines;
 }
 
 export function reviewLine(language: Language, answer: HouseAnswer): string {
@@ -972,7 +989,13 @@ function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, wo
     );
   }
   if (sources.solar_forecasts.length > 0) {
-    add(translate(language, "house.sources.solar", { names: sources.solar_forecasts.join(", ") }));
+    const names = sources.solar_forecasts.join(", ");
+    const left = answer.sun?.status === "learning" ? answer.sun.days_left : null;
+    add(
+      left === null || left <= 0
+        ? translate(language, "house.sources.solar", { names })
+        : translate(language, "house.sources.solarLearning", { names, left: daysLeft(language, left) }),
+    );
   }
   const heat = answer.heat;
   if (heat !== null && heat.status === "found" && heat.entity_id !== null) {
@@ -1051,6 +1074,12 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   }
   const answer = state.answer;
   card.append(header(input, answer));
+  for (const text of learningLines(language, answer)) {
+    const line = element(doc, "p", `${H.line} ${C.muted}`, text);
+    line.setAttribute("role", "status");
+    line.dataset["line"] = "learning";
+    card.append(line);
+  }
   if (answer.day !== null && !answer.day.has_data) {
     const none = element(doc, "p", `${C.muted} ${H.line}`, translate(language, "house.day.noData"));
     none.setAttribute("role", "status");

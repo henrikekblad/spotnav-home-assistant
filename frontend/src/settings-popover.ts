@@ -54,7 +54,7 @@ import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "
 import { heatEditor, writeHeat } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
-import { numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { daysLeft, numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   decodeMarketOptions,
   fiscalValues,
@@ -260,7 +260,10 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
   if (cap.rule !== "learned" && cap.rule !== "conservative") {
     return null;
   }
-  const rule = translate(language, `battery.cap.rule.${cap.rule}` as TranslationKey);
+  const words = translate(language, `battery.cap.rule.${cap.rule}` as TranslationKey);
+  // While cautious, how long the learning still takes ("försiktigt tills två veckor är inlärda, 13 dygn kvar").
+  const left = cap.rule === "conservative" && cap.learned !== null && cap.learned.days_left > 0 ? cap.learned.days_left : null;
+  const rule = left === null ? words : `${words}, ${daysLeft(language, left)}`;
   return cap.cap_kw === 0
     ? translate(language, "battery.cap.zero", { rule })
     : translate(language, "battery.cap.line", { kw: formatNumber(language, cap.cap_kw, 1), rule });

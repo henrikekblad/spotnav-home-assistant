@@ -1735,5 +1735,11 @@
   "hist.heat.causeUnknown": "cause unknown",
   "hist.heat.runsNote": "Told from the energy alone (no tank sensor): a run well above the usual small one is a draw, about its size the tank cooling while nobody drew.",
   "hist.heat.noRuns": "No hot-water run found this day.",
-  "hist.heat.footnote": "Costs are at the held prices with today's fees."
+  "hist.heat.footnote": "Costs are at the held prices with today's fees.",
+  "learning.daysLeft.one": "{days} day left",
+  "learning.daysLeft.other": "{days} days left",
+  "house.learning.noGridCharge": "Not charging from the grid yet",
+  "house.learning.gridChargeCapped": "At most {kw} kW from the grid for now",
+  "house.learning.phasePeaks": "learning the house's peaks per phase, {left}",
+  "house.sources.solarLearning": "Solar forecast: {names} · correction learning, {left}"
 }

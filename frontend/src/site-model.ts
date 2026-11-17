@@ -114,6 +114,8 @@ export interface GridChargeCap {
     peaks_a: PhaseValues | null;
     days_counted: number;
     days_needed: number;
+    /** Whole days still to count before the learned peaks count (0 once ready). */
+    days_left: number;
     hours: number;
     minutes: number;
     heat_peak_w: PhaseValues | null;
@@ -196,6 +198,7 @@ const GRID_CHARGE_CAP = O({
       peaks_a: N(PHASE_VALUES),
       days_counted: "number",
       days_needed: "number",
+      days_left: "number",
       hours: "number",
       minutes: "number",
       heat_peak_w: N(PHASE_VALUES),

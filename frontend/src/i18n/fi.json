@@ -1735,5 +1735,11 @@
   "hist.heat.causeUnknown": "syy tuntematon",
   "hist.heat.runsNote": "Päätelty pelkästä energiasta (ei säiliöanturia): tavallista pientä selvästi suurempi ajo on käyttö, suunnilleen samankokoinen on säiliön jäähtyminen ilman käyttöä.",
   "hist.heat.noRuns": "Tältä päivältä ei löytynyt lämpimän veden ajoja.",
-  "hist.heat.footnote": "Kustannukset on laskettu tallennetuilla hinnoilla ja nykyisillä maksuilla."
+  "hist.heat.footnote": "Kustannukset on laskettu tallennetuilla hinnoilla ja nykyisillä maksuilla.",
+  "learning.daysLeft.one": "{days} vuorokausi jäljellä",
+  "learning.daysLeft.other": "{days} vuorokautta jäljellä",
+  "house.learning.noGridCharge": "Ei vielä lataa verkosta",
+  "house.learning.gridChargeCapped": "Enintään {kw} kW verkosta toistaiseksi",
+  "house.learning.phasePeaks": "opettelee talon vaihekohtaisia huippuja, {left}",
+  "house.sources.solarLearning": "Aurinkoennuste: {names} · korjaus oppii, {left}"
 }

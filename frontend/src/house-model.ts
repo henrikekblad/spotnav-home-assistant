@@ -241,6 +241,15 @@ export interface CalendarDay {
   arbitrage: number | null;
 }
 
+/** A learning period that holds something back now: the house's per-phase peaks while their cautious rule keeps the
+ * battery's grid charge below its rating (`cap_kw` 0: no grid charge at all). `what` is open: one this card does
+ * not know is not shown. */
+export interface LearningHold {
+  what: string;
+  days_left: number;
+  cap_kw: number;
+}
+
 export interface HouseAnswer {
   site_id: string;
   time_zone: string;
@@ -255,7 +264,11 @@ export interface HouseAnswer {
     counts_battery: boolean;
     review: Score | null;
   };
-  sun: { status: string; review: Score | null; review_corrected: Score | null } | null;
+  /** `days_left`: while the correction is `learning`, the days of evidence it still needs; else `null` (also from a
+   * backend before it). */
+  sun: { status: string; review: Score | null; review_corrected: Score | null; days_left: number | null } | null;
+  /** The learning periods that hold something back now (today only; empty from a backend before them). */
+  learning: LearningHold[];
   battery: BatteryView | null;
   today: TodayMoney | null;
   flow: DayFlow | null;
@@ -649,6 +662,11 @@ function calendar(value: unknown): { month: string; days: CalendarDay[] } | null
   };
 }
 
+function learningHold(value: unknown): LearningHold {
+  const item = record(value);
+  return { what: text(item.what), days_left: count(item.days_left), cap_kw: number(item.cap_kw) };
+}
+
 export function decodeHouse(raw: unknown): HouseDecodeResult {
   try {
     const source = record(raw);
@@ -688,7 +706,16 @@ export function decodeHouse(raw: unknown): HouseDecodeResult {
           counts_battery: flag(house.counts_battery),
           review: score(house.review),
         },
-        sun: sun === null ? null : { status: text(sun.status), review: score(sun.review), review_corrected: score(sun.review_corrected) },
+        sun:
+          sun === null
+            ? null
+            : {
+                status: text(sun.status),
+                review: score(sun.review),
+                review_corrected: score(sun.review_corrected),
+                days_left: additive(sun, "days_left", (value) => (value === null ? null : count(value)), null),
+              },
+        learning: additive(source, "learning", (value) => list(value).map(learningHold), []),
         battery: battery(source.battery),
         today: additive(source, "today", today, null),
         flow: additive(source, "flow", flow, null),

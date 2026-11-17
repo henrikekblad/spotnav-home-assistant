@@ -1735,5 +1735,11 @@
   "hist.heat.causeUnknown": "oorzaak onbekend",
   "hist.heat.runsNote": "Alleen uit de energie afgeleid (geen boilervoeler): een beurt duidelijk boven de gewone kleine is tappen, ongeveer even groot is de boiler die zonder tappen afkoelde.",
   "hist.heat.noRuns": "Geen warmwaterbeurt gevonden op deze dag.",
-  "hist.heat.footnote": "Kosten berekend met de opgeslagen prijzen en de huidige toeslagen."
+  "hist.heat.footnote": "Kosten berekend met de opgeslagen prijzen en de huidige toeslagen.",
+  "learning.daysLeft.one": "nog {days} dag",
+  "learning.daysLeft.other": "nog {days} dagen",
+  "house.learning.noGridCharge": "Laadt nog niet uit het net",
+  "house.learning.gridChargeCapped": "Voorlopig hoogstens {kw} kW uit het net",
+  "house.learning.phasePeaks": "leert de pieken van het huis per fase, {left}",
+  "house.sources.solarLearning": "Zonnevoorspelling: {names} · correctie leert, {left}"
 }
