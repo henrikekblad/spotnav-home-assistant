@@ -247,6 +247,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   need_limited_by_room: "status.needLimitedByRoom",
   filling_to_limit: "status.fillingToLimit",
   fill_room_unknown: "status.fillRoomUnknown",
+  battery_size_learned: "status.batterySizeLearned",
   charging_to_vehicle_limit: "status.chargingToVehicleLimit",
   min_soc_charging: "status.minSocCharging",
   remaining_need_estimated: "issue.needKept",
@@ -851,6 +852,8 @@ export function lineText(
       return say("status.fillingToLimit", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
     case "fill_room_unknown":
       return say("status.fillRoomUnknown", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
+    case "battery_size_learned":
+      return say("status.batterySizeLearned", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 0) });
     case "charging_to_vehicle_limit":
       return say("status.chargingToVehicleLimit", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
     case "sun_past_target":

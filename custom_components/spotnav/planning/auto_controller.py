@@ -91,6 +91,7 @@ from .learned_energy import (
     LearnedEnergy,
     LearnedEnergyStore,
     NOTHING_LEARNED,
+    learned_capacity_kwh,
     SocSeen,
     target_need,
 )
@@ -528,6 +529,9 @@ class _EnergyResolution:
     #: A target only: the car's learned wall kWh per percent the need was worked out with (`learned_energy.py`),
     #: `None` while nothing trusted is learned (the battery size and `CHARGE_EFFICIENCY` then).
     kwh_per_percent: float | None = None
+    #: The battery size learned from charging (`learned_energy.learned_capacity_kwh`) when nobody states one and
+    #: the need was worked out with it (a target, "Fill" or a need capped at the room); `None` otherwise.
+    learned_capacity_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -594,6 +598,9 @@ class AutoSnapshot:
     #: `manual_kwh` under "Fill" only: `battery` (the need is the room) or `unknown_room` (the stored amount
     #: stands, since no room is known); `None` otherwise.
     fill: str | None = None
+    #: The battery size learned from charging the need was worked out with, since nobody states one
+    #: (`_EnergyResolution.learned_capacity_kwh`); `None` otherwise.
+    learned_capacity_kwh: float | None = None
     #: The departure instant this calculation planned for, or `None` without one: a plan carries it, so
     #: a top-off past its last window never runs beyond it (`execution/top_off.py`).
     departure_at: datetime | None = None
@@ -642,6 +649,7 @@ class AutoSnapshot:
             None if self.room_kwh is None else round(self.room_kwh, 1),
             self.room_limited,
             self.fill,
+            None if self.learned_capacity_kwh is None else round(self.learned_capacity_kwh),
             None if self.proposal is None else self._proposal_key(self.proposal),
         )
 
@@ -1523,6 +1531,8 @@ class AutoPlannerController:
                 room_limited=resolved.room_limited,
                 fill=resolved.fill,
             )
+        if resolved.learned_capacity_kwh is not None:
+            energy["learned_capacity_kwh"] = resolved.learned_capacity_kwh
 
         if energy_kwh <= price_wait.EPSILON_KWH:
             # A manual need fully delivered: answered like `target_soc`'s `already_at_target`, since
@@ -2003,6 +2013,10 @@ class AutoPlannerController:
                 **energy.as_dict(),
                 # The need counts on it: trusted, for a target (a fixed amount is never changed by it).
                 "used": energy.trusted and settings.driver == DRIVER_TARGET_SOC,
+                # The battery size it stands in for while nobody states one (`learned_energy.learned_capacity_kwh`).
+                "learned_capacity_kwh": (
+                    None if (size := learned_capacity_kwh(energy, capacity)) is None else round(size, 1)
+                ),
                 "stretch_start": None if anchor is None else {
                     "soc_percent": anchor.soc_percent, "at": anchor.at.isoformat(), "kwh": round(anchor.kwh, 3),
                 },
@@ -2027,6 +2041,13 @@ class AutoPlannerController:
         if vehicle_id != resolved_vehicle_id(self._hass, self._entry_id):
             return NOTHING_LEARNED
         return self._learned_energy.learned(vehicle_id, capacity_kwh, drop=drop)
+
+    def learned_battery_kwh(self, vehicle_id: str | None) -> float | None:
+        """The battery size learned for `vehicle_id` at this charger, for when nobody states one
+        (`learned_energy.learned_capacity_kwh`): the settings' hint, whichever car this charger plans for."""
+        if self._learned_energy is None or not vehicle_id:
+            return None
+        return learned_capacity_kwh(self._learned_energy.learned(vehicle_id, None), None)
 
     def _arm_watch(self) -> None:
         """Keep the one appointment to look at the plan's windows (`plan_watch.next_check_at`): an earlier one is
@@ -2614,8 +2635,10 @@ class AutoPlannerController:
         # Energy the wall must deliver: battery need divided by charging efficiency
         # (`soc_estimate.CHARGE_EFFICIENCY`), or, once trusted, the car's learned wall kWh per percent
         # (`learned_energy.py`), given as the battery size that takes it at that efficiency.
-        # The need drops samples a changed battery size no longer fits; every other read only looks.
+        # The need drops samples a changed battery size no longer fits; every other read only looks. Without a
+        # battery size the learned one stands in (`learned_energy.learned_capacity_kwh`).
         learned = self._learned_energy_for(facts, drop=True)
+        learned_capacity = learned_capacity_kwh(learned, capacity)
         reason, wall_kwh = target_need(
             learned,
             soc_percent=planned_from,
@@ -2647,7 +2670,7 @@ class AutoPlannerController:
         # Always trustworthy: live state of charge already reflects everything delivered.
         return _EnergyResolution(
             kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity,
-            kwh_per_percent=learned.use_kwh_per_percent,
+            kwh_per_percent=learned.kwh_per_percent_for(capacity), learned_capacity_kwh=learned_capacity,
         )
 
     def _planned_from_floor(
@@ -2800,13 +2823,18 @@ class AutoPlannerController:
 
         Under "Fill" (`fill_to_limit`) the need is the room itself, marked `room_limited` the same way; without a
         room the counted need stands, marked `unknown_room` so the status can say so.
+
+        Without a battery size from a setting, the car's integration or its profile, the one learned from charging
+        stands in (`learned_energy.learned_capacity_kwh`), and the resolution says so when the need came from it.
         """
         facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
         if facts is None:
             return replace(resolution, fill="unknown_room") if settings.fill_to_limit else resolution
+        capacity = facts.reported_capacity_kwh
+        learned = learned_capacity_kwh(self._learned_energy_for(facts), capacity) if capacity is None else None
         room = battery_room_kwh(
             soc_percent=facts.soc_percent,
-            capacity_kwh=facts.reported_capacity_kwh,
+            capacity_kwh=capacity if learned is None else learned,
             vehicle_max_percent=facts.max_percent,
         )
         if settings.fill_to_limit:
@@ -2816,13 +2844,16 @@ class AutoPlannerController:
             # already reflects what was delivered.
             return replace(
                 resolution, kwh=room, room_kwh=room, room_limited=True, uncapped_kwh=None, fill="battery",
-                delivered_energy_trustworthy=True,
+                delivered_energy_trustworthy=True, learned_capacity_kwh=learned,
             )
         if room is None:
             return resolution
         if resolution.kwh <= 0 or resolution.kwh < room:
             return replace(resolution, room_kwh=room)
-        return replace(resolution, kwh=room, room_kwh=room, room_limited=True, uncapped_kwh=resolution.kwh)
+        return replace(
+            resolution, kwh=room, room_kwh=room, room_limited=True, uncapped_kwh=resolution.kwh,
+            learned_capacity_kwh=learned,
+        )
 
     def _departure_key(self, settings: AutoSettings, calculated_at: datetime, entry: AreaEntry) -> str:
         """A stable name for which departure occurrence this is, for `_manual_kwh_remaining`'s reset rule.

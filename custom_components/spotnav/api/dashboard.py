@@ -101,7 +101,7 @@ from ..planning.auto_settings import (
 from ..execution.hybrid_execution import charge_power_limits
 from ..planning.hybrid_forecast import async_forecast_capable_domains, async_read_forecast_wh
 from ..planning.hybrid_plan import HybridConfig, forecast_credit
-from ..planning.learned_energy import efficiency_for, NOTHING_LEARNED, target_need
+from ..planning.learned_energy import efficiency_for, learned_capacity_kwh, NOTHING_LEARNED, target_need
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.phases import charging_phases, ChargingPhases, onboard_suggestion
 from ..planning.planner import chart_intervals, ChartInterval
@@ -454,6 +454,9 @@ class CapturedVehicle:
     #: Whether SpotNav wakes the car for a reading at a charge's end (`vehicle_wake`), `None` when its integration
     #: offers no wake.
     wake_for_reading: bool | None = None
+    #: The battery size learned from charging at this charger while nobody states one
+    #: (`learned_energy.learned_capacity_kwh`): the settings' hint, never a stored value; `None` otherwise.
+    learned_capacity_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -752,7 +755,14 @@ def target_soc_capable(hass: HomeAssistant, entry_id: str) -> bool:
             for candidate in discover_vehicles(hass)
             if allowed is None or candidate.id in allowed
         )
-    return reader.has_source(vehicle_id) and reader.capacity_kwh(vehicle_id) is not None
+    if not reader.has_source(vehicle_id):
+        return False
+    capacity = reader.capacity_kwh(vehicle_id)
+    if capacity is not None:
+        return True
+    # Nobody states a battery size: the one learned from charging stands in (`learned_energy.learned_capacity_kwh`).
+    preview = preview_for(hass, entry_id)
+    return preview is not None and learned_capacity_kwh(preview.learned_energy(vehicle_id, None), None) is not None
 
 
 def capture_soc(
@@ -775,6 +785,8 @@ def capture_soc(
     # The planner's own learned figure for this car (`learned_energy.target_need`): the need here is the plan's.
     preview = preview_for(hass, entry_id)
     learned = NOTHING_LEARNED if preview is None else preview.learned_energy(vehicle_id, capacity)
+    # Nobody states a battery size: the one learned from charging stands in, as it does for the plan.
+    capacity = capacity if capacity is not None else learned_capacity_kwh(learned, None)
     need = None
     if value is not None and target is not None:
         _, need = target_need(
@@ -813,6 +825,7 @@ def capture_vehicles(
     reader = None if data is None else data.soc_reader
     stored = None if settings is None else settings.target.vehicle_id
     target_id, candidates = resolve_target_vehicle(hass, stored, None if settings is None else settings.vehicle_ids)
+    preview = preview_for(hass, entry_id)
     rows: list[CapturedVehicle] = []
     for choice in candidates:
         own = vehicle_properties.stored_properties(hass, choice.id)
@@ -845,6 +858,9 @@ def capture_vehicles(
                 min_percent=own.min_percent,
                 charge_limit_range=charge_limit_range(hass, choice.id),
                 wake_for_reading=own.wake_for_reading if wake_supported(hass, choice.id) else None,
+                learned_capacity_kwh=(
+                    preview.learned_battery_kwh(choice.id) if capacity is None and preview is not None else None
+                ),
             )
         )
     return tuple(rows), target_id
@@ -2595,6 +2611,8 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
     off. `charge_limit_range` is `{"min", "max", "step"}`, the percents the car's own limit can be written to, `null`
     when there is none to write or its range is unknown. `wake_for_reading` is whether SpotNav wakes the car for a
     reading at a charge's end, `null` when its integration offers no wake (the setting is not offered).
+    `learned_capacity_kwh` is the battery size learned from charging while nobody states one (a hint for the
+    battery size setting, never stored), else `null`.
     """
     return {
         "id": vehicle.id,
@@ -2612,6 +2630,9 @@ def serialize_vehicle(vehicle: CapturedVehicle) -> dict[str, Any]:
         "min_percent": vehicle.min_percent,
         "charge_limit_range": vehicle.charge_limit_range,
         "wake_for_reading": vehicle.wake_for_reading,
+        "learned_capacity_kwh": (
+            None if finite_number(vehicle.learned_capacity_kwh) is None else round(vehicle.learned_capacity_kwh, 1)
+        ),
     }
 
 
@@ -2648,6 +2669,7 @@ def planning_facts(snapshot: AutoSnapshot) -> PlanningFacts:
         remaining_kwh=finite_number(snapshot.remaining_kwh),
         room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
         fill=snapshot.fill,
+        learned_capacity_kwh=finite_number(snapshot.learned_capacity_kwh),
         departure_at=_utc(snapshot.departure_at),
         expected_soc_percent=finite_number(snapshot.expected_soc_percent),
     )

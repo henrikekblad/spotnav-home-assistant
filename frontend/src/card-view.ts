@@ -3901,6 +3901,10 @@ export function createCardView(input: CardViewInput): CardView {
           max: CAPACITY_MAX_KWH,
           decimals: 1,
           noneLabel: translate(model.language, "entity.notSet"),
+          // The size learned from charging, offered and never saved unless chosen.
+          ...(row.capacity_kwh === null && (row.learned_capacity_kwh ?? null) !== null
+            ? { suggestion: row.learned_capacity_kwh }
+            : {}),
         },
         propertyWrite("capacity_kwh"),
       );

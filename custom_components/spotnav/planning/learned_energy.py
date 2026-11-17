@@ -27,6 +27,13 @@ level before and after a stretch of charging only one number can be seen: wall k
   growing, waits until it ends): trusted when at least `TRUST_SAMPLES` of them lie within `TRUST_SPREAD` of their
   median, and then the figure is the median of those that agree, so one odd charge neither moves it nor takes the
   trust away. Until then everything is worked out as before.
+* **A battery size nobody states.** Without one (no setting, none from the car's integration or its profile) the
+  learned figure stands in for it: `learned_capacity_kwh`, the wall kWh per percent x 100 x `CHARGE_EFFICIENCY`.
+  The learned figure is wall energy (charging losses included); the battery-side size is that at the fixed
+  efficiency, which is also what makes the need, the room and the estimate come back to the learned wall kWh per
+  percent. For this only, one ended plug-in's sample of at least `MIN_CAPACITY_SAMPLE_KWH` (and, as every sample,
+  `MIN_DELTA_PERCENT`) is enough: the trusted figure once there is one, else the median of such samples. Never
+  outside `MIN_CAPACITY_KWH`..`MAX_CAPACITY_KWH`; a stated size always wins.
 * **Used** for a target's need and the dashboard's (`target_need`, `efficiency_for`), and for the level carried
   forward between readings (`SocReader`, given the figure from setup), so a replan from an estimate and the stop
   on one count as the need does.
@@ -60,6 +67,8 @@ _STORE_PREFIX: Final = f"{DOMAIN}.learned_energy"
 
 #: The least rise of the level (points) a stretch needs to be a sample: whole-percent readings make less too rough.
 MIN_DELTA_PERCENT: Final = 10.0
+#: The least energy (kWh) an ended plug-in's sample needs to stand in for a battery size nobody states.
+MIN_CAPACITY_SAMPLE_KWH: Final = 5.0
 #: The samples kept per car, and how many (all within `TRUST_SPREAD` of their median) before the need uses them.
 MAX_SAMPLES: Final = 5
 TRUST_SAMPLES: Final = 3
@@ -178,6 +187,20 @@ class LearnedEnergy:
         """What the need counts on: the learned figure once trusted, else nothing (the battery size and the fixed
         efficiency, as before)."""
         return self.kwh_per_percent if self.trusted else None
+
+    def kwh_per_percent_for(self, capacity_kwh: float | None) -> float | None:
+        """The learned wall kWh per percent the need counts on with `capacity_kwh` as the stated battery size: the
+        trusted figure, else, with no size stated, the one `learned_capacity_kwh` stands in for it with."""
+        if self.trusted:
+            return self.kwh_per_percent
+        if capacity_kwh is not None and _finite_positive(capacity_kwh):
+            return None
+        usable = [sample.kwh_per_percent for sample in self.samples if sample.kwh >= MIN_CAPACITY_SAMPLE_KWH]
+        if not usable:
+            return None
+        ratio = statistics.median(usable)
+        implied = ratio * 100.0 * CHARGE_EFFICIENCY
+        return ratio if MIN_CAPACITY_KWH <= implied <= MAX_CAPACITY_KWH else None
 
     def as_dict(self) -> dict[str, Any]:
         # No car's identity (the diagnostics name none), and the samples keyed oldest first (no lists of data).
@@ -457,9 +480,19 @@ def parse_stored(raw: Any) -> tuple[dict[str, _Car], Anchor | None, tuple[str, s
 
 def with_learned(learned: LearnedEnergy, capacity_kwh: float | None) -> float | None:
     """The battery size the need is worked out with: one that, divided by `CHARGE_EFFICIENCY`, takes the learned wall
-    kWh per percent once trusted, else `capacity_kwh` as it is."""
-    ratio = learned.use_kwh_per_percent
+    kWh per percent once trusted (or, with no size stated, `learned_capacity_kwh`), else `capacity_kwh` as it is."""
+    ratio = learned.kwh_per_percent_for(capacity_kwh)
     return capacity_kwh if ratio is None else ratio * 100.0 * CHARGE_EFFICIENCY
+
+
+def learned_capacity_kwh(learned: LearnedEnergy, capacity_kwh: float | None) -> float | None:
+    """The battery size learned from charging, for a car whose size nobody states (`capacity_kwh` is `None`): the
+    battery-side figure, wall kWh per percent x 100 x `CHARGE_EFFICIENCY`, within `MIN_CAPACITY_KWH`..
+    `MAX_CAPACITY_KWH`; `None` with a stated size or nothing usable learned."""
+    if capacity_kwh is not None and _finite_positive(capacity_kwh):
+        return None
+    capacity = with_learned(learned, None)
+    return capacity if capacity is not None and MIN_CAPACITY_KWH <= capacity <= MAX_CAPACITY_KWH else None
 
 
 def target_need(
@@ -487,6 +520,7 @@ def efficiency_for(learned: LearnedEnergy, capacity_kwh: float | None) -> float:
     figure), else `CHARGE_EFFICIENCY`. Within (0, 1] by the bounds; anything else falls back."""
     ratio = learned.use_kwh_per_percent
     if ratio is None or capacity_kwh is None or not _finite_positive(capacity_kwh):
+        # Without a stated size the card is given `learned_capacity_kwh`, which takes the learned figure at this.
         return CHARGE_EFFICIENCY
     efficiency = capacity_kwh / (ratio * 100.0)
     return efficiency if 0.0 < efficiency <= MAX_EFFICIENCY else CHARGE_EFFICIENCY

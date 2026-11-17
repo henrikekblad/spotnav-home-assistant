@@ -734,6 +734,7 @@ describe("the backend's v7 vehicles", () => {
         min_percent: null,
         charge_limit_range: null,
         wake_for_reading: null,
+        learned_capacity_kwh: null,
       },
       {
         id: "vehicle_niro",
@@ -754,6 +755,7 @@ describe("the backend's v7 vehicles", () => {
         min_percent: null,
         charge_limit_range: null,
         wake_for_reading: null,
+        learned_capacity_kwh: null,
       },
     ]);
   });

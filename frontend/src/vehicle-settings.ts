@@ -86,12 +86,18 @@ export function vehicleSummary(doc: Document, language: Language, input: Vehicle
   valueRow("charge_level", translate(language, "settings.vehicle.charge"), input.charge, edits.sensor);
   if (input.properties) {
     const reported = row.capacity_source === "reported" && row.capacity_kwh !== null;
+    // Nobody states a size: the one learned from charging is said beside "Not set", never shown as the value.
+    const learned = row.capacity_kwh === null ? (row.learned_capacity_kwh ?? null) : null;
     valueRow(
       "capacity",
       translate(language, "settings.capacity.label"),
       row.capacity_kwh === null ? notSet : `${formatFixed(language, row.capacity_kwh, 1)} kWh`,
       reported ? undefined : edits.capacity,
-      reported ? translate(language, "settings.vehicle.capacityReported") : undefined,
+      reported
+        ? translate(language, "settings.vehicle.capacityReported")
+        : learned !== null
+          ? translate(language, "settings.vehicle.capacityLearned", { kwh: formatNumber(language, learned, 0) })
+          : undefined,
     );
     valueRow(
       "consumption",
