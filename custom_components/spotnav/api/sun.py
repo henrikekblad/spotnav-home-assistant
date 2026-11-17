@@ -30,6 +30,8 @@ from ..site.sun_geometry import key_start
 from .house import _production, _sun
 
 SUN_KEYS: Final = ("hours", "quarters")
+#: Added to the block only where the site's peak production is known (kW, the most one hour has produced).
+PEAK_KEY: Final = "peak_kw"
 QUARTER_KEYS: Final = ("start", "kw")
 #: A day has at most 100 quarters of the sun measured so far (25 hours); the block sends at most this many.
 MAX_QUARTERS: Final = 96
@@ -42,9 +44,13 @@ def sun_block_from(
     measured: Mapping[datetime, float],
     forecast: Mapping[datetime, float],
     quarters: Mapping[datetime, float] | None = None,
+    *,
+    observed_max_kwh: float | None = None,
+    array_kwp: float | None = None,
 ) -> dict[str, Any]:
     """The block from the measured hours (kWh by UTC hour start) and the corrected forecast, for today and tomorrow,
-    and today's measured quarter hours (mean kW by UTC quarter start, none where the 5-minute statistics are missing)."""
+    and today's measured quarter hours (mean kW by UTC quarter start, none where the 5-minute statistics are missing).
+    `peak_kw` is the site's peak production (`peak_kw`), left out where none is known."""
     current = hour_start(now, tz)
     today: date = now.astimezone(time_zones.require_zone(tz)).date()
     hours: list[dict[str, Any]] = []
@@ -61,7 +67,24 @@ def sun_block_from(
         for start, value in sorted((quarters or {}).items())
         if first <= start <= now
     ]
-    return {"hours": hours, "quarters": recent[-MAX_QUARTERS:]}
+    block: dict[str, Any] = {"hours": hours, "quarters": recent[-MAX_QUARTERS:]}
+    peak = peak_kw(observed_max_kwh, array_kwp)
+    if peak is not None:
+        block[PEAK_KEY] = peak
+    return block
+
+
+def peak_kw(observed_max_kwh: float | None, array_kwp: float | None) -> float | None:
+    """The most the site's sun produces in an hour, in kW, for the card to scale the sun against.
+
+    The highest hour ever measured is the most robust (it is what the site really does, and what the solar correction
+    caps its forecast at; the correction's record covers the Energy dashboard's hours and the forecast log's outcomes).
+    Only where nothing has been measured yet, the array's size from the forecast integration (an upper bound, so a
+    cautious scale). `None` where neither is a positive figure."""
+    for candidate in (observed_max_kwh, array_kwp):
+        if candidate is not None and candidate > 0:
+            return round(candidate, 2)
+    return None
 
 
 def _measured_hours(controller: Any) -> dict[datetime, float]:
@@ -81,9 +104,11 @@ def capture_sun(hass: HomeAssistant, charger_entry_id: str, now: datetime, tz: s
     if controller is None:
         return None
     sun = _sun(hass, controller)
-    quarters = controller.solar_correction.quarters
+    correction = controller.solar_correction
+    quarters = correction.quarters
+    peak = {"observed_max_kwh": correction.observed_max_kwh, "array_kwp": correction.array_kwp}
     if sun is not None:
-        return sun_block_from(now, tz, _production(controller), sun.corrected, quarters)
+        return sun_block_from(now, tz, _production(controller), sun.corrected, quarters, **peak)
     if not site_solar_capable(controller.config):
         return None
-    return sun_block_from(now, tz, _measured_hours(controller), {}, quarters)
+    return sun_block_from(now, tz, _measured_hours(controller), {}, quarters, **peak)

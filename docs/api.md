@@ -185,13 +185,17 @@ has no event ahead: no departure), `off` (no departure, or a guest car), or `nul
 yet).
 
 The additive root block `sun` is present where the site has a solar forecast (ask with `"reads": ["sun"]`):
-`{"hours": [{"start", "kw", "measured"}], "quarters": [{"start", "kw"}]}`, the sun's mean power per local hour of today and tomorrow in kW. Before the
+`{"hours": [{"start", "kw", "measured"}], "quarters": [{"start", "kw"}], "peak_kw"}`, the sun's mean power per local hour of today and tomorrow in kW. Before the
 running hour `kw` is the measured production (`measured` true), from the running hour on the corrected forecast the plan
 uses (`measured` false), the running hour included; an hour with no figure is left out. The forecast reaches 24 hours
 ahead, so tomorrow is partly there. `quarters` is today's measured mean power in kW per quarter hour up to now (at most
 96, from the recorder's 5-minute statistics, read off the event loop and refreshed every five minutes); it is empty where
 those are missing, and a client then draws the hourly measured figures. A client that has quarters draws them in place of
-the measured hours they cover and starts the forecast where the last quarter ends.
+the measured hours they cover and starts the forecast where the last quarter ends. `peak_kw` is the site's peak
+production in kW, for a client to scale the sun against so a dull day is drawn small: the highest hour ever measured
+(the solar correction's record), else the array's size where the forecast integration states it; the key is left out
+where neither is known, and the client then scales against the day's own tallest hour. A client uses the larger of
+`peak_kw` and the day's tallest hour, so a record hour still fits.
 
 **Who may replace the settings.** An administrator may change any field. A user who is not one is refused with
 `spotnav_not_admin` while the charger's `users_change_plan` is off; while it is on, a replacement from them is
