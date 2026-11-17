@@ -458,7 +458,7 @@ class SiteSolarShadow:
         self.archive_chunk_failures = 0
         self.last_error, self.last_status = None, result.status
         for run, by_hour in runs.items():
-            self.history.note_archive(run, by_hour)
+            self.history.note_archive(run, by_hour, first, last)
         self.archive_from = first
         _LOGGER.debug("SpotNav solar shadow: archived weather %s..%s kept", first, last)
         return True

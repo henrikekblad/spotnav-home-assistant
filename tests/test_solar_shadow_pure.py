@@ -386,8 +386,14 @@ def test_a_fetch_fills_each_hours_run_by_its_lead_and_the_first_wins() -> None:
     assert not history.note_weather({hour: Weather(900.0, 800.0, 0.0, 20.0)}, hour - timedelta(hours=3))
     assert history.weather_at(1, hour_key(hour)).ghi == 200.0  # type: ignore[union-attr]
     # The archive fills only what is missing; a dark hour is not kept.
-    assert not history.note_archive(1, {hour: Weather(1.0, 0.0, 0.0, 0.0)})
-    assert not history.note_archive(1, {hour + timedelta(hours=12): Weather(0.0, 0.0, 0.0, 0.0)})
+    day = hour.date()
+    assert not history.note_archive(1, {hour: Weather(1.0, 0.0, 0.0, 0.0)}, day, day)
+    assert not history.note_archive(1, {hour + timedelta(hours=12): Weather(0.0, 0.0, 0.0, 0.0)}, day, day)
+    # An hour outside the dates asked for is not kept.
+    later = hour + timedelta(days=2)
+    assert not history.note_archive(1, {later: Weather(400.0, 200.0, 10.0, 12.0)}, day, day)
+    assert history.weather_at(1, hour_key(later)) is None
+    assert history.note_archive(1, {later: Weather(400.0, 200.0, 10.0, 12.0)}, day, later.date())
     assert history.note_provider({hour: 2.341}, hour - timedelta(hours=10))
     assert history.provider[1][hour_key(hour)] == 234
 
