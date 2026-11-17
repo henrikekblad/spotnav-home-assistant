@@ -462,8 +462,13 @@ def discover_ambiguous_charge_limits(
 ) -> list[AmbiguousChargeLimitCandidate]:
     """Vehicle-like devices needing a human to pick their charge limit.
 
-    Range signal plus several *live* charge-limit readings, minus confirmed
-    (non-stale) and dismissed devices, so an asleep second entity is not a choice.
+    A vehicle by the state-of-charge path's evidence (`_has_soc_shape`) plus several
+    *live* charge-limit readings, minus confirmed (non-stale) and dismissed devices,
+    so an asleep second entity is not a choice. A range signal alone is not enough:
+    mmWave presence sensors report distances and percent settings (sensitivity, gates)
+    that look like two charge limits. A car that reports no state of charge is never
+    reported as a vehicle, so asking about its limit would only ever be noise; the
+    cost is a miss, never a wrong question.
     """
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
@@ -475,7 +480,9 @@ def discover_ambiguous_charge_limits(
         if _confirmed_charge_limit_entity_id(entity_registry, decisions, device.id) is not None:
             continue
         entities = _device_entities(hass, entity_registry, device.id)
-        if not _has_range_signal(entities):
+        if not _has_soc_shape(
+            entities, _confirmed_soc_entity_id(entity_registry, decisions, device.id)
+        ):
             continue
         candidate_entity_ids = _resolve_charge_limit(entities, None).ambiguous
         if len(candidate_entity_ids) < 2:
@@ -687,6 +694,23 @@ def _range_signal_entity_ids(
 def _has_range_signal(entities: list[tuple[er.RegistryEntry, State]]) -> bool:
     """Whether this device reports a remaining range: the vehicle signal."""
     return bool(_range_signal_entity_ids(entities))
+
+
+def _has_soc_shape(
+    entities: list[tuple[er.RegistryEntry, State]], confirmed_soc_entity_id: str | None
+) -> bool:
+    """Whether the device is a vehicle by the state-of-charge path's evidence (as `soc_choices`).
+
+    A range signal plus a confirmed state of charge, or a percent battery sensor that is not
+    all health, target, 12 V ... readings (one picked, or several to choose between). The
+    value need not be readable, so a sleeping car still counts.
+    """
+    if not _has_range_signal(entities):
+        return False
+    if confirmed_soc_entity_id is not None:
+        return True
+    chosen, survivors = _rank_soc_candidates(entities)
+    return chosen is not None or bool(survivors)
 
 
 @dataclass(frozen=True, slots=True)
