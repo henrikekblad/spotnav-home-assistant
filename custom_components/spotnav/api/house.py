@@ -183,7 +183,20 @@ def _battery(controller: Any) -> BatteryInputs | None:
         production=_production(controller),
         stored=plan.stored,
         control=_control_state(controller),
+        action_now=_action_now(controller),
+        power_kw=facts.power_kw,
     )
+
+
+def _action_now(controller: Any) -> str | None:
+    """The action SpotNav's battery control runs now (its executor's, while active); `None` when it runs none."""
+    control = getattr(controller, "battery_control", None)
+    executor = None if control is None else getattr(control, "executor", None)
+    state = None if executor is None else getattr(executor, "state", None)
+    if state is None or getattr(state, "phase", None) != "active":
+        return None
+    action = getattr(state, "action", None)
+    return action if isinstance(action, str) else None
 
 
 def _control_state(controller: Any) -> str | None:

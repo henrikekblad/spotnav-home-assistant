@@ -14,8 +14,10 @@ It shows what the site diagnostics already carry, cut to what a card draws:
 * **`house`**, **`sun`**, **`battery`**: the last week's review of each (mean absolute error and how often the
   forecast was below the outcome), and the battery plan's money side by side: the plan (the site's mode), the
   battery's own way (its optimiser, or whatever it did) and plain self-consumption, over the reviewed days, and the
-  same days against their perfect plans in hindsight (`review.perfect`, `site/perfect_view.py`). `sun` is
-  `None` on a site without a solar forecast, `battery` on a site without a battery.
+  same days against their perfect plans in hindsight (`review.perfect`, `site/perfect_view.py`). `battery.now` is
+  what the battery does now, for the card's header: `action`, the action SpotNav's control runs (`None` when it runs
+  none: the battery's own self-consumption), and `power_kw`, its measured power (+ charging). `sun` is `None` on a
+  site without a solar forecast, `battery` on a site without a battery.
 * **`today`**: today so far, split as the battery's own app splits a day (sold, arbitrage, bought) with the mode in
   force, from the stored energy's running value (`battery/stored_value.py`); **`flow`**: today's energy from sources (sun, battery, grid) to uses
   (battery, load, grid); **`energy_flow`**: today so far as a Sankey diagram's nodes and links, from the
@@ -220,6 +222,10 @@ class BatteryInputs:
     #: Whether SpotNav controls the battery (`BatteryControl.state`: `off`, `shadow_only`, `verifying`, `waiting`,
     #: `on` or `failed`), so the card says "Test" only while it does not; `None` where the control is not read.
     control: str | None = None
+    #: What the battery does now, for the card's header: the action SpotNav's control runs (`battery/executor.py`'s
+    #: `ExecState.action` while active; `None` when it runs none) and the battery's measured power (kW, + charging).
+    action_now: str | None = None
+    power_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -589,6 +595,7 @@ def _battery_block(battery: BatteryInputs, log: ForecastLog) -> dict[str, Any]:
         "review": review,
         "soc_review": _score(log.last_week(KIND_BATTERY)),
         "estimates": sorted(set(battery.estimates)),
+        "now": {"action": battery.action_now, "power_kw": _round(battery.power_kw, 2)},
     }
 
 

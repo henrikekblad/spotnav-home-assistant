@@ -359,3 +359,19 @@ def test_control_state_says_whether_spotnav_controls_the_battery() -> None:
         raise RuntimeError("unreadable")
 
     assert _control_state(SimpleNamespace(battery_control=SimpleNamespace(state=broken))) is None
+
+
+def test_action_now_is_the_action_the_battery_control_runs() -> None:
+    """The house answer's `battery.now.action`: the executor's action while it is active, `None` otherwise."""
+    from custom_components.spotnav.api.house import _action_now
+
+    def control(phase: str, action: str | None) -> SimpleNamespace:
+        return SimpleNamespace(battery_control=SimpleNamespace(executor=SimpleNamespace(state=SimpleNamespace(phase=phase, action=action))))
+
+    assert _action_now(SimpleNamespace()) is None
+    assert _action_now(SimpleNamespace(battery_control=SimpleNamespace(executor=None))) is None
+    assert _action_now(control("active", "grid_charge")) == "grid_charge"
+    assert _action_now(control("active", "hold")) == "hold"
+    # Handing back, blocked or idle: SpotNav runs nothing, whatever it ran last.
+    for phase in ("idle", "restoring", "blocked"):
+        assert _action_now(control(phase, "grid_charge")) is None

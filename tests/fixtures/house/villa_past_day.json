@@ -28,6 +28,10 @@
         "reviewed_saving": null
       }
     },
+    "now": {
+      "action": null,
+      "power_kw": -0.62
+    },
     "reason": null,
     "review": {
       "battery_saving": 8030.0,
