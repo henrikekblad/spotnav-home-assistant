@@ -3,7 +3,8 @@
 * The charger's wiring is the site's phase wiring for the charger (`CONF_PHASE_WIRING`), else the
   charger's own answer (`CONF_CHARGER_PHASES`, what a charger in no site holds), else three.
 * The vehicle is the one the charger plans for (`vehicle_properties.resolved_vehicle_id`); its onboard
-  charger is 1 or 3 phases, three until told. With no vehicle the wiring alone decides.
+  charger is 1 or 3 phases, three until told. With no vehicle the wiring alone decides, and so it does at a DC
+  charger (`dc_charger`), which feeds the battery past the car's onboard charger.
 
 What charges show is learned here too (`PhaseObserver`, `async_record_charge_phases`): three phases confirm
 the wiring, one phase on three-phase wiring twice running for the same vehicle becomes a suggestion about
@@ -23,7 +24,8 @@ from typing import Final
 
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_CHARGER_PHASES
+from ..const import CONF_CHARGER_PHASES, CONF_CHARGER_PLATFORM
+from ..execution.charger_profiles import profile_for
 from ..runtime import domain_data
 from ..vehicles import vehicle_properties
 from ..vehicles.discovery_decisions import DECISION_DOMAIN_PHASE_OBSERVATIONS
@@ -66,6 +68,13 @@ def charger_wiring(hass: HomeAssistant, entry_id: str) -> int | None:
     return None if entry is None else charger_phases_from_entry(entry.data)
 
 
+def dc_charger(hass: HomeAssistant, entry_id: str) -> bool:
+    """Whether the charger is a DC charger, given a power over three phases (`PlatformProfile.power_controlled`)."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    profile = None if entry is None else profile_for(entry.data.get(CONF_CHARGER_PLATFORM))
+    return profile is not None and profile.power_controlled
+
+
 def charging_phases(
     hass: HomeAssistant, entry_id: str, *, vehicle_id: str | None = None, with_vehicle: bool = True
 ) -> ChargingPhases:
@@ -74,7 +83,8 @@ def charging_phases(
     """
     wiring = charger_wiring(hass, entry_id) or DEFAULT_WIRING_PHASES
     vehicle: int | None = None
-    if with_vehicle:
+    if with_vehicle and not dc_charger(hass, entry_id):
+        # A DC charger feeds the battery past the car's onboard charger: its phases say nothing about the charge.
         resolved = (
             vehicle_properties.resolved_vehicle_id(hass, entry_id)
             if vehicle_id is None

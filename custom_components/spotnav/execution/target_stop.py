@@ -324,6 +324,52 @@ def charger_soc_entity_id(hass: HomeAssistant, charge_control_entity_id: object)
     return candidates[0] if len(candidates) == 1 else None
 
 
+def charger_soc_live(hass: HomeAssistant, charger_data: dict[str, Any]) -> bool | None:
+    """Whether the charger's own reading of the car's level is live now: `None` for a charger whose reading always
+    is, else whether its status sensor reads one of its profile's `soc_live_values` (an unreadable or missing
+    status is not a session)."""
+    from ..const import CONF_CHARGER_PLATFORM, CONF_CHARGING_STATE  # noqa: PLC0415 - kept beside its only use
+    from .charger_profiles import profile_for  # noqa: PLC0415
+
+    profile = profile_for(charger_data.get(CONF_CHARGER_PLATFORM))
+    if profile is None or not profile.soc_live_values:
+        return None
+    charging_state = charger_data.get(CONF_CHARGING_STATE)
+    entity_id = charging_state.get("entity_id") if isinstance(charging_state, dict) else None
+    state = hass.states.get(entity_id) if isinstance(entity_id, str) and entity_id else None
+    if state is None or not isinstance(state.state, str):
+        return False
+    return state.state.strip().lower() in profile.soc_live_values
+
+
+def choose_soc_reading(
+    charger: SocReading | None, vehicle: SocReading | None, *, charger_live: bool | None
+) -> SocReading | None:
+    """Which reading a plan's target is planned and enforced against. Pure.
+
+    `charger_live` is `None` for a charger whose reading is live whenever it has one: it is preferred while it has a
+    value, the car's reading is the fallback (as ever). A charger that reads the car's level only during a session
+    (Sigenergy's DC charger, `PlatformProfile.soc_live_values`) says whether a session runs now:
+
+    * a car integration's reading is preferred; during a session only while it is fresh, since the charger's is live;
+    * during a session with no fresh car reading, the charger's reading, when it is above 0 %;
+    * otherwise the car's reading as it is, else the charger's with no value: unknown, never its 0 %.
+    """
+    if charger_live is None:
+        if charger is not None and charger.soc_percent is not None:
+            return charger
+        return vehicle
+    vehicle_usable = vehicle is not None and vehicle.soc_percent is not None
+    vehicle_fresh = vehicle_usable and vehicle.age_s is not None and vehicle.age_s <= SOC_FRESH_MAX_AGE_S
+    if vehicle_usable and (vehicle_fresh or not charger_live):
+        return vehicle
+    if charger_live and charger is not None and charger.soc_percent is not None and charger.soc_percent > 0:
+        return charger
+    if vehicle is not None:
+        return vehicle
+    return None if charger is None else replace(charger, soc_percent=None)
+
+
 def _reading_for_entity(
     hass: HomeAssistant,
     entity_id: str | None,
