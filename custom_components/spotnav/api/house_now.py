@@ -72,6 +72,35 @@ def summed_kw(hass: HomeAssistant, entity_ids: Sequence[str]) -> float | None:
     return None if not values or any(value is None for value in values) else sum(values)  # type: ignore[misc]
 
 
+def car_plugged(hass: HomeAssistant, charger_ids: Sequence[str]) -> tuple[bool | None, float | None]:
+    """Whether a car is plugged into any of the chargers (`None` when none can be read) and the level of the first
+    plugged-in car whose plan's vehicle can be read."""
+    from ..execution.charger_connection import DISCONNECTED  # noqa: PLC0415 - kept beside its only use
+    from ..runtime import controller_for  # noqa: PLC0415 - kept beside its only use
+
+    plugged: bool | None = None
+    soc: float | None = None
+    for charger_id in charger_ids:
+        controller = controller_for(hass, charger_id)
+        if controller is None:
+            continue
+        try:
+            state = controller.connection()[0]
+        except Exception:  # noqa: BLE001 - a charger that cannot be read says nothing
+            continue
+        if state is None:
+            continue
+        connected = state != DISCONNECTED
+        plugged = bool(plugged) or connected
+        if connected and soc is None:
+            try:
+                reading = controller.target_reading()
+            except Exception:  # noqa: BLE001 - without a reading the level stays unknown
+                reading = None
+            soc = None if reading is None else reading.soc_percent
+    return plugged, soc
+
+
 def _recent(periods: Sequence[Any], role: str, now: datetime) -> float | None:
     """The last period's mean power for `role` (`solar` or `heat`), `None` when it is too old or has none."""
     if not periods:
@@ -91,6 +120,7 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
     grid_w = site_net_grid_w(controller)
     chargers = list(controller.config.get(CONF_CHARGER_ENTRY_IDS) or [])
     car_w = site_car_w(hass, controller, idle_unread_as_zero=True) if chargers else None
+    plugged, car_soc = car_plugged(hass, chargers)
     facts = controller.battery_shadow.facts
     has_battery = facts.battery_entity_id is not None
     prefs = await async_energy_prefs(hass)
@@ -137,6 +167,8 @@ async def async_house_now(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             has_battery=has_battery,
             has_car=bool(chargers),
             has_heat=has_heat,
+            car_connected=plugged,
+            car_soc_pct=car_soc,
         )
     )
 

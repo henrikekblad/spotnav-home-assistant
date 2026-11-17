@@ -2,15 +2,17 @@
 
 Pure: the shell (`api/house_now.py`) reads each figure and hands it over; nothing is read or written here.
 
-    {api_version: 1, site_id, at, grid_kw, sun_kw, sun_from, battery_kw, soc_pct, car_kw, heat_kw, heat_from,
-     house_kw, has: {sun, battery, car, heat}}
+    {api_version: 1, site_id, at, grid_kw, sun_kw, sun_from, battery_kw, soc_pct, car_kw, car_connected, car_soc_pct,
+     heat_kw, heat_from, house_kw, has: {sun, battery, car, heat}}
 
 * `grid_kw`: the site's net grid power now (+ import, − export), as load balancing and solar read it; `null` unread.
 * `sun_kw`: the sun's production now: the Energy dashboard's solar power sensors summed (`sun_from: "power"`), else
   the mean of the last period the energy flow read from the recorder's 5-minute statistics (`"recent"`, at most
   `RECENT_MAX` old); `null` (and `sun_from` `null`) without either, or without the sun (`has.sun` false).
 * `battery_kw`: the home battery's power (+ charging, − discharging), `soc_pct` its level; `null` unread.
-* `car_kw`: what the site's chargers draw now; `null` unread or without chargers.
+* `car_kw`: what the site's chargers draw now; `null` unread or without chargers. `car_connected`: whether a car is
+  plugged into any of them (`null` without chargers or unread); `car_soc_pct` the plugged-in car's level where its
+  plan's vehicle can be read (the first charger's with one).
 * `heat_kw`: the heat pump's meter where it is a power sensor (`heat_from: "power"`), else the last period read
   (`"recent"`); part of the house, never added to it.
 * `house_kw`: the whole house (the heat included): the grid, the sun and the battery's discharge less the battery's
@@ -36,6 +38,8 @@ NOW_KEYS: Final = (
     "battery_kw",
     "soc_pct",
     "car_kw",
+    "car_connected",
+    "car_soc_pct",
     "heat_kw",
     "heat_from",
     "house_kw",
@@ -63,6 +67,8 @@ class HouseNowInputs:
     has_battery: bool
     has_car: bool
     has_heat: bool
+    car_connected: bool | None = None
+    car_soc_pct: float | None = None
 
 
 def recent_kw(kwh: float | None, minutes: int, end: datetime, now: datetime) -> float | None:
@@ -110,6 +116,8 @@ def house_now(inputs: HouseNowInputs) -> dict[str, Any]:
         "battery_kw": _r(inputs.battery_kw if inputs.has_battery else None),
         "soc_pct": _r(inputs.soc_pct if inputs.has_battery else None, 1),
         "car_kw": _r(None if not inputs.has_car or inputs.car_kw is None else max(0.0, inputs.car_kw)),
+        "car_connected": inputs.car_connected if inputs.has_car else None,
+        "car_soc_pct": _r(inputs.car_soc_pct if inputs.has_car and inputs.car_connected else None, 1),
         "heat_kw": _r(None if heat is None else max(0.0, heat)),
         "heat_from": None if heat is None else inputs.heat_from,
         "house_kw": _r(house_kw(inputs)),

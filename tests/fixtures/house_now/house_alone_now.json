@@ -2,7 +2,9 @@
   "api_version": 1,
   "at": "2026-11-16T16:20:00+00:00",
   "battery_kw": null,
+  "car_connected": null,
   "car_kw": null,
+  "car_soc_pct": null,
   "grid_kw": 1.8,
   "has": {
     "battery": false,

@@ -53,6 +53,8 @@ def villa(**extra: Any) -> HouseNowInputs:
         has_battery=True,
         has_car=True,
         has_heat=True,
+        car_connected=True,
+        car_soc_pct=73.0,
     )
     base.update(extra)
     return HouseNowInputs(**base)
@@ -83,6 +85,14 @@ def test_a_part_had_but_unread_leaves_the_house_unread_and_a_part_not_had_is_lef
     assert (alone["sun_kw"], alone["battery_kw"], alone["soc_pct"], alone["car_kw"], alone["heat_kw"]) == (None,) * 5
     # A figure of a part the site does not have is never shown.
     assert house_now(villa(has_sun=False))["sun_kw"] is None and house_now(villa(has_sun=False))["sun_from"] is None
+
+
+def test_the_car_is_plugged_in_with_its_level_and_none_without_chargers() -> None:
+    answer = house_now(villa())
+    assert (answer["car_connected"], answer["car_soc_pct"]) == (True, 73.0)
+    assert house_now(villa(car_connected=False))["car_soc_pct"] is None
+    alone = house_now(villa(has_car=False))
+    assert (alone["car_connected"], alone["car_soc_pct"]) == (None, None)
 
 
 def test_the_last_period_stands_in_only_while_recent() -> None:
@@ -140,6 +150,7 @@ async def test_the_pilot_site_is_answered_and_refused(hass: HomeAssistant, freez
     assert tuple(result) == NOW_KEYS and result["site_id"] == site.entry_id
     assert result["has"] == {"sun": False, "battery": False, "car": True, "heat": False}
     assert result["sun_kw"] is None and result["battery_kw"] is None
+    assert result["car_connected"] in (True, False, None)
     assert (await ask(hass, 2, api_version=1, site_id=site.entry_id))["result"]["site_id"] == site.entry_id
     for index, (request, code) in enumerate(
         [
@@ -158,7 +169,8 @@ async def test_the_pilot_site_is_answered_and_refused(hass: HomeAssistant, freez
 
 def test_contract_fixtures() -> None:
     _fixture("villa_now.json", house_now(villa()))
-    _fixture("villa_export.json", house_now(villa(grid_kw=-2.6, sun_kw=4.8, sun_from="recent", battery_kw=1.2, soc_pct=81.0, car_kw=0.0, heat_kw=0.6)))
+    _fixture("villa_export.json", house_now(villa(grid_kw=-2.6, sun_kw=4.8, sun_from="recent", battery_kw=1.2, soc_pct=81.0, car_kw=0.0, heat_kw=0.6, car_connected=False)))
+    _fixture("villa_car.json", house_now(villa(grid_kw=7.6, sun_kw=0.0, battery_kw=-1.5, car_kw=7.4, heat_kw=0.8)))
     _fixture(
         "house_alone_now.json",
         house_now(
