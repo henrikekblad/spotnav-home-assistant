@@ -246,7 +246,7 @@ describe("the Plan dialog's calendar", () => {
     const label = built.body.querySelector("label[for$='deadline-time']")!;
     expect(controls.hidden).toBe(false);
     expect(controls.querySelector("[data-part='departure-weekdays']")).not.toBeNull();
-    expect(label.textContent).toBe("Avresetid");
+    expect(label.textContent).toBe("Avresa kl.");
     const check = built.body.querySelector<HTMLInputElement>("[data-part='departure-calendar-only'] input")!;
     check.checked = true;
     check.dispatchEvent(new Event("change"));
@@ -257,7 +257,7 @@ describe("the Plan dialog's calendar", () => {
     check.checked = false;
     check.dispatchEvent(new Event("change"));
     expect(controls.hidden).toBe(false);
-    expect(label.textContent).toBe("Avresetid");
+    expect(label.textContent).toBe("Avresa kl.");
     expect(built.values().departureDate).toBe("2026-10-03");
   });
 

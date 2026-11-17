@@ -309,7 +309,7 @@ def quarter_hours(
                 whole = False
                 break
             car = _sum(five.car, slots)
-            if car is None and five.car is None and five.car_quarters is not None and quarter in five.car_quarters:
+            if car is None and not five.car and five.car_quarters is not None and quarter in five.car_quarters:
                 car = five.car_quarters[quarter] * len(slots) / 3
             built.append(
                 EnergyHour(

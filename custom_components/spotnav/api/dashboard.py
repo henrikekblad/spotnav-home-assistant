@@ -2156,7 +2156,7 @@ def serialize_dashboard(
         # Additive, and only where there is a calendar to choose or one chosen. An app reads it only with
         # `reads: ["departure_calendar"]` (`api/webhook.py`).
         **({} if capture.departure_calendar is None else {"departure_calendar": capture.departure_calendar}),
-        # Additive, and only where the site has a solar forecast: the sun the price chart draws (`api/sun.py`). An app
+        # Additive, and only where the site can run Sol/Hybrid (or has a solar forecast): the sun the price chart draws (`api/sun.py`). An app
         # reads it only with `reads: ["sun"]` (`api/webhook.py`).
         **({} if capture.sun is None else {"sun": capture.sun}),
     }

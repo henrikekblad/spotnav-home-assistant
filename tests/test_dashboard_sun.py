@@ -94,7 +94,7 @@ def test_the_block_reads_the_sites_corrected_forecast_and_measured_log(monkeypat
 
     made = _hour(6)
     log = SimpleNamespace(hours=lambda kind: {_hour(9): LoggedHour(1.0, made, 0.6)} if kind == KIND_SUN else {})
-    controller = SimpleNamespace(house_forecast=SimpleNamespace(log=log))
+    controller = SimpleNamespace(house_forecast=SimpleNamespace(log=log), config={})
     controller.solar_correction = SimpleNamespace(quarters={_hour(11): 1.234})
     forecast = SimpleNamespace(corrected={_hour(12): 0.8}, raw={_hour(12): 1.4})
     monkeypatch.setattr(dashboard, "site_binding", lambda _hass, _id: SimpleNamespace(entry_id="site"))
@@ -112,4 +112,30 @@ def test_the_block_reads_the_sites_corrected_forecast_and_measured_log(monkeypat
     monkeypatch.setattr(sun, "_sun", lambda _hass, _controller: None)
     assert sun.capture_sun(None, "charger", NOW, TZ) is None
     monkeypatch.setattr(dashboard, "site_binding", lambda _hass, _id: None)
+    assert sun.capture_sun(None, "charger", NOW, TZ) is None
+
+
+def test_without_a_forecast_a_solar_capable_site_gets_the_measured_production_only(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.api import dashboard, sun
+    from custom_components.spotnav.const import CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DERIVED
+    from custom_components.spotnav.site.sun_geometry import hour_key
+
+    history = SimpleNamespace(pv={hour_key(_hour(9)): 60, hour_key(_hour(11)): 999, hour_key(_hour(12)): 500})
+    controller = SimpleNamespace(
+        config={CONF_MEASUREMENT_MODE: MEASUREMENT_MODE_DERIVED},
+        solar_shadow=SimpleNamespace(history=history),
+        solar_correction=SimpleNamespace(quarters={_hour(10): 2.0}),
+    )
+    monkeypatch.setattr(dashboard, "site_binding", lambda _hass, _id: SimpleNamespace(entry_id="site"))
+    monkeypatch.setattr(sun, "site_controller_for", lambda _hass, _id: controller)
+    monkeypatch.setattr(sun, "_sun", lambda _hass, _controller: None)
+    block = sun.capture_sun(None, "charger", NOW, TZ)
+    # The running hour (11:00 UTC) and later are never measured hours; nothing is forecast.
+    assert block == {
+        "hours": [{"start": _hour(9).isoformat(), "kw": 0.6, "measured": True}],
+        "quarters": [{"start": _hour(10).isoformat(), "kw": 2.0}],
+    }
+    controller.config = {}
     assert sun.capture_sun(None, "charger", NOW, TZ) is None

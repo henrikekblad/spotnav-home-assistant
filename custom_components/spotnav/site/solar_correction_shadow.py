@@ -59,6 +59,7 @@ from .solar_correction import (
     plateau_ceiling,
     samples_from_log,
 )
+from .solar_capability import site_solar_capable
 from .energy_statistics import async_energy_ids, async_statistics, summed
 from .forecast_log import (
     KIND_SUN,
@@ -290,7 +291,7 @@ class SiteSolarCorrection:
         step = now.astimezone(timezone.utc).replace(minute=now.minute - now.minute % 5, second=0, microsecond=0)
         if step == self._quarters_for or (self._quarters_task is not None and not self._quarters_task.done()):
             return
-        if not self._forecast_entries():
+        if not self._forecast_entries() and not site_solar_capable(self.site.config):
             return
         self._quarters_for = step
         self._quarters_task = self.hass.async_create_background_task(

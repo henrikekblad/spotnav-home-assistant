@@ -222,7 +222,7 @@ describe("the body", () => {
     expect(sources).toContain("Utetemperatur: sensor.nibe_bt1_outdoor_temperature");
     expect(sources).toContain("Solprognos: Forecast.Solar · korrigeringen lär sig, 2 dygn kvar");
     expect(open.textContent).toContain("Batteriet styrs av sin egen optimerare");
-    expect(open.textContent).toContain("Antaget hittills: batteriets lägsta nivå.");
+    expect(open.textContent).toContain("Antaget tills vidare: batteriets lägsta nivå.");
   });
 
   it("words every estimate code the battery's facts can carry, in every language", () => {

@@ -1703,7 +1703,7 @@ export function createCardView(input: CardViewInput): CardView {
       keys.push("graph.legend.proposal");
     }
     if (current.sun !== null) {
-      keys.push("graph.legend.sun");
+      keys.push(current.sun.points.some((point) => !point.measured) ? "graph.legend.sun" : "graph.legend.sunMeasured");
     }
     if (!current.timesAvailable) {
       keys.push("graph.noZone");
@@ -1712,6 +1712,21 @@ export function createCardView(input: CardViewInput): CardView {
       keys.push("graph.legend.selection");
     }
     return keys;
+  }
+
+  // One muted line under the chart naming what the grey marks and the striped window are, only for what is drawn.
+  const chartKey = element(doc, "p", C.chartKey);
+  chartKey.dataset["part"] = "chart-key";
+  function paintChartKey(): void {
+    const parts: string[] = [];
+    if (model.chart.days.some((day) => day.role === "future")) {
+      parts.push(translate(model.language, "graph.key.tomorrow"));
+    }
+    if (model.bands.installed.length > 0 || model.bands.proposal.length > 0) {
+      parts.push(translate(model.language, "graph.key.plan"));
+    }
+    chartKey.textContent = parts.join(" \u00b7 ");
+    chartKey.hidden = parts.length === 0 || collapsed;
   }
 
   function paintLegend(selected: ChartMark | null): void {
@@ -1954,6 +1969,7 @@ export function createCardView(input: CardViewInput): CardView {
     hint.hidden = collapsed;
     legend.hidden = collapsed;
     strip.hidden = !collapsed;
+    paintChartKey();
   }
   function toggleChart(): void {
     collapsed = !collapsed;
@@ -1973,7 +1989,7 @@ export function createCardView(input: CardViewInput): CardView {
   applyCollapsed();
   paintStrip();
 
-  graph.append(summary, viewport, readout, strip, hint, legend);
+  graph.append(summary, viewport, readout, chartKey, strip, hint, legend);
   card.append(graph);
 
   interaction = createChartInteraction({
@@ -2900,7 +2916,7 @@ export function createCardView(input: CardViewInput): CardView {
   /** The sun this view shows as chosen: the model's, then whatever was chosen here since. */
   let chartSunChoice: boolean = model.sunOn;
 
-  /** Display's "Solprognos": whether the price chart draws the sun. Offered only where the site has a sun source. */
+  /** Display's "Sol": whether the price chart draws the sun. Offered only where the site has a sun source. */
   function chartSunRow(): HTMLElement {
     const label = translate(model.language, "display.sun");
     const onOff = (on: boolean): string => translate(model.language, on ? "settings.value.on" : "settings.value.off");

@@ -1,7 +1,10 @@
 """The charger card's sun: the dashboard's additive `sun` block, for the price chart.
 
-The block is present only where the site has a solar forecast (the same source the house card's sun series reads,
-`api/house.py`), else absent. `hours` holds the sun's mean power per local hour of today and tomorrow, in kW
+The block is present where the site can run Sol/Hybrid (`site_solar_capable`: PV power or export readable), else
+absent. Where the site has a solar forecast (the same source the house card's sun series reads, `api/house.py`) it
+carries the forecast beyond now. Without one it holds the measured production only: the hours from the solar shadow's
+history (the Energy dashboard's statistics, which do not depend on the forecast log) and the quarters. SpotNav's own
+solar forecast is shadow and never drawn here. `hours` holds the sun's mean power per local hour of today and tomorrow, in kW
 (a kWh over an hour is its mean kW): before the running hour the measured production (the forecast log's outcomes,
 filled from the Energy dashboard's statistics, `measured` true), from the running hour on the corrected forecast the
 plan uses (`measured` false). An hour with no figure is left out, never sent as zero. The forecast reaches only
@@ -22,6 +25,8 @@ from .. import time_zones
 from ..planning.demand_charge import hour_start
 from ..runtime import site_controller_for
 from ..site.house_view import day_hour_starts
+from ..site.solar_capability import site_solar_capable
+from ..site.sun_geometry import key_start
 from .house import _production, _sun
 
 SUN_KEYS: Final = ("hours", "quarters")
@@ -59,8 +64,14 @@ def sun_block_from(
     return {"hours": hours, "quarters": recent[-MAX_QUARTERS:]}
 
 
+def _measured_hours(controller: Any) -> dict[datetime, float]:
+    """The completed hours' production (kWh by UTC hour start) the solar shadow read from the Energy dashboard."""
+    return {key_start(key): value / 100.0 for key, value in controller.solar_shadow.history.pv.items()}
+
+
 def capture_sun(hass: HomeAssistant, charger_entry_id: str, now: datetime, tz: str | None) -> dict[str, Any] | None:
-    """The `sun` block of the site this charger belongs to, or `None` without a market or a solar forecast."""
+    """The `sun` block of the site this charger belongs to, or `None` without a market or where the site cannot run
+    Sol/Hybrid and has no solar forecast."""
     from .dashboard import site_binding
 
     if tz is None:
@@ -70,6 +81,9 @@ def capture_sun(hass: HomeAssistant, charger_entry_id: str, now: datetime, tz: s
     if controller is None:
         return None
     sun = _sun(hass, controller)
-    if sun is None:
+    quarters = controller.solar_correction.quarters
+    if sun is not None:
+        return sun_block_from(now, tz, _production(controller), sun.corrected, quarters)
+    if not site_solar_capable(controller.config):
         return None
-    return sun_block_from(now, tz, _production(controller), sun.corrected, controller.solar_correction.quarters)
+    return sun_block_from(now, tz, _measured_hours(controller), {}, quarters)

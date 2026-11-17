@@ -189,7 +189,7 @@ export const HOUSE_STYLES = `
     font-variant-numeric: tabular-nums;
   }
   .${H.flowChart} .spotnav-house-flow-name {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
   }
   .${H.flowChart} .spotnav-house-flow-value {
@@ -201,7 +201,7 @@ export const HOUSE_STYLES = `
     font-weight: 700;
   }
   .${H.flowChart} .spotnav-house-flow-share {
-    font-size: 11px;
+    font-size: 12px;
   }
   /* The house block opens what the house used: a pointer, and a ring in the focus colour from the keyboard. */
   .${H.flowChart} .spotnav-house-flow-action {

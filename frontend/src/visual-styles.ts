@@ -248,6 +248,7 @@ export const VISUAL_CLASSES = {
   readout: "spotnav-readout",
   readoutHint: "spotnav-readout-hint",
   legend: "spotnav-legend",
+  chartKey: "spotnav-chart-key",
   summary: "spotnav-summary",
   figures: "spotnav-figures",
   figure: "spotnav-figure",
@@ -1112,6 +1113,8 @@ export const VISUAL_STYLES = `
     background: var(--ha-card-background, var(--card-background-color, #ffffff));
     color: var(--primary-text-color, #212121);
     border-radius: var(--ha-card-border-radius, 12px);
+    border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color, transparent));
+    box-shadow: var(--ha-card-box-shadow, none);
     font-size: 0.95rem;
     line-height: 1.35;
   }
@@ -1907,6 +1910,11 @@ export const VISUAL_STYLES = `
     width: 0;
     margin-left: -1px;
     border-left: 2px solid ${focusLineColour("now")};
+  }
+  .${VISUAL_CLASSES.chartKey} {
+    margin: 2px 0 0;
+    font-size: 0.78rem;
+    color: var(--secondary-text-color, #727272);
   }
   .${VISUAL_CLASSES.stripLabels} {
     position: relative;

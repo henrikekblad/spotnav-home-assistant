@@ -247,7 +247,7 @@ export const HEAT_STYLES = `
   .${X.dayMark}[data-mark="car"] { fill: var(--spotnav-flow-car-colour, #f08c3a); }
   .${X.dayAxis} {
     fill: var(--secondary-text-color, #727272);
-    font-size: 10px;
+    font-size: 12px;
   }
   .${X.dayBaseline} {
     stroke: var(--divider-color, #e0e0e0);

@@ -104,7 +104,7 @@ export const LOADS_STYLES = `
   }
   .${L.centreSmall} {
     fill: var(--secondary-text-color, #727272);
-    font-size: 11px;
+    font-size: 12px;
   }
   .${L.list} {
     flex: 1 1 200px;
