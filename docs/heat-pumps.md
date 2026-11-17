@@ -32,6 +32,25 @@ When the pump runs its own price control (NIBE Smart Price Adaption, CTC's Smart
 EffektGuard is set up, the diagnostics mark the pump as **watch only**: a later SpotNav heat control will leave such
 a pump to it and only watch.
 
+## The heat's figures: the heat pump and the zones
+
+The heat pump's meter (found by itself, or chosen in the site settings) is the heat card's own measure: its
+hot-water split and runs, the pump state, the degree-day figure and its trend, and SpotNav's control all read it alone.
+
+Electricity used for heat elsewhere counts as heat too: the chosen **zones** (electric floor heating, an air-to-air
+heat pump) with a meter of their own on the thermostat's device (an energy sensor, else a power sensor; no setting),
+and any Energy dashboard meter moved to Heat in the house card's pie. Each is counted once (a zone whose sensor is the
+heat pump's meter, or nested inside it, is left out), and a zone without a meter is listed in the diagnostics only.
+
+* **Today** on the heat card: *heat* holds the zones (and says how much as *of which zones*); *hot water* stays the
+  heat pump meter's split, and the cost counts the zones at each period's price.
+* **The heat history**: each bar, the total and the cost hold the zones in the hours the heat pump's meter has, with
+  *Of which zones* beside the total. The zones count from the day their meter has readings, so the use takes a step
+  up there; the history says from which day. The **degree-day** figure and its trend stay the heat pump's alone, so a
+  zone added does not look like a worse house.
+* **The house card**: its flow's Heat is the same sum, with its own pie where it holds more than one source
+  ([house card](house-card.md#heat-in-the-flow)).
+
 ## Indoor sensors and their offsets
 
 In the heat settings (the settings popover's **Heating** section) you choose one or more indoor temperature sensors.

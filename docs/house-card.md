@@ -83,7 +83,23 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
     "too small a difference to compare". A week or a month sums the savings over its whole days first and then
     divides, so a charge on one day and the discharge it pays for on the next even out.
 * **Energy today so far**: a diagram of where today's energy came from and where it went (see Details for how it is
-  counted), and the heat pump's share of the house where its meter is known.
+  counted), and the heat's share of the house where it is known.
+
+### Heat in the flow
+
+**Heat** is the heat pump's meter and the heating zones' own meters together, each counted once; **House** is what is
+left, so the totals still add up. A heating zone is a thermostat chosen under Settings → Heating → Zones: electric
+floor heating or an air-to-air heat pump. There is no setting for its meter: SpotNav reads an energy sensor on the
+thermostat's own device in Home Assistant, else its power sensor. A zone with neither is left out of Heat (the
+diagnostics, `heat.meter.zones`, list it and why). Nothing is counted twice: a zone whose sensor is the heat pump's
+meter, sits on the heat pump meter's device, or is nested inside the heat pump's meter or another zone on the Energy
+dashboard, is left out, and so is a second thermostat on a device already counted.
+
+Where Heat holds more than one source, tap **Heat** (or focus it and press Enter) for its own pie: the heat pump and each
+zone by name, with kWh and %. The same pie opens from the history's flow for a day, month or year.
+
+The hour chart's heat (and its forecast) and *Heat today* hold the zones too, from the hour they were added. A zone
+added today makes a step in the heat forecast's review, which settles within a week.
 
 ### What the house used
 
@@ -93,8 +109,18 @@ the history the day, month or year shown:
 * each meter of Home Assistant's Energy dashboard under **Individual devices**, by its name there, and **Other**: the
   house less those meters. A meter under 3 % of the house goes into Other and is named under the pie. There is no
   setting: SpotNav reads the meters the Energy dashboard already has.
-* The car and the heat pump are not in it: the flow shows them on their own, so a charger's meter and the heat pump's
-  meter SpotNav uses are left out, and a device nested in another one counts once, in its parent.
+* The car and the heat are not in it: the flow shows them on their own. SpotNav sorts these meters out by itself and
+  counts each only there: a meter whose sensor is a charger's, the heat pump meter's or a heating zone's, or that sits on
+  the same Home Assistant device as a charger or a heating zone. (The heat pump's meter is told by its sensor alone: a
+  clamp meter with several channels has the heat pump on one and other circuits, such as the stove, on the others.) A
+  device nested in another one counts once, in its parent.
+* Where the meters add up to more than the house (a device meter that also measures the car or the heat, or meters that
+  disagree), Other is shown as 0 and a line says by how much.
+* An hour a meter cannot have used (more than the whole house used that hour, or more than the main fuse allows) is
+  not counted: it is a broken statistic, typically a plug whose total drops and comes back, which Home Assistant counts
+  as new energy each time. The meter is shown with its other hours, and one line names it and how many hours were left
+  out, with where to repair it: Developer tools → Statistics. A meter with no believable hour is left out of the pie
+  and the line says so. The same holds for the heat pie's sources.
 * Where the meters add up to more than the house (a device meter that also measures the car or the heat, or meters that
   disagree), Other is shown as 0 and a line says by how much.
 * With no individual devices the pie is Other alone, with a line on where to add them: Settings → Dashboards → Energy →
@@ -102,6 +128,22 @@ the history the day, month or year shown:
 
 The figures come from the recorder's statistics, by the hour and for today's running hour by five minutes, and are read
 only when the pie is opened.
+
+#### Where a meter belongs
+
+Some meters SpotNav cannot tie to a load: a Shelly in the fuse box on the floor heating's circuit, a plug in front of
+the car's charger, or a meter that sits inside another one. An administrator taps its slice (or its name, with the
+keyboard) to choose **Belongs to**: **House** (the default), **Heat**, **Car** or **Don't count**.
+
+* **Heat**: the meter is counted in Heat (the flow's block, the hour chart and the heat pie, marked "changed by you")
+  and taken out of the house pie, so House drops by as much.
+* **Car**: the meter is taken out of the house pie as already counted with the car. The car's figure stays the
+  chargers' own, so nothing is counted twice.
+* **Don't count**: the meter is counted nowhere, for a meter already inside another one.
+
+A meter moved out of the house is listed under the house pie with where it went and a button to bring it back. The
+choice is saved per meter in the site's settings (`meter_belongs`); a household member sees the pies without the
+choice. Only meters SpotNav did not sort out by itself can be moved.
 
 ### Details
 
