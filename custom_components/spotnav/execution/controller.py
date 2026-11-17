@@ -258,10 +258,12 @@ OWED_GIVE_UP_S: Final = 900.0
 #: not act on (Easee's `awaiting_start`). Never while the charger's own scheduler holds the charge, while its enable
 #: switch is off, once it says the car finished, or while its charge control is already on (no stop-and-start kick).
 START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
-#: A charge load balancing stopped in an open window of the plan is looked at again this long after the stop
-#: (`_async_unheld_check_callback`): off by that stop, with no pause on record for the regulator to resume and nothing
-#: else holding it, the window's start is decided again (its retries, `START_RETRY_AFTER_S`). While a command of ours
-#: is still on its way it is looked at again, at most `UNHELD_CHECK_TRIES` times.
+#: A charge load balancing paused in an open window of the plan is looked at again this long after the pause
+#: (`_async_unheld_check_callback`): off by that pause, with no pause on record for the regulator to resume and nothing
+#: else holding it, the window's start is decided again (its retries, `START_RETRY_AFTER_S`), at most once per window.
+#: While a command of ours is still on its way it is looked at again, at most `UNHELD_CHECK_TRIES` times; a charger
+#: still reading on is looked at once more. Never after a safety stop: a plan's charge it stopped is held back on
+#: purpose, so a fuse that keeps needing the stop never cycles the charger.
 UNHELD_CHECK_S: Final = 90.0
 UNHELD_CHECK_TRIES: Final = 3
 #: Under a person's Stop, a charge the charger begins by itself is stopped at most once per this many
@@ -852,6 +854,10 @@ class ChargingController:
         # many times it found a command of ours still on its way. In memory only.
         self._unheld_check_cancel: Callable[[], None] | None = None
         self._unheld_check_tries = 0
+        # Whether the look found the charger still reading on and looked once more; and the end of the window whose
+        # start it decided again (once per window). In memory only.
+        self._unheld_check_relooked = False
+        self._unheld_restart_window_end: datetime | None = None
         # A person's Stop as an older release stored it (`person_stopped`), read once at the restore for
         # the execution boundary to take over as its manual pause (`take_legacy_person_stop`).
         self._legacy_person_stopped = False
@@ -1810,6 +1816,7 @@ class ChargingController:
             self._end_target_stop(LAPSE_UNPLUGGED)
             # Nothing is started again for a car that is gone.
             self._cancel_start_retry()
+            self._cancel_unheld_check()
             self._end_estimate_check()
         if connected is False or previous is False:
             self._session_generation += 1
@@ -4357,9 +4364,13 @@ class ChargingController:
                     self._runner.end(token, pause, outcome=outcome)
                 # Saved soon once decided: the core's session, and today's `balancing_pause` key derived from it.
                 self._save_memory_soon()
-                # Looked at again later: a charge this stopped in an open window is either held back for the
-                # regulator's resume or started again by its window.
-                self._arm_unheld_check()
+                # Looked at again later: a charge this paused in an open window is either held back for the
+                # regulator's resume or started again by its window. Never after a safety stop, which the core
+                # holds nothing back for on purpose: starting it again would cycle the charger against the fuse.
+                if code == "pause":
+                    self._arm_unheld_check()
+                else:
+                    self._cancel_unheld_check()
                 stop_sent = self._stop_sent_at is not None and self._stop_sent_at != stop_sent_before
         except ChargingExecutionError as err:
             if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
@@ -4941,6 +4952,7 @@ class ChargingController:
         self._unheld_check_cancel = None
         if reset:
             self._unheld_check_tries = 0
+            self._unheld_check_relooked = False
         if cancel is not None:
             cancel()
 
@@ -4974,7 +4986,7 @@ class ChargingController:
         would wait for the next window's start, with room or without (the night of 2026-11-17). The window's start is
         decided again instead, as its retry decides it (`_async_retry_window_start`: every reason not to send it
         holds, and a start with no room for the charger's minimum is held back as the balancing pause the regulator
-        resumes). One retry sequence, so at most `START_RETRY_AFTER_S` starts."""
+        resumes). One retry sequence per window, so at most `START_RETRY_AFTER_S` starts in it."""
         self._unheld_check_cancel = None
         unheld = self._window_charge_unheld()
         if unheld is None:
@@ -4984,7 +4996,19 @@ class ChargingController:
             return
         self._unheld_check_tries = 0
         if not unheld:
+            if self._own_stop and self._control_observation is True and not self._unheld_check_relooked:
+                # A slow charger still reads on after our pause: looked at once more.
+                self._unheld_check_relooked = True
+                self._arm_unheld_check(again=True)
             return
+        window_end = self._open_window_end()
+        if window_end == self._unheld_restart_window_end:
+            # Once per window: a charge that keeps being stopped waits for the regulator or the next window.
+            _LOGGER.debug(
+                "SpotNav charger %s: the window's start was already decided again once; not again", self.entry_id
+            )
+            return
+        self._unheld_restart_window_end = window_end
         _LOGGER.warning(
             "SpotNav charger %s: load balancing stopped the plan's charge in an open window and nothing holds it "
             "back; the window's start is decided again",
@@ -6350,6 +6374,7 @@ class ChargingController:
         takes the charge over at this boundary (`_successor_continues`).
         """
         self._cancel_start_retry()
+        self._cancel_unheld_check()
         if self._end_window_guard is not None and self._end_window_guard():
             _LOGGER.debug(
                 "%s charger %s: window ended with sun available, handing off to solar control",
@@ -6419,6 +6444,7 @@ class ChargingController:
         (`_successor_continues`).
         """
         self._cancel_start_retry()
+        self._cancel_unheld_check()
         if self._end_window_guard is not None and self._end_window_guard():
             _LOGGER.debug(
                 "%s charger %s: final window ended with sun available, handing off to solar control",
