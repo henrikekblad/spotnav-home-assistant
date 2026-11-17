@@ -149,6 +149,12 @@
       ],
       "tone": "normal"
     },
+    "battery_size_learned": {
+      "params": [
+        "kwh"
+      ],
+      "tone": "normal"
+    },
     "buying_before_publication": {
       "params": [
         "kwh"

@@ -487,6 +487,7 @@
         "reading": null
       }
     },
+    "learned_capacity_kwh": null,
     "max_percent": null,
     "min_percent": null,
     "name": "Niro",

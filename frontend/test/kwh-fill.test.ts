@@ -346,7 +346,7 @@ describe("the kWh slider without a room, or against an older backend", () => {
 
 describe("the Fill status lines", () => {
   const NOW = Date.parse("2026-09-22T08:00:00Z");
-  const format = (language: "sv" | "en" | "nb" | "da" | "fi") =>
+  const format = (language: "sv" | "en" | "nb" | "da" | "fi" | "de" | "nl" | "fr" | "es") =>
     ({ language, timeZone: "Europe/Stockholm", unit: "öre", currency: "SEK", majorUnit: "kr" }) as const;
   const block = (...lines: Array<ReturnType<typeof statusLine>>): Status =>
     ({ tone: "notice", lines }) as unknown as Status;
@@ -374,10 +374,26 @@ describe("the Fill status lines", () => {
     ]);
   });
 
+  it("say the battery size is learned, as a fact", () => {
+    const learned = block(
+      statusLine("auto_installed", { start: "2026-09-22T22:00:00+00:00" }),
+      statusLine("filling_to_limit", { kwh: 74 }),
+      statusLine("battery_size_learned", { kwh: 81 }),
+    );
+    expect(statusText(learned, format("en"), NOW)).toContain("The battery size is learned: about 81 kWh.");
+    expect(statusText(learned, format("sv"), NOW)).toContain("Batteriets storlek är inlärd: ca 81 kWh.");
+    expect(issuesOf({ ...learned, tone: "normal" }, "en")).toEqual([]);
+  });
+
   it("are worded in every language", () => {
-    const both = block(statusLine("filling_to_limit", { kwh: 9.5 }), statusLine("fill_room_unknown", { kwh: 12 }));
-    for (const language of ["en", "sv", "nb", "da", "fi"] as const) {
+    const both = block(
+      statusLine("filling_to_limit", { kwh: 9.5 }),
+      statusLine("fill_room_unknown", { kwh: 12 }),
+      statusLine("battery_size_learned", { kwh: 75 }),
+    );
+    for (const language of ["en", "sv", "nb", "da", "fi", "de", "nl", "fr", "es"] as const) {
       expect(statusText(both, format(language), NOW)).not.toContain("{kwh}");
+      expect(translate(language, "settings.vehicle.capacityLearned", { kwh: "75" })).toContain("75");
       expect(issuesOf(both, language).map((issue) => issueText(language, issue)).join()).not.toContain("{kwh}");
       expect(translate(language, "settings.energy.fill")).not.toBe("");
     }

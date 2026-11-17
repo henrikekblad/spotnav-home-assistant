@@ -918,6 +918,10 @@ class SocReader:
         self._store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
         self._anchor: SocAnchor | None = None
         self._facts_cache: dict[str, tuple[datetime, float | None, float | None]] = {}
+        # The watched car's other entities (its battery size and charge limit may be among them, with or without a
+        # value): a change of either makes a new plan (`_on_fact_changed`).
+        self._facts_watch_cancel: Callable[[], None] | None = None
+        self._facts_watched: tuple[str, ...] = ()
         self._watch_cancel: Callable[[], None] | None = None
         self._watched: tuple[str, ...] = ()
         self._watch_vehicle: str | None = None
@@ -954,6 +958,7 @@ class SocReader:
     def async_shutdown(self) -> None:
         self._closed = True
         self._drop_watch()
+        self._drop_facts_watch()
         self._drop_arrival()
         self._drop_register_watch()
 
@@ -1021,6 +1026,7 @@ class SocReader:
         vehicle_id, _ = resolve_target_vehicle(
             self._hass, self._awaited_vehicle, charger_vehicle_ids(self._hass, self._entry_id)
         )
+        self._forget_facts(vehicle_id)
         self.ensure_watch(vehicle_id)
         reading = self.read(vehicle_id)
         if reading is not None and reading.soc_percent is not None:
@@ -1038,6 +1044,13 @@ class SocReader:
         planner waits for the car's new level after a charge (`vehicle_update_wait`), and even the same
         value reported again is the answer it waits for."""
         self._notify_next = True
+
+    def _forget_facts(self, vehicle_id: str | None) -> None:
+        """Read the car's battery size and limit again next time (its entities changed, or its level arrived, so a
+        car that was out of discovery may be back), keeping the figures for a car that is still asleep."""
+        cached = self._facts_cache.get(vehicle_id or "")
+        if vehicle_id and cached is not None:
+            self._facts_cache[vehicle_id] = (datetime.min.replace(tzinfo=dt_util.UTC), cached[1], cached[2])
 
     def _vehicle_facts(self, vehicle_id: str | None) -> tuple[float | None, float | None]:
         """`(reported capacity kWh, vehicle ceiling %)` for `vehicle_id`, reused for a few minutes."""
@@ -1174,8 +1187,9 @@ class SocReader:
 
     def _estimate_capacity_kwh(self, vehicle_id: str | None) -> float | None:
         """The battery size the estimate carries a level forward with: the car's own, or, once its wall kWh per
-        percent is learned and trusted, the size that takes that at `CHARGE_EFFICIENCY` (so the estimate, the replan
-        from it and the stop on it count as the need does: `learned_energy.with_learned`)."""
+        percent is learned and trusted (or, without a size, learned at all: `learned_energy.learned_capacity_kwh`),
+        the size that takes that at `CHARGE_EFFICIENCY` (so the estimate, the replan from it and the stop on it count
+        as the need does: `learned_energy.with_learned`)."""
         capacity = self.capacity_kwh(vehicle_id)
         if self._learned_kwh_per_percent is None or not vehicle_id:
             return capacity
@@ -1314,6 +1328,7 @@ class SocReader:
             if entity_id
         )
         self._watch_vehicle = vehicle_id
+        self._watch_facts(vehicle_id, entity_ids)
         if entity_ids == self._watched:
             return
         self._drop_watch()
@@ -1329,8 +1344,52 @@ class SocReader:
         self._watch_cancel = None
         self._watched = ()
 
+    def _watch_facts(self, vehicle_id: str | None, level_entity_ids: tuple[str, ...]) -> None:
+        """Listen to the car's other entities, as the registry lists them (no value needed: a battery size that is
+        unavailable at start-up is still listened to)."""
+        entity_ids: tuple[str, ...] = ()
+        if vehicle_id:
+            entity_ids = tuple(
+                sorted(
+                    entry.entity_id
+                    for entry in er.async_entries_for_device(er.async_get(self._hass), vehicle_id)
+                    if entry.domain in _FACT_DOMAINS and entry.entity_id not in level_entity_ids
+                )
+            )
+        if entity_ids == self._facts_watched:
+            return
+        self._drop_facts_watch()
+        self._facts_watched = entity_ids
+        if entity_ids:
+            self._facts_watch_cancel = async_track_state_change_event(
+                self._hass, list(entity_ids), self._on_fact_changed
+            )
+
+    def _drop_facts_watch(self) -> None:
+        if self._facts_watch_cancel is not None:
+            self._facts_watch_cancel()
+        self._facts_watch_cancel = None
+        self._facts_watched = ()
+
+    @callback
+    def _on_fact_changed(self, event: Event[EventStateChangedData]) -> None:
+        """One of the car's other entities changed its value: when the battery size or the car's limit read from
+        them is not what was read before (one that became known after a plan made without it included), plan
+        again."""
+        if self._closed or not _could_be_fact(event.data):
+            return
+        vehicle_id = self._watch_vehicle
+        cached = self._facts_cache.get(vehicle_id or "")
+        if not vehicle_id or cached is None:
+            return  # nothing read yet, so nothing was planned with it
+        before = (cached[1], cached[2])
+        self._forget_facts(vehicle_id)
+        if self._vehicle_facts(vehicle_id) != before and self._on_reading is not None:
+            self._on_reading()
+
     @callback
     def _on_source_changed(self, event: Event[EventStateChangedData]) -> None:
+        self._forget_facts(self._watch_vehicle)
         self._note_source_state(event)
         reading = self.read(self._watch_vehicle)
         if reading is None or reading.soc_percent is None or reading.estimated:
@@ -1352,6 +1411,26 @@ class SocReader:
         self._last_notified = reading.soc_percent
         if self._on_reading is not None:
             self._on_reading()
+
+
+#: The domains a car's battery size and charge limit are read from (`vehicle_discovery`).
+_FACT_DOMAINS: Final = frozenset({"sensor", "number", "select"})
+#: The units of a battery size or a charge limit: another sensor's change is never one of them.
+_FACT_UNITS: Final = frozenset({"kWh", "Wh", "MWh", "%"})
+
+
+@callback
+def _could_be_fact(event_data: EventStateChangedData) -> bool:
+    """A change of value of an entity that could hold the car's battery size or charge limit."""
+    old, new = event_data["old_state"], event_data["new_state"]
+    if old is not None and new is not None and old.state == new.state:
+        return False  # only attributes moved
+    for state in (new, old):
+        if state is None:
+            continue
+        if state.domain == "select" or state.attributes.get("unit_of_measurement") in _FACT_UNITS:
+            return True
+    return False
 
 
 def _device_sensor_ids(entities: er.EntityRegistry, device_id: str) -> list[str]:
