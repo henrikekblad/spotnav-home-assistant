@@ -234,7 +234,8 @@ class Backoff:
     def failed(self, now: float, result: FetchResult | None = None) -> float:
         """A failure: the wait before the next request (s)."""
         self.failures += 1
-        wait = min(BACKOFF_MAX_S, BACKOFF_FIRST_S * 2 ** (self.failures - 1))
+        # The exponent is clamped: the wait reaches `BACKOFF_MAX_S` long before, and an unbounded power overflows.
+        wait = min(BACKOFF_MAX_S, BACKOFF_FIRST_S * 2.0 ** min(self.failures - 1, 32))
         if result is not None:
             if result.error == ERROR_RATE_LIMITED:
                 wait = max(wait, BACKOFF_RATE_LIMITED_S)

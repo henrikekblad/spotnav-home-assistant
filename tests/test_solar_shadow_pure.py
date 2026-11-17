@@ -212,6 +212,9 @@ def test_the_back_off_doubles_to_its_cap_honours_the_server_and_resets() -> None
     assert backoff.ready(0.0) and backoff.failures == 0
     assert backoff.failed(0.0, FetchResult(error=om.ERROR_RATE_LIMITED)) == om.BACKOFF_RATE_LIMITED_S
     assert backoff.failed(0.0, FetchResult(error=om.ERROR_HTTP, retry_after_s=20000.0)) == 20000.0
+    # Thousands of failures in a row: still the cap, never an overflow.
+    backoff.failures = 5000
+    assert backoff.failed(0.0) == om.BACKOFF_MAX_S
 
 
 # ---------------------------------------------------------------------------------------------- the schedule
