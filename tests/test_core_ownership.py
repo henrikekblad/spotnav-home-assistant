@@ -1718,6 +1718,60 @@ def test_a_balancing_pause_meeting_a_persons_start_in_either_order(
     assert (session.balancing_paused, session.paused_origin) == ((True, paused[0]) if paused else (False, None))
 
 
+def test_a_claim_between_two_pauses_of_one_charge_keeps_it_held_back() -> None:
+    """The night of 2026-11-17, in the order the events were recorded. The plan's charge was paused; the charger
+    reported its charge once more while a second pause of it was on its way (a stop of ours not answered yet,
+    `stop_recent`), which the open window claimed. The claim sends nothing, so it is no start that ends what load
+    balancing holds back: the second pause's result keeps the charge held back, as the plan's, and the claim's task,
+    deciding again with the charger off, claims nothing. The regulator then resumes it as the plan's."""
+    window = {"window_open": True, "in_window": True, "plan_present": True, "plan_auto_owned": True}
+    session, commands = run(PLUGGED.with_changes(owner="plan"), ev.BalancingPause(code="pause", was_on=True))
+    assert commands == (Stop("balancing"),)
+    # 03:00:44.45 the first pause's result.
+    session, _ = run(session, ok("stop", "balancing"))
+    assert (session.balancing_paused, session.paused_origin, session.owner) == (True, "plan", "none")
+    # The second pause is asked for (the charger still reads on), its stop on its way.
+    session, commands = run(session, ev.BalancingPause(code="pause", was_on=True))
+    assert commands == (Stop("balancing"),)
+    # 03:00:44.66 the charger reports its charge once more: the window claims it.
+    session, commands = run(session, on(connected=True, stop_recent=True, owned=False, **window))
+    assert commands == (Start("claim"),)
+    assert [(item.command, item.reason) for item in session.pending] == [("stop", "balancing"), ("start", "claim")]
+    assert session.balancing_paused and session.paused_origin == "plan"
+    # 03:00:45.10 the second pause's result: still that charge, held back.
+    session, _ = run(session, ok("stop", "balancing"))
+    assert (session.balancing_paused, session.paused_origin, session.owner) == (True, "plan", "none")
+    # 03:00:45.107 the claim's task decides again: the charger is off, nothing is claimed.
+    session, commands = run(session, ev.Recheck(what=ev.RECHECK_CLAIM, control_on=False, owned=True, **window))
+    assert commands == (KEEP,)
+    assert session.pending == ()
+    assert (session.balancing_paused, session.paused_origin, session.owner) == (True, "plan", "none")
+    # Room returns: the regulator's resume gives the charge back as the plan's.
+    session, commands = run(session, ev.BalancingResume(charging=False))
+    assert commands == (Start("balancing_resume"),)
+    session, _ = run(session, ok("start", "balancing_resume"))
+    assert (session.balancing_paused, session.owner) == (False, "plan")
+
+
+def test_a_claim_that_went_out_between_two_pauses_keeps_the_charge_held_back() -> None:
+    """The same order with the charger still on when the claim's task decides again, before the second pause's
+    result: the claim makes the charge the plan's, and the pause's result still holds it back."""
+    window = {"window_open": True, "in_window": True, "plan_present": True, "plan_auto_owned": True}
+    session, _ = run(
+        PLUGGED.with_changes(owner="plan"),
+        ev.BalancingPause(code="pause", was_on=True),
+        ok("stop", "balancing"),
+        ev.BalancingPause(code="pause", was_on=True),
+        on(connected=True, stop_recent=True, owned=False, **window),
+    )
+    session, commands = run(session, ev.Recheck(what=ev.RECHECK_CLAIM, control_on=True, **window))
+    assert commands == (Start("claim"),)
+    session, _ = run(session, ok("stop", "balancing"))
+    assert (session.balancing_paused, session.paused_origin) == (True, "plan")
+    session, _ = run(session, ok("start", "claim"))
+    assert (session.balancing_paused, session.paused_origin) == (True, "plan")
+
+
 # ---------------------------------------------------------------------------------------------- the stored owner (step 8)
 
 
