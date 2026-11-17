@@ -95,7 +95,11 @@ def test_the_block_reads_the_sites_corrected_forecast_and_measured_log(monkeypat
     made = _hour(6)
     log = SimpleNamespace(hours=lambda kind: {_hour(9): LoggedHour(1.0, made, 0.6)} if kind == KIND_SUN else {})
     controller = SimpleNamespace(house_forecast=SimpleNamespace(log=log), config={})
-    controller.solar_correction = SimpleNamespace(quarters={_hour(11): 1.234}, observed_max_kwh=10.1, array_kwp=16.65)
+    from custom_components.spotnav.site.sun_geometry import hour_key
+
+    controller.solar_correction = SimpleNamespace(quarters={_hour(11): 1.234}, observed_max_kwh=2.5, array_kwp=16.65)
+    # The stored year holds a far higher hour than the correction's recent window.
+    controller.solar_shadow = SimpleNamespace(history=SimpleNamespace(pv={hour_key(_hour(3)): 1010}))
     forecast = SimpleNamespace(corrected={_hour(12): 0.8}, raw={_hour(12): 1.4})
     monkeypatch.setattr(dashboard, "site_binding", lambda _hass, _id: SimpleNamespace(entry_id="site"))
     monkeypatch.setattr(sun, "site_controller_for", lambda _hass, _id: controller)
@@ -137,8 +141,8 @@ def test_without_a_forecast_a_solar_capable_site_gets_the_measured_production_on
     assert block == {
         "hours": [{"start": _hour(9).isoformat(), "kw": 0.6, "measured": True}],
         "quarters": [{"start": _hour(10).isoformat(), "kw": 2.0}],
-        # Nothing observed yet: the array's size stands in.
-        "peak_kw": 6.0,
+        # The highest hour of the stored history (the correction has observed nothing).
+        "peak_kw": 9.99,
     }
     controller.config = {}
     assert sun.capture_sun(None, "charger", NOW, TZ) is None
@@ -158,3 +162,14 @@ def test_the_block_carries_the_peak_only_where_one_is_known() -> None:
     block = sun_block_from(NOW, TZ, {_hour(9): 0.4}, {}, observed_max_kwh=10.1, array_kwp=16.65)
     assert block[PEAK_KEY] == 10.1
     assert tuple(block) == (*SUN_KEYS, PEAK_KEY)
+
+
+def test_the_peak_comes_from_the_long_history_when_the_recent_window_is_low() -> None:
+    assert peak_kw(2.5, 16.65, 10.13) == 10.13
+    # A recent window above the history still wins.
+    assert peak_kw(11.0, None, 10.13) == 11.0
+    # No history: the window, then the array.
+    assert peak_kw(2.5, 16.65, None) == 2.5
+    assert peak_kw(None, 16.65, 0.0) == 16.65
+    block = sun_block_from(NOW, TZ, {}, {}, observed_max_kwh=2.5, array_kwp=16.65, history_max_kwh=10.1)
+    assert block[PEAK_KEY] == 10.1

@@ -47,6 +47,7 @@ def sun_block_from(
     *,
     observed_max_kwh: float | None = None,
     array_kwp: float | None = None,
+    history_max_kwh: float | None = None,
 ) -> dict[str, Any]:
     """The block from the measured hours (kWh by UTC hour start) and the corrected forecast, for today and tomorrow,
     and today's measured quarter hours (mean kW by UTC quarter start, none where the 5-minute statistics are missing).
@@ -68,22 +69,25 @@ def sun_block_from(
         if first <= start <= now
     ]
     block: dict[str, Any] = {"hours": hours, "quarters": recent[-MAX_QUARTERS:]}
-    peak = peak_kw(observed_max_kwh, array_kwp)
+    peak = peak_kw(observed_max_kwh, array_kwp, history_max_kwh)
     if peak is not None:
         block[PEAK_KEY] = peak
     return block
 
 
-def peak_kw(observed_max_kwh: float | None, array_kwp: float | None) -> float | None:
+def peak_kw(observed_max_kwh: float | None, array_kwp: float | None, history_max_kwh: float | None = None) -> float | None:
     """The most the site's sun produces in an hour, in kW, for the card to scale the sun against.
 
-    The highest hour ever measured is the most robust (it is what the site really does, and what the solar correction
-    caps its forecast at; the correction's record covers the Energy dashboard's hours and the forecast log's outcomes).
-    Only where nothing has been measured yet, the array's size from the forecast integration (an upper bound, so a
-    cautious scale). `None` where neither is a positive figure."""
-    for candidate in (observed_max_kwh, array_kwp):
-        if candidate is not None and candidate > 0:
-            return round(candidate, 2)
+    The highest hour measured is the most robust (it is what the site really does). The long history (the stored year
+    of the Energy dashboard's hours) is the best source: the correction's own window (`observed_max_kwh`) can be only
+    a short recent stretch, in winter a fraction of the summer peak. The larger of the two wins. Only where nothing has
+    been measured yet, the array's size from the forecast integration (an upper bound, so a cautious scale). `None`
+    where none is a positive figure."""
+    measured = [c for c in (history_max_kwh, observed_max_kwh) if c is not None and c > 0]
+    if measured:
+        return round(max(measured), 2)
+    if array_kwp is not None and array_kwp > 0:
+        return round(array_kwp, 2)
     return None
 
 
@@ -106,9 +110,14 @@ def capture_sun(hass: HomeAssistant, charger_entry_id: str, now: datetime, tz: s
     sun = _sun(hass, controller)
     correction = controller.solar_correction
     quarters = correction.quarters
-    peak = {"observed_max_kwh": correction.observed_max_kwh, "array_kwp": correction.array_kwp}
+    history = _measured_hours(controller)
+    peak = {
+        "observed_max_kwh": correction.observed_max_kwh,
+        "array_kwp": correction.array_kwp,
+        "history_max_kwh": max(history.values(), default=None),
+    }
     if sun is not None:
         return sun_block_from(now, tz, _production(controller), sun.corrected, quarters, **peak)
     if not site_solar_capable(controller.config):
         return None
-    return sun_block_from(now, tz, _measured_hours(controller), {}, quarters, **peak)
+    return sun_block_from(now, tz, history, {}, quarters, **peak)
