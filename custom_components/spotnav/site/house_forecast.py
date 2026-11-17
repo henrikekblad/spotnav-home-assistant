@@ -38,6 +38,11 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   the integration and the key in the unique id), else the weather entity's. A sensor found by its name or area is not
   counted: too often a sensor in the sun or indoors. Looked for at each refresh; the source is in the diagnostics
   (`outdoor`). The hourly forecast ahead is always the weather entity's.
+* **Same-source offset** (`offset`, `site/temperature_history.py`): where the history is the heat pump's sensor and
+  the forecast the weather entity's, the model learned its temperature term on the sensor's scale, so the forecast
+  temperatures it is fed are moved by the median of (the sensor's hour − the weather entity's last forecast for it)
+  over the last two weeks, from a week of such hours on, clamped to ±5 °C. Where both are the weather entity's,
+  nothing is moved. In the diagnostics (`temperature_history.offset`); the log keeps the forecast as fetched.
 * **Holidays** (no setting): a calendar of Home Assistant's core Holiday integration, the one for Home Assistant's
   country when there are several, else the only one; its dates are read once a day (`calendar.get_events`). Without
   one: weekday/weekend only, nothing guessed.
@@ -108,7 +113,7 @@ from .forecast_band import FORM_ADDITIVE, learn as learn_band, pairs_from_log, v
 from .heat_meter import HeatSplit, SiteHeatMeter, heat_split
 from .house_history import HouseHistory
 from .load_forecast import forecast_house_load, LoadForecast, WINDOW_DAYS
-from .temperature_history import source_marker, SOURCE_SENSOR, SOURCE_WEATHER, TemperatureHistory
+from .temperature_history import NO_OFFSET, Offset, source_marker, SOURCE_SENSOR, SOURCE_WEATHER, TemperatureHistory
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -403,6 +408,8 @@ class SiteHouseForecast:
         self._loaded = entry_id is None
         #: The outdoor temperatures kept for a year (`site/temperature_history.py`), in their own store.
         self.temperature_history = TemperatureHistory()
+        #: The same-source offset added to the forecast temperatures the model is fed, as of the last refresh.
+        self.offset: Offset = NO_OFFSET
         self._store: DayStore | None = None
         self._temperature_store: DayStore | None = None
         if entry_id is not None:
@@ -620,12 +627,14 @@ class SiteHouseForecast:
             basis = house_basis(battery=battery, solar=solar, gross_ready=self.history.gross_ready(now))
             net_hours = self.history.hours()
             hours = self.history.gross_hours() if basis == BASIS_GROSS else net_hours
-            temperatures = dict(self._temperatures)
             running_outdoor = self.outdoor_c()
             current = hour_start(now, tz)
+            self._keep_temperatures(tracked, now, current, tz)
+            self.offset = self._learn_offset(now)
+            # The weather entity's forecast on the history's scale; the running hour's own reading is on it already.
+            temperatures = self.offset.apply(self._temperatures)
             if running_outdoor is not None:
                 temperatures.setdefault(current, running_outdoor)
-            self._keep_temperatures(tracked, now, current, tz)
             net_flat = self._flat_kw()
             forecast, median, import_forecast = await self.hass.async_add_executor_job(
                 partial(
@@ -680,6 +689,14 @@ class SiteHouseForecast:
                 self._temperature_store.changed()
         except Exception:  # noqa: BLE001 - kept for a later model only
             _LOGGER.debug("SpotNav house forecast: the temperatures could not be kept", exc_info=True)
+
+    def _learn_offset(self, now: datetime) -> Offset:
+        """The same-source offset (see the module); none when it cannot be learned."""
+        try:
+            return self.temperature_history.learn_offset(now, self.history_marker(), self.forecast_marker())
+        except Exception:  # noqa: BLE001 - the forecast goes on with the temperatures as fetched
+            _LOGGER.debug("SpotNav house forecast: the temperature offset could not be learned", exc_info=True)
+            return NO_OFFSET
 
     async def _async_heat(
         self, hours: list[Any], now: datetime, tz: str, temperatures: Mapping[datetime, float]
@@ -914,7 +931,8 @@ class SiteHouseForecast:
             "outdoor": {"source": self.outdoor_source, "sensor": self.outdoor_entity_id},
             "forecast_temperatures": len(self._temperatures),
             # The temperatures kept for a year: how many hours, from when, and from which sources.
-            "temperature_history": self.temperature_history.diagnostics(),
+            # ...and the offset the forecast temperatures are moved by (the same-source offset).
+            "temperature_history": self.temperature_history.diagnostics(self.offset),
             "holidays": self.holiday_entity_id or HOLIDAYS_NONE,
             "holiday_dates": None if self.holidays is None else sorted(day.isoformat() for day in self.holidays),
             "refreshes": self.refreshes,

@@ -17,6 +17,13 @@ outcome (`plans/research_integrations/load_forecast_experiment_2026-11.md`, roun
 * **Bounds**: `KEEP_DAYS` days, at most `MAX_HOURS` hours per series. Storage is untrusted: a malformed value is
   dropped. Each series is stored as one list of tenths of a degree per hour from one first hour (`as_dict`), about
   40 kB a year, so the store can be written at most hourly without weight.
+
+**Same-source offset** (`learn_offset`, step 2): where the history temperature is a heat pump's sensor and the
+forecast the weather entity's, the model was fitted on one scale and fed another (the experiment's garage sensor read
+about 1.6 °C warmer than the model; Dec–Feb MAE 0.402 -> 0.363 kW with the offset). The offset is the median over the
+last `OFFSET_DAYS` days of (the sensor's hour − the weather entity's last forecast for the same hour), added to the
+forecast temperatures fed to the model; from `MIN_OFFSET_PAIRS` such hours on, clamped to `MAX_OFFSET_C`. Where both
+come from the weather entity it is 0: there it only adds the 14-day noise (about 1 % worse in the experiment).
 """
 
 from __future__ import annotations
@@ -37,9 +44,22 @@ MAX_HOURS: Final = (KEEP_DAYS + 3) * 24
 #: The store's format.
 FORMAT: Final = 1
 
+#: The offset reads the pairs of the last this many days (the experiment's window).
+OFFSET_DAYS: Final = 14
+#: ...and is learned only from this many pairs on (a week of hours); below it, 0.
+MIN_OFFSET_PAIRS: Final = 7 * 24
+#: The offset never moves a forecast temperature by more than this (°C): a sensor in the sun, or on the wrong side
+#: of a wall, is not a scale to follow.
+MAX_OFFSET_C: Final = 5.0
+
 #: A source marker: what the history temperature (or the forecast) is read from.
 SOURCE_SENSOR: Final = "sensor"
 SOURCE_WEATHER: Final = "weather"
+
+OFFSET_LEARNED: Final = "learned"
+#: The history and the forecast come from the same source (or no sensor is read): no offset.
+OFFSET_SAME_SOURCE: Final = "same_source"
+OFFSET_TOO_FEW_PAIRS: Final = "too_few_pairs"
 
 
 def source_marker(kind: str, entity_id: str | None) -> str | None:
@@ -71,6 +91,48 @@ def _instant(raw: Any) -> datetime | None:
     except ValueError:
         return None
     return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
+
+
+def _source_at(markers: list[tuple[int, str]], key: int) -> str | None:
+    """The source in force at hour `key`: the last marker at or before it, `None` before the first."""
+    found = None
+    for since, source in markers:
+        if since > key:
+            break
+        found = source
+    return found
+
+
+@dataclass(frozen=True, slots=True)
+class Offset:
+    """The same-source offset (°C, added to the forecast temperatures), over how many pairs, and why (`reason`)."""
+
+    offset_c: float
+    pairs: int
+    reason: str
+    clamped: bool = False
+
+    @property
+    def active(self) -> bool:
+        return self.reason == OFFSET_LEARNED and self.offset_c != 0.0
+
+    def apply(self, temperatures: Mapping[datetime, float]) -> dict[datetime, float]:
+        """`temperatures` moved by the offset (unchanged when it is not active)."""
+        if not self.active:
+            return dict(temperatures)
+        return {start: celsius + self.offset_c for start, celsius in temperatures.items()}
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "offset_c": round(self.offset_c, 2),
+            "pairs": self.pairs,
+            "active": self.active,
+            "reason": self.reason,
+            "clamped": self.clamped,
+        }
+
+
+NO_OFFSET: Final = Offset(0.0, 0, OFFSET_SAME_SOURCE)
 
 
 @dataclass(slots=True)
@@ -145,6 +207,39 @@ class TemperatureHistory:
                 changed = True
         return changed
 
+    # ---- the same-source offset
+
+    def learn_offset(self, now: datetime, history_marker: str | None, forecast_marker: str | None) -> Offset:
+        """The offset to add to `forecast_marker`'s forecast temperatures (see the module): learned only while the
+        history is read from a heat pump's sensor, from the hours of the last `OFFSET_DAYS` days the sensor measured
+        and the same weather entity forecast."""
+        if (
+            history_marker is None
+            or forecast_marker is None
+            or not history_marker.startswith(f"{SOURCE_SENSOR}:")
+            or history_marker == forecast_marker
+        ):
+            return NO_OFFSET
+        now_key = _key(now.astimezone(timezone.utc))
+        first = now_key - OFFSET_DAYS * 24
+        differences = [
+            (self.measured[key] - self.last[key]) / 10.0
+            for key in range(first, now_key)
+            if key in self.measured
+            and key in self.last
+            and _source_at(self.sources, key) == history_marker
+            and _source_at(self.forecast_sources, key) == forecast_marker
+        ]
+        if len(differences) < MIN_OFFSET_PAIRS:
+            return Offset(0.0, len(differences), OFFSET_TOO_FEW_PAIRS)
+        differences.sort()
+        middle = len(differences) // 2
+        median = (
+            differences[middle] if len(differences) % 2 else (differences[middle - 1] + differences[middle]) / 2.0
+        )
+        clamped = max(-MAX_OFFSET_C, min(MAX_OFFSET_C, median))
+        return Offset(round(clamped, 2), len(differences), OFFSET_LEARNED, clamped=clamped != median)
+
     # ---- storage
 
     def as_dict(self) -> dict[str, Any]:
@@ -185,8 +280,8 @@ class TemperatureHistory:
         self.forecast_sources = _markers(raw.get("forecast_sources"))
         self._prune(now)
 
-    def diagnostics(self) -> dict[str, Any]:
-        """How much is kept, from when, and the sources (not the hours)."""
+    def diagnostics(self, offset: Offset | None = None) -> dict[str, Any]:
+        """How much is kept, from when, the sources, and the offset (not the hours)."""
         return {
             "measured_hours": len(self.measured),
             "oldest": None if not self.measured else _start(min(self.measured)).isoformat(),
@@ -195,6 +290,7 @@ class TemperatureHistory:
             "last_hours": len(self.last),
             "sources": [[_start(key).isoformat(), marker] for key, marker in self.sources],
             "forecast_sources": [[_start(key).isoformat(), marker] for key, marker in self.forecast_sources],
+            "offset": (offset or NO_OFFSET).as_dict(),
         }
 
 

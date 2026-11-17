@@ -1,14 +1,21 @@
 """The outdoor temperatures kept for a year (`site/temperature_history.py`): the measured hours and their source, the
-forecast temperatures as issued (day-ahead and last before the hour), pruning, the compact store."""
+forecast temperatures as issued (day-ahead and last before the hour), pruning, the compact store, and the same-source
+offset."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 
 from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.site.temperature_history import (
     KEEP_DAYS,
+    MAX_OFFSET_C,
+    MIN_OFFSET_PAIRS,
+    OFFSET_LEARNED,
+    OFFSET_SAME_SOURCE,
+    OFFSET_TOO_FEW_PAIRS,
     TemperatureHistory,
 )
 
@@ -147,3 +154,79 @@ def test_a_malformed_store_is_dropped_value_by_value() -> None:
     assert sorted(kept.measured.values()) == [-20, 10]
     assert kept.last == {}
     assert [marker for _key, marker in kept.sources] == [WEATHER]
+
+
+# ---------------------------------------------------------------------------------------------- the offset
+
+
+def paired(sensor_c: float, weather_c: float, count: int, *, marker: str = SENSOR) -> TemperatureHistory:
+    """`count` hours before `NOW` measured at `sensor_c` by `marker`, forecast at `weather_c` just before each."""
+    kept = TemperatureHistory()
+    first = NOW.replace(minute=0, second=0) - timedelta(hours=count)
+    kept.mark_source(marker, first - timedelta(days=1))
+    kept.forecast_sources.append((int((first - timedelta(days=1)).timestamp()) // 3600, WEATHER))
+    for index in range(count):
+        start = first + timedelta(hours=index)
+        kept.last[int(start.timestamp()) // 3600] = round(weather_c * 10)
+    kept.merge_measured(hours(first, count, sensor_c), NOW)
+    return kept
+
+
+def test_the_offset_is_learned_where_the_sensor_and_the_weather_differ() -> None:
+    kept = paired(4.1, 2.5, 10 * 24)
+    offset = kept.learn_offset(NOW, SENSOR, WEATHER)
+    assert offset.reason == OFFSET_LEARNED and offset.active
+    assert offset.offset_c == pytest.approx(1.6)
+    assert offset.pairs == 10 * 24
+    start = NOW.replace(minute=0, second=0)
+    assert offset.apply({start: -2.0}) == {start: pytest.approx(-0.4)}
+    assert kept.diagnostics(offset)["offset"] == {
+        "offset_c": 1.6,
+        "pairs": 240,
+        "active": True,
+        "reason": OFFSET_LEARNED,
+        "clamped": False,
+    }
+
+
+def test_the_offset_reads_the_last_two_weeks_by_their_median() -> None:
+    kept = paired(4.0, 2.0, 20 * 24)
+    # Six days beyond the window at a wild difference, and a few outliers inside it: the median holds.
+    first_kept = min(kept.measured)
+    for key in list(kept.measured)[: 6 * 24]:
+        kept.measured[key] = 300
+    for key in list(kept.measured)[-5:]:
+        kept.measured[key] = 400
+    assert first_kept in kept.measured
+    offset = kept.learn_offset(NOW, SENSOR, WEATHER)
+    assert offset.pairs == 14 * 24
+    assert offset.offset_c == pytest.approx(2.0)
+
+
+def test_no_offset_where_both_come_from_the_weather_entity() -> None:
+    kept = paired(4.1, 2.5, 10 * 24, marker=WEATHER)
+    offset = kept.learn_offset(NOW, WEATHER, WEATHER)
+    assert (offset.reason, offset.offset_c, offset.active) == (OFFSET_SAME_SOURCE, 0.0, False)
+    assert offset.apply({NOW: 1.0}) == {NOW: 1.0}
+    # Without a reading or without a forecast: nothing either.
+    assert kept.learn_offset(NOW, None, WEATHER).reason == OFFSET_SAME_SOURCE
+    assert kept.learn_offset(NOW, SENSOR, None).reason == OFFSET_SAME_SOURCE
+
+
+def test_no_offset_with_too_few_pairs_or_hours_of_another_source() -> None:
+    kept = paired(4.1, 2.5, MIN_OFFSET_PAIRS - 1)
+    offset = kept.learn_offset(NOW, SENSOR, WEATHER)
+    assert (offset.reason, offset.offset_c, offset.pairs) == (OFFSET_TOO_FEW_PAIRS, 0.0, MIN_OFFSET_PAIRS - 1)
+    # Hours the weather entity measured (before the sensor was found) are no pairs for the sensor.
+    kept = paired(4.1, 2.5, 10 * 24, marker=WEATHER)
+    assert kept.learn_offset(NOW, SENSOR, WEATHER).pairs == 0
+    # Nor are hours another sensor measured.
+    kept = paired(4.1, 2.5, 10 * 24)
+    assert kept.learn_offset(NOW, "sensor:sensor.other", WEATHER).pairs == 0
+
+
+def test_the_offset_is_clamped() -> None:
+    offset = paired(12.0, 2.0, 10 * 24).learn_offset(NOW, SENSOR, WEATHER)
+    assert offset.offset_c == MAX_OFFSET_C and offset.clamped and offset.active
+    offset = paired(-9.0, 2.0, 10 * 24).learn_offset(NOW, SENSOR, WEATHER)
+    assert offset.offset_c == -MAX_OFFSET_C and offset.clamped

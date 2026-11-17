@@ -276,6 +276,7 @@ async def test_the_temperatures_are_kept_in_their_own_store_and_survive_a_restar
     assert block["sources"] and block["sources"][0][1] == "weather:weather.forecast_home"
     assert block["forecast_sources"] == [[block["forecast_sources"][0][0], "weather:weather.forecast_home"]]
     assert block["last_hours"] >= 47
+    assert block["offset"]["reason"] == "same_source" and block["offset"]["active"] is False
     kept = house.temperature_history.as_dict()
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
@@ -364,6 +365,46 @@ async def test_a_heat_pumps_outdoor_sensor_is_preferred_over_the_weather_and_sho
     hass.states.async_set("sensor.current_outd_temp_bt1", "unavailable")
     assert forecast.outdoor_c() == 4.0
     assert forecast.diagnostics()["outdoor"]["source"] == OUTDOOR_WEATHER
+
+
+async def test_the_forecast_temperatures_are_moved_onto_the_heat_pump_sensors_scale(hass: HomeAssistant, freezer) -> None:
+    """History from the heat pump's sensor, forecast from the weather entity: with ten days of hours (of the two weeks
+    seeded) where the sensor read 1.5 °C above the weather entity's last forecast, the forecast temperatures fed to the model are 1.5 °C
+    warmer; the log of the forecast as issued keeps them as fetched."""
+    weather(hass, 4.0)
+    er.async_get(hass).async_get_or_create(
+        "sensor", "myuplink", "dev-40004", suggested_object_id="current_outd_temp_bt1"
+    )
+    hass.states.async_set("sensor.current_outd_temp_bt1", "-3.5", {"unit_of_measurement": "°C"})
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    seed(controller)
+    house = controller.house_forecast
+    now = controller.demand.now().replace(minute=0, second=0, microsecond=0)
+    kept = house.temperature_history
+    first = now - timedelta(days=10)
+    first_key = int(first.timestamp()) // 3600
+    kept.sources = [(first_key, "sensor:sensor.current_outd_temp_bt1")]
+    kept.forecast_sources = [(first_key, "weather:weather.forecast_home")]
+    # The seeded hours read 5.0 °C on the sensor; the weather entity had forecast 3.5 °C for them.
+    for index in range(10 * 24):
+        kept.last[first_key + index] = 35
+    await house.async_refresh()
+
+    assert house.offset.active and house.offset.offset_c == pytest.approx(1.5) and house.offset.pairs == 240
+    ahead = [hour for hour in house.forecast.hours if hour.start > now]
+    # The weather entity's forecast is 2 °C; the model reads 3.5 °C.
+    assert ahead and all(hour.outdoor_c == pytest.approx(3.5) for hour in ahead)
+    assert kept.last[first_key + 10 * 24 + 1] == 20
+    block = house.diagnostics()["temperature_history"]["offset"]
+    assert block == {"offset_c": 1.5, "pairs": 240, "active": True, "reason": "learned", "clamped": False}
+
+    # The sensor gone, the history is the weather entity's again: nothing is moved.
+    hass.states.async_set("sensor.current_outd_temp_bt1", "unavailable")
+    freezer.tick(timedelta(hours=1))
+    await house.async_refresh()
+    assert house.offset.reason == "same_source" and not house.offset.active
+    assert all(hour.outdoor_c == pytest.approx(2.0) for hour in house.forecast.hours if hour.start > now + timedelta(hours=1))
 
 
 # ---------------------------------------------------------------------------------------------- a battery site
