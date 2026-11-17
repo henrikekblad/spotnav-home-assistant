@@ -30,6 +30,9 @@ charger's power); without a count nothing is judged, as the plan itself is then 
   or the car is ending the charge (the plan's own path for a charge that does not run, or a car that is full); a
   window in which the car ended the charge itself (its own path plans again); a check whose last post is older than
   `STALE_S`, or that has no post inside the window yet (nothing is known about the window).
+* **A car that takes less.** A replan for the car's own limit (`planning/car_limit.py`, in
+  `AutoPlannerController._check_plan`) counts on the power the car takes; the window in progress is then judged
+  against that power from its last post (`rebase`).
 * **Quiet.** A replan here is an ordinary replan: a plan that moved during a plug-in is not told again
   (`notifications/notifier.py`), so no notice comes of it. The log says it once per window (`tell`), the rest at
   debug.
@@ -134,6 +137,8 @@ class _Watched:
     power_kw: float
     need_met_at: datetime | None
     last_kwh: float | None = None
+    #: When `last_kwh` was posted.
+    last_at: datetime | None = None
     held: str | None = None
     car_ended: bool = False
     behind_since: datetime | None = None
@@ -189,6 +194,16 @@ class PlanWatch:
     def note_replan_result(self, changed: bool) -> None:
         """A replan of ours moved the windows (back to `REPLAN_EVERY_S`) or left them as they were (twice the wait)."""
         self._every_s = REPLAN_EVERY_S if changed else min(self._every_s * 2, MAX_REPLAN_EVERY_S)
+
+    def rebase(self, power_kw: float, need_met_at: datetime | None) -> None:
+        """The plan was made again counting on `power_kw` (the power the car was seen to take,
+        `planning/car_limit.py`): the window watched is judged against that from its last post on."""
+        watched = self._watched
+        if watched is None:
+            return
+        watched.power_kw, watched.need_met_at, watched.behind_since = power_kw, need_met_at, None
+        if watched.last_kwh is not None and watched.last_at is not None:
+            watched.base_kwh, watched.base_at = watched.last_kwh, watched.last_at
 
     def check(self, now: datetime, facts: WindowFacts) -> str | None:
         """One check. Returns `DECISION_REPLAN` or `DECISION_END_REPLAN` when the plan is to be made again."""
@@ -254,7 +269,7 @@ class PlanWatch:
             watched.behind_since = None
             self._note(now, watched, 0.0, None, DECISION_NO_COUNT)
             return None
-        watched.last_kwh = reading
+        watched.last_kwh, watched.last_at = reading, posted
         expected = watched.expected_kwh(posted)
         delivered = reading - watched.base_kwh
         unjudged = None

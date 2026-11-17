@@ -427,6 +427,12 @@ class ChargerAdapter:
         """The amps of the last current assignment, whether or not anything was sent (`None`: none yet)."""
         return None if self._last_current is None else self._last_current.get("amps")
 
+    @property
+    def last_current_at(self) -> datetime | None:
+        """When the last current assignment was made, whether or not anything was sent (`None`: none yet)."""
+        at = None if self._last_current is None else self._last_current.get("at")
+        return None if not isinstance(at, str) else datetime.fromisoformat(at)
+
     def command_log(self) -> list[dict[str, Any]]:
         """The remembered commands, oldest first, as plain data."""
         return [{**record, "calls": [dict(call) for call in record["calls"]]} for record in self._commands]

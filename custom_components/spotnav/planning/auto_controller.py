@@ -103,7 +103,16 @@ from .learned_power import (
     TAPER_PERCENT,
     Wiring,
 )
-from .plan_watch import DECISION_END_REPLAN, HELD_IMPORT_TARGET, next_check_at, PlanWatch, START_GRACE_S, WindowFacts
+from .car_limit import CarLimitWatch, LimitFacts
+from .plan_watch import (
+    DECISION_END_REPLAN,
+    HELD_IMPORT_TARGET,
+    next_check_at,
+    PlanWatch,
+    REPLAN_EVERY_S,
+    START_GRACE_S,
+    WindowFacts,
+)
 from .phases import effective_phases
 from .planner import (
     calculate_plan,
@@ -191,6 +200,10 @@ CEILING_A: Final = 63
 
 #: A charge whose car is about to be judged as no longer drawing (`charge_progress`): not a car falling behind.
 _ENDING_REASONS: Final = (REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING, REASON_POWER_BELOW_THRESHOLD_PENDING)
+#: The plan's own decision when the car was seen to take clearly less than it is given (`planning/car_limit.py`).
+DECISION_CAR_LIMIT: Final = "car_limit"
+#: A car limit plans again when the plan counts on more than this share above it.
+_CAR_LIMIT_REPLAN_SHARE: Final = 0.95
 
 
 @dataclass(frozen=True, slots=True)
@@ -768,6 +781,10 @@ class AutoPlannerController:
         self._learned = learned
         self._sampler = None if learned is None else PowerSampler(learned)
         self._watch = PlanWatch()
+        # The car taking clearly less than it is given, noticed within minutes of a window's charge
+        # (`planning/car_limit.py`), and when that last planned again.
+        self._limit_watch = CarLimitWatch()
+        self._limit_replanned_at: datetime | None = None
         # The wall energy one percent of the car's battery takes, learned at the same look
         # (`planning/learned_energy.py`).
         self._learned_energy = learned_energy
@@ -1903,13 +1920,30 @@ class AutoPlannerController:
         if self._learned is None or wiring is None or is_guest(settings):
             # Nothing is known of a guest car: not the charger's either, which was learned of the household's.
             return LearnedPower(subject=subject, kw=None, minutes=0.0, sessions=0, trusted=False)
+        low_kw, high_kw = self._power_bounds(settings, wiring, vehicle_id)
+        return self._learned.power(subject, wiring, low_kw, high_kw)
+
+    def _power_bounds(self, settings: AutoSettings, wiring: Wiring, vehicle_id: str | None) -> tuple[float, float]:
+        """What a learned power is bounded to: the power at the charger's least current, and the planned power."""
         high_kw, low_w = hybrid_execution.charge_power_limits(self._hass, self._entry_id, settings)
         low_kw = low_w / 1000.0
         if wiring.phases == 3 and (vehicle_id is None or stored_properties(self._hass, vehicle_id).onboard_phases is None):
             # The car's onboard phases are not known (planning takes three until told): a one-phase car on three-phase
             # wiring draws the least current on one phase, so the floor is that.
             low_kw /= 3
-        return self._learned.power(subject, wiring, low_kw, high_kw)
+        return low_kw, high_kw
+
+    def _session_limit_kw(self, settings: AutoSettings) -> float | None:
+        """The car's own limit seen in the plug-in in progress (`planning/car_limit.py`), bounded as a learned power
+        is, or `None`."""
+        wiring = self._wiring(settings)
+        if self._learned is None or self._executor is None or wiring is None or is_guest(settings):
+            return None
+        vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
+        controller = self._executor.controller
+        session = self._learning_session(controller, controller.plan, self._now())
+        low_kw, high_kw = self._power_bounds(settings, wiring, vehicle_id)
+        return self._learned.session_limit_kw(subject_for(vehicle_id), wiring, session, low_kw, high_kw)
 
     def import_target_shortfall_kwh(self) -> float:
         """How far the running window is behind its plan (`PlanWatch.shortfall_kwh`): what a hold made the car miss of
@@ -1917,10 +1951,14 @@ class AutoPlannerController:
         return self._watch.shortfall_kwh()
 
     def _plan_power_cap_kw(self, settings: AutoSettings) -> float | None:
-        """The most power a plan counts on: what is learned of the car (`_learned_power`), and no more than the site's
-        import target leaves it (`SiteCapacityController.import_target_plan_kw`), so a held hour is planned as held and
-        the plan buys the hours it needs for that instead of finding out at each window's end."""
+        """The most power a plan counts on: what is learned of the car (`_learned_power`), or the car's own limit seen
+        in this plug-in when there is one (`_session_limit_kw`: what it draws now, never less), and no more than the
+        site's import target leaves it (`SiteCapacityController.import_target_plan_kw`), so a held hour is planned as
+        held and the plan buys the hours it needs for that instead of finding out at each window's end."""
         learned = self._learned_power(settings).cap_kw
+        now_limit = self._session_limit_kw(settings)
+        if now_limit is not None:
+            learned = now_limit
         site = site_controller_for_charger(self._hass, self._entry_id)
         target = None if site is None else site.import_target_plan_kw(self._entry_id)
         if target is None:
@@ -1952,9 +1990,15 @@ class AutoPlannerController:
         capacity = None if reader is None or vehicle_id is None else reader.capacity_kwh(vehicle_id)
         energy = self.learned_energy(vehicle_id, capacity)
         anchor = None if self._learned_energy is None else self._learned_energy.anchor
+        session_limit = self._session_limit_kw(settings)
+        measure = self._limit_watch.last_measure
         return {
             "behind_check": None if check is None else check.as_dict(),
             "learned_power": {**learned.as_dict(), "planned_with": learned.cap_kw is not None},
+            "car_limit": {
+                "session_kw": None if session_limit is None else round(session_limit, 3),
+                "last_measure": None if measure is None else measure.as_dict(),
+            },
             "learned_energy": {
                 **energy.as_dict(),
                 # The need counts on it: trusted, for a target (a fixed amount is never changed by it).
@@ -2021,7 +2065,16 @@ class AutoPlannerController:
             decision = self._check_plan()
         except Exception:  # noqa: BLE001 - a look at the plan is a convenience, never a failure
             _LOGGER.debug("Checking the plan's progress failed", exc_info=True)
-        if decision is not None:
+        if decision == DECISION_CAR_LIMIT:
+            measure = self._limit_watch.last_measure
+            _LOGGER.info(
+                "SpotNav charger %s: the car takes %s kW where %s kW is offered: planning again with what it takes",
+                self._entry_id,
+                None if measure is None else round(measure.drawn_kw, 2),
+                None if measure is None else round(measure.offered_kw, 2),
+            )
+            self._hass.async_create_task(self._async_replan_behind(rebase=True))
+        elif decision is not None:
             check = self._watch.last_check
             # Said once per window; a car that keeps falling behind is not news each time.
             tell = check is None or self._watch.tell((check.window_start, check.window_end))
@@ -2035,12 +2088,16 @@ class AutoPlannerController:
             self._hass.async_create_task(self._async_replan_behind())
         self._arm_watch()
 
-    async def _async_replan_behind(self) -> None:
+    async def _async_replan_behind(self, *, rebase: bool = False) -> None:
         """Plan the rest again for a charge behind its plan, and tell the watch whether that moved the windows (one
-        that moved nothing waits longer before the next)."""
+        that moved nothing waits longer before the next). `rebase`: the plan was made again with the power the car
+        takes, and the window in progress is judged against that from now on."""
         before = self._proposal_periods()
         await self.async_recalculate()
         self._watch.note_replan_result(self._proposal_periods() != before)
+        proposal = None if self._snapshot is None else self._snapshot.proposal
+        if rebase and proposal is not None and proposal.has_plan and proposal.power_kw > 0:
+            self._watch.rebase(proposal.power_kw, proposal.need_met_at)
 
     def _proposal_periods(self) -> tuple[tuple[datetime, datetime], ...] | None:
         proposal = None if self._snapshot is None else self._snapshot.proposal
@@ -2115,9 +2172,21 @@ class AutoPlannerController:
             sample = None
             if clean:
                 assert reading is not None and wiring is not None
-                session = self._learning_session(controller, plan, window)
-                sample = PowerSample(at=now, kwh=reading, session=session, subject=learned.subject, wiring=wiring)
+                session = self._learning_session(controller, plan, window[0])
+                sample = PowerSample(
+                    at=now, kwh=reading, session=session, subject=learned.subject, wiring=wiring, posted_at=reading_at
+                )
             self._sampler.sample(sample, planned_kw)
+        if self._learned is not None:
+            try:
+                limit = self._check_car_limit(
+                    controller, settings, now, window, reading, reading_at, facts, car_ended, held, learned.subject
+                )
+            except Exception:  # noqa: BLE001 - a car limit is a convenience, never worth the behind-plan decision
+                _LOGGER.debug("Watching the car's own limit failed", exc_info=True)
+                limit = None
+            # A car limit plans with the power it takes: before a behind-plan replan, which would plan with the same.
+            decision = limit or decision
         if self._energy_sampler is not None and not guest:
             # Nothing is learned of a guest car (`vehicles/guest.py`).
             try:
@@ -2165,15 +2234,106 @@ class AutoPlannerController:
         return progress.state == STATE_VEHICLE_NOT_REQUESTING_CURRENT or progress.reason in _ENDING_REASONS
 
     @staticmethod
-    def _learning_session(controller: Any, plan: Any, window: tuple[datetime, datetime] | None) -> str:
+    def _learning_session(controller: Any, plan: Any, at: datetime) -> str:
         """Which plug-in a clean minute belongs to: the last plug-in the charger saw (kept across a restart), else the
-        departure the plan is for, else the day the window opened (a charger that cannot report a plug-in)."""
+        departure the plan is for, else the day of `at` (the window's start; a charger that cannot report a
+        plug-in)."""
         since = controller.plugged_in_at or controller.plugged_in_for_count
         if since is not None:
             return f"plug_in:{since.isoformat()}"
         if plan is not None and plan.departure:
             return f"departure:{plan.departure}"
-        return f"day:{window[0].date().isoformat() if window is not None else ''}"
+        return f"day:{at.date().isoformat()}"
+
+    def _check_car_limit(
+        self,
+        controller: Any,
+        settings: AutoSettings,
+        now: datetime,
+        window: tuple[datetime, datetime] | None,
+        reading: float | None,
+        reading_at: datetime | None,
+        facts: LiveVehicleFacts | None,
+        car_ended: bool,
+        held: str | None,
+        subject: str,
+    ) -> str | None:
+        """One look for the car's own limit (`planning/car_limit.py`): measured while a window of the plan charges,
+        kept with the plug-in in the learned store, and `DECISION_CAR_LIMIT` when the plan counts on clearly more
+        than the car takes."""
+        assert self._learned is not None
+        plan = controller.plan
+        wiring = self._wiring(settings)
+        limit_facts = None
+        offered = None if plan is None else self._offered_amps(controller, plan.amps, held)
+        if (
+            offered
+            and window is not None
+            and wiring is not None
+            and reading is not None
+            and not is_guest(settings)
+            and not car_ended
+            and plan.amps == settings.amps
+            and controller.plan_expects_charge
+            and controller.charging
+            and not self._car_ending(controller)
+            and not self._tapering(facts)
+            and not controller.phase_switch_settling
+            and controller.switched_phases is None
+        ):
+            limit_facts = LimitFacts(
+                session=self._learning_session(controller, plan, window[0]),
+                offered_kw=power_kw(offered, wiring.phases, wiring.voltage_v),
+                written_at=self._current_written_at(controller),
+                reading_kwh=reading,
+                reading_at=reading_at,
+            )
+        seen = self._limit_watch.check(now, limit_facts)
+        if seen is None or limit_facts is None or wiring is None:
+            return None
+        kw, minutes = seen
+        self._learned.set_limit(subject, wiring, limit_facts.session, kw, minutes)
+        cap = self._plan_power_cap_kw(settings)
+        proposal = None if self._snapshot is None else self._snapshot.proposal
+        if cap is None or proposal is None or not proposal.has_plan or proposal.power_kw <= 0:
+            return None
+        if cap >= _CAR_LIMIT_REPLAN_SHARE * proposal.power_kw:
+            return None  # the plan already counts on about what the car takes
+        if self._limit_replanned_at is not None and (now - self._limit_replanned_at).total_seconds() < REPLAN_EVERY_S:
+            return None
+        self._limit_replanned_at = now
+        return DECISION_CAR_LIMIT
+
+    def _offered_amps(self, controller: Any, amps: int, held: str | None) -> float | None:
+        """The current in force on the charger: its current-limit entity's, else the last one assigned to it, else the
+        plan's for a charger whose current is not set; never above what load balancing or the import target holds it
+        to (a held current is not the car's limit). `None`: not known, or held in a way no current says (a pause, the
+        import target with no current, a phase switch)."""
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        limit_a = None if site is None else site.load_balancing_limit(self._entry_id)[0]
+        if limit_a is None and held in ("balancing", "phases", HELD_IMPORT_TARGET):
+            return None
+        setpoint = controller.setpoint_current_a
+        if setpoint is not None:
+            offered: float | None = setpoint
+        elif not controller.adapter.capabilities.set_current:
+            offered = amps
+        else:
+            offered = controller.adapter.last_current_a
+        if offered is None or limit_a is None:
+            return offered
+        return min(offered, limit_a)
+
+    def _current_written_at(self, controller: Any) -> datetime | None:
+        """When the current in force last changed: the later of the last assignment and the current-limit entity's
+        last change (a current written and written back between two looks moves it)."""
+        times = [controller.adapter.last_current_at]
+        entity_id = controller.current_limit
+        state = None if not entity_id else self._hass.states.get(entity_id)
+        if state is not None:
+            times.append(state.last_changed)
+        known = [at for at in times if at is not None]
+        return max(known) if known else None
 
     def _held_by_spotnav(self, controller: Any, amps: int) -> str | None:
         """Why SpotNav itself holds this charge's current back now, or `None`: the site's import target holding or

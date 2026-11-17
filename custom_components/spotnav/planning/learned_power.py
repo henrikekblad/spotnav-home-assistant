@@ -12,17 +12,25 @@ two (`PlanRequest.power_cap_kw`). No setting.
   the current SpotNav asked for both the plan's current, load balancing not limiting
   it, no phase switch settling or forced, the strategy not solar, and the car below `TAPER_PERCENT` where its level
   is known (above it a car tapers by itself). The energy is the count the need uses (the energy register, or the
-  energy integrated from the charger's power), read once a minute (`PlanWatch`); a minute counts when it and the
-  minute before were both clean.
+  energy integrated from the charger's power), read once a minute (`PlanWatch`). A stretch of clean readings counts
+  between the count's posts (a register that posts every five minutes is not a car that draws nothing for four),
+  from the first post made inside the stretch.
+* **A car that takes less than it is given.** Beside the clean minutes, a plug-in keeps the car's own limit when
+  one was seen (`planning/car_limit.py`: a steady stretch at whatever current was in force, a balancing hold
+  included, in which the car drew clearly less than that current gives). That is the car's power at the plan's
+  current too, so a plug-in's power is the higher of the two it has.
 * **Per what.** Per vehicle when the charger knows which one it plans for (`vehicle_properties.resolved_vehicle_id`),
   else per charger. Each keeps the last `MAX_SESSIONS` plug-ins as (minutes, kWh); a plug-in is the last one the
   charger saw (`ChargingController.plugged_in_at`, kept across a restart), so a restart does not start another.
-* **Smoothed and bounded.** The median of the plug-ins' own powers (each with at least `MIN_SESSION_MINUTES`),
+* **Smoothed and bounded.** The median of the plug-ins' own powers (clean minutes count with at least
+  `MIN_SESSION_MINUTES`),
   bounded to [the power at the charger's least current, the planned power]. The least current is taken on one phase
   while the car's onboard phases are not known (a one-phase car on three-phase wiring draws below the three-phase
   floor).
-* **Trusted.** Only with `TRUST_MINUTES` minutes over at least `TRUST_SESSIONS` plug-ins; until then the plan
-  counts on the planned power, as before.
+* **Trusted.** With `TRUST_MINUTES` minutes of evidence (a plug-in's clean minutes or its limit's minutes, the more
+  of the two), from one plug-in on: a stretch measured between posts is the car's power, and the next plug-in plans
+  with it. Until then the plan counts on the planned power, as before. The plug-in in progress plans with its own
+  limit as soon as it is seen (`AutoPlannerController._plan_power_cap_kw`).
 * **Reset.** What is learned is for one wiring: the phases the charge uses, the voltage between phases and the
   planned current. When any of them changes, the subject starts again (a value learned at 10 A says nothing about
   16 A, and a car that moved from one phase to three draws something else).
@@ -37,7 +45,7 @@ from __future__ import annotations
 import logging
 import math
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Final
 
@@ -51,17 +59,19 @@ _LOGGER = logging.getLogger(__name__)
 _STORE_VERSION: Final = 1
 _STORE_PREFIX: Final = f"{DOMAIN}.learned_power"
 
-#: The minutes and plug-ins before a learned power is planned with.
-TRUST_MINUTES: Final = 20.0
-TRUST_SESSIONS: Final = 2
+#: The minutes of evidence and plug-ins before a learned power is planned with.
+TRUST_MINUTES: Final = 15.0
+TRUST_SESSIONS: Final = 1
 #: The plug-ins kept per subject, and the least minutes one needs to give a power of its own.
 MAX_SESSIONS: Final = 5
 MIN_SESSION_MINUTES: Final = 5.0
 #: Above this level (where it is known) a car tapers by itself: nothing is learned.
 TAPER_PERCENT: Final = 90.0
 #: The longest gap between two readings one stretch may span, in seconds (they are taken once a minute); a longer
-#: one (a restart, a busy loop) counts nothing.
+#: one (a restart, a busy loop) ends the stretch.
 MAX_STEP_S: Final = 400.0
+#: The longest time between two posts of the count one stretch measures across, in seconds.
+MAX_POST_GAP_S: Final = 1800.0
 #: How long, in seconds, after a write the store waits to save.
 SAVE_DELAY_S: Final = 30.0
 
@@ -98,15 +108,33 @@ class Wiring:
 
 @dataclass(frozen=True, slots=True)
 class Session:
-    """One plug-in's clean minutes and the energy delivered in them."""
+    """One plug-in's clean minutes and the energy delivered in them, and the car's own limit when one was seen."""
 
     id: str
     minutes: float
     kwh: float
+    #: The power the car drew while taking clearly less than it was given (`planning/car_limit.py`), and over how
+    #: many minutes; `None` when no such stretch was seen.
+    limit_kw: float | None = None
+    limit_minutes: float = 0.0
 
     @property
     def kw(self) -> float | None:
-        return None if self.minutes < MIN_SESSION_MINUTES else self.kwh / (self.minutes / 60.0)
+        """The plug-in's power: the higher of its clean minutes' (with enough of them) and its limit."""
+        clean = None if self.minutes < MIN_SESSION_MINUTES else self.kwh / (self.minutes / 60.0)
+        powers = [kw for kw in (clean, self.limit_kw) if kw is not None]
+        return max(powers) if powers else None
+
+    @property
+    def evidence_minutes(self) -> float:
+        """The minutes behind the power (clean and limit minutes may be the same minutes: the more of the two)."""
+        return max(self.minutes, self.limit_minutes)
+
+    def as_stored(self) -> dict[str, Any]:
+        stored: dict[str, Any] = {"id": self.id, "minutes": self.minutes, "kwh": self.kwh}
+        if self.limit_kw is not None:
+            stored.update(limit_kw=self.limit_kw, limit_minutes=self.limit_minutes)
+        return stored
 
     @staticmethod
     def from_stored(raw: Any) -> Session | None:
@@ -115,9 +143,22 @@ class Session:
         ident, minutes, kwh = raw.get("id"), raw.get("minutes"), raw.get("kwh")
         if not isinstance(ident, str) or not ident or len(ident) > 128:
             return None
-        if not _finite_positive(minutes) or not _finite(kwh) or float(kwh) < 0:
+        if not _finite(minutes) or float(minutes) < 0 or not _finite(kwh) or float(kwh) < 0:
             return None
-        return Session(id=ident, minutes=float(minutes), kwh=float(kwh))
+        limit_kw, limit_minutes = raw.get("limit_kw"), raw.get("limit_minutes", 0.0)
+        if limit_kw is not None and not (_finite_positive(limit_kw) and _finite_positive(limit_minutes)):
+            limit_kw, limit_minutes = None, 0.0
+        if limit_kw is None:
+            limit_minutes = 0.0
+        if float(minutes) <= 0 and limit_kw is None:
+            return None
+        return Session(
+            id=ident,
+            minutes=float(minutes),
+            kwh=float(kwh),
+            limit_kw=None if limit_kw is None else float(limit_kw),
+            limit_minutes=float(limit_minutes),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +190,7 @@ class LearnedPower:
 def learned_from(subject: str, sessions: list[Session], low_kw: float, high_kw: float) -> LearnedPower:
     """The median of the plug-ins' powers bounded to [low_kw, high_kw], and whether it is trusted."""
     powers = [kw for kw in (session.kw for session in sessions) if kw is not None]
-    minutes = sum(session.minutes for session in sessions)
+    minutes = sum(session.evidence_minutes for session in sessions)
     kw = None
     if powers:
         kw = min(max(statistics.median(powers), low_kw), high_kw) if high_kw >= low_kw else high_kw
@@ -185,17 +226,56 @@ class LearnedPowerStore:
         sessions = held[1] if held is not None and held[0] == wiring else []
         return learned_from(subject, sessions, low_kw, high_kw)
 
+    def session_limit_kw(
+        self, subject: str, wiring: Wiring, session_id: str, low_kw: float, high_kw: float
+    ) -> float | None:
+        """The car's own limit seen in plug-in `session_id` on this wiring, bounded to [low_kw, high_kw], or `None`."""
+        held = self._subjects.get(subject)
+        if held is None or held[0] != wiring:
+            return None
+        session = next((s for s in reversed(held[1]) if s.id == session_id), None)
+        if session is None or session.limit_kw is None:
+            return None
+        return min(max(session.limit_kw, low_kw), high_kw) if high_kw >= low_kw else high_kw
+
     def add(self, subject: str, wiring: Wiring, session_id: str, kwh: float, minutes: float) -> None:
         """Count `minutes` clean minutes delivering `kwh` toward `session_id`; another wiring starts again."""
         if not (_finite(kwh) and _finite_positive(minutes)) or kwh < 0:
             return
+        last = self._session(subject, wiring, session_id)
+        if last is None:
+            self._put(subject, wiring, Session(id=session_id, minutes=minutes, kwh=kwh))
+        else:
+            self._put(subject, wiring, replace(last, minutes=last.minutes + minutes, kwh=last.kwh + kwh))
+
+    def set_limit(self, subject: str, wiring: Wiring, session_id: str, kw: float, minutes: float) -> None:
+        """The car's own limit in `session_id` (`planning/car_limit.py`): what it drew, over how many minutes. It
+        replaces the one held, which the limit watch measured over fewer minutes."""
+        if not (_finite_positive(kw) and _finite_positive(minutes)):
+            return
+        last = self._session(subject, wiring, session_id)
+        if last is None:
+            last = Session(id=session_id, minutes=0.0, kwh=0.0)
+        if last.limit_kw == kw and last.limit_minutes == minutes:
+            return
+        self._put(subject, wiring, replace(last, limit_kw=kw, limit_minutes=minutes))
+
+    def _session(self, subject: str, wiring: Wiring, session_id: str) -> Session | None:
+        """The subject's last plug-in on this wiring when it is `session_id`."""
+        held = self._subjects.get(subject)
+        if held is None or held[0] != wiring or not held[1] or held[1][-1].id != session_id:
+            return None
+        return held[1][-1]
+
+    def _put(self, subject: str, wiring: Wiring, session: Session) -> None:
+        """Keep `session` as the subject's last plug-in (replacing it when it is the same one); another wiring
+        starts again."""
         held = self._subjects.get(subject)
         sessions = list(held[1]) if held is not None and held[0] == wiring else []
-        if sessions and sessions[-1].id == session_id:
-            last = sessions[-1]
-            sessions[-1] = Session(id=session_id, minutes=last.minutes + minutes, kwh=last.kwh + kwh)
+        if sessions and sessions[-1].id == session.id:
+            sessions[-1] = session
         else:
-            sessions.append(Session(id=session_id, minutes=minutes, kwh=kwh))
+            sessions.append(session)
         self._subjects[subject] = (wiring, sessions[-MAX_SESSIONS:])
         self._store.async_delay_save(self._to_store, SAVE_DELAY_S)
 
@@ -204,7 +284,7 @@ class LearnedPowerStore:
             "subjects": {
                 subject: {
                     "wiring": wiring.as_dict(),
-                    "sessions": [{"id": s.id, "minutes": s.minutes, "kwh": s.kwh} for s in sessions],
+                    "sessions": [s.as_stored() for s in sessions],
                 }
                 for subject, (wiring, sessions) in self._subjects.items()
             }
@@ -220,29 +300,52 @@ class PowerSample:
     session: str
     subject: str
     wiring: Wiring
+    #: When the count last posted the value (`None`: now, as for energy integrated from a power).
+    posted_at: datetime | None = None
+
+    @property
+    def posted(self) -> datetime:
+        return self.at if self.posted_at is None else self.posted_at
 
 
 class PowerSampler:
-    """Turns readings taken once a minute into clean minutes for the store: a stretch counts when it begins and
-    ends on a clean reading of the same plug-in, subject and wiring, at most `MAX_STEP_S` apart."""
+    """Turns readings taken once a minute into clean minutes for the store. A stretch is clean readings of the same
+    plug-in, subject and wiring, each at most `MAX_STEP_S` after the one before; inside it, the energy between two
+    posts of the count counts over the time between those posts, from the first post made inside the stretch."""
 
     def __init__(self, store: LearnedPowerStore) -> None:
         self._store = store
         self._last: PowerSample | None = None
+        #: The post counted from, and when the stretch began.
+        self._base: PowerSample | None = None
+        self._since: datetime | None = None
 
     def sample(self, sample: PowerSample | None, high_kw: float) -> None:
         """Take one reading (`None`: this minute is not clean, and the stretch ends)."""
         last, self._last = self._last, sample
-        if sample is None or last is None:
+        if sample is None:
+            self._base = self._since = None
             return
-        if (last.session, last.subject, last.wiring) != (sample.session, sample.subject, sample.wiring):
+        if (
+            last is None
+            or (last.session, last.subject, last.wiring) != (sample.session, sample.subject, sample.wiring)
+            or not 0 < (sample.at - last.at).total_seconds() <= MAX_STEP_S
+        ):
+            self._base, self._since = None, sample.at
+        base = self._base
+        if base is None:
+            assert self._since is not None
+            if sample.posted >= self._since:
+                self._base = sample
             return
-        seconds = (sample.at - last.at).total_seconds()
-        if not 0 < seconds <= MAX_STEP_S:
-            return
-        kwh = sample.kwh - last.kwh
-        # A register that went back, or jumped further than three times the planned power could deliver: nothing.
-        if kwh < 0 or kwh > 3 * high_kw * seconds / 3600.0 + 1.0:
+        seconds = (sample.posted - base.posted).total_seconds()
+        if seconds <= 0:
+            return  # nothing posted since
+        kwh = sample.kwh - base.kwh
+        # A register that went back, jumped further than three times the planned power could deliver, or was
+        # silent too long: counted afresh from here.
+        self._base = sample
+        if kwh < 0 or seconds > MAX_POST_GAP_S or kwh > 3 * high_kw * seconds / 3600.0 + 1.0:
             return
         self._store.add(sample.subject, sample.wiring, sample.session, kwh, seconds / 60.0)
 
