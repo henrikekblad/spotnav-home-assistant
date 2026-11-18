@@ -492,6 +492,7 @@
     "target_c": 21.0
   },
   "config": {
+    "away_delta_c": 3.0,
     "away_until": null,
     "control_enabled": true,
     "control_entity": "switch.larm_utgang_1",

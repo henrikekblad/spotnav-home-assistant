@@ -86,6 +86,20 @@ def test_the_target_is_a_half_degree_from_16_to_25() -> None:
     assert away_target(21.0) == 18.0 and away_target(17.5) == 16.0
 
 
+def test_the_away_setback_is_1_to_6_in_half_degrees_and_defaults_to_3() -> None:
+    assert HeatConfig().away_delta_c == 3.0 and HeatConfig().as_dict()["away_delta_c"] == 3.0
+    assert write({"away_delta_c": 4.5})[0].away_delta_c == 4.5
+    assert write({"away_delta_c": 1})[0].away_delta_c == 1.0 and write({"away_delta_c": 6})[0].away_delta_c == 6.0
+    assert write({"away_delta_c": None}, write({"away_delta_c": 5})[0])[0].away_delta_c == 3.0
+    assert codes(write({"away_delta_c": 0.5})[1]) == [("away_delta_c", "out_of_range")]
+    assert codes(write({"away_delta_c": 6.5})[1]) == [("away_delta_c", "out_of_range")]
+    assert codes(write({"away_delta_c": 2.2})[1]) == [("away_delta_c", "not_a_step")]
+    assert codes(write({"away_delta_c": True})[1]) == [("away_delta_c", "invalid_value")]
+    assert read_config({"away_delta_c": 4.5}).away_delta_c == 4.5
+    assert read_config({"away_delta_c": 9}).away_delta_c == 3.0 and read_config({}).away_delta_c == 3.0
+    assert away_target(21.0, 5.0) == 16.0 and away_target(21.0, 1.5) == 19.5 and away_target(18.0, 6.0) == 16.0
+
+
 def test_away_needs_a_return_time_ahead_and_home_clears_it() -> None:
     until = (NOW + timedelta(days=3)).isoformat()
     away, errors = write({"mode": "away", "away_until": until})

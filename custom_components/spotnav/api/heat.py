@@ -18,7 +18,7 @@ shadow logs each change of what it would do now (in the diagnostics). Refusals a
 `spotnav/update_heat` (API v1):
 
     {type: "spotnav/update_heat", api_version: 1, site_id | charger_id,
-     changes: {target_c?, mode?, away_until?, night?, indoor_sensors?, indoor_offsets?, outdoor_sensor?,
+     changes: {target_c?, mode?, away_until?, away_delta_c?, night?, indoor_sensors?, indoor_offsets?, outdoor_sensor?,
                control_path?, control_entity?, control_entity_b?, hot_water_entity?, zones?, control_enabled?,
                heat_meter_entity?},
      expected: {the same keys: the values the caller last saw}}
@@ -56,6 +56,7 @@ from .. import time_zones
 from ..battery.plan_runtime import site_car_windows
 from ..const import CONF_HEAT, CONF_HEAT_METER_ENTITY, DOMAIN
 from ..heat.config import (
+    F_AWAY_DELTA,
     F_INDOOR_OFFSETS,
     F_NIGHT,
     F_ZONES,
@@ -181,9 +182,9 @@ def _same(name: str, stored: Any, expected: Any) -> bool:
 
 
 #: What the charger webhook's secret may write (the owner's decisions of 2026-11-18): the dial, home/away, the
-#: cooler night and each zone's and each indoor sensor's offset. The control opt-in, the control path and every
+#: cooler night, the away setback and each zone's and each indoor sensor's offset. The control opt-in, the control path and every
 #: entity choice are not here.
-WEBHOOK_FIELDS: Final = frozenset({*USER_FIELDS, F_NIGHT, F_ZONES, F_INDOOR_OFFSETS})
+WEBHOOK_FIELDS: Final = frozenset({*USER_FIELDS, F_AWAY_DELTA, F_NIGHT, F_ZONES, F_INDOOR_OFFSETS})
 
 
 def _own_sensors(stored: HeatConfig, changes: Mapping[str, Any]) -> bool:

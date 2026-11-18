@@ -14,6 +14,7 @@ hand-edited one never fails a read):
 
     {target_c: 16..25 in 0.5 steps (21),
      mode: "home" | "away", away_until: ISO instant with offset | null (set while away),
+     away_delta_c: 1..6 in 0.5 steps (3: the setback while away, never below 16 °C),
      night: {on: bool, delta_c: 0.5..3 in 0.5 steps, start: "HH:MM", end: "HH:MM"} (off, 1, 23:00, 06:00),
      indoor_sensors: [sensor ids] (up to 8), outdoor_sensor: sensor id | null (null: the house forecast's own),
      indoor_offsets: [{entity_id: one of the indoor sensors, offset_c: -3..3 in 0.5 steps, never 0}] (none),
@@ -37,8 +38,10 @@ TARGET_MAX_C: Final = 25.0
 DEFAULT_TARGET_C: Final = 21.0
 #: The comfort band around the target (plan section 15: fixed ±0.5 °C first).
 BAND_C: Final = 0.5
-#: Away: this far below the target, never below the floor.
-AWAY_DROP_C: Final = 3.0
+#: Away: this far below the target (the site's `away_delta_c`, 1..6 in half degrees), never below the floor.
+AWAY_DELTA_MIN_C: Final = 1.0
+AWAY_DELTA_MAX_C: Final = 6.0
+DEFAULT_AWAY_DELTA_C: Final = 3.0
 AWAY_FLOOR_C: Final = TARGET_MIN_C
 #: How far ahead an away date may be.
 AWAY_MAX_DAYS: Final = 90
@@ -77,6 +80,7 @@ F_TARGET: Final = "target_c"
 F_MODE: Final = "mode"
 F_AWAY_UNTIL: Final = "away_until"
 F_NIGHT: Final = "night"
+F_AWAY_DELTA: Final = "away_delta_c"
 F_INDOOR: Final = "indoor_sensors"
 F_OUTDOOR: Final = "outdoor_sensor"
 F_PATH: Final = "control_path"
@@ -87,7 +91,7 @@ F_ZONES: Final = "zones"
 F_INDOOR_OFFSETS: Final = "indoor_offsets"
 F_CONTROL_ENABLED: Final = "control_enabled"
 FIELDS: Final = (
-    F_TARGET, F_MODE, F_AWAY_UNTIL, F_NIGHT, F_INDOOR, F_OUTDOOR, F_PATH, F_CONTROL, F_CONTROL_B, F_HOT_WATER, F_ZONES,
+    F_TARGET, F_MODE, F_AWAY_UNTIL, F_AWAY_DELTA, F_NIGHT, F_INDOOR, F_OUTDOOR, F_PATH, F_CONTROL, F_CONTROL_B, F_HOT_WATER, F_ZONES,
     F_INDOOR_OFFSETS, F_CONTROL_ENABLED,
 )
 #: What anyone who can see the card may change (the dial and home/away, a thermostat's own controls); the rest is an
@@ -159,6 +163,7 @@ class HeatConfig:
     target_c: float = DEFAULT_TARGET_C
     mode: str = MODE_HOME
     away_until: str | None = None
+    away_delta_c: float = DEFAULT_AWAY_DELTA_C
     night: Night = field(default_factory=Night)
     indoor_sensors: tuple[str, ...] = ()
     outdoor_sensor: str | None = None
@@ -179,6 +184,7 @@ class HeatConfig:
             F_TARGET: self.target_c,
             F_MODE: self.mode,
             F_AWAY_UNTIL: self.away_until,
+            F_AWAY_DELTA: self.away_delta_c,
             F_NIGHT: self.night.as_dict(),
             F_INDOOR: list(self.indoor_sensors),
             F_OUTDOOR: self.outdoor_sensor,
@@ -297,8 +303,10 @@ def read_config(raw: Any) -> HeatConfig:
     domains = PATH_DOMAINS.get(path, ())
     control = _entity(raw.get(F_CONTROL), domains) if path != PATH_NONE else None
     control_b = _entity(raw.get(F_CONTROL_B), domains) if path == PATH_SG_READY else None
+    away_delta = _step_in(raw.get(F_AWAY_DELTA), AWAY_DELTA_MIN_C, AWAY_DELTA_MAX_C)
     return HeatConfig(
         target_c=DEFAULT_TARGET_C if target is None else target,
+        away_delta_c=DEFAULT_AWAY_DELTA_C if away_delta is None else away_delta,
         mode=mode,
         away_until=away_until if mode == MODE_AWAY else None,
         night=_night(raw.get(F_NIGHT)),
@@ -314,9 +322,9 @@ def read_config(raw: Any) -> HeatConfig:
     )
 
 
-def away_target(target_c: float) -> float:
-    """The temperature held while away: `AWAY_DROP_C` below the target, never below the floor."""
-    return max(AWAY_FLOOR_C, target_c - AWAY_DROP_C)
+def away_target(target_c: float, delta_c: float = DEFAULT_AWAY_DELTA_C) -> float:
+    """The temperature held while away: `delta_c` below the target, never below the floor."""
+    return max(AWAY_FLOOR_C, target_c - delta_c)
 
 
 # ------------------------------------------------------------------------------------------------ the write
@@ -394,6 +402,20 @@ def apply_changes(
                 errors.append(FieldError(F_AWAY_UNTIL, ERR_AWAY_FAR))
             else:
                 updated = replace(updated, mode=MODE_AWAY, away_until=until.isoformat())
+
+    if F_AWAY_DELTA in changes:
+        value = changes[F_AWAY_DELTA]
+        number = _number(value)
+        if value is None:
+            updated = replace(updated, away_delta_c=DEFAULT_AWAY_DELTA_C)
+        elif number is None:
+            errors.append(FieldError(F_AWAY_DELTA, ERR_INVALID))
+        elif not AWAY_DELTA_MIN_C <= number <= AWAY_DELTA_MAX_C:
+            errors.append(FieldError(F_AWAY_DELTA, ERR_RANGE))
+        elif not _on_step(number):
+            errors.append(FieldError(F_AWAY_DELTA, ERR_STEP))
+        else:
+            updated = replace(updated, away_delta_c=number)
 
     if F_NIGHT in changes:
         raw = changes[F_NIGHT]
