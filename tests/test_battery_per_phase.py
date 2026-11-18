@@ -434,6 +434,11 @@ def test_the_probe_writes_a_discharge_on_one_phase_as_it_is_and_a_charge_only_wi
     assert executor.state.phase_kw == (0.0, -1.0, 0.0) and site.plant_kw() == (0.0, 1.0, 0.0)
     now, results = _run(executor, site, now, 4, "grid_charge", 0.0, phase_caps_kw=None, phase_probe_kw=(0.0, 0.0, -1.0))
     assert written(results) == [("phase_l2_target", 0.0), ("phase_l3_target", 1.0)]
+    # It starts only where a hold could: the battery's discharge now lands on the grid once the targets are 0.
+    fresh, quiet = _site()
+    look = quiet.inputs(T0, "grid_charge", 0.0, phase_caps_kw=None, phase_probe_kw=(0.0, 0.0, 0.0), headroom_a=12.0)
+    look = replace(look, facts=replace(look.facts, power_kw=-3.0))
+    assert events([fresh.step(look)], "not_started")[0]["reason"] == "headroom_too_small"
     # A charge in a probe has no cap here: nothing; a larger discharge is bounded.
     look = site.inputs(now, "grid_charge", 0.0, phase_caps_kw=None, phase_probe_kw=(2.0, -5.0, 0.0))
     assert phase_charge_kw(look, None) == ((0.0, -1.0, 0.0), None)

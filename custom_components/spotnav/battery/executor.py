@@ -1309,6 +1309,9 @@ class Executor:
             return "headroom_too_small"
         if action == ACTION_GRID_CHARGE and inputs.headroom_a < HEADROOM_MARGIN_A:
             return "headroom_too_small"
+        if action == ACTION_GRID_CHARGE and inputs.phase_probe_kw is not None and not hold_headroom_ok(inputs):
+            # The verification's probe leaves two phases' house on the grid, as a hold does: the hold's start rule.
+            return "headroom_too_small"
         if _writes_today(state, inputs) >= DAILY_WRITE_CAP:
             return "daily_write_cap"
         if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < REARM_S:
