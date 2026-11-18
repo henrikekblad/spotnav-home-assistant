@@ -191,6 +191,8 @@ class Situation:
     writes_today: int
     #: A reason that ends any lowering at once and starts none (`SAFETY_*`; `settling` starts none only).
     safety: str | None = None
+    #: The day's writes at most on the path steered (`paths.max_writes`).
+    max_writes: int = MAX_WRITES_DAY
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,7 +228,7 @@ def decide(s: Situation) -> Decision:
     until = min(s.plan_until, s.now + MAX_RUN, s.now + day_left)
     if until - s.now < MIN_LOWER:
         return Decision(False, REASON_TOO_SHORT)
-    if s.writes_today + 2 > MAX_WRITES_DAY:
+    if s.writes_today + 2 > s.max_writes:
         return Decision(False, REASON_WRITE_CAP)
     return Decision(True, REASON_PLANNED, until)
 
@@ -241,6 +243,7 @@ def closings_ahead(
     writes: Mapping[str, int],
     day_of: Callable[[datetime], str],
     safety: str | None = None,
+    max_writes: int = MAX_WRITES_DAY,
 ) -> list[tuple[datetime, datetime]]:
     """The relay's closings to expect from `now` on by the rules (`decide`) on the plan as it stands: the running one
     to `held_until`, then each lowered run of the plan from the end of the rest after the last, at most `MAX_RUN` in
@@ -275,7 +278,7 @@ def closings_ahead(
             day_left = MAX_DAY - lowered_within(done + out, moment - timedelta(days=1), moment)
             until = min(run_end, moment + MAX_RUN, moment + max(timedelta(0), day_left))
             day = day_of(moment)
-            if until - moment < MIN_LOWER or counts.get(day, 0) + 2 > MAX_WRITES_DAY:
+            if until - moment < MIN_LOWER or counts.get(day, 0) + 2 > max_writes:
                 break
             out.append((moment, until))
             counts[day] = counts.get(day, 0) + 2
@@ -328,6 +331,8 @@ class RaiseSituation:
     writes_today: int
     #: A reason that ends any raise at once and starts none (`RAISE_*`; `raise_settling` starts none only).
     block: str | None = None
+    #: The day's writes at most on the path steered (`paths.max_writes`).
+    max_writes: int = MAX_WRITES_DAY
 
 
 def decide_raise(s: RaiseSituation) -> Decision:
@@ -355,7 +360,7 @@ def decide_raise(s: RaiseSituation) -> Decision:
     until = min(s.plan_until, s.now + MAX_RAISE_RUN, s.now + day_left)
     if until - s.now < MIN_RAISE:
         return Decision(False, RAISE_TOO_SHORT)
-    if s.writes_today + 2 + RAISE_KEEPS_WRITES > MAX_WRITES_DAY:
+    if s.writes_today + 2 + RAISE_KEEPS_WRITES > s.max_writes:
         return Decision(False, RAISE_WRITE_CAP)
     return Decision(True, RAISE_PLANNED, until)
 

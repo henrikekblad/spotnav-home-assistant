@@ -1,7 +1,8 @@
 """Per-brand heat pump adapters: where each integration keeps the pump's readings and which controls it has.
 
 Read only. Nothing here or in `facts.py` writes to a heat pump; the controls are listed so the diagnostics show what
-a later step could use (plan `plans/v3_heating_plan.md` section 4), never to use them.
+a pump offers (plan `plans/v3_heating_plan.md` section 4). The heat control (`heat/control.py`, behind the person's
+opt-in) steers through the SG Ready API and the curve offsets among them, as `heat/paths.py` says.
 
 Every entity is found by its integration (the registry's platform) and the key at the fixed place of its unique id,
 never by its entity id or name, which a person may change. A pump is found by its anchor (`Adapter.anchor`, the
@@ -164,6 +165,8 @@ NIBE_S: Final = Adapter(
     facts={
         "outdoor_temp": (_dash("30002"),),
         "supply_temp": (_dash("30006"), _dash("30040")),
+        # Calculated supply climate system 1 (`s1155_s1255.json`): what the heat control's check reads.
+        "calc_supply_temp": (_dash("31018"),),
         "return_temp": (_dash("30008"),),
         "room_temp": (_dash("30027"),),
         "hot_water_temp": (_dash("30009"),),
@@ -224,6 +227,9 @@ CTC_BMS: Final = Adapter(
         "outdoor_temp": (_under("62000"),),
         # Heating system 1's primary flow and room temperature (systems 2-4 follow at +1).
         "supply_temp": (_under("62011"),),
+        # Heating system 1's primary flow setpoint (`registers.py` "Temp", the stored shape of control 1029): what
+        # the curve asks for now.
+        "calc_supply_temp": (_under("62007"),),
         "return_temp": (_under("62015"),),
         "room_temp": (_under("62203"),),
         # The upper tank first: 62003 reads a constant 0 on some units (shown as unknown there).
