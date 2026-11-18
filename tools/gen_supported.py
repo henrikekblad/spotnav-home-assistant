@@ -750,8 +750,11 @@ OVERVIEW: tuple[Overview, ...] = (
         keys=("solax_modbus/solinteg",),
         adapter="solinteg",
         control="Not mapped. The integration has an EMS mode with a battery power target",
-        note="Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes. "
-        "Has its own site import limit; whether it acts under EMS control is unknown. One Modbus TCP client at a time.",
+        note="Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes, so "
+        "SpotNav caps a grid charge for the case that Home Assistant stops, counted as all on one phase. Has its own "
+        "site import limit; whether it acts under EMS control is unknown, so SpotNav does not count on it. Charging "
+        "per phase is mapped but cannot run: the integration reads no power per phase of the inverter. One Modbus TCP "
+        "client at a time, and the dongle stops answering for some seconds about once a minute.",
     ),
     Overview(
         "Sungrow (SH hybrids)",
