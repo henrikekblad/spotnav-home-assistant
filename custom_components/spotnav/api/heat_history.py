@@ -35,6 +35,7 @@ from ..heat.history import (
     OUTDOOR_SENSOR,
     TREND_MONTHS,
     HeatHistoryInputs,
+    ZoneUse,
     heat_history,
 )
 from ..planning.demand_charge import hour_start
@@ -42,7 +43,9 @@ from ..pricing.price_source import site_price_source
 from ..runtime import site_controller_for
 from ..const import CONF_METER_BELONGS
 from ..site.heat_meter import async_heat_hours
+from ..site.forecast_log import KIND_HEAT
 from ..site.heat_zones import async_zone_periods, summed_periods
+from ..site.spotnav_saving import heat_part
 from ..site.house_loads import stored_belongs
 from ..site.history_period import (
     PERIOD_DAY,
@@ -58,7 +61,7 @@ from ..site.history_period import (
 from .common import send_unsupported_version
 from .heat import _name, stored_config
 from .house import five_slot, fuse_kw, short_term_days
-from .house_history import ERROR_INVALID_DATE, period_price_slots
+from .house_history import ERROR_INVALID_DATE, forecast_maes, period_price_slots
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,6 +93,25 @@ def outdoor_source(config: Any, controller: Any, pump: Any) -> tuple[str | None,
     if any(row[1] is not None for row in forecast.history.rows.values()):
         return forecast.weather_entity_id, OUTDOOR_HOUSE_FORECAST
     return None
+
+
+def heat_savings(days: Any, period: Period) -> dict[date, float]:
+    """What SpotNav saved on heat on each day of the period that has a figure, from the heat shadow's days
+    (`site/spotnav_saving.heat_part`, the figure the house card's earnings count)."""
+    out: dict[date, float] = {}
+    if not isinstance(days, Mapping):
+        return out
+    for key, record in days.items():
+        try:
+            day = date.fromisoformat(key)
+        except (TypeError, ValueError):
+            continue
+        if not period.contains(day):
+            continue
+        value = heat_part(record)
+        if value is not None:
+            out[day] = value
+    return out
 
 
 def _number(value: Any) -> float | None:
@@ -191,12 +213,16 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
         except Exception:  # noqa: BLE001 - without the meter's rows the rest is shown
             _LOGGER.debug("SpotNav heat history: the heat meter could not be read", exc_info=True)
     zone_hours: dict[datetime, float] = {}
+    zone_uses: list[ZoneUse] = []
     zones = await controller.house_forecast.heat.async_current_zones()
     if meter.found and zones.sources:
         try:
-            zone_hours = summed_periods(
-                await async_zone_periods(hass, zones, read_from, read_to, cap_kw=fuse_kw(controller))
-            )
+            by_sensor = await async_zone_periods(hass, zones, read_from, read_to, cap_kw=fuse_kw(controller))
+            zone_hours = summed_periods(by_sensor)
+            zone_uses = [
+                ZoneUse(source.entity_id, source.name, source.origin, by_sensor.get(source.sensor_id) or {})
+                for source in zones.sources
+            ]
         except Exception:  # noqa: BLE001 - without the zones' rows the heat is the heat pump's
             _LOGGER.debug("SpotNav heat history: the heat zones could not be read", exc_info=True)
     outdoor_from = outdoor_source(config, controller, pump)
@@ -247,6 +273,11 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             review = shadow.review_of(day)
             if review is not None:
                 reviews[day] = review
+    savings = heat_savings(getattr(shadow, "days", None), period)
+    try:
+        model_mae = dict(forecast_maes(controller.house_forecast.log).get(KIND_HEAT) or {})
+    except Exception:  # noqa: BLE001 - the forecast log is extra: the rest is shown
+        model_mae = {}
     answer = heat_history(
         HeatHistoryInputs(
             site_id=site.entry_id,
@@ -269,6 +300,9 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
             kept=kept,
             effect=effect,
             reviews=reviews,
+            zone_uses=zone_uses,
+            savings=savings,
+            model_mae=model_mae,
         )
     )
     cache.pop(key, None)

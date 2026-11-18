@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from custom_components.spotnav.api.heat_history import hourly_means, outdoor_source, trend_start
+from custom_components.spotnav.api.heat_history import heat_savings, hourly_means, outdoor_source, trend_start
 from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset
 from custom_components.spotnav.heat.history import (
     BASE_C,
@@ -21,7 +21,12 @@ from custom_components.spotnav.heat.history import (
     CAUSE_STANDBY,
     HISTORY_KEYS,
     HeatHistoryInputs,
+    BUCKET_KEYS,
+    HISTORY_KEYS,
+    MAX_ZONE_PARTS,
+    ZoneUse,
     heat_history,
+    hot_water_hours,
     hour_prices,
     run_causes,
 )
@@ -353,8 +358,42 @@ def fixture_review() -> dict[str, Any]:
     )
 
 
+def zone_inputs() -> dict[str, Any]:
+    """An air-to-air heat pump upstairs with its own energy sensor (0.25 kWh an hour in the evening, else 0.1) and a
+    meter on the floor heating's circuit the household moved to heat (0.05 kWh an hour), both from 1 November."""
+    span = hours(datetime(2026, 10, 31, 23, tzinfo=timezone.utc), datetime(2026, 11, 16, 13, tzinfo=timezone.utc))
+    air = {moment: (0.25 if 17 <= (moment + timedelta(hours=1)).hour < 22 else 0.1) for moment in span}
+    floor = {moment: 0.05 for moment in span}
+    return {
+        "zone_hours": {moment: air[moment] + floor[moment] for moment in span},
+        "zone_uses": (
+            ZoneUse("climate.ovanvaning", "Ovanvåning", "zone", air),
+            ZoneUse("sensor.golvvarme_energi", "Golvvärme", "meter", floor),
+        ),
+    }
+
+
+def fixture_extras() -> dict[str, Any]:
+    """What SpotNav saved on heat on three days and the heat forecast's reviewed days."""
+    return {
+        "savings": {date(2026, 11, 13): 212.4, date(2026, 11, 14): 148.0, date(2026, 11, 15): 96.5, date(2026, 10, 30): 50.0},
+        "model_mae": {date(2026, 11, day): 0.2 + 0.01 * day for day in range(9, 16)},
+    }
+
+
 def test_contract_fixtures() -> None:
-    shadow = {"kept": kept_days(range(12, 16)), "effect": Effect(0.46, 0.82, 7), "reviews": {date(2026, 11, 15): fixture_review()}}
+    shadow = {
+        "kept": kept_days(range(12, 16)),
+        "effect": Effect(0.46, 0.82, 7),
+        "reviews": {date(2026, 11, 15): fixture_review()},
+        **fixture_extras(),
+    }
+    for name, period in (
+        ("zones_day.json", period_of(PERIOD_DAY, date(2026, 11, 15))),
+        ("zones_month.json", period_of(PERIOD_MONTH, date(2026, 11, 1))),
+        ("zones_year.json", period_of(PERIOD_YEAR, date(2026, 1, 1))),
+    ):
+        _fixture(name, heat_history(month_inputs(period=period, **shadow, **zone_inputs())))
     _fixture("villa_month.json", heat_history(month_inputs(**shadow)))
     _fixture(
         "villa_day.json",
@@ -403,3 +442,85 @@ def test_a_day_not_kept_takes_the_plan_run_again_with_the_night_setback() -> Non
     setpoint = {item["start"]: (item["target_c"], item["action"]) for item in curve["setpoint"]}
     assert setpoint[(start + timedelta(hours=2)).isoformat()] == (20.0, "night")
     assert any(action == "lower" and target == 20.5 for target, action in setpoint.values())
+
+
+def test_the_use_is_split_only_as_far_as_it_is_measured() -> None:
+    """The use tab's parts: the heat pump less its hot water, the hot water in the hours it ran, a zone with a sensor
+    of its own by name, every other heat together; each bucket's parts add up to its energy."""
+    answer = heat_history(month_inputs(**zone_inputs()))
+    assert tuple(answer) == HISTORY_KEYS
+    assert all(tuple(bucket) == BUCKET_KEYS for bucket in answer["buckets"])
+    parts = {part["key"]: part for part in answer["parts"]}
+    assert list(parts) == ["pump", "hot_water", "zone:climate.ovanvaning", "other"]
+    assert [part["kind"] for part in answer["parts"]] == ["pump", "hot_water", "zone", "other"]
+    assert parts["zone:climate.ovanvaning"]["name"] == "Ovanvåning" and parts["other"]["name"] is None
+    energy = answer["energy"]
+    assert sum(part["kwh"] for part in answer["parts"]) == pytest.approx(energy["total_kwh"], abs=0.01)
+    assert sum(part["cost"] for part in answer["parts"]) == pytest.approx(energy["cost"], abs=0.05)
+    assert parts["hot_water"]["kwh"] == pytest.approx(energy["hot_water_kwh"], abs=0.01)
+    assert parts["zone:climate.ovanvaning"]["kwh"] + parts["other"]["kwh"] == pytest.approx(energy["zones_kwh"], abs=0.01)
+    for bucket in answer["buckets"]:
+        if bucket["kwh"] is None:
+            assert bucket["parts"] == []
+            continue
+        assert sum(part["kwh"] for part in bucket["parts"]) == pytest.approx(bucket["kwh"], abs=0.01)
+        assert sum(part["cost"] for part in bucket["parts"]) == pytest.approx(bucket["cost"], abs=0.05)
+        # Hot water only on the days the 5-minute rows are kept (9 to 15 November).
+        assert ("hot_water" in {part["key"] for part in bucket["parts"]}) == ("2026-11-09" <= bucket["key"] <= "2026-11-15")
+
+
+def test_a_days_hot_water_is_in_the_hours_it_ran() -> None:
+    day = period_of(PERIOD_DAY, date(2026, 11, 15))
+    answer = heat_history(month_inputs(period=day, **zone_inputs()))
+    hot = {bucket["key"][11:13]: part["kwh"] for bucket in answer["buckets"] for part in bucket["parts"] if part["key"] == "hot_water"}
+    assert sorted(hot) == ["03", "06", "07"]
+    assert sum(hot.values()) == pytest.approx(answer["energy"]["hot_water_kwh"], abs=0.01)
+    for bucket in answer["buckets"]:
+        assert sum(part["kwh"] for part in bucket["parts"]) == pytest.approx(bucket["kwh"], abs=0.01)
+        assert all(part["kwh"] >= 0 for part in bucket["parts"])
+
+
+def test_hot_water_hours_take_each_runs_five_minutes() -> None:
+    start, _ = utc_bounds(period_of(PERIOD_DAY, date(2026, 11, 15)), TZ)
+    five = five_day(date(2026, 11, 15))
+    split = {date(2026, 11, 15): (0.0, [HotWaterRun(start + timedelta(hours=6, minutes=50), start + timedelta(hours=7, minutes=10), 0.0)])}
+    by_hour = hot_water_hours(five, split)
+    assert sorted(by_hour) == [start + timedelta(hours=6), start + timedelta(hours=7)]
+    assert sum(by_hour.values()) == pytest.approx(sum(five[start + timedelta(hours=6, minutes=50) + index * FIVE] for index in range(4)))
+
+
+def test_only_the_largest_zones_are_parts_of_their_own() -> None:
+    span = hours(datetime(2026, 10, 31, 23, tzinfo=timezone.utc), datetime(2026, 11, 16, 13, tzinfo=timezone.utc))
+    uses = tuple(ZoneUse(f"climate.zone_{index}", f"Zon {index}", "zone", {moment: 0.01 * (index + 1) for moment in span}) for index in range(MAX_ZONE_PARTS + 2))
+    zone_hours = {moment: sum(use.hours[moment] for use in uses) for moment in span}
+    answer = heat_history(month_inputs(zone_hours=zone_hours, zone_uses=uses))
+    zones = [part["key"] for part in answer["parts"] if part["kind"] == "zone"]
+    assert zones == [f"zone:climate.zone_{index}" for index in range(2, MAX_ZONE_PARTS + 2)]
+    other = next(part for part in answer["parts"] if part["key"] == "other")
+    assert other["kwh"] == pytest.approx(len(span) * 0.03, abs=0.01)
+    # Zones without their own figures (an older caller): all of them are other heat.
+    plain = heat_history(month_inputs(zone_hours=zone_hours))
+    assert [part["key"] for part in plain["parts"]] == ["pump", "hot_water", "other"]
+
+
+def test_what_spotnav_saved_on_heat_and_how_well_the_heat_is_forecast() -> None:
+    month = heat_history(month_inputs(**fixture_extras()))
+    # October's day is not this month's.
+    assert month["saving"] == {"value": 456.9, "days": 3}
+    by_key = {bucket["key"]: bucket["saving"] for bucket in month["buckets"]}
+    assert (by_key["2026-11-13"], by_key["2026-11-14"], by_key["2026-11-15"], by_key["2026-11-12"]) == (212.4, 148.0, 96.5, None)
+    assert month["model"] == {"mae_kw": 0.32, "days": 7}
+    day = heat_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 15)), **fixture_extras()))
+    assert day["saving"] == {"value": 96.5, "days": 1} and all(bucket["saving"] is None for bucket in day["buckets"])
+    assert day["model"] == {"mae_kw": 0.35, "days": 1}
+    year = heat_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 1, 1)), **fixture_extras()))
+    assert {bucket["key"]: bucket["saving"] for bucket in year["buckets"] if bucket["saving"] is not None} == {"2026-10": 50.0, "2026-11": 456.9}
+    plain = heat_history(month_inputs())
+    assert plain["saving"] is None and plain["model"] is None
+
+
+def test_the_days_heat_savings_are_read_from_the_heat_shadows_days() -> None:
+    review = {"relay": {"hours": 2.0, "value": 120.0}}
+    days = {"2026-11-14": {"review": review, "spotnav_min": 60}, "2026-10-30": {"review": review, "spotnav_min": 120}, "x": {}, "2026-11-13": {"review": review}}
+    assert heat_savings(days, period_of(PERIOD_MONTH, date(2026, 11, 1))) == {date(2026, 11, 14): 60.0}
+    assert heat_savings(None, period_of(PERIOD_MONTH, date(2026, 11, 1))) == {}

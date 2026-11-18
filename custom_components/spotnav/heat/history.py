@@ -7,7 +7,11 @@ written here.
      money: {currency, major, minor} | null,
      meter: {entity_id, name} | null,
      energy: {total_kwh, hours, hot_water_kwh, split_days, days, cost, priced_hours, zones_kwh, zones_from} | null,
-     buckets: [{key, kwh, hot_water_kwh, zones_kwh, cost, degree_days, outdoor_c, shadow_value}],
+     buckets: [{key, kwh, hot_water_kwh, zones_kwh, cost, degree_days, outdoor_c, shadow_value,
+                parts: [{key, kwh, cost}], saving}],
+     parts: [{key, kind: "pump" | "hot_water" | "zone" | "other", name, kwh, cost}],
+     saving: {value, days} | null,
+     model: {mae_kw, days} | null,
      degree_days: {base_c, outdoor: {entity_id, source} | null, sum, days, kwh, kwh_per_degree_day,
                    trend: [{month, kwh, degree_days, kwh_per_degree_day}]} | null,
      comfort: {low_c, sensors, coldest: {entity_id, name, mean_c, min_c} | null, hours, hours_below} | null,
@@ -66,6 +70,22 @@ written here.
   run again with the day's prices and the settings as they are now (night setback included; away is not known for a
   past day).
 
+* **The use by what is measured** (`parts`, the card's use tab): the period's energy and cost split only as far as
+  something measures it, each bucket's `parts` adding up to its `kwh`. `pump` is the heat pump meter's energy less
+  the hot water split out of it; `hot_water` the meter's hot-water runs, in the hours they ran (only on the days the
+  recorder still has the 5-minute rows of: elsewhere the hot water stays in `pump`, as `split_days` of `days` says);
+  a `zone` is a heat zone with a sensor of its own (`ZoneUse`, its climate as the key, its name as the household
+  named it: an air-to-air heat pump), the `MAX_ZONE_PARTS` largest of the period; `other` is every other heat counted
+  (further zones, a meter the household moved to heat). A part's `cost` is its hours' energy at their buy price,
+  `null` without a priced hour. Parts with no energy in the period are left out.
+* **What SpotNav saved on heat** (`saving`): the sum of the days' heat parts of what SpotNav saved
+  (`site/spotnav_saving.heat_part`: SpotNav's own lowerings, as the house card's earnings count them) over `days`
+  days, `null` without one; a month's or a year's bucket has its days' sum (`saving`, `null` without), a day's hours
+  have none (the figure is a whole day's).
+* **How well the heat is forecast** (`model`): the mean of the heat forecast's daily mean absolute error (kW, the
+  forecast log's `heat_kw`: the house model's heat against the meter) over the period's reviewed days; `null`
+  without one.
+
 Money is in the area's minor unit. Shadow only: nothing here controls a heating device.
 """
 
@@ -99,7 +119,18 @@ HEAT_HISTORY_API_VERSION: Final = 1
 HISTORY_KEYS: Final = (
     "api_version", "site_id", "time_zone", "generated_at", "period", "date", "end", "today", "complete", "money",
     "meter", "energy", "buckets", "degree_days", "comfort", "shadow", "immersion", "runs", "review", "indoor_day",
+    "parts", "saving", "model",
 )
+BUCKET_KEYS: Final = (
+    "key", "kwh", "hot_water_kwh", "zones_kwh", "cost", "degree_days", "outdoor_c", "shadow_value", "parts", "saving",
+)
+PART_PUMP: Final = "pump"
+PART_HOT_WATER: Final = "hot_water"
+PART_ZONE: Final = "zone"
+PART_OTHER: Final = "other"
+#: At most this many zones are parts of their own (the largest of the period); the rest are in `other`.
+MAX_ZONE_PARTS: Final = 4
+ORIGIN_ZONE: Final = "zone"
 #: The degree-day base (°C): the outdoor temperature above which a house needs no heating.
 BASE_C: Final = 17.0
 #: A day needs this many hourly outdoor means for its degree-days.
@@ -117,6 +148,17 @@ CAUSE_STANDBY: Final = "standby"
 OUTDOOR_SENSOR: Final = "sensor"
 OUTDOOR_HOUSE_FORECAST: Final = "house_forecast"
 FIVE_MIN_HOURS: Final = 5 / 60
+
+
+@dataclass(frozen=True, slots=True)
+class ZoneUse:
+    """A heat zone counted (`site/heat_zones.ZoneSource`) with its energy per UTC hour start (kWh)."""
+
+    entity_id: str
+    name: str
+    #: `zone` (a climate chosen in the heat settings) or `meter` (a meter the household moved to heat).
+    origin: str
+    hours: Mapping[datetime, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +192,12 @@ class HeatHistoryInputs:
     effect: Effect = field(default_factory=Effect)
     #: The heat shadow's day reviews (`heat/review.py`) by day.
     reviews: Mapping[date, Mapping[str, Any]] = field(default_factory=dict)
+    #: The zones of `zone_hours` one by one; without them the zones' energy is all "other" heat.
+    zone_uses: Sequence[ZoneUse] = ()
+    #: What SpotNav saved on heat per day (`site/spotnav_saving.heat_part`, minor unit), the days that have a figure.
+    savings: Mapping[date, float] = field(default_factory=dict)
+    #: The heat forecast's mean absolute error per reviewed day (kW, the forecast log's `heat_kw`).
+    model_mae: Mapping[date, float] = field(default_factory=dict)
 
 
 def _r(value: float, digits: int = 2) -> float:
@@ -245,6 +293,62 @@ def splits(five: Mapping[datetime, float], days: Sequence[date], tz: str) -> dic
             continue
         out[day] = (split.hot_water_kwh, list(split.runs))
     return out
+
+
+def hot_water_hours(
+    five: Mapping[datetime, float], split: Mapping[date, tuple[float, list[HotWaterRun]]]
+) -> dict[datetime, float]:
+    """The split days' hot water per UTC hour start (kWh): each run's 5-minute energy in the hour it fell in."""
+    out: dict[datetime, float] = {}
+    step = timedelta(hours=FIVE_MIN_HOURS)
+    for _kwh, runs in split.values():
+        for run in runs:
+            moment = run.start
+            while moment < run.end:
+                kwh = five.get(moment)
+                if kwh:
+                    hour = moment.replace(minute=0, second=0, microsecond=0)
+                    out[hour] = out.get(hour, 0.0) + kwh
+                moment += step
+    return out
+
+
+def use_parts(
+    inputs: HeatHistoryInputs,
+    in_period: Mapping[datetime, float],
+    hot_hours: Mapping[datetime, float],
+) -> list[tuple[str, str, str | None, dict[datetime, float]]]:
+    """The period's use split by what is measured (see the module): `(key, kind, name, kWh per hour)` in the order
+    shown, each over the meter's hours of the period, the parts with no energy left out."""
+    pump: dict[datetime, float] = {}
+    hot: dict[datetime, float] = {}
+    for moment, kwh in in_period.items():
+        water = min(max(0.0, kwh), max(0.0, hot_hours.get(moment, 0.0)))
+        pump[moment] = kwh - water
+        if water > 0:
+            hot[moment] = water
+    counted: dict[datetime, float] = {}
+    own: list[tuple[float, int, ZoneUse, dict[datetime, float]]] = []
+    for index, use in enumerate(inputs.zone_uses):
+        hours = {moment: kwh for moment, kwh in use.hours.items() if moment in in_period}
+        for moment, kwh in hours.items():
+            counted[moment] = counted.get(moment, 0.0) + kwh
+        if use.origin == ORIGIN_ZONE and sum(hours.values()) > 0:
+            own.append((sum(hours.values()), index, use, hours))
+    shown = sorted(sorted(own, key=lambda item: (-item[0], item[1]))[:MAX_ZONE_PARTS], key=lambda item: item[1])
+    # Every other heat counted: the zones' sum less the zones shown on their own.
+    other = {moment: kwh for moment, kwh in inputs.zone_hours.items() if moment in in_period}
+    for _total, _index, _use, hours in shown:
+        for moment, kwh in hours.items():
+            other[moment] = other.get(moment, 0.0) - kwh
+    other = {moment: kwh for moment, kwh in other.items() if kwh > 1e-9}
+    parts: list[tuple[str, str, str | None, dict[datetime, float]]] = [(PART_PUMP, PART_PUMP, None, pump)]
+    if hot:
+        parts.append((PART_HOT_WATER, PART_HOT_WATER, None, hot))
+    parts.extend((f"{PART_ZONE}:{use.entity_id}", PART_ZONE, use.name, hours) for _total, _index, use, hours in shown)
+    if other:
+        parts.append((PART_OTHER, PART_OTHER, None, other))
+    return [part for part in parts if part[0] == PART_PUMP or sum(part[3].values()) > 0]
 
 
 def run_causes(runs: Sequence[HotWaterRun], reference: Sequence[HotWaterRun]) -> list[dict[str, Any]]:
@@ -419,7 +523,13 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
     kwh_by_day = day_kwh(inputs.heat_hours, tz)
     complete = _complete_days(inputs.heat_hours, tz, today)
 
-    buckets = {key: {"key": key, "kwh": None, "hot_water_kwh": None, "zones_kwh": None, "cost": None, "degree_days": None, "outdoor_c": None, "shadow_value": None} for key in bucket_keys(period, tz)}
+    buckets: dict[str, dict[str, Any]] = {
+        key: {
+            "key": key, "kwh": None, "hot_water_kwh": None, "zones_kwh": None, "cost": None, "degree_days": None,
+            "outdoor_c": None, "shadow_value": None, "parts": [], "saving": None,
+        }
+        for key in bucket_keys(period, tz)
+    }
     cost = 0.0
     priced_hours = 0
     for moment, kwh in in_period.items():
@@ -480,6 +590,43 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         bucket = buckets.get(bucket_key(period, moment, tz))
         if bucket is not None:
             bucket["shadow_value"] = (bucket["shadow_value"] or 0.0) + worth
+    # The use by what is measured, and what SpotNav saved on heat per bucket (a month's or a year's).
+    parts_block: list[dict[str, Any]] = []
+    if inputs.meter is not None and in_period:
+        for part_key, kind, name, part_hours in use_parts(inputs, in_period, hot_water_hours(inputs.five, split)):
+            part_cost: float | None = None
+            by_bucket: dict[str, list[float | None]] = {}
+            for moment, kwh in part_hours.items():
+                key = bucket_key(period, moment, tz)
+                if key not in buckets:
+                    continue
+                held = by_bucket.setdefault(key, [0.0, None])
+                held[0] = (held[0] or 0.0) + kwh
+                price = priced.get(moment)
+                if price is not None:
+                    held[1] = (held[1] or 0.0) + kwh * price
+                    part_cost = (part_cost or 0.0) + kwh * price
+            for key, (kwh, bucket_cost) in by_bucket.items():
+                if kwh:
+                    buckets[key]["parts"].append(
+                        {"key": part_key, "kwh": _r(kwh, 3), "cost": None if bucket_cost is None else _r(bucket_cost, 3)}
+                    )
+            parts_block.append(
+                {
+                    "key": part_key,
+                    "kind": kind,
+                    "name": name,
+                    "kwh": _r(sum(part_hours.values()), 3),
+                    "cost": None if part_cost is None or inputs.money is None else _r(part_cost),
+                }
+            )
+    saved_days = {day: value for day, value in inputs.savings.items() if period.contains(day) and day <= today}
+    if period.kind != PERIOD_DAY:
+        for day, value in saved_days.items():
+            bucket = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
+            if bucket is not None:
+                bucket["saving"] = (bucket["saving"] or 0.0) + value
+    model_days = [mae for day, mae in inputs.model_mae.items() if period.contains(day)]
     rows = [{key: (_r(value, 3) if isinstance(value, float) else value) for key, value in bucket.items()} for bucket in buckets.values()]
 
     energy = None
@@ -562,4 +709,7 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         "runs": runs,
         "review": dict(inputs.reviews[period.first]) if period.kind == PERIOD_DAY and period.first in inputs.reviews else None,
         "indoor_day": day_indoor(inputs, outdoor_by_day),
+        "parts": parts_block,
+        "saving": {"value": _r(sum(saved_days.values())), "days": len(saved_days)} if saved_days else None,
+        "model": {"mae_kw": _r(sum(model_days) / len(model_days), 3), "days": len(model_days)} if model_days else None,
     }
