@@ -10,6 +10,12 @@ actions it allows, the routine's progress, what the person still has to do (`nee
 carry it, and the legacy `battery_control_allow_sell`, derived from it, for one release); the owner's `battery_control_shadow_only` and `battery_control_import_limit_acts` too.
 Written to the site entry without a reload; turning off hands the plant back before the answer. Refusals are stable
 codes in `error`: `spotnav_no_site`, `spotnav_not_admin`, `spotnav_invalid_value`.
+
+`enable_control_entities: true` (administrators only, never over the webhook) is the person's confirm in the opt-in dialog:
+SpotNav enables the brand's control entities that are disabled in the entity registry (the status's `enable_entities`
+lists them: `{integration, entities: [{entity_id, name}]}`, `null` when none is) and reloads their integration once,
+before `changes` (when given) is written. Turning control off leaves them enabled. A failed reload is
+`spotnav_enable_failed`.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ _LOGGER = logging.getLogger(__name__)
 BATTERY_CONTROL_API_VERSION: Final = 1
 ERROR_NO_SITE: Final = "spotnav_no_site"
 ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
+ERROR_ENABLE_FAILED: Final = "spotnav_enable_failed"
 
 
 def _answer(status: dict[str, Any] | None = None, error: str | None = None) -> dict[str, Any]:
@@ -51,7 +58,13 @@ WEBHOOK_WRITABLE: Final = (gate.CONF_MODE,)
 
 
 async def async_battery_control_answer(
-    hass: HomeAssistant, entry: ConfigEntry | None, changes: Any, *, admin: bool, over_webhook: bool = False
+    hass: HomeAssistant,
+    entry: ConfigEntry | None,
+    changes: Any,
+    *,
+    admin: bool,
+    over_webhook: bool = False,
+    enable_entities: bool = False,
 ) -> dict[str, Any]:
     """The answer for one site (the WebSocket command and the webhook's `battery_control` alike): its status, after
     writing `changes` when given. `over_webhook`: only `WEBHOOK_WRITABLE` may be named; another option is
@@ -60,6 +73,19 @@ async def async_battery_control_answer(
     if controller is None:
         return _answer(error=ERROR_NO_SITE)
     control = controller.battery_control
+    if enable_entities:
+        # The person's confirm of the opt-in dialog: never over the webhook, never without an administrator.
+        if over_webhook or not admin:
+            return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
+        if changes is not None and (not isinstance(changes, dict) or not changes or any(
+            not gate.valid_change(key, value) for key, value in changes.items()
+        )):
+            return _answer(error=ERROR_INVALID_VALUE)
+        try:
+            await control.async_enable_entities()
+        except Exception:  # noqa: BLE001 - the answer says so; the options below are not written
+            _LOGGER.exception("SpotNav battery control: enabling the control entities failed")
+            return _answer(error=ERROR_ENABLE_FAILED)
     if changes is None:
         return _answer(control.status())
     if over_webhook:
@@ -92,6 +118,7 @@ def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
         vol.Optional("site_id"): object,
         vol.Optional("charger_id"): object,
         vol.Optional("changes"): object,
+        vol.Optional("enable_control_entities"): bool,
     }
 )
 @websocket_api.async_response
@@ -104,7 +131,11 @@ async def websocket_battery_control(
         send_unsupported_version(connection, msg, BATTERY_CONTROL_API_VERSION)
         return
     answer = await async_battery_control_answer(
-        hass, _site_of(hass, msg), msg.get("changes"), admin=is_admin(connection)
+        hass,
+        _site_of(hass, msg),
+        msg.get("changes"),
+        admin=is_admin(connection),
+        enable_entities=msg.get("enable_control_entities") is True,
     )
     connection.send_result(msg["id"], answer)
 

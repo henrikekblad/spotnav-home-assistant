@@ -26,6 +26,7 @@
     "waiting_for": null,
     "needs": ["control_disabled:remote_ems"],
     "device_id": "0f4c2b7e9a1d4c3e8b6a5f2d1c0e9b8a",
+    "enable_entities": null,
     "notes": [{"code": "ai_mode_back", "at": "2026-11-15T21:10:00+01:00"}],
     "trial": null,
     "grid_charge_cap": {
