@@ -340,6 +340,9 @@ class PhaseControl:
     #: The three targets exist only on a three-phase plant (an entity per phase the plant has): finding them is
     #: what shows the plant's phases, where the brand has no other reading of them.
     three_phase_by_targets: bool = False
+    #: The largest size a `grid` target is written at (kW): the entity's own range, which a write beyond would be
+    #: refused by. A target cut to it leaves the battery less than its charge, never more.
+    limit_kw: float | None = None
 
     def names(self) -> tuple[str, str, str]:
         return (self.targets[0].name, self.targets[1].name, self.targets[2].name)
@@ -350,6 +353,8 @@ class PhaseControl:
         the charge."""
         if self.target_kind == "grid":
             power = behind_kw + charge_kw
+            if self.limit_kw is not None:
+                power = max(min(power, self.limit_kw), -self.limit_kw)
             size = native(self.targets[index], abs(power))
             return 0.0 if size == 0 else round((-self.charge_sign if power < 0 else self.charge_sign) * size, 6)
         size = native(self.targets[index], abs(charge_kw))
@@ -888,11 +893,15 @@ _VIC_EXTERNAL: Final = "external_control"  # Hub4Mode 3
 #: The Multi falls back to passthru this long after the last write of a setpoint (s), and how often each is renewed.
 VICTRON_SILENCE_S: Final = 60
 VICTRON_RENEW_S: Final = 20
+#: The range of the setpoint entities (kW): `vebus_ac_power_setpoint_{phase}` is -10000 to 10000 W, and the grid
+#: setpoint's is the GX's own, 10000 W where the GX does not state it (victron-mqtt `_victron_topics.py`).
+VICTRON_SETPOINT_MAX_KW: Final = 10.0
 
 
 def _vic_grid(kw: float) -> float:
-    """The grid setpoint (W) for a site power of `kw` (+ import), its size rounded down to the role's step."""
-    size = native(_VIC_GRID, abs(kw))
+    """The grid setpoint (W) for a site power of `kw` (+ import), its size rounded down to the role's step and cut
+    to the entity's range (the battery then takes or gives less than its rate, never more)."""
+    size = native(_VIC_GRID, min(abs(kw), VICTRON_SETPOINT_MAX_KW))
     return 0.0 if size == 0 else round(math.copysign(size, kw), 6)
 
 
@@ -936,6 +945,7 @@ VICTRON_PHASES: Final = PhaseControl(
     watchdog_renew_s=VICTRON_RENEW_S,
     silence_fallback_s=VICTRON_SILENCE_S,
     three_phase_by_targets=True,
+    limit_kw=VICTRON_SETPOINT_MAX_KW,
     own_states={"ESS mode": frozenset({_VIC_EXTERNAL})},
     enter_order=(
         "charge_power", "discharge_power", "grid_setpoint", "ess_mode", "disable_charge", "disable_feed_in",

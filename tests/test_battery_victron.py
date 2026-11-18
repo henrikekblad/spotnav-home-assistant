@@ -209,6 +209,10 @@ def test_the_recipe_names_the_integrations_entities_units_and_signs() -> None:
     assert all(role.scale == 1000.0 for role in phased.roles if role.method in ("number", "sensor"))
     assert VICTRON_PHASES.target_kind == "grid" and VICTRON_PHASES.charge_sign == 1.0
     assert VICTRON_PHASES.value(0, 1.0, 0.4) == 1400.0 and VICTRON_PHASES.value(0, -1.0, 0.4) == -600.0
+    # Never beyond the entities' range: a write past it would be refused.
+    assert VICTRON_PHASES.value(0, 9.0, 4.0) == 10000.0 and VICTRON_PHASES.value(0, -12.0, 0.5) == -10000.0
+    assert VICTRON_CONTROL.wanted("grid_charge", 6.0, house_kw=7.0)["grid_setpoint"] == 10000.0
+    assert VICTRON_CONTROL.wanted("export_discharge", 12.0, house_kw=1.0)["grid_setpoint"] == -10000.0
     # The ESS mode select is not the derived "ESS mode" the adapter's rule reads.
     assert not phased.role("ess_mode").match.matches("select", "x_system_0_system_ess_batterylife_state")
 
