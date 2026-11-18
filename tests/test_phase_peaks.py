@@ -252,9 +252,22 @@ def test_the_bias_factor_scales_the_peaks_by_what_the_battery_hid() -> None:
     _close(peaks, _feed(peaks, now + 18 * 3600, 5, _reading(site=(1.0, 1.0, 1.0), battery_w=-21.0 * VOLTS)))
     learned = peaks.learned(now + 20 * 3600)
     assert learned.factor == pytest.approx(24.0 / 16.0)
+    # The hidden 8 A (24 - 16, summed) may all sit on any one phase: each phase's own peak plus all of it, which
+    # is more than the ratio gives (7.5, 4.5 and 12 A).
     assert learned.phase_peaks() == pytest.approx({
-        "L1": 5.0 * 1.5 + MARGIN_A, "L2": 3.0 * 1.5 + MARGIN_A, "L3": 8.0 * 1.5 + MARGIN_A,
+        "L1": 5.0 + 8.0 + MARGIN_A, "L2": 3.0 + 8.0 + MARGIN_A, "L3": 8.0 + 8.0 + MARGIN_A,
     })
+
+
+def test_the_ratio_counts_where_it_gives_more_than_the_hidden_load_on_one_phase() -> None:
+    peaks = PhasePeaks()
+    # A phase that exports in the counted minutes: the sum seen (4 A) is small beside L3's own 10 A, so the ratio
+    # (hidden 2 A of 4: one and a half times) gives L3 15 A where its peak plus the hidden load gives 12 A.
+    now = _days(peaks, READY_DAYS, reading=_reading(site=(-8.0, 2.0, 10.0)))
+    _close(peaks, _feed(peaks, now + 18 * 3600, 5, _reading(site=(1.0, 1.0, 1.0), battery_w=-3.0 * VOLTS)))
+    learned = peaks.learned(now + 20 * 3600)
+    assert learned.factor == pytest.approx(6.0 / 4.0)
+    assert learned.phase_peaks() == pytest.approx({"L1": 2.0 + MARGIN_A, "L2": 2.0 + 2.0 + MARGIN_A, "L3": 15.0 + MARGIN_A})
 
 
 def test_a_single_phase_house_learns_its_one_loaded_phase() -> None:
@@ -351,7 +364,7 @@ def test_band_and_exact_minutes_together_take_the_larger_per_phase_until_the_exa
     assert learned.ready and learned.basis == "mixed"
     assert learned.factor == pytest.approx(24.0 / 16.0)
     assert learned.phase_peaks() == pytest.approx({
-        "L1": 5.0 * 1.5 + MARGIN_A, "L2": 12.0 + MARGIN_A, "L3": 8.0 * 1.5 + MARGIN_A,
+        "L1": 5.0 + 8.0 + MARGIN_A, "L2": 12.0 + MARGIN_A, "L3": 8.0 + 8.0 + MARGIN_A,
     })
     # Two weeks of exact minutes: the band's (scaled) peaks no longer count.
     now = _days(peaks, READY_DAYS - 7, reading=exact, start=now)

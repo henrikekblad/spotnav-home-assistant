@@ -44,7 +44,12 @@ toward the battery standing idle, mostly night, so the rarest peaks are the ones
 leaves out a motor's start), scaled up by the **bias factor** and plus `MARGIN_A`. The bias factor is how much larger
 the house's whole load (its current summed over the phases, known exactly whatever the battery's split) got in every
 minute than in the minutes that counted (at least 1): a house whose battery covers its evening peaks has those peaks
-reckoned at that ratio. Exact minutes are kept apart from these and count as they are, unscaled: the cap takes per
+reckoned at that ratio. The ratio alone would take the hidden load as spread like the load seen, and a phase that
+is quiet while the battery idles (the oven's, the heat pump's immersion heater's) would be scaled from next to nothing.
+So each phase is also reckoned at its own peak plus **the whole hidden load** (the difference of those two sums, in
+amps, as if all of it sat on that phase), and the larger of the two counts. This bound was chosen over skipping the
+early stage for a large factor: it holds at every stage and rests on no threshold, and with the plant's per-phase
+power (exact minutes) it is not needed at all. Exact minutes are kept apart from these and count as they are, unscaled: the cap takes per
 phase the larger of the two (each plus `MARGIN_A`); once `READY_DAYS` days each have `DAY_MINUTES` exact minutes,
 the exact peaks alone (the battery's band no longer needed). Loads that back off by themselves (a heat pump's own
 load monitor shedding its immersion heater) never peak on the meter, so they are left out as they should be.
@@ -574,8 +579,13 @@ class PhasePeaks:
         if total_all is not None and total_counted is not None:
             factor = max(1.0, total_all / max(total_counted, 1.0))
         exact_day_count = sum(1 for counted in exact_days.values() if counted >= DAY_MINUTES)
+        # What the battery hid (see the module): scaled by the factor, and never less than the whole hidden load
+        # on that one phase.
+        hidden = 0.0
+        if total_all is not None and total_counted is not None:
+            hidden = max(total_all - total_counted, 0.0)
         band_peaks = None if raw is None or exact_day_count >= READY_DAYS else tuple(
-            max(value, 0.0) * factor for value in raw
+            max(max(value, 0.0) * factor, max(value, 0.0) + hidden) for value in raw
         )
         exact_peaks = None if exact is None else tuple(max(value, 0.0) for value in exact)
         largest = _max_triple(band_peaks, exact_peaks)  # type: ignore[arg-type]
