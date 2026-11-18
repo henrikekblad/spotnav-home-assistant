@@ -1,0 +1,548 @@
+{
+  "ahead": [
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-11-16T16:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-11-16T17:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-11-16T18:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-11-16T19:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-11-16T20:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-11-16T21:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-11-16T22:00:00+00:00",
+      "target_c": 21.0
+    }
+  ],
+  "api_version": 1,
+  "band": {
+    "date": "2026-11-16",
+    "hot_water_pick": null,
+    "hours": [
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 80.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-15T23:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 78.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T00:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 76.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T01:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 75.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T02:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 77.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T03:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 85.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T04:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "preheat",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 120.0,
+        "raised_min": null,
+        "reason": "cheap_before_dear",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T05:00:00+00:00",
+        "target_c": 21.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 190.0,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T06:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 210.0,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T07:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 160.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T08:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 120.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T09:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 110.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T10:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 105.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T11:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 100.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T12:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 105.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T13:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 130.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T14:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "preheat",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 180.0,
+        "raised_min": null,
+        "reason": "cheap_before_dear",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T15:00:00+00:00",
+        "target_c": 21.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 240.0,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T16:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 260.0,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T17:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 220.0,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T18:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 150.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T19:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 110.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T20:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 95.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T21:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 85.0,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-11-16T22:00:00+00:00",
+        "target_c": 21.0
+      }
+    ]
+  },
+  "choices": {
+    "hot_water": [],
+    "indoor": [],
+    "meter": null,
+    "offset": [
+      {
+        "entity_id": "number.s1155_heating_offset_climate_system_1_40031",
+        "name": "Heating offset climate system 1",
+        "value": "0"
+      }
+    ],
+    "outdoor": [],
+    "relay": [
+      {
+        "entity_id": "number.s1155_requested_operating_mode_sg_ready_46009",
+        "name": "Requested operating mode (SG Ready)",
+        "value": null
+      },
+      {
+        "entity_id": "switch.s1155_activate_sg_ready_via_api_43033",
+        "name": "Activate SG Ready via API",
+        "value": null
+      }
+    ],
+    "setpoint": [],
+    "zones": []
+  },
+  "comfort": {
+    "aim_c": 20.5,
+    "away_until": null,
+    "high_c": 21.5,
+    "low_c": 20.5,
+    "mode": "home",
+    "target_c": 21.0
+  },
+  "config": {
+    "away_delta_c": 3.0,
+    "away_until": null,
+    "control_enabled": false,
+    "control_entity": "number.s1155_requested_operating_mode_sg_ready_46009",
+    "control_entity_b": "switch.s1155_activate_sg_ready_via_api_43033",
+    "control_path": "sg_ready_api",
+    "heat_meter_entity": null,
+    "hot_water_entity": null,
+    "indoor_offsets": [],
+    "indoor_sensors": [],
+    "mode": "home",
+    "night": {
+      "delta_c": 1.0,
+      "end": "06:00",
+      "on": false,
+      "start": "23:00"
+    },
+    "outdoor_sensor": null,
+    "target_c": 21.0,
+    "zones": []
+  },
+  "control": {
+    "automation": null,
+    "check": null,
+    "enable_entities": {
+      "entities": [
+        {
+          "entity_id": "switch.s1155_activate_sg_ready_via_api_43033",
+          "name": "Activate SG Ready via API"
+        },
+        {
+          "entity_id": "number.s1155_requested_operating_mode_sg_ready_46009",
+          "name": "Requested operating mode (SG Ready)"
+        }
+      ],
+      "integration": "S1155"
+    },
+    "enabled": false,
+    "lowered": false,
+    "path": "sg_ready_api",
+    "paused_until": null,
+    "raise_until": null,
+    "raised": false,
+    "reason": null,
+    "since": null,
+    "state": "off",
+    "untested": true,
+    "until": null
+  },
+  "indoor": {
+    "coldest": null,
+    "coldest_name": null,
+    "relative_c": null,
+    "sensors": [],
+    "value_c": null
+  },
+  "indoor_day": null,
+  "meter": null,
+  "notes": [],
+  "now": "2026-11-16T16:20:00+00:00",
+  "outdoor": {
+    "entity_id": "sensor.s1155_current_outdoor_temperature_bt1_30002",
+    "name": "BT1",
+    "source": "pump",
+    "value_c": 4.5
+  },
+  "pump": {
+    "brand": "nibe_s",
+    "capabilities": [
+      "offset"
+    ],
+    "compressor_running": true,
+    "control": "free",
+    "degree_minutes": null,
+    "device_id": "device_s1155",
+    "disabled": [],
+    "hot_water_c": null,
+    "immersion_on": null,
+    "integration": "nibe_heatpump",
+    "label": "NIBE S series (local)",
+    "paths": [
+      {
+        "control_entity": "number.s1155_requested_operating_mode_sg_ready_46009",
+        "control_entity_b": "switch.s1155_activate_sg_ready_via_api_43033",
+        "path": "sg_ready_api"
+      },
+      {
+        "control_entity": "number.s1155_heating_offset_climate_system_1_40031",
+        "control_entity_b": null,
+        "path": "offset"
+      }
+    ],
+    "price_control": "off",
+    "priority": "heating",
+    "supply_c": 34.0
+  },
+  "relay": null,
+  "review": null,
+  "shadow": true,
+  "site_id": "site_nibe_s",
+  "status": {
+    "guard": null,
+    "kw": null,
+    "pump_state": "heating",
+    "pump_state_source": "pump",
+    "would": {
+      "action": "lower",
+      "reason": "dear_hour",
+      "target_c": 20.5,
+      "until": "2026-11-16T19:00:00+00:00"
+    }
+  },
+  "time_zone": "Europe/Stockholm",
+  "today": null,
+  "writable": true,
+  "zones": []
+}
