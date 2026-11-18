@@ -1440,7 +1440,12 @@ describe("a learning period that holds something back", () => {
   it("says it in Now, small and grey, in Swedish as the owner asked", () => {
     expect(learningLines("sv", answer())).toEqual(["Lär sig husets toppar, 13 dygn kvar. Laddar inte från nätet förrän dess."]);
     const capped = { ...answer(), learning: [{ what: "phase_peaks", days_left: 1, cap_kw: 2.4 }] };
-    expect(learningLines("en", capped)).toEqual(["Learning the house's peaks, 1 day left. Charges at most 2.4 kW from the grid until then."]);
+    expect(learningLines("en", capped)).toEqual([
+      "Grid charging at most 2.4 kW while the house's peaks are being learned (1 day left).",
+    ]);
+    expect(learningLines("sv", { ...answer(), learning: [{ what: "phase_peaks", days_left: 9, cap_kw: 1.44 }] })).toEqual([
+      "Nätladdning högst 1,4 kW medan husets toppar lärs in (9 dygn kvar).",
+    ]);
     const line = body(answer(), { tab: "now" }, "sv").querySelector<HTMLElement>('[data-line="learning"]');
     expect(line?.textContent).toContain("13 dygn kvar");
     expect(line?.classList.contains("spotnav-house-sub")).toBe(true);
@@ -1463,10 +1468,12 @@ describe("a learning period that holds something back", () => {
 
   it("has the lines in every language", () => {
     for (const language of LANGUAGES) {
-      for (const line of learningLines(language, answer())) {
+      const capped = { ...answer(), learning: [{ what: "phase_peaks", days_left: 13, cap_kw: 2.4 }] };
+      for (const line of [...learningLines(language, answer()), ...learningLines(language, capped)]) {
         expect(line, language).toMatch(/13/);
         expect(line, language).not.toContain("{");
       }
+      expect(learningLines(language, capped)[0], language).toMatch(/2[.,]4/);
     }
   });
 });

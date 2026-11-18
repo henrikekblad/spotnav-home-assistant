@@ -389,19 +389,21 @@ export function heatLine(language: Language, answer: HouseAnswer, words?: Entity
   });
 }
 
-/** The status lines of the learning periods that hold something back now, one each ("Lär sig husets toppar, 13 dygn
- * kvar. Laddar inte från nätet förrän dess."); none when nothing is held back. */
+/** The status lines of the learning periods that hold something back now, one each ("Nätladdning högst 1,4 kW medan
+ * husets toppar lärs in (9 dygn kvar)."; with no grid charge at all "Lär sig husets toppar, 2 dygn kvar. Laddar inte
+ * från nätet förrän dess."); none when nothing is held back. */
 export function learningLines(language: Language, answer: HouseAnswer): string[] {
   const lines: string[] = [];
   for (const hold of answer.learning) {
     if (hold.what !== "phase_peaks") {
       continue;
     }
-    const held =
+    const left = daysLeft(language, hold.days_left);
+    lines.push(
       hold.cap_kw > 0
-        ? translate(language, "house.learning.cappedUntil", { kw: formatNumber(language, hold.cap_kw, 1) })
-        : translate(language, "house.learning.noGridUntil");
-    lines.push(`${translate(language, "house.learning.peaksLine", { left: daysLeft(language, hold.days_left) })} ${held}`);
+        ? translate(language, "house.learning.cappedWhile", { kw: formatNumber(language, hold.cap_kw, 1), left })
+        : `${translate(language, "house.learning.peaksLine", { left })} ${translate(language, "house.learning.noGridUntil")}`,
+    );
   }
   return lines;
 }
