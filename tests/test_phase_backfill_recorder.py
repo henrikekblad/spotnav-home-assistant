@@ -149,3 +149,55 @@ async def test_a_sensor_the_recorder_does_not_keep_counts_nothing_and_is_named(
     assert summary["hours_taken"] == 0 and all(not mark.counted for mark in peaks.hours.values())
     assert summary["without_history"] == sorted(entities["voltage"] for entities in renamed.values())
     assert "keeps no history of sensor.home_site_voltage_l1_unrecorded" in caplog.text
+
+
+async def test_a_read_that_fails_keeps_the_hours_replayed_and_the_next_run_comes_in_an_hour(
+    recorder_mock, hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    played = await _world(hass, freezer)
+    await _steady(played, 8)
+    await async_wait_recording_done(hass)
+    freezer.move_to(START + timedelta(minutes=8))
+    reads: list[int] = []
+    read = history.get_significant_states
+
+    def failing(*args: Any, **kwargs: Any) -> Any:
+        reads.append(1)
+        if len(reads) > 1:
+            raise OSError("database is locked")
+        return read(*args, **kwargs)
+
+    monkeypatch.setattr(history, "get_significant_states", failing)
+    peaks: PhasePeaks = played.controller.phase_peaks.peaks
+    changed: list[bool] = []
+    backfill = Backfill(hass, peaks, lambda: changed.append(True))
+    scheduled: list[float] = []
+    monkeypatch.setattr(backfill, "_schedule", lambda site, delay_s: scheduled.append(delay_s))
+    with caplog.at_level("INFO", logger=phase_backfill.__name__):
+        await backfill._async_due(played.controller)
+    # The hours of the first read (before the failing one) are kept, and marked as read back.
+    assert peaks.hours and all(mark.backfilled for mark in peaks.hours.values()) and changed == [True]
+    assert int(T0 // 3600) not in peaks.hours
+    assert backfill.last is not None and backfill.last["stopped"] == "error"
+    assert scheduled == [phase_backfill.ERROR_RETRY_S]
+    assert "database is locked" in caplog.text and "tried again in an hour" in caplog.text
+
+
+async def test_nothing_is_read_while_the_recorder_migrates(
+    recorder_mock, hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from homeassistant.components.recorder import get_instance
+
+    played = await _world(hass, freezer)
+    await _steady(played, 4)
+    await async_wait_recording_done(hass)
+    monkeypatch.setattr(get_instance(hass), "migration_in_progress", True)
+    reads: list[int] = []
+    monkeypatch.setattr(history, "get_significant_states", lambda *args, **kwargs: reads.append(1))
+    backfill = Backfill(hass, played.controller.phase_peaks.peaks, lambda: None)
+    scheduled: list[float] = []
+    monkeypatch.setattr(backfill, "_schedule", lambda site, delay_s: scheduled.append(delay_s))
+    await backfill._async_due(played.controller)
+    assert backfill.last["stopped"] == "migration" and reads == []
+    assert scheduled == [phase_backfill.ERROR_RETRY_S]

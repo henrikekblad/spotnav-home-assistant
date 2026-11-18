@@ -346,7 +346,7 @@ def test_live_hours_win_and_read_back_hours_are_marked() -> None:
     kept = PhasePeaks()
     kept.hours[hour] = _mark(4.0, 20)  # sampled live
     kept.hours[hour + 1] = HourMark(heat_kw=(1.0, 0.0, 0.0))  # live, nothing counted in it
-    kept.hours[hour + 2] = _mark(5.0, 10, backfilled=True)
+    kept.hours[hour + 2] = _mark(12.0, 10, backfilled=True)
     kept.hours[hour + 3] = _mark(5.0, 30, backfilled=True)
     history = PhasePeaks()
     for offset in range(-1, 4):
@@ -360,6 +360,8 @@ def test_live_hours_win_and_read_back_hours_are_marked() -> None:
     assert kept.hours[hour - 1].backfilled and kept.hours[hour - 1].minutes == 25
     assert kept.hours[hour + 1].backfilled and kept.hours[hour + 1].heat_kw == (1.0, 0.0, 0.0)
     assert kept.hours[hour + 2].minutes == 25, "read back again with more minutes"
+    # Nothing is lowered by the new reading: the larger of each peak and total.
+    assert kept.hours[hour + 2].house_a == (12.0, 12.0, 12.0) and kept.hours[hour + 2].total_all == 36.0
     assert kept.hours[hour + 3].minutes == 30, "and kept where the new reading has fewer"
     assert sorted(kept.hours) == [hour - 1, hour, hour + 1, hour + 2, hour + 3]
     assert kept.covered(hour - 1, 5) and not kept.covered(hour - 2, 2)
@@ -439,7 +441,8 @@ async def test_the_run_repeats_until_the_learning_is_done(hass: HomeAssistant, m
     await backfill._async_due(site)
     await backfill._async_due(site)
     assert len(runs) == 2 and backfill.last == {"at": backfill.last["at"], "stopped": "error"}
-    assert scheduled[1:] == [phase_backfill.RETRY_S, phase_backfill.RETRY_S]
+    # A day to the next run; an hour after one that could not read.
+    assert scheduled[1:] == [phase_backfill.RETRY_S, phase_backfill.ERROR_RETRY_S]
     # Two weeks kept: no run, and none after it.
     hour = int(dt_util.utcnow().timestamp() // 3600)
     for day in range(READY_DAYS):
@@ -478,3 +481,72 @@ async def test_a_due_run_is_a_background_task_that_a_stop_cancels(hass: HomeAssi
     assert task is not None and not task.done()
     await backfill.async_stop()
     assert task.cancelled() and backfill._cancel is None
+
+
+def test_a_reading_by_the_band_replaced_by_an_exact_one_keeps_its_peak_and_still_reads_from_the_store() -> None:
+    import json
+
+    now = T0 + 3600
+    hour = int(T0 // 3600)
+    kept = PhasePeaks()
+    kept.hours[hour] = _mark(11.0, 20, backfilled=True, lost=30)
+    history = PhasePeaks()
+    history.hours[hour] = HourMark(exact_a=(4.0, 4.0, 4.0), exact_minutes=60, total_all=12.0)
+    assert kept.merge_history(history, now) == 1
+    mark = kept.hours[hour]
+    assert mark.house_a == (11.0, 11.0, 11.0) and mark.exact_a == (4.0, 4.0, 4.0) and mark.total_all == 33.0
+    assert mark.minutes >= 1 and mark.counted <= 60 and mark.lost == 0
+    again = PhasePeaks()
+    again.load(json.loads(json.dumps(kept.as_dict())), now)
+    assert again.hours[hour].house_a == (11.0, 11.0, 11.0)
+
+
+async def test_the_first_run_waits_for_home_assistant_to_have_started(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+    from homeassistant.core import CoreState
+
+    from custom_components.spotnav.site import phase_backfill
+    from custom_components.spotnav.site.phase_backfill import Backfill
+
+    hass.set_state(CoreState.starting)
+    backfill = Backfill(hass, PhasePeaks(), lambda: None)
+    scheduled: list[float] = []
+    monkeypatch.setattr(backfill, "_schedule", lambda site, delay_s: scheduled.append(delay_s))
+    backfill.start(SimpleNamespace())
+    assert scheduled == [] and backfill._cancel is not None
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert scheduled == [phase_backfill.START_DELAY_S]
+    # Stopped before the start: nothing is ever scheduled.
+    hass.set_state(CoreState.starting)
+    early = Backfill(hass, PhasePeaks(), lambda: None)
+    monkeypatch.setattr(early, "_schedule", lambda site, delay_s: scheduled.append(-1.0))
+    early.start(SimpleNamespace())
+    await early.async_stop()
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert scheduled == [phase_backfill.START_DELAY_S]
+
+
+async def test_the_replay_stops_between_its_slices_at_the_run_s_time_limit(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import time
+
+    from custom_components.spotnav.site import phase_backfill
+    from custom_components.spotnav.site.phase_backfill import Backfill
+
+    monkeypatch.setattr(phase_backfill, "SLICE_S", 0.0)
+    monkeypatch.setattr(phase_backfill, "PAUSE_S", 0.0)
+    sampled: list[float] = []
+    replay = SimpleNamespace(sample=sampled.append)
+    backfill = Backfill(hass, PhasePeaks(), lambda: None)
+    assert await backfill._async_replay(replay, T0, T0 + 600, time.monotonic() + 60) is True
+    assert len(sampled) == 60
+    sampled.clear()
+    assert await backfill._async_replay(replay, T0, T0 + 600, time.monotonic() - 1) is False
+    assert len(sampled) == 1

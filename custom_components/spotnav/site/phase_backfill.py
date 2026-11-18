@@ -29,10 +29,17 @@ last *reported* unchanged is not kept. A state is therefore held as reported whe
 Only raw states are used. The long-term statistics (hourly or 5-minute means and maxima, each sensor's own) are
 not: the largest value of one sensor and the largest of another are not a current the house drew at one moment.
 
+**Today's configuration, the states of then.** The site's wiring, its chargers' phases, the battery's sign and the
+phase voltage are the ones configured now; only the states are the past's. A site whose configuration changed within
+the window (a meter's sign turned, a charger moved to another phase) has its earlier days reckoned as if it had
+always been so. That is accepted: the days sampled live from then on replace nothing but add to the window, and a
+wrong mapping shows as it does live (`PLANT_MISMATCH_A`, a charger's reading above the site's).
+
 **Bounded.** The recorder is read in its own executor (`get_instance(hass).async_add_executor_job`), `CHUNK_HOURS`
 at a time, never in the event loop; the samples are replayed in the event loop in slices of `SLICE_S` with a pause
-between them. A run stops at `MAX_ROWS` rows or `MAX_RUN_S` seconds, keeping what it has, and is cancelled at the
-site's unload. Hours the store already has are not read again. One line in the log says what a run gave.
+between them. A run stops at `MAX_ROWS` rows or `MAX_RUN_S` seconds (checked between the slices too) and is
+cancelled at the site's unload; whatever ends it, an error included, the hours replayed so far are kept. It does
+not run while the recorder migrates its tables, and after a run that could not read the next comes in an hour. Hours the store already has are not read again. One line in the log says what a run gave.
 """
 
 from __future__ import annotations
@@ -61,6 +68,8 @@ _LOGGER = logging.getLogger(__name__)
 #: plant's per-phase entities) are there by then. And how long until the next while the learning is not done (s).
 START_DELAY_S: Final = 180.0
 RETRY_S: Final = 86400.0
+#: How long until the next run after one that could not read (an error, the recorder migrating) (s).
+ERROR_RETRY_S: Final = 3600.0
 #: The clock hours read from the recorder at a time.
 CHUNK_HOURS: Final = 2
 #: A run reads at most this many state rows and lasts at most this long (s); what it has by then is kept.
@@ -300,10 +309,23 @@ class Backfill:
         self.runs = 0
 
     def start(self, site: SiteCapacityController) -> None:
-        """Run in the background from now on: after `START_DELAY_S`, then every `RETRY_S` until the learning is
-        done. Stopped by `async_stop`."""
-        if self._cancel is None and self._task is None and not self._stopped:
-            self._schedule(site, START_DELAY_S)
+        """Run in the background from now on: `START_DELAY_S` after Home Assistant has started (every integration
+        set up, the recorder among them), then every `RETRY_S` until the learning is done, sooner after a run that
+        could not read (`ERROR_RETRY_S`). Stopped by `async_stop`."""
+        if self._cancel is not None or self._task is not None or self._stopped:
+            return
+        from homeassistant.core import callback  # noqa: PLC0415 - kept beside its only use
+        from homeassistant.helpers.start import async_at_started  # noqa: PLC0415
+
+        @callback
+        def started(_hass: HomeAssistant) -> None:
+            self._cancel = None
+            if not self._stopped:
+                self._schedule(site, START_DELAY_S)
+
+        cancel = async_at_started(self._hass, started)
+        if self._cancel is None and self._task is None:  # still waiting for the start (else it ran at once)
+            self._cancel = cancel
 
     def _schedule(self, site: SiteCapacityController, delay_s: float) -> None:
         from homeassistant.core import callback  # noqa: PLC0415 - kept beside its only use
@@ -340,13 +362,19 @@ class Backfill:
         now = dt_util.utcnow().timestamp()
         if self._peaks.learned(now).ready:
             return
+        stopped: Any = "error"
         try:
-            await self.async_once(site, now)
-        except Exception:  # noqa: BLE001 - the conservative rule counts meanwhile; tried again next time
-            self.last = {"at": dt_util.utcnow().isoformat(), "stopped": "error"}
-            _LOGGER.debug("SpotNav phase peaks: the recorder's history could not be read back", exc_info=True)
+            stopped = (await self.async_once(site, now)).get("stopped")
+        except Exception as err:  # noqa: BLE001 - the conservative rule counts meanwhile; tried again soon
+            if self.last is None or self.last.get("stopped") != "error":  # else the run's own account stands
+                self.last = {"at": dt_util.utcnow().isoformat(), "stopped": "error"}
+            _LOGGER.info(
+                "SpotNav site: the house's per-phase peaks could not be read back from the recorder (%s: %s); "
+                "tried again in an hour", type(err).__name__, err,
+            )
+            _LOGGER.debug("SpotNav phase peaks: the backfill failed", exc_info=True)
         if not self._stopped:
-            self._schedule(site, RETRY_S)
+            self._schedule(site, ERROR_RETRY_S if stopped in ("error", "migration") else RETRY_S)
 
     async def async_once(self, site: SiteCapacityController, now: float) -> dict[str, Any]:
         """One run up to `now`: every hour of the window the store has no mark for, oldest first. What it gave."""
@@ -370,6 +398,14 @@ class Backfill:
             summary["stopped"] = "no_entities"
             return summary
 
+        if getattr(recorder, "migration_in_progress", False):
+            # The recorder is rebuilding its tables: reading them now is slow and may be wrong. Tried again soon.
+            summary["stopped"] = "migration"
+            _LOGGER.info(
+                "SpotNav site: the house's per-phase peaks are read back from the recorder once its migration is done"
+            )
+            return summary
+
         hass = self._hass
         replay = Replay(site)
         newest = int(now // _HOUR_S)
@@ -381,37 +417,51 @@ class Backfill:
         first -= first % CHUNK_HOURS
         last_sample = now - now % SAMPLE_S
         fresh_start = True
-        for chunk in range(first, newest + 1, CHUNK_HOURS):
-            start = float(chunk * _HOUR_S)
-            end = min(start + CHUNK_HOURS * _HOUR_S, last_sample)
-            if end <= start:
-                break
-            if self._peaks.covered(chunk, min(CHUNK_HOURS, newest + 1 - chunk)):
-                fresh_start = True  # not read: nothing is carried over it
-                continue
-            include_start = fresh_start
+        try:
+            for chunk in range(first, newest + 1, CHUNK_HOURS):
+                start = float(chunk * _HOUR_S)
+                end = min(start + CHUNK_HOURS * _HOUR_S, last_sample)
+                if end <= start:
+                    break
+                if self._peaks.covered(chunk, min(CHUNK_HOURS, newest + 1 - chunk)):
+                    fresh_start = True  # not read: nothing is carried over it
+                    continue
+                include_start = fresh_start
 
-            def read(start: float = start, end: float = end, include_start: bool = include_start) -> Any:
-                states = history.get_significant_states(
-                    hass, datetime.fromtimestamp(start - OVERLAP_S, UTC), datetime.fromtimestamp(end, UTC), entity_ids,
-                    significant_changes_only=False, include_start_time_state=include_start, no_attributes=False,
-                )
-                return StatesThen.rows(states, start, fresh_start=include_start)
+                def read(start: float = start, end: float = end, include_start: bool = include_start) -> Any:
+                    states = history.get_significant_states(
+                        hass, datetime.fromtimestamp(start - OVERLAP_S, UTC), datetime.fromtimestamp(end, UTC),
+                        entity_ids, significant_changes_only=False, include_start_time_state=include_start,
+                        no_attributes=False,
+                    )
+                    return StatesThen.rows(states, start, fresh_start=include_start)
 
-            rows = await recorder.async_add_executor_job(read)
-            summary["rows"] += replay.states.load_rows(rows, fresh_start=fresh_start)
-            fresh_start = False
-            if not replay.states.empty:
-                summary["hours_read"] += CHUNK_HOURS
-                await self._async_replay(replay, start, end)
-                summary["samples"] = replay.samples
-            if summary["rows"] > MAX_ROWS:
-                summary["stopped"] = "rows"
-                break
-            if time.monotonic() - started > MAX_RUN_S:
-                summary["stopped"] = "time"
-                break
+                rows = await recorder.async_add_executor_job(read)
+                summary["rows"] += replay.states.load_rows(rows, fresh_start=fresh_start)
+                fresh_start = False
+                in_time = True
+                if not replay.states.empty:
+                    summary["hours_read"] += CHUNK_HOURS
+                    in_time = await self._async_replay(replay, start, end, started + MAX_RUN_S)
+                    summary["samples"] = replay.samples
+                if not in_time or time.monotonic() - started > MAX_RUN_S:
+                    summary["stopped"] = "time"
+                    break
+                if summary["rows"] > MAX_ROWS:
+                    summary["stopped"] = "rows"
+                    break
+        except Exception:
+            summary["stopped"] = "error"
+            raise
+        finally:
+            # Whatever ended the run (its end, a limit, an error, the unload): the hours replayed so far are kept.
+            self._keep(replay, summary, entity_ids, now, started)
+        return summary
 
+    def _keep(
+        self, replay: Replay, summary: dict[str, Any], entity_ids: list[str], now: float, started: float
+    ) -> None:
+        """The marks replayed so far into the site's, and the run's one line in the log."""
         taken = self._peaks.merge_history(replay.peaks, now)
         summary["hours_taken"] = taken
         summary["seconds"] = round(time.monotonic() - started, 1)
@@ -431,22 +481,26 @@ class Backfill:
             learned = self._peaks.learned(now)
             _LOGGER.info(
                 "SpotNav site: the house's per-phase peaks were read back from the recorder: %d hours taken of %d "
-                "read (%d rows, %.0f s%s); %d days now count, %d of them from the history%s",
+                "read (%d rows, %.0f s%s); %d days now count, %d of them from the history, %d days' history left "
+                "out for the minutes lost to readings that stood still%s",
                 taken, summary["hours_read"], summary["rows"], summary["seconds"],
-                "" if summary["stopped"] is None else f", stopped at its limit of {summary['stopped']}",
-                learned.days, learned.history_days,
+                "" if summary["stopped"] is None else f", stopped: {summary['stopped']}",
+                learned.days, learned.history_days, learned.history_days_dropped,
                 f". The recorder keeps no history of {', '.join(without)}" if without else "",
             )
-        return summary
 
-    async def _async_replay(self, replay: Replay, start: float, end: float) -> None:
-        """The samples of `[start, end)`, in slices of `SLICE_S` with the event loop let run between them."""
+    async def _async_replay(self, replay: Replay, start: float, end: float, until: float) -> bool:
+        """The samples of `[start, end)`, in slices of `SLICE_S` with the event loop let run between them; `False`
+        when it stopped at `until` (the run's time limit, on the monotonic clock) with samples left."""
         deadline = time.monotonic() + SLICE_S
         for then in sample_times(start, end):
             replay.sample(float(then))
             if time.monotonic() >= deadline:
+                if time.monotonic() >= until:
+                    return False
                 await asyncio.sleep(PAUSE_S)
                 deadline = time.monotonic() + SLICE_S
+        return True
 
 
 __all__: Sequence[str] = (
