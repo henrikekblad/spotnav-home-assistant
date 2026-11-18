@@ -1,22 +1,23 @@
-// The heat card's history (`spotnav/get_heat_history`): one day, month or year of the house's heating, behind the clock
-// in the card's header. The decoded answer and the dialog's body: the heat pump's cost per hour, day or month
-// (the shadow's saving, at most, hatched on top), use and cost with hot water split out where the recorder still has the
-// 5-minute rows, kWh per degree-day with its monthly trend, comfort, what SpotNav's plan would have saved in shadow, a
-// day's review (the relay's real lowering beside SpotNav's plan), the immersion heater where its power is read and,
-// with Detailed on, the day's hot-water runs one by one. Every figure is
-// the backend's; text is written with `textContent` only.
+// The heat card's history (`spotnav/get_heat_history`): one day, month or year of the house's heating. The decoded
+// answer (the card's Plan and Use tabs read it too) and the body of the details dialog behind the "i" in the card's
+// header, on the card's own period picker and with every section shown: the heat pump's cost per hour, day or month
+// with what SpotNav's plan would have saved hatched on top (where it was evaluated; the plain use is the card's Use
+// tab), the use in figures with the immersion heater where its power is read, kWh per degree-day with its monthly
+// trend, comfort (the hours under the band), what SpotNav's plan would have saved in shadow, a day's review (the
+// relay's real lowering beside SpotNav's plan), how well the house model forecasts the heat, and a day's hot-water
+// runs one by one. The day's chart is the card's Plan tab. Every figure is the backend's; text is written with
+// `textContent` only.
 
 import { clock, dateLabel, formatFixed, formatNumber, type FormatContext } from "./format";
 import { fits, HEAT_HISTORY_API_VERSION, INDOOR_DAY, REVIEW, roomName, type HeatReview, type IndoorDay } from "./heat-model";
-import { dayChart, hoursOf } from "./heat-day-chart";
 import { bucketWords, isoDay, periodKind } from "./house-history";
+import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   element,
   figureRow,
   note,
   periodBars,
-  periodNav,
   periodStart,
   section,
   statusLine,
@@ -39,7 +40,23 @@ export interface HeatBucket {
   outdoor_c: number | null;
   /** What the shadow rule would have saved in the bucket's hours, at most; `null` where it was not evaluated. */
   shadow_value: number | null;
+  /** The bucket's energy by what is measured (`HeatHistory.parts`), adding up to `kwh`; none on an older backend. */
+  parts: { key: string; kwh: number; cost: number | null }[];
+  /** What SpotNav saved on heat in the bucket (a day of a month, a month of a year); `null` without and in a day's hours. */
+  saving: number | null;
 }
+
+/** A part of the use: the heat pump less its hot water, the hot water, a zone with a sensor of its own, the rest. */
+export interface HeatPart {
+  key: string;
+  kind: "pump" | "hot_water" | "zone" | "other";
+  /** A zone's name as the household named it; `null` for the others (the card words them). */
+  name: string | null;
+  kwh: number;
+  cost: number | null;
+}
+
+const PART_KINDS: readonly string[] = ["pump", "hot_water", "zone", "other"];
 
 export interface TrendMonth {
   month: string;
@@ -108,6 +125,12 @@ export interface HeatHistory {
   /** A day's indoor curve by the hour with SpotNav's setpoint per hour; `null` for a month or a year and without
    * indoor sensors. */
   indoor_day: IndoorDay | null;
+  /** The period's use by what is measured, in the order shown; none on an older backend. */
+  parts: HeatPart[];
+  /** What SpotNav saved on heat over the period (the house card's earnings' heat part), `null` without a day of it. */
+  saving: { value: number; days: number } | null;
+  /** The heat forecast's mean absolute error over the period's reviewed days (kW); `null` without one. */
+  model: { mae_kw: number; days: number } | null;
 }
 
 export type HeatHistoryDecode = { ok: true; value: HeatHistory } | { ok: false; failure: "unsupported" | "malformed" };
@@ -202,8 +225,26 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
             degree_days: numberOrNull(item.degree_days),
             outdoor_c: numberOrNull(item.outdoor_c),
             shadow_value: numberOrNull(item.shadow_value),
+            parts: list(item.parts ?? []).map((rawPart) => {
+              const part = record(rawPart);
+              return { key: text(part.key), kwh: number(part.kwh), cost: numberOrNull(part.cost) };
+            }),
+            saving: numberOrNull(item.saving ?? null),
           };
         }),
+        parts: list(source.parts ?? []).map((rawPart): HeatPart => {
+          const part = record(rawPart);
+          const kind = text(part.kind);
+          return {
+            key: text(part.key),
+            kind: PART_KINDS.includes(kind) ? (kind as HeatPart["kind"]) : bad(),
+            name: textOrNull(part.name),
+            kwh: number(part.kwh),
+            cost: numberOrNull(part.cost),
+          };
+        }),
+        saving: nullable(source.saving ?? null, (item) => ({ value: number(item.value), days: count(item.days) })),
+        model: nullable(source.model ?? null, (item) => ({ mae_kw: number(item.mae_kw), days: count(item.days) })),
         degree_days: nullable(source.degree_days, (item) => {
           const outdoor = record(item.outdoor);
           return {
@@ -298,9 +339,11 @@ function money(language: Language, minor: number, units: HeatHistory["money"]): 
   return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major}`;
 }
 
+/** The cost bars with what SpotNav's plan would have saved hatched on top: drawn only where some bucket has that
+ * figure (the bars alone are the card's Use tab). */
 function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
   const { doc, language, ui } = input;
-  if (answer.buckets.length === 0 || answer.buckets.every((item) => item.kwh === null)) {
+  if (answer.buckets.length === 0 || answer.buckets.every((item) => item.kwh === null) || answer.buckets.every((item) => item.shadow_value === null || item.cost === null)) {
     return null;
   }
   const priced = answer.buckets.some((item) => item.cost !== null);
@@ -537,36 +580,27 @@ function shadowSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElemen
   return block;
 }
 
-/**
- * A day's chart (`heat-day-chart.ts`): the rooms over the day, SpotNav's setpoint and planned lowering, the comfort
- * band and the hot-water runs on one time axis; `null` without the curve.
- */
-function daySection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
-  const day = answer.indoor_day;
-  if (day === null) {
+/** How well the house model forecasts the heat: its mean error against the meter over the reviewed days. */
+function modelSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | null {
+  if (answer.meter === null) {
     return null;
   }
   const { doc, language } = input;
-  const ctx: FormatContext = { language, timeZone: answer.time_zone, unit: "kWh", currency: null, majorUnit: null };
-  const chart = dayChart({
-    doc,
-    language,
-    ctx,
-    startMs: Date.parse(day.start),
-    endMs: Date.parse(day.end),
-    day,
-    low_c: day.low_c,
-    high_c: day.high_c,
-    hours: hoursOf(day),
-    water: answer.runs.map((run) => ({ startMs: Date.parse(run.start), endMs: Date.parse(run.end) })),
-    width: input.width,
-    nowMs: null,
-  });
-  if (chart === null) {
-    return null;
+  const block = section(doc, translate(language, "hist.heat.model"), "model");
+  const model = answer.model;
+  if (model === null) {
+    block.append(note(doc, translate(language, "hist.heat.modelNone"), "no-model"));
+    return block;
   }
-  const block = section(doc, translate(language, "heat.band.title"), "indoor");
-  block.append(chart);
+  block.append(
+    figureRow(
+      doc,
+      translate(language, "hist.heat.modelError"),
+      `±${formatFixed(language, model.mae_kw, model.mae_kw < 1 ? 2 : 1)} kW (${translate(language, "hist.days", { days: String(model.days) })})`,
+      "model-error",
+    ),
+    note(doc, translate(language, "hist.heat.modelNote")),
+  );
   return block;
 }
 
@@ -644,7 +678,10 @@ export function heatHistoryBody(input: HeatHistoryInput): HTMLElement {
   const answer = state.kind === "ready" ? state.answer : state.kind === "failed" ? (state.answer ?? null) : null;
   const today = answer?.today ?? input.today;
   const shown = answer !== null && ui.date === null && answer.period === ui.period ? answer.date : ui.date ?? today;
-  body.append(periodNav(doc, language, ui, today, periodStart(ui.period, shown), input.handlers));
+  // The card's own period picker (`house-tabs.ts`), so a period is chosen the same way in both places.
+  const first = shown.length === 10 ? periodStart(ui.period, shown) : shown;
+  const choice: PeriodChoice = { period: ui.period, date: first >= periodStart(ui.period, today) ? null : first };
+  body.append(periodPicker(doc, language, choice, today, (next) => input.handlers.onPeriod(next.period, next.date)));
   if (state.kind === "loading") {
     body.append(statusLine(doc, language, "hist.loading"));
     return body;
@@ -661,15 +698,15 @@ export function heatHistoryBody(input: HeatHistoryInput): HTMLElement {
     period.setAttribute("aria-busy", "true");
   }
   for (const part of [
-    // By default the bars, the use and what it cost; the rest with Detailed.
+    // Every section is shown (the card itself is small now; nothing is behind a "Show details").
     heatBars(input, shownAnswer),
     useSection(input, shownAnswer),
-    daySection(input, shownAnswer),
-    ui.detailed ? degreeSection(input, shownAnswer) : null,
-    ui.detailed ? comfortSection(input, shownAnswer) : null,
-    ui.detailed ? shadowSection(input, shownAnswer) : null,
+    degreeSection(input, shownAnswer),
+    comfortSection(input, shownAnswer),
+    shadowSection(input, shownAnswer),
     reviewSection(input, shownAnswer),
-    ui.detailed ? runsSection(input, shownAnswer) : null,
+    modelSection(input, shownAnswer),
+    runsSection(input, shownAnswer),
   ]) {
     if (part !== null) {
       period.append(part);

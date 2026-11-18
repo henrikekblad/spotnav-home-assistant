@@ -1,4 +1,4 @@
-// The history dialog of the house and heat cards: opened from the "i" (house) or the clock (heat) in a card's header, it reads one period at a
+// The details dialog of the house and heat cards: opened from the "i" in a card's header, it reads one period at a
 // time (`spotnav/get_house_history` or `spotnav/get_heat_history`) and shows it with the card's body function
 // (`house-history.ts`, `heat-history.ts`). A newer read wins over an older one; a period that cannot be read keeps the
 // one shown before, dimmed no more, with the sentence under the tabs. The Detailed switch is remembered per browser.

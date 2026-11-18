@@ -316,10 +316,33 @@ describe("the house history", () => {
 
 describe("the heat history", () => {
   it("decodes every fixture", () => {
-    for (const name of ["villa_month.json", "villa_day.json", "meter_only_year.json"]) {
+    for (const name of ["villa_month.json", "villa_day.json", "meter_only_year.json", "zones_day.json", "zones_month.json", "zones_year.json"]) {
       expect(decodeHeatHistory(read(`heat_history/${name}`)).ok).toBe(true);
     }
     expect(decodeHeatHistory({ ...read("heat_history/villa_day.json"), runs: [{ start: "x", end: "y", kwh: 1, cause: null }] }).ok).toBe(false);
+  });
+
+  it("reads the use by what is measured, SpotNav's saving and the house model, and an older answer without them", () => {
+    const raw = read("heat_history/zones_month.json");
+    const answer = heat("heat_history/zones_month.json");
+    expect(answer.parts.map((part) => [part.key, part.kind, part.name])).toEqual([
+      ["pump", "pump", null],
+      ["hot_water", "hot_water", null],
+      ["zone:climate.ovanvaning", "zone", "Ovanvåning"],
+      ["other", "other", null],
+    ]);
+    expect(answer.saving).toEqual({ value: 456.9, days: 3 });
+    expect(answer.model).toEqual({ mae_kw: 0.32, days: 7 });
+    const day = answer.buckets.find((bucket) => bucket.key === "2026-11-13")!;
+    expect(day.saving).toBe(212.4);
+    expect(day.parts.reduce((sum, part) => sum + part.kwh, 0)).toBeCloseTo(day.kwh!, 2);
+    const { parts: _parts, saving: _saving, model: _model, ...older } = raw;
+    const old = decodeHeatHistory({ ...older, buckets: (raw["buckets"] as Record<string, unknown>[]).map(({ parts: _p, saving: _s, ...bucket }) => bucket) });
+    expect(old.ok && old.value.parts).toEqual([]);
+    expect(old.ok && old.value.saving).toBeNull();
+    expect(old.ok && old.value.buckets[0]!.parts).toEqual([]);
+    expect(decodeHeatHistory({ ...raw, parts: [{ key: "x", kind: "sauna", name: null, kwh: 1, cost: null }] }).ok).toBe(false);
+    expect(decodeHeatHistory({ ...raw, saving: { value: "1", days: 1 } }).ok).toBe(false);
   });
 
   it("says how much of the heat the zones' own meters hold and from which day", () => {
@@ -332,14 +355,25 @@ describe("the heat history", () => {
     expect(body.querySelector("[data-line='zones-from']")?.textContent).toContain(translate("sv", "hist.heat.zonesFrom", { date: "" }).split("{date}")[0]!.slice(0, 20));
   });
 
-  it("shows a month's use and cost by default, and degree-days with the trend, comfort and the shadow with Detailed", () => {
+  it("shows a month whole, nothing behind a switch: the use, degree-days with the trend, comfort, the shadow and the house model", () => {
     const answer = heat("heat_history/villa_month.json");
-    const plain = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    expect(plain.querySelector("[data-part='use'] [data-row='cost']")).not.toBeNull();
-    for (const part of ["degree-days", "comfort", "shadow", "runs"]) {
-      expect(plain.querySelector(`[data-part='${part}']`), part).toBeNull();
-    }
-    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(body.querySelector("[data-part='use'] [data-row='cost']")).not.toBeNull();
+    expect(body.querySelector("button[data-detailed]")).toBeNull();
+    // The card's own period picker, as the house card's details have it.
+    expect(body.querySelector(".spotnav-house-picker")).not.toBeNull();
+    expect(body.querySelector("button[data-kind='month']")!.getAttribute("aria-pressed")).toBe("true");
+    // The day's chart is the card's Plan tab, not drawn here.
+    expect(body.querySelector("[data-block='day']")).toBeNull();
+    // How well the house model forecasts the heat.
+    expect(body.querySelector("[data-part='model'] [data-row='model-error']")?.textContent).toBe("Värmeprognosens fel±0,32 kW (7 d)");
+    const unreviewed = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: { ...answer, model: null } }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(unreviewed.querySelector("[data-part='model'] [data-line='no-model']")).not.toBeNull();
+    // The cost bars stand only for their hatched part: what SpotNav's plan would have saved.
+    expect(body.querySelector(".spotnav-history-bars, .spotnav-history-chart")).not.toBeNull();
+    const plainCost = { ...answer, buckets: answer.buckets.map((bucket) => ({ ...bucket, shadow_value: null })) };
+    const without = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: plainCost }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(without.querySelectorAll(".spotnav-history-bar").length).toBe(12);
     expect(body.querySelector("[data-part='use'] [data-row='hot-water']")?.textContent).toContain("16,8 kWh");
     const degree = body.querySelector("[data-part='degree-days']")!;
     expect(degree.querySelector("[data-row='per-degree-day']")?.textContent).toContain("3,07 kWh/graddag");
@@ -358,9 +392,9 @@ describe("the heat history", () => {
     expect(body.querySelector("[data-part='runs']")).toBeNull();
   });
 
-  it("lists a day's hot-water runs with their cause when Detailed is on", () => {
+  it("lists a day's hot-water runs with their cause", () => {
     const answer = heat("heat_history/villa_day.json");
-    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "day", detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     const runs = Array.from(body.querySelectorAll("[data-part='runs'] li")).map((row) => row.textContent);
     expect(runs).toEqual(["03:00–03:10" + "0,3 kWh · stilleståndsförlust", "06:15–06:40" + "1,2 kWh · efter tappning", "07:25–07:45" + "0,9 kWh · efter tappning"]);
   });
@@ -395,7 +429,7 @@ describe("the heat history", () => {
     expect(degree.textContent).not.toContain("graddagar under");
   });
 
-  it("opens from the heat card's clock, reads the running month and then a day with its runs", async () => {
+  it("opens from the heat card's i, reads the running month and then a day with its runs", async () => {
     vi.useFakeTimers({ now: Date.parse("2026-11-16T13:20:00Z") });
     defineCard();
     const messages: Record<string, unknown>[] = [];
@@ -425,10 +459,9 @@ describe("the heat history", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(messages.at(-1)).toEqual({ type: "spotnav/get_heat_history", api_version: 1, site_id: "site_villa", period: "month" });
     const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
-    expect(dialog.querySelector("[data-part='degree-days']")).toBeNull();
-    dialog.querySelector<HTMLButtonElement>("button[data-detailed]")!.click();
+    expect(root.querySelector<HTMLButtonElement>("button[data-history='open']")!.getAttribute("aria-label")).toBe("Detaljer");
     expect(dialog.querySelector("[data-part='degree-days']")).not.toBeNull();
-    dialog.querySelector<HTMLButtonElement>("button[data-period='day']")!.click();
+    dialog.querySelector<HTMLButtonElement>("button[data-kind='day']")!.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(messages.at(-1)).toMatchObject({ type: "spotnav/get_heat_history", period: "day" });
     expect(dialog.querySelectorAll("[data-part='runs'] li")).toHaveLength(3);
@@ -450,30 +483,6 @@ describe("the words", () => {
 });
 
 describe("the heat history's indoor curve", () => {
-  it("draws a day's rooms beside SpotNav's setpoint and the comfort band; a month has none", () => {
-    const answer = heat("heat_history/villa_day.json");
-    expect(answer.indoor_day?.points).toHaveLength(24);
-    const body = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    const block = body.querySelector("[data-part='indoor'] [data-block='day']")!;
-    expect(block.querySelector("[data-line='mean']")).not.toBeNull();
-    expect(block.querySelector("[data-line='coldest']")).not.toBeNull();
-    expect(block.querySelector("[data-line='setpoint']")?.getAttribute("d")).toMatch(/^M0\.00 /);
-    const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
-    expect(legend).toEqual(["Rummen, medel", "Kallaste rummet", "Börvärde (SpotNav sänker)", "Komfortband 20,5–21,5 °C", "Planerad sänkning", "Varmvatten"]);
-    expect(block.querySelectorAll("[data-mark='hot_water']")).toHaveLength(answer.runs.length);
-    expect(block.querySelectorAll("[data-mark='planned']")).toHaveLength(3);
-    // A step's figures name the coldest room.
-    block.querySelector(".spotnav-heat-day-surface")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
-    for (let step = 0; step < 3; step += 1) {
-      block.querySelector(".spotnav-heat-day-surface")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-    }
-    expect(block.querySelector("[data-line='day-readout']")!.textContent).toBe("03:00 · rummen 20,9 °C · kallast Övervåning 20,3 °C · börvärde 21,0 °C · varmvatten");
-    const month = heat("heat_history/villa_month.json");
-    expect(month.indoor_day).toBeNull();
-    const monthBody = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: month }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    expect(monthBody.querySelector("[data-block='day']")).toBeNull();
-  });
-
   it("refuses a mistyped or unknown key in the curve", () => {
     const raw = read("heat_history/villa_day.json");
     const day = raw["indoor_day"] as Record<string, unknown>;

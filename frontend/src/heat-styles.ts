@@ -20,9 +20,13 @@ export const HEAT_CLASSES = {
   awayLine: "spotnav-heat-away-line",
   status: "spotnav-heat-status",
   shadow: "spotnav-heat-shadow",
+  statusBlock: "spotnav-heat-status-block",
+  ahead: "spotnav-heat-ahead",
+  aheadRow: "spotnav-heat-ahead-row",
+  aheadCell: "spotnav-heat-ahead-cell",
+  aheadAxis: "spotnav-heat-ahead-axis",
+  aheadLine: "spotnav-heat-ahead-line",
   daySection: "spotnav-heat-day-section",
-  dayToggle: "spotnav-heat-day-toggle",
-  dayTitle: "spotnav-heat-day-title",
   daySurface: "spotnav-heat-day-surface",
   day: "spotnav-heat-day",
   dayReadout: "spotnav-heat-day-readout",
@@ -184,28 +188,69 @@ export const HEAT_STYLES = `
      green), the setpoint (dashed, the text's colour), the lowered hours as columns (SpotNav's plan light, what it did
      solid, the relay as anyone else closed it teal), hot water as droplets on the axis and the car as a bar under it.
      It is drawn in the history dialog too, so each colour carries its own fallback. */
-  .${X.daySection} { margin-top: 10px; }
-  .${X.dayToggle} {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    width: 100%;
-    min-height: 32px;
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--secondary-text-color, #727272);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-  .${X.dayToggle}:focus-visible,
+  .${X.daySection} { margin: 0; }
   .${X.daySurface}:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
   }
-  .${X.dayTitle} { margin: 0; }
+  /* In the tabs' panel (a column with its own gaps) the parts carry no margins of their own. */
+  .spotnav-house-panel > .${X.modes},
+  .spotnav-house-panel > .${X.awayLine},
+  .spotnav-house-panel > .${X.shadow},
+  .spotnav-house-panel > div > .${X.dialWrap} { margin-top: 0; }
+  .spotnav-house-panel > .${X.shadow} { text-align: center; }
+  .${X.statusBlock} > .${X.status} { margin: 0; }
+  .${X.statusBlock} > .${X.status} + .${X.status} { margin-top: 2px; }
+  /* The plan's next twelve hours: a cell an hour, coloured by what the plan does in it; hot water is a dot on its
+     cell; an hour the plan does not reach yet is an open outline. */
+  .${X.ahead} { min-width: 0; }
+  .${X.aheadRow} {
+    display: flex;
+    gap: 2px;
+    height: 10px;
+  }
+  .${X.aheadCell} {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 2px;
+    background: var(--divider-color, #e0e0e0);
+  }
+  .${X.aheadCell}[data-action="lower"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 75%, transparent); }
+  .${X.aheadCell}[data-action="night"],
+  .${X.aheadCell}[data-action="away"] { background: color-mix(in srgb, var(--spotnav-heat-lower-colour, #2f80c8) 30%, transparent); }
+  .${X.aheadCell}[data-action="preheat"],
+  .${X.aheadCell}[data-action="raise"],
+  .${X.aheadCell}[data-action="return"] { background: color-mix(in srgb, var(--spotnav-heat-raise-colour, #d9822b) 70%, transparent); }
+  .${X.aheadCell}[data-action="open"] {
+    background: none;
+    box-shadow: inset 0 0 0 1px var(--divider-color, #e0e0e0);
+  }
+  .${X.aheadCell}[data-water="true"]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin: -3px 0 0 -3px;
+    border-radius: 50%;
+    background: var(--spotnav-heat-water-colour, #c62828);
+    box-shadow: 0 0 0 1.5px var(--card-background-color, #fff);
+  }
+  .${X.aheadAxis} {
+    display: flex;
+    margin-top: 2px;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+  .${X.aheadAxis} > span { flex: 1 1 0; min-width: 0; }
+  .${X.aheadLine} {
+    margin: 2px 0 0;
+    font-size: 0.85rem;
+    overflow-wrap: break-word;
+  }
   .${X.daySurface} {
     touch-action: pan-y;
     cursor: crosshair;
@@ -326,6 +371,8 @@ export const HEAT_STYLES = `
     color: var(--primary-text-color, #212121);
   }
   @media (forced-colors: active) {
+    .${X.aheadCell} { background: Canvas; box-shadow: inset 0 0 0 1px CanvasText; }
+    .${X.aheadCell}[data-action="lower"], .${X.aheadCell}[data-action="preheat"], .${X.aheadCell}[data-action="raise"] { background: CanvasText; }
     .${X.indoorLine}, .${X.indoorSetpoint} { stroke: CanvasText; }
     .${X.dayColumn}, .${X.dayMark}, .${X.dayDot}, .${X.dialValue}, .${X.swatch} {
       fill: CanvasText;

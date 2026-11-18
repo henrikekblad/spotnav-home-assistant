@@ -2,21 +2,42 @@
 // is installed. It reads `spotnav/get_heat` for a site, named by the site's id or a charger's in it, every
 // `HEAT_REFRESH_MS`, and shows it (`heat-view.ts`). The dial and home/away write the site's heat settings through
 // `spotnav/update_heat` (a compare-and-set); an administrator's settings button opens the shared settings popover
-// (`settings-popover.ts`) at its heat section. Shadow
-// only: what the card writes is SpotNav's own settings, never a heating device.
+// (`settings-popover.ts`) at its heat section. What the card writes is SpotNav's own settings, never a heating device.
+// Under the header the card has three tabs (`heat-tabs.ts`): Now (the dial, home or away, the plan's next hours and
+// today's figures), Plan (the day's chart, today's or a past day's) and Use (a day, month or year by what is measured,
+// in kWh or money), the two last on one period picker, read with `spotnav/get_heat_history`. The tab, the unit and the
+// parts hidden are remembered per card in this browser. The "i" beside the gear opens the details
+// (`history-dialog.ts`, `heat-history.ts`). In a box of fixed height (a wall screen) the shown tab's picture takes
+// the box's spare height.
 //
-// YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`.
+// YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
+// optionally `tab: now | plan | use` to show only that tab (no tab row).
 
-import { getHeat, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
-import { browserStore, readHeatChartCollapsed, writeHeatChartCollapsed, type PreferenceStore } from "./chart-preference";
+import { getHeat, getPeriodHistory, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { browserStore, type PreferenceStore } from "./chart-preference";
 import { writeError, writeHeat } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
-import { TARGET_MAX, TARGET_MIN, instantToLocal, localToInstant, heatBody, type HeatState, type HeatUi } from "./heat-view";
+import {
+  fitHeatTabs,
+  HEAT_TABS,
+  isHeatTab,
+  readHeatTab,
+  readUseHidden,
+  readUseUnit,
+  writeHeatTab,
+  writeUseHidden,
+  writeUseUnit,
+  type HeatTab,
+} from "./heat-tabs";
+import { USE_STYLES } from "./heat-use";
+import { TARGET_MAX, TARGET_MIN, instantToLocal, localToInstant, heatBody, planChoice, type HeatLoadable, type HeatState, type HeatTabsData, type HeatUi } from "./heat-view";
+import { PERIOD_VIEW_STYLES } from "./house-period-view";
+import { TAB_STYLES, type PeriodChoice } from "./house-tabs";
 import { HistoryDialog } from "./history-dialog";
 import { decodeHeatHistory, heatHistoryBody, type HeatHistory } from "./heat-history";
 import { HOUSE_STYLES } from "./house-styles";
-import { PERIOD_STYLES } from "./period-history";
+import { PERIOD_STYLES, type HistoryPeriod } from "./period-history";
 import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language } from "./i18n";
 import { SettingsPopover, stubTarget } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
@@ -32,11 +53,17 @@ export const DIAL_SETTLE_MS = 700;
 export const HEAT_FALLBACK_WIDTH = 330;
 const CARD_PADDING_PX = 28;
 const STUB_TIMEOUT_MS = 3000;
+/** The least the shown tab's picture is drawn in a box of fixed height. */
+export const HEAT_FILL_MIN_PX = 110;
+/** Periods kept read while the card lives (the oldest go first). */
+const PERIODS_KEPT = 12;
 
 export interface HeatCardConfig {
   type: string;
   site?: string;
   charger?: string;
+  /** Show only this tab, without the tab row (a wall screen). */
+  tab?: HeatTab;
 }
 
 /** The YAML, checked: `site` or `charger` as a non-empty string (the site wins when both are given). */
@@ -56,8 +83,46 @@ export function parseHeatConfig(raw: unknown): HeatCardConfig {
     }
     config[key] = value;
   }
+  const tab = source.tab;
+  if (tab !== undefined && tab !== null && tab !== "" && tab !== "all") {
+    if (!isHeatTab(tab)) {
+      throw new Error(`tab must be one of ${HEAT_TABS.join(", ")}`);
+    }
+    config.tab = tab;
+  }
   return config;
 }
+
+/** The card editor's form (Home Assistant's own, from a schema): the site, and the one tab to show. */
+export function heatConfigForm(language: Language): { schema: unknown[]; computeLabel: (field: { name: string }) => string } {
+  const options = [{ value: "all", label: translate(language, "house.editor.tabAll") }, ...HEAT_TABS.map((tab) => ({ value: tab, label: translate(language, `heat.tab.${tab}`) }))];
+  return {
+    schema: [
+      { name: "site", selector: { config_entry: { integration: "spotnav" } } },
+      { name: "tab", selector: { select: { mode: "dropdown", options } } },
+    ],
+    computeLabel: (field) => translate(language, field.name === "tab" ? "house.editor.tab" : "house.editor.site"),
+  };
+}
+
+/** The selector that finds an element of the card again after a redraw (focus kept over it), or `null`. */
+function focusSelector(element: Element | null): string | null {
+  if (!(element instanceof HTMLElement)) {
+    return null;
+  }
+  for (const key of ["tab", "step", "pick", "pickLabel", "kind", "unit", "bar", "legend", "mode", "action"] as const) {
+    const value = element.dataset[key];
+    if (value !== undefined) {
+      const attribute = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+      // The card and the panel carry the tab's name too: the tab itself is the button.
+      return `${key === "tab" ? "[role='tab']" : ""}[data-${attribute}="${value}"]`;
+    }
+  }
+  return null;
+}
+
+/** The pictures a box of fixed height may grow, the first in the panel being the one that does. */
+const FILL_TARGETS = ".spotnav-heat-dial, .spotnav-heat-day, .spotnav-house-pbars-plot";
 
 let instances = 0;
 
@@ -68,7 +133,12 @@ export class SpotnavHeatCard extends HTMLElement {
   private hassObject: HomeAssistantLike | null = null;
   private config: HeatCardConfig | null = null;
   private state: HeatState = { kind: "unconfigured" };
-  private ui: HeatUi = { pendingTarget: null, error: null };
+  private ui: HeatUi = { pendingTarget: null, error: null, tab: "now", locked: null, choice: { period: "day", date: null }, fill: null };
+  private readonly periods = new Map<string, HeatLoadable<HeatHistory>>();
+  /** The pointer is over the card: a refresh waits for it to leave, so a hover's readout is not swept away. */
+  private hovering = false;
+  private pendingRender = false;
+  private boxHeight = 0;
   private language: Language | null = null;
   private wantedLanguage: Language | null = null;
   private timer: number | null = null;
@@ -81,7 +151,7 @@ export class SpotnavHeatCard extends HTMLElement {
   private settingsPopover: SettingsPopover | null = null;
   private historyDialog: HistoryDialog<HeatHistory> | null = null;
   private readonly idPrefix: string;
-  /** This browser's storage for the day chart's folded state; a test may hand in its own. */
+  /** This browser's storage for the tab, the unit and the hidden parts; a test may hand in its own. */
   store: () => PreferenceStore | null = browserStore;
 
   constructor() {
@@ -91,18 +161,41 @@ export class SpotnavHeatCard extends HTMLElement {
     this.idPrefix = `spotnav-heat-${instances}`;
     const doc = this.ownerDocument;
     const style = doc.createElement("style");
-    style.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES;
+    style.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + TAB_STYLES + PERIOD_VIEW_STYLES + USE_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
     this.layer.className = X.card;
     this.root.append(style, this.mount, this.layer);
+    this.mount.addEventListener("pointerenter", (event) => {
+      this.hovering = (event as PointerEvent).pointerType === "mouse";
+    });
+    this.mount.addEventListener("pointerleave", () => {
+      this.hovering = false;
+      if (this.pendingRender) {
+        this.render();
+      }
+    });
   }
 
   setConfig(config: unknown): void {
     this.config = parseHeatConfig(config);
     this.generation += 1;
-    this.ui = { pendingTarget: null, error: null };
+    const locked = this.config.tab ?? null;
+    const key = this.targetKey();
+    this.ui = {
+      pendingTarget: null,
+      error: null,
+      tab: locked ?? readHeatTab(key, this.store) ?? "now",
+      locked,
+      choice: { period: "day", date: null },
+      planDate: null,
+      useUnit: readUseUnit(key, this.store),
+      useHidden: readUseHidden(key, this.store),
+      bar: null,
+      fill: null,
+    };
+    this.periods.clear();
     this.state = this.target() === null ? { kind: "unconfigured" } : { kind: "loading" };
     this.render();
     this.start();
@@ -158,6 +251,11 @@ export class SpotnavHeatCard extends HTMLElement {
     return { rows: "auto", columns: 6, min_columns: 6 };
   }
 
+  /** The card editor: Home Assistant's own form from a schema, the site and the one tab to show. */
+  static getConfigForm(): ReturnType<typeof heatConfigForm> {
+    return heatConfigForm(resolveLanguage(typeof document === "undefined" ? null : document.documentElement.lang || null));
+  }
+
   /** The card picker's preview: the first charger's site, else the first site, else an unconfigured card. */
   static async getStubConfig(hass?: HomeAssistantLike): Promise<HeatCardConfig> {
     const stub: HeatCardConfig = { type: `custom:${HEAT_CARD_TYPE}` };
@@ -170,6 +268,11 @@ export class SpotnavHeatCard extends HTMLElement {
       return { site: config.site };
     }
     return config?.charger !== undefined ? { charger: config.charger } : null;
+  }
+
+  /** The card's own name for remembering its tab: the site or charger it shows. */
+  private targetKey(): string {
+    return this.config?.site ?? this.config?.charger ?? "";
   }
 
   private cardLanguage(): Language {
@@ -203,10 +306,13 @@ export class SpotnavHeatCard extends HTMLElement {
   private measure(): void {
     const measured = this.getBoundingClientRect().width - CARD_PADDING_PX;
     const width = measured > 0 ? measured : HEAT_FALLBACK_WIDTH;
+    const box = this.offsetHeight;
     if (Math.abs(width - this.width) >= 4) {
       this.width = width;
       this.render();
       this.historyDialog?.repaint();
+    } else if (Math.abs(box - this.boxHeight) >= 2) {
+      this.render();
     }
   }
 
@@ -245,7 +351,116 @@ export class SpotnavHeatCard extends HTMLElement {
     if (next.kind === "failed" && this.state.kind === "ready") {
       return;
     }
+    const first = this.state.kind !== "ready";
     this.state = next;
+    if (first) {
+      this.render();
+    } else {
+      this.renderSoon();
+    }
+    this.ensureData();
+    // The running periods are read again with the answer, the old ones shown until the new are in; past ones stay.
+    if (!first) {
+      for (const key of [...this.periods.keys()].filter((key) => key.endsWith(":now"))) {
+        const [period] = key.split(":") as [HistoryPeriod];
+        void this.loadPeriod({ period, date: null }, true);
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------------------------- the tabs' data
+
+  private shownTab(): HeatTab {
+    return this.ui.locked ?? this.ui.tab ?? "now";
+  }
+
+  private periodKey(choice: PeriodChoice): string {
+    return `${choice.period}:${choice.date ?? "now"}`;
+  }
+
+  /** The period the shown tab reads besides the card's answer: Use's period, Plan's past day; `null` for none. */
+  needs(): PeriodChoice | null {
+    const tab = this.shownTab();
+    if (tab === "use") {
+      return this.ui.choice ?? { period: "day", date: null };
+    }
+    if (tab === "plan") {
+      const choice = planChoice(this.ui);
+      return choice.date === null ? null : choice;
+    }
+    return null;
+  }
+
+  private tabsData(): HeatTabsData | undefined {
+    if (this.state.kind !== "ready") {
+      return undefined;
+    }
+    const answer = this.state.answer;
+    const needs = this.needs();
+    return {
+      history: needs === null ? null : (this.periods.get(this.periodKey(needs)) ?? { kind: "loading" }),
+      today: instantToLocal(Date.parse(answer.now), answer.time_zone).date,
+    };
+  }
+
+  /** Read what the shown tab needs and has not got. */
+  private ensureData(): void {
+    if (!this.connected || this.state.kind !== "ready") {
+      return;
+    }
+    const needs = this.needs();
+    if (needs !== null) {
+      void this.loadPeriod(needs);
+    }
+  }
+
+  /** Read a period once (`quiet`: again, the one shown kept until the new one is in). */
+  private async loadPeriod(choice: PeriodChoice, quiet = false): Promise<void> {
+    const hass = this.hassObject;
+    const target = this.target();
+    const key = this.periodKey(choice);
+    if (hass === null || target === null || (!quiet && this.periods.has(key))) {
+      return;
+    }
+    if (!quiet) {
+      this.periods.set(key, { kind: "loading" });
+    }
+    const generation = this.generation;
+    let next: HeatLoadable<HeatHistory>;
+    try {
+      const decoded = decodeHeatHistory(await getPeriodHistory(hass, "heat", target, choice.period, choice.date));
+      next = decoded.ok ? { kind: "ready", answer: decoded.value } : { kind: "failed", code: decoded.failure === "unsupported" ? UNSUPPORTED_API_VERSION : null };
+    } catch (error) {
+      next = { kind: "failed", code: error instanceof SpotnavApiError ? error.code : null };
+    }
+    if (generation !== this.generation || (quiet && next.kind === "failed")) {
+      return;
+    }
+    this.periods.set(key, next);
+    while (this.periods.size > PERIODS_KEPT) {
+      this.periods.delete(this.periods.keys().next().value as string);
+    }
+    // A failed read is tried again with the next refresh or choice.
+    if (next.kind === "failed") {
+      window.setTimeout(() => {
+        if (this.periods.get(key) === next) {
+          this.periods.delete(key);
+        }
+      }, 0);
+    }
+    if (quiet) {
+      this.renderSoon();
+    } else {
+      this.render();
+    }
+  }
+
+  /** Draw again, unless the pointer is over the card: then once it leaves (a refresh, not a choice of the reader's). */
+  private renderSoon(): void {
+    if (this.hovering) {
+      this.pendingRender = true;
+      return;
+    }
     this.render();
   }
 
@@ -359,22 +574,64 @@ export class SpotnavHeatCard extends HTMLElement {
     if (this.config === null) {
       return;
     }
+    this.pendingRender = false;
+    const focused = focusSelector(this.root.activeElement);
+    this.paint(null);
+    this.fit();
+    if (focused !== null && !this.mount.contains(this.root.activeElement)) {
+      const again = this.root.querySelector<HTMLElement>(focused);
+      if (again !== null && !(again as HTMLButtonElement).disabled) {
+        again.focus();
+      }
+    }
+  }
+
+  /**
+   * In a box of fixed height (a wall screen: the host is as tall as the box, not as its content), the shown tab's
+   * picture takes the room the rest leaves, never below `HEAT_FILL_MIN_PX`. One reading of the natural layout, one
+   * plan from it: measuring again gives the same plan, so a resize never loops. In a plain column nothing changes.
+   */
+  private fit(): void {
+    const box = this.offsetHeight;
+    this.boxHeight = box;
+    const card = this.mount.firstElementChild as HTMLElement | null;
+    if (card === null || box <= 0 || this.state.kind !== "ready") {
+      return;
+    }
+    const natural = card.offsetHeight;
+    const target = card.querySelector<HTMLElement | SVGElement>(FILL_TARGETS);
+    if (target === null || Math.abs(box - natural) < 2) {
+      return;
+    }
+    // A tab draws itself more compactly in a box (fewer words): read it so, at its picture's natural height, then
+    // give the picture what is left.
+    const basis = Math.round((target as HTMLElement).getBoundingClientRect().height);
+    this.paint(basis);
+    const compact = this.mount.firstElementChild as HTMLElement | null;
+    const picture = compact?.querySelector<HTMLElement | SVGElement>(FILL_TARGETS) ?? null;
+    const compactBasis = picture === null ? basis : (picture as HTMLElement).getBoundingClientRect().height;
+    const fill = Math.max(HEAT_FILL_MIN_PX, Math.floor(compactBasis + box - (compact?.offsetHeight ?? natural)));
+    this.paint(fill);
+    const filled = this.mount.firstElementChild as HTMLElement | null;
+    if (filled !== null) {
+      filled.dataset["box"] = "true";
+    }
+  }
+
+  private paint(fill: number | null): void {
     const doc = this.ownerDocument;
     const language = this.cardLanguage();
-    const answer = this.answer();
-    if (answer !== null && this.ui.chartCollapsed === undefined) {
-      // The day chart as this browser last left it for the site; shown when nothing is remembered.
-      this.ui = { ...this.ui, chartCollapsed: readHeatChartCollapsed(this.store, answer.site_id) ?? false };
-    }
+    const tabs = this.tabsData();
     this.mount.replaceChildren(
       heatBody({
         doc,
         language,
         state: this.state,
-        ui: this.ui,
+        ui: { ...this.ui, fill },
         width: this.width,
         nowMs: Date.now(),
         idPrefix: this.idPrefix,
+        ...(tabs === undefined ? {} : { tabs }),
         handlers: {
           onStep: (delta) => this.step(delta),
           onHome: () => {
@@ -389,14 +646,7 @@ export class SpotnavHeatCard extends HTMLElement {
           onAway: () => this.showAway(),
           onSettings: () => this.showSettings(),
           onHistory: (opener) => this.showHistory(opener),
-          // Folding the chart and choosing a time change the drawn card in place; kept here for the next redraw.
-          onChartCollapsed: (collapsed) => {
-            this.ui = { ...this.ui, chartCollapsed: collapsed, chartSelectedMs: null };
-            const site = this.answer()?.site_id;
-            if (site !== undefined) {
-              writeHeatChartCollapsed(this.store, site, collapsed);
-            }
-          },
+          // Choosing a time changes the drawn chart in place; kept here for the next redraw.
           onChartSelect: (ms) => {
             this.ui = { ...this.ui, chartSelectedMs: ms };
           },
@@ -405,8 +655,49 @@ export class SpotnavHeatCard extends HTMLElement {
             this.render();
             (this.root.querySelector("button[data-action='test']") as HTMLElement | null)?.focus();
           },
+          onTab: (tab, byKey) => {
+            this.ui = { ...this.ui, tab, bar: null, chartSelectedMs: null };
+            writeHeatTab(this.targetKey(), tab, this.store);
+            this.render();
+            if (byKey) {
+              (this.root.querySelector(`[role='tab'][data-tab='${tab}']`) as HTMLElement | null)?.focus();
+            }
+            this.ensureData();
+          },
+          onPeriod: (choice, plan) => {
+            // Plan shows days alone: while the shared period is a month or a year its day is its own, so going back
+            // to Use finds the month or year as it was left.
+            const shared = this.ui.choice ?? { period: "day", date: null };
+            this.ui = plan && shared.period !== "day"
+              ? { ...this.ui, planDate: choice.date, chartSelectedMs: null }
+              : { ...this.ui, choice, planDate: null, bar: null, chartSelectedMs: null };
+            this.render();
+            this.ensureData();
+          },
+          onUnit: (unit) => {
+            this.ui = { ...this.ui, useUnit: unit };
+            writeUseUnit(this.targetKey(), unit, this.store);
+            this.render();
+          },
+          onUsePart: (hidden) => {
+            this.ui = { ...this.ui, useHidden: hidden };
+            writeUseHidden(this.targetKey(), hidden, this.store);
+            this.render();
+          },
+          onBar: (key) => {
+            this.ui = { ...this.ui, bar: key };
+          },
         },
       }),
     );
+    // The tab row's wording by the room it really has: names or icons.
+    const row = this.mount.querySelector<HTMLElement>("[role='tablist']");
+    if (row !== null) {
+      row.dataset["fit"] = "";
+      const fit = fitHeatTabs(row, language);
+      if (fit !== this.ui.tabFit) {
+        this.ui = { ...this.ui, tabFit: fit };
+      }
+    }
   }
 }

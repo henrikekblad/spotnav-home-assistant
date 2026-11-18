@@ -24,7 +24,12 @@
              effect: {lower_share, rebound, blocks}} | null,
      review: yesterday's review (`heat/review.py`) | null,
      control: {enabled, state: "off" | "verifying" | "running" | "waiting", reason, automation: {entity_id, name} | null,
-               check: "passed" | "failed" | null, lowered, since, until, paused_until, raised, raise_until} | null}
+               check: "passed" | "failed" | null, lowered, since, until, paused_until, raised, raise_until} | null,
+     ahead: [{start, action, target_c, reason, hot_water}]}
+
+`ahead` is the plan from the running hour on, `AHEAD_HOURS` of them at most (the card's strip under the dial): the
+band's own hours to midnight, then tomorrow's as the same rule plans them once every hour of tomorrow has its price
+(without them the list ends at midnight: nothing is guessed).
 
 `control` is SpotNav's own switching of the relay (`heat/control.py`, `HeatControl.status`): `reason` is the check's
 phase while verifying, the rules' reason while running (`heat/relay_control.py`), what it waits for while waiting.
@@ -67,7 +72,11 @@ HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
     "zones", "pump", "meter", "today", "status", "band", "indoor_day", "notes", "choices", "relay", "review", "control",
+    "ahead",
 )
+AHEAD_HOUR_KEYS: Final = ("start", "action", "target_c", "reason", "hot_water")
+#: The hours the card's "now" strip shows from the running one on.
+AHEAD_HOURS: Final = 12
 BAND_HOUR_KEYS: Final = (
     "start", "action", "target_c", "reason", "price", "past", "hot_water", "car", "relay_min", "relay_expected",
     "executed_min", "raised_min",
@@ -332,6 +341,29 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         "hot_water_pick": None if hot_water_pick is None else hot_water_pick.isoformat(),
     }
 
+    ahead = [
+        {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": hour.start in run_hours or hour.start == hot_water_pick}
+        for hour in band_hours
+        if hour.start >= current
+    ][:AHEAD_HOURS]
+    if len(ahead) < AHEAD_HOURS and hours:
+        tomorrow = day_hours(hours[-1] + timedelta(hours=1), zone_info)
+        if all(hour in hour_prices for hour in tomorrow):
+            following, _guard = band(
+                config,
+                tomorrow,
+                hour_prices,
+                now,
+                zone_info,
+                outdoor_c=outdoor_c,
+                tight=inputs.tight,
+                outdoor_by_hour=inputs.outdoor_by_hour,
+            )
+            ahead += [
+                {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": False}
+                for hour in following[: AHEAD_HOURS - len(ahead)]
+            ]
+
     pump_state = pump_source = None
     if inputs.pump is not None and inputs.pump.priority is not None:
         priority = inputs.pump.priority
@@ -452,5 +484,6 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         },
         "review": None if inputs.review is None else dict(inputs.review),
         "control": None if inputs.control is None else dict(inputs.control),
+        "ahead": ahead,
     }
 

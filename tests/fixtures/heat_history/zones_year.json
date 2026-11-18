@@ -1,0 +1,422 @@
+{
+  "api_version": 1,
+  "buckets": [
+    {
+      "cost": null,
+      "degree_days": 604.375,
+      "hot_water_kwh": null,
+      "key": "2026-01",
+      "kwh": 1815.0,
+      "outdoor_c": -2.496,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 1815.0
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 518.042,
+      "hot_water_kwh": null,
+      "key": "2026-02",
+      "kwh": 1559.16,
+      "outdoor_c": -1.501,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 1559.16
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 480.603,
+      "hot_water_kwh": null,
+      "key": "2026-03",
+      "kwh": 1456.58,
+      "outdoor_c": 1.497,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 1456.58
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 345.333,
+      "hot_water_kwh": null,
+      "key": "2026-04",
+      "kwh": 1066.56,
+      "outdoor_c": 5.489,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 1066.56
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 201.917,
+      "hot_water_kwh": null,
+      "key": "2026-05",
+      "kwh": 655.92,
+      "outdoor_c": 10.487,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 655.92
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 75.333,
+      "hot_water_kwh": null,
+      "key": "2026-06",
+      "kwh": 288.96,
+      "outdoor_c": 14.489,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 288.96
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 0.0,
+      "hot_water_kwh": null,
+      "key": "2026-07",
+      "kwh": 75.12,
+      "outdoor_c": 17.492,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 75.12
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 15.417,
+      "hot_water_kwh": null,
+      "key": "2026-08",
+      "kwh": 141.12,
+      "outdoor_c": 16.503,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 141.12
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 134.667,
+      "hot_water_kwh": null,
+      "key": "2026-09",
+      "kwh": 459.84,
+      "outdoor_c": 12.511,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 459.84
+        }
+      ],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": null,
+      "degree_days": 263.187,
+      "hot_water_kwh": null,
+      "key": "2026-10",
+      "kwh": 833.5,
+      "outdoor_c": 8.51,
+      "parts": [
+        {
+          "cost": null,
+          "key": "pump",
+          "kwh": 833.5
+        }
+      ],
+      "saving": 50.0,
+      "shadow_value": null,
+      "zones_kwh": null
+    },
+    {
+      "cost": 98217.1,
+      "degree_days": 187.333,
+      "hot_water_kwh": 16.8,
+      "key": "2026-11",
+      "kwh": 665.39,
+      "outdoor_c": 4.511,
+      "parts": [
+        {
+          "cost": 85399.433,
+          "key": "pump",
+          "kwh": 581.24
+        },
+        {
+          "cost": 2241.167,
+          "key": "hot_water",
+          "kwh": 16.8
+        },
+        {
+          "cost": 7846.0,
+          "key": "zone:climate.ovanvaning",
+          "kwh": 48.65
+        },
+        {
+          "cost": 2730.5,
+          "key": "other",
+          "kwh": 18.7
+        }
+      ],
+      "saving": 456.9,
+      "shadow_value": 5228.148,
+      "zones_kwh": 67.35
+    },
+    {
+      "cost": null,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-12",
+      "kwh": null,
+      "outdoor_c": null,
+      "parts": [],
+      "saving": null,
+      "shadow_value": null,
+      "zones_kwh": null
+    }
+  ],
+  "comfort": {
+    "coldest": {
+      "entity_id": "sensor.uppe",
+      "mean_c": 20.7,
+      "min_c": 20.1,
+      "name": "Övervåning"
+    },
+    "hours": 7670,
+    "hours_below": 2240,
+    "low_c": 20.5,
+    "sensors": 2
+  },
+  "complete": false,
+  "date": "2026-01-01",
+  "degree_days": {
+    "base_c": 17.0,
+    "days": 319,
+    "kwh": 8927.28,
+    "kwh_per_degree_day": 3.159,
+    "outdoor": {
+      "entity_id": "sensor.utomhus",
+      "source": "sensor"
+    },
+    "sum": 2826.2,
+    "trend": [
+      {
+        "days": 31,
+        "degree_days": 604.4,
+        "kwh": 1815.0,
+        "kwh_per_degree_day": 3.003,
+        "month": "2026-01"
+      },
+      {
+        "days": 28,
+        "degree_days": 518.0,
+        "kwh": 1559.16,
+        "kwh_per_degree_day": 3.01,
+        "month": "2026-02"
+      },
+      {
+        "days": 31,
+        "degree_days": 480.6,
+        "kwh": 1456.58,
+        "kwh_per_degree_day": 3.031,
+        "month": "2026-03"
+      },
+      {
+        "days": 30,
+        "degree_days": 345.3,
+        "kwh": 1066.56,
+        "kwh_per_degree_day": 3.088,
+        "month": "2026-04"
+      },
+      {
+        "days": 31,
+        "degree_days": 201.9,
+        "kwh": 655.92,
+        "kwh_per_degree_day": 3.248,
+        "month": "2026-05"
+      },
+      {
+        "days": 30,
+        "degree_days": 75.3,
+        "kwh": 288.96,
+        "kwh_per_degree_day": 3.836,
+        "month": "2026-06"
+      },
+      {
+        "days": 31,
+        "degree_days": 0.0,
+        "kwh": 75.12,
+        "kwh_per_degree_day": null,
+        "month": "2026-07"
+      },
+      {
+        "days": 31,
+        "degree_days": 15.4,
+        "kwh": 141.12,
+        "kwh_per_degree_day": null,
+        "month": "2026-08"
+      },
+      {
+        "days": 30,
+        "degree_days": 134.7,
+        "kwh": 459.84,
+        "kwh_per_degree_day": 3.415,
+        "month": "2026-09"
+      },
+      {
+        "days": 31,
+        "degree_days": 263.2,
+        "kwh": 833.5,
+        "kwh_per_degree_day": 3.167,
+        "month": "2026-10"
+      },
+      {
+        "days": 15,
+        "degree_days": 187.3,
+        "kwh": 575.52,
+        "kwh_per_degree_day": 3.072,
+        "month": "2026-11"
+      },
+      {
+        "days": 0,
+        "degree_days": null,
+        "kwh": null,
+        "kwh_per_degree_day": null,
+        "month": "2026-12"
+      }
+    ]
+  },
+  "end": "2027-01-01",
+  "energy": {
+    "cost": 98217.1,
+    "days": 320,
+    "hot_water_kwh": 16.8,
+    "hours": 7670,
+    "priced_hours": 374,
+    "split_days": 7,
+    "total_kwh": 9017.15,
+    "zones_from": "2026-11-01",
+    "zones_kwh": 67.35
+  },
+  "generated_at": "2026-11-16T13:20:00+00:00",
+  "immersion": {
+    "hours": 33,
+    "kwh": 66.0
+  },
+  "indoor_day": null,
+  "meter": {
+    "entity_id": "sensor.varme_effekt",
+    "name": "Elmätare värme"
+  },
+  "model": {
+    "days": 7,
+    "mae_kw": 0.32
+  },
+  "money": {
+    "currency": "SEK",
+    "major": "kr",
+    "minor": "öre"
+  },
+  "parts": [
+    {
+      "cost": 85399.43,
+      "key": "pump",
+      "kind": "pump",
+      "kwh": 8933.0,
+      "name": null
+    },
+    {
+      "cost": 2241.17,
+      "key": "hot_water",
+      "kind": "hot_water",
+      "kwh": 16.8,
+      "name": null
+    },
+    {
+      "cost": 7846.0,
+      "key": "zone:climate.ovanvaning",
+      "kind": "zone",
+      "kwh": 48.65,
+      "name": "Ovanvåning"
+    },
+    {
+      "cost": 2730.5,
+      "key": "other",
+      "kind": "other",
+      "kwh": 18.7,
+      "name": null
+    }
+  ],
+  "period": "year",
+  "review": null,
+  "runs": [],
+  "saving": {
+    "days": 4,
+    "value": 506.9
+  },
+  "shadow": {
+    "blocks": 7,
+    "days": 15,
+    "kept_days": 4,
+    "lower_share": 0.46,
+    "lowered_hours": 45,
+    "moved_kwh": 33.92,
+    "rebound": 0.82,
+    "value": 5228.15
+  },
+  "site_id": "site_villa",
+  "time_zone": "Europe/Stockholm",
+  "today": "2026-11-16"
+}

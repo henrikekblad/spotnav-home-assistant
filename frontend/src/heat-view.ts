@@ -1,15 +1,21 @@
-// The heat card's body: a header (with the settings button for an administrator), the thermostat dial with the
-// comfort band and the measured room, home or away, one status line for the heat pump and one for what SpotNav would
-// do (shadow), the day's chart (folded away on request), today's heat and hot water, and the notes the household can act on. Below, the
-// "Heating" settings section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state
-// with `textContent` only; every figure is the backend's.
+// The heat card's body: a header (the live status after the name, the details' "i" and, for an administrator, the
+// settings button) and three tabs (`heat-tabs.ts`). Now: the thermostat dial with the comfort band and the measured
+// room, home or away, what SpotNav would do and the relay, a thin strip of the plan's next twelve hours, today's heat
+// and hot water, and the notes the household can act on. Plan: the day's chart (`heat-day-chart.ts`), today's or a
+// past day's. Use: the period's energy or cost by what is measured (`heat-use.ts`). Below, the "Heating" settings
+// section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state with `textContent`
+// only; every figure is the backend's.
 
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
-import { roomName, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
-import { dayChart } from "./heat-day-chart";
+import { roomName, type HeatAheadHour, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
+import { dayChart, hoursOf } from "./heat-day-chart";
+import type { HeatHistory } from "./heat-history";
 import { HEAT_CLASSES as X } from "./heat-styles";
+import { heatTabList, heatTabPanel, type HeatTab, type HeatTabFit, type UseUnit } from "./heat-tabs";
+import { usePanel } from "./heat-use";
 import { HOUSE_CLASSES as H } from "./house-styles";
+import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { sectionHeading, settingRow } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -26,6 +32,17 @@ export type HeatState =
   | { kind: "failed"; sentenceKey: TranslationKey; code: string | null }
   | { kind: "ready"; answer: HeatAnswer };
 
+/** Something read apart from the card's own answer: on its way, unreadable, or in. */
+export type HeatLoadable<A> = { kind: "loading" } | { kind: "failed"; code: string | null } | { kind: "ready"; answer: A };
+
+/** What the tabs show besides the card's own answer. */
+export interface HeatTabsData {
+  /** The period the shown tab needs (`spotnav/get_heat_history`): Use's period, Plan's past day; else `null`. */
+  history: HeatLoadable<HeatHistory> | null;
+  /** The site's local date. */
+  today: string;
+}
+
 export interface HeatUi {
   /** The dial's figure while a change waits to be written (`null`: the stored one). */
   pendingTarget: number | null;
@@ -33,10 +50,25 @@ export interface HeatUi {
   error: string | null;
   /** The header's test chip opened to its explanation. */
   testOpen?: boolean;
-  /** The day's chart folded away under its heading (the card remembers it per browser). */
-  chartCollapsed?: boolean;
   /** The time chosen on the day's chart (a step's start, ms), kept across the card's redraws. */
   chartSelectedMs?: number | null;
+  /** The tab shown (Now without one). */
+  tab?: HeatTab;
+  /** The one tab the card's YAML shows (no tab row); `null` for all. */
+  locked?: HeatTab | null;
+  /** The tab row's wording as last measured. */
+  tabFit?: HeatTabFit;
+  /** The period Use shows, and Plan while it is a day. */
+  choice?: PeriodChoice;
+  /** Plan's own day while the shared period is a month or a year (`null`: today). */
+  planDate?: string | null;
+  /** Use: kWh or money, and the parts hidden in its legend. */
+  useUnit?: UseUnit;
+  useHidden?: readonly string[];
+  /** The bar chosen in Use (its key). */
+  bar?: string | null;
+  /** In a box of fixed height: the height (px) the shown tab's picture takes; `null` in a plain column. */
+  fill?: number | null;
 }
 
 export interface HeatHandlers {
@@ -48,10 +80,15 @@ export interface HeatHandlers {
   onHistory?(opener: HTMLElement): void;
   /** The test chip tapped: its explanation shown or hidden. Without it the chip opens and closes in place. */
   onTest?(open: boolean): void;
-  /** The day's chart folded away (`true`) or opened. */
-  onChartCollapsed?(collapsed: boolean): void;
   /** A time chosen on the day's chart (`null`: let go). */
   onChartSelect?(ms: number | null): void;
+  /** A tab chosen, and whether by the keyboard. */
+  onTab?(tab: HeatTab, byKey: boolean): void;
+  /** A period chosen in Use, or a day in Plan (`plan`). */
+  onPeriod?(choice: PeriodChoice, plan: boolean): void;
+  onUnit?(unit: UseUnit): void;
+  onUsePart?(hidden: string[]): void;
+  onBar?(key: string | null): void;
 }
 
 export interface HeatRenderInput {
@@ -64,6 +101,8 @@ export interface HeatRenderInput {
   nowMs: number;
   /** Ids in the card's shadow root start with this. */
   idPrefix?: string;
+  /** What the shown tab needs besides the answer. */
+  tabs?: HeatTabsData;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
@@ -242,33 +281,60 @@ export function testStatus(
   return { status: statusLine(doc, button, "test"), explain };
 }
 
-/** What SpotNav's heat control does now, as the header says it after the name; `null` while it controls nothing. */
-export function heatNow(language: Language, answer: HeatAnswer): { code: string; text: string } | null {
+/**
+ * What the heating does now, as the header says it after the name: while SpotNav's control holds the heat down or up,
+ * that and until when ("Sänkt till 06:00"), else what the heat pump does by its own facts or its meter ("Värmer
+ * 2,1 kW"); `null` when neither is known.
+ */
+export function heatLive(language: Language, answer: HeatAnswer): { code: string; text: string } | null {
   const control = answer.control;
-  if (control === null || !control.enabled || control.state !== "running") {
+  if (control !== null && control.enabled && control.state === "running") {
+    if (control.raised) {
+      return control.raise_until === null
+        ? { code: "raise", text: translate(language, "heat.now.raised") }
+        : { code: "raise", text: translate(language, "heat.now.raisedUntil", { until: whenLabel(language, answer, Date.parse(control.raise_until)) }) };
+    }
+    if (control.lowered) {
+      return control.until === null
+        ? { code: "lower", text: translate(language, "heat.now.lowered") }
+        : { code: "lower", text: translate(language, "heat.now.loweredUntil", { until: whenLabel(language, answer, Date.parse(control.until)) }) };
+    }
+  }
+  const state = answer.status.pump_state;
+  if (state === null || !["heating", "hot_water", "idle"].includes(state)) {
     return null;
   }
-  if (control.raised) {
-    return { code: "raise", text: translate(language, "heat.now.raise") };
-  }
-  if (control.lowered) {
-    const would = answer.status.would;
-    return would !== null && would.action === "lower"
-      ? { code: "lower", text: translate(language, "heat.now.lowerTo", { temp: degrees(language, would.target_c) }) }
-      : { code: "lower", text: translate(language, "heat.now.lower") };
-  }
-  return { code: "normal", text: translate(language, "heat.now.normal") };
+  const power = answer.status.kw;
+  const words = translate(language, `heat.now.${state}` as TranslationKey);
+  return { code: state, text: state === "idle" || power === null ? words : `${words} ${kw(language, power).replace(" ", "\u00a0")}` };
 }
 
-/** The heat card's header (`card-header.ts`): "Värme · Test" in shadow, "Värme · Sänker till 20,5 °C" while it controls. */
+/** Whether SpotNav's own heat control runs (else the header says Test). */
+function controls(answer: HeatAnswer): boolean {
+  return answer.control !== null && answer.control.enabled && answer.control.state === "running";
+}
+
+/** The heat card's header (`card-header.ts`): "Värme · Test · Värmer 2,1 kW" in shadow, "Värme · Sänkt till 06:00"
+ * while it controls; the details' "i" and, for an administrator, the settings. */
 function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null, testOpen = false, idPrefix = "spotnav-heat"): HTMLElement[] {
-  const now = answer === null ? null : heatNow(language, answer);
-  const test = answer === null || now !== null ? null : testStatus(doc, language, "heat.test.explain", testOpen, `${idPrefix}-test`, handlers?.onTest?.bind(handlers));
-  const status = now !== null ? statusLine(doc, now.text, now.code) : test?.status ?? null;
+  const now = answer === null ? null : heatLive(language, answer);
+  const test = answer === null || controls(answer) ? null : testStatus(doc, language, "heat.test.explain", testOpen, `${idPrefix}-test`, handlers?.onTest?.bind(handlers));
+  let status: HTMLElement | null = test?.status ?? null;
+  if (now !== null) {
+    if (status === null) {
+      status = statusLine(doc, now.text, now.code);
+    } else {
+      // After the test chip, in the same muted line.
+      const { word } = headerStatus(doc, now.text, true);
+      word.prepend(doc.createTextNode(" "));
+      status.append(word);
+    }
+    status.dataset["live"] = now.code;
+  }
   const buttons: HTMLButtonElement[] = [];
   const onHistory = handlers?.onHistory;
   if (answer !== null && onHistory !== undefined) {
-    const button = headerButton(doc, "history", translate(language, "hist.open"));
+    const button = headerButton(doc, "info", translate(language, "house.details.open"));
     button.addEventListener("click", () => onHistory.call(handlers, button));
     buttons.push(button);
   }
@@ -308,7 +374,7 @@ function arc(from: number, to: number): string {
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${DIAL.r} ${DIAL.r} 0 ${b - a > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }
 
-function dial(doc: Document, language: Language, answer: HeatAnswer, target: number, ui: HeatUi, handlers: HeatHandlers): HTMLElement {
+function dial(doc: Document, language: Language, answer: HeatAnswer, target: number, ui: HeatUi, handlers: HeatHandlers, height: number | null = null): HTMLElement {
   const wrap = element(doc, "div", X.dialWrap);
   const step = (delta: number, label: TranslationKey, text: string, disabled: boolean): HTMLButtonElement => {
     const button = element(doc, "button", X.dialStep, text);
@@ -320,6 +386,11 @@ function dial(doc: Document, language: Language, answer: HeatAnswer, target: num
     return button;
   };
   const picture = svg(doc, "svg", { viewBox: "0 0 200 170", class: X.dial, role: "img" });
+  if (height !== null) {
+    // In a box of fixed height the dial takes the height it is given, as wide as that makes it.
+    picture.style.height = `${Math.round(height)}px`;
+    picture.style.maxWidth = `${Math.round((height * 200) / 170)}px`;
+  }
   const low = target - 0.5;
   const high = target + 0.5;
   const measured = answer.indoor.value_c;
@@ -531,16 +602,100 @@ export function reviewLines(language: Language, answer: HeatAnswer): { key: stri
   ];
 }
 
+// ------------------------------------------------------------------------------------------------ the hours ahead
+
+/** How many hours the strip under the dial spans. */
+export const AHEAD_HOURS = 12;
+const AHEAD_ACTIONS = ["lower", "preheat", "night", "away"] as const;
+
+/** Whether a pre-heat is a raise of the pump through SG Ready's second contact. */
+function raisable(answer: HeatAnswer): boolean {
+  return answer.config.control_path === "sg_ready" && answer.config.control_entity !== null && answer.config.control_entity_b !== null;
+}
+
+/**
+ * The plan's next hours in words: the first run of each thing it does ("sänkning 17:00–19:00 · svalare natt
+ * 23:00–05:00 · varmvatten 04:00"), or that it lowers nothing; `null` without hours ahead.
+ */
+export function aheadLine(language: Language, answer: HeatAnswer): string | null {
+  const hours = answer.ahead;
+  if (hours.length === 0) {
+    return null;
+  }
+  const ctx = context(language, answer);
+  const parts: { at: number; text: string }[] = [];
+  for (const action of AHEAD_ACTIONS) {
+    const first = hours.findIndex((hour) => hour.action === action);
+    if (first < 0) {
+      continue;
+    }
+    let last = first;
+    while (last + 1 < hours.length && hours[last + 1]!.action === action) {
+      last += 1;
+    }
+    const key = action === "preheat" && raisable(answer) ? "raise" : action;
+    parts.push({
+      at: hours[first]!.startMs,
+      text: translate(language, `heat.ahead.${key}` as TranslationKey, { from: clock(ctx, hours[first]!.startMs), to: clock(ctx, hours[last]!.startMs + HOUR_MS) }),
+    });
+  }
+  const water = hours.find((hour) => hour.hot_water);
+  if (water !== undefined) {
+    parts.push({ at: water.startMs, text: translate(language, "heat.ahead.water", { time: clock(ctx, water.startMs) }) });
+  }
+  if (parts.length === 0) {
+    return translate(language, "heat.ahead.none");
+  }
+  return translate(language, "heat.ahead.lead", { parts: parts.sort((a, b) => a.at - b.at).map((part) => part.text).join(" · ") });
+}
+
+/** The thin strip under the dial: the plan's next twelve hours, a cell an hour (a lowering, a pre-heat, the cooler
+ * night, away, hot water as a dot), with the hours under it and the same in words (`aheadLine`). Hours the plan does
+ * not reach yet (tomorrow before its prices) are left open. `null` without hours ahead. */
+function aheadStrip(doc: Document, language: Language, answer: HeatAnswer): HTMLElement | null {
+  const words = aheadLine(language, answer);
+  const hours: (HeatAheadHour | null)[] = answer.ahead.slice(0, AHEAD_HOURS);
+  if (words === null || hours.length === 0) {
+    return null;
+  }
+  const first = hours[0]!.startMs;
+  while (hours.length < AHEAD_HOURS) {
+    hours.push(null);
+  }
+  const block = element(doc, "div", X.ahead);
+  block.dataset["block"] = "ahead";
+  const row = element(doc, "div", X.aheadRow);
+  row.setAttribute("aria-hidden", "true");
+  const axis = element(doc, "div", `${X.aheadAxis} ${C.muted}`);
+  axis.setAttribute("aria-hidden", "true");
+  const ctx = context(language, answer);
+  hours.forEach((hour, index) => {
+    const cell = element(doc, "span", X.aheadCell);
+    cell.dataset["action"] = hour === null ? "open" : hour.action === "preheat" && raisable(answer) ? "raise" : hour.action;
+    if (hour?.hot_water === true) {
+      cell.dataset["water"] = "true";
+    }
+    row.append(cell);
+    if (index % 3 === 0) {
+      axis.append(element(doc, "span", undefined, clock(ctx, first + index * HOUR_MS)));
+    }
+  });
+  const line = element(doc, "p", `${X.aheadLine} ${C.muted}`, words);
+  line.dataset["line"] = "ahead";
+  block.append(row, axis, line);
+  return block;
+}
+
 // ------------------------------------------------------------------------------------------------ the day
 
-/** The day's chart (`heat-day-chart.ts`) under a heading that folds it away, so the card can be just the dial. */
-function dayBlock(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | null {
+/** Today's chart (`heat-day-chart.ts`) from the answer's band and rooms; `null` with nothing to draw. */
+function todayChart(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | null {
   const { doc, language, ui, handlers } = input;
   const hours = answer.band.hours;
   const indoor = answer.indoor_day;
   const startMs = indoor !== null ? Date.parse(indoor.start) : hours.length > 0 ? hours[0]!.startMs : Number.NaN;
   const endMs = indoor !== null ? Date.parse(indoor.end) : hours.length > 0 ? hours[hours.length - 1]!.startMs + HOUR_MS : Number.NaN;
-  const chart = dayChart({
+  return dayChart({
     doc,
     language,
     ctx: context(language, answer),
@@ -566,40 +721,32 @@ function dayBlock(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | nul
     shadow: answer.shadow,
     selectedMs: ui.chartSelectedMs ?? null,
     onSelect: (ms) => handlers.onChartSelect?.(ms),
+    height: ui.fill ?? null,
   });
-  if (chart === null) {
+}
+
+/** A past day's chart from its history: the rooms by the hour, SpotNav's setpoint and the hot-water runs. */
+function pastChart(input: HeatRenderInput, history: HeatHistory): HTMLElement | null {
+  const day = history.indoor_day;
+  if (day === null) {
     return null;
   }
-  const block = element(doc, "section", X.daySection);
-  block.dataset["block"] = "band";
-  // The heading is the chart's toggle, as the charging card's price row is: a chevron at its right end and the action
-  // in words for assistive technology.
-  const toggle = element(doc, "button", X.dayToggle);
-  toggle.type = "button";
-  toggle.dataset["action"] = "day-chart";
-  const chartId = `${input.idPrefix ?? "spotnav-heat"}-day`;
-  chart.id = chartId;
-  toggle.setAttribute("aria-controls", chartId);
-  const words = element(doc, "span", `${H.line} ${C.muted} ${X.dayTitle}`, `${translate(language, "heat.band.title")} · ${dateLabel(language, answer.band.date)}`);
-  const glyph = element(doc, "span", C.chartToggleGlyph);
-  glyph.setAttribute("aria-hidden", "true");
-  const action = element(doc, "span", C.visuallyHidden);
-  toggle.append(words, glyph, action);
-  let collapsed = ui.chartCollapsed === true;
-  const apply = (): void => {
-    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    glyph.textContent = collapsed ? "\u02c5" : "\u02c4";
-    action.textContent = translate(language, collapsed ? "heat.chart.show" : "heat.chart.hide");
-    chart.hidden = collapsed;
-  };
-  toggle.addEventListener("click", () => {
-    collapsed = !collapsed;
-    apply();
-    handlers.onChartCollapsed?.(collapsed);
+  const { doc, language } = input;
+  return dayChart({
+    doc,
+    language,
+    ctx: { language, timeZone: history.time_zone, unit: "kWh", currency: null, majorUnit: null },
+    startMs: Date.parse(day.start),
+    endMs: Date.parse(day.end),
+    day,
+    low_c: day.low_c,
+    high_c: day.high_c,
+    hours: hoursOf(day),
+    water: history.runs.map((run) => ({ startMs: Date.parse(run.start), endMs: Date.parse(run.end) })),
+    width: input.width,
+    nowMs: null,
+    height: input.ui.fill ?? null,
   });
-  apply();
-  block.append(toggle, chart);
-  return block;
 }
 
 // ------------------------------------------------------------------------------------------------ today and notes
@@ -661,6 +808,161 @@ export function noteLines(language: Language, answer: HeatAnswer): { code: strin
 
 // ------------------------------------------------------------------------------------------------ the body
 
+function boxed(input: HeatRenderInput): boolean {
+  return input.ui.fill !== null && input.ui.fill !== undefined;
+}
+
+function statusParagraph(doc: Document, language: Language, key: TranslationKey, line: string): HTMLElement {
+  const paragraph = element(doc, "p", `${C.muted} ${H.line}`, translate(language, key));
+  paragraph.setAttribute("role", "status");
+  paragraph.dataset["line"] = line;
+  return paragraph;
+}
+
+/** The shown period's history, or the line saying it is on its way or could not be read. */
+function historyOrStatus(input: HeatRenderInput, panel: HTMLElement): HeatHistory | null {
+  const history = input.tabs?.history ?? null;
+  if (history === null || history.kind === "loading") {
+    const line = statusParagraph(input.doc, input.language, "hist.loading", "loading");
+    line.setAttribute("aria-busy", "true");
+    panel.append(line);
+    return null;
+  }
+  if (history.kind === "failed") {
+    const unsupported = history.code === "unknown_command" || history.code === "spotnav_unsupported_api_version";
+    const line = statusParagraph(input.doc, input.language, unsupported ? "hist.unsupported" : "hist.failed", "failed");
+    if (history.code !== null) {
+      line.dataset["code"] = history.code;
+    }
+    panel.append(line);
+    return null;
+  }
+  return history.answer;
+}
+
+/** The day Plan shows: the shared period while it is a day, else Plan's own day (today by default). */
+export function planChoice(ui: HeatUi): PeriodChoice {
+  const choice = ui.choice ?? { period: "day", date: null };
+  return choice.period === "day" ? choice : { period: "day", date: ui.planDate ?? null };
+}
+
+/** Now: the dial, the measured room, home or away, what SpotNav would do and the relay, the strip of the hours
+ * ahead, today's figures and the notes. In a box of fixed height the dial takes the spare room and the explaining
+ * lines are left out. */
+function nowPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElement): void {
+  const { doc, language } = input;
+  const target = input.ui.pendingTarget ?? answer.comfort.target_c;
+  panel.append(dial(doc, language, answer, target, input.ui, input.handlers, input.ui.fill ?? null));
+  const measured = element(doc, "p", X.measured, measuredLine(language, answer));
+  measured.dataset["line"] = "measured";
+  panel.append(measured, ...modes(doc, language, answer, input.handlers));
+  if (answer.shadow && !boxed(input)) {
+    // While nothing is controlled, what the dial and home or away are for: what SpotNav follows once it controls.
+    const line = element(doc, "p", `${X.shadow} ${C.muted}`, translate(language, "heat.shadow"));
+    line.dataset["line"] = "shadow";
+    panel.append(line);
+  }
+  const lines = element(doc, "div", X.statusBlock);
+  // The header says what the heat pump does; here only while the header is taken by SpotNav's own lowering or raise.
+  const live = heatLive(language, answer);
+  const pump = live === null || live.code === "lower" || live.code === "raise" ? pumpLine(language, answer) : null;
+  for (const [key, text] of [
+    ["pump", pump],
+    ["would", wouldLine(language, answer)],
+    ["relay", relayLine(language, answer, input.nowMs)],
+  ] as const) {
+    if (text !== null) {
+      const line = element(doc, "p", X.status, text);
+      line.dataset["line"] = key;
+      lines.append(line);
+    }
+  }
+  if (lines.childElementCount > 0) {
+    panel.append(lines);
+  }
+  const strip = aheadStrip(doc, language, answer);
+  if (strip !== null) {
+    panel.append(strip);
+  }
+  const today = todayLine(language, answer);
+  if (today !== null) {
+    const line = element(doc, "p", H.line, today);
+    line.dataset["line"] = "today";
+    panel.append(line);
+  }
+  if (boxed(input)) {
+    return;
+  }
+  for (const note of noteLines(language, answer)) {
+    const line = element(doc, "p", `${H.note} ${C.muted}`, note.text);
+    line.dataset["note"] = note.code;
+    panel.append(line);
+  }
+}
+
+/** Plan: a day's chart, today's (with the plan ahead) or a past day's, under a picker of days alone; under today's,
+ * yesterday's review. */
+function planPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElement, today: string): void {
+  const { doc, language } = input;
+  const choice = planChoice(input.ui);
+  panel.append(periodPicker(doc, language, choice, today, (next) => input.handlers.onPeriod?.(next, true), null, ["day"]));
+  if (choice.date !== null) {
+    const history = historyOrStatus(input, panel);
+    if (history !== null) {
+      panel.append(pastChart(input, history) ?? statusParagraph(doc, language, "heat.plan.none", "no-day"));
+    }
+    return;
+  }
+  const chart = todayChart(input, answer);
+  if (chart === null) {
+    panel.append(statusParagraph(doc, language, "heat.plan.none", "no-day"));
+    return;
+  }
+  const block = element(doc, "section", X.daySection);
+  block.dataset["block"] = "band";
+  block.append(chart);
+  panel.append(block);
+  if (boxed(input)) {
+    return;
+  }
+  for (const review of reviewLines(language, answer)) {
+    const line = element(doc, "p", `${H.line} ${C.muted}`, review.text);
+    line.dataset["line"] = review.key;
+    panel.append(line);
+  }
+}
+
+/** The Use tab's bars' height (px) outside a box. */
+function barsHeight(input: HeatRenderInput): number {
+  return Math.round(input.ui.fill ?? Math.min(200, Math.max(130, input.width * 0.36)));
+}
+
+/** Use: the period picker and the period's use by what is measured (`heat-use.ts`). */
+function useTab(input: HeatRenderInput, panel: HTMLElement, today: string): void {
+  const { doc, language, handlers } = input;
+  const choice = input.ui.choice ?? { period: "day", date: null };
+  panel.append(periodPicker(doc, language, choice, today, (next) => handlers.onPeriod?.(next, false)));
+  const history = historyOrStatus(input, panel);
+  if (history === null) {
+    return;
+  }
+  panel.append(
+    ...usePanel({
+      doc,
+      language,
+      answer: history,
+      hidden: input.ui.useHidden ?? [],
+      unit: input.ui.useUnit ?? "kwh",
+      height: barsHeight(input),
+      selected: input.ui.bar ?? null,
+      boxed: boxed(input),
+      onUnit: (unit) => handlers.onUnit?.(unit),
+      onToggle: (hidden) => handlers.onUsePart?.(hidden),
+      ...(handlers.onBar === undefined ? {} : { onSelect: (key: string | null) => handlers.onBar?.(key) }),
+    }),
+  );
+}
+
 export function heatBody(input: HeatRenderInput): HTMLElement {
   const { doc, language, state } = input;
   const card = element(doc, "div", `${C.card} ${H.card} ${X.card}`);
@@ -677,55 +979,23 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
     return card;
   }
   const answer = state.answer;
-  const target = input.ui.pendingTarget ?? answer.comfort.target_c;
+  const idPrefix = input.idPrefix ?? "spotnav-heat";
   card.append(...header(doc, language, answer, input.handlers, input.ui.testOpen === true, input.idPrefix));
-  card.append(dial(doc, language, answer, target, input.ui, input.handlers));
-  const measured = element(doc, "p", X.measured, measuredLine(language, answer));
-  measured.dataset["line"] = "measured";
-  card.append(measured, ...modes(doc, language, answer, input.handlers));
-  if (answer.shadow) {
-    // While nothing is controlled, what the dial and home or away are for: what SpotNav follows once it controls.
-    const line = element(doc, "p", `${X.shadow} ${C.muted}`, translate(language, "heat.shadow"));
-    line.dataset["line"] = "shadow";
-    card.append(line);
+  const locked = input.ui.locked ?? null;
+  const tab: HeatTab = locked ?? input.ui.tab ?? "now";
+  card.dataset["tab"] = tab;
+  if (locked === null) {
+    card.append(heatTabList(doc, language, tab, idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey), input.ui.tabFit ?? "long"));
   }
-  const pump = pumpLine(language, answer);
-  if (pump !== null) {
-    const line = element(doc, "p", X.status, pump);
-    line.dataset["line"] = "pump";
-    card.append(line);
-  }
-  const would = wouldLine(language, answer);
-  if (would !== null) {
-    const line = element(doc, "p", X.status, would);
-    line.dataset["line"] = "would";
-    card.append(line);
-  }
-  const relay = relayLine(language, answer, input.nowMs);
-  if (relay !== null) {
-    const line = element(doc, "p", X.status, relay);
-    line.dataset["line"] = "relay";
-    card.append(line);
-  }
-  const day = dayBlock(input, answer);
-  if (day !== null) {
-    card.append(day);
-  }
-  const today = todayLine(language, answer);
-  if (today !== null) {
-    const line = element(doc, "p", H.line, today);
-    line.dataset["line"] = "today";
-    card.append(line);
-  }
-  for (const review of reviewLines(language, answer)) {
-    const line = element(doc, "p", `${H.line} ${C.muted}`, review.text);
-    line.dataset["line"] = review.key;
-    card.append(line);
-  }
-  for (const note of noteLines(language, answer)) {
-    const line = element(doc, "p", `${H.note} ${C.muted}`, note.text);
-    line.dataset["note"] = note.code;
-    card.append(line);
+  const panel = heatTabPanel(doc, tab, idPrefix, locked === null);
+  card.append(panel);
+  const today = input.tabs?.today ?? instantToLocal(input.nowMs, answer.time_zone).date;
+  if (tab === "now") {
+    nowPanel(input, answer, panel);
+  } else if (tab === "plan") {
+    planPanel(input, answer, panel, today);
+  } else {
+    useTab(input, panel, today);
   }
   return card;
 }

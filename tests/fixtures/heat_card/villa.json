@@ -1,4 +1,55 @@
 {
+  "ahead": [
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-11-16T16:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-11-16T17:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-11-16T18:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "tight_hour",
+      "start": "2026-11-16T19:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-11-16T20:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-11-16T21:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "night",
+      "hot_water": false,
+      "reason": "night",
+      "start": "2026-11-16T22:00:00+00:00",
+      "target_c": 20.0
+    }
+  ],
   "api_version": 1,
   "band": {
     "date": "2026-11-16",

@@ -8,6 +8,14 @@
       "key": "2026-11-01",
       "kwh": 37.92,
       "outdoor_c": 4.667,
+      "parts": [
+        {
+          "cost": 5586.4,
+          "key": "pump",
+          "kwh": 37.92
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -18,6 +26,14 @@
       "key": "2026-11-02",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5653.6,
+          "key": "pump",
+          "kwh": 38.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -28,6 +44,14 @@
       "key": "2026-11-03",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5653.6,
+          "key": "pump",
+          "kwh": 38.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -38,6 +62,14 @@
       "key": "2026-11-04",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5653.6,
+          "key": "pump",
+          "kwh": 38.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -48,6 +80,14 @@
       "key": "2026-11-05",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5653.6,
+          "key": "pump",
+          "kwh": 38.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -58,6 +98,14 @@
       "key": "2026-11-06",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5653.6,
+          "key": "pump",
+          "kwh": 38.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -68,6 +116,14 @@
       "key": "2026-11-07",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5653.6,
+          "key": "pump",
+          "kwh": 38.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -78,6 +134,14 @@
       "key": "2026-11-08",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5653.6,
+          "key": "pump",
+          "kwh": 38.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -88,6 +152,19 @@
       "key": "2026-11-09",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5333.433,
+          "key": "pump",
+          "kwh": 36.0
+        },
+        {
+          "cost": 320.167,
+          "key": "hot_water",
+          "kwh": 2.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -98,6 +175,19 @@
       "key": "2026-11-10",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5333.433,
+          "key": "pump",
+          "kwh": 36.0
+        },
+        {
+          "cost": 320.167,
+          "key": "hot_water",
+          "kwh": 2.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -108,6 +198,19 @@
       "key": "2026-11-11",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5333.433,
+          "key": "pump",
+          "kwh": 36.0
+        },
+        {
+          "cost": 320.167,
+          "key": "hot_water",
+          "kwh": 2.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 426.547,
       "zones_kwh": null
     },
@@ -118,6 +221,19 @@
       "key": "2026-11-12",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5333.433,
+          "key": "pump",
+          "kwh": 36.0
+        },
+        {
+          "cost": 320.167,
+          "key": "hot_water",
+          "kwh": 2.4
+        }
+      ],
+      "saving": null,
       "shadow_value": 134.033,
       "zones_kwh": null
     },
@@ -128,6 +244,19 @@
       "key": "2026-11-13",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5333.433,
+          "key": "pump",
+          "kwh": 36.0
+        },
+        {
+          "cost": 320.167,
+          "key": "hot_water",
+          "kwh": 2.4
+        }
+      ],
+      "saving": 212.4,
       "shadow_value": 134.033,
       "zones_kwh": null
     },
@@ -138,6 +267,19 @@
       "key": "2026-11-14",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5333.433,
+          "key": "pump",
+          "kwh": 36.0
+        },
+        {
+          "cost": 320.167,
+          "key": "hot_water",
+          "kwh": 2.4
+        }
+      ],
+      "saving": 148.0,
       "shadow_value": 134.033,
       "zones_kwh": null
     },
@@ -148,6 +290,19 @@
       "key": "2026-11-15",
       "kwh": 38.4,
       "outdoor_c": 4.5,
+      "parts": [
+        {
+          "cost": 5333.433,
+          "key": "pump",
+          "kwh": 36.0
+        },
+        {
+          "cost": 320.167,
+          "key": "hot_water",
+          "kwh": 2.4
+        }
+      ],
+      "saving": 96.5,
       "shadow_value": 134.033,
       "zones_kwh": null
     },
@@ -158,6 +313,14 @@
       "key": "2026-11-16",
       "kwh": 22.52,
       "outdoor_c": null,
+      "parts": [
+        {
+          "cost": 2903.8,
+          "key": "pump",
+          "kwh": 22.52
+        }
+      ],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -168,6 +331,8 @@
       "key": "2026-11-17",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -178,6 +343,8 @@
       "key": "2026-11-18",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -188,6 +355,8 @@
       "key": "2026-11-19",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -198,6 +367,8 @@
       "key": "2026-11-20",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -208,6 +379,8 @@
       "key": "2026-11-21",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -218,6 +391,8 @@
       "key": "2026-11-22",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -228,6 +403,8 @@
       "key": "2026-11-23",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -238,6 +415,8 @@
       "key": "2026-11-24",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -248,6 +427,8 @@
       "key": "2026-11-25",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -258,6 +439,8 @@
       "key": "2026-11-26",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -268,6 +451,8 @@
       "key": "2026-11-27",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -278,6 +463,8 @@
       "key": "2026-11-28",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -288,6 +475,8 @@
       "key": "2026-11-29",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     },
@@ -298,6 +487,8 @@
       "key": "2026-11-30",
       "kwh": null,
       "outdoor_c": null,
+      "parts": [],
+      "saving": null,
       "shadow_value": null,
       "zones_kwh": null
     }
@@ -435,14 +626,38 @@
     "entity_id": "sensor.varme_effekt",
     "name": "Elmätare värme"
   },
+  "model": {
+    "days": 7,
+    "mae_kw": 0.32
+  },
   "money": {
     "currency": "SEK",
     "major": "kr",
     "minor": "öre"
   },
+  "parts": [
+    {
+      "cost": 85399.43,
+      "key": "pump",
+      "kind": "pump",
+      "kwh": 581.24,
+      "name": null
+    },
+    {
+      "cost": 2241.17,
+      "key": "hot_water",
+      "kind": "hot_water",
+      "kwh": 16.8,
+      "name": null
+    }
+  ],
   "period": "month",
   "review": null,
   "runs": [],
+  "saving": {
+    "days": 3,
+    "value": 456.9
+  },
   "shadow": {
     "blocks": 7,
     "days": 15,
