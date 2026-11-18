@@ -532,7 +532,7 @@ describe("the legend", () => {
     expect(sunOnly.querySelector("svg .spotnav-house-bar")).toBeNull();
   });
 
-  it("draws the car as its own bar beside the house's, hidden until toggled on", () => {
+  it("stacks the car on the house's bar in a day as in a month, hidden until toggled on", () => {
     const value = answer();
     const carHours = value.hours.filter((hour) => hour.car_kw !== null && hour.car_kw > 0);
     expect(carHours.length).toBeGreaterThan(0);
@@ -540,10 +540,19 @@ describe("the legend", () => {
     const shown = body(value, { hidden: { energy: [] } });
     const cars = Array.from(shown.querySelectorAll("svg .spotnav-house-car-bar"));
     expect(cars).toHaveLength(carHours.length);
-    // Beside, not over: the car's bar starts where the house's of the same hour ends.
+    // On, not beside: each car part has the hour's house bar under it, as wide, and ends where that bar begins, so
+    // the hour's whole bar is its mean power with the car.
     const bars = Array.from(shown.querySelectorAll("svg .spotnav-house-bar"));
-    const houseOfHour = bars.find((bar) => Math.abs(Number(bar.getAttribute("x")) - (Number(cars[0]!.getAttribute("x")) - 0)) < 40)!;
-    expect(Number(houseOfHour.getAttribute("x")) + Number(houseOfHour.getAttribute("width"))).toBeLessThanOrEqual(Number(cars[0]!.getAttribute("x")));
+    for (const car of cars) {
+      const under = bars.find((bar) => bar.getAttribute("x") === car.getAttribute("x"))!;
+      expect(under).toBeDefined();
+      expect(Number(car.getAttribute("width"))).toBeCloseTo(Number(under.getAttribute("width")), 3);
+      expect(Number(car.getAttribute("y")) + Number(car.getAttribute("height"))).toBeCloseTo(Number(under.getAttribute("y")), 3);
+    }
+    // Without the house's bars the car stands on the axis.
+    const alone = body(value, { hidden: { energy: ["house", "heat", "forecast", "sun"] } });
+    const bottoms = Array.from(alone.querySelectorAll("svg .spotnav-house-car-bar")).map((car) => Number(car.getAttribute("y")) + Number(car.getAttribute("height")));
+    expect(new Set(bottoms.map((value_) => value_.toFixed(2))).size).toBe(1);
     expect(shown.querySelector(".spotnav-readout")).not.toBeNull();
     const peak = carHours.find((hour) => hour.car_kw === Math.max(...carHours.map((h) => h.car_kw as number)))!;
     expect(hourFigures("en", value, peak, NOW, "energy", new Set())).toContain(`car ${peak.car_kw!.toFixed(1)} kW`);
@@ -862,7 +871,7 @@ describe("a past day's answer", () => {
   it("has no day steps in Now: the period tabs and the history choose the day", () => {
     const card = body(answer(), { tab: "now" }, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onHistory: vi.fn() } as never);
     expect(card.querySelector("button[data-step]")).toBeNull();
-    expect(card.querySelector("button[data-history='open']")?.getAttribute("aria-label")).toBe("Historik");
+    expect(card.querySelector("button[data-history='open']")?.getAttribute("aria-label")).toBe("Detaljer");
     expect(body(answer(), { tab: "graph" }, "sv").querySelectorAll("button[data-step]")).toHaveLength(2);
   });
 
@@ -1374,7 +1383,10 @@ describe("the element", () => {
     hass.resolveNext(read("house_history/villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
     const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
-    expect(dialog.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
+    // The energy flow is the card's own tab, not a section here; the picker is the card's own.
+    expect(dialog.querySelector("[data-part='energy-flow']")).toBeNull();
+    expect(dialog.querySelector(".spotnav-house-picker")).not.toBeNull();
+    expect(dialog.querySelector("[data-detailed]")).toBeNull();
     expect(dialog.querySelectorAll(".spotnav-history-bar")).toHaveLength(30);
     dialog.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
     await vi.advanceTimersByTimeAsync(0);
