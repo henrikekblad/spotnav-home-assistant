@@ -97,14 +97,48 @@ charges from the grid in a quarter hour the plan leaves to the battery. Every wr
 effect is judged; anything unexpected hands the battery back (in Maximum Self Consumption) and stops. Safety rules:
 
 * **The fuse.** A grid charge is clamped to the live headroom under the main fuse. Because Sigenergy has no
-  dead-man, it is also capped so that the charge and a normal house peak (the house forecast's high figure for the
-  hour, 4 kW without one) stay under the fuse even if Home Assistant stops while it runs. Under a hold the battery is
-  let go at once when a phase nears the fuse (a kettle, the oven), and a hold meant to leave the battery idle that
-  charges it anyway is handed back within a minute.
+  dead-man, it is also capped so that the charge and the house's peak stay under the fuse on every phase even if
+  Home Assistant stops while it runs (below). Under a hold the battery is let go at once when a phase nears the fuse
+  (a kettle, the oven), and a hold meant to leave the battery idle that charges it anyway is handed back within a
+  minute.
 * **What backs off first** when the fuse is short: the battery's grid charge, then the car; the car first when its
   departure has room. With the solar priority "battery first" the car backs off before the battery.
 * **Selling from the battery** (discharging to the grid) is off unless you allow it in the battery section.
 * **At most 96 writes a day**, outside hand-backs.
+
+### The grid charge cap and the house's peaks
+
+The cap answers one question: how much may the battery draw from the grid so that no phase passes the main fuse if
+Home Assistant stops and the command stays? It is the fuse, less a margin, less what the chargers may draw, less the
+house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn.
+
+* **The first days: a cautious rule.** With fewer than three days learned, the house is taken to draw the house
+  forecast's high figure for the hour, at least 4 kW, all of it on one phase (17 A). On a 20 A fuse that leaves no
+  grid charge worth running; on 25 A about 3.9 kW. Self-consumption runs as usual meanwhile.
+* **From three days: the learned peaks, with a further margin.** SpotNav keeps each phase's largest one-minute
+  current of the last four weeks (the site meter's reading less the chargers' and the battery's share). The cap then
+  takes the largest phase's peak as the house on every phase, plus 2 A, plus a further margin: 4 A at three days,
+  falling evenly to nothing at two weeks. So the cap grows day by day, and it replaces the cautious rule in both
+  directions: larger for a house that never comes near 4 kW on a phase, smaller for one that passes it.
+* **A day counts** once two hours of its minutes could be reckoned. With a Sigenergy plant whose per-phase power
+  sensors are enabled (`Plant phase A/B/C active power`, disabled by default in the integration) every minute can;
+  without them only the minutes where the battery is nearly idle (within 0.5 kW).
+* **The days before SpotNav.** A few minutes after the start SpotNav reads the same sensors back from Home
+  Assistant's recorder (its raw history, ten days by default) and reckons those days by the same rules, so a site
+  whose sensors have been in Home Assistant for a while has its days at once. The history says when a value last
+  changed, not when it was last reported, so a reading that stood still for more than two minutes counts nothing
+  there. A sensor that is excluded from the recorder has no history: if the site's measurement needs it (on a
+  Sigenergy plant the grid's reactive power and the inverter's phase voltages), no earlier day can be reckoned and the
+  learning starts from now. Long-term statistics are not used: an hour's mean or maximum per sensor is not a current
+  the house drew at one moment.
+
+The house card says so while the learning holds the grid charge back ("Grid charging at most 1.4 kW while the house's
+peaks are being learned (9 days left)."), and the battery's settings say what the cap rests on. The diagnostics hold
+the numbers: the days counted and how many of them come from the history, the further margin now, and what the cap
+would be by the cautious rule and by the learned peaks alone.
+
+Once the plant's own grid import limit is shown to act (the on-site test), that limit guards the fuse and this cap is
+not used.
 
 **Sigen AI mode.** SpotNav can take the plant over from AI mode only after you have read this: *SpotNav takes over
 the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the

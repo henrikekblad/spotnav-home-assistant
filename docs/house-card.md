@@ -80,7 +80,8 @@ what SpotNav would do ("The battery runs itself (Sigenergy AI) · SpotNav would 
 battery earned 11 kr · SpotNav saved 17 kr". The battery's figure is its *arbitrage*: each kWh it gave back, over what
 that energy cost to store ([the battery plan](battery-plan.md)), the same measure the battery's own app shows. SpotNav's
 is against a comparison of its own per part (below). Small and grey under it: the mode, and a learning period that holds
-something back ("Learning the house's peaks, 13 days left. Does not charge from the grid until then."). A heat pump meter
+something back ("Grid charging at most 1.4 kW while the house's peaks are being learned (9 days left)."; with no grid
+charge at all, "Learning the house's peaks, 2 days left. Does not charge from the grid until then."). A heat pump meter
 to choose (more than one could be it) is said here.
 
 The live figures are read every 30 seconds while Now is shown: the grid and the chargers as load balancing reads them,
