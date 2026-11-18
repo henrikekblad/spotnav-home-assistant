@@ -1855,6 +1855,8 @@
   "house.earned": "Akku tienasi {amount}",
   "house.value.hour": "akku tienasi {amount}",
   "house.value.hourCost": "akku menetti {amount}",
+  "house.flow.out": "purettu {kwh}, arvo {worth}, miinus {cost}, jonka energia maksoi latauksessa = {net}",
+  "house.flow.in": "ladattu {kwh}, hinta {cost} (lasketaan, kun energia käytetään)",
   "house.value.none": "Tässä kohteessa ei ole akkua.",
   "house.learning.peaksLine": "Opettelee talon huippuja, {left}.",
   "house.learning.noGridUntil": "Ei lataa verkosta ennen sitä.",

@@ -32,6 +32,11 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   `arbitrage` is what the battery earned in it, the house card's headline measure (`battery/stored_value.py`, the same
   as the battery's own app shows): an hour of a day from the day's hourly tally (kept 40 days), a day or a month from
   the days' totals (kept 400 days); `null` without a battery or where nothing is kept.
+  A bucket's `battery_flow` says what its arbitrage is made of, for the card's readout: `{discharged, worth, cost,
+  charged, charge_cost}` (kWh, and minor units), the energy given back, what it was worth (the buy or sell price),
+  what it cost out of the stock (worth less cost is the arbitrage), and the energy charged with its cost (counted as
+  it is used, in a later hour's cost); the same retention as `arbitrage` (an hour also where it only charged); `null`
+  where not kept, and for a month or year where any of its days with a battery figure lacks it.
   `buy` and `sell` are the bucket's mean prices over its priced periods (minor unit per kWh, every fee in the buy
   price), weighted by their minutes; `null` where none is priced (the house card's price lines for a past day).
 * **Cost** (`cost`): each period's import at its buy price with every fee and its export at its sell price, as the
@@ -127,6 +132,7 @@ BUCKET_KEYS: Final = (
     "saving_car",
     "saving_heat",
     "arbitrage",
+    "battery_flow",
     "buy",
     "sell",
     "own_battery",
@@ -170,6 +176,10 @@ class HouseHistoryInputs:
     #: measure; empty without a battery.
     arbitrage_days: Mapping[date, float] = field(default_factory=dict)
     arbitrage_hours: Mapping[datetime, float] = field(default_factory=dict)
+    #: What the arbitrage is made of (`battery/stored_value.Flow`), per local day and per UTC hour; a day not kept
+    #: with it is missing from `flow_days`.
+    flow_days: Mapping[date, Any] = field(default_factory=dict)
+    flow_hours: Mapping[datetime, Any] = field(default_factory=dict)
     #: The car's saving per UTC hour its charges started in (`site/spotnav_saving.car_hours`), for a day's hours.
     car_hours: Mapping[datetime, float] = field(default_factory=dict)
 
@@ -229,11 +239,23 @@ def _empty_bucket(key: str) -> dict[str, Any]:
         "saving_car": None,
         "saving_heat": None,
         "arbitrage": None,
+        "battery_flow": None,
         "buy": None,
         "sell": None,
         "own_battery": None,
         "would_battery": None,
     }
+
+
+def _flow_sum(total: dict[str, float] | None, flow: Any) -> dict[str, float]:
+    """`total` with `flow` (`battery/stored_value.Flow`) added, as the bucket's `battery_flow`."""
+    out = total or {"discharged": 0.0, "worth": 0.0, "cost": 0.0, "charged": 0.0, "charge_cost": 0.0}
+    out["discharged"] += flow.discharged
+    out["worth"] += flow.worth
+    out["cost"] += flow.cost
+    out["charged"] += flow.charged
+    out["charge_cost"] += flow.charge_cost
+    return out
 
 
 def _add(bucket: dict[str, Any], key: str, value: float | None) -> None:
@@ -323,12 +345,24 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
                     _add(target, "saving", value * share)
                 if share is not None and share < 1:
                     _add(target, "own_battery", value * (1.0 - share))
+        for hour, flow in inputs.flow_hours.items():
+            target = buckets.get(bucket_key(period, hour, tz))
+            if target is not None:
+                target["battery_flow"] = _flow_sum(target["battery_flow"], flow)
     elif inputs.has_battery:
+        broken: set[str] = set()
         for day, value in inputs.arbitrage_days.items():
             if period.contains(day):
                 target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
                 if target is not None:
                     _add(target, "arbitrage", value)
+                    flow = inputs.flow_days.get(day)
+                    if flow is None:
+                        broken.add(target["key"])
+                    else:
+                        target["battery_flow"] = _flow_sum(target["battery_flow"], flow)
+        for key in broken:
+            buckets[key]["battery_flow"] = None
         # A day without its review counts as it went, so a bucket's two sums are over the same days; a bucket with
         # no reviewed day has no `would_battery`.
         reviewed: set[str] = set()
@@ -357,7 +391,10 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             buckets[key]["sell"] = sell / minutes
     rows = []
     for bucket in buckets.values():
-        rows.append({key: (_r(value, 3) if isinstance(value, float) else value) for key, value in bucket.items()})
+        row = {key: (_r(value, 3) if isinstance(value, float) else value) for key, value in bucket.items()}
+        if row["battery_flow"] is not None:
+            row["battery_flow"] = {key: _r(value, 3) for key, value in row["battery_flow"].items()}
+        rows.append(row)
     cost = None
     if inputs.money is not None and inputs.periods is not None:
         cost = {

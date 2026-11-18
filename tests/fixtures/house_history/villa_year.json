@@ -4,6 +4,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -29,6 +30,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -54,6 +56,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -79,6 +82,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -104,6 +108,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -129,6 +134,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -154,6 +160,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -179,6 +186,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -204,6 +212,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -229,6 +238,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -254,6 +264,7 @@
     {
       "arbitrage": 5250.0,
       "battery_days": 13,
+      "battery_flow": null,
       "battery_in": 32.0,
       "battery_out": 36.0,
       "battery_saving": 5200.0,
@@ -279,6 +290,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,

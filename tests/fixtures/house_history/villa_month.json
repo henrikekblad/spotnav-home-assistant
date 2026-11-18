@@ -4,6 +4,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": null,
@@ -29,6 +30,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": null,
@@ -54,6 +56,7 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": null,
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -79,6 +82,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -104,6 +114,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -129,6 +146,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -154,6 +178,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -179,6 +210,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -204,6 +242,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -229,6 +274,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -254,6 +306,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -279,6 +338,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -304,6 +370,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -329,6 +402,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -354,6 +434,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 1,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 2.4,
       "battery_saving": 400.0,
@@ -379,6 +466,13 @@
     {
       "arbitrage": 375.0,
       "battery_days": 0,
+      "battery_flow": {
+        "charge_cost": 200.0,
+        "charged": 2.5,
+        "cost": 1125.0,
+        "discharged": 5.0,
+        "worth": 1500.0
+      },
       "battery_in": 2.0,
       "battery_out": 0.0,
       "battery_saving": null,
@@ -404,6 +498,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -429,6 +524,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -454,6 +550,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -479,6 +576,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -504,6 +602,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -529,6 +628,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -554,6 +654,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -579,6 +680,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -604,6 +706,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -629,6 +732,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -654,6 +758,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -679,6 +784,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -704,6 +810,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,
@@ -729,6 +836,7 @@
     {
       "arbitrage": null,
       "battery_days": 0,
+      "battery_flow": null,
       "battery_in": null,
       "battery_out": null,
       "battery_saving": null,

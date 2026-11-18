@@ -17,7 +17,7 @@
 import { attachScrub, scrubBars } from "./chart-scrub";
 import { formatFixed, formatNumber } from "./format";
 import type { EnergyFlow } from "./house-model";
-import type { HouseBucket, HouseHistory } from "./house-history";
+import type { BatteryFlow, HouseBucket, HouseHistory } from "./house-history";
 import { bucketWords } from "./house-history";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -55,6 +55,28 @@ function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, c
 
 export function kwhText(language: Language, value: number): string {
   return `${formatFixed(language, value, Math.abs(value) >= 100 ? 0 : 1)} kWh`;
+}
+
+/** What a bucket's battery arbitrage is made of, in words for a readout, to be compared with the battery maker's
+ * cash flow: "urladdat 3,5 kWh, värt 8,1 kr, minus 5,6 kr som energin kostade att ladda = 2,5 kr", and what it
+ * charged ("laddade 4,2 kWh för 3,9 kr (räknas när energin används)"); both where it did both; `null` where it
+ * moved nothing. `money` writes an amount in the major unit. */
+export function flowWords(language: Language, flow: BatteryFlow, money: (minor: number) => string): string | null {
+  const parts: string[] = [];
+  if (flow.discharged >= 0.05) {
+    parts.push(
+      translate(language, "house.flow.out", {
+        kwh: kwhText(language, flow.discharged),
+        worth: money(flow.worth),
+        cost: money(flow.cost),
+        net: money(flow.worth - flow.cost),
+      }),
+    );
+  }
+  if (flow.charged >= 0.05) {
+    parts.push(translate(language, "house.flow.in", { kwh: kwhText(language, flow.charged), cost: money(flow.charge_cost) }));
+  }
+  return parts.length === 0 ? null : parts.join(" · ");
 }
 
 // ------------------------------------------------------------------------------------------------ tiles
@@ -520,13 +542,16 @@ export function earnedBars(
   const bars: Bar[] = buckets.map((bucket, index) => {
     const words = bucketWords(language, answer.period, bucket.key, index, buckets.length);
     const value = bucket.arbitrage;
+    const flow = bucket.battery_flow === null ? null : flowWords(language, bucket.battery_flow, money);
     return {
       key: bucket.key,
       lanes: value === null || value === 0 ? [] : [[{ series: value < 0 ? "cost" : "earned", value }]],
       words:
-        value === null
-          ? translate(language, "hist.house.barNone", { when: words.when })
-          : translate(language, value < 0 ? "house.value.barCost" : "house.value.bar", { when: words.when, amount: money(Math.abs(value)) }),
+        flow !== null
+          ? `${words.when}: ${flow}`
+          : value === null
+            ? translate(language, "hist.house.barNone", { when: words.when })
+            : translate(language, value < 0 ? "house.value.barCost" : "house.value.bar", { when: words.when, amount: money(Math.abs(value)) }),
       axis: words.axis,
     };
   });

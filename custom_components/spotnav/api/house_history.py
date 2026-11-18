@@ -69,7 +69,12 @@ def _arbitrage(controller: Any, has_battery: bool) -> dict[str, Any]:
         return {}
     days = {day: money.arbitrage for day, money in stored.days.items()}
     hours = {hour: value for money in stored.days.values() for hour, value in money.hours.items()}
-    return {"arbitrage_days": days, "arbitrage_hours": hours}
+    return {
+        "arbitrage_days": days,
+        "arbitrage_hours": hours,
+        "flow_days": {day: money.flow for day, money in stored.days.items() if money.flow is not None},
+        "flow_hours": {hour: flow for money in stored.days.values() for hour, flow in money.hour_flows.items()},
+    }
 
 
 def period_price_slots(hass: HomeAssistant, site_entry_id: str, period: Period) -> list[PriceSlot]:

@@ -31,6 +31,7 @@ from custom_components.spotnav.site.history_period import (
 from tests.test_house_view import facit_for
 
 from custom_components.spotnav.site.spotnav_saving import DaySaving
+from custom_components.spotnav.battery.stored_value import Flow
 from custom_components.spotnav.site.house_period import (
     BUCKET_KEYS,
     HISTORY_KEYS,
@@ -175,6 +176,20 @@ def villa_arbitrage() -> tuple[dict[date, float], dict[datetime, float]]:
     return days, hours
 
 
+def villa_flows() -> tuple[dict[date, Flow], dict[datetime, Flow]]:
+    """Each arbitrage hour worth 300 a kWh over a cost of 100 (the 7th only charges), and a day's hours in all."""
+    days: dict[date, Flow] = {}
+    hours: dict[datetime, Flow] = {}
+    for day in range(4, 17):
+        total = Flow()
+        for local, value in ARBITRAGE_HOURS.items():
+            flow = Flow(1.0, 300.0, 300.0 - value, 0.5, 40.0)
+            hours[datetime(2026, 11, day, local - 1, tzinfo=timezone.utc)] = flow
+            total.add(flow)
+        days[date(2026, 11, day)] = total
+    return days, hours
+
+
 def month_inputs(**extra: Any) -> HouseHistoryInputs:
     period = period_of(PERIOD_MONTH, date(2026, 11, 1))
     start, _end = utc_bounds(period, TZ)
@@ -215,6 +230,8 @@ def month_inputs(**extra: Any) -> HouseHistoryInputs:
         forecast_mae={"house_kw": {date(2026, 11, 14): 0.4, date(2026, 11, 15): 0.6, date(2026, 10, 31): 9.0}},
         arbitrage_days=villa_arbitrage()[0],
         arbitrage_hours=villa_arbitrage()[1],
+        flow_days=villa_flows()[0],
+        flow_hours=villa_flows()[1],
     )
     base.update(extra)
     return HouseHistoryInputs(**base)  # type: ignore[arg-type]
@@ -274,6 +291,23 @@ def test_a_bucket_has_the_batterys_arbitrage_by_the_hour_or_by_its_days() -> Non
     assert by_month["2026-11"] == pytest.approx(14 * DAY_ARBITRAGE) and by_month["2026-10"] is None
     for alone in (month_inputs(arbitrage_days={}, arbitrage_hours={}), month_inputs(has_battery=False)):
         assert all(bucket["arbitrage"] is None for bucket in house_history(alone)["buckets"])
+
+
+def test_a_bucket_has_what_its_arbitrage_is_made_of_where_it_is_kept() -> None:
+    day = house_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 10))))
+    hour = next(bucket for bucket in day["buckets"] if bucket["key"][11:13] == "17")
+    assert hour["battery_flow"] == {"discharged": 1.0, "worth": 300.0, "cost": 180.0, "charged": 0.5, "charge_cost": 40.0}
+    assert hour["arbitrage"] == 120.0
+    assert next(bucket for bucket in day["buckets"] if bucket["key"][11:13] == "03")["battery_flow"] is None
+    month = house_history(month_inputs())
+    by_day = {bucket["key"]: bucket["battery_flow"] for bucket in month["buckets"]}
+    assert by_day["2026-11-10"]["discharged"] == 5.0 and by_day["2026-11-10"]["charged"] == 2.5
+    # The 3rd has an arbitrage but no breakdown: no part of it is shown; the month holds days without it too.
+    assert by_day["2026-11-03"] is None and by_day["2026-11-02"] is None
+    year = house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 11, 1))))
+    assert next(bucket for bucket in year["buckets"] if bucket["key"] == "2026-11")["battery_flow"] is None
+    for alone in (month_inputs(flow_days={}, flow_hours={}), month_inputs(has_battery=False)):
+        assert all(bucket["battery_flow"] is None for bucket in house_history(alone)["buckets"])
 
 
 def test_a_bucket_has_its_mean_prices_where_priced() -> None:

@@ -8,9 +8,9 @@ import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type En
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./house-model";
 import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
-import type { HouseHistory } from "./house-history";
+import type { BatteryFlow, HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
-import { earnedBars, earnedStrip, earnedTotal, energyChart, kwhText, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
+import { earnedBars, earnedStrip, earnedTotal, energyChart, flowWords, kwhText, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
 import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
 import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
 import type { HistoryPeriod } from "./period-history";
@@ -480,6 +480,8 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
 /** Under a day's price chart, on its hours: what the battery earned each hour (minor unit, `null` unknown). */
 interface EarnedStrip {
   values: Array<number | null>;
+  /** What each hour's figure is made of, where kept (`HouseBucket.battery_flow`); same length as `values`. */
+  flows?: Array<BatteryFlow | null>;
   height: number;
 }
 
@@ -545,7 +547,10 @@ function chartBlock(
     const hint = fitHeight !== null ? "" : translate(language, view === "energy" && shownToday ? "house.hint.energy" : "house.hint");
     let words = hour === undefined ? hint : hourFigures(language, answer, hour, nowMs, view, hidden);
     const value = index === null || earned === null ? null : (earned.values[index] ?? null);
-    if (value !== null) {
+    const flow = index === null || earned?.flows === undefined || earned.flows[index] === undefined || earned.flows[index] === null ? null : flowWords(language, earned.flows[index]!, (minor) => amount(language, minor, answer.money));
+    if (flow !== null) {
+      words += ` · ${flow}`;
+    } else if (value !== null) {
       words += ` · ${translate(language, value < 0 ? "house.value.hourCost" : "house.value.hour", { amount: amount(language, Math.abs(value), answer.money) })}`;
     }
     readout.textContent = words;
@@ -1040,6 +1045,15 @@ function earnedOnHours(hours: readonly HouseHour[], history: HouseHistory | null
   return hours.map((hour) => byStart.get(hour.startMs) ?? null);
 }
 
+/** What each of the chart's hours' figure is made of (`null` where the history has none). */
+function flowOnHours(hours: readonly HouseHour[], history: HouseHistory | null): Array<BatteryFlow | null> {
+  if (history === null || history.period !== "day") {
+    return hours.map(() => null);
+  }
+  const byStart = new Map(history.buckets.map((bucket) => [Date.parse(bucket.key), bucket.battery_flow]));
+  return hours.map((hour) => byStart.get(hour.startMs) ?? null);
+}
+
 /** Price and battery: the heading "Batteriet tjänade X kr" (the period's sum of the bars) with the battery app's
  * measure and the cost under it, then a day's prices with its kr bars on the same hours, or a month's or a year's kr
  * bars per day or month. */
@@ -1087,7 +1101,8 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
     const priced = shown === null || shown === answer ? shown : withPrices(shown, history);
     if (priced !== null && priced.hours.some((hour) => hour.buy !== null)) {
       const values = answer.battery === null ? null : earnedOnHours(priced.hours, history);
-      const strip = values !== null && values.some((value) => value !== null) ? { values, height: boxed(input) ? 56 : 72 } : null;
+      const flows = flowOnHours(priced.hours, history);
+      const strip = values !== null && (values.some((value) => value !== null) || flows.some((flow) => flow !== null)) ? { values, flows, height: boxed(input) ? 56 : 72 } : null;
       panel.append(chartBlock({ ...input, nowMs: shown === answer ? input.nowMs : Date.parse(`${choice.date}T23:59:59Z`) + 86_400_000 }, priced, "price", input.ui.fill ?? null, strip));
       return;
     }
