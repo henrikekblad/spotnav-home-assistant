@@ -59,28 +59,6 @@ export function initialChartCollapsed(stored: boolean | null, configured: ChartP
   return stored ?? configured === "compact";
 }
 
-export function heatChartKey(siteId: string): string {
-  return `spotnav-heat-card.chart.${siteId}`;
-}
-
-/** The heat card's day chart for this site: `true` folded away, `false` shown, `null` when nothing usable is stored. */
-export function readHeatChartCollapsed(store: () => PreferenceStore | null, siteId: string): boolean | null {
-  try {
-    const value = store()?.getItem(heatChartKey(siteId)) ?? null;
-    return value === "hidden" ? true : value === "shown" ? false : null;
-  } catch {
-    return null;
-  }
-}
-
-export function writeHeatChartCollapsed(store: () => PreferenceStore | null, siteId: string, collapsed: boolean): void {
-  try {
-    store()?.setItem(heatChartKey(siteId), collapsed ? "hidden" : "shown");
-  } catch {
-    // Nothing is remembered in this browser; the choice still holds for this card.
-  }
-}
-
 /** The chart axis is one choice for the whole browser, not per charger. */
 export const CHART_AXIS_KEY = "spotnav-card.chart-axis";
 

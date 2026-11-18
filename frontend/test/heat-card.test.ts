@@ -36,9 +36,14 @@ beforeAll(() => {
   registerTranslation("sv", TRANSLATIONS.sv);
 });
 
-function body(value: HeatAnswer, language: "en" | "sv" = "sv", handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn() }) {
+function body(value: HeatAnswer, language: "en" | "sv" = "sv", handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn() }, tab: "now" | "plan" | "use" = "now") {
   const state: HeatState = { kind: "ready", answer: value };
-  return heatBody({ doc: document, language, state, ui: { pendingTarget: null, error: null }, handlers, width: 330, nowMs: NOW });
+  return heatBody({ doc: document, language, state, ui: { pendingTarget: null, error: null, tab }, handlers, width: 330, nowMs: NOW });
+}
+
+/** The Plan tab: the day's chart. */
+function planBody(value: HeatAnswer, language: "en" | "sv" = "sv", handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn() }) {
+  return body(value, language, handlers, "plan");
 }
 
 describe("decoding the backend's own answer", () => {
@@ -121,7 +126,9 @@ describe("the front", () => {
     expect(header.querySelector("h3.spotnav-name")!.textContent).toBe("Värme");
     const status = header.querySelector<HTMLElement>("[data-line='header-status']")!;
     expect(status.dataset["status"]).toBe("test");
-    expect(status.textContent).toBe("· Test");
+    // After the test chip, what the heat pump does now.
+    expect(status.textContent).toBe("· Test · Värmer 1,1\u00a0kW");
+    expect(status.dataset["live"]).toBe("heating");
     const test = status.querySelector<HTMLButtonElement>("button[data-action='test']")!;
     expect(test.title).toBe("SpotNav styr inget än.");
     const explain = card.querySelector<HTMLElement>("[data-line='test-explain']")!;
@@ -136,7 +143,7 @@ describe("the front", () => {
   });
 
   it("draws one day chart with the lowering, the hot water, the car and the now line, and no hour squares", () => {
-    const card = body(answer());
+    const card = planBody(answer());
     const chart = card.querySelector("[data-block='band'] [data-block='day']")!;
     expect(chart.querySelectorAll("svg")).toHaveLength(1);
     expect(card.querySelector("[data-block='indoor']")).toBeNull();
@@ -158,7 +165,7 @@ describe("the front", () => {
   it("says a chosen time's figures under the chart, by the keys too", () => {
     const onChartSelect = vi.fn();
     const handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), onChartSelect };
-    const card = body(answer(), "sv", handlers);
+    const card = planBody(answer(), "sv", handlers);
     const surface = card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!;
     const readout = card.querySelector("[data-line='day-readout']")!;
     expect(surface.tabIndex).toBe(0);
@@ -177,7 +184,7 @@ describe("the front", () => {
     // A time chosen before the card's redraw stays chosen.
     const kept = heatBody({
       doc: document, language: "sv", state: { kind: "ready", answer: answer() }, handlers, width: 330, nowMs: NOW,
-      ui: { pendingTarget: null, error: null, chartSelectedMs: Date.parse("2026-11-16T03:00:00+00:00") },
+      ui: { pendingTarget: null, error: null, tab: "plan", chartSelectedMs: Date.parse("2026-11-16T03:00:00+00:00") },
     });
     expect(kept.querySelector("[data-line='day-readout']")!.textContent).toMatch(/^04:00 · rummen /);
   });
@@ -185,7 +192,7 @@ describe("the front", () => {
   it("lets a touch drag across the day chart update the readout, and a mouse pick by x alone", () => {
     const onChartSelect = vi.fn();
     const handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), onChartSelect };
-    const card = body(answer(), "sv", handlers);
+    const card = planBody(answer(), "sv", handlers);
     document.body.append(card);
     const surface = card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!;
     const picture = surface.querySelector("svg")!;
@@ -223,32 +230,12 @@ describe("the front", () => {
     card.remove();
   });
 
-  it("folds the chart away under its heading and tells the card", () => {
-    const onChartCollapsed = vi.fn();
-    const handlers = { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn(), onChartCollapsed };
-    const card = body(answer(), "sv", handlers);
-    const toggle = card.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!;
-    const chart = card.querySelector<HTMLElement>("[data-block='day']")!;
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.getAttribute("aria-controls")).toBe(chart.id);
-    expect(toggle.textContent).toContain("Dölj dagens diagram");
-    toggle.click();
-    expect(chart.hidden).toBe(true);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(onChartCollapsed).toHaveBeenLastCalledWith(true);
-    const folded = heatBody({
-      doc: document, language: "sv", state: { kind: "ready", answer: answer() }, handlers, width: 330, nowMs: NOW,
-      ui: { pendingTarget: null, error: null, chartCollapsed: true },
-    });
-    expect(folded.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
-  });
-
   it("says when a lowering is for a house that is too warm", () => {
     const villa = answer();
     const hours = villa.band.hours.map((hour, index) => (index === 17 ? { ...hour, reason: "room_warm" } : hour));
     const warm: HeatAnswer = { ...villa, band: { ...villa.band, hours }, status: { ...villa.status, would: { ...villa.status.would!, action: "lower", reason: "room_warm" } } };
     // The chart's readout names the hour's lowering (a lowering column like a dear hour's).
-    const card = body(warm);
+    const card = planBody(warm);
     card.querySelector<HTMLElement>(".spotnav-heat-day-surface")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     expect(card.querySelector("[data-line='day-readout']")!.textContent).toBe(
       "17:30 · börvärde 20,5 °C · reläet väntas sänka 60 min · planerad sänkning · för varmt inne",
@@ -301,7 +288,9 @@ describe("the front", () => {
       "I går sänkte reläet 3 h: 1,58 kr · kallast 20,4\u00a0°C · 20 min under 20,5\u00a0°C",
       "SpotNavs plan 5 h: 3,19 kr · kallast 20,4\u00a0°C · 20 min under 20,5\u00a0°C · 2 h samma som reläet",
     ]);
-    expect(card.querySelector("[data-line='review-plan']")).not.toBeNull();
+    // Yesterday's review stands under today's chart, in Plan.
+    expect(card.querySelector("[data-line='review-plan']")).toBeNull();
+    expect(planBody(villa).querySelector("[data-line='review-plan']")).not.toBeNull();
     expect(noteLines("sv", villa).map((note) => note.text)).toEqual([
       "Automationen 'Golvvärme – börvärde efter elpris och larm' styr också Golvvärme toalett nedervåning: stäng av den när SpotNav ska styra.",
       // Styr värmen is on: the automation on the relay is what it waits for, one note that says what to do.
@@ -438,37 +427,6 @@ describe("the element", () => {
     return { element, messages, root: element.shadowRoot! };
   }
 
-  it("remembers the folded day chart for the site in this browser, and shows it when storage fails", async () => {
-    const stored = new Map<string, string>();
-    const store = { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => void stored.set(key, value) };
-    const { hass } = fakeHass();
-    const element = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
-    element.store = () => store;
-    element.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa" });
-    element.hass = hass as never;
-    document.body.append(element);
-    await vi.advanceTimersByTimeAsync(0);
-    const root = element.shadowRoot!;
-    expect(root.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(false);
-    root.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!.click();
-    expect([...stored.entries()]).toEqual([["spotnav-heat-card.chart.site_villa", "hidden"]]);
-    // The next read redraws the card folded.
-    await element.refresh();
-    expect(root.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
-    element.remove();
-    const failing = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
-    failing.store = () => {
-      throw new Error("blocked");
-    };
-    failing.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa" });
-    failing.hass = hass as never;
-    document.body.append(failing);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(failing.shadowRoot!.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(false);
-    failing.shadowRoot!.querySelector<HTMLButtonElement>("button[data-action='day-chart']")!.click();
-    expect(failing.shadowRoot!.querySelector<HTMLElement>("[data-block='day']")!.hidden).toBe(true);
-  });
-
   it("is in the card picker", () => {
     expect(window.customCards?.some((entry) => entry.type === HEAT_PICKER_ENTRY.type)).toBe(true);
     expect(parseHeatConfig({ type: "custom:spotnav-heat-card", charger: "c1" })).toEqual({ type: "custom:spotnav-heat-card", charger: "c1" });
@@ -579,11 +537,11 @@ describe("the element", () => {
 describe("SpotNav controlling the heat", () => {
   it("says so in the header, under the switch and in the day's band", () => {
     const controlled = answer("controlled.json");
-    const card = body(controlled);
+    const card = planBody(controlled);
     // The header says what the control does now; no "Styr värmen" pill, that is the setting's.
     const status = card.querySelector<HTMLElement>(".spotnav-header [data-line='header-status']")!;
     expect(status.dataset["status"]).toBe("lower");
-    expect(status.textContent).toBe("· Sänker till 20,5 °C");
+    expect(status.textContent).toBe("· Sänkt till 19:00");
     expect(card.querySelector(".spotnav-header")!.textContent).not.toContain("Styr värmen");
     expect(card.querySelector("[data-action='test']")).toBeNull();
     expect(card.querySelector("[data-line='test-explain']")).toBeNull();
@@ -601,30 +559,38 @@ describe("SpotNav controlling the heat", () => {
     expect(card.querySelector("[data-line='day-readout']")!.textContent).toContain("börvärde 20,5 °C · SpotNav sänkte 60 min");
     expect([...card.querySelectorAll("li")].map((item) => item.textContent)).toContain("SpotNav sänkte");
     // The villa before: the test chip, nothing executed.
-    const villa = body(answer());
+    const villa = planBody(answer());
     expect(villa.querySelector("[data-action='test']")).not.toBeNull();
     expect(villa.querySelectorAll("[data-mark='executed']")).toHaveLength(0);
   });
 
-  it("says in the header what the control does now: lowers (to what), raises, normal; Test while it does not run", () => {
+  it("says in the header what happens now: lowered or raised until when, else what the heat pump does; Test before it while SpotNav does not control", () => {
     const controlled = answer("controlled.json");
-    const at = (control: Partial<NonNullable<HeatAnswer["control"]>>, would: HeatAnswer["status"]["would"] = controlled.status.would) => {
-      const value = { ...controlled, control: { ...controlled.control!, ...control }, status: { ...controlled.status, would } };
+    const at = (control: Partial<NonNullable<HeatAnswer["control"]>>, status: Partial<HeatAnswer["status"]> = {}) => {
+      const value = { ...controlled, control: { ...controlled.control!, ...control }, status: { ...controlled.status, ...status } };
       const line = body(value).querySelector<HTMLElement>(".spotnav-header [data-line='header-status']");
-      return line === null ? null : `${line.dataset["status"]}: ${line.textContent}`;
+      return line === null ? null : `${line.dataset["status"]}/${line.dataset["live"]}: ${line.textContent}`;
     };
-    expect(at({})).toBe("lower: · Sänker till 20,5 °C");
-    expect(at({}, null)).toBe("lower: · Sänker");
-    expect(at({}, { action: "preheat", target_c: 21.5, until: null, reason: "cheap_before_dear" })).toBe("lower: · Sänker");
-    expect(at({ lowered: false, raised: true })).toBe("raise: · Höjer");
-    expect(at({ lowered: false, reason: "normal" })).toBe("normal: · Normal");
-    expect(at({ lowered: false, reason: "room_cold" })).toBe("normal: · Normal");
+    expect(at({})).toBe("lower/lower: · Sänkt till 19:00");
+    expect(at({ until: null })).toBe("lower/lower: · Sänkt");
+    expect(at({ lowered: false, raised: true, raise_until: "2026-11-16T17:00:00+00:00" })).toBe("raise/raise: · Höjd till 18:00");
+    expect(at({ lowered: false, raised: true })).toBe("raise/raise: · Höjd");
+    // Controlling, the pump's own curve: what the heat pump does, by its facts or its meter.
+    expect(at({ lowered: false, reason: "normal" })).toBe("heating/heating: · Värmer 1,1\u00a0kW");
+    expect(at({ lowered: false }, { pump_state: "hot_water", kw: 2.94 })).toBe("hot_water/hot_water: · Varmvatten 2,9\u00a0kW");
+    expect(at({ lowered: false }, { pump_state: "idle", kw: 0.02 })).toBe("idle/idle: · Vilar");
+    expect(at({ lowered: false }, { pump_state: "heating", kw: null })).toBe("heating/heating: · Värmer");
+    expect(at({ lowered: false }, { pump_state: null })).toBeNull();
     for (const control of [{ enabled: false, state: "off" }, { state: "verifying" }, { state: "waiting", reason: "automation" }]) {
-      expect(at({ ...control, lowered: false }), JSON.stringify(control)).toBe("test: · Test");
+      expect(at({ ...control, lowered: false }), JSON.stringify(control)).toBe("test/heating: · Test · Värmer 1,1\u00a0kW");
     }
-    expect(body({ ...controlled, control: null }).querySelector("[data-line='header-status']")!.textContent).toBe("· Test");
-    const en = heatBody({ doc: document, language: "en", state: { kind: "ready", answer: controlled }, ui: { pendingTarget: null, error: null }, handlers: { onStep: vi.fn(), onHome: vi.fn(), onAway: vi.fn(), onSettings: vi.fn() }, width: 330, nowMs: NOW });
-    expect(en.querySelector("[data-line='header-status']")!.textContent).toBe("· Lowering to 20.5 °C");
+    expect(at({ enabled: false, state: "off", lowered: false }, { pump_state: null })).toBe("test/undefined: · Test");
+    expect(body({ ...controlled, control: null }).querySelector("[data-line='header-status']")!.textContent).toBe("· Test · Värmer 1,1\u00a0kW");
+    const en = body(controlled, "en");
+    expect(en.querySelector("[data-line='header-status']")!.textContent).toBe("· Lowered until 19:00");
+    // The pump's line stands in Now only while the header is taken by SpotNav's own lowering.
+    expect(body(controlled).querySelector("[data-line='pump']")!.textContent).toBe("Värmepumpen värmer · 1,1 kW");
+    expect(body(answer()).querySelector("[data-line='pump']")).toBeNull();
   });
 
   it("words every state of the switch's line", () => {
@@ -656,7 +622,7 @@ describe("SpotNav controlling the heat", () => {
     });
     // In shadow: the pre-heat hour is a planned raise, "Skulle höja".
     const villa = sgReady(answer(), () => 0);
-    const shadow = body(villa);
+    const shadow = planBody(villa);
     expect(shadow.querySelectorAll("[data-mark='raise_planned']")).toHaveLength(1);
     expect([...shadow.querySelectorAll("li")].map((item) => item.textContent)).toContain("Skulle höja");
     const surface = shadow.querySelector<HTMLElement>(".spotnav-heat-day-surface")!;
@@ -669,10 +635,10 @@ describe("SpotNav controlling the heat", () => {
     expect(wouldLine("sv", preheat)).toBe("Skulle höja värmen (SG Ready) till 21,5 °C till 18:00: billigt före dyra timmar");
     // The relay path keeps its pre-heat words and draws no raise.
     expect(wouldLine("sv", { ...preheat, config: answer().config })).toMatch(/^Skulle förvärma/);
-    expect(body(answer()).querySelectorAll("[data-mark^='raise']")).toHaveLength(0);
+    expect(planBody(answer()).querySelectorAll("[data-mark^='raise']")).toHaveLength(0);
     // Controlling: SpotNav raised 06:00-06:40, said in the chart, the legend and the switch's line.
     const controlled = sgReady(answer("controlled.json"), (index) => (index === 6 ? 40 : 0));
-    const card = body(controlled);
+    const card = planBody(controlled);
     expect(card.querySelectorAll("[data-mark='raised']")).toHaveLength(1);
     const legend = [...card.querySelectorAll("li")].map((item) => item.textContent);
     expect(legend).toContain("SpotNav höjde");
@@ -705,7 +671,7 @@ describe("the rooms in the day chart", () => {
   it("draws the rooms up to now, the coldest room, the band's setpoint as a step and the comfort band", () => {
     const value = answer();
     expect(value.indoor_day?.points.length).toBe(69);
-    const block = body(value).querySelector("[data-block='day']")!;
+    const block = planBody(value).querySelector("[data-block='day']")!;
     const mean = block.querySelector("[data-line='mean']")!.getAttribute("d")!;
     expect(mean.startsWith("M")).toBe(true);
     expect(mean.match(/M/g)).toHaveLength(1);
@@ -723,15 +689,15 @@ describe("the rooms in the day chart", () => {
       band: { ...value.band, hours: value.band.hours.map((hour) => ({ ...hour, action: "normal", target_c: 21, relay_min: null, hot_water: false, car: false })) },
       indoor_day: { ...value.indoor_day!, points: value.indoor_day!.points.map((point) => ({ ...point, coldest_c: point.mean_c })) },
     };
-    const block = body(flat, "en").querySelector("[data-block='day']")!;
+    const block = planBody(flat, "en").querySelector("[data-block='day']")!;
     const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
     expect(legend).toEqual(["Rooms, mean", "Setpoint", "Comfort band 20.5–21.5 °C"]);
     expect(block.querySelector("path[data-line='coldest']")).toBeNull();
     // Without indoor sensors the plan is still drawn, against the comfort band as set now.
-    const bare = body({ ...value, indoor_day: null }).querySelector("[data-block='day']")!;
+    const bare = planBody({ ...value, indoor_day: null }).querySelector("[data-block='day']")!;
     expect(bare.querySelector("path[data-line='mean']")).toBeNull();
     expect(bare.querySelector("[data-line='setpoint']")).not.toBeNull();
-    expect(body({ ...value, indoor_day: null, band: { ...value.band, hours: [] } }).querySelector("[data-block='day']")).toBeNull();
+    expect(planBody({ ...value, indoor_day: null, band: { ...value.band, hours: [] } }).querySelector("[data-block='day']")).toBeNull();
   });
 
   it("refuses an unknown key in the curve", () => {
