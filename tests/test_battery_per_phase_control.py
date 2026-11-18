@@ -305,8 +305,8 @@ async def test_the_check_probes_each_phase_with_a_small_discharge_and_records_th
     assert all(len(phase["readings"]) == 3 for phase in row["phases"])
     # One phase at a time, a discharge of 1 kW (a positive target), then everything back.
     targets = [(entity_id, value) for entity_id, value in _writes(plant) if entity_id in TARGETS]
-    assert targets == [(TARGETS[0], 1.0), (TARGETS[1], 1.0), (TARGETS[0], 0.0), (TARGETS[2], 1.0), (TARGETS[1], 0.0),
-                       (TARGETS[2], 0.0)]
+    assert targets == [(TARGETS[0], 1.0), (TARGETS[0], 0.0), (TARGETS[1], 1.0), (TARGETS[1], 0.0), (TARGETS[2], 1.0),
+                       (TARGETS[2], 0.0)], "each phase back at 0 before the next one's discharge"
     assert not any(value < 0 for _entity_id, value in targets), "the check never charges"
     assert world.targets() == (0.0, 0.0, 0.0) and hass.states.get(SWITCH).state == "off"
     assert control.status()["per_phase"]["state"] == "verified" and gate.per_phase(control.report()) == "verified"

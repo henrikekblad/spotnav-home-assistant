@@ -446,7 +446,23 @@ def test_the_probe_writes_a_discharge_on_one_phase_as_it_is_and_a_charge_only_wi
     assert written(results) == [("phase_l2_target", 1.0), ("remote_ems", True), ("control_mode", "PCS Remote Control")]
     assert executor.state.phase_kw == (0.0, -1.0, 0.0) and site.plant_kw() == (0.0, 1.0, 0.0)
     now, results = _run(executor, site, now, 4, "grid_charge", 0.0, phase_caps_kw=None, phase_probe_kw=(0.0, 0.0, -1.0))
-    assert written(results) == [("phase_l3_target", 1.0), ("phase_l2_target", 0.0)]
+    # The phase that ends goes back to 0 and is read back before the next one's discharge is written: never two
+    # phases discharging at once.
+    assert written(results) == [("phase_l2_target", 0.0), ("phase_l3_target", 1.0)]
+    assert [[op.role for op in result.ops] for result in results] == [["phase_l2_target"], ["phase_l3_target"], [], []]
+    assert events(results[:2], "confirmed")[0]["reason"] == "phase_l2_target"
+    seen = Site(FakeBattery(PHASED, dict(PHASED_STATES)))
+    probing, discharging = Executor(PHASED), []
+    seen.battery.register_40031 = "Maximum Self Consumption"
+    moment = T0
+    for probe in ((0.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)):
+        for _ in range(5):
+            step = probing.step(seen.inputs(moment, "grid_charge", 0.0, phase_caps_kw=None, phase_probe_kw=probe))
+            for op in step.ops:
+                seen.battery.apply(op)
+            discharging.append(sum(1 for target in seen.targets() if target > 0))
+            moment += TICK
+    assert max(discharging) == 1 and seen.targets() == (0.0, 0.0, 1.0)
     # It starts only where a hold could: the battery's discharge now lands on the grid once the targets are 0.
     fresh, quiet = _site()
     look = quiet.inputs(T0, "grid_charge", 0.0, phase_caps_kw=None, phase_probe_kw=(0.0, 0.0, 0.0), headroom_a=12.0)

@@ -1589,7 +1589,12 @@ class Executor:
         spec = self.control.phase_control
         names = () if spec is None else spec.names()
         # The falling phases are written first: no phase is raised while another still draws what it must give up.
-        falling = tuple(name for name, new, was in zip(names, phases, old, strict=False) if new < was)
+        if inputs.phase_probe_kw is not None:
+            # The verification's probe is a discharge: the phase that ends is returned to 0 and read back before
+            # the next one's is written, so never two phases discharge at once.
+            falling = tuple(name for name, new, was in zip(names, phases, old, strict=False) if abs(new) < abs(was))
+        else:
+            falling = tuple(name for name, new, was in zip(names, phases, old, strict=False) if new < was)
         rising = any(new > was for new, was in zip(phases, old, strict=True))
         self.state = replace(
             state, rate_kw=rate, phase_kw=phases, sent=(), rate_changed_at=now, phase_bad=(), phase_judged_at=None,
