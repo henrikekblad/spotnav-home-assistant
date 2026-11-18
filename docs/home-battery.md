@@ -104,7 +104,7 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
 
 * **The fuse.** A grid charge is clamped to the live headroom under the main fuse. Because Sigenergy has no
   dead-man, it is also capped so that the charge and the house's peak stay under the fuse on every phase even if
-  Home Assistant stops while it runs (below). Under a hold the battery is let go at once when a phase nears the fuse
+  Home Assistant stops while it runs (below; per phase where the plant can, further below). Under a hold the battery is let go at once when a phase nears the fuse
   (a kettle, the oven), and a hold meant to leave the battery idle that charges it anyway is handed back within a
   minute.
 * **What backs off first** when the fuse is short: the battery's grid charge, then the car; the car first when its
@@ -154,8 +154,73 @@ the numbers: the days counted, the days that count in this stage, how many come 
 those were left out, the further margin now, and what the cap would be by the cautious rule and by the learned peaks
 alone.
 
-Once the plant's own grid import limit is shown to act (the on-site test), that limit guards the fuse and this cap is
-not used.
+### The plant's own import limit is a total
+
+A Sigenergy plant has its own grid import limit (`Grid Import Limitation`, a number in the integration, disabled by
+default). On site it was seen to act while SpotNav controls the plant: set to 6 kW it held the import at 6.0 kW
+within about five seconds by cutting the battery's charge. But it limits the **total** over the three phases, not
+each phase, and the plant spreads its charge evenly. So a limit at the fuse's own power (13.8 kW on 20 A) protects
+nothing in a house that loads one phase: with 18 A on L2 alone, the plant sees 4 kW of 13.8, fills the rest with
+charge, and a third of that lands on L2: 29 A.
+
+SpotNav therefore lets the limit replace the cap above only when both hold:
+
+* you have told it that the limit acts on your plant (`battery_control_import_limit_acts`, after the on-site test), and
+* the limit reads **at most three times the fuse (less the 2 A margin), less twice the largest phase's house peak
+  and twice the chargers' last currents**, in amps over the phases. That is the value at which a phase at its peak,
+  with the other two quiet, still stays under the fuse when the plant shares out what the limit leaves. The house
+  peak is the same as for the cap: the learned one, and 4 kW on one phase until then.
+
+On a 20 A fuse that is 4.4 kW until the peaks are learned, and 4.1 kW for a house whose worst phase peaks at 18 A,
+well under the fuse's 13.8 kW. The battery section says what the limit reads and the most it may read
+("Anläggningens importgräns står på 13,8 kW. Den begränsar summan över de tre faserna, inte varje fas, och skyddar
+säkringen först vid högst 4,4 kW"). **SpotNav never writes the limit**: you set it, in the integration or the
+Sigenergy app. While it reads more, or a car charges at a current that leaves it no room, the cap above is in force
+as if there were no limit. The same rule is used for any brand whose import limit is a total.
+
+### Grid charging per phase
+
+A house that loads one phase leaves the balanced charge nothing: the cap takes the worst phase as the house on every
+phase. A plant that takes a power target per phase can use the room the other phases have. SpotNav then gives each
+phase its own cap,
+
+    phase cap (kW) = phase voltage x max(0, fuse - 2 A - that phase's house peak - the chargers' last currents) / 1000
+
+and commands the grid charge as three targets, each at most its phase's cap and its phase's live headroom, the sum at
+most the plan's power and the battery's rating, spread as evenly as the caps allow. The targets stay if Home
+Assistant stops, as any command does, so every one of them is sized to keep its own phase under the fuse with the
+house at that phase's learned peak. With learned peaks of 13.6 A, 18 A and 17.4 A on a 20 A fuse the balanced charge
+gets nothing, and per phase L1 gets 1.0 kW, L2 nothing and L3 0.1 kW. Until the peaks are learned the cautious rule
+(4 kW on any one phase) applies to every phase, which leaves nothing on 20 A either way.
+
+**Sigenergy** does this with independent phase power control: in Remote EMS with the control mode *PCS Remote
+Control* the plant follows `Phase A/B/C active power fixed adjustment` (negative charges from that phase). For
+SpotNav to use it:
+
+* enable the three `Phase A/B/C active power fixed adjustment` numbers and the `Independent phase power control`
+  switch in the integration (all disabled by default), and the plant's `Phase A/B/C active power` sensors;
+* have `Independent phase power control` **on**. SpotNav reads it and never changes it, since it also changes how
+  the plant shares its power in its own modes.
+
+**It is checked first.** The check gets a further step, *per phase*: every target at 0 for a minute, then on each
+phase in turn a discharge of 1 kW for about two minutes (a discharge lowers that phase's import, so it needs no room
+under the fuse and can be tried on a phase that has none). Each time the plant's own power on that phase must read
+the target and the other two nothing, and the house on that phase, as your meter sees it, must not seem to move:
+that shows the plant's phase A really is your meter's L1, and so on. A plant wired otherwise fails the step and
+never charges per phase. The step runs by itself at a suitable moment once the entities are there; it does not
+affect the rest of control.
+
+**When it is used.** Only when the step passed on this firmware, everything it needs is still there, and the
+phases' caps allow at least 0.5 kW more in all than the balanced cap. Otherwise the grid charge is the balanced one
+under the balanced cap, exactly as before: a balanced house, a plant without the entities, a step not passed, a
+reading per phase missing, or the plant's own import limit guarding the fuse (above). While a charge per phase runs
+each phase is judged on the plant's own power: a phase that takes more than its target, or a plant that takes
+nothing, hands the charge back and ends per-phase charging on that firmware. Any phase within 1 A of the fuse hands
+the whole charge back at once, whichever phase it is on, so the plant covers that phase again. The battery section
+shows it: "Nätladdning per fas: L1 1,01 kW · L2 0 kW · L3 0,13 kW".
+
+Handing back writes the three targets to 0, then the control mode to Maximum Self Consumption, then Remote EMS off,
+each read back.
 
 **Sigen AI mode.** SpotNav can take the plant over from AI mode only after you have read this: *SpotNav takes over
 the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the
@@ -172,7 +237,7 @@ stops, and restores first after a start.
 
 **If something goes wrong, restore by hand:** in Home Assistant set the Remote EMS control mode to Maximum Self
 Consumption, turn the Remote EMS switch off and set the charge, discharge and export limits back to the values you
-noted; then turn SpotNav's switch off.
+noted (and the three phase adjustments to 0, if you use charging per phase); then turn SpotNav's switch off.
 
 **For the on-site tests only** (Developer tools, administrators): `spotnav.battery_control_test` runs one action
 (`hold`, `grid_charge`, `discharge_house`, `export_discharge`, `curtail_export`, or `stop`) through the same write
