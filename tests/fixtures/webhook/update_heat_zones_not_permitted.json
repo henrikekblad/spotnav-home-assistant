@@ -1,0 +1,40 @@
+{
+  "action": "update_heat",
+  "api_version": 1,
+  "config": {
+    "away_until": null,
+    "control_enabled": false,
+    "control_entity": null,
+    "control_entity_b": null,
+    "control_path": "none",
+    "heat_meter_entity": null,
+    "hot_water_entity": null,
+    "indoor_offsets": [],
+    "indoor_sensors": [
+      "sensor.kok",
+      "sensor.ovanvaning"
+    ],
+    "mode": "home",
+    "night": {
+      "delta_c": 1.5,
+      "end": "05:30",
+      "on": true,
+      "start": "22:30"
+    },
+    "outdoor_sensor": null,
+    "target_c": 21.0,
+    "zones": [
+      {
+        "entity_id": "climate.golvvarme",
+        "offset_c": 0.5
+      },
+      {
+        "entity_id": "climate.luft",
+        "offset_c": -2.0
+      }
+    ]
+  },
+  "error": "spotnav_not_permitted_over_webhook",
+  "field_errors": [],
+  "ok": false
+}

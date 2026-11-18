@@ -56,6 +56,7 @@ from .. import time_zones
 from ..battery.plan_runtime import site_car_windows
 from ..const import CONF_HEAT, CONF_HEAT_METER_ENTITY, DOMAIN
 from ..heat.config import (
+    F_NIGHT,
     F_ZONES,
     FIELDS,
     USER_FIELDS,
@@ -178,12 +179,29 @@ def _same(name: str, stored: Any, expected: Any) -> bool:
     return comparable(name, stored) == comparable(name, expected)
 
 
+#: What the charger webhook's secret may write (the owner's decisions of 2026-11-18): the dial, home/away, the
+#: cooler night and each zone's offset. The control opt-in, the control path and every entity choice are not here.
+WEBHOOK_FIELDS: Final = frozenset({*USER_FIELDS, F_NIGHT, F_ZONES})
+
+
+def _same_zones(stored: HeatConfig, changes: Mapping[str, Any]) -> bool:
+    """Whether a webhook write's `zones` (when named) lists exactly the stored zones, in their order: only the
+    offsets may differ. A shape the judge will refuse passes here, so it is answered as the invalid value it is."""
+    if F_ZONES not in changes:
+        return True
+    raw = changes[F_ZONES]
+    if not isinstance(raw, list) or any(not isinstance(item, Mapping) for item in raw):
+        return raw is not None or not stored.zones
+    return [item.get("entity_id") for item in raw] == [zone.entity_id for zone in stored.zones]
+
+
 def write_heat(
     hass: HomeAssistant, site: ConfigEntry, changes: Any, expected: Any, *, admin: bool, over_webhook: bool = False
 ) -> None:
     """Judge and write one change of the site's heat settings, or raise `HeatWriteRefusal` (see the module). One
     synchronous step on the event loop from the compare to the write, so two writes cannot interleave.
-    `over_webhook`: the charger webhook's secret wrote it (the paired app): the dial and home/away only, anything else
+    `over_webhook`: the charger webhook's secret wrote it (the paired app): `WEBHOOK_FIELDS` only, and `zones` only
+    with the zones as stored (their offsets may change, never which entities they are); anything else
     (`control_enabled`, the sensors, the control path) is `spotnav_not_permitted_over_webhook`."""
     if not isinstance(changes, dict) or not changes:
         raise HeatWriteRefusal(ERROR_INVALID_VALUE, [FieldError("changes", "invalid_changes")])
@@ -194,9 +212,10 @@ def write_heat(
     unknown = [FieldError(name, "unknown_field") for name in (*changes, *expected) if name not in WRITABLE]
     if unknown:
         raise HeatWriteRefusal(ERROR_INVALID_VALUE, list(dict.fromkeys(unknown)))
-    if over_webhook and set(changes) - USER_FIELDS:
-        raise HeatWriteRefusal(ERROR_NOT_PERMITTED_OVER_WEBHOOK)
-    if not admin and set(changes) - USER_FIELDS:
+    if over_webhook:
+        if set(changes) - WEBHOOK_FIELDS or not _same_zones(stored_config(site), changes):
+            raise HeatWriteRefusal(ERROR_NOT_PERMITTED_OVER_WEBHOOK)
+    elif not admin and set(changes) - USER_FIELDS:
         raise HeatWriteRefusal(ERROR_NOT_ADMIN)
 
     current = config_block(site)

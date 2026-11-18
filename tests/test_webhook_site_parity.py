@@ -217,6 +217,65 @@ async def test_the_dial_and_home_or_away_are_written_as_the_command_writes_them(
     assert dict(site.data[CONF_HEAT]) == stored
 
 
+async def test_the_cooler_night_and_each_zones_offset_are_written_but_never_which_zones_there_are(
+    hass: HomeAssistant, freezer, hass_client_no_auth
+) -> None:
+    site = await _site(hass, freezer)
+    hass.states.async_set("climate.golvvarme", "heat", {"current_temperature": 20.4, "temperature": 17, "hvac_modes": ["heat"]})
+    hass.states.async_set("climate.luft", "heat", {"current_temperature": 21.5, "temperature": 21, "hvac_modes": ["heat"]})
+    hass.states.async_set("climate.gast", "heat", {"current_temperature": 19.0, "temperature": 19, "hvac_modes": ["heat"]})
+    zones = [{"entity_id": "climate.golvvarme"}, {"entity_id": "climate.luft", "offset_c": -1.0}]
+    assert (await result(hass, websocket_update_heat, changes={"zones": zones}))["ok"]
+    client = await hass_client_no_auth()
+
+    night = {"on": True, "delta_c": 1.5, "start": "22:30", "end": "05:30"}
+    status, body = await post(
+        client, HOOK, {"action": "update_heat", "changes": {"night": night}, "expected": {"night": {"on": False}}}
+    )
+    assert status == 409 and body["error"] == "spotnav_conflict", "the stored night has its defaults beside `on`"
+    status, heat = await post(client, HOOK, {"action": "get_heat"})
+    status, body = await post(
+        client, HOOK, {"action": "update_heat", "changes": {"night": night}, "expected": {"night": heat["config"]["night"]}}
+    )
+    assert status == 200 and body["ok"] is True and body["config"]["night"] == night, body
+    assert site.data[CONF_HEAT]["night"] == night
+    _pinned("update_heat_night.json", _pin(body))
+    twin = await result(hass, websocket_update_heat, changes={"night": night}, expected={"night": night})
+    assert body == {**twin, "action": "update_heat"}
+    for bad in ({"on": True, "delta_c": 5}, {"on": True, "delta_c": 0.7}, {"on": True, "start": "25:00"}, {"on": "yes"}, "on"):
+        status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"night": bad}})
+        assert status == 400 and body["error"] == "spotnav_invalid_value", (bad, body)
+        assert [item["field"] for item in body["field_errors"]] == ["night"], (bad, body)
+    assert site.data[CONF_HEAT]["night"] == night
+
+    offsets = [{"entity_id": "climate.golvvarme", "offset_c": 0.5}, {"entity_id": "climate.luft", "offset_c": -2.0}]
+    status, body = await post(
+        client, HOOK, {"action": "update_heat", "changes": {"zones": offsets}, "expected": {"zones": heat["config"]["zones"]}}
+    )
+    assert status == 200 and body["ok"] is True and body["config"]["zones"] == offsets, body
+    _pinned("update_heat_zone_offsets.json", _pin(body))
+    twin = await result(hass, websocket_update_heat, changes={"zones": offsets}, expected={"zones": offsets})
+    assert body == {**twin, "action": "update_heat"}
+    # An offset out of range or off its step is the judge's refusal.
+    for offset in (4.0, 0.3, "warm"):
+        changed = [{"entity_id": "climate.golvvarme", "offset_c": offset}, offsets[1]]
+        status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"zones": changed}})
+        assert status == 400 and [item["field"] for item in body["field_errors"]] == ["zones"], (offset, body)
+    # Which entities are zones is configuration: another zone, one fewer, another order, none.
+    for changed in (
+        [*offsets, {"entity_id": "climate.gast", "offset_c": 0.0}],
+        offsets[:1],
+        offsets[::-1],
+        [{"entity_id": "climate.gast", "offset_c": 0.5}, offsets[1]],
+        [],
+        None,
+    ):
+        status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"zones": changed}})
+        assert status == 403 and body["error"] == "spotnav_not_permitted_over_webhook", (changed, body)
+        assert site.data[CONF_HEAT]["zones"] == offsets, changed
+    _pinned("update_heat_zones_not_permitted.json", _pin(body))
+
+
 async def test_the_heat_control_opt_in_and_the_configuration_are_never_written_over_the_webhook(
     hass: HomeAssistant, freezer, hass_client_no_auth
 ) -> None:
@@ -228,10 +287,18 @@ async def test_the_heat_control_opt_in_and_the_configuration_are_never_written_o
         {"control_enabled": False},
         {"target_c": 22.0, "control_enabled": True},
         {"control_path": "relay", "control_entity": "switch.larm_rele_1"},
+        {"control_entity": "switch.larm_rele_1"},
+        {"control_entity_b": "switch.larm_rele_1"},
+        {"hot_water_entity": "switch.larm_rele_1"},
         {"indoor_sensors": ["sensor.kok"]},
-        {"night": {"enabled": True}},
-        {"zones": []},
+        {"indoor_offsets": [{"entity_id": "sensor.kok", "offset_c": 0.5}]},
+        {"outdoor_sensor": "sensor.kok"},
         {"heat_meter_entity": "sensor.kok"},
+        # The cooler night is allowed, but not beside the opt-in or a control path.
+        {"night": {"on": True}, "control_enabled": True},
+        {"night": {"on": True}, "control_path": "relay"},
+        # A zone's offset is allowed, which entities are zones is not.
+        {"zones": [{"entity_id": "climate.golvvarme", "offset_c": 1.0}]},
     ):
         status, body = await post(client, HOOK, {"action": "update_heat", "changes": changes})
         assert status == 403, (changes, body)
