@@ -95,6 +95,9 @@ export interface BatteryStatus {
   needs: string[];
   /** The device that holds the first control to enable (`control_disabled:*`), for a link to its page. */
   device_id: string | null;
+  /** The brand's control entities that are disabled in Home Assistant, for the opt-in dialog (`spotnav/battery_control`
+   * with `enable_control_entities`); `null` when none is. */
+  enable_entities: { integration: string; entities: { entity_id: string; name: string }[] } | null;
   notes: { code: string; at: string }[];
   trial: unknown;
   grid_charge_cap: GridChargeCap;
@@ -281,6 +284,7 @@ const STATUS: Spec = O({
   waiting_for: N("string"),
   needs: A("string"),
   device_id: N("string"),
+  enable_entities: N(O({ integration: "string", entities: A(O({ entity_id: "string", name: "string" })) })),
   notes: A(O({ code: "string", at: "string" })),
   trial: "any",
   grid_charge_cap: GRID_CHARGE_CAP,

@@ -36,7 +36,7 @@ describe("decoding the site's answers", () => {
     expect(decodeSiteView({ ...priced, price_settings: { ...settings, grid_tariff: { ...tariff, surprise: 1 } } }).ok).toBe(false);
     expect(decodeSiteView({ ...priced, site: { ...(priced["site"] as object), surprise: 1 } }).ok).toBe(false);
     expect(decodeSiteView({ ...priced, price: null }).ok).toBe(false);
-    for (const name of ["needs_ack.json", "checking.json"]) {
+    for (const name of ["needs_ack.json", "checking.json", "needs_enable.json"]) {
       expect(decodeBatteryControl(read("battery_control", name)).ok).toBe(true);
     }
     expect(decodeBatteryControl(read("battery_control", "live.json")).ok).toBe(true);
@@ -45,6 +45,11 @@ describe("decoding the site's answers", () => {
     const status = read("battery_control", "checking.json");
     expect(decodeBatteryControl({ ...status, status: { ...(status["status"] as object), surprise: true } }).ok).toBe(false);
     expect(decodeSiteList({ api_version: 1, sites: [{ site_id: "s", name: "Hemma", charger_ids: [] }] }).ok).toBe(true);
+    const enable = read("battery_control", "needs_enable.json");
+    const found = (enable["status"] as Record<string, unknown>)["enable_entities"] as Record<string, unknown>;
+    const withFound = (value: unknown) => ({ ...enable, status: { ...(enable["status"] as object), enable_entities: value } });
+    expect(decodeBatteryControl(withFound({ ...found, surprise: 1 })).ok).toBe(false);
+    expect(decodeBatteryControl(withFound({ ...found, entities: [{ entity_id: "number.x" }] })).ok).toBe(false);
   });
 });
 
@@ -106,6 +111,9 @@ describe("the popover from the house card", () => {
             return options.heat ?? read("heat_card", "villa.json");
           case "spotnav/battery_control": {
             const changes = message["changes"] as Record<string, boolean> | undefined;
+            if (message["enable_control_entities"] === true) {
+              battery = { ...battery, status: { ...(battery["status"] as object), enable_entities: null } };
+            }
             if (changes !== undefined) {
               const status = battery["status"] as Record<string, unknown>;
               battery = { ...battery, status: { ...status, options: { ...(status["options"] as object), ...changes } } };
@@ -259,6 +267,51 @@ describe("the popover from the house card", () => {
     expect(messages.filter((message) => message["changes"] !== undefined).map((message) => message["changes"])).toEqual([
       { battery_control_ai_takeover_ack: true },
     ]);
+  });
+
+  it("asks before it turns on the brand's disabled control entities, with the list folded, and turns on nothing before the confirm", async () => {
+    const { root, messages } = await mount({ battery: "needs_enable.json" });
+    const popover = await open(root);
+    popover.querySelector<HTMLButtonElement>("button[data-edit='battery_control_enabled']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-battery-enable]")!;
+    expect(form.textContent).toContain("SpotNav behöver slå på 3 styrentiteter i Sigenergy.");
+    const folded = form.querySelector<HTMLDetailsElement>("details[data-enable-entities]")!;
+    expect(folded.open).toBe(false);
+    expect([...folded.querySelectorAll("li")].map((item) => (item as HTMLElement).dataset["entityId"])).toEqual([
+      "switch.sigen_plant_remote_ems_controlled_by_home_assistant",
+      "select.sigen_plant_remote_ems_control_mode",
+      "number.sigen_plant_ess_max_charging_limit",
+    ]);
+    expect(messages.filter((message) => message["changes"] !== undefined || message["enable_control_entities"] !== undefined)).toEqual([]);
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["changes"] !== undefined)).toEqual([
+      {
+        type: "spotnav/battery_control", api_version: 1, site_id: "site_villa",
+        changes: { battery_control_enabled: true }, enable_control_entities: true,
+      },
+    ]);
+    expect(root.querySelector("[data-row='battery_control_enabled']")!.textContent).toContain("På");
+  });
+
+  it("turns them on from the step that names the disabled controls, without turning control on", async () => {
+    const { root, messages } = await mount({ battery: "needs_enable.json" });
+    const popover = await open(root);
+    popover.querySelector<HTMLButtonElement>("button[data-action='enable-battery-entities']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-battery-enable]")!;
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["enable_control_entities"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", enable_control_entities: true },
+    ]);
+  });
+
+  it("keeps the plain on/off choice when no control entity is disabled", async () => {
+    const { root } = await mount({ battery: "needs_ack.json" });
+    const popover = await open(root);
+    popover.querySelector<HTMLButtonElement>("button[data-edit='battery_control_enabled']")!.click();
+    expect(root.querySelector("form[data-battery-enable]")).toBeNull();
+    expect(root.querySelector("form[data-value-editor]")).not.toBeNull();
   });
 
   it("shows heat as one line when nothing is found, which opens the section", async () => {

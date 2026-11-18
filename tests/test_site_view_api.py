@@ -167,7 +167,7 @@ async def test_the_card_fixtures_have_the_answers_shapes(hass: HomeAssistant, ha
     ]
     # The learned peaks are `None` on an empty site, so their keys come from the dataclass that builds them.
     learned = Learned(ready=True, raw_a=None, factor=1.0, peaks_a=None, days=0, hours=0, minutes=0, heat_w=None).as_dict()
-    for name in ("needs_ack.json", "checking.json", "live.json"):
+    for name in ("needs_ack.json", "checking.json", "live.json", "needs_enable.json"):
         fixture = _fixture("battery_control", name)
         _same_keys(fixture, battery, name)
         cap_learned = fixture["status"]["grid_charge_cap"]["learned"]

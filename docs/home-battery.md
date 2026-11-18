@@ -46,9 +46,27 @@ card's gear or the charging card's **Settings** (administrators only). The secti
 * The integration must allow writes (its own option; it is read-only by default and then drops every write
   without an error, which SpotNav notices: every write is read back).
 * The plant's Remote EMS switch, Remote EMS control mode, charge and discharge limits and plant maximum power must be
-  enabled in Home Assistant (they are disabled by default); for the export part also Grid Export Limitation.
+  enabled in Home Assistant (they are disabled by default); for the export part also Grid Export Limitation. You do not
+  have to do it by hand: see "Turning on the control entities" below.
 * No other controller may run the battery (Predbat, EMHASS, CheckWatt, a VPP in Remote EMS): SpotNav then only
   watches (see below).
+
+**Turning on the control entities.** Some integrations ship the entities SpotNav's control writes disabled (the
+Sigenergy one does). When you turn **Battery control** on and any of them are disabled, the dialog says "SpotNav needs
+to turn on N control entities in <integration>" with the list folded, and a button that turns them on and control with
+them. Only your confirm does it: SpotNav clears the entities' "disabled" mark in Home Assistant's entity registry (exactly
+those, nothing else) and reloads the integration once, so it restarts for a moment; the check then runs as usual. They stay
+on if you turn control off later. The same button is in the checklist's step for the disabled controls. Only
+administrators can confirm, and never over the webhook. The entities per brand:
+
+* Sigenergy: Remote EMS (controlled by Home Assistant), Remote EMS control mode, ESS max charging limit, ESS max
+  discharging limit, Grid import limitation (read by SpotNav), and for the per-phase control the Independent phase power
+  control switch and the Phase A, B and C active power fixed targets. The Grid export limitation stays off: it arms the
+  export curtail.
+* SolarEdge (the Modbus Multi integration): storage command timeout, charge limit, discharge limit, command mode,
+  control mode and AC charge policy.
+* Huawei: forcible charge/discharge write, maximum charging and discharging power.
+* SolaX: remote control autorepeat duration, active power, power control and trigger.
 
 **Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see

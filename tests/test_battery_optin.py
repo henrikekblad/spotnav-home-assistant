@@ -1,0 +1,201 @@
+"""Enabling the brand's disabled control entities on the person's confirm (`battery/optin.py`): each adapter's list,
+nothing changed without the confirm, exactly those entities enabled and the entry reloaded once, an entity already
+enabled left alone, and no blocking call."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.spotnav.api.battery_control import (
+    ERROR_ENABLE_FAILED,
+    async_battery_control_answer,
+)
+from custom_components.spotnav.battery import optin
+from custom_components.spotnav.battery.commands import CONTROLS
+from custom_components.spotnav.const import CONF_BATTERY_AGGREGATE_POWER_ENTITY
+from custom_components.spotnav.runtime import site_controller_for
+from tests.world import setup_charger_and_site
+
+pytestmark = pytest.mark.usefixtures("offline_relay")
+
+INTEGRATION = er.RegistryEntryDisabler.INTEGRATION
+SIGEN_KEYS = [
+    "plant_remote_ems_enable", "plant_remote_ems_control_mode", "plant_ess_max_charging_limit",
+    "plant_ess_max_discharging_limit", "plant_grid_maximum_import_limitation",
+    "plant_independent_phase_power_control_enable", "plant_phase_a_active_power_fixed_target",
+    "plant_phase_b_active_power_fixed_target", "plant_phase_c_active_power_fixed_target",
+]
+
+
+def _plant(
+    hass: HomeAssistant, brand: str, *, enabled: frozenset[str] = frozenset(), disabled_by: Any = INTEGRATION
+) -> tuple[str, dict[str, str]]:
+    """A plant of the brand's integration with every control entity of `optin.ENABLE_KEYS` in the registry, disabled
+    except the keys in `enabled`; answers the battery entity and the entity id per key."""
+    platform = next(control.adapter.platforms[0] for control in CONTROLS if control.brand == brand)
+    owner = MockConfigEntry(domain=platform, entry_id="PLANT", title="The plant")
+    owner.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=owner.entry_id, identifiers={(platform, "plant")})
+    registry = er.async_get(hass)
+    battery = registry.async_get_or_create(
+        "sensor", platform, "PLANT_battery_power", device_id=device.id, config_entry=owner,
+        suggested_object_id="plant_battery_power",
+    )
+    found: dict[str, str] = {}
+    for domain, key in optin.ENABLE_KEYS[brand]:
+        entry = registry.async_get_or_create(
+            domain, platform, f"PLANT_{key}", device_id=device.id, config_entry=owner,
+            suggested_object_id=f"plant_{key}", disabled_by=None if key in enabled else disabled_by,
+        )
+        found[key] = entry.entity_id
+    return battery.entity_id, found
+
+
+def _config(battery: str) -> dict[str, Any]:
+    return {CONF_BATTERY_AGGREGATE_POWER_ENTITY: battery}
+
+
+@pytest.mark.parametrize("control", CONTROLS, ids=lambda control: control.brand)
+def test_every_roles_entity_is_in_the_adapters_list(control: Any) -> None:
+    keys = optin.ENABLE_KEYS[control.brand]
+    for role in control.roles:
+        assert any(role.match.matches(domain, f"PLANT_{key}") for domain, key in keys), role.name
+
+
+async def test_the_lists_per_adapter_in_order(hass: HomeAssistant) -> None:
+    for control in CONTROLS:
+        hass.config_entries.async_entries()  # noqa: B018 - nothing from an earlier brand is shared
+        battery, found = _plant(hass, control.brand)
+        entry_id, entities = optin.disabled_control_entities(hass, _config(battery), control.brand)
+        assert entry_id == "PLANT"
+        assert [entry.entity_id for entry in entities] == list(found.values()), control.brand
+        for entry in list(er.async_get(hass).entities.values()):
+            er.async_get(hass).async_remove(entry.entity_id)
+        for config_entry in hass.config_entries.async_entries():
+            await hass.config_entries.async_remove(config_entry.entry_id)
+    assert [key for _domain, key in optin.ENABLE_KEYS["sigenergy"]] == SIGEN_KEYS
+
+
+async def test_an_enabled_entity_and_a_brand_without_a_list_are_left_out(hass: HomeAssistant) -> None:
+    battery, found = _plant(hass, "sigenergy", enabled=frozenset({"plant_ess_max_discharging_limit"}))
+    _entry, entities = optin.disabled_control_entities(hass, _config(battery), "sigenergy")
+    assert found["plant_ess_max_discharging_limit"] not in [entry.entity_id for entry in entities]
+    assert len(entities) == len(SIGEN_KEYS) - 1
+    assert optin.disabled_control_entities(hass, _config(battery), "goodwe") == (None, [])
+    assert optin.disabled_control_entities(hass, _config(battery), None) == (None, [])
+    assert optin.disabled_control_entities(hass, {}, "sigenergy") == (None, [])
+
+
+async def test_an_entity_disabled_by_the_integration_entry_is_not_lifted(hass: HomeAssistant) -> None:
+    battery, _found = _plant(hass, "sigenergy", disabled_by=er.RegistryEntryDisabler.CONFIG_ENTRY)
+    assert optin.disabled_control_entities(hass, _config(battery), "sigenergy")[1] == []
+
+
+async def _site(hass: HomeAssistant, battery: str):
+    _charger, site = await setup_charger_and_site(hass, battery_aggregate_power_entity=battery)
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    return site, controller.battery_control
+
+
+async def test_the_status_lists_them_and_nothing_changes_without_the_confirm(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    battery, found = _plant(hass, "sigenergy")
+    site, control = await _site(hass, battery)
+    reloads: list[str] = []
+
+    async def reload(entry_id: str) -> bool:
+        reloads.append(entry_id)
+        return True
+
+    monkeypatch.setattr(hass.config_entries, "async_reload", reload)
+    status = control.status()
+    assert status["enable_entities"]["integration"] == "The plant"
+    assert [row["entity_id"] for row in status["enable_entities"]["entities"]] == list(found.values())
+    # Turning control on, a read and a refused attempt change nothing in the registry.
+    await async_battery_control_answer(hass, site, {"battery_control_enabled": True}, admin=True)
+    await async_battery_control_answer(hass, site, None, admin=True)
+    for forbidden in (
+        {"admin": False, "over_webhook": False},
+        {"admin": True, "over_webhook": True},
+    ):
+        answer = await async_battery_control_answer(hass, site, None, enable_entities=True, **forbidden)
+        assert answer["ok"] is False
+    registry = er.async_get(hass)
+    assert all(registry.async_get(entity_id).disabled_by is INTEGRATION for entity_id in found.values())
+    assert reloads == []
+
+
+async def test_the_confirm_enables_exactly_those_entities_and_reloads_once(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    battery, found = _plant(hass, "sigenergy", enabled=frozenset({"plant_ess_max_discharging_limit"}))
+    other = er.async_get(hass).async_get_or_create(
+        "number", "sigen", "PLANT_plant_grid_point_maximum_export_limitation", config_entry=hass.config_entries.async_get_entry("PLANT"),
+        suggested_object_id="plant_export", disabled_by=INTEGRATION,
+    )
+    site, control = await _site(hass, battery)
+    reloads: list[str] = []
+    monkeypatch.setattr(hass.config_entries, "async_reload", lambda entry_id: _reload(reloads, entry_id))
+
+    async def no_executor(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("a blocking call")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(hass, "async_add_executor_job", no_executor)
+        answer = await async_battery_control_answer(
+            hass, site, {"battery_control_enabled": True}, admin=True, enable_entities=True
+        )
+    assert answer["ok"] is True
+    assert answer["status"]["options"]["battery_control_enabled"] is True
+    registry = er.async_get(hass)
+    for key, entity_id in found.items():
+        assert registry.async_get(entity_id).disabled_by is None, key
+    # Not in the list: left disabled.
+    assert registry.async_get(other.entity_id).disabled_by is INTEGRATION
+    assert reloads == ["PLANT"]
+    assert control.enable_entities() is None
+    # A second confirm finds nothing and reloads nothing.
+    assert await control.async_enable_entities() == []
+    assert reloads == ["PLANT"]
+
+
+async def _reload(reloads: list[str], entry_id: str) -> bool:
+    reloads.append(entry_id)
+    return True
+
+
+async def test_turning_control_off_leaves_them_enabled(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    battery, found = _plant(hass, "sigenergy")
+    site, _control = await _site(hass, battery)
+    reloads: list[str] = []
+    monkeypatch.setattr(hass.config_entries, "async_reload", lambda entry_id: _reload(reloads, entry_id))
+    await async_battery_control_answer(hass, site, {"battery_control_enabled": True}, admin=True, enable_entities=True)
+    await async_battery_control_answer(hass, site, {"battery_control_enabled": False}, admin=True)
+    registry = er.async_get(hass)
+    assert all(registry.async_get(entity_id).disabled_by is None for entity_id in found.values())
+
+
+async def test_a_failed_reload_is_an_error_and_writes_no_options(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    battery, _found = _plant(hass, "huawei")
+    site, _control = await _site(hass, battery)
+
+    async def broken(_entry_id: str) -> bool:
+        raise RuntimeError("reload failed")
+
+    monkeypatch.setattr(hass.config_entries, "async_reload", broken)
+    answer = await async_battery_control_answer(
+        hass, site, {"battery_control_enabled": True}, admin=True, enable_entities=True
+    )
+    assert answer["error"] == ERROR_ENABLE_FAILED
+    assert site.data.get("battery_control_enabled") is not True

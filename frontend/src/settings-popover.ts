@@ -457,7 +457,7 @@ export class SiteSections {
 
   // ---- battery
 
-  async writeBattery(changes: Record<string, boolean | string>): Promise<string | null> {
+  async writeBattery(changes: Record<string, boolean | string>, enableControlEntities = false): Promise<string | null> {
     const hass = this.input.hass();
     const target = this.input.target();
     const language = this.language;
@@ -465,7 +465,9 @@ export class SiteSections {
       return translate(language, "battery.error.generic");
     }
     try {
-      const decoded = decodeBatteryControl(await batteryControl(hass, target, changes));
+      const decoded = decodeBatteryControl(
+        await batteryControl(hass, target, Object.keys(changes).length === 0 ? null : changes, enableControlEntities),
+      );
       if (!decoded.ok) {
         return translate(language, "battery.error.generic");
       }
@@ -478,6 +480,40 @@ export class SiteSections {
     } catch {
       return translate(language, "battery.error.generic");
     }
+  }
+
+  /**
+   * The opt-in's confirm for the brand's disabled control entities: how many, in which integration, the list folded.
+   * Nothing is turned on before the button; `alsoOn` turns "Styr batteriet" on with it.
+   */
+  openEnableEntities(alsoOn: boolean): void {
+    const found = this.battery?.enable_entities ?? null;
+    if (found === null) {
+      return;
+    }
+    const { doc, idPrefix } = this.input;
+    const language = this.language;
+    const count = found.entities.length;
+    this.input.openEditor(translate(language, "battery.switch"), (handlers) => {
+      const editor = shell(doc, language, "battery-enable", handlers, translate(language, alsoOn ? "battery.enable.confirm" : "battery.enable.confirmOnly"));
+      const text = translate(language, `battery.enable.text.${pluralForm(language, count)}`, { count: String(count), integration: found.integration });
+      editor.body.append(element(doc, "p", C.settingRowHelp, text));
+      const folded = element(doc, "details");
+      folded.dataset["enableEntities"] = "true";
+      folded.append(element(doc, "summary", undefined, translate(language, "battery.enable.list")));
+      const list = element(doc, "ul");
+      for (const entity of found.entities) {
+        const item = element(doc, "li", undefined, entity.name);
+        item.dataset["entityId"] = entity.entity_id;
+        item.title = entity.entity_id;
+        list.append(item);
+      }
+      folded.append(list);
+      editor.body.append(folded, element(doc, "p", C.settingRowHelp, translate(language, "battery.enable.note", { integration: found.integration })));
+      editor.form.dataset["batteryEnable"] = idPrefix;
+      editor.submit(async () => await this.writeBattery(alsoOn ? { battery_control_enabled: true } : {}, true));
+      return editor.form;
+    });
   }
 
   /** The AI-mode explanation; its button writes `battery_control_ai_takeover_ack`. */
@@ -560,6 +596,13 @@ export class SiteSections {
           button.dataset["action"] = "open-battery-device";
           button.addEventListener("click", () => navigateTo(doc, `/config/devices/device/${encodeURIComponent(deviceId)}`));
           item.append(button);
+        }
+        if (admin && this.battery?.enable_entities != null) {
+          const enable = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.enable.open")) as HTMLButtonElement;
+          enable.type = "button";
+          enable.dataset["action"] = "enable-battery-entities";
+          enable.addEventListener("click", () => this.openEnableEntities(false));
+          item.append(enable);
         }
       } else {
         item.dataset["need"] = need;
@@ -645,7 +688,10 @@ export class SiteSections {
         help: batteryLine(language, status.line),
         ...(admin
           ? {
-              onTap: () => this.onOff(switchLabel, "battery_control_enabled", options.battery_control_enabled, translate(language, "battery.switchHelp")),
+              onTap: () =>
+                status.enable_entities !== null && !options.battery_control_enabled
+                  ? this.openEnableEntities(true)
+                  : this.onOff(switchLabel, "battery_control_enabled", options.battery_control_enabled, translate(language, "battery.switchHelp")),
               changeableText: translate(language, "settings.row.changeable", { label: switchLabel, value: onText(options.battery_control_enabled) }),
             }
           : {}),
