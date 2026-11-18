@@ -698,8 +698,9 @@ class PhasePeaks:
         """The marks read back from the recorder (`site/phase_backfill.py`) into these; how many hours with counted
         minutes were taken (an hour read back with nothing counted is kept too, so it is not read again).
         An hour with minutes counted live keeps its own mark whatever the history says (the live reading knows when
-        each sensor last reported, the history only when it last changed). An hour already read back is replaced only
-        by a mark with more counted minutes."""
+        each sensor last reported, the history only when it last changed). An hour already read back takes a new
+        reading of it only where that has more counted minutes, and then nothing is lowered: each peak and each total
+        is the larger of the two readings'."""
         newest = int(now // _HOUR_S)
         oldest = newest - WINDOW_DAYS * 24
         taken = 0
@@ -709,8 +710,21 @@ class PhasePeaks:
             kept = self.hours.get(hour)
             if kept is not None and kept.counted and (not kept.backfilled or kept.counted >= mark.counted):
                 continue
-            if kept is not None:  # nothing counted in it: only its heat pump's peak is worth keeping
+            if kept is not None:
                 mark.heat_kw = _max_triple(mark.heat_kw, kept.heat_kw)
+                if kept.backfilled and kept.counted:
+                    mark.house_a = _max_triple(mark.house_a, kept.house_a)
+                    mark.exact_a = _max_triple(mark.exact_a, kept.exact_a)
+                    mark.total_all = _max(mark.total_all, kept.total_all)
+                    mark.total_counted = _max(mark.total_counted, kept.total_counted)
+                    # A peak is kept with its minutes (a mark without them is not read): as many of each kind as
+                    # either reading had, within the hour.
+                    mark.exact_minutes = max(mark.exact_minutes, kept.exact_minutes)
+                    mark.minutes = min(max(mark.minutes, kept.minutes), 60 - mark.exact_minutes)
+                    if mark.house_a is not None and mark.minutes == 0:
+                        mark.exact_minutes -= 1
+                        mark.minutes = 1
+                    mark.lost = min(mark.lost, kept.lost, 60 - mark.counted)
             mark.backfilled = True
             self.hours[hour] = mark
             taken += 1 if mark.counted else 0
