@@ -806,3 +806,43 @@ def test_the_site_s_reading_without_the_plant_s_entities_has_no_plant_power() ->
         plant_phase_entities=("sensor.a", "sensor.b", "sensor.c"), plant_phase_sign=1.0,
     ))
     assert read_site(site, PLANT_NOW).plant_w is None  # the entities have no state
+
+
+def test_the_exact_peaks_stand_alone_only_after_two_weeks_of_exact_days_spread_over_the_day() -> None:
+    def kept(exact_hours: int, *, history_days: int = 0, first_from: int = 0) -> PhasePeaks:
+        """Two weeks: every day twelve hours by the band (9 A on L3), and `exact_hours` hours of exact minutes
+        (4 A) from the hour `first_from` (the first day) or 0."""
+        peaks = PhasePeaks()
+        for day in range(READY_DAYS):
+            start = first_from if day == 0 else 0
+            for hour in range(24):
+                mark = HourMark(backfilled=day < history_days)
+                if hour < SPREAD_HOURS:
+                    mark.house_a, mark.minutes, mark.total_all, mark.total_counted = (5.0, 3.0, 9.0), 20, 17.0, 17.0
+                if start <= hour < start + exact_hours:
+                    mark.exact_a, mark.exact_minutes = (4.0, 4.0, 4.0), 40
+                if mark.counted:
+                    peaks.hours[T0 // 3600 + day * 24 + hour] = mark
+        return peaks
+
+    now = T0 + (READY_DAYS + 1) * 86400
+    # Exact minutes in twelve clock hours of each day: the band is no longer needed.
+    learned = kept(SPREAD_HOURS).learned(now)
+    assert learned.exact_days == READY_DAYS and learned.basis == "exact"
+    assert learned.phase_peaks() == pytest.approx({"L1": 4.0 + MARGIN_A, "L2": 4.0 + MARGIN_A, "L3": 4.0 + MARGIN_A})
+    # Three exact hours a day (120 minutes, in one stretch): no exact day, and the band's 9 A still counts.
+    learned = kept(3).learned(now)
+    assert learned.ready and learned.exact_days == 0 and learned.basis == "mixed"
+    assert learned.phase_peaks()["L3"] == pytest.approx(9.0 + MARGIN_A)
+    # Days read back weigh half here too: fourteen with four of them from the history are twelve.
+    learned = kept(SPREAD_HOURS, history_days=4).learned(now)
+    assert learned.exact_days == READY_DAYS - 2 and learned.basis == "mixed"
+    # And no more than the time from the first exact hour to the last holds: the first day's only from 14:00,
+    # ten hours of minutes, the last day's ending at 10:00, is thirteen.
+    late = PhasePeaks()
+    for day in range(READY_DAYS):
+        for hour in range(14 if day == 0 else 0, 24 if day == 0 else 10):
+            late.hours[T0 // 3600 + day * 24 + hour] = HourMark(exact_a=(4.0, 4.0, 4.0), exact_minutes=60)
+    assert late.learned(now).exact_days == READY_DAYS - 1
+    late.hours[T0 // 3600 + 10] = HourMark(exact_a=(4.0, 4.0, 4.0), exact_minutes=60)
+    assert late.learned(now).exact_days == READY_DAYS

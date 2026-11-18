@@ -49,7 +49,8 @@ So each phase is also reckoned at its own peak plus **the whole hidden load** (t
 amps, as if all of it sat on that phase), and the larger of the two counts. This bound was chosen over skipping the
 early stage for a large factor: it holds at every stage and rests on no threshold, and with the plant's per-phase
 power (exact minutes) it is not needed at all. Exact minutes are kept apart from these and count as they are, unscaled: the cap takes per
-phase the larger of the two (each plus `MARGIN_A`); once `READY_DAYS` days each have `DAY_MINUTES` exact minutes,
+phase the larger of the two (each plus `MARGIN_A`); once `READY_DAYS` days count by their exact minutes alone (as
+days count below: spread over the day, the history's at half weight),
 the exact peaks alone (the battery's band no longer needed). Loads that back off by themselves (a heat pump's own
 load monitor shedding its immersion heater) never peak on the meter, so they are left out as they should be.
 
@@ -441,8 +442,9 @@ class Learned:
     hours: int
     minutes: int
     heat_w: Triple | None
-    #: Per phase the largest exact hourly peak in the window (A), the days with `DAY_MINUTES` exact minutes, and the
-    #: exact minutes (`exact_phase_a`).
+    #: Per phase the largest exact hourly peak in the window (A), the days whose exact minutes count as days do
+    #: (spread over the day, within the time from the first to the last, the history's at their weight: whole
+    #: days), and the exact minutes (`exact_phase_a`).
     exact_a: Triple | None = None
     exact_days: int = 0
     exact_minutes: int = 0
@@ -596,12 +598,14 @@ class PhasePeaks:
         total_all: float | None = None
         total_counted: float | None = None
         #: Per day: the minutes and the clock hours counted live, the same from the history, the history's lost
-        #: minutes, the exact minutes either way, and the first and last counted hour.
+        #: minutes, the exact minutes and their clock hours either way, and the first and last counted hour (of any
+        #: minutes, and of exact ones).
         live: dict[int, list[int]] = {}
         past: dict[int, list[int]] = {}
-        exact_live: dict[int, int] = {}
-        exact_past: dict[int, int] = {}
+        exact_live: dict[int, list[int]] = {}
+        exact_past: dict[int, list[int]] = {}
         ends: dict[int, tuple[int, int]] = {}
+        exact_ends: dict[int, tuple[int, int]] = {}
         hours = minutes = exact_minutes = history_hours = 0
         for hour, mark in self.hours.items():
             if hour < oldest:
@@ -622,8 +626,11 @@ class PhasePeaks:
             if exactly:
                 exact = _max_triple(exact, mark.exact_a)
                 exact_minutes += mark.exact_minutes
-                side = exact_past if mark.backfilled else exact_live
-                side[day] = side.get(day, 0) + mark.exact_minutes
+                own_exact = (exact_past if mark.backfilled else exact_live).setdefault(day, [0, 0])
+                own_exact[0] += mark.exact_minutes
+                own_exact[1] += 1
+                first, last = exact_ends.get(day, (hour, hour))
+                exact_ends[day] = (min(first, hour), max(last, hour))
             if counted:
                 hours += 1
                 history_hours += 1 if mark.backfilled else 0
@@ -637,9 +644,30 @@ class PhasePeaks:
             day for day, (counted, _hours, lost) in past.items()
             if counted + lost and lost / (counted + lost) > HISTORY_LOST_SHARE
         }
-        day_count = live_count = exact_day_count = spread_count = spread_live = 0
+        day_count = live_count = spread_count = spread_live = exact_count = exact_live_count = 0
         first_hour: int | None = None
         last_hour: int | None = None
+        exact_first: int | None = None
+        exact_last: int | None = None
+
+        def spread_over_the_day(counted: list[int]) -> bool:
+            return counted[0] >= DAY_MINUTES and (counted[0] >= SPREAD_MINUTES or counted[1] >= SPREAD_HOURS)
+
+        # The days with exact minutes spread over them, by the same rule (a dropped day's history left out).
+        for day in set(exact_live) | set(exact_past):
+            own_exact = exact_live.get(day, [0, 0])
+            more_exact = [0, 0] if day in dropped else exact_past.get(day, [0, 0])
+            if spread_over_the_day([own_exact[0] + more_exact[0], own_exact[1] + more_exact[1]]):
+                exact_count += 1
+                exact_live_count += 1 if spread_over_the_day(own_exact) else 0
+                exact_first = exact_ends[day][0] if exact_first is None else min(exact_first, exact_ends[day][0])
+                exact_last = exact_ends[day][1] if exact_last is None else max(exact_last, exact_ends[day][1])
+        exact_span = 0 if exact_first is None or exact_last is None else (exact_last - exact_first + 1 + 24) // 24
+        # Whole days, the history's at their weight, and no more than the time from the first to the last holds.
+        exact_day_count = int(min(
+            float(min(exact_count, exact_span)),
+            exact_live_count + HISTORY_DAY_WEIGHT * (exact_count - exact_live_count),
+        ))
         for day in set(live) | set(past):
             own = live.get(day, [0, 0, 0])
             more = [0, 0, 0] if day in dropped else past.get(day, [0, 0, 0])
@@ -648,8 +676,6 @@ class PhasePeaks:
                 continue
             day_count += 1
             live_count += 1 if own[0] >= DAY_MINUTES else 0
-            if exact_live.get(day, 0) + (0 if day in dropped else exact_past.get(day, 0)) >= DAY_MINUTES:
-                exact_day_count += 1
             if counted >= SPREAD_MINUTES or own[1] + more[1] >= SPREAD_HOURS:
                 spread_count += 1
                 spread_live += 1 if own[0] >= SPREAD_MINUTES or own[1] >= SPREAD_HOURS else 0
