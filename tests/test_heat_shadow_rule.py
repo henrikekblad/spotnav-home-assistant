@@ -112,3 +112,11 @@ def test_a_cold_forecast_hour_is_not_lowered_and_a_room_below_the_band_stops_it(
     # The coldest room 20.4 °C is below the band (20.5): no lowering from now on.
     _, guard = band(HeatConfig(target_c=21.0), HOURS, priced(), now, ZONE, coldest_c=20.4)
     assert guard == "room_cold"
+
+
+def test_away_holds_the_sites_own_setback() -> None:
+    until = (MIDNIGHT + timedelta(days=4, hours=16)).isoformat()
+    for delta, held in ((3.0, 18.0), (5.5, 16.0), (1.5, 19.5)):
+        config = HeatConfig(target_c=21.0, mode="away", away_until=until, away_delta_c=delta)
+        hours, _ = band(config, HOURS, priced(), MIDNIGHT + timedelta(hours=8), ZONE)
+        assert {h.target_c for h in hours if h.action == "away"} == {held}, delta

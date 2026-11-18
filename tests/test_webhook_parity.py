@@ -771,6 +771,7 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "sessions_plug_in_saving.json",
             "sessions_success.json",
             "update_heat_away.json",
+            "update_heat_away_delta.json",
             "update_heat_conflict.json",
             "update_heat_indoor_offsets.json",
             "update_heat_indoor_offsets_not_permitted.json",

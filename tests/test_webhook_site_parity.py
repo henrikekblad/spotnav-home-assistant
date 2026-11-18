@@ -248,6 +248,26 @@ async def test_the_cooler_night_and_each_zones_offset_are_written_but_never_whic
         assert [item["field"] for item in body["field_errors"]] == ["night"], (bad, body)
     assert site.data[CONF_HEAT]["night"] == night
 
+    status, body = await post(
+        client,
+        HOOK,
+        {"action": "update_heat", "changes": {"away_delta_c": 4.5}, "expected": {"away_delta_c": heat["config"]["away_delta_c"]}},
+    )
+    assert status == 200 and body["ok"] is True and body["config"]["away_delta_c"] == 4.5, body
+    assert site.data[CONF_HEAT]["away_delta_c"] == 4.5
+    _pinned("update_heat_away_delta.json", _pin(body))
+    twin = await result(hass, websocket_update_heat, changes={"away_delta_c": 4.5}, expected={"away_delta_c": 4.5})
+    assert body == {**twin, "action": "update_heat"}
+    status, body = await post(
+        client, HOOK, {"action": "update_heat", "changes": {"away_delta_c": 5.0}, "expected": {"away_delta_c": 3.0}}
+    )
+    assert status == 409 and body["error"] == "spotnav_conflict", body
+    for bad in (0.5, 6.5, 2.2, "warm", True):
+        status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"away_delta_c": bad}})
+        assert status == 400 and body["error"] == "spotnav_invalid_value", (bad, body)
+        assert [item["field"] for item in body["field_errors"]] == ["away_delta_c"], (bad, body)
+    assert site.data[CONF_HEAT]["away_delta_c"] == 4.5
+
     offsets = [{"entity_id": "climate.golvvarme", "offset_c": 0.5}, {"entity_id": "climate.luft", "offset_c": -2.0}]
     status, body = await post(
         client, HOOK, {"action": "update_heat", "changes": {"zones": offsets}, "expected": {"zones": heat["config"]["zones"]}}

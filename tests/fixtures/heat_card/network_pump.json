@@ -403,6 +403,7 @@
     "target_c": 20.5
   },
   "config": {
+    "away_delta_c": 3.0,
     "away_until": "2026-11-20T15:00:00+00:00",
     "control_enabled": false,
     "control_entity": null,

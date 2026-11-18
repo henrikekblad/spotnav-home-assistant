@@ -2,6 +2,7 @@
   "action": "update_heat",
   "api_version": 1,
   "config": {
+    "away_delta_c": 4.5,
     "away_until": null,
     "control_enabled": false,
     "control_entity": null,

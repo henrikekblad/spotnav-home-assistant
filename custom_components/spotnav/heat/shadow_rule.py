@@ -4,7 +4,7 @@ is written anywhere: the plan is shown, logged, kept per hour and reviewed besid
 
 Pure. Per local hour of the day, one action and the temperature it aims at:
 
-* `away` (the target less 3 °C, never below 16 °C) until `return` the `RETURN_HOURS` before the return time (the
+* `away` (the target less the site's `away_delta_c`, 3 °C unless set, never below 16 °C) until `return` the `RETURN_HOURS` before the return time (the
   target again, so the house is warm when the household is back);
 * `night` (the target less the cooler night's degrees) in the cooler night's hours, when it is on;
 * `lower` (the comfort band's low edge, the target less 0.5 °C) in the hours worth lowering, at most
@@ -239,7 +239,7 @@ def band(
             if away_end - start <= timedelta(hours=RETURN_HOURS):
                 fixed[start] = (ACTION_RETURN, target, REASON_RETURN)
             else:
-                fixed[start] = (ACTION_AWAY, away_target(target), REASON_AWAY)
+                fixed[start] = (ACTION_AWAY, away_target(target, config.away_delta_c), REASON_AWAY)
         elif config.night.on and config.night.covers(local.hour * 60 + local.minute):
             fixed[start] = (ACTION_NIGHT, target - config.night.delta_c, REASON_NIGHT)
 

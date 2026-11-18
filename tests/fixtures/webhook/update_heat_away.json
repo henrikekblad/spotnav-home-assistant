@@ -2,6 +2,7 @@
   "action": "update_heat",
   "api_version": 1,
   "config": {
+    "away_delta_c": 3.0,
     "away_until": "2026-09-25T16:00:00+02:00",
     "control_enabled": false,
     "control_entity": null,
