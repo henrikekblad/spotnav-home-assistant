@@ -38,7 +38,8 @@ def _plant(
 ) -> tuple[str, dict[str, str]]:
     """A plant of the brand's integration with every control entity of `optin.ENABLE_KEYS` in the registry, disabled
     except the keys in `enabled`; answers the battery entity and the entity id per key."""
-    platform = next(control.adapter.platforms[0] for control in CONTROLS if control.brand == brand)
+    # The last platform: Victron's first is in Home Assistant core, whose library is not installed here.
+    platform = next(control.adapter.platforms[-1] for control in CONTROLS if control.brand == brand)
     owner = MockConfigEntry(domain=platform, entry_id="PLANT", title="The plant")
     owner.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(config_entry_id=owner.entry_id, identifiers={(platform, "plant")})
@@ -200,3 +201,52 @@ async def test_a_failed_reload_is_an_error_and_writes_no_options(
     )
     assert answer["error"] == ERROR_ENABLE_FAILED
     assert site.data.get("battery_control_enabled") is not True
+
+
+async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_are_the_fuse(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shell on a Victron plant (`commands.VICTRON_CONTROL`): the charge per phase needs nothing but the
+    recipe's own entities, the plant's power per phase is the load behind each Multi less the power on its input,
+    and each phase's HA-down cap is the fuse less the margin (the recipe's own dead-man)."""
+    from custom_components.spotnav.battery import gate
+    from custom_components.spotnav.battery.commands import VICTRON_CONTROL
+    from custom_components.spotnav.battery.control import BatteryControl
+    from homeassistant.util import dt as dt_util
+
+    battery, found = _plant(hass, "victron", enabled=frozenset(key for _domain, key in optin.ENABLE_KEYS["victron"]))
+    site, control = await _site(hass, battery)
+    states = {
+        "system_ess_max_charge_power": "-1", "system_ess_max_inverter_power_limit": "-1",
+        "system_ac_power_set_point": "50", "system_ess_mode": "phase_compensation_enabled",
+        "vebus_hub4_disable_charge": "off", "vebus_hub4_disable_feed_in": "off",
+        **{f"vebus_ac_power_setpoint_l{n}": "0" for n in (1, 2, 3)},
+        **{f"vebus_inverter_output_power_l{n}": str(100 * n) for n in (1, 2, 3)},
+        **{f"vebus_inverter_input_power_l{n}": str(1000 + 100 * n) for n in (1, 2, 3)},
+    }
+    for key, state in states.items():
+        hass.states.async_set(found[key], state)
+    monkeypatch.setattr(BatteryControl, "_phase_headroom_a", lambda self: (10.0, 10.0, 10.0))
+    monkeypatch.setattr(BatteryControl, "_grid_phase_kw", lambda self: (1.0, 1.0, 1.0))
+    monkeypatch.setattr(BatteryControl, "_cars_allowed_a", lambda self, **_kwargs: 0.0)
+    control.facts = control._read_facts()
+    assert control.facts.brand == "victron"
+
+    assert control._phase_missing_now() is None
+    now = dt_util.now()
+    inputs = control.inputs(now, VICTRON_CONTROL.with_phases(True), slot=None)
+    assert inputs.phase_behind_kw == pytest.approx((0.1, 0.2, 0.3))
+    assert inputs.phase_point_kw == pytest.approx((1.1, 1.2, 1.3))
+    assert inputs.plant_phase_kw == pytest.approx((-1.0, -1.0, -1.0))
+    assert set(inputs.reads) >= {"ess_mode", "phase_l3_target", "phase_l1_load", "phase_l2_input"}
+    fuse_a = control._main_fuse_a()
+    assert fuse_a is not None
+    volts = 400.0 / 3 ** 0.5
+    assert control._phase_caps_kw(now) == pytest.approx(((fuse_a - 2.0) * volts / 1000,) * 3)
+    assert gate.silence_guards(VICTRON_CONTROL.phase_control.silence_fallback_s)
+
+    # A sensor that reads nothing: no charge per phase.
+    hass.states.async_set(found["vebus_inverter_output_power_l2"], "unavailable")
+    control._look_id += 1
+    assert control._phase_missing_now() == "plant_phase_power"
+    assert control.inputs(now, VICTRON_CONTROL.with_phases(True), slot=None).plant_phase_kw is None
