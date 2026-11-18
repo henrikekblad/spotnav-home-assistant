@@ -288,20 +288,39 @@ class Backfill:
         self._hass = hass
         self._peaks = peaks
         self._changed = changed
+        #: The timer of the next run, and the run going on (a background task: nothing waits for it).
+        self._cancel: Callable[[], None] | None = None
         self._task: asyncio.Task[None] | None = None
+        self._stopped = False
         #: What the last run gave, for the diagnostics; `None` before the first.
         self.last: dict[str, Any] | None = None
         self.runs = 0
 
     def start(self, site: SiteCapacityController) -> None:
         """Run in the background from now on: after `START_DELAY_S`, then every `RETRY_S` until the learning is
-        done. Cancelled by `async_stop`."""
-        if self._task is None:
+        done. Stopped by `async_stop`."""
+        if self._cancel is None and self._task is None and not self._stopped:
+            self._schedule(site, START_DELAY_S)
+
+    def _schedule(self, site: SiteCapacityController, delay_s: float) -> None:
+        from homeassistant.core import callback  # noqa: PLC0415 - kept beside its only use
+        from homeassistant.helpers.event import async_call_later  # noqa: PLC0415
+
+        @callback  # in the event loop: without it Home Assistant would run it in an executor thread
+        def due(_now: datetime) -> None:
+            self._cancel = None
             self._task = self._hass.async_create_background_task(
-                self._async_run(site), name="spotnav phase peaks backfill"
+                self._async_due(site), name="spotnav phase peaks backfill"
             )
 
+        self._cancel = async_call_later(self._hass, delay_s, due)
+
     async def async_stop(self) -> None:
+        """No further run, and the one going on cancelled (a read already handed to the recorder ends by itself)."""
+        self._stopped = True
+        cancel, self._cancel = self._cancel, None
+        if cancel is not None:
+            cancel()
         task, self._task = self._task, None
         if task is None or task.done():
             return
@@ -313,18 +332,18 @@ class Backfill:
         except Exception:  # noqa: BLE001 - it is over either way
             _LOGGER.debug("SpotNav phase peaks: the backfill ended badly", exc_info=True)
 
-    async def _async_run(self, site: SiteCapacityController) -> None:
-        await asyncio.sleep(START_DELAY_S)
-        while True:
-            now = dt_util.utcnow().timestamp()
-            if self._peaks.learned(now).ready:
-                return
-            try:
-                await self.async_once(site, now)
-            except Exception:  # noqa: BLE001 - the conservative rule counts meanwhile; tried again next time
-                self.last = {"at": dt_util.utcnow().isoformat(), "stopped": "error"}
-                _LOGGER.debug("SpotNav phase peaks: the recorder's history could not be read back", exc_info=True)
-            await asyncio.sleep(RETRY_S)
+    async def _async_due(self, site: SiteCapacityController) -> None:
+        """One run, and the next one scheduled unless the learning is done by now."""
+        now = dt_util.utcnow().timestamp()
+        if self._peaks.learned(now).ready:
+            return
+        try:
+            await self.async_once(site, now)
+        except Exception:  # noqa: BLE001 - the conservative rule counts meanwhile; tried again next time
+            self.last = {"at": dt_util.utcnow().isoformat(), "stopped": "error"}
+            _LOGGER.debug("SpotNav phase peaks: the recorder's history could not be read back", exc_info=True)
+        if not self._stopped:
+            self._schedule(site, RETRY_S)
 
     async def async_once(self, site: SiteCapacityController, now: float) -> dict[str, Any]:
         """One run up to `now`: every hour of the window the store has no mark for, oldest first. What it gave."""

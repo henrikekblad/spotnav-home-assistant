@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.site.phase_backfill import (
     UNKNOWN_AGE_S,
@@ -377,46 +378,82 @@ async def test_without_a_recorder_nothing_is_read_and_nothing_raises(hass: HomeA
     assert played.controller.phase_peaks.backfill_status() is None  # the site's own has not run
 
 
-async def test_the_site_starts_the_reading_back_in_the_background_and_cancels_it_at_its_unload(
+async def test_the_site_schedules_the_reading_back_and_cancels_it_at_its_unload(
     hass: HomeAssistant, freezer: Any
 ) -> None:
     played = await _world(hass, freezer, own_backfill=True)
     controller = played.controller
     backfill = controller.phase_peaks.backfill
-    assert backfill is not None and backfill._task is not None and not backfill._task.done()
-    task = backfill._task
+    # A timer, not a task: nothing that waits for the background tasks waits for it.
+    assert backfill is not None and backfill._cancel is not None and backfill._task is None
     assert backfill.runs == 0, "it waits for the battery's facts before its first run"
     assert await hass.config_entries.async_unload(controller.entry_id)
     await hass.async_block_till_done()
-    assert task.cancelled() and backfill._task is None
+    assert backfill._cancel is None and backfill._task is None
+    backfill.start(controller)
+    assert backfill._cancel is None, "stopped for good"
 
 
 async def test_the_run_repeats_until_the_learning_is_done(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
-    import asyncio
-
     from custom_components.spotnav.site import phase_backfill
     from custom_components.spotnav.site.phase_backfill import Backfill
     from custom_components.spotnav.site.phase_peaks import READY_DAYS
 
-    monkeypatch.setattr(phase_backfill, "START_DELAY_S", 0.0)
-    monkeypatch.setattr(phase_backfill, "RETRY_S", 0.0)
     peaks = PhasePeaks()
     backfill = Backfill(hass, peaks, lambda: None)
+    scheduled: list[float] = []
+    monkeypatch.setattr(backfill, "_schedule", lambda site, delay_s: scheduled.append(delay_s))
     runs: list[float] = []
 
     async def once(site: Any, now: float) -> dict[str, Any]:
         runs.append(now)
         if len(runs) == 2:
             raise RuntimeError("the recorder is busy")  # tried again the next time
-        if len(runs) == 3:  # two weeks kept by now
-            hour = int(now // 3600)
-            for day in range(READY_DAYS):
-                for offset in range(DAY_MINUTES // 30 + 1):
-                    peaks.hours[hour - 24 * day - offset - 1] = _mark(5.0, 30)
+        return {}
+
+    monkeypatch.setattr(backfill, "async_once", once)
+    site = SimpleNamespace()
+    backfill.start(site)
+    assert scheduled == [phase_backfill.START_DELAY_S]
+    await backfill._async_due(site)
+    await backfill._async_due(site)
+    assert len(runs) == 2 and backfill.last == {"at": backfill.last["at"], "stopped": "error"}
+    assert scheduled[1:] == [phase_backfill.RETRY_S, phase_backfill.RETRY_S]
+    # Two weeks kept: no run, and none after it.
+    hour = int(dt_util.utcnow().timestamp() // 3600)
+    for day in range(READY_DAYS):
+        for offset in range(DAY_MINUTES // 30 + 1):
+            peaks.hours[hour - 24 * day - offset - 1] = _mark(5.0, 30)
+    await backfill._async_due(site)
+    assert len(runs) == 2 and len(scheduled) == 3
+    # Stopped while a run goes on: that run schedules nothing.
+    peaks.hours.clear()
+    backfill._stopped = True
+    await backfill._async_due(site)
+    assert len(runs) == 3 and len(scheduled) == 3
+
+
+async def test_a_due_run_is_a_background_task_that_a_stop_cancels(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    from custom_components.spotnav.site import phase_backfill
+    from custom_components.spotnav.site.phase_backfill import Backfill
+
+    backfill = Backfill(hass, PhasePeaks(), lambda: None)
+    started = asyncio.Event()
+
+    async def once(site: Any, now: float) -> dict[str, Any]:
+        started.set()
+        await asyncio.sleep(3600)
         return {}
 
     monkeypatch.setattr(backfill, "async_once", once)
     backfill.start(SimpleNamespace())
-    await asyncio.wait_for(backfill._task, 5)
-    assert len(runs) == 3 and backfill.last == {"at": backfill.last["at"], "stopped": "error"}
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=phase_backfill.START_DELAY_S + 1))
+    await asyncio.wait_for(started.wait(), 5)
+    task = backfill._task
+    assert task is not None and not task.done()
     await backfill.async_stop()
+    assert task.cancelled() and backfill._cancel is None
