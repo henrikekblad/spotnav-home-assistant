@@ -215,7 +215,9 @@ export function barChart(input: BarChartInput): HTMLElement {
         }
         const piece = element(doc, "span", P.part);
         piece.dataset["series"] = part.series;
-        piece.style.flexGrow = String(Math.abs(part.value));
+        // Its share of the lane, never the bare value: flex factors that add up to less than 1 (an hour of 0.7 kWh
+        // alone) would fill only that fraction of the lane and leave the bar short of the baseline.
+        piece.style.flexGrow = String(Math.max(1, Math.round((Math.abs(part.value) / Math.abs(sum)) * 1000)));
         column.append(piece);
       }
       button.append(column);

@@ -357,6 +357,30 @@ describe("Use", () => {
     expect(hours.filter((bar) => bar.querySelector("[data-series='use-hot_water']") !== null)).toHaveLength(3);
   });
 
+  it("fills each bar's lane whatever its size: the parts' flex factors are shares of the lane, never below 1 together", () => {
+    // Hours under 1 kWh: as bare flex factors (0.725) they would fill only that fraction of the lane, short of the baseline.
+    const day = history("zones_day.json");
+    const small: HeatHistory = {
+      ...day,
+      parts: day.parts.filter((part) => part.key === "pump" || part.key === "hot_water"),
+      buckets: day.buckets.map((bucket, index) => ({
+        ...bucket,
+        kwh: index === 8 ? 1.567 : 0.725,
+        parts: index === 8 ? [{ key: "pump", kwh: 0.875, cost: 10 }, { key: "hot_water", kwh: 0.692, cost: 8 }] : [{ key: "pump", kwh: 0.725, cost: 9 }],
+      })),
+    };
+    const lanes = [...panel(small).querySelectorAll<HTMLElement>("[data-part='use-bars'] .spotnav-house-pbar-lane")];
+    expect(lanes).toHaveLength(24);
+    for (const lane of lanes) {
+      const factors = [...lane.querySelectorAll<HTMLElement>(".spotnav-house-pbar-part")].map((part) => Number(part.style.flexGrow));
+      expect(factors.reduce((sum, value) => sum + value, 0)).toBeGreaterThanOrEqual(999);
+      expect(factors.every((value) => value >= 1)).toBe(true);
+    }
+    expect([...lanes[8]!.querySelectorAll<HTMLElement>(".spotnav-house-pbar-part")].map((part) => part.style.flexGrow)).toEqual(["442", "558"]);
+    expect(lanes[7]!.style.height).toBe(`${(0.725 / 1.567) * 100}%`);
+    expect(lanes[7]!.style.bottom).toBe("0%");
+  });
+
   it("hides a part: out of the bars and the total, kept as a toggle; with every part hidden it says so", () => {
     const onToggle = vi.fn();
     const wrap = panel(month(), { hidden: ["pump", "gone"] }, { onToggle });
