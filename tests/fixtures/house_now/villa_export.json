@@ -1,0 +1,22 @@
+{
+  "api_version": 1,
+  "at": "2026-11-16T16:20:00+00:00",
+  "battery_kw": 1.2,
+  "car_connected": false,
+  "car_kw": 0.0,
+  "car_soc_pct": null,
+  "grid_kw": -2.6,
+  "has": {
+    "battery": true,
+    "car": true,
+    "heat": true,
+    "sun": true
+  },
+  "heat_from": "recent",
+  "heat_kw": 0.6,
+  "house_kw": 1.0,
+  "site_id": "site",
+  "soc_pct": 81.0,
+  "sun_from": "recent",
+  "sun_kw": 4.8
+}

@@ -159,6 +159,22 @@ def test_requested_period_refuses_what_it_cannot_show() -> None:
 # ------------------------------------------------------------------------------------------------ energy and cost
 
 
+#: The villa's arbitrage on each day from the 3rd to the 16th (öre): the evening's four hours and a morning hour sold
+#: below what it was stored at.
+ARBITRAGE_HOURS = {17: 120.0, 18: 140.0, 19: 90.0, 20: 40.0, 7: -15.0}
+DAY_ARBITRAGE = sum(ARBITRAGE_HOURS.values())
+
+
+def villa_arbitrage() -> tuple[dict[date, float], dict[datetime, float]]:
+    days: dict[date, float] = {}
+    hours: dict[datetime, float] = {}
+    for day in range(3, 17):
+        days[date(2026, 11, day)] = DAY_ARBITRAGE
+        for local, value in ARBITRAGE_HOURS.items():
+            hours[datetime(2026, 11, day, local - 1, tzinfo=timezone.utc)] = value
+    return days, hours
+
+
 def month_inputs(**extra: Any) -> HouseHistoryInputs:
     period = period_of(PERIOD_MONTH, date(2026, 11, 1))
     start, _end = utc_bounds(period, TZ)
@@ -197,6 +213,8 @@ def month_inputs(**extra: Any) -> HouseHistoryInputs:
         ],
         archived=frozenset({date(2026, 11, 3)}),
         forecast_mae={"house_kw": {date(2026, 11, 14): 0.4, date(2026, 11, 15): 0.6, date(2026, 10, 31): 9.0}},
+        arbitrage_days=villa_arbitrage()[0],
+        arbitrage_hours=villa_arbitrage()[1],
     )
     base.update(extra)
     return HouseHistoryInputs(**base)  # type: ignore[arg-type]
@@ -241,6 +259,35 @@ def test_cost_prices_each_hour_and_counts_the_unpriced() -> None:
     later = house_history(month_inputs(prices=flat_slots(start, NOW + timedelta(days=1))))
     assert later["cost"]["priced"] < later["cost"]["periods"]
     assert next(bucket for bucket in later["buckets"] if bucket["key"] == "2026-11-05")["cost"] is None
+
+
+def test_a_bucket_has_the_batterys_arbitrage_by_the_hour_or_by_its_days() -> None:
+    day = house_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 10))))
+    by_hour = {bucket["key"][11:13]: bucket["arbitrage"] for bucket in day["buckets"]}
+    assert (by_hour["17"], by_hour["20"], by_hour["07"], by_hour["03"]) == (120.0, 40.0, -15.0, None)
+    assert sum(value or 0 for value in by_hour.values()) == pytest.approx(DAY_ARBITRAGE)
+    month = house_history(month_inputs())
+    by_day = {bucket["key"]: bucket["arbitrage"] for bucket in month["buckets"]}
+    assert by_day["2026-11-10"] == pytest.approx(DAY_ARBITRAGE) and by_day["2026-11-02"] is None
+    year = house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 11, 1))))
+    by_month = {bucket["key"]: bucket["arbitrage"] for bucket in year["buckets"]}
+    assert by_month["2026-11"] == pytest.approx(14 * DAY_ARBITRAGE) and by_month["2026-10"] is None
+    for alone in (month_inputs(arbitrage_days={}, arbitrage_hours={}), month_inputs(has_battery=False)):
+        assert all(bucket["arbitrage"] is None for bucket in house_history(alone)["buckets"])
+
+
+def test_a_bucket_has_its_mean_prices_where_priced() -> None:
+    day = house_history(month_inputs(period=period_of(PERIOD_DAY, date(2026, 11, 10))))
+    by_hour = {bucket["key"][11:13]: bucket for bucket in day["buckets"]}
+    assert (by_hour["17"]["buy"], by_hour["17"]["sell"]) == (250.0, 60.0)
+    assert (by_hour["03"]["buy"], by_hour["03"]["sell"]) == (150.0, 60.0)
+    month = house_history(month_inputs())
+    full = next(bucket for bucket in month["buckets"] if bucket["key"] == "2026-11-10")
+    # Three dear hours of 24.
+    assert full["buy"] == pytest.approx((21 * 150.0 + 3 * 250.0) / 24, abs=0.01)
+    assert next(bucket for bucket in month["buckets"] if bucket["key"] == "2026-11-20")["buy"] is None
+    unpriced = house_history(month_inputs(money=None, prices=()))
+    assert all(bucket["buy"] is None and bucket["sell"] is None for bucket in unpriced["buckets"])
 
 
 def test_an_hour_priced_by_quarters_is_their_mean_and_a_gap_leaves_it_unpriced() -> None:
@@ -363,6 +410,7 @@ def test_a_day_without_a_share_says_why_and_the_month_counts_whole_days() -> Non
 
 def test_contract_fixtures() -> None:
     _fixture("villa_month.json", house_history(month_inputs()))
+    _fixture("villa_year.json", house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 11, 1)))))
     day = period_of(PERIOD_DAY, date(2026, 11, 15))
     start, end = utc_bounds(day, TZ)
     quarters = []

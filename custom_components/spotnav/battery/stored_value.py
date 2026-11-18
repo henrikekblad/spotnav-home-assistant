@@ -21,20 +21,23 @@ weighted-average cost is kept, carried across days and across restarts (`as_dict
   estimate has worked its way out of the stock).
 
 Only quarter hours measured for at least half their time and priced count (`Bucket.covered`, `buy`/`sell`), each once
-(`last`). Money is in the area's minor unit. Days are kept `KEEP_DAYS`.
+(`last`). Money is in the area's minor unit. Days are kept `KEEP_DAYS`, and each day's arbitrage by the hour (UTC hour
+starts, the house card's hourly bars) `HOURS_KEEP_DAYS`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Final
 
 from .. import time_zones
 from .plan_shadow import Bucket
 
-KEEP_DAYS: Final = 40
+KEEP_DAYS: Final = 400
+#: A day's arbitrage by the hour is kept this many days (its total for `KEEP_DAYS`).
+HOURS_KEEP_DAYS: Final = 40
 #: A stock below this (kWh) is empty: its cost goes with it, and an estimated start has left the battery.
 EMPTY_KWH: Final = 0.05
 
@@ -51,6 +54,8 @@ class DayMoney:
     #: The quarter hours of `quarters` counted while SpotNav controlled the battery (`BatteryControl.state` `on`):
     #: the share of the day's arbitrage that is SpotNav's doing (`site/spotnav_saving.py`).
     controlled: int = 0
+    #: The day's arbitrage by the hour it was earned in (UTC hour starts), for the hourly bars.
+    hours: dict[datetime, float] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -62,6 +67,8 @@ class DayMoney:
         }
         if self.controlled:
             out["controlled"] = self.controlled
+        if self.hours:
+            out["hours"] = {hour.isoformat(): round(value, 2) for hour, value in sorted(self.hours.items())}
         return out
 
     @classmethod
@@ -76,8 +83,9 @@ class DayMoney:
                 float(raw.get("battery_export_kwh", 0.0)),
                 int(raw.get("quarters", 0)),
                 int(raw.get("controlled", 0)),
+                {datetime.fromisoformat(hour): float(value) for hour, value in (raw.get("hours") or {}).items()},
             )
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, AttributeError):
             return None
 
 
@@ -144,7 +152,10 @@ class StoredValue:
             to_grid = min(out, exported)
             to_house = out - to_grid
             average = self.average if self.average is not None else buy
-            money.arbitrage += to_house * (buy - average) + to_grid * (sell - average)
+            earned = to_house * (buy - average) + to_grid * (sell - average)
+            money.arbitrage += earned
+            hour = bucket.start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            money.hours[hour] = money.hours.get(hour, 0.0) + earned
             money.battery_export_kwh += to_grid
             sold_kwh -= to_grid
             self.estimate_left = max(0.0, self.estimate_left - out)
@@ -181,6 +192,9 @@ class StoredValue:
         if self.days:
             newest = max(self.days)
             self.days = {day: money for day, money in self.days.items() if (newest - day).days < KEEP_DAYS}
+            for day, money in self.days.items():
+                if money.hours and (newest - day).days >= HOURS_KEEP_DAYS:
+                    money.hours = {}
         return counted
 
     def as_dict(self) -> dict[str, Any]:

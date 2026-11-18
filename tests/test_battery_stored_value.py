@@ -123,3 +123,30 @@ def test_a_restart_keeps_the_stock_its_cost_and_the_days() -> None:
     assert again.run([quarter(at(0), imported=2.0, battery=2.0), quarter(at(0.25), battery=-1.0, buy=250.0)], TZ, None) == 1
     assert StoredValue.from_dict({"kwh": "x"}) == StoredValue()
     assert StoredValue.from_dict(None) == StoredValue()
+
+
+def test_each_hour_keeps_its_own_arbitrage_summing_to_the_days_and_survives_a_restart() -> None:
+    stored = StoredValue(kwh=10.0, cost=1000.0)
+    # 17:00 local: two quarters giving the house 1 kWh each at 300 over an average of 100; 18:00: one at 200.
+    stored.step(quarter(at(17), battery=-1.0, buy=300.0), TZ, None)
+    stored.step(quarter(at(17.25), battery=-1.0, buy=300.0), TZ, None)
+    stored.step(quarter(at(18), battery=-1.0, buy=200.0), TZ, None)
+    money = stored.days[date(2026, 11, 13)]
+    assert money.hours == {at(17): pytest.approx(400.0), at(18): pytest.approx(100.0)}
+    assert sum(money.hours.values()) == pytest.approx(money.arbitrage)
+    again = StoredValue.from_dict(stored.as_dict())
+    assert again.days[date(2026, 11, 13)].hours == {at(17): pytest.approx(400.0), at(18): pytest.approx(100.0)}
+    # A store from before the hours reads with none.
+    raw = stored.as_dict()
+    del raw["days"]["2026-11-13"]["hours"]
+    assert StoredValue.from_dict(raw).days[date(2026, 11, 13)].hours == {}
+
+
+def test_a_days_total_is_kept_a_year_and_its_hours_forty_days() -> None:
+    stored = StoredValue(kwh=10.0, cost=1000.0)
+    stored.step(quarter(at(17), battery=-1.0, buy=300.0), TZ, None)
+    stored.run([quarter(at(17 + 24 * 50), battery=-1.0, buy=300.0)], TZ, None)
+    first = stored.days[date(2026, 11, 13)]
+    assert first.arbitrage > 0 and first.hours == {}
+    stored.run([quarter(at(17 + 24 * 420), battery=-1.0, buy=300.0)], TZ, None)
+    assert date(2026, 11, 13) not in stored.days
