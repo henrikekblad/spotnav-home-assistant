@@ -122,8 +122,9 @@ house's peak; what is left is spread over the plant's phases. The house's peak i
   directions: larger for a house that never comes near 4 kW on a phase, smaller for one that passes it. It is never
   taken below the house forecast's high figure for the hour spread over the three phases, so a day colder than the
   days learned still counts.
-* **A day counts** in this stage only when its minutes are spread over the day: in at least twelve of its clock
-  hours (or ten hours of minutes). Two quiet hours every night are not a day. With a Sigenergy plant whose per-phase
+* **A day counts**, toward the seven days and toward the two weeks alike, only when its minutes are spread over
+  the day: in at least twelve of its clock hours (or ten hours of minutes). Two quiet hours every night are not a
+  day, however many nights. With a Sigenergy plant whose per-phase
   power sensors are enabled (`Plant phase A/B/C active power`, disabled by default in the integration) every minute
   can be reckoned; without them only the minutes where the battery is nearly idle (within 0.5 kW), and what the
   battery hid meanwhile is added to every phase's peak in full.

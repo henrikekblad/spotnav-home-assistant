@@ -75,12 +75,12 @@ gave: that is the point), so the numbers have to hold by themselves:
   the house below the forecast's high figure for the hour (`gate.grid_charge_cap_kw`: a day colder than the days
   learned), and that a main fuse carries an overload of that size for the minutes such a coincidence lasts.
 * **Seven days must be seven days.** `DAY_MINUTES` in one stretch (the battery idle every night at three) would make
-  a "day" of two night hours, and seven of them a week that never saw an evening. Until the learning is done a day
-  therefore counts only **spread over the day**: its counted minutes in at least `SPREAD_HOURS` (12) clock hours,
-  half the day, or at least `SPREAD_MINUTES` (600) of them; and no more days count than the time from the first to
+  a "day" of two night hours, and seven of them a week that never saw an evening. A day therefore counts, toward
+  `MIN_READY_DAYS` and toward `READY_DAYS` alike, only **spread over the day**: its counted minutes in at least
+  `SPREAD_HOURS` (12) clock hours, half the day, or at least `SPREAD_MINUTES` (600) of them; and no more days count than the time from the first to
   the last counted hour holds (whole days, one day's slack: seven days in a row reach from the first's noon to the
-  seventh's). The further margin falls by the same days. Once `READY_DAYS` days count by `DAY_MINUTES`, as before
-  this stage existed, the learning is done.
+  seventh's). The further margin falls by the same days, and the learning is done at `READY_DAYS` of them: fourteen
+  days of night hours never end it (`days`, by `DAY_MINUTES` alone, is kept for the diagnostics).
 * **Days read back from the recorder are weaker evidence** (`site/phase_backfill.py`): the history cannot say whether
   a reading that stood still was alive, so those minutes are left out, and what is left out is not random (a
   battery holding the meter at nought hides whole evenings). Each hour read back keeps how many of its minutes
@@ -139,7 +139,7 @@ MARGIN_A: Final = 2.0
 #: that many days, falling in a straight line to nothing at `READY_DAYS` (see the module for the reasoning).
 MIN_READY_DAYS: Final = 7
 EXTRA_MARGIN_A: Final = 4.0
-#: Until the learning is done a day counts toward `MIN_READY_DAYS` and the further margin only spread over the day:
+#: A day counts toward `MIN_READY_DAYS`, the further margin and `READY_DAYS` only spread over the day:
 #: its counted minutes in at least this many clock hours, or at least this many of them.
 SPREAD_HOURS: Final = 12
 SPREAD_MINUTES: Final = 600
@@ -427,7 +427,7 @@ def _heat_w(heat_kw: Triple | None) -> Triple | None:
 class Learned:
     """What the window says (`PhasePeaks.learned`)."""
 
-    #: Whether the learning is done: `READY_DAYS` days with `DAY_MINUTES` counted minutes, a day that rests on the
+    #: Whether the learning is done: `READY_DAYS` days that count (`days_spread`), a day that rests on the
     #: recorder's history weighing `HISTORY_DAY_WEIGHT` (`days_weighted`). No further margin then.
     ready: bool
     #: Per phase the largest hourly peak in the window counted by the battery's band (A), `None` while none counted.
@@ -451,9 +451,9 @@ class Learned:
     history_hours: int = 0
     history_days: int = 0
     history_days_dropped: int = 0
-    #: `days` with the history's at their weight; the days that count until the learning is done (spread over the
-    #: day, and no more than the time from the first to the last of them holds: see the module); and the further
-    #: margin the peaks are used with now (A, `extra_margin_a`), `None` while they are not used.
+    #: The days that count (spread over the day, and no more than the time from the first to the last of them holds:
+    #: see the module); the same with the history's at their weight; and the further margin the peaks are used with
+    #: now (A, `extra_margin_a`), `None` while they are not used.
     days_weighted: float = 0.0
     days_spread: int = 0
     extra_margin_a: float | None = None
@@ -461,7 +461,7 @@ class Learned:
     @property
     def days_left(self) -> int:
         """The days still to count before the learning is done (0 once `ready`): whole days, rounded up, and at
-        least, since a day counts only with `DAY_MINUTES` counted minutes."""
+        least, since a day counts only spread over the day (`SPREAD_HOURS`)."""
         return 0 if self.ready else max(math.ceil(READY_DAYS - self.days_weighted), 1)
 
     @property
@@ -655,11 +655,12 @@ class PhasePeaks:
                 spread_live += 1 if own[0] >= SPREAD_MINUTES or own[1] >= SPREAD_HOURS else 0
                 first_hour = ends[day][0] if first_hour is None else min(first_hour, ends[day][0])
                 last_hour = ends[day][1] if last_hour is None else max(last_hour, ends[day][1])
-        weighted = live_count + HISTORY_DAY_WEIGHT * (day_count - live_count)
         # No more days than the time from the first to the last counted hour holds (a day more than its whole days:
         # seven days in a row reach from one day's noon to the seventh's).
         span_days = 0 if first_hour is None or last_hour is None else (last_hour - first_hour + 1 + 24) // 24
         spread = min(spread_count, span_days)
+        # The same days with the history's at their weight: what the further margin falls by and the learning ends by.
+        weighted = min(float(spread), spread_live + HISTORY_DAY_WEIGHT * (spread_count - spread_live))
         factor = 1.0
         if total_all is not None and total_counted is not None:
             factor = max(1.0, total_all / max(total_counted, 1.0))
@@ -674,18 +675,12 @@ class PhasePeaks:
         exact_peaks = None if exact is None else tuple(max(value, 0.0) for value in exact)
         largest = _max_triple(band_peaks, exact_peaks)  # type: ignore[arg-type]
         peaks = None if largest is None else tuple(value + MARGIN_A for value in largest)
-        ready = peaks is not None and day_count >= READY_DAYS and weighted >= READY_DAYS
+        ready = peaks is not None and weighted >= READY_DAYS
         extra: float | None = None
         if ready:
             extra = 0.0
-        elif peaks is not None:
-            # The margin falls with the days that count, the history's at their weight; never below what is left
-            # of it while the learning is not done by the days' own count.
-            extra = extra_margin_a(spread)
-            if extra is not None:
-                extra = max(extra, extra_margin_a(max(
-                    spread_live + HISTORY_DAY_WEIGHT * (spread_count - spread_live), float(MIN_READY_DAYS)
-                )) or 0.0)
+        elif peaks is not None and spread >= MIN_READY_DAYS:
+            extra = extra_margin_a(max(weighted, float(MIN_READY_DAYS)))
         return Learned(
             ready=ready,
             raw_a=raw,

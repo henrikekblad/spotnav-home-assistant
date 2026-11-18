@@ -168,8 +168,13 @@ def test_the_window_keeps_only_the_last_four_weeks() -> None:
 # --- what is learned ----------------------------------------------------------------------------------------------
 
 
-def _days(peaks: PhasePeaks, days: int, *, minutes_a_day: int = DAY_MINUTES + 5, reading=None, start=T0) -> float:
-    """`days` days, each with a stretch of counted minutes."""
+def _days(peaks: PhasePeaks, days: int, *, minutes_a_day: int | None = None, reading=None, start=T0,
+          spread: bool = True) -> float:
+    """`days` days that count (their minutes spread over twelve clock hours); with `minutes_a_day` or without
+    `spread`, each with one stretch of counted minutes instead."""
+    if spread and minutes_a_day is None:
+        return _spread_days(peaks, days, reading=reading, start=start)
+    minutes_a_day = DAY_MINUTES + 5 if minutes_a_day is None else minutes_a_day
     now = start
     for day in range(days):
         now = start + day * 86400
@@ -181,7 +186,7 @@ def _spread_days(peaks: PhasePeaks, days: int, *, reading=None, start=T0, hours:
     """`days` days, each with counted minutes in `hours` of its clock hours."""
     for day in range(days):
         for hour in range(hours):
-            _close(peaks, _feed(peaks, start + day * 86400 + hour * 3600, 11, reading))
+            _close(peaks, _feed(peaks, start + day * 86400 + hour * 3600, 13, reading))
     return start + days * 86400
 
 
@@ -189,8 +194,7 @@ def test_the_learning_is_done_only_after_two_weeks_with_enough_minutes() -> None
     peaks = PhasePeaks()
     now = _days(peaks, READY_DAYS - 1)
     learned = peaks.learned(now)
-    # Thirteen days, each with its two hours in one stretch: not done, and not days that count before that.
-    assert not learned.ready and not learned.usable and learned.days_spread == 0
+    assert not learned.ready and learned.usable and learned.days_spread == READY_DAYS - 1
     assert learned.days == READY_DAYS - 1
     assert learned.days_left == 1 and learned.as_dict()["days_left"] == 1
     assert PhasePeaks().learned(now).days_left == READY_DAYS
@@ -252,9 +256,21 @@ def test_days_count_before_the_learning_is_done_only_spread_over_the_day_and_ove
     # A week of days each with two hours in one stretch (the battery idle every night at three): seven days by
     # their minutes, none that counts.
     nights = PhasePeaks()
-    now = _days(nights, MIN_READY_DAYS)
+    now = _days(nights, MIN_READY_DAYS, spread=False)
     learned = nights.learned(now)
     assert learned.days == MIN_READY_DAYS and learned.days_spread == 0 and learned.phase_peaks() is None
+    # Nor do two weeks of them end the learning, or four: the conservative rule stays, with all its days left.
+    for days in (READY_DAYS, WINDOW_DAYS - 1):
+        nights = PhasePeaks()
+        learned = nights.learned(_days(nights, days, spread=False))
+        assert learned.days == days and not learned.ready and not learned.usable and learned.phase_peaks() is None
+        assert learned.extra_margin_a is None and learned.days_left == READY_DAYS
+    # Two weeks of which only ten are spread over the day: used, with the margin of ten days.
+    mixed = PhasePeaks()
+    now = _days(mixed, 10)
+    learned = mixed.learned(_days(mixed, READY_DAYS - 10, spread=False, start=now))
+    assert learned.days == READY_DAYS and not learned.ready and learned.days_left == READY_DAYS - 10
+    assert learned.extra_margin_a == pytest.approx(extra_margin_a(10))
     # Eleven clock hours a day: still not; twelve: yes.
     eleven = PhasePeaks()
     assert eleven.learned(_spread_days(eleven, MIN_READY_DAYS, hours=SPREAD_HOURS - 1)).days_spread == 0

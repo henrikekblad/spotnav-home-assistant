@@ -446,8 +446,8 @@ async def test_the_run_repeats_until_the_learning_is_done(hass: HomeAssistant, m
     # Two weeks kept: no run, and none after it.
     hour = int(dt_util.utcnow().timestamp() // 3600)
     for day in range(READY_DAYS):
-        for offset in range(DAY_MINUTES // 30 + 1):
-            peaks.hours[hour - 24 * day - offset - 1] = _mark(5.0, 30)
+        for offset in range(12):
+            peaks.hours[(hour // 24 - 1 - day) * 24 + offset] = _mark(5.0, 30)
     await backfill._async_due(site)
     assert len(runs) == 2 and len(scheduled) == 3
     # Stopped while a run goes on: that run schedules nothing.
