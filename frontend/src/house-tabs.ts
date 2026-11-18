@@ -1,5 +1,9 @@
-// The house card's tabs (SpotNav 3.0): Now, Energy flow, Energy chart, Price and battery, in that fixed order.
+// The house card's tabs (SpotNav 3.0): Now, Energy flow, Energy chart, Earnings, Price and battery, in that fixed
+// order.
 //
+// * A tab says its long name ("Energiflöde") while the whole row fits the card, else its short one ("Flöde"), else
+//   an icon alone; the card measures the row as drawn (`fitTabs`), never guessing by language. Whatever is drawn, a
+//   tab's accessible name is its long name, and a short name or an icon has it as its tooltip too.
 // * The row is a WAI-ARIA tablist with automatic activation: the arrow keys move to the previous or next tab (and
 //   wrap), Home and End to the first and last, and the tab moved to is shown at once; only the selected tab is in
 //   the page's tab order (a roving tabindex), the panel follows it.
@@ -7,7 +11,9 @@
 //   chart preferences (`chart-preference.ts`): a storage that is missing or throws means the first tab.
 // * The card's YAML may lock one tab (`tab: now | flow | graph | price`, the card editor's "Show only tab"): the row is
 //   then not drawn and the choice is neither read nor written.
-// * The period picker the tabs Energy flow, Energy chart and Price and battery share: "‹ 2026-11-17 › [Day ▾]", the
+// * Today's label may say how far its figures reach ("I dag · till 17:00"); where the row has no room for that part
+//   it is left out whole ("I dag"), never cut to "…".
+// * The period picker the tabs Energy flow, Energy chart, Earnings and Price and battery share: "‹ 2026-11-17 › [Day ▾]", the
 //   kind as a select, the arrows one period back or forward, the date (a day) or the month or year (a select) tapped
 //   to choose; nothing after today is offered.
 
@@ -25,12 +31,17 @@ import {
   type HistoryPeriod,
 } from "./period-history";
 
-export type HouseTab = "now" | "flow" | "graph" | "price";
-export const HOUSE_TABS: readonly HouseTab[] = ["now", "flow", "graph", "price"];
+export type HouseTab = "now" | "flow" | "graph" | "earn" | "price";
+export const HOUSE_TABS: readonly HouseTab[] = ["now", "flow", "graph", "earn", "price"];
+
+/** How a tab is worded: its long name, its short name, or its icon alone. */
+export type TabFit = "long" | "short" | "icons";
+export const TAB_FITS: readonly TabFit[] = ["long", "short", "icons"];
 
 export const TAB_CLASSES = {
   list: "spotnav-house-tabs",
   tab: "spotnav-house-tab",
+  tabIcon: "spotnav-house-tab-icon",
   panel: "spotnav-house-panel",
   picker: "spotnav-house-picker",
   pickerDate: "spotnav-house-picker-date",
@@ -38,6 +49,7 @@ export const TAB_CLASSES = {
   pickerStep: "spotnav-house-picker-step",
   pickerRow: "spotnav-house-picker-row",
   pickerLabel: "spotnav-house-picker-label",
+  pickerReach: "spotnav-house-picker-reach",
   pickerHidden: "spotnav-house-picker-hidden",
   pickerOver: "spotnav-house-picker-over",
   pickerKinds: "spotnav-house-picker-kinds",
@@ -75,11 +87,92 @@ const TAB_WORDS: Record<HouseTab, TranslationKey> = {
   now: "house.tab.now",
   flow: "house.tab.flow",
   graph: "house.tab.graph",
+  earn: "house.tab.earn",
   price: "house.tab.price",
+};
+
+const TAB_SHORT_WORDS: Record<HouseTab, TranslationKey> = {
+  now: "house.tab.short.now",
+  flow: "house.tab.short.flow",
+  graph: "house.tab.short.graph",
+  earn: "house.tab.short.earn",
+  price: "house.tab.short.price",
 };
 
 export function tabWord(language: Language, tab: HouseTab): string {
   return translate(language, TAB_WORDS[tab]);
+}
+
+export function tabShortWord(language: Language, tab: HouseTab): string {
+  return translate(language, TAB_SHORT_WORDS[tab]);
+}
+
+/** The tabs' icons, stroked, in a 24-unit box: a bolt, two crossing flows, bars, coins, a price tag. */
+const TAB_ICONS: Record<HouseTab, string[]> = {
+  now: ["M13 2.5L4.5 13.5H11L10 21.5L19.5 10H13z"],
+  flow: ["M3 6.5h3.5c5.5 0 5.5 11 11 11H21", "M3 17.5h3.5c5.5 0 5.5-11 11-11H21"],
+  graph: ["M3 20.5h18", "M6.5 20.5v-8M12 20.5V4.5M17.5 20.5v-11"],
+  earn: ["M4 7.5c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z", "M4 7.5V12c0 1.7 3.6 3 8 3s8-1.3 8-3V7.5", "M4 12v4.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12"],
+  price: ["M3.5 11.5V4h7.5l9.5 9.5-7.5 7.5z", "M8 8.4v.2"],
+};
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function tabIcon(doc: Document, tab: HouseTab): SVGSVGElement {
+  const icon = doc.createElementNS(SVG_NS, "svg");
+  icon.setAttribute("class", T.tabIcon);
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("width", "22");
+  icon.setAttribute("height", "22");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("focusable", "false");
+  for (const d of TAB_ICONS[tab]) {
+    const path = doc.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    icon.append(path);
+  }
+  return icon;
+}
+
+/** Word a drawn tab row another way (see the module): each tab's content and tooltip, its accessible name kept. */
+export function setTabFit(list: HTMLElement, language: Language, fit: TabFit): void {
+  list.dataset["fit"] = fit;
+  for (const button of Array.from(list.querySelectorAll<HTMLElement>("[role='tab']"))) {
+    const tab = button.dataset["tab"];
+    if (!isHouseTab(tab)) {
+      continue;
+    }
+    const long = tabWord(language, tab);
+    button.setAttribute("aria-label", long);
+    if (fit === "icons") {
+      button.replaceChildren(tabIcon(button.ownerDocument, tab));
+      delete button.dataset["text"];
+    } else {
+      button.textContent = fit === "short" ? tabShortWord(language, tab) : long;
+      // The words once more for the styles, which hold each tab as wide as its selected (bolder) form: the row then
+      // measures the same whichever tab is selected, and choosing a tab never changes the wording.
+      button.dataset["text"] = button.textContent;
+    }
+    if (fit === "long") {
+      button.removeAttribute("title");
+    } else {
+      button.title = long;
+    }
+  }
+}
+
+/** The widest wording the drawn row has room for: long names, then short ones, then icons, each measured as laid
+ * out (a row not laid out, 0 px wide, keeps its long names). The fit chosen. */
+export function fitTabs(list: HTMLElement, language: Language): TabFit {
+  for (const fit of TAB_FITS) {
+    if (list.dataset["fit"] !== fit) {
+      setTabFit(list, language, fit);
+    }
+    if (fit === "icons" || list.scrollWidth <= list.clientWidth + 1) {
+      return fit;
+    }
+  }
+  return "icons";
 }
 
 export function tabId(idPrefix: string, tab: HouseTab): string {
@@ -108,13 +201,15 @@ export function tabForKey(key: string, current: HouseTab): HouseTab | null {
   }
 }
 
-/** The tab row. `onSelect` gets the tab and whether the keyboard moved there (the card then focuses it again). */
+/** The tab row, worded by `fit` (the card's last measure; `fitTabs` settles it once it is laid out). `onSelect` gets
+ * the tab and whether the keyboard moved there (the card then focuses it again). */
 export function tabList(
   doc: Document,
   language: Language,
   selected: HouseTab,
   idPrefix: string,
   onSelect: (tab: HouseTab, byKey: boolean) => void,
+  fit: TabFit = "long",
 ): HTMLElement {
   const list = doc.createElement("div");
   list.className = T.list;
@@ -130,9 +225,6 @@ export function tabList(
     button.setAttribute("aria-selected", String(tab === selected));
     button.setAttribute("aria-controls", panelId(idPrefix, tab));
     button.tabIndex = tab === selected ? 0 : -1;
-    button.textContent = tabWord(language, tab);
-    // The language for the browser's hyphenation of a long word ("Energie­diagramm").
-    button.lang = language;
     button.addEventListener("click", () => {
       if (tab !== selected) {
         onSelect(tab, false);
@@ -148,6 +240,7 @@ export function tabList(
     });
     list.append(button);
   }
+  setTabFit(list, language, fit);
   return list;
 }
 
@@ -264,8 +357,22 @@ export function periodPicker(
   label.className = T.pickerLabel;
   label.dataset["pickLabel"] = "true";
   const words = choiceLabel(language, choice, today);
-  label.textContent = through !== null && choice.period === "day" && choice.date === null ? translate(language, "house.picker.through", { label: words, time: through }) : words;
-  label.setAttribute("aria-label", `${translate(language, pickKey)}: ${label.textContent}`);
+  const whole = through !== null && choice.period === "day" && choice.date === null ? translate(language, "house.picker.through", { label: words, time: through }) : words;
+  if (whole.startsWith(words) && whole.length > words.length) {
+    // The period's own words, then how far today's figures reach as a part of its own: where the row has no room
+    // for both (a phone) the styles drop that part whole, never cutting the words; the name for a screen reader and
+    // the tooltip keep it.
+    const main = doc.createElement("span");
+    main.textContent = words;
+    const reach = doc.createElement("span");
+    reach.className = T.pickerReach;
+    reach.textContent = whole.slice(words.length);
+    label.append(main, reach);
+    label.title = whole;
+  } else {
+    label.textContent = whole;
+  }
+  label.setAttribute("aria-label", `${translate(language, pickKey)}: ${whole}`);
   holder.append(label);
   if (choice.period === "day") {
     const input = doc.createElement("input");
@@ -349,18 +456,20 @@ export const TAB_STYLES = `
     margin: 10px 0 0;
     border-bottom: 1px solid var(--divider-color, #e0e0e0);
   }
-  /* A tab shrinks to its longest word and wraps between words, so a long language's four tabs stay in view at 360 px
-     without a scroll; a word is never broken. */
+  /* A tab is one line, never narrower than its words: a row too wide for the card is worded shorter (\`fitTabs\`),
+     so every tab stays in view without a scroll and no word is broken. */
   .${T.tab} {
-    flex: 1 1 auto;
+    flex: 1 0 auto;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     min-height: 40px;
-    padding: 6px 4px;
+    padding: 6px 7px;
     font: inherit;
     font-size: 0.8rem;
     line-height: 1.2;
-    white-space: normal;
-    hyphens: auto;
-    -webkit-hyphens: auto;
+    white-space: nowrap;
     color: var(--secondary-text-color, #727272);
     background: transparent;
     border: 0;
@@ -372,6 +481,29 @@ export const TAB_STYLES = `
     color: var(--primary-text-color, #212121);
     font-weight: 500;
     border-bottom-color: var(--primary-color, #03a9f4);
+  }
+  /* As wide as its selected form, unseen (see \`setTabFit\`). */
+  .${T.tab}::after {
+    content: attr(data-text);
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    font-weight: 500;
+    pointer-events: none;
+    user-select: none;
+  }
+  .${T.tabIcon} {
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .${T.list}[data-fit="icons"] .${T.tab} {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 0;
   }
   .${T.tab}:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
@@ -423,10 +555,11 @@ export const TAB_STYLES = `
   }
   .${T.pickerLabel} {
     max-width: 100%;
-    min-height: 34px;
+    height: 34px;
     padding: 0 8px;
     font: inherit;
     font-weight: 500;
+    line-height: 34px;
     color: var(--primary-text-color, #212121);
     background: transparent;
     border: 0;
@@ -435,6 +568,20 @@ export const TAB_STYLES = `
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: pointer;
+  }
+  /* The label's parts sit on one line of the label's height; a part with no room on it (how far today's figures
+     reach, on a phone) wraps to a second line, which is out of sight: dropped whole, never cut. */
+  .${T.pickerLabel}:has(.${T.pickerReach}) {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    white-space: pre;
+  }
+  .${T.pickerLabel} > span {
+    flex: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .${T.pickerLabel}:hover { background: var(--secondary-background-color, #eee); }
   /* The native control: out of sight under the label (a day's date input, opened by the label), or over it,

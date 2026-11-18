@@ -21,7 +21,8 @@ no plug-in time (a record from before it, a charger that cannot say whether a ca
 counterfactual's prices has no figure (`None`), never 0. A session that started at plug-in anyway saves about 0.
 
 * **Day**: a session's saving is counted on the local day its charge started, as the charger card's history counts a
-  session's cost, so a charge over midnight is one figure on one day in both cards.
+  session's cost, so a charge over midnight is one figure on one day in both cards. A day's hourly bars put it in the
+  hour the charge started (`car_hours`).
 * **The battery's and the sun's kWh** (no double counting): only the car's grid kWh count. The energy flow's rule
   (`site/energy_flow.allocate_hour`, hour by hour from the recorder's long-term statistics) says how much of the car's
   energy in an hour came from the grid; the kWh the battery gave the car are already in the battery's arbitrage (it
@@ -36,6 +37,13 @@ closed time SpotNav itself held it closed (`spotnav_min`, kept with the review, 
 would have done in shadow (`review.plan`) never counts: nothing was done. An estimate, and labelled one. A day is
 known the night after (the review needs the rebound's hours), so today has no heat part yet.
 
+**Before SpotNav controls the battery** (`own_control`): on a day (or the share of one) the battery ran under its
+own control, what it earned is the battery's own (`own`: its arbitrage in that share), and beside it stands what
+SpotNav's plan would have earned on the same measured day (`would`): the same figure plus what the nightly review
+(`battery/plan_shadow.DayReview`) says the plan's day would have cost less than the day as it went (the plan's saving
+less the battery's own, both against plain self-consumption), in the same share. The review comes the night after, so
+a day without one has no `would`. Never inside SpotNav's total: nothing was done.
+
 A part a site does not have, or not yet for the day, is `None` and left out of the total, never shown as 0.
 Money is in the area's minor unit (öre).
 """
@@ -45,7 +53,7 @@ from __future__ import annotations
 from bisect import bisect_left, bisect_right
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Any, Final
 
 from ..sessions.model import STARTED_HYBRID, STARTED_PLAN_WINDOW, STARTED_SOLAR, ChargeSession
@@ -237,6 +245,18 @@ def car_days(
     return out, since
 
 
+def car_hours(sessions: Iterable[ChargeSession], savings: Mapping[str, float | None]) -> dict[datetime, float]:
+    """The car's saving per UTC hour its sessions started in: a day's hourly bars put a charge's whole figure in the
+    hour the charge started, as `car_days` puts it on the day it started."""
+    out: dict[datetime, float] = {}
+    for session in sessions:
+        value = savings.get(session.id)
+        if value is not None:
+            hour = session.start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            out[hour] = out.get(hour, 0.0) + value
+    return out
+
+
 # ------------------------------------------------------------------------------------------------ battery and heat
 
 
@@ -321,3 +341,16 @@ def period_sums(savings: Mapping[date, DaySaving]) -> dict[str, Any] | None:
         return None
     return {"total": _r(sum(totals)), **out, "days": len(totals)}
 
+
+
+def own_control(arbitrage: float | None, share: float | None, review: Any = None) -> tuple[float | None, float | None]:
+    """A day's `(own, would)` (see the module) from its arbitrage and the share of it SpotNav controlled: what the
+    battery earned in the share of the day it ran under its own control, and what SpotNav's plan would have earned
+    there (`None` without the day's review); `(None, None)` on a day SpotNav controlled throughout or without the
+    battery's day."""
+    if arbitrage is None or share is None or share >= 1.0:
+        return None, None
+    own = arbitrage * (1.0 - share)
+    if review is None:
+        return own, None
+    return own, own + (review.saving - review.actual_saving) * (1.0 - share)

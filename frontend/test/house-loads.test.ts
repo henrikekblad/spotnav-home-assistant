@@ -381,33 +381,4 @@ describe("the house card", () => {
     expect(root.textContent).toContain(translate("en", "house.loads.unsupported"));
     element.remove();
   });
-
-  it("opens from the history's flow for the shown period and returns to the history", async () => {
-    const hass = new FakeHass();
-    const { element, root } = await mounted(hass);
-    root.querySelector<HTMLButtonElement>("button[data-history='open']")!.click();
-    await vi.advanceTimersByTimeAsync(0);
-    hass.resolveNext(read("house_history", "villa_month.json"));
-    await vi.advanceTimersByTimeAsync(0);
-    const history = root.querySelector<HTMLElement>("[role='dialog']")!;
-    const house = history.querySelector<SVGGElement>("[data-part='energy-flow'] [role='button']")!;
-    house.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
-    await vi.advanceTimersByTimeAsync(0);
-    const month = read("house_history", "villa_month.json");
-    expect(hass.messages.at(-1)).toEqual({ type: "spotnav/get_house_loads", api_version: 1, site_id: "site_villa", period: "month", date: month["date"] });
-    // The history steps aside while the pie is open.
-    expect(history.closest<HTMLElement>("[hidden]")).not.toBeNull();
-    hass.resolveNext(read("house_loads", "meters_over_house.json"));
-    await vi.advanceTimersByTimeAsync(0);
-    const pie = [...root.querySelectorAll<HTMLElement>("[role='dialog']")].find((item) => item !== history)!;
-    expect(pie.querySelector("[data-line='over']")).not.toBeNull();
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(history.closest<HTMLElement>("[hidden]")).toBeNull();
-    expect(root.activeElement?.getAttribute("role")).toBe("button");
-    expect((root.activeElement as HTMLElement).dataset["role"]).toBe("house");
-    // The history is shown again without being read again.
-    expect(hass.messages.filter((message) => message.type === "spotnav/get_house_history")).toHaveLength(1);
-    element.remove();
-  });
 });

@@ -8,14 +8,15 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      energy_flow: (as `spotnav/get_house`'s, `site/energy_flow.py`) | null,
      buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods,
                 battery_saving, battery_days, saving, saving_battery, saving_car, saving_heat, arbitrage, buy,
-                sell}],
+                sell, own_battery, would_battery}],
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
               by_day: [{date, battery_saving, plan_saving, own_saving, own_share, plan_share, share_note}],
               perfect: (`site/perfect_view.py`) | null} | null,
      forecast: {house, sun, sun_corrected, soc: {mae, days} | null},
-     saving: {total, battery, car, heat, battery_days, car_days, heat_days, days} | null }
+     saving: {total, battery, car, heat, battery_days, car_days, heat_days, days} | null,
+     own_control: {earned, would, days, would_days} | null }
 
 * **Energy** (`energy_flow`, `buckets`): the Energy dashboard's meters and the chargers' registers per period (a
   day within the recorder's short-term statistics by the quarter hour, else by the hour), allocated period by
@@ -53,7 +54,17 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   (`site/spotnav_saving.py`), per day summed over the period: `{total, battery, car, heat, battery_days, car_days,
   heat_days, days}` (each part over the days that have it, `days` the days with any part); `null` without any. A
   month's or a year's bucket has the same sums (`saving`, `saving_battery`, `saving_car`, `saving_heat`, `null` where
-  none of its days has the part); a day's hours have none (the parts are a whole day's).
+  none of its days has the part). A day's hours have the battery's part by the hour it was earned in (the hour's
+  arbitrage in the day's controlled share; kept 40 days, `null` on an older day) and the car's in the hour its charge
+  started; the heat's is a whole day's estimate and stays in the period's sums alone (`saving_heat` `null` on an
+  hour), so a day's `saving.total` may hold more than its hours' `saving` add up to.
+* **Before SpotNav controls the battery** (`own_control`, `site/spotnav_saving.own_control`): over the days (or the
+  share of a day) the battery ran under its own control, what it earned (`earned`, over `days`) and what SpotNav's
+  plan would have earned on the same days (`would`: `earned` plus what the nightly reviews say the plan would have
+  done better or worse, known for `would_days` of them; `null` with none reviewed); `null` where SpotNav controlled
+  throughout or without a battery. A bucket has the same two (`own_battery`, `would_battery`; a day without its
+  review counts as it went in both, so the two are over the same days; an hour of a day has `own_battery` alone, the
+  review being a whole day's). Never inside `saving`: nothing was done.
 * **The forecasts** (`forecast`): the mean of each forecast's daily mean absolute error over the period's reviewed
   days (the forecast log keeps 30 days of reviews), with the days counted; `null` per forecast without one.
 
@@ -73,7 +84,7 @@ from ..battery.plan_shadow import KIND_BATTERY, DayReview, PriceSlot
 from .energy_flow import EnergyHour, allocate_hour, energy_flow
 from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED
 from .perfect_view import perfect_block
-from .spotnav_saving import DaySaving, period_sums
+from .spotnav_saving import DaySaving, own_control, period_sums
 from .history_period import PERIOD_DAY, Period, bucket_key, bucket_keys, local_date, midnight_utc
 
 HOUSE_HISTORY_API_VERSION: Final = 1
@@ -94,6 +105,7 @@ HISTORY_KEYS: Final = (
     "review",
     "forecast",
     "saving",
+    "own_control",
 )
 BUCKET_KEYS: Final = (
     "key",
@@ -117,6 +129,8 @@ BUCKET_KEYS: Final = (
     "arbitrage",
     "buy",
     "sell",
+    "own_battery",
+    "would_battery",
 )
 #: The forecast log's kinds the history scores, by the answer's name.
 FORECAST_KINDS: Final = (
@@ -156,6 +170,8 @@ class HouseHistoryInputs:
     #: measure; empty without a battery.
     arbitrage_days: Mapping[date, float] = field(default_factory=dict)
     arbitrage_hours: Mapping[datetime, float] = field(default_factory=dict)
+    #: The car's saving per UTC hour its charges started in (`site/spotnav_saving.car_hours`), for a day's hours.
+    car_hours: Mapping[datetime, float] = field(default_factory=dict)
 
 
 def _r(value: float, digits: int = 2) -> float:
@@ -215,6 +231,8 @@ def _empty_bucket(key: str) -> dict[str, Any]:
         "arbitrage": None,
         "buy": None,
         "sell": None,
+        "own_battery": None,
+        "would_battery": None,
     }
 
 
@@ -291,18 +309,48 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
                 _add(target, "saving_battery", day_saving.battery)
                 _add(target, "saving_car", day_saving.car)
                 _add(target, "saving_heat", day_saving.heat)
-    # The battery's arbitrage: a day's by its hours, a month's and a year's by their days.
+    # The battery's arbitrage: a day's by its hours, a month's and a year's by their days. Beside it, the share of it
+    # that is SpotNav's doing (a day's hours; a month's and a year's buckets have it above) and the battery's own.
     if inputs.has_battery and period.kind == PERIOD_DAY:
+        day_saving = inputs.savings.get(period.first)
+        share = None if day_saving is None else day_saving.battery_share
         for hour, value in inputs.arbitrage_hours.items():
             target = buckets.get(bucket_key(period, hour, tz))
             if target is not None:
                 _add(target, "arbitrage", value)
+                if share is not None and share > 0:
+                    _add(target, "saving_battery", value * share)
+                    _add(target, "saving", value * share)
+                if share is not None and share < 1:
+                    _add(target, "own_battery", value * (1.0 - share))
     elif inputs.has_battery:
         for day, value in inputs.arbitrage_days.items():
             if period.contains(day):
                 target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
                 if target is not None:
                     _add(target, "arbitrage", value)
+        # A day without its review counts as it went, so a bucket's two sums are over the same days; a bucket with
+        # no reviewed day has no `would_battery`.
+        reviewed: set[str] = set()
+        for day, (own, would) in own_control_days(inputs).items():
+            target = buckets.get(bucket_key(period, midnight_utc(day, tz) + timedelta(hours=12), tz))
+            if target is not None:
+                _add(target, "own_battery", own)
+                target["would_battery"] = (target["would_battery"] or 0.0) + (own if would is None else would)
+                if would is not None:
+                    reviewed.add(target["key"])
+        for bucket in buckets.values():
+            if bucket["key"] not in reviewed:
+                bucket["would_battery"] = None
+    # The car's saving in the hour its charge started (a day's hours; the day must have the car's figure at all).
+    if period.kind == PERIOD_DAY:
+        day_saving = inputs.savings.get(period.first)
+        if day_saving is not None and day_saving.car is not None:
+            for hour, value in inputs.car_hours.items():
+                target = buckets.get(bucket_key(period, hour, tz))
+                if target is not None:
+                    _add(target, "saving_car", value)
+                    _add(target, "saving", value)
     for key, (minutes, buy, sell) in weights.items():
         if minutes > 0:
             buckets[key]["buy"] = buy / minutes
@@ -322,6 +370,39 @@ def energy_and_cost(inputs: HouseHistoryInputs) -> tuple[list[dict[str, Any]], d
             "priced": priced,
         }
     return rows, cost
+
+
+def own_control_days(inputs: HouseHistoryInputs) -> dict[date, tuple[float, float | None]]:
+    """Per day of the period the battery ran (in part) under its own control: what it earned there and what SpotNav's
+    plan would have (`site/spotnav_saving.own_control`; `None` without the day's review)."""
+    if not inputs.has_battery:
+        return {}
+    reviews = {review.day: review for review in inputs.reviews or ()}
+    out: dict[date, tuple[float, float | None]] = {}
+    for day, value in inputs.arbitrage_days.items():
+        saving = inputs.savings.get(day)
+        if not inputs.period.contains(day) or saving is None:
+            continue
+        own, would = own_control(value, saving.battery_share, reviews.get(day))
+        if own is not None:
+            out[day] = (own, would)
+    return out
+
+
+def own_control_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
+    """The period's `own_control` (see the module); `None` without a day under the battery's own control."""
+    days = own_control_days(inputs)
+    if not days:
+        return None
+    known = [would for _own, would in days.values() if would is not None]
+    # A day without its review counts as it went, so the two sums are over the same days.
+    would = sum(own if would is None else would for own, would in days.values())
+    return {
+        "earned": _r(sum(own for own, _would in days.values())),
+        "would": _r(would) if known else None,
+        "days": len(days),
+        "would_days": len(known),
+    }
 
 
 def review_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
@@ -441,4 +522,5 @@ def house_history(inputs: HouseHistoryInputs) -> dict[str, Any]:
         "review": review_block(inputs),
         "forecast": forecast_block(inputs),
         "saving": period_sums({day: item for day, item in inputs.savings.items() if period.contains(day)}),
+        "own_control": own_control_block(inputs),
     }

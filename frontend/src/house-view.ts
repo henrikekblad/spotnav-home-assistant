@@ -7,11 +7,12 @@ import { attachScrub } from "./chart-scrub";
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
-import { flowHeight, renderFlow, type LoadsKind } from "./house-flow";
+import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
 import type { HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
 import { earnedBars, earnedStrip, earnedTotal, energyChart, kwhText, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
-import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice } from "./house-tabs";
+import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
+import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
 import type { HistoryPeriod } from "./period-history";
 import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { hiddenIn, type HiddenSeries } from "./house-series";
@@ -53,6 +54,8 @@ export interface HouseUi {
   tab?: HouseTab;
   /** The tab the card's YAML locks: the row is not drawn. */
   locked?: HouseTab | null;
+  /** How the tab row was last worded (`house-tabs.ts`: long names, short ones or icons), so a redraw starts there. */
+  tabFit?: TabFit;
   /** The period the period tabs show (default today). */
   choice?: PeriodChoice;
   /** In a box of fixed height: the height of the shown tab's main picture (its spare room given to it). */
@@ -61,6 +64,8 @@ export interface HouseUi {
   bar?: string | null;
   /** The series hidden from the chart's legend, per view (absent: each view's defaults, `house-series.ts`). */
   hidden?: HiddenSeries;
+  /** The Earnings tab's parts the viewer hid (`house-earnings.ts`); none by default. */
+  earnHidden?: readonly string[];
   /** The chart's view: the energy (default) or the price with the battery. */
   view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
@@ -75,7 +80,7 @@ export interface HouseHandlers {
   /** The viewer hid or showed a series: the view's whole hidden list after the change. */
   onLegend?(view: HouseChartView, hidden: string[]): void;
   onSelect(index: number | null): void;
-  /** The clock in the header: the history dialog (`history-dialog.ts`). Without it the card has no clock. */
+  /** The "i" in the header: the details, the history dialog (`history-dialog.ts`). Without it the card has none. */
   onHistory?(opener: HTMLElement): void;
   /** An administrator's settings gear: the shared settings popover. Without it the card has no gear. */
   onSettings?(): void;
@@ -90,6 +95,8 @@ export interface HouseHandlers {
   onPeriod?(choice: PeriodChoice): void;
   /** A bar chosen in the period tabs' bars (kept over a redraw). */
   onBar?(key: string | null): void;
+  /** The viewer hid or showed a part of the Earnings tab: the whole hidden list after the change. */
+  onEarnPart?(hidden: string[]): void;
 }
 
 export interface HouseRenderInput {
@@ -105,6 +112,8 @@ export interface HouseRenderInput {
   entityWords?: EntityWords;
   /** The tabs' own data; without it the period tabs say they are loading and Now has no live figures. */
   tabs?: HouseTabsData;
+  /** The energy flow's pill words measured as drawn (`house-flow.ts`); without it they are estimated. */
+  measure?: PillMeasure;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
@@ -484,7 +493,7 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
   const status = test !== null ? test.status : now !== null && now !== "test" ? statusLine(doc, now.text, now.code) : null;
   const buttons: HTMLButtonElement[] = [];
   if (onHistory !== undefined) {
-    const button = headerButton(doc, "history", translate(language, "hist.open"));
+    const button = headerButton(doc, "info", translate(language, "house.details.open"));
     button.addEventListener("click", () => onHistory(button));
     buttons.push(button);
   }
@@ -1383,7 +1392,8 @@ function historyOrStatus(input: HouseRenderInput, panel: HTMLElement): HouseHist
   return history.answer;
 }
 
-/** The energy flow of the period with its tiles (today's: the card's own answer, up to its last read). */
+/** The energy flow of the period (today's: the card's own answer, up to its last read); its tiles only where no
+ * diagram can be drawn. */
 function flowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
   const { doc, language } = input;
   const choice = input.ui.choice ?? { period: "day", date: null };
@@ -1415,21 +1425,25 @@ function flowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElem
   const loads = onHouse === null ? null : (opener: HTMLElement, kind: LoadsKind) => onHouse(opener, kind, isToday ? null : { period: choice.period, date, running });
   // Lower than the old front's own diagram, the tiles under it carry the figures; a box gives it its spare room.
   const flowWidth = Math.max(260, Math.floor(input.width));
-  const diagram = renderFlow(doc, language, flow, flowWidth, input.idPrefix, !running || choice.period !== "day", loads, input.ui.fill ?? Math.min(flowHeight(flowWidth, 5), TAB_FLOW_PX));
+  const diagram = renderFlow(doc, language, flow, flowWidth, input.idPrefix, !running || choice.period !== "day", loads, input.ui.fill ?? Math.min(flowHeight(flowWidth, 5), TAB_FLOW_PX), input.measure ?? null);
   const section = element(doc, "section", `${H.flow}`);
   section.dataset["part"] = "energy-flow";
   if (diagram === null) {
+    // No diagram to carry the figures (nothing flowed between two blocks yet): the tiles do, where any has energy.
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, running && choice.period === "day" ? "house.flow.waiting" : "hist.house.noEnergy")));
     panel.append(section);
+    const tiles = tilesBlock(doc, language, flow);
+    if (tiles !== null) {
+      panel.append(tiles);
+    }
     return;
   }
   section.append(diagram);
   panel.append(section);
-  // In a box of fixed height the diagram takes the room and carries the figures; elsewhere the tiles and the hint.
+  // The diagram carries the figures; in a box of fixed height it takes the room, elsewhere the hint follows it.
   if (boxed(input)) {
     return;
   }
-  panel.append(tilesBlock(doc, language, flow));
   if (loads !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
     const heat = diagram.querySelector(".spotnav-house-flow-action[data-role='heat']") !== null;
     panel.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, heat ? "house.loads.tapHeat" : "house.loads.tap")));
@@ -1577,6 +1591,50 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
   }
 }
 
+/** Earnings: the heading with the sum of the parts drawn, the parts as toggles with their sums, the period's bars (an
+ * hour, a day or a month each, a stack per part) and what each figure counts (`house-earnings.ts`). */
+function earnPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
+  const { doc, language } = input;
+  panel.append(picker(input, today));
+  const history = historyOrStatus(input, panel);
+  if (history === null) {
+    return;
+  }
+  const money = (minor: number): string => amount(language, minor, history.money ?? answer.money);
+  const hidden = new Set(input.ui.earnHidden ?? []);
+  if (earnParts(history).length === 0) {
+    panel.append(statusParagraph(doc, language, "house.earn.none", "no-earnings"));
+    return;
+  }
+  const total = earnTotal(history, hidden);
+  const heading = element(doc, "p", PERIOD_VIEW_CLASSES.total, total === null ? translate(language, "house.earn.noneShown") : translate(language, "house.earn.total", { amount: money(total) }));
+  heading.dataset["line"] = "earn-total";
+  panel.append(heading, earnLegend(doc, language, history, hidden, money, (next) => input.handlers.onEarnPart?.(next)));
+  const bars = earnBars({
+    doc,
+    language,
+    answer: history,
+    hidden,
+    height: barsHeight(input),
+    money,
+    selected: input.ui.bar ?? null,
+    ...(input.handlers.onBar === undefined ? {} : { onSelect: input.handlers.onBar.bind(input.handlers) }),
+    boxed: boxed(input),
+  });
+  if (bars !== null) {
+    panel.append(bars);
+  }
+  if (boxed(input)) {
+    return;
+  }
+  const notes = earnNotes(language, history, hidden, money);
+  if (notes.length > 0) {
+    const line = element(doc, "p", `${C.muted} spotnav-house-earn-notes`, notes.join(" "));
+    line.dataset["line"] = "earn-notes";
+    panel.append(line);
+  }
+}
+
 // ------------------------------------------------------------------------------------------------ body
 
 /** The card's whole content for one state. */
@@ -1605,7 +1663,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const tab: HouseTab = locked ?? input.ui.tab ?? "now";
   card.dataset["tab"] = tab;
   if (locked === null) {
-    card.append(tabList(doc, language, tab, input.idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey)));
+    card.append(tabList(doc, language, tab, input.idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey), input.ui.tabFit ?? "long"));
   }
   const panel = tabPanel(doc, tab, input.idPrefix, locked === null);
   card.append(panel);
@@ -1619,6 +1677,8 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     flowPanel(input, answer, panel, today);
   } else if (tab === "graph") {
     graphPanel(input, answer, panel, today);
+  } else if (tab === "earn") {
+    earnPanel(input, answer, panel, today);
   } else {
     pricePanel(input, answer, panel, today);
   }

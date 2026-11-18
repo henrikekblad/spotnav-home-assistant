@@ -1,4 +1,4 @@
-// The history dialog of the house and heat cards: opened from the clock in a card's header, it reads one period at a
+// The history dialog of the house and heat cards: opened from the "i" (house) or the clock (heat) in a card's header, it reads one period at a
 // time (`spotnav/get_house_history` or `spotnav/get_heat_history`) and shows it with the card's body function
 // (`house-history.ts`, `heat-history.ts`). A newer read wins over an older one; a period that cannot be read keeps the
 // one shown before, dimmed no more, with the sentence under the tabs. The Detailed switch is remembered per browser.
@@ -37,11 +37,6 @@ export interface HistoryDialogOptions<A> {
   width: () => number;
   decode: (raw: unknown) => { ok: true; value: A } | { ok: false; failure: "unsupported" | "malformed" };
   body: (input: HistoryBodyInput<A>) => HTMLElement;
-  /**
-   * House in the shown period's flow tapped: the history steps aside (hidden, its period kept) for what the house
-   * used, and `back` shows it again where it was.
-   */
-  flowHouse?: (answer: A, back: () => void, kind: "house" | "heat") => void;
 }
 
 /** The browser's local date, for the pickers until the first answer gives the site's. */
@@ -56,8 +51,6 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
   private state: HistoryState<A> = { kind: "loading" };
   private ui: PeriodUi;
   private read = 0;
-  /** What opened the dialog, focused again when it closes. */
-  private opener: HTMLElement | null = null;
 
   constructor(options: HistoryDialogOptions<A>) {
     this.options = options;
@@ -91,7 +84,6 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
   open(opener: HTMLElement | null): void {
     this.ui = { ...this.ui, date: null, pending: false, selected: null };
     this.state = { kind: "loading" };
-    this.opener = opener;
     this.ensure().show({ title: this.title(), body: this.body(), opener });
     void this.load();
   }
@@ -121,34 +113,7 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
         writeDetailed(this.options.kind, detailed);
         this.paint();
       },
-      ...(this.options.flowHouse === undefined ? {} : { onFlowHouse: (_opener: HTMLElement, kind: "house" | "heat") => this.flowHouse(kind) }),
     };
-  }
-
-  /** What the house used for the shown period, in place of the history until it is closed. */
-  private flowKind: "house" | "heat" = "house";
-
-  private flowHouse(kind: "house" | "heat" = "house"): void {
-    const flowHouse = this.options.flowHouse;
-    if (flowHouse === undefined || this.state.kind !== "ready" || this.dialog === null) {
-      return;
-    }
-    this.flowKind = kind;
-    this.dialog.hide({ restoreFocus: false });
-    flowHouse(this.state.answer, () => this.back(), kind);
-  }
-
-  /** The history again as it was left, the block opened from focused. */
-  private back(): void {
-    const dialog = this.ensure();
-    if (dialog.isOpen()) {
-      return;
-    }
-    dialog.show({ title: this.title(), body: this.body(), opener: this.opener });
-    if (this.ui.pending) {
-      void this.load();
-    }
-    dialog.element.querySelector<HTMLElement>(`.spotnav-house-flow-action[data-role='${this.flowKind}']`)?.focus();
   }
 
   private body(): HTMLElement {
@@ -175,13 +140,17 @@ export class HistoryDialog<A extends { period: HistoryPeriod; date: string }> {
       focused !== null && dialog.element.contains(focused)
         ? focused.dataset["period"] !== undefined
           ? `button[data-period="${focused.dataset["period"]}"]`
-          : focused.dataset["step"] !== undefined
+          : focused.dataset["kind"] !== undefined
+            ? `button[data-kind="${focused.dataset["kind"]}"]`
+            : focused.dataset["pickLabel"] !== undefined
+              ? "[data-pick-label]"
+              : focused.dataset["step"] !== undefined
             ? `button[data-step="${focused.dataset["step"]}"]`
             : focused.dataset["pick"] !== undefined
-              ? "[data-pick]"
-              : focused.dataset["detailed"] !== undefined
-                ? "[data-detailed]"
-                : null
+                ? "[data-pick]"
+                : focused.dataset["detailed"] !== undefined
+                  ? "[data-detailed]"
+                  : null
         : null;
     dialog.show({ title: this.title(), body: this.body() });
     if (refocus !== null) {

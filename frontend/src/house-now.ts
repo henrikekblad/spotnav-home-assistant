@@ -3,9 +3,15 @@
 //
 // * The schematic: the house in the middle, and around it only what the site has: the sun (top left), the grid (top
 //   right), the battery (bottom left), the car (bottom right) and the heat (below the house, part of it). A line
-//   runs from each to the house, with dots running the way the power flows, a filled arrowhead on its middle and the
-//   live kW beside it, so the direction is never colour or motion alone. The car's line is there only while a car is
-//   plugged in; otherwise its node is dimmed. A house with the grid alone is one low row, the grid to the house.
+//   runs from each to the house, with dots running the way the power flows and the live kW beside it. The dots alone
+//   show the way while they run (an arrowhead on them made the flow harder to read); under `prefers-reduced-motion`,
+//   where they stand still, a filled arrowhead on the line's middle shows it instead, and the picture's description
+//   says each line's way in words, so the direction is never colour or motion alone. The car's line is there only
+//   while a car is plugged in; otherwise its node is dimmed. A house with the grid alone is one low row, the grid to
+//   the house. The house sits a little above the middle and the heat well below it, so the heat's line straight down
+//   is long enough to show its flow.
+// * "House today" is the house with its heat and without the car (the energy flow's house and heat blocks); a site
+//   with a car says so under the figure, since a battery's own app counts the charger into the house's use.
 // * In the corners, the day so far (the energy flow's own figures, `site/energy_flow.py`), each value in its part's
 //   colour as the owner's hall card has them (the sun yellow, bought red, sold green, the battery teal, the car its
 //   own), mixed toward the text colour so it keeps its contrast on a light and a dark card; a long name ends in "…".
@@ -284,7 +290,7 @@ const ICONS: Record<NodeRole | "house", string[]> = {
 
 /** The schematic's height for its width (a fixed-height box may ask another). */
 export function schematicHeight(width: number): number {
-  return Math.round(Math.min(320, Math.max(270, width * 0.42)));
+  return Math.round(Math.min(344, Math.max(296, width * 0.42)));
 }
 
 /** A house with the grid alone: one low row. */
@@ -302,12 +308,12 @@ export function nodeSpots(width: number, height: number): Record<NodeRole | "hou
   const top = 38 + (height - 76) * 0.2;
   const bottom = height - 38 - (height - 76) * 0.2;
   return {
-    house: { x: width / 2, y: height / 2 },
+    house: { x: width / 2, y: height * 0.45 },
     sun: { x: side, y: top },
     grid: { x: width - side, y: top },
     battery: { x: side, y: bottom },
     car: { x: width - side, y: bottom },
-    heat: { x: width / 2, y: bottom + 12 },
+    heat: { x: width / 2, y: bottom + 16 },
   };
 }
 
@@ -367,7 +373,8 @@ export function cornerWords(language: Language, answer: HouseAnswer, live: House
     words.push({ role: "sun", name: translate(language, "house.nowTab.sun"), value: value(flowKwh(flow, "source", "solar")), tone: "sun" });
   }
   const whole = flow === null ? null : (flowKwh(flow, "use", "house") ?? 0) + (flowKwh(flow, "use", "heat") ?? 0);
-  words.push({ role: "house", name: translate(language, "house.nowTab.house"), value: value(whole), tone: "house" });
+  // The house with its heat; the car is its own corner, and the figure says it is not in here.
+  words.push({ role: "house", name: translate(language, "house.nowTab.house"), value: value(whole), tone: "house", ...(has.car ? { under: translate(language, "house.nowTab.houseNoCar") } : {}) });
   const sold = flowKwh(flow, "use", "grid");
   words.push({
     role: "grid",
@@ -462,7 +469,7 @@ export function renderSchematic(input: SchematicInput): SVGSVGElement {
     dots.dataset["k"] = `dots-${line.role}`;
     dots.style.animationDuration = `${dotLap(line.kw).toFixed(2)}s`;
     wires.append(dots);
-    // A filled arrowhead on the line's middle: the direction without the colour or the motion.
+    // A filled arrowhead on the line's middle, shown only where the dots stand still (reduced motion).
     const angle = (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
     const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
     const arrow = svg(doc, "path", { d: "M-5 -5L5 0L-5 5Z", class: "spotnav-now-arrow", transform: `translate(${mid.x.toFixed(1)} ${mid.y.toFixed(1)}) rotate(${angle.toFixed(0)})` });
@@ -652,8 +659,13 @@ export const NOW_STYLES = `
   @media (prefers-reduced-motion: reduce) {
     .spotnav-now-dots { animation: none; }
   }
+  /* The dots show the way while they run; the arrowhead only where they stand still. */
   .spotnav-now-arrow {
     stroke: none;
+    display: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spotnav-now-arrow { display: inline; }
   }
   .spotnav-now-schematic [data-tone="sun"] { --spotnav-now-tone: var(--spotnav-sun-colour); }
   .spotnav-now-schematic [data-tone="battery"] { --spotnav-now-tone: var(--spotnav-battery-colour); }

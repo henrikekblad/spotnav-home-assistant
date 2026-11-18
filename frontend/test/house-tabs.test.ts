@@ -9,9 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSE_CARD_ELEMENT, houseConfigForm, LIVE_REFRESH_MS, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { decodeHouseNow, dotLap, fitName, patchSchematic, planRuns, planSentence, renderSchematic, schematicLines, type HouseNow } from "../src/house-now";
-import { earnedBars, earnedTotal, energyChart, flowTiles, niceStep } from "../src/house-period-view";
-import { choiceLabel, kindChoice, periodPicker, readTab, stepChoice, tabForKey, tabKey, tabList, writeTab, type PeriodChoice } from "../src/house-tabs";
+import { decodeHouseNow, dotLap, fitName, nodeSpots, NOW_STYLES, patchSchematic, planRuns, planSentence, renderSchematic, schematicHeight, schematicLines, type HouseNow } from "../src/house-now";
+import { earnedBars, earnedTotal, energyChart, flowTiles, niceStep, tilesBlock } from "../src/house-period-view";
+import { choiceLabel, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, TAB_STYLES, writeTab, type PeriodChoice } from "../src/house-tabs";
 import { houseBody, type HouseTabsData, type HouseUi } from "../src/house-view";
 import { translate } from "../src/i18n";
 import { FakeHass } from "./helpers";
@@ -68,14 +68,55 @@ describe("the tablist", () => {
     const list = tabList(document, "sv", "graph", "t", vi.fn());
     expect(list.getAttribute("role")).toBe("tablist");
     const tabs = Array.from(list.querySelectorAll<HTMLButtonElement>("[role='tab']"));
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Nu", "Energiflöde", "Energigraf", "Pris och batteri"]);
-    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "true", "false"]);
-    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, 0, -1]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Nu", "Energiflöde", "Energigraf", "Intäkt", "Pris och batteri"]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "true", "false", "false"]);
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, 0, -1, -1]);
     expect(tabs[2]!.getAttribute("aria-controls")).toBe("t-panel-graph");
     const card = render(house(), { tab: "graph" });
     const panel = card.querySelector("[role='tabpanel']")!;
     expect(panel.id).toBe("t-panel-graph");
     expect(panel.getAttribute("aria-labelledby")).toBe("t-tab-graph");
+  });
+
+  it("words the row by the room it has: long names, short ones, then icons, the long name always its accessible name", () => {
+    const list = tabList(document, "sv", "now", "t", vi.fn());
+    const tabs = Array.from(list.querySelectorAll<HTMLButtonElement>("[role='tab']"));
+    const names = (): Array<string | null> => tabs.map((tab) => tab.textContent);
+    const long = ["Nu", "Energiflöde", "Energigraf", "Intäkt", "Pris och batteri"];
+    expect(list.dataset["fit"]).toBe("long");
+    expect(tabs.every((tab) => !tab.hasAttribute("title"))).toBe(true);
+    // The row as laid out: long names take 420 px, short ones 250 px, icons always fit.
+    const room = (width: number): void => {
+      Object.defineProperty(list, "clientWidth", { configurable: true, get: () => width });
+      Object.defineProperty(list, "scrollWidth", { configurable: true, get: () => Math.max(width, list.dataset["fit"] === "long" ? 420 : list.dataset["fit"] === "short" ? 250 : 180) });
+    };
+    room(600);
+    expect(fitTabs(list, "sv")).toBe("long");
+    expect(names()).toEqual(long);
+    room(328);
+    expect(fitTabs(list, "sv")).toBe("short");
+    expect(names()).toEqual(["Nu", "Flöde", "Graf", "Intäkt", "Pris"]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-label"))).toEqual(long);
+    expect(tabs.map((tab) => tab.title)).toEqual(long);
+    // Each tab is held as wide as its selected form (the styles read the words), so choosing a tab never rewords.
+    expect(tabs.map((tab) => tab.dataset["text"])).toEqual(["Nu", "Flöde", "Graf", "Intäkt", "Pris"]);
+    room(200);
+    expect(fitTabs(list, "sv")).toBe("icons");
+    expect(names()).toEqual(["", "", "", "", ""]);
+    expect(tabs.every((tab) => tab.querySelector("svg[aria-hidden='true']") !== null)).toBe(true);
+    expect(tabs.map((tab) => tab.getAttribute("aria-label"))).toEqual(long);
+    expect(tabs.map((tab) => tab.title)).toEqual(long);
+    // Wider again: the long names come back, and the tooltips go.
+    room(600);
+    list.dataset["fit"] = "";
+    expect(fitTabs(list, "sv")).toBe("long");
+    expect(names()).toEqual(long);
+    expect(tabs.every((tab) => !tab.hasAttribute("title"))).toBe(true);
+    // A row not laid out (0 px) keeps its long names; a redraw starts from the last wording.
+    expect(fitTabs(tabList(document, "sv", "now", "t", vi.fn()), "sv")).toBe("long");
+    expect(tabList(document, "de", "now", "t", vi.fn(), "short").querySelector("[data-tab='graph']")?.textContent).toBe("Grafik");
+    setTabFit(list, "en", "short");
+    expect(names()).toEqual(["Now", "Flow", "Chart", "Earned", "Price"]);
   });
 
   it("moves with the arrow keys (wrapping), Home and End, and shows the tab moved to", () => {
@@ -127,13 +168,14 @@ describe("the locked tab", () => {
   it("takes `tab` from the YAML, refuses a tab it does not know, and reads `all` as none", () => {
     expect(parseHouseConfig({ type: "custom:spotnav-house-card", site: "s", tab: "graph" })).toEqual({ type: "custom:spotnav-house-card", site: "s", tab: "graph" });
     expect(parseHouseConfig({ type: "custom:spotnav-house-card", site: "s", tab: "all" })).toEqual({ type: "custom:spotnav-house-card", site: "s" });
-    expect(() => parseHouseConfig({ type: "x", site: "s", tab: "history" })).toThrow(/tab must be one of now, flow, graph, price/);
+    expect(() => parseHouseConfig({ type: "x", site: "s", tab: "history" })).toThrow(/tab must be one of now, flow, graph, earn, price/);
+    expect(parseHouseConfig({ type: "custom:spotnav-house-card", site: "s", tab: "earn" }).tab).toBe("earn");
   });
 
   it("offers the choice in the card editor's form", () => {
     const form = houseConfigForm("sv");
     const tab = (form.schema as Array<{ name: string; selector: { select?: { options: Array<{ value: string; label: string }> } } }>).find((field) => field.name === "tab")!;
-    expect(tab.selector.select!.options.map((option) => option.label)).toEqual(["(alla)", "Nu", "Energiflöde", "Energigraf", "Pris och batteri"]);
+    expect(tab.selector.select!.options.map((option) => option.label)).toEqual(["(alla)", "Nu", "Energiflöde", "Energigraf", "Intäkt", "Pris och batteri"]);
     expect(form.computeLabel({ name: "tab" })).toBe("Visa bara flik");
   });
 
@@ -196,6 +238,14 @@ describe("the period picker", () => {
     expect(choiceLabel("sv", { period: "year", date: "2025-01-01" }, TODAY)).toBe("2025");
     const picker = periodPicker(document, "sv", { period: "day", date: null }, TODAY, vi.fn(), "17:00");
     expect(picker.querySelector("[data-pick-label]")?.textContent).toBe("I dag · till 17:00");
+    // How far today's figures reach is a part of its own, which the styles drop whole where the row has no room for
+    // it (never cut to "…"); the name for a screen reader and the tooltip keep it.
+    const label = picker.querySelector<HTMLElement>("[data-pick-label]")!;
+    expect(Array.from(label.children).map((part) => part.textContent)).toEqual(["I dag", " · till 17:00"]);
+    expect(label.querySelector(".spotnav-house-picker-reach")?.textContent).toBe(" · till 17:00");
+    expect(label.title).toBe("I dag · till 17:00");
+    expect(label.getAttribute("aria-label")).toMatch(/: I dag · till 17:00$/);
+    expect(TAB_STYLES).toMatch(/\.spotnav-house-picker-label:has\(\.spotnav-house-picker-reach\) \{[^}]*flex-wrap: wrap;/);
     // A month's or a year's list lies over the label, see-through, for a tap and the keyboard.
     const month = periodPicker(document, "sv", { period: "month", date: null }, TODAY, vi.fn(), "17:00");
     expect(month.querySelector("[data-pick-label]")?.textContent).toBe("nov 2026");
@@ -240,8 +290,15 @@ describe("Now", () => {
     expect(svg.querySelector(".spotnav-now-value[data-k='value-sun']")?.getAttribute("data-tone")).toBe("sun");
     // The car plugged in: its level, and today's energy small under it.
     expect(svg.querySelector(".spotnav-now-words[data-role='car']")?.textContent).toBe("Bil73 %25,5 kWh i dag");
-    // A filled arrowhead on each flowing line.
+    // A filled arrowhead on each flowing line, which the styles show only where the dots stand still.
     expect(svg.querySelectorAll(".spotnav-now-arrow")).toHaveLength(4);
+    expect(NOW_STYLES).toMatch(/\.spotnav-now-arrow \{[^}]*display: none;/);
+    expect(NOW_STYLES).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.spotnav-now-arrow \{ display: inline; \}/);
+    // The house's day figure says the car is not in it (a battery's own app counts the charger in).
+    expect(svg.querySelector(".spotnav-now-words[data-role='house']")?.textContent).toBe("Hus i dag29,4 kWhutan bilen");
+    // The heat sits well below the house, so its line straight down is long enough to show its flow.
+    const spots = nodeSpots(340, schematicHeight(340));
+    expect(spots.heat.y - spots.house.y).toBeGreaterThanOrEqual(90);
     expect(svg.querySelector("title")?.textContent).toContain("Köper 0,4 kW från nätet");
     // A house alone: one low row, the grid to the house, no other corner.
     const alone = renderSchematic({ doc: document, language: "en", answer: house("house_learning.json"), live: live("house_alone_now.json"), width: 340, idPrefix: "t" });
@@ -326,22 +383,42 @@ describe("Now", () => {
 });
 
 describe("the period tabs' content", () => {
-  it("Energy flow: today's flow from the card's answer with a tile per block; another period from the history", () => {
+  it("Energy flow: today's flow from the card's answer; tiles only where no diagram can be drawn, never one of 0 kWh", () => {
     const answer = house();
     const today = render(answer, { tab: "flow" }, {}, "sv");
     expect(today.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
-    const tiles = Array.from(today.querySelectorAll<HTMLElement>("[data-tile]")).map((tile) => `${tile.dataset["tile"]}:${tile.textContent}`);
+    // The diagram carries the figures: no tiles under it.
+    expect(today.querySelector("[data-tile]")).toBeNull();
+    const tiles = Array.from(tilesBlock(document, "sv", answer.energy_flow!)!.querySelectorAll<HTMLElement>("[data-tile]")).map((tile) => `${tile.dataset["tile"]}:${tile.textContent}`);
     expect(tiles).toEqual(["sun:7,5 kWhSol", "house:16,7 kWhHus", "discharged:8,6 kWhUrladdat", "charged:38,0 kWhLaddat", "bought:76,9 kWhKöpt", "sold:0,1 kWhSålt", "heat:12,6 kWhVärme", "car:25,5 kWhBil"]);
+    // A morning with nothing yet between two blocks to draw: no diagram, so the tiles carry what there is, and a
+    // part with no energy has none.
+    const flow = answer.energy_flow!;
+    const early = {
+      ...answer,
+      energy_flow: {
+        ...flow,
+        nodes: flow.nodes.map((node) => ({ ...node, kwh: node.role === "house" ? 0.3 : node.role === "grid" && node.side === "source" ? 0.3 : node.role === "heat" ? 0.04 : 0 })),
+        links: [],
+      },
+    };
+    const waiting = render(early, { tab: "flow" }, {}, "sv");
+    expect(waiting.querySelector("[data-part='energy-flow'] svg")).toBeNull();
+    expect(Array.from(waiting.querySelectorAll<HTMLElement>("[data-tile]")).map((tile) => `${tile.dataset["tile"]}:${tile.textContent}`)).toEqual(["house:0,3 kWhHus", "bought:0,3 kWhKöpt"]);
+    const nothing = { ...early, energy_flow: { ...early.energy_flow, nodes: early.energy_flow.nodes.map((node) => ({ ...node, kwh: 0 })) } };
+    expect(render(nothing, { tab: "flow" }, {}, "sv").querySelector("[data-part='tiles']")).toBeNull();
+    expect(tilesBlock(document, "sv", nothing.energy_flow)).toBeNull();
     const month = history("villa_month.json");
     const loading = render(answer, { tab: "flow", choice: { period: "month", date: null } }, { history: { kind: "loading" } });
     expect(loading.querySelector("[data-line='loading']")?.getAttribute("aria-busy")).toBe("true");
     const shown = render(answer, { tab: "flow", choice: { period: "month", date: null } }, { history: { kind: "ready", answer: month } });
-    expect(shown.querySelectorAll("[data-tile]")).toHaveLength(flowTiles(month.energy_flow!).length);
+    expect(shown.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
+    expect(shown.querySelector("[data-tile]")).toBeNull();
     const failed = render(answer, { tab: "flow", choice: { period: "month", date: null } }, { history: { kind: "failed", code: "unknown_command" } });
     expect(failed.querySelector("[data-line='failed']")?.textContent).toBe(translate("en", "hist.unsupported"));
-    // A house alone has no sun, battery or heat tile.
+    // A house alone has no sun, battery or heat tile, and none for what it neither sold nor charged.
     const alone = history("house_alone_year.json");
-    expect(flowTiles(alone.energy_flow!).map((tile) => tile.key)).toEqual(["house", "bought", "sold", "car"]);
+    expect(flowTiles(alone.energy_flow!).map((tile) => tile.key)).toEqual(["house", "bought"]);
   });
 
   it("Energy chart: today's hours with the forecast, a month by the day and a year by the month", () => {
@@ -495,7 +572,7 @@ describe("the card element's tabs", () => {
     expect(hass.messages[1]).toEqual({ type: "spotnav/get_house_history", api_version: 1, site_id: "site_villa", period: "month" });
     hass.resolveNext(read("house_history", "villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(root.querySelectorAll("[data-tile]").length).toBeGreaterThan(0);
+    expect(root.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
     // The period stays chosen across the tabs, read once.
     root.querySelector<HTMLButtonElement>("[role='tab'][data-tab='graph']")!.click();
     await vi.advanceTimersByTimeAsync(0);
@@ -513,7 +590,7 @@ describe("the card element's tabs", () => {
     again.remove();
   });
 
-  it("keeps the deep analysis in the history dialog: with Detailed on, the last days as the front once had them", async () => {
+  it("keeps the deep analysis in the details dialog, every section shown: the last days as the front once had them", async () => {
     const hass = new FakeHass();
     const element = await mount({}, hass);
     const root = element.shadowRoot!;
@@ -522,8 +599,7 @@ describe("the card element's tabs", () => {
     hass.resolveNext(read("house_history", "villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
     const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
-    expect(dialog.querySelector("[data-part='recent']")).toBeNull();
-    dialog.querySelector<HTMLButtonElement>("[data-detailed]")!.click();
+    expect(dialog.querySelector("[data-detailed]")).toBeNull();
     const recent = dialog.querySelector<HTMLElement>("[data-part='recent']")!;
     expect(recent.querySelector("h4")?.textContent).toBe(translate("en", "hist.house.recent"));
     expect(recent.querySelector("[data-part='modes'][data-view='perfect']")).not.toBeNull();

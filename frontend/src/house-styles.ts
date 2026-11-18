@@ -194,6 +194,11 @@ export const HOUSE_STYLES = `
     font-size: 12px;
     font-weight: 600;
   }
+  .spotnav-house-flow-probe {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+  }
   .${H.flowChart} .spotnav-house-flow-value {
     font-size: 15px;
     font-weight: 700;
@@ -505,10 +510,20 @@ export const HOUSE_STYLES = `
     text-align: start;
     white-space: normal;
   }
+  /* A heading wraps between its words (its figures never do), so a table of many columns fits a phone. */
   .${H.table} thead th {
+    white-space: normal;
+    vertical-align: bottom;
     font-weight: 500;
     color: var(--secondary-text-color, #727272);
     border-bottom: 1px solid var(--divider-color, #e0e0e0);
+  }
+  /* Day by day: the date stays on one line; the last column's words (why a day has no share) wrap instead. */
+  [data-part="days"] .${H.table} td:first-child {
+    white-space: nowrap;
+  }
+  [data-part="days"] .${H.table} td:last-child {
+    white-space: normal;
   }
   .${H.table} tr[data-in-force] td:first-child {
     font-weight: 600;

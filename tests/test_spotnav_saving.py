@@ -22,9 +22,11 @@ from custom_components.spotnav.site.spotnav_saving import (
     Prices,
     battery_part,
     car_days,
+    car_hours,
     day_savings,
     default_share,
     heat_part,
+    own_control,
     period_sums,
     saving_block,
     session_savings,
@@ -87,6 +89,16 @@ def test_a_charge_moved_from_the_evening_to_the_night_saves_the_price_difference
     # Counted on the day the charge started, as the charger history counts the session.
     assert days == {date(2026, 11, 17): pytest.approx(3300.0)}
     assert since == date(2026, 11, 16)
+
+
+def test_a_days_hourly_bars_put_a_charge_in_the_hour_it_started() -> None:
+    """Two charges of one evening, the second over midnight: each whole figure in its start hour (UTC), a session
+    without a figure in none."""
+    first = charge(datetime(2026, 11, 16, 20, 40, tzinfo=UTC), [5.0])
+    second = charge(datetime(2026, 11, 16, 22, 10, tzinfo=UTC), [11.0, 11.0])
+    unknown = charge(datetime(2026, 11, 16, 20, 5, tzinfo=UTC), [3.0], plugged=None, charger="c2")
+    hours = car_hours([first, second, unknown], {first.id: 120.0, second.id: -40.0, unknown.id: None})
+    assert hours == {datetime(2026, 11, 16, 20, tzinfo=UTC): 120.0, datetime(2026, 11, 16, 22, tzinfo=UTC): -40.0}
 
 
 def test_a_charge_started_at_plug_in_saves_nothing() -> None:
@@ -173,6 +185,18 @@ def test_the_battery_counts_only_where_spotnav_controlled_it() -> None:
         "date": "2026-11-16", "total": None, "battery": None, "car": None, "heat": None, "battery_share": 0.0,
         "car_since": None,
     }
+
+
+def test_own_control_says_what_the_battery_earned_and_what_the_plan_would_have() -> None:
+    class Reviewed:
+        saving, actual_saving = 150.0, 50.0
+
+    assert own_control(3500.0, 0.0) == (3500.0, None)
+    assert own_control(3500.0, 0.0, Reviewed()) == (3500.0, 3600.0)
+    assert own_control(3500.0, 0.5, Reviewed()) == (1750.0, 1800.0)
+    # Controlled all day, or a day without the battery's money: nothing to compare.
+    assert own_control(3500.0, 1.0, Reviewed()) == (None, None)
+    assert own_control(None, 0.0) == (None, None) and own_control(3500.0, None) == (None, None)
 
 
 def test_the_stored_value_counts_the_quarters_spotnav_controlled() -> None:

@@ -405,6 +405,74 @@ def test_a_day_without_a_share_says_why_and_the_month_counts_whole_days() -> Non
     assert perfect["days"] == 9 and perfect["partial"] == 1 and perfect["shares"]["own"] is not None
 
 
+def test_own_control_days_say_what_the_battery_earned_and_what_the_plan_would_have() -> None:
+    """The fixture's battery runs under its own control from the 10th (share 0): each such day's arbitrage is the
+    battery's own, and a reviewed day adds what the plan's day would have cost less (100 öre in `review`)."""
+    month = house_history(month_inputs())
+    by_key = {bucket["key"]: bucket for bucket in month["buckets"]}
+    assert by_key["2026-11-12"]["own_battery"] == pytest.approx(DAY_ARBITRAGE)
+    assert by_key["2026-11-12"]["would_battery"] == pytest.approx(DAY_ARBITRAGE + 100.0)
+    # The 16th (today) has no review yet: the battery's own figure alone.
+    assert by_key["2026-11-16"]["own_battery"] == pytest.approx(DAY_ARBITRAGE) and by_key["2026-11-16"]["would_battery"] is None
+    # Before the 10th nothing says who controlled the battery (no saving for the day): neither figure.
+    assert by_key["2026-11-05"]["own_battery"] is None and by_key["2026-11-05"]["would_battery"] is None
+    assert month["own_control"] == {
+        "earned": pytest.approx(7 * DAY_ARBITRAGE),
+        "would": pytest.approx(7 * DAY_ARBITRAGE + 6 * 100.0),
+        "days": 7,
+        "would_days": 6,
+    }
+    # A year's bucket counts an unreviewed day as it went, so both sums are over the same days.
+    year = house_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 11, 1))))
+    november = {bucket["key"]: bucket for bucket in year["buckets"]}["2026-11"]
+    assert november["own_battery"] == pytest.approx(7 * DAY_ARBITRAGE)
+    assert november["would_battery"] == pytest.approx(7 * DAY_ARBITRAGE + 600.0)
+    # A plan that would have done worse is kept below the battery's own figure.
+    worse = house_history(month_inputs(reviews=[review(date(2026, 11, 12), plan=Run(3200.0, 40.0))]))
+    assert {b["key"]: b for b in worse["buckets"]}["2026-11-12"]["would_battery"] == pytest.approx(DAY_ARBITRAGE - 200.0)
+
+
+def test_controlled_days_have_no_own_control_and_a_mixed_day_splits_by_its_share() -> None:
+    savings = {
+        date(2026, 11, 12): DaySaving(battery=DAY_ARBITRAGE, battery_share=1.0),
+        date(2026, 11, 13): DaySaving(battery=DAY_ARBITRAGE * 0.25, battery_share=0.25),
+    }
+    month = house_history(month_inputs(savings=savings))
+    by_key = {bucket["key"]: bucket for bucket in month["buckets"]}
+    assert by_key["2026-11-12"]["own_battery"] is None and by_key["2026-11-12"]["would_battery"] is None
+    assert by_key["2026-11-13"]["own_battery"] == pytest.approx(DAY_ARBITRAGE * 0.75)
+    assert by_key["2026-11-13"]["would_battery"] == pytest.approx((DAY_ARBITRAGE + 100.0) * 0.75)
+    assert month["own_control"]["days"] == 1
+    assert house_history(month_inputs(savings={date(2026, 11, 12): savings[date(2026, 11, 12)]}))["own_control"] is None
+    assert house_history(month_inputs(has_battery=False))["own_control"] is None
+
+
+def test_a_days_hours_have_the_battery_and_the_car_parts_and_the_heat_stays_a_days() -> None:
+    day = period_of(PERIOD_DAY, date(2026, 11, 13))
+    charge = datetime(2026, 11, 13, 21, tzinfo=timezone.utc)  # 22:00 local
+    savings = {date(2026, 11, 13): DaySaving(battery=DAY_ARBITRAGE * 0.5, car=280.0, heat=60.0, battery_share=0.5)}
+    answer = house_history(month_inputs(period=day, savings=savings, car_hours={charge: 280.0}))
+    by_hour = {bucket["key"][11:13]: bucket for bucket in answer["buckets"]}
+    assert by_hour["17"]["saving_battery"] == pytest.approx(60.0) and by_hour["17"]["own_battery"] == pytest.approx(60.0)
+    assert by_hour["07"]["saving_battery"] == pytest.approx(-7.5) and by_hour["07"]["saving"] == pytest.approx(-7.5)
+    assert by_hour["22"]["saving_car"] == pytest.approx(280.0) and by_hour["22"]["saving"] == pytest.approx(280.0)
+    assert by_hour["12"]["saving"] is None and by_hour["12"]["saving_car"] is None
+    assert all(bucket["saving_heat"] is None and bucket["would_battery"] is None for bucket in answer["buckets"])
+    # The period's sums hold the heat too; the review's day gives the plan's figure for the whole day.
+    assert answer["saving"]["heat"] == pytest.approx(60.0) and answer["saving"]["total"] == pytest.approx(DAY_ARBITRAGE * 0.5 + 340.0)
+    assert answer["own_control"] == {
+        "earned": pytest.approx(DAY_ARBITRAGE * 0.5),
+        "would": pytest.approx((DAY_ARBITRAGE + 100.0) * 0.5),
+        "days": 1,
+        "would_days": 1,
+    }
+    # Under SpotNav's control all day the hours are SpotNav's alone; a day without the car's figure has no car hour.
+    own = house_history(month_inputs(period=day, savings={date(2026, 11, 13): DaySaving(battery=DAY_ARBITRAGE, battery_share=1.0)}, car_hours={charge: 280.0}))
+    hours = {bucket["key"][11:13]: bucket for bucket in own["buckets"]}
+    assert hours["17"]["saving_battery"] == pytest.approx(120.0) and hours["17"]["own_battery"] is None
+    assert hours["22"]["saving_car"] is None and own["own_control"] is None
+
+
 # ------------------------------------------------------------------------------------------------ fixtures
 
 
@@ -437,6 +505,8 @@ def test_contract_fixtures() -> None:
                 period=day,
                 periods=quarters,
                 step_min=15,
+                # The evening's charge started at 22:00 local: the day's whole car figure in that hour.
+                car_hours={datetime(2026, 11, 15, 21, tzinfo=timezone.utc): 300.0},
                 forecast_mae={
                     "house_kw": {date(2026, 11, 15): 0.42},
                     "sun_kwh": {date(2026, 11, 15): 0.12},

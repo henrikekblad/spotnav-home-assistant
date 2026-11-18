@@ -131,19 +131,43 @@ function cogIcon(doc: Document): SVGElement {
   return svg;
 }
 
+/** An "i" in a ring: the house card's details (its history dialog), `size` px. */
+export function infoIcon(doc: Document, size = 16, className?: string): SVGElement {
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg") as SVGElement;
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  if (className !== undefined) {
+    svg.classList.add(className);
+  }
+  for (const d of ["M12 3.5a8.5 8.5 0 1 0 0.01 0", "M12 11v5.5", "M12 7.6v0.2"]) {
+    const path = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+  }
+  return svg;
+}
+
 /**
- * A header button: the history clock (`data-history="open"`, it opens a dialog) or the settings cog
- * (`data-settings="open"`), an icon with its label as its accessible name and its tooltip.
+ * A header button: the history clock or the details' "i" (both `data-history="open"`, they open a dialog) or the
+ * settings cog (`data-settings="open"`), an icon with its label as its accessible name and its tooltip.
  */
-export function headerButton(doc: Document, kind: "history" | "settings", label: string): HTMLButtonElement {
+export function headerButton(doc: Document, kind: "history" | "info" | "settings", label: string): HTMLButtonElement {
   const button = element(doc, "button", C.iconButton);
   button.type = "button";
   button.setAttribute("aria-label", label);
   button.title = label;
-  if (kind === "history") {
+  if (kind === "history" || kind === "info") {
     button.setAttribute("aria-haspopup", "dialog");
     button.dataset["history"] = "open";
-    button.append(historyIcon(doc, 16, C.actionIcon));
+    button.append(kind === "info" ? infoIcon(doc, 16, C.actionIcon) : historyIcon(doc, 16, C.actionIcon));
   } else {
     button.dataset["settings"] = "open";
     button.append(cogIcon(doc));

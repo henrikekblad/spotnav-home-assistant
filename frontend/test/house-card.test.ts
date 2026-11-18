@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
-import { blockHeights, flowHeight, flowLabels, MIN_BAND, MIN_NODE } from "../src/house-flow";
+import { blockHeights, columnWidths, flowHeight, flowLabels, MIN_BAND, MIN_NODE, PILL_PAD, renderFlow } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { amount, heatLine, hourFigures, houseBody, houseDetails, learningLines, withPrices, type Loadable, reviewLine, savingLine, savingTotalLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
@@ -204,7 +204,7 @@ describe("the body", () => {
     expect(header.querySelector("h3.spotnav-name")!.textContent).toBe("Huset");
     expect(header.querySelector(".spotnav-visually-hidden")!.textContent).toBe("SpotNav");
     const buttons = [...header.querySelectorAll<HTMLButtonElement>(".spotnav-header-actions > button.spotnav-icon-button")];
-    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Historik", translate("sv", "popover.open")]);
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Detaljer", translate("sv", "popover.open")]);
     expect(buttons[1]!.dataset["action"]).toBe("settings");
     // No pill any more: the status is muted text after the name.
     expect(card.querySelector(".spotnav-house-chip")).toBeNull();
@@ -532,7 +532,7 @@ describe("the legend", () => {
     expect(sunOnly.querySelector("svg .spotnav-house-bar")).toBeNull();
   });
 
-  it("draws the car as its own bar beside the house's, hidden until toggled on", () => {
+  it("stacks the car on the house's bar in a day as in a month, hidden until toggled on", () => {
     const value = answer();
     const carHours = value.hours.filter((hour) => hour.car_kw !== null && hour.car_kw > 0);
     expect(carHours.length).toBeGreaterThan(0);
@@ -540,10 +540,19 @@ describe("the legend", () => {
     const shown = body(value, { hidden: { energy: [] } });
     const cars = Array.from(shown.querySelectorAll("svg .spotnav-house-car-bar"));
     expect(cars).toHaveLength(carHours.length);
-    // Beside, not over: the car's bar starts where the house's of the same hour ends.
+    // On, not beside: each car part has the hour's house bar under it, as wide, and ends where that bar begins, so
+    // the hour's whole bar is its mean power with the car.
     const bars = Array.from(shown.querySelectorAll("svg .spotnav-house-bar"));
-    const houseOfHour = bars.find((bar) => Math.abs(Number(bar.getAttribute("x")) - (Number(cars[0]!.getAttribute("x")) - 0)) < 40)!;
-    expect(Number(houseOfHour.getAttribute("x")) + Number(houseOfHour.getAttribute("width"))).toBeLessThanOrEqual(Number(cars[0]!.getAttribute("x")));
+    for (const car of cars) {
+      const under = bars.find((bar) => bar.getAttribute("x") === car.getAttribute("x"))!;
+      expect(under).toBeDefined();
+      expect(Number(car.getAttribute("width"))).toBeCloseTo(Number(under.getAttribute("width")), 3);
+      expect(Number(car.getAttribute("y")) + Number(car.getAttribute("height"))).toBeCloseTo(Number(under.getAttribute("y")), 3);
+    }
+    // Without the house's bars the car stands on the axis.
+    const alone = body(value, { hidden: { energy: ["house", "heat", "forecast", "sun"] } });
+    const bottoms = Array.from(alone.querySelectorAll("svg .spotnav-house-car-bar")).map((car) => Number(car.getAttribute("y")) + Number(car.getAttribute("height")));
+    expect(new Set(bottoms.map((value_) => value_.toFixed(2))).size).toBe(1);
     expect(shown.querySelector(".spotnav-readout")).not.toBeNull();
     const peak = carHours.find((hour) => hour.car_kw === Math.max(...carHours.map((h) => h.car_kw as number)))!;
     expect(hourFigures("en", value, peak, NOW, "energy", new Set())).toContain(`car ${peak.car_kw!.toFixed(1)} kW`);
@@ -862,7 +871,7 @@ describe("a past day's answer", () => {
   it("has no day steps in Now: the period tabs and the history choose the day", () => {
     const card = body(answer(), { tab: "now" }, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onHistory: vi.fn() } as never);
     expect(card.querySelector("button[data-step]")).toBeNull();
-    expect(card.querySelector("button[data-history='open']")?.getAttribute("aria-label")).toBe("Historik");
+    expect(card.querySelector("button[data-history='open']")?.getAttribute("aria-label")).toBe("Detaljer");
     expect(body(answer(), { tab: "graph" }, "sv").querySelectorAll("button[data-step]")).toHaveLength(2);
   });
 
@@ -1048,10 +1057,10 @@ describe("today's energy flow", () => {
     expect(nodes).toEqual(["source:solar", "source:battery", "source:grid", "use:battery", "use:house", "use:heat", "use:car", "use:grid"]);
     expect(svgRoot.querySelectorAll(".spotnav-house-flow-band")).toHaveLength(answer().energy_flow!.links.length);
     const grid = svgRoot.querySelector(".spotnav-house-flow-node[data-role='grid'][data-side='source']")!;
-    expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät", "76,9 kWh", "83 %"]);
+    // One rule for a tall block and a short one: the share in the name's pill, never at the block's bottom.
+    expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät · 83 %", "76,9 kWh"]);
     expect(grid.querySelector(".spotnav-house-flow-pill")).not.toBeNull();
     const sun = svgRoot.querySelector(".spotnav-house-flow-node[data-role='solar']")!;
-    // A short block puts its share in the name's pill and the energy alone under it.
     expect(Array.from(sun.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Sol · 8 %", "7,5 kWh"]);
     const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
     expect(battery.textContent).toContain("nu 48 %");
@@ -1099,6 +1108,43 @@ describe("today's energy flow", () => {
     const today = flowBody({ ...value, energy_flow: empty }, {}, "sv").querySelector("[data-part='energy-flow']")!;
     expect(today.querySelector("svg")).toBeNull();
     expect(today.textContent).toContain("Dagens energiflöde visas när de första fem minuterna är inne.");
+  });
+
+  it("grows a column as wide as its widest pill needs, from the bands, and gives the pill's words room each side", () => {
+    // The usual width holds a short pill; a wider one grows its own column alone.
+    const [usualLeft, usualRight] = columnWidths(328, 40, 40);
+    expect(usualLeft).toBe(usualRight);
+    const [left, right] = columnWidths(328, 40, 96);
+    expect(left).toBe(usualLeft);
+    expect(right).toBe(96 + 2 * PILL_PAD + 12);
+    // The bands keep their share of the width: two very wide columns give way in proportion, never below the usual.
+    const [tightLeft, tightRight] = columnWidths(328, 160, 160);
+    expect(tightLeft + tightRight).toBeLessThanOrEqual(328 * 0.78);
+    expect(tightLeft).toBeGreaterThanOrEqual(usualLeft);
+    // Drawn: the pill's words are measured as drawn (here 7 px a character), and the pill is wider than them by the
+    // padding each side; words the column cannot hold are squeezed, never clipped.
+    const flow = answer().energy_flow!;
+    const measure = (words: string): number => words.length * 7;
+    const drawn = renderFlow(document, "sv", flow, 328, "t", false, null, null, measure)!;
+    for (const node of Array.from(drawn.querySelectorAll(".spotnav-house-flow-node"))) {
+      const pill = node.querySelector(".spotnav-house-flow-pill")!;
+      const name = node.querySelector(".spotnav-house-flow-name")!;
+      expect(name.textContent).toMatch(/ · \d+ %$/);
+      expect(Number(pill.getAttribute("width"))).toBeGreaterThanOrEqual(measure(name.textContent!) + 2 * PILL_PAD - 0.01);
+      expect(name.hasAttribute("textLength")).toBe(false);
+      // The share is in the pill alone: no other text of the block is a bare percentage.
+      expect(Array.from(node.querySelectorAll("text")).filter((text) => /^\d+ %$/.test(text.textContent ?? ""))).toHaveLength(0);
+    }
+    const uses = Array.from(drawn.querySelectorAll<SVGRectElement>(".spotnav-house-flow-node[data-side='use'] .spotnav-house-flow-block"));
+    const sources = Array.from(drawn.querySelectorAll<SVGRectElement>(".spotnav-house-flow-node[data-side='source'] .spotnav-house-flow-block"));
+    // "Batteri · 41 %" (14 characters) is the widest on the right: that column is the wider one.
+    expect(Number(uses[0]!.getAttribute("width"))).toBe(14 * 7 + 2 * PILL_PAD + 12);
+    expect(Number(sources[0]!.getAttribute("width"))).toBeLessThan(Number(uses[0]!.getAttribute("width")));
+    expect(Number(uses[0]!.getAttribute("x"))).toBe(328 - Number(uses[0]!.getAttribute("width")));
+    const squeezed = renderFlow(document, "sv", flow, 328, "t", false, null, null, (words) => words.length * 20)!;
+    expect(squeezed.querySelector(".spotnav-house-flow-name")?.getAttribute("lengthAdjust")).toBe("spacingAndGlyphs");
+    // Without a measure (nothing laid out) the words are estimated and the diagram is still drawn.
+    expect(renderFlow(document, "sv", flow, 328, "t", false, null, null, () => null)).not.toBeNull();
   });
 
   it("keeps a month's or a year's figures narrow: no decimal from 100 kWh, a smaller figure from 1 000 kWh", () => {
@@ -1324,7 +1370,7 @@ describe("the element", () => {
     expect(hass.liveMessages).toHaveLength(asked);
   });
 
-  it("asks only for today; the clock opens the history at the running month and steps by period", async () => {
+  it("asks only for today; the details open the history at the running month and step by period", async () => {
     const hass = new FakeHass();
     const element = mount({ type: "custom:spotnav-house-card", site: "site_villa" }, hass);
     await vi.advanceTimersByTimeAsync(0);
@@ -1337,15 +1383,21 @@ describe("the element", () => {
     hass.resolveNext(read("house_history/villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
     const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
-    expect(dialog.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
+    // The energy flow is the card's own tab, not a section here; the picker is the card's own.
+    expect(dialog.querySelector("[data-part='energy-flow']")).toBeNull();
+    expect(dialog.querySelector(".spotnav-house-picker")).not.toBeNull();
+    expect(dialog.querySelector("[data-detailed]")).toBeNull();
     expect(dialog.querySelectorAll(".spotnav-history-bar")).toHaveLength(30);
     dialog.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(hass.messages[2]).toMatchObject({ period: "month", date: "2026-10-01" });
     hass.resolveNext(read("house_history/villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
-    dialog.querySelector<HTMLButtonElement>("button[data-period='day']")!.click();
+    dialog.querySelector<HTMLButtonElement>("button[data-kind='day']")!.focus();
+    dialog.querySelector<HTMLButtonElement>("button[data-kind='day']")!.click();
     await vi.advanceTimersByTimeAsync(0);
+    // The dialog is drawn anew; the focus stays on the kind chosen.
+    expect((root.activeElement as HTMLElement | null)?.dataset["kind"]).toBe("day");
     expect(hass.messages[3]).toMatchObject({ type: "spotnav/get_house_history", period: "day" });
     hass.resolveNext(read("house_history/villa_day.json"));
     await vi.advanceTimersByTimeAsync(0);

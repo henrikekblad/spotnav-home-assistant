@@ -2,16 +2,16 @@
 // extra is installed. It reads one read-only answer (`spotnav/get_house`) for a site, named by the site's id or a
 // charger's in it, every `HOUSE_REFRESH_MS` (the forecasts change once an hour), and shows it (`house-view.ts`).
 // An administrator's gear opens the shared settings popover (`settings-popover.ts`): the house card is where a home
-// without a charger starts. The charging card stays about the car. Under the day's money the card has four tabs
+// without a charger starts. The charging card stays about the car. Under the day's money the card has five tabs
 // (`house-tabs.ts`): Now (the live flows, `spotnav/get_house_now`, read every `LIVE_REFRESH_MS` while it is shown),
-// Energy flow, Energy chart and Price and battery (one period picker for the three: a day, month or year, read with
+// Energy flow, Energy chart, Earnings (`house-earnings.ts`) and Price and battery (one period picker for the four: a day, month or year, read with
 // `spotnav/get_house_history` and, for a past day's hours, `spotnav/get_house` with its date). The tab is remembered
-// per card in this browser. The clock beside the gear opens the history (`history-dialog.ts`, `house-history.ts`)
+// per card in this browser. The "i" beside the gear opens the details (`history-dialog.ts`, `house-history.ts`)
 // with the deep analysis. House in an energy flow opens what the house used (`house-loads.ts`). In a box of fixed
 // height (a wall screen) the shown tab's picture takes the box's spare height.
 //
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
-// optionally `tab: now | flow | graph | price` to show only that tab (no tab row).
+// optionally `tab: now | flow | graph | earn | price` to show only that tab (no tab row).
 
 import { getHouse, getHouseNow, getPeriodHistory, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { entityWordsOf } from "./entity-words";
@@ -19,10 +19,11 @@ import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from ".
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
-import { HOUSE_TABS, isHouseTab, readTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
+import { fitTabs, HOUSE_TABS, isHouseTab, readTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
 import { decodeHouseHistory, houseHistoryBody, type HouseHistory } from "./house-history";
+import { EARN_STYLES, readEarnHidden, writeEarnHidden } from "./house-earnings";
 import type { HistoryPeriod } from "./period-history";
 import { HOUSE_STYLES } from "./house-styles";
 import { PERIOD_STYLES } from "./period-history";
@@ -153,6 +154,8 @@ export class SpotnavHouseCard extends HTMLElement {
   private settingsPopover: SettingsPopover | null = null;
   private historyDialog: HistoryDialog<HouseHistory> | null = null;
   private loadsPopover: LoadsPopover | null = null;
+  private pillProbe: SVGTextElement | null = null;
+  private readonly pillWidths = new Map<string, number>();
 
   constructor() {
     super();
@@ -161,7 +164,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.idPrefix = `spotnav-house-${instances}`;
     const doc = this.ownerDocument;
     this.styleNode = doc.createElement("style");
-    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES;
+    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES + EARN_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
@@ -207,10 +210,10 @@ export class SpotnavHouseCard extends HTMLElement {
         language: () => this.language ?? resolveLanguage(null),
         width: () => this.width,
         decode: decodeHouseHistory,
-        // With Detailed on, the analysis of the last days the front once kept behind "Show details".
+        // Under the period: the analysis of the last days the front once kept behind "Show details".
         body: (input) => {
           const body = houseHistoryBody(input);
-          if (input.ui.detailed && this.state.kind === "ready") {
+          if (this.state.kind === "ready") {
             const block = periodElement(input.doc, "section", VISUAL_CLASSES.historyTile);
             block.dataset["part"] = "recent";
             block.append(
@@ -220,10 +223,6 @@ export class SpotnavHouseCard extends HTMLElement {
             body.append(block);
           }
           return body;
-        },
-        flowHouse: (answer, back, kind) => {
-          const running = answer.today >= answer.date && answer.today < answer.end;
-          this.ensureLoads().open({ kind, period: answer.period, date: answer.date, running, ...apart(answer.energy_flow) }, null, back);
         },
       });
     }
@@ -284,7 +283,17 @@ export class SpotnavHouseCard extends HTMLElement {
     this.generation += 1;
     const locked = this.config.tab ?? null;
     const tab = locked ?? readTab(this.targetKey()) ?? "now";
-    this.ui = { selected: null, view: "energy", hidden: this.ui.hidden ?? readHiddenSeries(), tab, locked, choice: { period: "day", date: null }, bar: null, fill: null };
+    this.ui = {
+      selected: null,
+      view: "energy",
+      hidden: this.ui.hidden ?? readHiddenSeries(),
+      earnHidden: locked === null || locked === "earn" ? readEarnHidden(this.targetKey()) : [],
+      tab,
+      locked,
+      choice: { period: "day", date: null },
+      bar: null,
+      fill: null,
+    };
     this.periods.clear();
     this.days.clear();
     this.live = null;
@@ -480,6 +489,9 @@ export class SpotnavHouseCard extends HTMLElement {
     if (tab === "flow") {
       return { live: false, history: choice.period === "day" && choice.date === null ? null : choice, day: null };
     }
+    if (tab === "earn") {
+      return { live: false, history: choice, day: null };
+    }
     if (tab === "graph") {
       if (choice.period === "day" && choice.date === null) {
         return { live: false, history: null, day: null };
@@ -660,6 +672,46 @@ export class SpotnavHouseCard extends HTMLElement {
     return true;
   }
 
+  /** The width of an energy flow pill's words as the card draws them (`house-flow.ts`): a hidden text in the card's
+   * own styles, kept; `null` where the browser cannot say (nothing laid out). */
+  private readonly pillMeasure = (words: string): number | null => {
+    const known = this.pillWidths.get(words);
+    if (known !== undefined) {
+      return known;
+    }
+    if (this.pillProbe === null) {
+      const doc = this.ownerDocument;
+      const holder = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+      holder.setAttribute("class", "spotnav-house-flow-chart spotnav-house-flow-probe");
+      holder.setAttribute("width", "0");
+      holder.setAttribute("height", "0");
+      holder.setAttribute("aria-hidden", "true");
+      this.pillProbe = doc.createElementNS("http://www.w3.org/2000/svg", "text");
+      this.pillProbe.setAttribute("class", "spotnav-house-flow-name");
+      holder.append(this.pillProbe);
+      this.layer.append(holder);
+    }
+    const probe = this.pillProbe as SVGTextElement & { getComputedTextLength?: () => number };
+    if (typeof probe.getComputedTextLength !== "function") {
+      return null;
+    }
+    probe.textContent = words;
+    let width = 0;
+    try {
+      width = probe.getComputedTextLength();
+    } catch {
+      return null;
+    }
+    if (!(width > 0)) {
+      return null;
+    }
+    if (this.pillWidths.size > 200) {
+      this.pillWidths.clear();
+    }
+    this.pillWidths.set(words, width);
+    return width;
+  };
+
   /** Draw again, unless the pointer is over the card: then once it leaves (a refresh, not a choice of the reader's). */
   private renderSoon(): void {
     if (this.hovering) {
@@ -765,6 +817,11 @@ export class SpotnavHouseCard extends HTMLElement {
           onBar: (key) => {
             this.ui = { ...this.ui, bar: key };
           },
+          onEarnPart: (hidden) => {
+            this.ui = { ...this.ui, earnHidden: hidden };
+            writeEarnHidden(this.targetKey(), hidden);
+            this.render();
+          },
           ...(admin ? { onSettings: () => this.showSettings() } : {}),
           onHistory: (opener) => this.showHistory(opener),
           onHouseLoads: (opener, kind, period) => this.showLoads(opener, kind, period ?? null),
@@ -773,8 +830,19 @@ export class SpotnavHouseCard extends HTMLElement {
         nowMs: Date.now(),
         idPrefix: this.idPrefix,
         entityWords: entityWordsOf(this.hassObject),
+        measure: this.pillMeasure,
         ...(tabs === undefined ? {} : { tabs }),
       }),
     );
+    // The tab row's wording by the room it really has: long names, short ones or icons.
+    const row = this.mount.querySelector<HTMLElement>("[role='tablist']");
+    if (row !== null) {
+      // From the long names each time, so a card made wider gets them back.
+      row.dataset["fit"] = "";
+      const fit = fitTabs(row, language);
+      if (fit !== this.ui.tabFit) {
+        this.ui = { ...this.ui, tabFit: fit };
+      }
+    }
   }
 }

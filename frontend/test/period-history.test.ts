@@ -2,6 +2,7 @@
 // the backend's own fixtures, the period steps and pickers, the Detailed switch remembered per browser, and what each
 // period shows, including a day of 25 hours and the heat card's hot-water runs.
 
+import { HOUSE_STYLES } from "../src/house-styles";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -117,28 +118,33 @@ describe("the house history", () => {
     expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
   });
 
-  it("shows a month: a bar a day, the flow, the money; no forward step past today", () => {
+  it("shows a month: the card's picker, a bar a day, the money and every section; no flow, no forward step past today", () => {
     const answer = house("house_history/villa_month.json");
     const on = handlers();
     const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: on, width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(body.querySelectorAll(".spotnav-history-bar")).toHaveLength(30);
     expect(body.querySelector("button[data-step='forward']")!.hasAttribute("disabled")).toBe(true);
     expect(body.querySelector<HTMLSelectElement>("select[data-pick='month']")!.value).toBe("2026-11-01");
-    expect(body.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
+    // The energy flow is the card's own tab; the picker is the card's (its label over the list, Day | Month | Year).
+    expect(body.querySelector("[data-part='energy-flow']")).toBeNull();
+    expect(body.querySelector(".spotnav-house-picker [data-pick-label]")?.textContent).toBe("nov 2026");
+    expect(body.querySelector("button[data-kind='month']")?.getAttribute("aria-pressed")).toBe("true");
     const money = body.querySelector("[data-part='money']")!;
     expect(money.querySelector("[data-row='cost']")?.textContent).toMatch(/^Elkostnad/);
     expect(money.querySelector("[data-row='battery']")?.textContent).toMatch(/^Batteriet sparade.*52 kr/);
     expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
-    expect(body.querySelector("[data-part='modes']")).toBeNull();
+    // Nothing is behind a switch: the modes, the forecasts and the days are always there.
+    expect(body.querySelector("[data-detailed]")).toBeNull();
+    for (const part of ["modes", "perfect-details", "forecast", "days"]) {
+      expect(body.querySelector(`[data-part='${part}']`), part).not.toBeNull();
+    }
     body.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
     expect(on.onPeriod).toHaveBeenCalledWith("month", "2026-10-01");
-    body.querySelector<HTMLButtonElement>("button[data-period='year']")!.click();
+    body.querySelector<HTMLButtonElement>("button[data-kind='year']")!.click();
     expect(on.onPeriod).toHaveBeenCalledWith("year", null);
-    body.querySelector<HTMLButtonElement>("button[data-detailed]")!.click();
-    expect(on.onDetailed).toHaveBeenCalledWith(true);
   });
 
-  it("shows the modes, the forecasts' errors and each day with Detailed on", () => {
+  it("shows the modes, the forecasts' errors and each day", () => {
     const answer = house("house_history/villa_day.json");
     const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ period: "day", detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(body.querySelectorAll(".spotnav-history-bar")).toHaveLength(24);
@@ -172,12 +178,15 @@ describe("the house history", () => {
     expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, får sälja (Max vinst-regler).");
     expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
     expect(part.querySelector("[data-line='perfect-partial']")?.textContent).toBe("1 ofullständigt dygn räknas inte med.");
-    // It comes before the money; the money behind it and the work only with Detailed on.
+    // It comes before the money; the money behind it and the work further down, always shown.
     const parts = Array.from(body.querySelectorAll<HTMLElement>("[data-part]")).map((item) => item.dataset["part"]);
     expect(parts.indexOf("perfect")).toBeLessThan(parts.indexOf("money"));
-    expect(body.querySelector("[data-part='perfect-details']")).toBeNull();
-    const detailed = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    const details = detailed.querySelector("[data-part='perfect-details']")!;
+    expect(parts.indexOf("money")).toBeLessThan(parts.indexOf("perfect-details"));
+    const details = body.querySelector("[data-part='perfect-details']")!;
+    // A table's headings wrap between their words, so the work's five columns fit a phone; the day table keeps each
+    // date on one line.
+    expect(HOUSE_STYLES).toMatch(/\.spotnav-house-table thead th \{\s*white-space: normal;/);
+    expect(HOUSE_STYLES).toMatch(/\[data-part="days"\] \.spotnav-house-table td:first-child \{\s*white-space: nowrap;/);
     expect(details.querySelectorAll("table")).toHaveLength(2);
     expect(details.querySelector("[data-line='cell-temperature']")?.textContent).toBe("Battericeller: medel 21,8 °C, högst 27,5 °C, 15 min över 30 °C (åtta dygn).");
   });

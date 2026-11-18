@@ -10,8 +10,9 @@
 //   line stands at what was forecast for that hour first, so a miss shows at a glance. Where the heat pump's meter is,
 //   the bar's lower part is heat (measured in the past, forecast ahead) in its own warm colour: part of the house, never
 //   stacked on top of it.
-// * The car: its own bar per past hour (the energy flow's car colour), beside the house's bar (the house's takes the left
-//   part of the hour, the car's the right) so neither hides the other; hidden until toggled on in the legend.
+// * The car: its own part per past hour (the energy flow's car colour), stacked on the house's bar as a month's and a
+//   year's bars stack it, so the hour's whole bar is its mean power with the car; hidden until toggled on in the
+//   legend.
 // * The sun: a soft area, the production in the past and the corrected forecast ahead (the raw one where there is
 //   none); the raw forecast as a dotted line over all of it, since the Hybrid strategy reads that one.
 // * The battery (price view only, where its axis is labelled): its charge level on 0-100 % over the plot's height,
@@ -142,6 +143,16 @@ function pathOf(points: Array<{ x: number; y: number } | null>, area: boolean, b
     .join("");
 }
 
+/** What the car's bar stands on in an hour (kW): the house's bar where it is drawn, else the heat's, else the axis. */
+export function carBase(hour: HouseHour, shown: (series: string) => boolean): number {
+  const house = houseShown(hour).kw;
+  if (shown("house") && house !== null && house > 0) {
+    return house;
+  }
+  const heat = shown("heat") && house !== null && house > 0 ? heatShown(hour) : null;
+  return heat !== null && heat > 0 ? heat : 0;
+}
+
 export function renderHouseChart(input: HouseChartInput): HouseChart {
   const { hours, nowMs, labels } = input;
   const view = input.view ?? "energy";
@@ -161,7 +172,8 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
             shown_("sun") ? sunShown(hour, nowMs) : null,
             shown_("sun") ? hour.sun_forecast_kwh : null,
             shown_("heat") ? heatShown(hour) : null,
-            shown_("car") ? hour.car_kw : null,
+            // The car stands on the hour's bar, so the scale reaches their sum.
+            shown_("car") && hour.car_kw !== null ? carBase(hour, shown_) + hour.car_kw : null,
           ];
     for (const value of figures) {
       if (value !== null) {
@@ -332,9 +344,10 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
     const left = x(hour.startMs);
     const width = x(hour.startMs + HOUR_MS) - left;
     const inset = width * 0.18;
-    // With the car's bar on, the house's takes the left part of the hour and the car's the right.
+    // With the car on, its bar stands on the house's (as a month's and a year's bars stack), so the hour's whole
+    // height is its mean power with the car.
     const room = Math.max(0.5, width - 2 * inset);
-    const houseWidth = carOn ? room * 0.62 : room;
+    const houseWidth = room;
     if (shown.kw !== null && shown.kw > 0) {
       const top = yAt(scale, shown.kw);
       if (shown_("house")) {
@@ -365,21 +378,21 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
     }
     if (shown_("forecast") && shown.measured && hour.house_forecast_kw !== null) {
       const y = yAt(scale, hour.house_forecast_kw);
-      const end = carOn ? left + inset + houseWidth + inset * 0.4 : left + width - inset * 0.4;
+      const end = left + width - inset * 0.4;
       bars.append(svg("line", { class: H.forecastTick, x1: left + inset * 0.4, x2: end, y1: y, y2: y }));
     }
     if (carOn && hour.car_kw !== null && hour.car_kw > 0) {
-      const top = yAt(scale, hour.car_kw);
-      const gap = room * 0.06;
+      const under = carBase(hour, shown_);
+      const top = yAt(scale, under + hour.car_kw);
       bars.append(
         svg("rect", {
           class: H.carBar,
           "data-series": "car",
-          x: left + inset + houseWidth + gap,
+          x: left + inset,
           y: top,
-          width: Math.max(0.5, room - houseWidth - gap),
-          height: Math.max(0.5, base - top),
-          rx: Math.min(2, width / 6),
+          width: Math.max(0.5, room),
+          height: Math.max(0.5, yAt(scale, under) - top),
+          rx: under > 0 ? 0 : Math.min(2, width / 6),
         }),
       );
     }
