@@ -105,7 +105,8 @@ The entity keys, options and services below were checked against each integratio
   plant**), `victron_gx` in Home Assistant core `c87112a6731db4df611917e171787d43b802b00f` (2026-11-08, library
   victron-mqtt 2026.11.1, tomer-w/victron_mqtt `2e25f545c5d58ba105f6c7bb0ef0da481930d51d`, `_victron_topics.py`), and
   the HACS `victron_mqtt` (tomer-w/ha-victron-mqtt `82cce7997c5b6f159b5a988fa622b0a509412cd2`, 2026.11.4, the same
-  short ids). Every entity is `<installation>_<device>_<short id>` and is enabled by default; a write is an MQTT
+  short ids; its operation mode `read_only` makes every control a sensor, which no role here matches, while core
+  always runs `full`). Every entity is `<installation>_<device>_<short id>` and is enabled by default; a write is an MQTT
   publish to the GX's `W/` topic (`writable_metric.py` `set`, always sent, also for the value it already has), and
   the state changes only when the GX publishes the value back. Victron's own page "ESS mode 2 and 3"
   (https://www.victronenergy.com/live/ess:ess_mode_2_and_3, read 2026-11-18, the raw text's sha256 `a8a3bfd8...`)

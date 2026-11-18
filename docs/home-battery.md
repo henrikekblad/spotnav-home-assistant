@@ -277,7 +277,8 @@ For a GX device with a MultiPlus or Quattro and the ESS assistant, through the *
 Assistant core or the HACS **Victron MQTT**. Nobody has run it on a plant yet: it is built from Victron's own page
 "ESS mode 2 and 3" and the integrations' source, it sits behind the same switch and the same check, and a
 [field report](supported.md) is what it needs. The community Modbus integration (`victron`) is read only: its
-maximum inverter power cannot show "no limit" as a value SpotNav could write back.
+maximum inverter power cannot show "no limit" as a value SpotNav could write back. With the HACS integration set
+to its read-only operation mode the controls are sensors, and SpotNav finds nothing to write.
 
 SpotNav takes the plant only in an *Optimized* ESS mode with Dynamic ESS off, and uses Victron's two documented
 ways in:
