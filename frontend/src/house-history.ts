@@ -2,13 +2,14 @@
 // card's header. The decoded answer and the dialog's body: the card's own period picker (`house-tabs.ts`), the bars
 // of the period (what the house cost per hour, day or month, with the battery's saving hatched on top: the comparison
 // the card's tabs do not have), the money (what the period cost, the battery against no battery, what the sun gave),
-// what SpotNav saved as sums (its bars are the card's Earnings tab), the battery's modes side by side, the forecasts'
-// errors and each reviewed day, every section shown. The energy flow is the card's own tab. Every figure is the backend's; text is written
-// with `textContent` only.
+// what SpotNav saved as sums (its bars are the card's Earnings tab), the battery's ways against the perfect plan (each
+// way's share, saving and work once), the forecasts' errors, each reviewed day, and last how it all is counted. Every
+// figure is the period's own and stands once. The energy flow is the card's own tab. Every figure is the backend's;
+// text is written with `textContent` only.
 
 import { dateLabel, formatFixed, formatNumber } from "./format";
 import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow, type PerfectFigures } from "./house-model";
-import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
+import { hasPerfect, onlyPartial, perfectHeadline, perfectNotes, perfectRows, perfectSaving, perfectTable, perfectTableNotes, perfectTemperature } from "./perfect-view";
 import { amount } from "./house-view";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { HOUSE_CLASSES as H } from "./house-styles";
@@ -389,6 +390,10 @@ export interface HouseHistoryInput {
   idPrefix: string;
   /** The site's local date before the first answer (the browser's, for the picker only). */
   today: string;
+  /** The first day the car's saving is counted from, where the card knows it. */
+  carSince?: string | null;
+  /** Where the figures come from and what was assumed (`house-view.ts`), shown last. */
+  sources?: HTMLElement | null;
 }
 
 function kwh(language: Language, value: number): string {
@@ -583,6 +588,8 @@ function spotnavSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
   return block;
 }
 
+/** Before the first whole day with a perfect plan: SpotNav's modes and the battery's own way against plain
+ * self-consumption, summed over the reviewed days. */
 function modesSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
   const reviewed = answer.review;
   if (reviewed === null) {
@@ -607,14 +614,25 @@ function modesSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
   }
   block.append(figureRow(doc, translate(language, "house.compare.own"), amount(language, reviewed.own_saving, answer.money), "own"));
   block.append(note(doc, translate(language, "hist.house.modesNote")));
+  const perfect = reviewed.perfect;
+  if (perfect !== null) {
+    // Only incomplete days so far: say so, and the cells' temperature where the battery reports it.
+    const ownName = translate(language, "house.compare.own");
+    const notes = hasPerfect(perfect) ? perfectNotes(doc, language, perfect, ownName, answer.period === "day") : [];
+    const temperature = perfectTemperature(doc, language, perfect);
+    block.append(...notes, ...(temperature === null ? [] : [temperature]));
+  }
   return block;
 }
 
-/** The period's shares of the perfect plan: the headline the history opens its money with (summed over the period,
- * where the day boundary washes out; a single day says it counted what was left at midnight). */
+/** The battery's ways over the period, each figure once: the share of the perfect plan as the headline and a bar per
+ * way, then one table of what each way saved against no battery and the battery's work. Summed over the period, the
+ * day boundary washes out; a single day says it counted what was left at midnight. `null` before the first whole day
+ * with a perfect plan (`modesSection` stands in). */
 function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
-  const perfect = answer.review?.perfect ?? null;
-  if (!hasPerfect(perfect)) {
+  const reviewed = answer.review;
+  const perfect = reviewed?.perfect ?? null;
+  if (reviewed === null || !hasPerfect(perfect) || onlyPartial(perfect)) {
     return null;
   }
   const { doc, language } = input;
@@ -626,17 +644,38 @@ function perfectSection(input: HouseHistoryInput, answer: HouseHistory): HTMLEle
     line.dataset["line"] = "perfect-headline";
     block.append(line);
   }
-  block.append(perfectRows(doc, language, perfect, ownName, answer.review?.mode ?? null), ...perfectNotes(doc, language, perfect, ownName, answer.period === "day"));
-  return block;
-}
-
-/** With Detailed on: the money behind the shares, the battery's work and the cells' temperature. */
-function perfectDetailsSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
-  const perfect = answer.review?.perfect ?? null;
-  if (perfect === null || ((perfect.days === 0 || perfect.saving === null) && perfect.temperature === null)) {
-    return null;
+  block.append(perfectRows(doc, language, perfect, ownName, reviewed.mode));
+  // The figures first, then every word about them together.
+  const table = perfectTable(doc, language, perfect, answer.money, ownName);
+  if (table !== null) {
+    block.append(table);
   }
-  return perfectDetails(input.doc, input.language, perfect, answer.money, translate(input.language, "house.compare.own"));
+  block.append(...perfectNotes(doc, language, perfect, ownName, answer.period === "day"));
+  if (table !== null) {
+    block.append(...perfectTableNotes(doc, language, answer.money));
+  }
+  // The same comparison stands under Money with another sum: say why, with both figures.
+  const own = perfectSaving(language, perfect, "own", answer.money);
+  if (own !== null && reviewed.battery_saving !== null) {
+    block.append(
+      note(
+        doc,
+        translate(language, "hist.house.perfectDiffers", {
+          name: ownName,
+          own,
+          battery: amount(language, reviewed.battery_saving, answer.money),
+          days: String(perfect.days),
+          batteryDays: String(reviewed.battery_days),
+        }),
+        "perfect-differs",
+      ),
+    );
+  }
+  const temperature = perfectTemperature(doc, language, perfect);
+  if (temperature !== null) {
+    block.append(temperature);
+  }
+  return block;
 }
 
 function forecastSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement {
@@ -699,6 +738,48 @@ function daysSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
   return block;
 }
 
+/** Last: how the figures above are counted. What SpotNav's saving is compared with (a line per part the period has),
+ * how the energy flow is allocated, and where the figures come from. */
+function howSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement {
+  const { doc, language } = input;
+  const block = section(doc, translate(language, "hist.house.how"), "how");
+  block.append(note(doc, translate(language, "hist.house.footnote")));
+  const saving = answer.saving;
+  if (saving !== null || answer.own_control !== null) {
+    const lines: string[] = [];
+    if (saving !== null && saving.battery !== null) {
+      lines.push(translate(language, "house.saving.details.battery"));
+    } else if (answer.own_control !== null) {
+      lines.push(translate(language, "house.saving.details.batteryOwn"));
+    }
+    if (saving !== null && saving.car !== null) {
+      // The sentence ends in its own full stop: an abbreviated month's ("10 nov.") is not doubled.
+      const since = input.carSince == null ? "" : ` ${translate(language, "house.saving.details.carSince", { date: dateLabel(language, input.carSince).replace(/\.$/, "") })}`;
+      lines.push(translate(language, "house.saving.details.car") + since);
+    }
+    if (saving !== null && saving.heat !== null) {
+      lines.push(translate(language, "house.saving.details.heat"));
+    }
+    if (lines.length > 0) {
+      block.append(note(doc, translate(language, "house.saving.details.head"), "saving-compared"), ...lines.map((line) => note(doc, line)));
+    }
+  }
+  const flow = answer.energy_flow;
+  if (flow !== null) {
+    block.append(note(doc, translate(language, flow.step_min < 60 ? "house.flow.ruleQuarter" : "house.flow.rule"), "flow-rule"));
+    if (flow.car_hours < flow.hours && flow.nodes.some((node) => node.role === "car")) {
+      block.append(note(doc, translate(language, "house.flow.carPart")));
+    }
+    if (flow.nodes.some((node) => node.role === "heat")) {
+      block.append(note(doc, translate(language, flow.heat_hours < flow.hours ? "house.flow.heatPart" : "house.flow.heatRule")));
+    }
+  }
+  if (input.sources != null) {
+    block.append(input.sources);
+  }
+  return block;
+}
+
 /** The dialog's body for one state; built fresh each time. */
 export function houseHistoryBody(input: HouseHistoryInput): HTMLElement {
   const { doc, language, state, ui } = input;
@@ -728,23 +809,22 @@ export function houseHistoryBody(input: HouseHistoryInput): HTMLElement {
   if (shownAnswer.energy_flow === null && shownAnswer.buckets.length === 0) {
     period.append(note(doc, translate(language, "hist.house.noMeters"), "no-meters"));
   }
-  // Every section is shown (the card itself is small now; nothing is behind a "Show details"). The energy flow is
-  // the card's own tab, and SpotNav's saving per part is drawn in its Earnings tab; here its sums stand as rows.
+  // Every section is shown (the card itself is small now; nothing is behind a "Show details"), each figure once and
+  // for the period chosen. The energy flow is the card's own tab, and SpotNav's saving per part is drawn in its
+  // Earnings tab; here its sums stand as rows.
   for (const part of [
     houseBars(input, shownAnswer),
-    perfectSection(input, shownAnswer),
+    perfectSection(input, shownAnswer) ?? modesSection(input, shownAnswer),
     moneySection(input, shownAnswer),
     spotnavSection(input, shownAnswer),
-    modesSection(input, shownAnswer),
-    perfectDetailsSection(input, shownAnswer),
     forecastSection(input, shownAnswer),
     daysSection(input, shownAnswer),
+    howSection(input, shownAnswer),
   ]) {
     if (part !== null) {
       period.append(part);
     }
   }
   body.append(period);
-  body.append(note(doc, translate(language, "hist.house.footnote")));
   return body;
 }

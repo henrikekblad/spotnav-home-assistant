@@ -137,20 +137,25 @@ today is offered, and nothing more than ten years back. The period stays chosen 
 ### The details
 
 The "i" in the header (**Details**) opens the history: a day, month or year, chosen with the same period row as the
-tabs. Its bars are the comparison the tabs do not have: what the electricity cost, with what the battery saved against
-the same days with no battery hatched on top. Under them, every section shown (nothing is behind a switch): the share of
-the perfect plan, the money, what SpotNav saved as sums (its bars are the Earnings tab), the modes side by side, the
-forecasts' errors, the days, and **the last days as the card reviews them** (below), led by the reviewed week's sentence
-("Last 7 days: SpotNav's plan 51 kr · the battery itself 45 kr, against plain self-consumption"). The energy flow is not
-here any more: it is the Energy flow tab.
+tabs. Every figure in it is the chosen period's own and stands once; nothing is behind a switch. Its sections, in order:
 
-**The comparison** of the modes, titled with what it compares against ("Compared with the battery only storing your own
-sun, last 7 days"): each of SpotNav's modes (the chosen one marked) and the battery's own control, named where the
-battery runs its maker's optimiser ("Sigenergy AI"), over the last reviewed days. It is not the battery app's measure: a
-battery's own control can earn money in the app's terms and still come out below plain self-consumption here. Once a
-reviewed day has its **perfect plan** it is each way's share of it instead. The perfect plan is the best the battery could
-have done that day in hindsight, with the measured house, sun and car and the same battery, against the same day with no
-battery. The rules that keep it fair:
+* **The cost bars**: the comparison the tabs do not have: what the electricity cost, with what the battery saved against
+  the same days with no battery hatched on top.
+* **Share of perfect**: the battery's ways side by side (below).
+* **Money**: what the period cost, and what the battery, the sun and both together saved (*The battery saved*, below).
+* **SpotNav saved**: the period's sum and a row per part (its bars are the Earnings tab).
+* **Forecast errors** and **Day by day**.
+* **How it is counted**: what SpotNav's saving is compared with, how the flow is allocated, and the sources.
+
+The energy flow is not here: it is the Energy flow tab.
+
+**Share of perfect** opens with a headline ("The battery's own control 77 % of perfect · SpotNav Balanced 74 %") and a
+bar per way: the battery's own control, each of SpotNav's modes (the chosen one marked) and plain self-consumption.
+Under the bars one table has a block per way, and the perfect plan last: what it *saved* against the same days with no
+battery, its *cycles*, how often it *switched* between charging and discharging, and the kWh it charged *from the grid*
+and sold *to the grid*. A share stands on its bar only, the money and the work in the table only. The perfect plan is the
+best the battery could have done that day in hindsight, with the measured house, sun and car and the same battery,
+against the same day with no battery. The rules that keep it fair:
   * Every way is measured against one perfect plan, under the most permissive rules any of them used, so none can
     beat it: where selling was possible that day (the site sent energy to the grid, or the battery's own control or a
     SpotNav mode sold) it is allowed to sell, with Max profit's rules; otherwise it does not sell either. The note
@@ -162,6 +167,17 @@ battery. The rules that keep it fair:
   * A share is shown only where the perfect plan saves at least 5 kr a day (5 € on a euro site); below that it says
     "too small a difference to compare". A week or a month sums the savings over its whole days first and then
     divides, so a charge on one day and the discharge it pays for on the next even out.
+
+Before the first whole day with a perfect plan the section is *The battery's modes against self-consumption* instead:
+each of SpotNav's modes and the battery's own control in money, against the battery only storing its own sun.
+
+**The battery saved** under Money and the battery's own control in the table are both against no battery, and still
+not the same sum. Money's figure is the battery app's measure: what the days really cost against the same days with no
+battery (the house and the car on the grid, the sun still there), over every measured day, and the energy the battery
+holds at midnight is not counted. The table counts whole days with a perfect plan only, and counts what was left at
+midnight at the next day's mean buy price, so that a battery that emptied itself does not look better than one that
+saved its energy for the morning. The note under the table says both sums and both day counts. Hold Money's figure up
+against the battery app's own; read the table for which way of running the battery is best.
 
 ### Heat in the flow
 
@@ -257,45 +273,26 @@ The Earnings tab draws these parts as bars per hour, day or month. The details (
 same parts summed per day, month and year: a *SpotNav saved* box with the total and a row per part (with the days it
 covers where fewer than the period's). The heat's reviews are kept about a month, so an older day has no heat part.
 
-### The last days, in the history
+### How it is counted
 
-Under the period, the details have, as far as the site has them:
+Last in the details, without a figure of its own:
 
-* **What SpotNav saved**: one line per part saying what it is compared with, that the heat is an estimate, a battery
-  under its own control, and from which day the car is counted.
-
+* **What SpotNav saved is compared with**: one line per part the period has: the battery (or that it ran under its own
+  control, so what it earned is not SpotNav's), the car and from which day it is counted, and the heat, an estimate.
 * **How the flow is counted**: the meters do not say which source fed which use, so the split follows a fixed rule, not a
   measurement: each hour (or quarter hour) the sun goes to the house first, then the car, the battery and the grid, and
   the battery covers the house before the grid does. Where the car or the heat pump's meter could not be read every hour,
-  it says so. (Without the diagram, today's energy is shown here as two bars instead; the sun counts only the hours
-  Home Assistant has already compiled.)
-* **The battery app's measure**: the same day in the terms the battery's own app uses, which are not the comparison's.
-  Two baselines, no setting:
-  * *Battery against no battery*: what the day really cost (bought at the buy price, less sold at the sell price) against
-    the same day with no battery at all: the house and the car on the grid, the sun still there. A positive figure is
-    money the battery saved. This is the one to hold up against the battery app's own figure. The energy the battery holds
-    at the end of the day is not counted in it, which the comparison does count: a battery that emptied itself looks
-    better here than there.
-  * *What the sun gave*: the day with the sun and no battery against the same day with no sun and no battery (the sun used
-    in the house at the buy price, the sold sun at the sell price). The sun's production comes from the Energy dashboard's
-    solar statistics, read a little after midnight. *Sun and battery together* is then against a day with neither.
-
-  All of it is worked out from the same measured quarter hours as the comparison, so a day the meters missed part of says
-  how many of its quarter hours the figures cover, and how many of them had the sun's production. Today shows the sums of
-  the reviewed days.
-* **The forecast line**: how far off the forecasts were over the last week: the house in kW, the sun in kWh (with the
-  corrected figure beside it where there is one) and the battery's level in points. Before the first whole day has been
-  reviewed it says so.
-* **Saved per day**: the month's reviewed days, the plan beside the battery's own way, and the month's arbitrage.
-* **Battery modes side by side**: for Self-consumption, Balanced and Max profit, what each is planned to save ahead and what
-  it would have saved over the reviewed days, with the chosen mode marked, and the battery's own way (or its own optimiser)
-  for comparison. All are against plain self-consumption on the same measured load and sun.
-* **Day by day**: each reviewed day's mean forecast error and saving.
+  it says so.
 * **Sources**: the weather entity, outdoor temperature, holiday calendar and solar forecast the forecasts read, whether
   temperature is in the house forecast (and why not), the battery, and what is stored in it now with its average cost
   (marked estimated until the first measured energy has been used). A note lists what the plan assumed, such as the
   battery's lowest level. Where the house's load is measured as the grid less the chargers, a note says that it looks
   smaller while the battery covers the house.
+
+What the sun gave, under Money, is the day with the sun and no battery against the same day with no sun and no battery
+(the sun used in the house at the buy price, the sold sun at the sell price). The sun's production comes from the Energy
+dashboard's solar statistics, read a little after midnight. *Sun and battery together* is then against a day with
+neither.
 
 The card says plainly when the battery runs its own optimiser ("SpotNav plans beside it only to compare, and writes nothing
 to it") and when it is in test ("Test: SpotNav plans the battery but does not control it yet").

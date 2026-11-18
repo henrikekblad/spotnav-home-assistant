@@ -1,7 +1,7 @@
-// The days against their perfect plans in hindsight (`site/perfect_view.py`), shared by the house card and its history:
-// the headline (each way's share of the perfect plan, the battery's own and the chosen mode first), the share rows
-// with a bar each, the plain notes (what "perfect" is, the energy left at midnight, a figure clamped), and behind
-// "Show details" the money behind the shares, the battery's work and the cells' temperature. Every figure is the
+// The days against their perfect plans in hindsight (`site/perfect_view.py`), in the house card's history: the
+// headline (each way's share of the perfect plan, the battery's own and the chosen mode first), the share rows with a
+// bar each, the plain notes (what "perfect" is, the energy left at midnight, a figure clamped), and one table of what
+// each way saved and the battery's work, with the cells' temperature. Every figure is the
 // backend's; text is written with `textContent` only.
 
 import { formatFixed, formatNumber } from "./format";
@@ -160,85 +160,82 @@ export function perfectNotes(doc: Document, language: Language, perfect: Perfect
   return notes;
 }
 
-/** Behind "Show details": the money behind the shares, the battery's work per way and the cells' temperature. */
-export function perfectDetails(doc: Document, language: Language, perfect: PerfectFigures, money_: Money, ownName: string): HTMLElement {
-  const section = element(doc, "section", H.section);
-  section.dataset["part"] = "perfect-details";
-  const ways = order(perfect.mode).filter((way) => perfect.savings[way] !== null);
-  if (perfect.saving !== null) {
-    section.append(element(doc, "h3", H.heading, translate(language, "perfect.money.heading")));
-    const table = element(doc, "table", H.table);
-    const head = element(doc, "thead");
-    const headRow = element(doc, "tr");
-    for (const key of ["perfect.work.way", "perfect.money.saved", "perfect.money.share"] as const) {
-      headRow.append(element(doc, "th", undefined, translate(language, key)));
-    }
-    head.append(headRow);
-    const body = element(doc, "tbody");
-    const perfectRow = element(doc, "tr");
-    perfectRow.dataset["way"] = "perfect";
-    perfectRow.append(
-      element(doc, "td", undefined, translate(language, "perfect.money.perfect")),
-      element(doc, "td", undefined, money(language, perfect.saving, money_)),
-      element(doc, "td", undefined, "100 %"),
+/** The figures behind the shares, once each: a block per way (its name on a line of its own, so the table fits a
+ * phone) and the perfect plan last, with what it saved against no battery and the battery's work. `null` without a
+ * whole day. */
+export function perfectTable(doc: Document, language: Language, perfect: PerfectFigures, money_: Money, ownName: string): HTMLElement | null {
+  if (onlyPartial(perfect)) {
+    return null;
+  }
+  const columns = ["perfect.money.saved", "perfect.work.cycles", "perfect.work.switches", "perfect.work.fromGrid", "perfect.work.toGrid"] as const;
+  const table = element(doc, "table", `${H.table} ${H.wayTable}`);
+  const head = element(doc, "thead");
+  const headRow = element(doc, "tr");
+  for (const key of columns) {
+    const cell = element(doc, "th", undefined, translate(language, key));
+    cell.scope = "col";
+    headRow.append(cell);
+  }
+  head.append(headRow);
+  table.append(head);
+  const rows: Array<{ way: PerfectWay | "perfect"; name: string; saving: number | null }> = order(perfect.mode)
+    .filter((way) => perfect.savings[way] !== null)
+    .map((way) => ({ way, name: wayName(language, way, ownName), saving: perfect.savings[way] }));
+  rows.push({ way: "perfect", name: translate(language, "perfect.money.perfect"), saving: perfect.saving });
+  for (const { way, name, saving } of rows) {
+    const work = perfect.work[way];
+    const group = element(doc, "tbody");
+    group.dataset["way"] = way;
+    const nameRow = element(doc, "tr");
+    const nameCell = element(doc, "th", undefined, name);
+    nameCell.scope = "rowgroup";
+    nameCell.colSpan = columns.length;
+    nameRow.append(nameCell);
+    const figures = element(doc, "tr");
+    figures.append(
+      element(doc, "td", undefined, saving === null ? "–" : money(language, saving, money_)),
+      element(doc, "td", undefined, work === null ? "–" : formatFixed(language, work.cycles, 2)),
+      element(doc, "td", undefined, work === null ? "–" : formatNumber(language, work.switches, 0)),
+      element(doc, "td", undefined, work === null ? "–" : formatFixed(language, work.grid_charge_kwh, 1)),
+      element(doc, "td", undefined, work === null ? "–" : formatFixed(language, work.to_grid_kwh, 1)),
     );
-    body.append(perfectRow);
-    for (const way of ways) {
-      const row = element(doc, "tr");
-      row.dataset["way"] = way;
-      const value = perfect.shares[way];
-      row.append(
-        element(doc, "td", undefined, wayName(language, way, ownName)),
-        element(doc, "td", undefined, money(language, perfect.savings[way]!, money_)),
-        element(doc, "td", undefined, value === null ? "–" : share(language, value)),
-      );
-      body.append(row);
-    }
-    table.append(head, body);
-    section.append(table, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "perfect.money.note", { amount: wholeMoney(language, MIN_PERFECT_SAVING, money_) })));
+    group.append(nameRow, figures);
+    table.append(group);
   }
-  const worked = [...ways, "perfect" as const].filter((way) => perfect.work[way] !== null);
-  if (worked.length > 0) {
-    section.append(element(doc, "h3", H.heading, translate(language, "perfect.work.heading")));
-    const table = element(doc, "table", H.table);
-    const head = element(doc, "thead");
-    const headRow = element(doc, "tr");
-    for (const key of ["perfect.work.way", "perfect.work.cycles", "perfect.work.switches", "perfect.work.fromGrid", "perfect.work.toGrid"] as const) {
-      headRow.append(element(doc, "th", undefined, translate(language, key)));
-    }
-    head.append(headRow);
-    const body = element(doc, "tbody");
-    for (const way of worked) {
-      const work = perfect.work[way]!;
-      const row = element(doc, "tr");
-      row.dataset["way"] = way;
-      row.append(
-        element(doc, "td", undefined, way === "perfect" ? translate(language, "perfect.money.perfect") : wayName(language, way, ownName)),
-        element(doc, "td", undefined, formatFixed(language, work.cycles, 2)),
-        element(doc, "td", undefined, formatNumber(language, work.switches, 0)),
-        element(doc, "td", undefined, formatFixed(language, work.grid_charge_kwh, 1)),
-        element(doc, "td", undefined, formatFixed(language, work.to_grid_kwh, 1)),
-      );
-      body.append(row);
-    }
-    table.append(head, body);
-    section.append(table, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "perfect.work.note")));
-  }
+  return table;
+}
+
+/** What the table's columns count: the saving (with the energy left at midnight) and the battery's work. */
+export function perfectTableNotes(doc: Document, language: Language, money_: Money): HTMLElement[] {
+  return [
+    element(doc, "p", `${C.muted} ${H.note}`, translate(language, "perfect.money.note", { amount: wholeMoney(language, MIN_PERFECT_SAVING, money_) })),
+    element(doc, "p", `${C.muted} ${H.note}`, translate(language, "perfect.work.note")),
+  ];
+}
+
+/** A way's summed saving against no battery as the table words it (for a sentence that names it). */
+export function perfectSaving(language: Language, perfect: PerfectFigures, way: PerfectWay, money_: Money): string | null {
+  const value = perfect.savings[way];
+  return value === null ? null : money(language, value, money_);
+}
+
+/** The cells' temperature over the days that have it; `null` where the battery does not report it. */
+export function perfectTemperature(doc: Document, language: Language, perfect: PerfectFigures): HTMLElement | null {
   const temperature = perfect.temperature;
-  if (temperature !== null) {
-    const line = element(
-      doc,
-      "p",
-      `${C.muted} ${H.note}`,
-      translate(language, `perfect.temperature.${pluralForm(language, temperature.days)}`, {
-        mean: `${formatFixed(language, temperature.mean_c, 1)} °C`,
-        max: `${formatFixed(language, temperature.max_c, 1)} °C`,
-        minutes: formatNumber(language, temperature.minutes_above, 0),
-        days: numberWord(language, temperature.days),
-      }),
-    );
-    line.dataset["line"] = "cell-temperature";
-    section.append(line);
+  if (temperature === null) {
+    return null;
   }
-  return section;
+  const line = element(
+    doc,
+    "p",
+    `${C.muted} ${H.note}`,
+    translate(language, `perfect.temperature.${pluralForm(language, temperature.days)}`, {
+      mean: `${formatFixed(language, temperature.mean_c, 1)} °C`,
+      max: `${formatFixed(language, temperature.max_c, 1)} °C`,
+      minutes: formatNumber(language, temperature.minutes_above, 0),
+      days: numberWord(language, temperature.days),
+    }),
+  );
+  line.dataset["line"] = "cell-temperature";
+  return line;
 }
