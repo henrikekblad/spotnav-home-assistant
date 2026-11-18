@@ -38,8 +38,7 @@ the home battery's share:
 samples, every one of them counting), the minutes counted, and two figures for the bias below; `WINDOW_DAYS` days,
 in the site's own store (bounded, read as untrusted: anything malformed is dropped).
 
-**What the cap uses** (`learned`): once `MIN_READY_DAYS` days in the window each have at least `DAY_MINUTES` counted
-minutes (either way), per phase **the largest hourly peak in the whole window** (not a quantile: the minutes that count are biased
+**What the cap uses** (`learned`): once enough days in the window count (below), per phase **the largest hourly peak in the whole window** (not a quantile: the minutes that count are biased
 toward the battery standing idle, mostly night, so the rarest peaks are the ones to keep; a 1-minute mean already
 leaves out a motor's start), scaled up by the **bias factor** and plus `MARGIN_A`. The bias factor is how much larger
 the house's whole load (its current summed over the phases, known exactly whatever the battery's split) got in every
@@ -54,27 +53,44 @@ phase the larger of the two (each plus `MARGIN_A`); once `READY_DAYS` days each 
 the exact peaks alone (the battery's band no longer needed). Loads that back off by themselves (a heat pump's own
 load monitor shedding its immersion heater) never peak on the meter, so they are left out as they should be.
 
-**A cap that grows with the days kept** (`extra_margin_a`). Below `MIN_READY_DAYS` counted days nothing learned is
-used: the conservative rule stays. From there to `READY_DAYS` the learned peaks count with a further margin on top of
-`MARGIN_A`, `EXTRA_MARGIN_A` at `MIN_READY_DAYS` and falling in a straight line to nothing at `READY_DAYS`. The
-learned peaks then replace the conservative rule altogether (the cap may be larger than that rule gave: that is the
-point), so the numbers have to hold by themselves:
+**A cap that grows with the days kept** (`PhasePeaks.learned`, `extra_margin_a`). Until `MIN_READY_DAYS` days count,
+nothing learned is used: the conservative rule stays. From there until the learning is done the learned peaks count
+with a further margin on top of `MARGIN_A`, `EXTRA_MARGIN_A` at `MIN_READY_DAYS` and falling in a straight line to
+nothing at `READY_DAYS`. The learned peaks then replace the conservative rule (the cap may be larger than that rule
+gave: that is the point), so the numbers have to hold by themselves:
 
 * What few days miss is a peak not yet seen. The cap does not take each phase's own peak: it takes the **largest
   phase's** peak as the house on every phase (`gate.grid_charge_cap_kw`), so a load that moves to another phase, or a
   heavy load on a phase that was quiet so far, is covered up to the largest phase's. What is left to miss is the
   largest phase's own peak growing. On the one house measured so far (11 days of November, heat pump, cooking, 20 A)
   that figure after one day was up to 5.1 A below the 11 days' largest, after two days at most 1.2 A, after three at
-  most 1.1 A, after a week 0.3 A. One day is therefore never enough.
+  most 1.1 A, after a week 0.3 A.
 * `MIN_READY_DAYS` = 7: a whole week, so every weekday's habits (the weekend's cooking, the washing day) are in
   it once. One house's eleven days are no ground for fewer, and a week costs little: a site whose sensors have been
   in Home Assistant for a while has more than seven days at once from the recorder's history (ten by default).
 * `EXTRA_MARGIN_A` = 4 A (0.9 kW on the phase, with `MARGIN_A` 6 A in all at seven days): over ten times what a
   week missed there. It is not sized for a large appliance never run in those days on top of the largest phase's
   peak at its worst minute; nor is `MARGIN_A` after two weeks. What covers that is that the peak kept is the
-  window's largest minute on the largest phase with every other load of that minute in it, and that a main fuse
-  carries an overload of that size for the minutes such a coincidence lasts.
-* The days counted need `DAY_MINUTES` each as before, and the bias factor applies as before.
+  window's largest minute on the largest phase with every other load of that minute in it, that the cap never takes
+  the house below the forecast's high figure for the hour (`gate.grid_charge_cap_kw`: a day colder than the days
+  learned), and that a main fuse carries an overload of that size for the minutes such a coincidence lasts.
+* **Seven days must be seven days.** `DAY_MINUTES` in one stretch (the battery idle every night at three) would make
+  a "day" of two night hours, and seven of them a week that never saw an evening. Until the learning is done a day
+  therefore counts only **spread over the day**: its counted minutes in at least `SPREAD_HOURS` (12) clock hours,
+  half the day, or at least `SPREAD_MINUTES` (600) of them; and no more days count than the time from the first to
+  the last counted hour holds (whole days, one day's slack: seven days in a row reach from the first's noon to the
+  seventh's). The further margin falls by the same days. Once `READY_DAYS` days count by `DAY_MINUTES`, as before
+  this stage existed, the learning is done.
+* **Days read back from the recorder are weaker evidence** (`site/phase_backfill.py`): the history cannot say whether
+  a reading that stood still was alive, so those minutes are left out, and what is left out is not random (a
+  battery holding the meter at nought hides whole evenings). Each hour read back keeps how many of its minutes
+  were lost so (`HourMark.lost`). A day whose history lost more than `HISTORY_LOST_SHARE` (30 %) of the minutes that
+  could have counted (counted plus lost) does not count as a day at all: with a third of a day unseen, its peak
+  may well be in the part not seen (its peaks are still kept: they can only raise what is learned). And a day that
+  counts only with its history weighs `HISTORY_DAY_WEIGHT` (half) of a day sampled live, both in the further margin
+  (ten days of history alone keep the whole 4 A; each live day then takes off twice what a history day does) and in
+  the end of the learning (`READY_DAYS` reached with the history's days at half).
+* The bias factor and the hidden load apply as above at every stage.
 
 The sun: on a hybrid inverter the sun's power reaches the meter through the plant, so without the plant's per-phase
 power it hides house load in the meter's reading while it shines. It only ever lowers what is seen, and the largest
