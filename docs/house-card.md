@@ -126,15 +126,14 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   review (the battery's own figure plus what the review says the plan's day would have cost less, or more). So the two
   can be compared before control is turned on. The would-be figure is never in the headline, a day not reviewed yet
   counts as it went, and a single day has it in words under the bars (today's comes the night after).
-* **Price and battery**: headed by what the battery earned in the period ("The battery earned 11 kr", its arbitrage, the
-  sum of the bars), with what it counts ("What the battery gave back, at the price then, less what charging it cost") and what the
-  electricity cost under it. It is not the cash flow some battery apps show per hour, which books a charge as a cost when
-  it happens. A day has the
+* **Price and battery**: a day only (a month or a year chosen on another tab becomes the day inside it; the picker has no
+  Day | Month | Year here). Under the picker a line with what the battery's figure counts ("What the battery gave back, at
+  the price then, less what charging it cost") and what the electricity cost. It is not the cash flow some battery apps
+  show per hour, which books a charge as a cost when it happens. The day has the
   buying price (every fee included) and the selling price per hour, with the battery's level on its own 0–100 % axis,
   dashed where it is planned; the hours the plan charges from the grid are tinted violet, those it sells more lightly.
-  Under it, on the same hours and the same time axis, what the battery earned each hour as kr bars (below the line where
-  it gave energy back for less than it cost to store); a tap on either is that hour. A month has a kr bar per day and a
-  year one per month. The battery's hourly figures are kept 40 days, its daily ones 400.
+  What the battery earned, per hour, in a period or in total, is the Earnings tab's: it is not repeated here as bars or a
+  heading, but a tap on an hour still says what the battery earned in it. The battery's hourly figures are kept 40 days.
   A tap explains the figure: "08:00: discharged 3.5 kWh, worth 8.10 kr, minus 5.60 kr that the energy cost to charge =
   2.50 kr", and an hour that charged says "charged 4.2 kWh for 3.90 kr (counted when the energy is used)" (the same
   words on the Earnings tab's battery part). It will not match the battery maker's cash-flow figure to the öre: that one

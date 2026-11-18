@@ -19,7 +19,7 @@ import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from ".
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
-import { fitTabs, HOUSE_TABS, isHouseTab, readTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
+import { dayOnly, fitTabs, HOUSE_TABS, isHouseTab, readTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
 import { decodeHouseHistory, houseHistoryBody, type HouseHistory } from "./house-history";
@@ -475,7 +475,10 @@ export class SpotnavHouseCard extends HTMLElement {
   /** What the shown tab and period need besides the card's answer. */
   needs(): { live: boolean; history: PeriodChoice | null; day: string | null } {
     const tab = this.shownTab();
-    const choice = this.ui.choice ?? { period: "day", date: null };
+    const today = this.today();
+    const chosen = this.ui.choice ?? { period: "day", date: null };
+    // Price and battery shows days only: a month or a year chosen elsewhere becomes the day inside it.
+    const choice = tab === "price" ? dayOnly(chosen, today) : chosen;
     if (tab === "now") {
       return { live: true, history: null, day: null };
     }
@@ -506,8 +509,17 @@ export class SpotnavHouseCard extends HTMLElement {
       live: this.live,
       history: needs.history === null ? null : (this.periods.get(this.periodKey(needs.history)) ?? { kind: "loading" }),
       day: needs.day === null ? null : (this.days.get(needs.day) ?? { kind: "loading" }),
-      today: answer.day?.today === true ? answer.day.date : localDate(answer.time_zone, Date.now()),
+      today: this.today(),
     };
+  }
+
+  /** The site's local date (the day the card's answer is of, when that is today). */
+  private today(): string {
+    if (this.state.kind !== "ready") {
+      return "";
+    }
+    const answer = this.state.answer;
+    return answer.day?.today === true ? answer.day.date : localDate(answer.time_zone, Date.now());
   }
 
   /** Read what the shown tab needs and has not got; poll the live flows while Now is shown. */

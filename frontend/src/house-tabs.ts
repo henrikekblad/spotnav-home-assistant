@@ -286,6 +286,12 @@ export function kindChoice(choice: PeriodChoice, period: HistoryPeriod, today: s
   return { period, date: start >= periodStart(period, today) ? null : start };
 }
 
+/** The period a tab that shows days only (Price and battery) shows: the day inside the chosen one (today's for a
+ * running month or year). */
+export function dayOnly(choice: PeriodChoice, today: string): PeriodChoice {
+  return choice.period === "day" ? choice : kindChoice(choice, "day", today);
+}
+
 const STEP_KEYS: Record<HistoryPeriod, [TranslationKey, TranslationKey, TranslationKey]> = {
   day: ["hist.previous.day", "hist.next.day", "hist.pick.day"],
   month: ["hist.previous.month", "hist.next.month", "hist.pick.month"],

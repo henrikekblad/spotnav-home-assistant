@@ -355,7 +355,8 @@ describe("the battery app's views, calm", () => {
     const card = body(answer(), { tab: "price" }, "sv", { onSelect: vi.fn() });
     const tabs = { live: null, history: { kind: "ready" as const, answer: dayHistory() }, day: null, today: "2026-11-13" };
     const priced = houseBody({ doc: document, language: "sv", state: { kind: "ready", answer: answer() }, ui: { selected: null, tab: "price" }, handlers: { onSelect: vi.fn() }, width: 340, nowMs: NOW, idPrefix: "p", tabs });
-    expect(priced.querySelector("[data-line='earned']")?.textContent).toBe("Batteriet tjänade 11 kr");
+    // No heading with the battery's earnings: the Earnings tab says them.
+    expect(priced.querySelector("[data-line='earned']")).toBeNull();
     expect(priced.querySelector("[data-line='earned-sub']")?.textContent).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade. · Elkostnad 38 kr");
     expect(card.querySelector("[data-line='earned']")).toBeNull();
     // The level is the schematic's in Now, the mode under it.
@@ -639,9 +640,9 @@ describe("a past day's answer", () => {
     const price = render("price", { kind: "ready", answer: past }, { kind: "ready", answer: dayHistory });
     expect(price.querySelector(".spotnav-house-surface .spotnav-house-price-buy")).not.toBeNull();
     expect(withPrices(past, dayHistory).hours[3]!.buy).toBe(103);
-    // The kr bars on the chart's own hours, under it, and the day's heading their sum.
-    expect(price.querySelectorAll(".spotnav-house-earned-strip .spotnav-house-period-part").length).toBeGreaterThan(0);
-    expect(price.querySelector("[data-line='earned']")?.textContent).toMatch(/^Batteriet tjänade /);
+    // No kr bars under the chart and no heading with their sum: the Earnings tab has them.
+    expect(price.querySelector(".spotnav-house-earned-strip")).toBeNull();
+    expect(price.querySelector("[data-line='earned']")).toBeNull();
     // Today's own words (what the headline counts, the week) only on today.
     expect(price.querySelector("[data-line='today-hint']")).toBeNull();
     expect(translate("en", "house.sub.socDayEnd", { pct: "41 %" })).toBe("Battery 41 % at the end of the day");

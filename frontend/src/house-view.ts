@@ -10,9 +10,9 @@ import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./hou
 import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
 import type { BatteryFlow, HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
-import { earnedBars, earnedStrip, earnedTotal, energyChart, flowWords, kwhText, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
+import { energyChart, flowWords, kwhText, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
 import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
-import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
+import { dayOnly, periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
 import type { HistoryPeriod } from "./period-history";
 import { hiddenIn, type HiddenSeries } from "./house-series";
 import { cardHeader, headerButton, headerTitle } from "./card-header";
@@ -474,12 +474,12 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
   return list;
 }
 
-/** Under a day's price chart, on its hours: what the battery earned each hour (minor unit, `null` unknown). */
-interface EarnedStrip {
+/** On a day's price chart, said in the readout of a chosen hour: what the battery earned that hour (minor unit, `null`
+ * unknown). Nothing is drawn for it: the Earnings tab shows the same figures. */
+interface HourEarnings {
   values: Array<number | null>;
   /** What each hour's figure is made of, where kept (`HouseBucket.battery_flow`); same length as `values`. */
   flows?: Array<BatteryFlow | null>;
-  height: number;
 }
 
 function chartBlock(
@@ -487,7 +487,7 @@ function chartBlock(
   answer: HouseAnswer,
   forced: HouseChartView | null = null,
   fitHeight: number | null = null,
-  earned: EarnedStrip | null = null,
+  earned: HourEarnings | null = null,
 ): HTMLElement {
   const { doc, language, ui, handlers, nowMs } = input;
   const ctx = context(language, answer);
@@ -522,15 +522,6 @@ function chartBlock(
   surface.setAttribute("role", "group");
   surface.setAttribute("aria-label", translate(language, "house.chart.label"));
   surface.append(chart.element);
-  // The kr bars share the chart's hours and its x-axis, and its readout: a tap anywhere in the two is that hour.
-  const strip = earned === null ? null : earnedStrip(doc, earned.values, { width: chart.scale.width, left: chart.scale.left, right: chart.scale.right }, earned.height, (minor) => amount(language, minor, answer.money));
-  const stripBox = strip === null ? null : element(doc, "div", "spotnav-house-earned-box");
-  if (strip !== null && stripBox !== null) {
-    strip.element.style.width = "100%";
-    strip.element.style.height = `${earned!.height}px`;
-    strip.element.setAttribute("preserveAspectRatio", "none");
-    stripBox.append(strip.element);
-  }
   surface.style.height = `${chart.scale.height}px`;
   // Today's chart has the forecast ahead (lighter bars); a past day's has none to point out.
   const shownToday = answer.day === null || answer.day.today;
@@ -538,7 +529,6 @@ function chartBlock(
   let selected = ui.selected !== null && ui.selected < answer.hours.length ? ui.selected : null;
   const show = (index: number | null): void => {
     chart.select(index);
-    strip?.select(index);
     const hour = index === null ? undefined : answer.hours[index];
     // In a box of fixed height (a wall screen) no hint: the line stays empty until an hour is chosen.
     const hint = fitHeight !== null ? "" : translate(language, view === "energy" && shownToday ? "house.hint.energy" : "house.hint");
@@ -567,7 +557,7 @@ function chartBlock(
   // By the pointer's x alone, anywhere in the chart's height; a horizontal touch drag scrubs and keeps the
   // hour it ends on, a vertical one scrolls the page (`touch-action: pan-y`).
   let scrubbed: number | null = null;
-  for (const target of stripBox === null ? [surface] : [surface, stripBox]) {
+  for (const target of [surface]) {
     attachScrub(target, {
       hover: (event) => show(indexAt(event) ?? selected),
       leave: () => show(selected),
@@ -627,9 +617,6 @@ function chartBlock(
   // The readout right under the chart, where the eye is when a finger or the pointer is on it; its lines are reserved
   // so nothing below moves when an hour is chosen.
   block.append(surface);
-  if (stripBox !== null) {
-    block.append(stripBox);
-  }
   block.append(readout, legend(doc, language, answer, view, hidden, handlers));
   return block;
 }
@@ -967,8 +954,12 @@ function flowPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElem
 
 /** The day's hours a tab draws: today's from the card's answer, a past day's from its own read; `undefined` while
  * that is on its way (the line is in `panel`), `null` when the day has none (too far back: the history's bars). */
-function dayHours(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement): HouseAnswer | null | undefined {
-  const choice = input.ui.choice ?? { period: "day", date: null };
+function dayHours(
+  input: HouseRenderInput,
+  answer: HouseAnswer,
+  panel: HTMLElement,
+  choice: PeriodChoice = input.ui.choice ?? { period: "day", date: null },
+): HouseAnswer | null | undefined {
   if (choice.date === null) {
     return answer;
   }
@@ -1051,26 +1042,15 @@ function flowOnHours(hours: readonly HouseHour[], history: HouseHistory | null):
   return hours.map((hour) => byStart.get(hour.startMs) ?? null);
 }
 
-/** Price and battery: the heading "Batteriet tjänade X kr" (the period's sum of the bars) with the battery app's
- * measure and the cost under it, then a day's prices with its kr bars on the same hours, or a month's or a year's kr
- * bars per day or month. */
+/** Price and battery: a day's prices with the battery's level and plan, under a line with the battery app's measure and
+ * the cost. A day only: a month's or a year's kr bars were the Earnings tab's figures, and the prices are hourly. */
 function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
   const { doc, language } = input;
-  const choice = input.ui.choice ?? { period: "day", date: null };
-  panel.append(picker(input, today));
+  const choice = dayOnly(input.ui.choice ?? { period: "day", date: null }, today);
+  panel.append(periodPicker(doc, language, choice, today, (next) => input.handlers.onPeriod?.(next), null, ["day"]));
   const loaded = input.tabs?.history ?? null;
   const history = loaded !== null && loaded.kind === "ready" ? loaded.answer : null;
   const isToday = choice.period === "day" && choice.date === null;
-  // The heading: what the battery earned, its measure, and what the electricity cost.
-  if (answer.battery !== null && history !== null) {
-    // Today's is the card's own figure, the one Now says; another period's is its bars' sum.
-    const total = isToday && answer.today !== null ? answer.today.arbitrage : earnedTotal(history);
-    if (total !== null) {
-      const heading = element(doc, "p", PERIOD_VIEW_CLASSES.total, translate(language, "house.earned", { amount: amount(language, total, answer.money) }));
-      heading.dataset["line"] = "earned";
-      panel.append(heading);
-    }
-  }
   const sub: string[] = [];
   if (answer.battery !== null) {
     sub.push(todayHint(language, answer));
@@ -1090,29 +1070,20 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
     line.dataset["line"] = "earned-sub";
     panel.append(line);
   }
-  if (choice.period === "day") {
-    const shown = dayHours(input, answer, panel);
-    if (shown === undefined) {
-      return;
-    }
-    const priced = shown === null || shown === answer ? shown : withPrices(shown, history);
-    if (priced !== null && priced.hours.some((hour) => hour.buy !== null)) {
-      const values = answer.battery === null ? null : earnedOnHours(priced.hours, history);
-      const flows = flowOnHours(priced.hours, history);
-      const strip = values !== null && (values.some((value) => value !== null) || flows.some((flow) => flow !== null)) ? { values, flows, height: boxed(input) ? 56 : 72 } : null;
-      panel.append(chartBlock({ ...input, nowMs: shown === answer ? input.nowMs : Date.parse(`${choice.date}T23:59:59Z`) + 86_400_000 }, priced, "price", input.ui.fill ?? null, strip));
-      return;
-    }
+  const shown = dayHours(input, answer, panel, choice);
+  if (shown === undefined) {
+    return;
+  }
+  const priced = shown === null || shown === answer ? shown : withPrices(shown, history);
+  if (priced !== null && priced.hours.some((hour) => hour.buy !== null)) {
+    const values = answer.battery === null ? null : earnedOnHours(priced.hours, history);
+    const flows = flowOnHours(priced.hours, history);
+    const earned = values !== null && (values.some((value) => value !== null) || flows.some((flow) => flow !== null)) ? { values, flows } : null;
+    panel.append(chartBlock({ ...input, nowMs: shown === answer ? input.nowMs : Date.parse(`${choice.date}T23:59:59Z`) + 86_400_000 }, priced, "price", input.ui.fill ?? null, earned));
+    return;
   }
   if (loaded === null || loaded.kind !== "ready") {
     historyOrStatus(input, panel);
-    return;
-  }
-  const bars = earnedBars(doc, language, loaded.answer, input.ui.fill ?? barsHeight(input), (minor) => amount(language, minor, answer.money), input.ui.bar ?? null, input.handlers.onBar?.bind(input.handlers));
-  if (bars !== null) {
-    panel.append(bars);
-  } else if (answer.battery === null) {
-    panel.append(statusParagraph(doc, language, "house.value.none", "no-battery"));
   }
 }
 
