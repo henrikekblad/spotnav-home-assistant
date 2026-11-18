@@ -78,6 +78,8 @@ export interface DayChartInput {
   selectedMs?: number | null;
   /** A time was chosen (`null`: let go), so the card can keep it across its next redraw. */
   onSelect?: (ms: number | null) => void;
+  /** The picture's height (px) where the card gives it more than its own (a box of fixed height); never less. */
+  height?: number | null;
 }
 
 /** The history's setpoint hours (`indoor_day.setpoint`) as the chart takes them: the kept plan, no relay. */
@@ -234,8 +236,8 @@ export function dayFigures(input: DayChartInput, ms: number): string {
 }
 
 /** A water droplet standing on the axis at `x`, its tip up. */
-function droplet(x: number): string {
-  const base = PLOT_BOTTOM - 1;
+function droplet(x: number, plotBottom: number): string {
+  const base = plotBottom - 1;
   return `M${x.toFixed(2)} ${base - 10} C${(x + 1.5).toFixed(2)} ${base - 7} ${(x + 4).toFixed(2)} ${base - 5} ${(x + 4).toFixed(2)} ${base - 3.5}`
     + ` A4 4 0 0 1 ${(x - 4).toFixed(2)} ${base - 3.5} C${(x - 4).toFixed(2)} ${base - 5} ${(x - 1.5).toFixed(2)} ${base - 7} ${x.toFixed(2)} ${base - 10} Z`;
 }
@@ -246,6 +248,12 @@ function droplet(x: number): string {
  */
 export function dayChart(input: DayChartInput): HTMLElement | null {
   const { doc, language, ctx, day, hours } = input;
+  // A taller picture gives its extra height to the plot; the axis, the car's bar and the labels move down with it.
+  const extra = Math.max(0, Math.round(input.height ?? HEIGHT) - HEIGHT);
+  const height = HEIGHT + extra;
+  const plotBottom = PLOT_BOTTOM + extra;
+  const carY = CAR_Y + extra;
+  const labelY = LABEL_Y + extra;
   const points = day?.points ?? [];
   if (points.length === 0 && hours.length === 0) {
     return null;
@@ -266,7 +274,7 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
     high = middle + MIN_SPAN_C / 2;
   }
   const x = (ms: number): number => ((Math.min(lastMs, Math.max(firstMs, ms)) - firstMs) / (lastMs - firstMs)) * drawWidth;
-  const y = (celsius: number): number => TOP + ((high - celsius) / (high - low)) * (PLOT_BOTTOM - TOP);
+  const y = (celsius: number): number => TOP + ((high - celsius) / (high - low)) * (plotBottom - TOP);
 
   const block = doc.createElement("section");
   block.dataset["block"] = "day";
@@ -275,7 +283,7 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
   surface.tabIndex = 0;
   surface.setAttribute("role", "group");
   surface.setAttribute("aria-label", translate(language, "heat.chart.label"));
-  const picture = svg(doc, "svg", { viewBox: `0 0 ${drawWidth} ${HEIGHT}`, class: X.day, "aria-hidden": "true" });
+  const picture = svg(doc, "svg", { viewBox: `0 0 ${drawWidth} ${height}`, class: X.day, "aria-hidden": "true" });
   surface.append(picture);
   const readout = doc.createElement("p");
   readout.className = `${C.muted} ${X.dayReadout}`;
@@ -300,7 +308,7 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
     const from = x(hour.startMs);
     const whole = x(hour.startMs + HOUR_MS) - from;
     const column = (kind: string, share: number): void => {
-      const rect = svg(doc, "rect", { x: from.toFixed(2), y: TOP, width: Math.max(1, whole * share).toFixed(2), height: PLOT_BOTTOM - TOP, class: X.dayColumn });
+      const rect = svg(doc, "rect", { x: from.toFixed(2), y: TOP, width: Math.max(1, whole * share).toFixed(2), height: plotBottom - TOP, class: X.dayColumn });
       rect.dataset["mark"] = kind;
       picture.append(rect);
     };
@@ -368,7 +376,7 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
   }
 
   // The time axis, the car's charging under it and the hot water standing on it.
-  picture.append(svg(doc, "line", { x1: 0, x2: drawWidth, y1: PLOT_BOTTOM, y2: PLOT_BOTTOM, class: X.dayBaseline }));
+  picture.append(svg(doc, "line", { x1: 0, x2: drawWidth, y1: plotBottom, y2: plotBottom, class: X.dayBaseline }));
   // The car's hours, a run of them as one bar.
   const runs: DaySpan[] = [];
   for (const hour of sorted) {
@@ -384,12 +392,12 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
   }
   for (const run of runs) {
     const from = x(run.startMs);
-    const mark = svg(doc, "rect", { x: from.toFixed(2), y: CAR_Y, width: Math.max(1, x(run.endMs) - from).toFixed(2), height: CAR_HEIGHT, rx: CAR_HEIGHT / 2, class: X.dayMark });
+    const mark = svg(doc, "rect", { x: from.toFixed(2), y: carY, width: Math.max(1, x(run.endMs) - from).toFixed(2), height: CAR_HEIGHT, rx: CAR_HEIGHT / 2, class: X.dayMark });
     mark.dataset["mark"] = "car";
     picture.append(mark);
   }
   for (const span of input.water) {
-    const mark = svg(doc, "path", { d: droplet(x((span.startMs + span.endMs) / 2)), class: X.dayMark });
+    const mark = svg(doc, "path", { d: droplet(x((span.startMs + span.endMs) / 2), plotBottom), class: X.dayMark });
     mark.dataset["mark"] = "hot_water";
     picture.append(mark);
   }
@@ -399,17 +407,17 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
     if (!Number.isFinite(hourOfDay) || hourOfDay % every !== 0) {
       continue;
     }
-    const tick = svg(doc, "text", { x: (x(ms) + 1).toFixed(2), y: LABEL_Y, class: X.dayAxis });
+    const tick = svg(doc, "text", { x: (x(ms) + 1).toFixed(2), y: labelY, class: X.dayAxis });
     tick.textContent = hourLabel(ctx, ms);
     picture.append(tick);
   }
   if (input.nowMs !== null && input.nowMs >= firstMs && input.nowMs < lastMs) {
     const at = x(input.nowMs).toFixed(2);
-    picture.append(svg(doc, "line", { x1: at, x2: at, y1: TOP - 4, y2: CAR_Y + CAR_HEIGHT, class: X.dayNow }));
+    picture.append(svg(doc, "line", { x1: at, x2: at, y1: TOP - 4, y2: carY + CAR_HEIGHT, class: X.dayNow }));
   }
 
   // The crosshair: a line at the chosen step and a dot on each room line there.
-  const cross = svg(doc, "line", { x1: 0, x2: 0, y1: TOP - 4, y2: CAR_Y + CAR_HEIGHT, class: X.dayCross, display: "none" });
+  const cross = svg(doc, "line", { x1: 0, x2: 0, y1: TOP - 4, y2: carY + CAR_HEIGHT, class: X.dayCross, display: "none" });
   const meanDot = svg(doc, "circle", { r: 4, class: X.dayDot, display: "none" });
   meanDot.dataset["line"] = "mean";
   const coldDot = svg(doc, "circle", { r: 3, class: X.dayDot, display: "none" });

@@ -323,7 +323,8 @@ export function choiceLabel(language: Language, choice: PeriodChoice, today: str
 /**
  * The one-line picker (see the module): "‹ [label] ›" and Day | Month | Year. The label is a button that opens the
  * native picker of a hidden control (a date input for a day, a list of months or years); `through` ("17:00") is told
- * after today's label ("I dag · till 17:00"). `today` is the site's local date.
+ * after today's label ("I dag · till 17:00"). `today` is the site's local date. `kinds` are the kinds offered
+ * (all three; with one alone its buttons are left out).
  */
 export function periodPicker(
   doc: Document,
@@ -332,6 +333,7 @@ export function periodPicker(
   today: string,
   onChange: (next: PeriodChoice) => void,
   through: string | null = null,
+  kinds: readonly HistoryPeriod[] = HISTORY_PERIODS,
 ): HTMLElement {
   const wrap = doc.createElement("div");
   wrap.className = T.picker;
@@ -427,12 +429,16 @@ export function periodPicker(
   row.setAttribute("role", "group");
   row.setAttribute("aria-label", translate(language, "hist.period.label"));
   row.append(step("back", "‹", previousKey, before >= earliest, -1), holder, step("forward", "›", nextKey, after <= today, 1));
-  // Day | Month | Year, one pressed.
-  const kinds = doc.createElement("div");
-  kinds.className = T.pickerKinds;
-  kinds.setAttribute("role", "group");
-  kinds.setAttribute("aria-label", translate(language, "hist.period.label"));
-  for (const period of HISTORY_PERIODS) {
+  // Day | Month | Year, one pressed; a tab that shows one kind only (the heat card's plan: a day) has no choice.
+  if (kinds.length < 2) {
+    wrap.append(row);
+    return wrap;
+  }
+  const kindRow = doc.createElement("div");
+  kindRow.className = T.pickerKinds;
+  kindRow.setAttribute("role", "group");
+  kindRow.setAttribute("aria-label", translate(language, "hist.period.label"));
+  for (const period of kinds) {
     const button = doc.createElement("button");
     button.type = "button";
     button.dataset["kind"] = period;
@@ -443,9 +449,9 @@ export function periodPicker(
         onChange(kindChoice(choice, period, today));
       }
     });
-    kinds.append(button);
+    kindRow.append(button);
   }
-  wrap.append(row, kinds);
+  wrap.append(row, kindRow);
   return wrap;
 }
 
