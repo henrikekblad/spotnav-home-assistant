@@ -128,7 +128,11 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
 * **What backs off first** when the fuse is short: the battery's grid charge, then the car; the car first when its
   departure has room. With the solar priority "battery first" the car backs off before the battery.
 * **Selling from the battery** (discharging to the grid) is off unless you allow it in the battery section.
-* **At most 96 writes a day**, outside hand-backs.
+* **At most 96 writes a day** to the plant's settings (limits, modes, switches), outside hand-backs. A grid charge
+  leaves the last 12 of them untouched, so a hold can still start after a day of charges that kept starting. The
+  targets per phase are setpoints made for an outside controller and have their own count, 500 a day on Sigenergy
+  (its protocol does not say how often they may be written, so not more); reaching it ends charging per phase for
+  the day and nothing else. The diagnostics show what is left of each.
 
 ### The grid charge cap and the house's peaks
 
@@ -219,21 +223,27 @@ phase its own cap,
 
     phase cap (kW) = phase voltage x max(0, fuse - 2 A - that phase's house peak - the chargers' last currents) / 1000
 
-and commands the grid charge as three targets, each at most its phase's cap and its phase's live headroom, the sum at
-most the plan's power and the battery's rating, spread as evenly as the caps allow. The targets stay if Home
+and commands the grid charge as three targets, each at most its phase's cap and its phase's live headroom, in whole
+amps (rounded down), the sum at most the plan's power and the battery's rating, spread as evenly as the caps allow. The targets stay if Home
 Assistant stops, as any command does, so every one of them is sized to keep its own phase under the fuse with the
 house at that phase's learned peak. With learned peaks of 13.6 A, 18 A and 17.4 A on a 20 A fuse the balanced charge
-gets nothing, and per phase L1 gets 1.0 kW, L2 nothing and L3 0.1 kW. Until the peaks are learned the cautious rule
+gets nothing, and per phase L1 gets 4 A (0.92 kW) and L2 and L3 nothing (L3's 0.6 A is no whole amp). Until the peaks are learned the cautious rule
 (4 kW on any one phase) applies to every phase, which leaves nothing on 20 A either way.
 
 **Sigenergy** does this with independent phase power control: in Remote EMS with the control mode *PCS Remote
 Control* the plant follows `Phase A/B/C active power fixed adjustment` (negative charges from that phase). For
 SpotNav to use it:
 
-* enable the three `Phase A/B/C active power fixed adjustment` numbers and the `Independent phase power control`
-  switch in the integration (all disabled by default), and the plant's `Phase A/B/C active power` sensors;
+* enable the three `Phase A/B/C active power fixed adjustment` numbers, the plant's `Active power fixed adjustment`
+  number and the `Independent phase power control` switch in the integration (all disabled by default; the card
+  offers to enable them when you turn control on), and the plant's `Phase A/B/C active power` sensors;
 * have `Independent phase power control` **on**. SpotNav reads it and never changes it, since it also changes how
   the plant shares its power in its own modes.
+
+The plant's total `Active power fixed adjustment` acts in the same mode, so SpotNav keeps it at 0 while it charges
+per phase. And without charging per phase SpotNav starts nothing while that number or a phase's adjustment reads
+anything but 0 (where the entities are enabled): turning Remote EMS on passes through PCS Remote Control for some
+seconds, and a value left there by someone would run. Set it back to 0 and control goes on.
 
 **It is checked first.** The check gets a further step, *per phase*: every target at 0 for a minute, then on each
 phase in turn a discharge of 1 kW for about two minutes (a discharge lowers that phase's import, so it needs no room
@@ -241,14 +251,15 @@ under the fuse and can be tried on a phase that has none). Each time the plant's
 the target and the other two nothing, and the house on that phase, as your meter sees it, must not seem to move:
 that shows the plant's phase A really is your meter's L1, and so on. A plant wired otherwise fails the step and
 never charges per phase. The step runs by itself at a suitable moment once the entities are there; it does not
-affect the rest of control.
+affect the rest of control. It is left for a later moment, never failed, while the sun gives more than the house
+takes, the battery is near full or near its floor, or the export limit is held at 0.
 
 **When it is used.** Only when the step passed on this firmware, everything it needs is still there, and the
 phases' caps allow at least 0.5 kW more in all than the balanced cap. Otherwise the grid charge is the balanced one
 under the balanced cap, exactly as before: a balanced house, a plant without the entities, a step not passed, a
 reading per phase missing, or the plant's own import limit guarding the fuse (above). While a charge per phase runs
-each phase is judged on the plant's own power: a phase that takes more than its target, or a plant that takes
-nothing, hands the charge back and ends per-phase charging on that firmware. Any phase within 1 A of the fuse hands
+each phase is judged on the plant's own power: a phase that takes more than its target (seen within about a
+minute), or a plant that takes nothing, hands the charge back and ends per-phase charging on that firmware. Any phase within 1 A of the fuse hands
 the whole charge back at once, whichever phase it is on, so the plant covers that phase again. The battery section
 shows it: "Nätladdning per fas: L1 1,01 kW · L2 0 kW · L3 0,13 kW".
 

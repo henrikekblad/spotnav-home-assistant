@@ -33,6 +33,7 @@ pytestmark = pytest.mark.usefixtures("offline_relay")
 VOLTS = 400.0 / 3 ** 0.5
 TARGETS = tuple(f"number.sigen_plant_phase_{letter}_active_power_fixed_adjustment" for letter in "abc")
 PHASE_SWITCH = "switch.sigen_plant_independent_phase_power_control"
+TOTAL = "number.sigen_plant_active_power_fixed_adjustment"
 #: The owner's house (2026-11-18): the learned peaks on a 20 A fuse.
 PEAKS = {"L1": 13.6, "L2": 18.0, "L3": 17.4}
 
@@ -50,6 +51,12 @@ def _phase_controls(hass: HomeAssistant, *, switch: str = "on") -> None:
         )
         assert entry.entity_id == entity_id
         hass.states.async_set(entity_id, "0.0", {"unit_of_measurement": "kW", "step": 0.001})
+    entry = registry.async_get_or_create(
+        "number", "sigen", "ENTRY_sigen_plant_plant_active_power_fixed_target", device_id=device.id,
+        config_entry=owner, suggested_object_id=TOTAL.split(".", 1)[1],
+    )
+    assert entry.entity_id == TOTAL
+    hass.states.async_set(TOTAL, "0.0", {"unit_of_measurement": "kW", "step": 0.001})
     entry = registry.async_get_or_create(
         "switch", "sigen", "ENTRY_sigen_plant_plant_independent_phase_power_control_enable", device_id=device.id,
         config_entry=owner, suggested_object_id=PHASE_SWITCH.split(".", 1)[1],
@@ -148,20 +155,20 @@ async def test_an_unbalanced_house_charges_per_phase_and_stays_under_the_fuse_wh
     assert control._grid_charge_cap_kw(dt_util.now(), control.options()) == 0.0
     now = await _looks(control, dt_util.now(), 8)
     assert _writes(plant) == [
-        (TARGETS[0], -1.01), (TARGETS[2], -0.13), (SWITCH, "turn_on"),
-    ], "L2 has no room and its target is left at 0; the mode register already reads PCS Remote Control"
-    assert hass.states.get(MODE).state == "PCS Remote Control" and world.targets() == (-1.01, 0.0, -0.13)
+        (TARGETS[0], -0.92), (SWITCH, "turn_on"),
+    ], "whole amps: L1 4 A, L2 and L3 none; the mode register already reads PCS Remote Control"
+    assert hass.states.get(MODE).state == "PCS Remote Control" and world.targets() == (-0.92, 0.0, 0.0)
     assert hass.states.get(CHARGE).state == "unknown", "the battery limits are left as found"
     executor = control.executor
-    assert executor.control.phased and executor.state.phase_kw == (1.01, 0.0, 0.13)
+    assert executor.control.phased and executor.state.phase_kw == (0.92, 0.0, 0.0)
     # Home Assistant stops here: the targets stay. The house at its learned peak on every phase.
     stopped = world.stopped_a(PEAKS)
     assert all(amps <= 20.0 - 2.0 + 1e-9 for amps in stopped), stopped
-    assert stopped[1] == 18.0 and stopped[0] == pytest.approx(13.6 + 1010 / VOLTS)
+    assert stopped[1] == 18.0 and stopped[0] == pytest.approx(13.6 + 920 / VOLTS)
     status = control.status()
     assert status["per_phase"] == {
         "state": "verified", "why": None, "used": True, "caps_kw": {"L1": 1.02, "L2": 0.0, "L3": 0.14},
-        "charging_kw": {"L1": 1.01, "L2": 0.0, "L3": 0.13},
+        "charging_kw": {"L1": 0.92, "L2": 0.0, "L3": 0.0},
     }
     assert status["grid_charge_cap"]["cap_kw"] == 0.0, "the balanced cap is said as before"
     assert [row["rate_kw"] for row in control.log if row["kind"] == "restricted"] == [pytest.approx(1.155, abs=0.01)]
@@ -169,14 +176,14 @@ async def test_an_unbalanced_house_charges_per_phase_and_stays_under_the_fuse_wh
     plant.calls.clear()
     _options(hass, site, enabled=False)
     await _looks(control, now, 8)
-    assert _writes(plant) == [(TARGETS[0], 0.0), (TARGETS[2], 0.0), (MODE, "Maximum Self Consumption"), (SWITCH, "turn_off")]
+    assert _writes(plant) == [(TARGETS[0], 0.0), (MODE, "Maximum Self Consumption"), (SWITCH, "turn_off")]
     assert world.targets() == (0.0, 0.0, 0.0) and control.status()["per_phase"]["charging_kw"] is None
 
 
 @pytest.mark.parametrize(
     ("case", "why"),
     [
-        ("no_controls", "control_not_found:phase_l1_target"),
+        ("no_controls", "control_not_found:power_target"),
         ("switch_off", "phase_control_off"),
         ("not_verified", None),
         ("failed", None),
@@ -235,7 +242,7 @@ async def test_a_reading_per_phase_that_goes_missing_ends_the_charge_per_phase(
     site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
     control = await _control(hass, site, controller, _charge)
     now = await _looks(control, dt_util.now(), 8)
-    assert world.targets() == (-1.01, 0.0, -0.13)
+    assert world.targets() == (-0.92, 0.0, 0.0)
     # The site no longer reads each phase: per phase is not there, the balanced cap (nothing here) counts again.
     monkeypatch.setattr(BatteryControl, "_phase_headroom_a", lambda self: None)
     await _looks(control, now, 8)
@@ -265,7 +272,7 @@ async def test_the_owner_s_test_action_charges_per_phase_too(
     answer = await control.async_trial("grid_charge", 4.0, 10, force=False)
     assert answer["trial"]["rate_kw"] == pytest.approx(1.155, abs=0.01)
     await _looks(control, dt_util.now(), 8)
-    assert world.targets() == (-1.01, 0.0, -0.13)
+    assert world.targets() == (-0.92, 0.0, 0.0)
     await control.async_trial("stop", None, 1, force=False)
     await _looks(control, dt_util.now() + timedelta(seconds=10), 6)
     assert world.targets() == (0.0, 0.0, 0.0) and hass.states.get(SWITCH).state == "off"
@@ -298,7 +305,7 @@ async def test_the_check_probes_each_phase_with_a_small_discharge_and_records_th
     assert all(len(phase["readings"]) == 3 for phase in row["phases"])
     # One phase at a time, a discharge of 1 kW (a positive target), then everything back.
     targets = [(entity_id, value) for entity_id, value in _writes(plant) if entity_id in TARGETS]
-    assert targets == [(TARGETS[0], 1.0), (TARGETS[0], 0.0), (TARGETS[1], 1.0), (TARGETS[1], 0.0), (TARGETS[2], 1.0),
+    assert targets == [(TARGETS[0], 1.0), (TARGETS[1], 1.0), (TARGETS[0], 0.0), (TARGETS[2], 1.0), (TARGETS[1], 0.0),
                        (TARGETS[2], 0.0)]
     assert not any(value < 0 for _entity_id, value in targets), "the check never charges"
     assert world.targets() == (0.0, 0.0, 0.0) and hass.states.get(SWITCH).state == "off"
@@ -349,9 +356,60 @@ async def test_the_check_does_not_try_per_phase_where_the_targets_are_not_there(
     assert control.verification is None and plant.calls == []
     assert "per_phase" not in control.report()["modes"]
     assert control.status()["per_phase"] == {
-        "state": "unavailable", "why": "control_not_found:phase_l1_target", "used": False,
+        "state": "unavailable", "why": "control_not_found:power_target", "used": False,
         "caps_kw": {"L1": 1.02, "L2": 0.0, "L3": 0.14}, "charging_kw": None,
     }
     # The person enables them later: the check runs for that mode alone.
     _phase_controls(hass)
+    assert control.status()["per_phase"]["state"] == "pending"
     assert control._per_phase_due(control.report()) is True
+
+
+async def test_a_moment_that_could_make_a_sound_plant_look_wrong_is_never_a_decisive_answer(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.battery.verify import Sample, _probe_unfit
+
+    fine = Sample(-1.0, 5.0, 50.0, grid_kw=0.0)
+    assert _probe_unfit(fine, before=True) is None
+    # The sun gives more than the house takes: the site exports, or the battery charges, before the probe.
+    assert _probe_unfit(Sample(-1.0, 5.0, 50.0, grid_kw=-0.8), before=True) == "sun_surplus"
+    assert _probe_unfit(Sample(1.2, 5.0, 50.0, grid_kw=0.0), before=True) == "sun_surplus"
+    assert _probe_unfit(Sample(1.2, 5.0, 50.0, grid_kw=-0.8), before=False) is None, "under the probe that is the probe"
+    # Near full, near the battery's own floor, or not known; and the export limit held at 0.
+    for soc, floor in ((92.0, 0.0), (4.0, 0.0), (23.0, 20.0), (None, 0.0)):
+        assert _probe_unfit(Sample(-1.0, 5.0, soc, grid_kw=0.0, soc_min_pct=floor), before=False) == "soc_near_end"
+    assert _probe_unfit(Sample(-1.0, 5.0, 50.0, grid_kw=0.0, curtailing=True), before=True) == "export_curtailed"
+    # Through the shell: the step is left for a later run, nothing is written, and no fail is recorded.
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    monkeypatch.setattr(BatteryControl, "_curtailing", lambda self: True)
+    control = await _verified(hass, site, controller, world, looks=30)
+    assert control.report()["modes"]["per_phase"]["outcome"] == "not_judgeable:export_curtailed"
+    assert control.status()["per_phase"]["state"] == "pending" and plant.calls == []
+    assert control._per_phase_due(control.report()) is True
+
+
+async def test_the_diagnostics_show_the_day_s_writes_left_per_class(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    control = await _control(hass, site, controller, _charge)
+    await _looks(control, dt_util.now(), 8)
+    assert control.snapshot()["write_budget"] == {
+        "setting": {"cap": 96, "used": 1, "left": 95},
+        "setpoint": {"cap": 500, "used": 1, "left": 499},
+    }
+
+
+async def test_the_plain_control_starts_nothing_while_a_phase_target_is_left_standing(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    hass.states.async_set(TARGETS[1], "-2.0", {"unit_of_measurement": "kW", "step": 0.001})
+    control = await _control(hass, site, controller, lambda _now: ("hold", 0.0, None), per_phase=None)
+    await _looks(control, dt_util.now(), 4)
+    assert plant.calls == [] and control.executor.control.phased is False
+    assert [row["reason"] for row in control.log if row["kind"] == "not_started"][0] == "stale_target:phase_l2_target"
+    hass.states.async_set(TARGETS[1], "0.0", {"unit_of_measurement": "kW", "step": 0.001})
+    await _looks(control, dt_util.now() + timedelta(minutes=1), 4)
+    assert hass.states.get(SWITCH).state == "on"

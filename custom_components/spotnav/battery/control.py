@@ -345,6 +345,9 @@ class BatteryControl:
         #: When the site's energy sources were last read and why they refuse the import-limit rule (`None`: they do
         #: not); not read yet: the rule is refused (`_import_limit_refusal`).
         self._sources: tuple[datetime, str | None] | None = None
+        #: The look (or status read) being answered, and `_phase_missing` as read in it.
+        self._look_id = 0
+        self._missing: tuple[int, str | None] | None = None
         battery_shadow = getattr(site, "battery_shadow", None)
         if battery_shadow is not None:
             # The outside-control watch does not count SpotNav's own writes as someone else's, and the shadow hold
@@ -673,6 +676,7 @@ class BatteryControl:
         _LOGGER.warning("SpotNav battery control: the %s failed; it is tried again at each look", kind, exc_info=True)
 
     async def _async_look(self, now: datetime) -> None:
+        self._look_id += 1
         options = self.options()
         self.facts = self._read_facts()
         await self._async_read_sources(now)
@@ -819,6 +823,15 @@ class BatteryControl:
         """Why a grid charge per phase cannot run on this plant now, as a stable code; `None` when everything it
         needs is there: the brand's targets per phase and what they require, found, enabled and reading so; a
         three-phase plant; the plant's own power per phase; the site's reading of each phase."""
+        cached = self._missing
+        if cached is not None and cached[0] == self._look_id:
+            return cached[1]
+        missing = self._phase_missing_now()
+        self._missing = (self._look_id, missing)
+        return missing
+
+    def _phase_missing_now(self) -> str | None:
+        """`_phase_missing`, read afresh (it walks the registry: once a look, `_look_id`)."""
         control = control_for(self.facts.brand)
         spec = None if control is None else control.phase_control
         if control is None or spec is None:
@@ -826,7 +839,7 @@ class BatteryControl:
         if self._plant_phases(control) != 3:
             return "not_three_phase"
         reads = read_role_reads(self.hass, self.site.config, control.with_phases(True))
-        for role in (*spec.targets, *(role for role, _states, _why in spec.requires)):
+        for role in spec.owned():
             read = reads.get(role.name)
             if read is None or not read.found:
                 return f"control_not_found:{role.name}"
@@ -923,6 +936,30 @@ class BatteryControl:
             "charging_kw": None if running is None else per_phase(running),
         }
 
+    def _curtailing(self) -> bool:
+        """Whether SpotNav holds the site's export limit at 0 now (or is handing it back)."""
+        export = self.export_executor
+        return export is not None and export.state.phase in ("active", "restoring")
+
+    def write_budget(self) -> dict[str, dict[str, int]]:
+        """The day's writes per class (`commands.WriteClass`) for the diagnostics: the brand's cap, what is used
+        (the settings' count holds the export limit's writes too) and what is left."""
+        executor = self.executor
+        if executor is None:
+            return {}
+        today = dt_util.now().date().isoformat()
+        state = executor.state
+        fresh = state.day == today
+        used = {
+            "setting": (state.writes_today if fresh else 0) + self._export_writes_today(dt_util.now()),
+            "setpoint": state.setpoint_writes_today if fresh else 0,
+        }
+        return {
+            name: {"cap": executor.control.write_cap(name), "used": count,
+                   "left": max(executor.control.write_cap(name) - count, 0)}
+            for name, count in used.items()
+        }
+
     def _per_phase_due(self, report: dict[str, Any] | None) -> bool:
         """Whether a run should try the mode `per_phase`: everything it needs is there, it is still undecided on
         this firmware, and the routine has runs left and has not failed."""
@@ -935,6 +972,7 @@ class BatteryControl:
 
     async def async_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
         """One look of control as it runs the plan: refused unless control is on (the routine passed)."""
+        self._look_id += 1
         options = self.options()
         self._require(self.state(options) == "on", "Battery control")
         now = now or dt_util.now()
@@ -999,6 +1037,7 @@ class BatteryControl:
     async def async_verify_step(self, now: datetime | None = None) -> StepResult | None:
         """One look of the verification routine; it starts a run when none runs. Refused unless the options allow
         writing."""
+        self._look_id += 1
         self._require(self.options().writes, "The verification routine")
         now = now or dt_util.now()
         if self.verification is None or self.verification.done:
@@ -1061,6 +1100,7 @@ class BatteryControl:
             inputs.facts.power_kw, inputs.battery_age_s, inputs.facts.soc_pct, inputs.house_deficit_kw,
             inputs.grid_import_kw if inputs.measurement_ok else None,
             self._grid_phase_kw() if inputs.measurement_ok else None, inputs.plant_phase_kw,
+            curtailing=self._curtailing(), soc_min_pct=inputs.facts.reserve_soc_pct or 0.0,
         )
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
         probe = verification.probe()
@@ -1188,6 +1228,7 @@ class BatteryControl:
         started."""
         if not self._started or self._closed:
             raise TrialRefused("starting")
+        self._look_id += 1
         now = dt_util.now()
         options = self.options()
         if action == "stop":
@@ -1529,6 +1570,7 @@ class BatteryControl:
         margin) still at least the battery's own rated charge, or that further margin costing nothing (the cap the
         same without it: the house itself is what leaves no more). `days_left`: to the next step, the first usable
         days while the conservative rule counts, the end of the learning after that."""
+        self._look_id += 1
         options = self.options()
         if ACTION_GRID_CHARGE not in self.allowed(options):
             return None
@@ -1537,8 +1579,10 @@ class BatteryControl:
         cap = status["cap_kw"]
         if learned is None or learned.ready or status["rule"] not in ("conservative", "learning") or cap is None:
             return None
-        # A charge per phase runs under the phases' own caps, which may leave more than the balanced one.
-        effective = self._charge_limits(now, options)[0]
+        # A charge per phase runs under the phases' own caps, which may leave more than the balanced one. Read as the
+        # executor's control is now: a status read changes nothing.
+        executor = self.executor
+        effective = self._charge_limits(now, options, phased=executor is not None and executor.control.phased)[0]
         cap = cap if effective is None else max(cap, round(effective, 2))
         rated = self.facts.max_charge_kw
         if rated is not None and cap >= rated:
@@ -1815,6 +1859,7 @@ class BatteryControl:
             phase_caps_kw=phase_caps,
             phase_headroom_a=self._phase_headroom_a(),
             plant_phase_kw=self._plant_phase_kw(now),
+            grid_phase_kw=self._grid_phase_kw() if result.state not in UNHEALTHY_STATES else None,
             action=None if slot is None else slot[0],
             rate_kw=0.0 if slot is None else slot[1],
             slot_end=None if slot is None else slot[2],
@@ -2100,6 +2145,7 @@ class BatteryControl:
         """What the card's battery section shows (once it has one) and diagnostics: the options, the state and its
         line, the report for the plant's firmware, the actions allowed, the routine's progress, what is missing and
         the notes."""
+        self._look_id += 1
         options = self.options()
         verification = self.verification
         current = None if verification is None else verification.current
@@ -2148,8 +2194,15 @@ class BatteryControl:
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
             "log": list(self.log),
+            "write_budget": self._write_budget_block(),
             "phase_backfill": self._backfill_status(),
         }
+
+    def _write_budget_block(self) -> dict[str, Any] | None:
+        try:
+            return self.write_budget()
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            return None
 
     def _backfill_status(self) -> dict[str, Any] | None:
         """What reading the house's per-phase peaks back from the recorder gave (`site/phase_backfill.py`)."""

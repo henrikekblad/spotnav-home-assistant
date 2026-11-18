@@ -45,7 +45,11 @@ there, unchanged from before the probe (the mapping: with the plant's phase on a
 house would seem to jump by the probe on both). All three phases so: `obeyed`, the capability (`gate.per_phase`
 reads `verified`). The plant's power unchanged: `ignored`. The house jumping in every reading: `partial` (the row
 of that phase says `wrong_phase`); in some: `not_judgeable:house_changed`, tried again at a later run. The first
-real charge is then judged per phase by the executor (`monitor.judge_phases`).
+real charge is then judged per phase by the executor (`monitor.judge_phases`). A moment that could make a sound
+plant look wrong is never a decisive answer (`_probe_unfit`): the sun giving more than the house takes (the site
+exports or the battery charges before the probe, so a phase's target is not the only thing moving it), the battery
+near full or near empty (it cannot put out, or take, what a target asks), or the export limit held at 0
+(`Sample.curtailing`): `not_judgeable:sun_surplus`, `soc_near_end`, `export_curtailed`, tried again at a later run.
 
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
@@ -65,7 +69,16 @@ from typing import Any, Final, Literal
 from .commands import ACTION_CURTAIL_EXPORT, Phases
 from .executor import Executor, StepResult
 from .gate import MODE_PER_PHASE, PHASE_NAMES, mode_verdict
-from .monitor import FAIL_FRACTION, FLOOR_KW, Capability, Command, deliverable_kw, judge
+from .monitor import (
+    CHARGE_TAPER_SOC_PCT,
+    DISCHARGE_MARGIN_PCT,
+    FAIL_FRACTION,
+    FLOOR_KW,
+    Capability,
+    Command,
+    deliverable_kw,
+    judge,
+)
 from .plan_model import ACTION_DISCHARGE_HOUSE, ACTION_GRID_CHARGE, ACTION_HOLD, ACTION_SELF_CONSUME
 
 #: How long a mode settles after its writes are taken before readings count (s), as the monitor's grace.
@@ -131,6 +144,9 @@ class Sample:
     #: mode `per_phase`; `None` when a phase is not known or stale.
     grid_phase_kw: Phases | None = None
     plant_phase_kw: Phases | None = None
+    #: The site's export limit is held at 0 now (`export_curtail.py`), and the battery's own floor (%).
+    curtailing: bool = False
+    soc_min_pct: float = 0.0
 
 
 @dataclass(slots=True)
@@ -233,9 +249,10 @@ class Verification:
                         self._next(now)
                     return ACTION_SELF_CONSUME, 0.0
                 house = _house_kw(sample)
-                if house is None:
-                    # Without both readings per phase nothing can be judged: nothing is written.
-                    result.outcome = "not_judgeable:phase_reading_stale"
+                unfit = "phase_reading_stale" if house is None else _probe_unfit(sample, before=True)
+                if unfit is not None:
+                    # Nothing could be judged soundly now: nothing is written.
+                    result.outcome = f"not_judgeable:{unfit}"
                     self._next(now)
                     return ACTION_SELF_CONSUME, 0.0
                 # Every target at 0 first (`probe_index` -1): the house per phase is read under that.
@@ -402,10 +419,14 @@ class Verification:
         index = self.probe_index
         plant, grid, before = sample.plant_phase_kw, sample.grid_phase_kw, self.probe_house
         house = _house_kw(sample)
+        unfit = _probe_unfit(sample, before=False)
         if plant is None or grid is None or house is None or (before is None and index >= 0):
-            result.outcome = "not_judgeable:phase_reading_stale"
+            unfit = "phase_reading_stale"
+        if unfit is not None:
+            result.outcome = f"not_judgeable:{unfit}"
             self._enter(now, "hand_back")
             return
+        assert plant is not None and grid is not None and house is not None
         if index < 0:
             # Every target at 0: the plant must put out nothing, and the house per phase is what the meter reads.
             if max(abs(value) for value in plant) > PROBE_POWER_TOLERANCE_KW:
@@ -523,6 +544,22 @@ class Verification:
             "finished_at": None if self.finished_at is None else self.finished_at.isoformat(),
             "modes": {result.mode: result.as_dict() for result in self.results},
         }
+
+
+def _probe_unfit(sample: Sample, *, before: bool) -> str | None:
+    """Why the per-phase probe could not be judged soundly at this moment, `None` when it can (see the module).
+    `before`: the plant is still in its own mode, where a sun surplus shows as export or as the battery charging."""
+    if sample.curtailing:
+        return "export_curtailed"
+    soc = sample.soc_pct
+    if soc is None or soc >= CHARGE_TAPER_SOC_PCT or soc <= sample.soc_min_pct + DISCHARGE_MARGIN_PCT:
+        return "soc_near_end"
+    if before and (
+        (sample.grid_kw is not None and sample.grid_kw < -FLOOR_KW)
+        or (sample.power_kw is not None and sample.power_kw > FLOOR_KW)
+    ):
+        return "sun_surplus"
+    return None
 
 
 def _house_kw(sample: Sample) -> Phases | None:
