@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from custom_components.spotnav.battery.plan_shadow import Bucket
-from custom_components.spotnav.battery.stored_value import StoredValue
+from custom_components.spotnav.battery.stored_value import Flow, StoredValue
 
 TZ = "Europe/Stockholm"
 USABLE = 40.0
@@ -150,3 +150,23 @@ def test_a_days_total_is_kept_a_year_and_its_hours_forty_days() -> None:
     assert first.arbitrage > 0 and first.hours == {}
     stored.run([quarter(at(17 + 24 * 420), battery=-1.0, buy=300.0)], TZ, None)
     assert date(2026, 11, 13) not in stored.days
+
+
+def test_each_hour_and_day_keeps_what_the_arbitrage_is_made_of_and_old_stores_load_without_it() -> None:
+    stored = StoredValue(kwh=10.0, cost=1000.0)
+    # 17:00: 2 kWh to the house at 300 over an average of 100 and 1 kWh charged from the grid at 50.
+    stored.step(quarter(at(17), battery=-2.0, buy=300.0), TZ, None)
+    stored.step(quarter(at(17.25), battery=1.0, imported=1.0, buy=50.0), TZ, None)
+    money = stored.days[date(2026, 11, 13)]
+    flow = money.hour_flows[at(17)]
+    assert (flow.discharged, flow.worth, flow.cost) == (pytest.approx(2.0), pytest.approx(600.0), pytest.approx(200.0))
+    assert (flow.charged, flow.charge_cost) == (pytest.approx(1.0), pytest.approx(50.0))
+    assert flow.worth - flow.cost == pytest.approx(money.hours[at(17)])
+    assert money.flow is not None and money.flow.discharged == pytest.approx(2.0)
+    again = StoredValue.from_dict(stored.as_dict())
+    assert again.days[date(2026, 11, 13)].hour_flows[at(17)] == Flow(2.0, 600.0, 200.0, 1.0, 50.0)
+    raw = stored.as_dict()
+    for key in ("hour_flows", "flow"):
+        del raw["days"]["2026-11-13"][key]
+    old = StoredValue.from_dict(raw).days[date(2026, 11, 13)]
+    assert old.hour_flows == {} and old.flow is None and old.hours

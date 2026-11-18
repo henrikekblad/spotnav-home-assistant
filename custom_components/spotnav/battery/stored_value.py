@@ -23,6 +23,10 @@ weighted-average cost is kept, carried across days and across restarts (`as_dict
 Only quarter hours measured for at least half their time and priced count (`Bucket.covered`, `buy`/`sell`), each once
 (`last`). Money is in the area's minor unit. Days are kept `KEEP_DAYS`, and each day's arbitrage by the hour (UTC hour
 starts, the house card's hourly bars) `HOURS_KEEP_DAYS`.
+Beside the arbitrage each day and hour keeps what it is made of (`Flow`): the kWh given back, what they were worth,
+what they cost out of the stock (worth less cost is the arbitrage), and the kWh charged and what they cost, so the
+card can explain a figure against the battery maker's cash flow. A day stored before this has no total (`flow`
+`None`), never a part of its day.
 """
 
 from __future__ import annotations
@@ -43,6 +47,38 @@ EMPTY_KWH: Final = 0.05
 
 
 @dataclass(slots=True)
+class Flow:
+    """What the battery moved in a span, for the card's readout (kWh, minor units): `worth` is what the energy given
+    back was worth (the buy or sell price), `cost` what it cost out of the stock, so `worth - cost` is the arbitrage;
+    `charged` and `charge_cost` the energy taken in and what it cost."""
+
+    discharged: float = 0.0
+    worth: float = 0.0
+    cost: float = 0.0
+    charged: float = 0.0
+    charge_cost: float = 0.0
+
+    def add(self, other: Flow) -> None:
+        self.discharged += other.discharged
+        self.worth += other.worth
+        self.cost += other.cost
+        self.charged += other.charged
+        self.charge_cost += other.charge_cost
+
+    def as_list(self) -> list[float]:
+        return [round(self.discharged, 3), round(self.worth, 2), round(self.cost, 2), round(self.charged, 3), round(self.charge_cost, 2)]
+
+    @classmethod
+    def from_list(cls, raw: Any) -> Flow | None:
+        if not isinstance(raw, list) or len(raw) != 5:
+            return None
+        try:
+            return cls(*(float(value) for value in raw))
+        except (TypeError, ValueError):
+            return None
+
+
+@dataclass(slots=True)
 class DayMoney:
     """One local day's split (minor units) and the battery's energy moved (kWh)."""
 
@@ -56,6 +92,10 @@ class DayMoney:
     controlled: int = 0
     #: The day's arbitrage by the hour it was earned in (UTC hour starts), for the hourly bars.
     hours: dict[datetime, float] = field(default_factory=dict)
+    #: The day's movement for the readout, by the hour (as `hours`, charge-only hours too) and in all; `None` on a day
+    #: stored before it was kept (its total would be a part of the day's).
+    hour_flows: dict[datetime, Flow] = field(default_factory=dict)
+    flow: Flow | None = field(default_factory=Flow)
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -69,6 +109,10 @@ class DayMoney:
             out["controlled"] = self.controlled
         if self.hours:
             out["hours"] = {hour.isoformat(): round(value, 2) for hour, value in sorted(self.hours.items())}
+        if self.hour_flows:
+            out["hour_flows"] = {hour.isoformat(): flow.as_list() for hour, flow in sorted(self.hour_flows.items())}
+        if self.flow is not None:
+            out["flow"] = self.flow.as_list()
         return out
 
     @classmethod
@@ -84,6 +128,12 @@ class DayMoney:
                 int(raw.get("quarters", 0)),
                 int(raw.get("controlled", 0)),
                 {datetime.fromisoformat(hour): float(value) for hour, value in (raw.get("hours") or {}).items()},
+                {
+                    datetime.fromisoformat(hour): flow
+                    for hour, body in (raw.get("hour_flows") or {}).items()
+                    if (flow := Flow.from_list(body)) is not None
+                },
+                Flow.from_list(raw["flow"]) if "flow" in raw else (Flow() if not raw.get("quarters", 0) else None),
             )
         except (KeyError, TypeError, ValueError, AttributeError):
             return None
@@ -143,10 +193,14 @@ class StoredValue:
             money.controlled += 1
         money.bought += imported * buy
         sold_kwh = exported
+        hour = bucket.start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        step_flow = Flow()
         if moved > 0:
             from_grid = min(moved, imported)
-            self.cost += from_grid * buy + (moved - from_grid) * sell
+            charge_cost = from_grid * buy + (moved - from_grid) * sell
+            self.cost += charge_cost
             self.kwh += moved
+            step_flow.charged, step_flow.charge_cost = moved, charge_cost
         elif moved < 0:
             out = -moved
             to_grid = min(out, exported)
@@ -154,8 +208,10 @@ class StoredValue:
             average = self.average if self.average is not None else buy
             earned = to_house * (buy - average) + to_grid * (sell - average)
             money.arbitrage += earned
-            hour = bucket.start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
             money.hours[hour] = money.hours.get(hour, 0.0) + earned
+            step_flow.discharged = out
+            step_flow.worth = to_house * buy + to_grid * sell
+            step_flow.cost = out * average
             money.battery_export_kwh += to_grid
             sold_kwh -= to_grid
             self.estimate_left = max(0.0, self.estimate_left - out)
@@ -164,6 +220,10 @@ class StoredValue:
             taken = min(out, self.kwh)
             self.cost = max(0.0, self.cost - taken * average)
             self.kwh -= taken
+        if moved != 0:
+            money.hour_flows.setdefault(hour, Flow()).add(step_flow)
+            if money.flow is not None:
+                money.flow.add(step_flow)
         money.sold += sold_kwh * sell
         soc = bucket.soc_end
         if soc is not None and usable_kwh:
@@ -195,6 +255,8 @@ class StoredValue:
             for day, money in self.days.items():
                 if money.hours and (newest - day).days >= HOURS_KEEP_DAYS:
                     money.hours = {}
+                if money.hour_flows and (newest - day).days >= HOURS_KEEP_DAYS:
+                    money.hour_flows = {}
         return counted
 
     def as_dict(self) -> dict[str, Any]:
