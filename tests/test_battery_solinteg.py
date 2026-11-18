@@ -553,3 +553,24 @@ def test_a_spent_setpoint_budget_hands_a_charge_back_and_leaves_the_hold() -> No
     sigen = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), register_40031="Maximum Self Consumption")
     run(other, sigen, T0, 8, "grid_charge", 3.0)
     assert other.state.phase == "active"
+
+
+# --- the check before control ------------------------------------------------------------------------------------------
+
+
+def test_the_verification_runs_every_mode_through_the_recipe_and_leaves_the_inverter_as_found() -> None:
+    from tests.test_battery_verify import _outcomes, _verify
+
+    executor, plant = _plant()
+    verification = _verify(executor, plant)
+    assert verification.done
+    assert _outcomes(verification) == {
+        "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored"
+    }
+    report = verification.report()
+    assert report["brand"] == "solinteg" and report["modes"]["hold"]["variant"] == "battctrl_idle"
+    assert plant.states == STATES and executor.state.phase == "idle" and not executor.state.holds_snapshot
+    # An inverter that takes the writes and does nothing fails the check; nothing is left written.
+    executor, plant = _plant(obeys=False)
+    outcomes = _outcomes(_verify(executor, plant, looks=600))
+    assert outcomes["hold"] in ("ignored", "aborted:no_effect:hold") and plant.states == STATES
