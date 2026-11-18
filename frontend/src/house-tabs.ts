@@ -11,6 +11,8 @@
 //   chart preferences (`chart-preference.ts`): a storage that is missing or throws means the first tab.
 // * The card's YAML may lock one tab (`tab: now | flow | graph | price`, the card editor's "Show only tab"): the row is
 //   then not drawn and the choice is neither read nor written.
+// * Today's label may say how far its figures reach ("I dag · till 17:00"); where the row has no room for that part
+//   it is left out whole ("I dag"), never cut to "…".
 // * The period picker the tabs Energy flow, Energy chart, Earnings and Price and battery share: "‹ 2026-11-17 › [Day ▾]", the
 //   kind as a select, the arrows one period back or forward, the date (a day) or the month or year (a select) tapped
 //   to choose; nothing after today is offered.
@@ -47,6 +49,7 @@ export const TAB_CLASSES = {
   pickerStep: "spotnav-house-picker-step",
   pickerRow: "spotnav-house-picker-row",
   pickerLabel: "spotnav-house-picker-label",
+  pickerReach: "spotnav-house-picker-reach",
   pickerHidden: "spotnav-house-picker-hidden",
   pickerOver: "spotnav-house-picker-over",
   pickerKinds: "spotnav-house-picker-kinds",
@@ -354,8 +357,22 @@ export function periodPicker(
   label.className = T.pickerLabel;
   label.dataset["pickLabel"] = "true";
   const words = choiceLabel(language, choice, today);
-  label.textContent = through !== null && choice.period === "day" && choice.date === null ? translate(language, "house.picker.through", { label: words, time: through }) : words;
-  label.setAttribute("aria-label", `${translate(language, pickKey)}: ${label.textContent}`);
+  const whole = through !== null && choice.period === "day" && choice.date === null ? translate(language, "house.picker.through", { label: words, time: through }) : words;
+  if (whole.startsWith(words) && whole.length > words.length) {
+    // The period's own words, then how far today's figures reach as a part of its own: where the row has no room
+    // for both (a phone) the styles drop that part whole, never cutting the words; the name for a screen reader and
+    // the tooltip keep it.
+    const main = doc.createElement("span");
+    main.textContent = words;
+    const reach = doc.createElement("span");
+    reach.className = T.pickerReach;
+    reach.textContent = whole.slice(words.length);
+    label.append(main, reach);
+    label.title = whole;
+  } else {
+    label.textContent = whole;
+  }
+  label.setAttribute("aria-label", `${translate(language, pickKey)}: ${whole}`);
   holder.append(label);
   if (choice.period === "day") {
     const input = doc.createElement("input");
@@ -538,10 +555,11 @@ export const TAB_STYLES = `
   }
   .${T.pickerLabel} {
     max-width: 100%;
-    min-height: 34px;
+    height: 34px;
     padding: 0 8px;
     font: inherit;
     font-weight: 500;
+    line-height: 34px;
     color: var(--primary-text-color, #212121);
     background: transparent;
     border: 0;
@@ -550,6 +568,20 @@ export const TAB_STYLES = `
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: pointer;
+  }
+  /* The label's parts sit on one line of the label's height; a part with no room on it (how far today's figures
+     reach, on a phone) wraps to a second line, which is out of sight: dropped whole, never cut. */
+  .${T.pickerLabel}:has(.${T.pickerReach}) {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    white-space: pre;
+  }
+  .${T.pickerLabel} > span {
+    flex: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .${T.pickerLabel}:hover { background: var(--secondary-background-color, #eee); }
   /* The native control: out of sight under the label (a day's date input, opened by the label), or over it,

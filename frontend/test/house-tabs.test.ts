@@ -11,7 +11,7 @@ import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { decodeHouseNow, dotLap, fitName, nodeSpots, NOW_STYLES, patchSchematic, planRuns, planSentence, renderSchematic, schematicHeight, schematicLines, type HouseNow } from "../src/house-now";
 import { earnedBars, earnedTotal, energyChart, flowTiles, niceStep, tilesBlock } from "../src/house-period-view";
-import { choiceLabel, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, writeTab, type PeriodChoice } from "../src/house-tabs";
+import { choiceLabel, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, TAB_STYLES, writeTab, type PeriodChoice } from "../src/house-tabs";
 import { houseBody, type HouseTabsData, type HouseUi } from "../src/house-view";
 import { translate } from "../src/i18n";
 import { FakeHass } from "./helpers";
@@ -238,6 +238,14 @@ describe("the period picker", () => {
     expect(choiceLabel("sv", { period: "year", date: "2025-01-01" }, TODAY)).toBe("2025");
     const picker = periodPicker(document, "sv", { period: "day", date: null }, TODAY, vi.fn(), "17:00");
     expect(picker.querySelector("[data-pick-label]")?.textContent).toBe("I dag · till 17:00");
+    // How far today's figures reach is a part of its own, which the styles drop whole where the row has no room for
+    // it (never cut to "…"); the name for a screen reader and the tooltip keep it.
+    const label = picker.querySelector<HTMLElement>("[data-pick-label]")!;
+    expect(Array.from(label.children).map((part) => part.textContent)).toEqual(["I dag", " · till 17:00"]);
+    expect(label.querySelector(".spotnav-house-picker-reach")?.textContent).toBe(" · till 17:00");
+    expect(label.title).toBe("I dag · till 17:00");
+    expect(label.getAttribute("aria-label")).toMatch(/: I dag · till 17:00$/);
+    expect(TAB_STYLES).toMatch(/\.spotnav-house-picker-label:has\(\.spotnav-house-picker-reach\) \{[^}]*flex-wrap: wrap;/);
     // A month's or a year's list lies over the label, see-through, for a tap and the keyboard.
     const month = periodPicker(document, "sv", { period: "month", date: null }, TODAY, vi.fn(), "17:00");
     expect(month.querySelector("[data-pick-label]")?.textContent).toBe("nov 2026");
