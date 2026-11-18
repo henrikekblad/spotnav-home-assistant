@@ -10,7 +10,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Edge-triggered.** It writes only when the wanted state changes (a new action, a new rate past the hysteresis,
   a brand's watchdog to renew) and only the roles whose reading differs from it, one at a time in the brand's order
   (`commands.py`). Each write goes through the confirmed-write ledger (`ledger.py`): it counts only when the entity
-  reads it back within `READBACK_DEADLINE_S`; the next role is written only after that. A write that does not read
+  reads it back within `READBACK_DEADLINE_S` (a brand whose link stalls names a longer wait,
+  `BrandControl.readback_s`; a hand-back for the fuse never waits for a read-back either way); the next role is
+  written only after that. A write that does not read
   back (a read-only integration drops it silently, an entity went away) hands the battery back and blocks the
   control until it is reset: SpotNav never repeats a write the device did not take.
 * **The monitor judges the effect** (`monitor.py`): after its grace, three readings that show no effect hand the
@@ -102,7 +104,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   mode, a switch: 96 a day, `ExecState.writes_today`, shared with the export limit's instance) or a `setpoint` made
   for continuous control (the targets per phase: the brand's own figure, `ExecState.setpoint_writes_today`).
   Reaching the setpoints' cap is the runaway guard: a charge per phase is handed back (`setpoint_write_cap`, not
-  blocked) and none starts again that day, while every other action still runs. A grid charge of either kind also
+  blocked) and none starts again that day, while every other action still runs. The same holds for an action whose
+  own rate is a setpoint (`_rate_is_setpoint`: a battery power target), so a rate that must fall is never left
+  unwritten. A grid charge of either kind also
   leaves `CHARGE_WRITE_RESERVE` of the day's setting writes untouched (`charge_write_budget`), so a hold can still
   start after a day of charges that kept starting. Restores, the peak cover and watchdog renewals are never
   counted or held back.
@@ -149,7 +153,7 @@ from .commands import (
 )
 from .facts import BatteryFacts, EntityFact, find_entity
 from .gate import phase_split_kw
-from .ledger import Ledger, same
+from .ledger import READBACK_DEADLINE_S, Ledger, same
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
     CONFIRM_READINGS,
@@ -1204,14 +1208,26 @@ class Executor:
     def _setpoints_spent(self) -> bool:
         return self.state.setpoint_writes_today >= self.control.write_cap("setpoint")
 
+    def _rate_is_setpoint(self, action: str | None) -> bool:
+        """Whether the brand's own command for the action carries its rate in a setpoint (a battery power target)."""
+        build = self.control.states.get(action or "")
+        return build is not None and any(
+            want.value != 0.0 and self.control.role(want.role).write_class == "setpoint"
+            for want in build(1.0, self.watchdog_s)
+        )
+
     def _charge_budget(self, inputs: ExecInputs) -> str | None:
-        """Why a grid charge may not run (on) for the day's writes: a charge per phase once the setpoints' cap is
-        reached (the runaway guard), and either kind once only `CHARGE_WRITE_RESERVE` of the settings' writes are
-        left (a hold must still be able to start)."""
-        if inputs.action != ACTION_GRID_CHARGE or self._export:
+        """Why an action may not run (on) for the day's writes: a charge per phase, or an action whose rate is a
+        setpoint, once the setpoints' cap is reached (the runaway guard), and a grid charge of either kind once only
+        `CHARGE_WRITE_RESERVE` of the settings' writes are left (a hold must still be able to start)."""
+        if self._export:
             return None
-        if self._per_phase(inputs) and inputs.phase_probe_kw is None and self._setpoints_spent():
+        if inputs.phase_probe_kw is None and self._setpoints_spent() and (
+            self._per_phase(inputs) or self._rate_is_setpoint(inputs.action)
+        ):
             return "setpoint_write_cap"
+        if inputs.action != ACTION_GRID_CHARGE:
+            return None
         if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP - CHARGE_WRITE_RESERVE:
             return "charge_write_budget"
         return None
@@ -1749,7 +1765,10 @@ class Executor:
                                  setpoint_writes_today=setpoints)
         else:
             if entity_id is not None:
-                self.ledger.intend(entity_id, value, inputs.now, step=None if read is None else (read.step or role.step))
+                self.ledger.intend(
+                    entity_id, value, inputs.now, step=None if read is None else (read.step or role.step),
+                    deadline_s=READBACK_DEADLINE_S if self.control.readback_s is None else self.control.readback_s,
+                )
             if self._fuse_hand_back():
                 self.state = replace(state, in_flight=(*state.in_flight, name), sent=sent, renew=renew,
                                      writes_today=writes, written=written, setpoint_writes_today=setpoints)

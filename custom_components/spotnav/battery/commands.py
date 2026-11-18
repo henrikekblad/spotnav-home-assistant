@@ -144,6 +144,9 @@ WRITE_CLASSES: Final[tuple[WriteClass, ...]] = ("setting", "setpoint")
 SETTING_WRITES: Final = 96
 SETPOINT_WRITES_CONTINUOUS: Final = 2000
 SETPOINT_WRITES_UNSTATED: Final = 500
+#: How long a write may take to read back (s) where the plant's link stops answering now and then (Solinteg's dongle:
+#: 4-8 s about once a minute, about 70 s seen once), instead of the ledger's `READBACK_DEADLINE_S`.
+READBACK_STALL_S: Final = 180.0
 #: The export-limit rule's action (`export_curtail.py`): the site's export limit at 0 kW. Not a battery plan action.
 ACTION_CURTAIL_EXPORT: Final = "curtail_export"
 
@@ -333,6 +336,9 @@ class BrandControl:
     #: Writes a day per class (`WriteClass`), where they differ from `SETTING_WRITES`: only for a class the brand's
     #: own documents were read for (see the module).
     write_caps: Mapping[str, int] = field(default_factory=dict)
+    #: How long a write may take to read back (s) before it counts as not taken; `None`: the ledger's own
+    #: (`ledger.READBACK_DEADLINE_S`). Longer only for a link known to stall (`READBACK_STALL_S`).
+    readback_s: float | None = None
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
