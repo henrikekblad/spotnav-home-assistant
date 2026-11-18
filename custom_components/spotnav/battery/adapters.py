@@ -13,7 +13,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   the storage controls sit on the inverter, the battery's facts on its own `B<n>` device.
 * SolaX Modbus, `solax_modbus` (wills106 `8a1f3fc`): `<hub name>_<key>`, the SolaX plugin's devices only.
 * Three more plugins of `solax_modbus` (wills106 `4acd644`, read 2026-11-18), each its own adapter, told apart by
-  the manufacturer the plugin gives the device, and read only (no control is mapped for any of them):
+  the manufacturer the plugin gives the device, and read only here (Solinteg alone has a control, in `commands.py`):
   * Sofar (`plugin_sofar.py`, "Sofar Solar"): the level is `battery_capacity_total` (%, all battery inputs; the
     per-input `battery_capacity_1..8` are not read). The floor is 100 less `bat_config_depth_of_discharge` (%, a
     sensor that is disabled by default). The size and the ratings are learnt: `bat_config_capacity` (Ah) and the
@@ -33,7 +33,10 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     times `battery_voltage`, an estimate as for GoodWe. The floor is the number `battery_soc_min_ongrid` (register
     52503; the inverter applies it only while its "Battery SOC Protection On Grid" is on, which is not read). The
     mode is the select `working_mode`, free in "General". The cells' warmest temperature
-    (`battery_max_cell_temperature`) is not the average and is not read.
+    (`battery_max_cell_temperature`) is not the average and is not read. The plugin has no signed power per phase of
+    the inverter ("Inverter Current L1-3", `grid_current_l1..3`, are unsigned currents and "Meter Active Power L1-3"
+    the grid's), so there is no `plant_phase_power` and its control per phase (`commands.SOLINTEG_PHASES`) cannot
+    run until there is.
 * Victron, core `victron_gx` (victron-mqtt 2026.11.1): `<installation>_<device type>_<device id>_<short id>`; the HACS
   `victron_mqtt` (tomer-w/ha-victron-mqtt 2026.11.2, same short ids) is read the same way.
 * Victron Modbus, community `victron` (sfstar/hass-victron `32fb345`): `<unit id>_<register key>`, the GX system at unit

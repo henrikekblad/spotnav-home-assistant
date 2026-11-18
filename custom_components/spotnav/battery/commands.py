@@ -92,6 +92,53 @@ The entity keys, options and services below were checked against each integratio
   them, has no read-back, and the battery's effect is judged by the monitor. The integration repeats the command
   until the autorepeat duration runs out and then writes Disabled: that is the watchdog. Remote control is not
   stored in EEPROM.
+* **Solinteg** (MHT and M2HT hybrids; M-TEC Energy Butler and Wattsonic share the register map), `solax_modbus`'s
+  Solinteg plugin, wills106 `4acd644e82c1405ea4aa99b678de239d55f2aaae` (`plugin_solinteg.py`, read 2026-11-18;
+  `plans/research_integrations/solinteg_m2ht_2026-11.md` has the field notes). **Never run on a device.** Every key
+  below is a real Modbus register written at once (`WRITE_SINGLE_MODBUS`, the plugin's default), not a local value:
+  select `working_mode` (register 50000: "General" 0x101, "Economic", "UPS", "PeakShift", "Feed-In", "Off-Grid",
+  "EMS ACCtrl" 0x301, "EMS General", "EMS BattCtrl" 0x303, "EMS Off-Grid", "ToU") and number
+  `battery_charge_discharge_power_target` (50207, S16 x 0.01, kW, -200 to 200, step 0.01; **negative charges**,
+  positive discharges: the battery's own power, not the AC side, and acted on only in EMS BattCtrl). A hold is EMS
+  BattCtrl with the target at 0 (the battery stands idle and stores no sun: `HoldVariant.idle`), a grid charge the
+  target at minus the rate, a discharge to the grid the target at the rate. There is no "cover the house, store
+  nothing" among the EMS modes, so a discharge to the house is the plant's own General mode (it also stores a sun
+  surplus, as Sigenergy's does under V2.7). The hand-back writes the mode to General, which releases the battery in
+  one write, then the target to 0, so that nothing is left for the next one who enters EMS BattCtrl; and the control
+  starts nothing while the target reads other than 0 (`watched`): the mode is written before the target (an owner
+  found values written before the mode switch read back but not act), so a target left standing would run for the
+  seconds between the two. The inverter's own AC caps in EMS BattCtrl (`ems_battctrl_max_ac_power_limit` /
+  `ems_battctrl_min_ac_power_limit`, 50208/50209) and its output priority (50210) are left as found: they bound the
+  inverter's own AC power, not the site's import, and are no guard for the fuse. A plant is taken only in General
+  (`adapters.SOLINTEG`'s mode rule), so the hand-back lands in the mode it was found in.
+  **No dead-man.** No public Solinteg protocol has a timeout for an EMS command and an owner measured a target
+  standing for 16 minutes with no writes: a command stays if Home Assistant stops, as Sigenergy's does, so a grid
+  charge is always under the HA-down cap (`gate.grid_charge_cap_kw`). The site import limit (`import_limit_switch`
+  / `import_limit_value`, 50007/50009) and the peak shaving settings (50016-50018, 50022) are never counted on and
+  never written: whether they act in an EMS mode is not known, the cloud has been seen to write limits back, and they
+  are settings kept by the inverter (`BrandControl.import_limit` stays empty). How the inverter spreads a BattCtrl
+  charge over its phases is not stated either, so the cap takes it as all on one phase (`grid_charge_phases` 1).
+  **Per phase** (`SOLINTEG_PHASES`): in "EMS ACCtrl" with select `ems_acctrl_mode` (50202) at "Power Setting on each
+  Phase" the inverter follows numbers `ems_acctrl_phase_{a,b,c}_power` (50204-50206, S16 x 0.01, kW, -200 to 200,
+  disabled by default): the inverter's AC power on that phase, the sun included (the battery takes the difference),
+  so a target is the plant's own power (`target_kind` `plant`), negative taking from the grid by the protocol's
+  sign for AC power (v00.02: the AC limits 50208/50209, where negative is import; not confirmed on a device, the
+  verification's mode `per_phase` checks it). It needs select `grid_unbalanced_output` (50006) "on", which is read
+  and never written (it changes the plant's own modes too). The targets are written while the plant is still in its
+  former mode, then the scheduling mode, then the working mode, so the mode finds them in place; whether targets
+  written before the switch act is the same open question as for the limits above (a charge they do not act for is
+  handed back as one without effect). The scheduling mode is left as written: it acts only in EMS ACCtrl. **The
+  plugin has no signed power per phase of the inverter** (its "Inverter Current L1-3" are unsigned currents, its
+  "Meter Active Power L1-3" the grid's), so `adapters.SOLINTEG` has no `plant_phase_power` and a charge per phase
+  cannot be verified or judged: the recipe is data until the plugin reads one.
+  **The dongle.** The LAN/WiFi dongle takes one Modbus TCP client and stops answering for 4-8 s about once a minute
+  while it uploads to the cloud (longer when the cloud is slow; a register it does not know has wedged it for about
+  70 s). The plugin answers a write only once the inverter acknowledged it, raises when it did not (a write not
+  taken, as for any brand), and then shows the written value at once; the register itself is read at its next poll,
+  where a value the inverter or the cloud changed back shows as a change by someone else. A read-back may therefore
+  arrive a stall late: `READBACK_STALL_S` instead of the ledger's 60 s. **Writes a day:** no document says whether
+  50207 and 50204-50206 are kept in flash; owners write 50207 every second, but that is no maker's word, so they are
+  setpoints at `SETPOINT_WRITES_UNSTATED` (500) and the modes are settings (96).
 * **Export limit** (`EXPORT_CONTROLS`, the action `ACTION_CURTAIL_EXPORT`: no export while the sell price is below
   zero, `export_curtail.py`): its own control beside the battery's, written by the same executor and ledger. Sigenergy:
   number `plant_grid_point_maximum_export_limitation` ("Grid Export Limitation", register 40038, U32, gain 1000, kW
@@ -116,7 +163,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
-from .adapters import HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, Adapter, Match, _key
+from .adapters import HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, Adapter, Match, _key
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -732,6 +779,108 @@ SOLAX_CONTROL: Final = BrandControl(
     " effect.",
 )
 
+_SOL_GENERAL: Final = "General"  # 0x0101: the plant's own self-consumption
+_SOL_BATTCTRL: Final = "EMS BattCtrl"  # 0x0303: the battery follows 50207
+_SOL_ACCTRL: Final = "EMS ACCtrl"  # 0x0301: the inverter's AC power follows 50203 or 50204-50206
+_SOL_EACH_PHASE: Final = "Power Setting on each Phase"  # 50202 = 2
+
+_SOL_MODE = Role("working_mode", "select", _key("working_mode", "select"), restored=False)
+# 50207: the battery's power target (kW, negative charges). Handed back as 0, never as the value found.
+_SOL_TARGET = Role(
+    "battery_target", "number", _key("battery_charge_discharge_power_target", "number"), step=0.01, restored=False,
+    write_class="setpoint",
+)
+# 50202: written only by the control per phase, and left as written (it acts only in EMS ACCtrl).
+_SOL_AC_MODE = Role("acctrl_mode", "select", _key("ems_acctrl_mode", "select"), restored=False)
+_SOL_UNBALANCED: Final = Role(
+    "unbalanced_output", "select", _key("grid_unbalanced_output", "select"), restored=False
+)
+_SOL_PHASE_TARGETS: Final = (
+    Role("phase_l1_target", "number", _key("ems_acctrl_phase_a_power", "number"), step=0.01, restored=False,
+         write_class="setpoint"),
+    Role("phase_l2_target", "number", _key("ems_acctrl_phase_b_power", "number"), step=0.01, restored=False,
+         write_class="setpoint"),
+    Role("phase_l3_target", "number", _key("ems_acctrl_phase_c_power", "number"), step=0.01, restored=False,
+         write_class="setpoint"),
+)
+
+
+def _sol(mode: str, sign: float = 0.0) -> Callable[[float, int], tuple[Want, ...]]:
+    """The working mode and the battery's target: `sign` -1 charges at the rate, 1 discharges, 0 is a target of 0."""
+
+    def build(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+        size = native(_SOL_TARGET, rate_kw) if sign else 0.0
+        return (Want("working_mode", mode), Want("battery_target", 0.0 if size == 0 else round(sign * size, 6)))
+
+    return build
+
+
+#: Solinteg's one hold: EMS BattCtrl with the battery's target at 0. The battery stands idle (the sun's surplus is
+#: exported, not stored); its peak cover writes the mode back to General, where the plant covers the house itself.
+SOLINTEG_HOLDS: Final = (
+    HoldVariant(
+        "battctrl_idle", _sol(_SOL_BATTCTRL), ("working_mode",), "EMS BattCtrl with the battery's power target at 0",
+        idle=True,
+    ),
+)
+
+#: Solinteg's targets per phase (see the module; never run on a device, and not usable until the plugin reads the
+#: inverter's power per phase): phase A, B, C taken as L1, L2, L3, a negative target charges. Grid Unbalanced Output
+#: (50006) is read, never written. The targets first, then the scheduling mode, then the working mode; the battery's
+#: own target (50207) is kept at 0 beside them. Every hand-back and change of action writes the working mode first:
+#: one write stops the charge on all three phases.
+SOLINTEG_PHASES: Final = PhaseControl(
+    targets=_SOL_PHASE_TARGETS,
+    charge_sign=-1.0,
+    follow=(
+        Want("battery_target", 0.0), Want("acctrl_mode", _SOL_EACH_PHASE), Want("working_mode", _SOL_ACCTRL),
+    ),
+    target_kind="plant",
+    requires=((_SOL_UNBALANCED, frozenset({"on"}), "unbalanced_output_off"),),
+    enter_order=(
+        "phase_l1_target", "phase_l2_target", "phase_l3_target", "acctrl_mode", "working_mode", "battery_target",
+    ),
+    restore_order=("working_mode", "phase_l1_target", "phase_l2_target", "phase_l3_target", "battery_target"),
+    stop_first=("working_mode",),
+)
+
+SOLINTEG_CONTROL: Final = BrandControl(
+    brand="solinteg",
+    adapter=SOLINTEG,
+    roles=(_SOL_MODE, _SOL_TARGET, _SOL_AC_MODE),
+    states={
+        ACTION_HOLD: SOLINTEG_HOLDS[0].build,
+        ACTION_GRID_CHARGE: _sol(_SOL_BATTCTRL, -1.0),
+        # No EMS mode covers the house and stores nothing: the plant's own mode does the first.
+        ACTION_DISCHARGE_HOUSE: _sol(_SOL_GENERAL),
+        ACTION_EXPORT_DISCHARGE: _sol(_SOL_BATTCTRL, 1.0),
+    },
+    # The mode before the target: a value written before the mode switch has been seen not to act. The target reads
+    # 0 until then (`watched`, and every hand-back leaves it so).
+    enter_order=("working_mode", "battery_target"),
+    restore_order=("working_mode", "battery_target"),
+    own_states={"working mode": frozenset({_SOL_BATTCTRL, _SOL_ACCTRL})},
+    requires=(("working_mode", frozenset({_SOL_GENERAL}), "not_in_general"),),
+    # General releases the battery in one write: a hold's peak cover and a grid charge's stop.
+    peak_first={ACTION_HOLD: SOLINTEG_HOLDS[0].peak_first, ACTION_GRID_CHARGE: ("working_mode",)},
+    # Nothing states how a BattCtrl charge is spread over the phases, and no import limit is counted on (see the
+    # module): the HA-down cap takes the whole charge on one phase.
+    grid_charge_phases=1,
+    note="EMS BattCtrl with the battery's power target; back to General. Never run on a device; the inverter keeps"
+    " the last command if Home Assistant stops.",
+    hold_variants=SOLINTEG_HOLDS,
+    variant=SOLINTEG_HOLDS[0].name,
+    phase_control=SOLINTEG_PHASES,
+    # A target left standing would run in the seconds between the mode's write and the target's own.
+    watched=((_SOL_TARGET, 0.0, "stale_target"),),
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    readback_s=READBACK_STALL_S,
+)
+
+_SOLINTEG_NORMAL: Final = {
+    "working_mode": _SOL_GENERAL, "battery_target": 0.0, **{role.name: 0.0 for role in _SOL_PHASE_TARGETS},
+}
+
 _SIG_EXPORT = Role(
     "export_limit", "number", _key("plant_grid_point_maximum_export_limitation", "number"), step=0.001,
     unset_as_rating="export", unknown_is_unset=True,
@@ -758,9 +907,12 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
     "sigenergy": _SIGENERGY_NORMAL,
     "huawei": {"forcible": "stop"},
     "solax": {"trigger": True},
+    "solinteg": _SOLINTEG_NORMAL,
 }
 
-CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL)
+CONTROLS: Final[tuple[BrandControl, ...]] = (
+    SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL,
+)
 
 
 #: The export-limit controls: only where the brand's adapter already knows the entity (`EXPORT_LIMIT_TABLE` lists
