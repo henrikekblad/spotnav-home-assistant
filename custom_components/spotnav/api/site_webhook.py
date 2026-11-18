@@ -18,12 +18,13 @@ Reads (HTTP 200, or 400 with `{"ok": false, "error": <the command's stable code>
 
 Writes, the everyday choices only (the owner's decision of 2026-11-18, `plans/app_3_0_plan.md`):
 
-* `update_heat` (`spotnav/update_heat`: `changes`, `expected`): the dial (`target_c`) and home/away (`mode`,
-  `away_until`), judged by the command's own rules (`heat/config.py`) under its compare-and-set.
+* `update_heat` (`spotnav/update_heat`: `changes`, `expected`): the dial (`target_c`), home/away (`mode`,
+  `away_until`), the cooler night (`night`) and each stored zone's offset (`zones`, the same entities in the same
+  order), judged by the command's own rules (`heat/config.py`) under its compare-and-set.
 * `battery_control` with `changes`: `battery_mode` only (`self_consumption`, `balanced`, `max_profit`).
 
 The control opt-ins stay with a signed-in administrator in Home Assistant: `control_enabled` ("Styr värmen") and
-every other heat setting, `battery_control_enabled` ("Styr batteriet") and the other battery options are
+the control path, the sensors and which entities are zones, `battery_control_enabled` ("Styr batteriet") and the other battery options are
 `spotnav_not_permitted_over_webhook` (HTTP 403) and nothing is written, as load balancing is
 (`api/site_settings.py`). Both writes answer their command's envelope (`ok`, `error` inside it): HTTP 200, 400 for a
 value refused, 409 for `spotnav_conflict`, 403 as above.
@@ -140,7 +141,8 @@ async def _site_settings_view(hass: HomeAssistant, entry: ConfigEntry, payload: 
 
 
 async def _update_heat(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
-    """`update_heat`: the dial and home/away, through the command's own judge and compare-and-set."""
+    """`update_heat`: the dial, home/away, the cooler night and the zones' offsets, through the command's own judge
+    and compare-and-set."""
     action = "update_heat"
     if not _speaks(payload, HEAT_API_VERSION):
         return _refused(action, ERROR_UNSUPPORTED_VERSION)
