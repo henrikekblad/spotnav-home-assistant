@@ -255,7 +255,14 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
     return null;
   }
   if (cap.cap_kw === null) {
-    return cap.rule === "import_limit" ? translate(language, "battery.cap.importLimit") : null;
+    if (cap.rule !== "import_limit") {
+      return null;
+    }
+    // The plant's limit is a total over the phases: said with its value, and why that is less than the fuse.
+    const value = cap.import_limit?.value_kw ?? null;
+    return value === null
+      ? translate(language, "battery.cap.importLimit")
+      : translate(language, "battery.cap.importLimitTotal", { kw: formatNumber(language, value, 1) });
   }
   if (cap.rule !== "learned" && cap.rule !== "learning" && cap.rule !== "conservative") {
     return null;
@@ -285,6 +292,40 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
   return cap.cap_kw === 0
     ? translate(language, "battery.cap.zero", { rule })
     : translate(language, "battery.cap.line", { kw: formatNumber(language, cap.cap_kw, 1), rule });
+}
+
+/** Under the cap's line, once the person said the plant's own import limit acts: why it does not guard the fuse as
+ * it reads now, and the most it may read to do so (it limits the total over the three phases, so that is less than
+ * the fuse). `null` when the limit guards, was not said to act, or no value can guard. SpotNav never writes it. */
+export function importLimitHint(language: Language, status: BatteryStatus): string | null {
+  const limit = status.grid_charge_cap.import_limit;
+  if (
+    limit === null || limit.holds || limit.suggested_kw === null
+    || !status.options.battery_control_import_limit_acts || !status.allowed_actions.includes("grid_charge")
+  ) {
+    return null;
+  }
+  const max = formatNumber(language, limit.suggested_kw, 1);
+  return limit.value_kw === null
+    ? translate(language, "battery.cap.importLimitUnset", { max })
+    : translate(language, "battery.cap.importLimitTooHigh", { value: formatNumber(language, limit.value_kw, 1), max });
+}
+
+/** A grid charge per phase: what each phase is charged at while one runs ("Nätladdning per fas: L1 1,01 kW · L2 0
+ * kW · L3 0,13 kW"), else the most each phase may take when a grid charge would run so; `null` otherwise. */
+export function perPhaseLine(language: Language, status: BatteryStatus): string | null {
+  const block = status.per_phase;
+  if (block === null || block.state !== "verified" || !status.allowed_actions.includes("grid_charge")) {
+    return null;
+  }
+  const values = block.charging_kw ?? (block.used ? block.caps_kw : null);
+  if (values === null) {
+    return null;
+  }
+  const kw = (value: number): string => formatNumber(language, value, 2);
+  return translate(language, block.charging_kw !== null ? "battery.perPhase.charging" : "battery.perPhase.caps", {
+    l1: kw(values.L1), l2: kw(values.L2), l3: kw(values.L3),
+  });
 }
 
 export function batteryNeed(language: Language, need: string): string {
@@ -656,6 +697,18 @@ export class SiteSections {
       const cap = element(doc, "p", C.settingRowHelp, capLine);
       cap.dataset["gridChargeCap"] = "true";
       section.append(cap);
+    }
+    const limitHint = importLimitHint(language, status);
+    if (limitHint !== null) {
+      const hint = element(doc, "p", C.settingRowHelp, limitHint);
+      hint.dataset["importLimit"] = "true";
+      section.append(hint);
+    }
+    const phaseLine = perPhaseLine(language, status);
+    if (phaseLine !== null) {
+      const phases = element(doc, "p", C.settingRowHelp, phaseLine);
+      phases.dataset["perPhase"] = "true";
+      section.append(phases);
     }
     if (status.notes.some((note) => note.code === "ai_mode_back")) {
       const note = element(doc, "p", C.settingsNotice, translate(language, "battery.note.aiModeBack"));
