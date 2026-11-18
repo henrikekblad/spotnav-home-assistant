@@ -2,6 +2,7 @@
 // the backend's own fixtures, the period steps and pickers, the Detailed switch remembered per browser, and what each
 // period shows, including a day of 25 hours and the heat card's hot-water runs.
 
+import { HOUSE_STYLES } from "../src/house-styles";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -182,6 +183,10 @@ describe("the house history", () => {
     expect(parts.indexOf("perfect")).toBeLessThan(parts.indexOf("money"));
     expect(parts.indexOf("money")).toBeLessThan(parts.indexOf("perfect-details"));
     const details = body.querySelector("[data-part='perfect-details']")!;
+    // A table's headings wrap between their words, so the work's five columns fit a phone; the day table keeps each
+    // date on one line.
+    expect(HOUSE_STYLES).toMatch(/\.spotnav-house-table thead th \{\s*white-space: normal;/);
+    expect(HOUSE_STYLES).toMatch(/\[data-part="days"\] \.spotnav-house-table td:first-child \{\s*white-space: nowrap;/);
     expect(details.querySelectorAll("table")).toHaveLength(2);
     expect(details.querySelector("[data-line='cell-temperature']")?.textContent).toBe("Battericeller: medel 21,8 °C, högst 27,5 °C, 15 min över 30 °C (åtta dygn).");
   });
