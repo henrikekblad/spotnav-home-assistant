@@ -902,6 +902,8 @@ class SiteCapacityController:
         self._phase_peaks_cancel = async_track_time_interval(
             self.hass, self._async_sample_phase_peaks, timedelta(seconds=PHASE_PEAKS_SAMPLE_S)
         )
+        # The days before the marks kept, from the recorder's history: in the background, cancelled at the unload.
+        self.phase_peaks.start_backfill(self)
 
     @callback
     def _async_sample_history(self, _now: datetime) -> None:
@@ -4912,6 +4914,13 @@ class SiteCapacityController:
         )
         self._calculation = (key, now, result)
         return result
+
+    def measurement_result(self) -> SiteCapacityResult:
+        """The site's measurement alone on the states it reads, no charger asking for anything: what `result` says
+        of each phase's current, its direction and whether the measurement is usable, calculated afresh and kept
+        nowhere. For the house's per-phase peaks read back from the recorder (`site/phase_backfill.py`), which run
+        this on the states of a past moment."""
+        return calculate_site_capacity(self._build_config(), ())
 
     def _readings_key(self) -> tuple[Any, ...]:
         """What `_calculate` reads, by its readings' timestamps: each measurement entity's state with its
