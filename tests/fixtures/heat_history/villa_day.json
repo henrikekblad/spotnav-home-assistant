@@ -787,8 +787,8 @@
   },
   "money": {
     "currency": "SEK",
-    "major": "kr",
-    "minor": "öre"
+    "major_unit": "kr",
+    "minor_unit": "öre"
   },
   "parts": [
     {

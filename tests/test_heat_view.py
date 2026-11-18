@@ -392,7 +392,7 @@ def test_the_villa() -> None:
     hot = [hour["start"] for hour in answer["band"]["hours"] if hour["hot_water"]]
     assert hot == [(MIDNIGHT + timedelta(hours=h)).isoformat() for h in (5, 7)]
     today = answer["today"]
-    assert today["hot_water_kwh"] > 1.5 and today["cost"] > 0 and today["money"]["minor"] == "öre"
+    assert today["hot_water_kwh"] > 1.5 and today["cost"] > 0 and today["money"]["minor_unit"] == "öre"
     # Heat holds the zones' own meters (6 hours at 0.6 kW); hot water stays the heat pump meter's own split.
     alone = villa_answer(zone_periods=None)["today"]
     assert (today["zones_kwh"], alone["zones_kwh"]) == (3.6, None)

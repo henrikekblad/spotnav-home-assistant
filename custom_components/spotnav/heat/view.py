@@ -393,7 +393,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
             **figures,
             "zones_kwh": None if zones_kwh is None else round(zones_kwh, 3),
             "cost": None if cost is None else round(cost, 2),
-            "money": None if inputs.money is None else {"currency": inputs.money[0], "major": inputs.money[1], "minor": inputs.money[2]},
+            "money": None if inputs.money is None else {"currency": inputs.money[0], "major_unit": inputs.money[1], "minor_unit": inputs.money[2]},
         }
 
     aim = config.target_c if would is None else would.target_c

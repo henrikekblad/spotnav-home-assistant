@@ -4,7 +4,7 @@ Pure: the shell (`api/heat_history.py`) reads the recorder's statistics and hand
 written here.
 
     {api_version: 1, site_id, time_zone, generated_at, period, date, end, today, complete,
-     money: {currency, major, minor} | null,
+     money: {currency, major_unit, minor_unit} | null (the house documents' shape),
      meter: {entity_id, name} | null,
      energy: {total_kwh, hours, hot_water_kwh, split_days, days, cost, priced_hours, zones_kwh, zones_from} | null,
      buckets: [{key, kwh, hot_water_kwh, zones_kwh, cost, degree_days, outdoor_c, shadow_value,
@@ -698,7 +698,7 @@ def heat_history(inputs: HeatHistoryInputs) -> dict[str, Any]:
         "end": period.end.isoformat(),
         "today": today.isoformat(),
         "complete": period.end <= today,
-        "money": None if money is None else {"currency": money[0], "major": money[1], "minor": money[2]},
+        "money": None if money is None else {"currency": money[0], "major_unit": money[1], "minor_unit": money[2]},
         "meter": None if inputs.meter is None else {"entity_id": inputs.meter[0], "name": inputs.meter[1]},
         "energy": energy,
         "buckets": rows if inputs.meter is not None else [],
