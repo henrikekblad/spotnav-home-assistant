@@ -1855,6 +1855,8 @@
   "house.earned": "Batteriet tjänade {amount}",
   "house.value.hour": "batteriet tjänade {amount}",
   "house.value.hourCost": "batteriet förlorade {amount}",
+  "house.flow.out": "urladdat {kwh}, värt {worth}, minus {cost} som energin kostade att ladda = {net}",
+  "house.flow.in": "laddade {kwh} för {cost} (räknas när energin används)",
   "house.value.none": "Inget batteri på den här anläggningen.",
   "house.learning.peaksLine": "Lär sig husets toppar, {left}.",
   "house.learning.noGridUntil": "Laddar inte från nätet förrän dess.",

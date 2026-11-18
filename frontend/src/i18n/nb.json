@@ -1855,6 +1855,8 @@
   "house.earned": "Batteriet tjente {amount}",
   "house.value.hour": "batteriet tjente {amount}",
   "house.value.hourCost": "batteriet tapte {amount}",
+  "house.flow.out": "utladet {kwh}, verdt {worth}, minus {cost} som energien kostet å lade = {net}",
+  "house.flow.in": "ladet {kwh} for {cost} (regnes når energien brukes)",
   "house.value.none": "Intet batteri på dette anlegget.",
   "house.learning.peaksLine": "Lærer husets topper, {left}.",
   "house.learning.noGridUntil": "Lader ikke fra nettet før da.",

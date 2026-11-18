@@ -149,7 +149,7 @@ describe("the bars", () => {
       { series: ["earn-own", "earn-heat", "earn-car"], below: false, left: "0%", width: "50%" },
       { series: ["earn-would"], below: false, left: "50%", width: "50%" },
     ]);
-    expect(day.getAttribute("aria-label")).toBe("tors 12 nov.: Batteri, egen styrning 3.75 kr · Värme 0.60 kr · Bil 2.70 kr · SpotNav skulle ha sparat 4.75 kr");
+    expect(day.getAttribute("aria-label")).toBe("tors 12 nov.: urladdat 5,0 kWh, värt 15.00 kr, minus 11.25 kr som energin kostade att ladda = 3.75 kr · laddade 2,5 kWh för 2.00 kr (räknas när energin används) · Värme 0.60 kr · Bil 2.70 kr · SpotNav skulle ha sparat 4.75 kr");
     // Today (the 16th) is not reviewed yet: no would-be lane; a day before any figure says so.
     expect(lanes(bars.find((bar) => bar.dataset["bar"] === "2026-11-16")!).map((lane) => lane.series)).toEqual([["earn-own", "earn-car"]]);
     expect(bars[0]!.getAttribute("aria-label")).toBe("sön 1 nov.: ingen siffra");

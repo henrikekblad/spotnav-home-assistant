@@ -30,6 +30,16 @@ import {
 } from "./period-history";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
+/** The battery's moves in a bucket: the energy given back, what it was worth (buy or sell price), what it cost out of
+ * the stock (worth less cost is the arbitrage), and the energy charged with its cost. */
+export interface BatteryFlow {
+  discharged: number;
+  worth: number;
+  cost: number;
+  charged: number;
+  charge_cost: number;
+}
+
 export interface HouseBucket {
   key: string;
   grid_in: number;
@@ -55,6 +65,9 @@ export interface HouseBucket {
   /** What the battery earned in the bucket (minor unit): its arbitrage, the card's headline measure, the same as the
    * battery's own app shows; `null` without a battery, where nothing is kept, and from a backend before it. */
   arbitrage: number | null;
+  /** What that arbitrage is made of, for the readout (kWh, minor units); `null` where it is not kept (older days, a
+   * month with such a day) and from a backend before it. */
+  battery_flow: BatteryFlow | null;
   /** The bucket's mean buy and sell price over its priced periods (minor unit per kWh); `null` unpriced and from a
    * backend before them. */
   buy: number | null;
@@ -235,6 +248,20 @@ export function periodKind(value: unknown): HistoryPeriod {
   return value === "day" || value === "month" || value === "year" ? value : bad();
 }
 
+function batteryFlow(value: unknown): BatteryFlow | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const source = record(value);
+  return {
+    discharged: number(source.discharged),
+    worth: number(source.worth),
+    cost: number(source.cost),
+    charged: number(source.charged),
+    charge_cost: number(source.charge_cost),
+  };
+}
+
 function bucket(value: unknown): HouseBucket {
   const source = record(value);
   return {
@@ -257,6 +284,7 @@ function bucket(value: unknown): HouseBucket {
     saving_car: newNumber(source, "saving_car"),
     saving_heat: newNumber(source, "saving_heat"),
     arbitrage: newNumber(source, "arbitrage"),
+    battery_flow: batteryFlow(source.battery_flow),
     buy: newNumber(source, "buy"),
     sell: newNumber(source, "sell"),
     own_battery: newNumber(source, "own_battery"),

@@ -1855,6 +1855,8 @@
   "house.earned": "La batterie a rapporté {amount}",
   "house.value.hour": "la batterie a rapporté {amount}",
   "house.value.hourCost": "la batterie a perdu {amount}",
+  "house.flow.out": "déchargé {kwh}, valant {worth}, moins {cost} que l'énergie a coûté à charger = {net}",
+  "house.flow.in": "chargé {kwh} pour {cost} (compté lorsque l'énergie est utilisée)",
   "house.value.none": "Pas de batterie sur ce site.",
   "house.learning.peaksLine": "Apprend les pointes de la maison, {left}.",
   "house.learning.noGridUntil": "Ne se charge pas sur le réseau d'ici là.",

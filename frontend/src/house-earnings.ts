@@ -18,7 +18,7 @@
 import { browserStore, type PreferenceStore } from "./chart-preference";
 import type { HouseBucket, HouseHistory } from "./house-history";
 import { bucketWords } from "./house-history";
-import { barChart, type Bar, type BarPart } from "./house-period-view";
+import { barChart, flowWords, type Bar, type BarPart } from "./house-period-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
 
@@ -203,7 +203,15 @@ export function earnBars(input: EarnBarsInput): HTMLElement | null {
       lanes.push([{ series: "earn-would", value: bucket.would_battery }]);
       slots.push(1);
     }
-    const said = figures.map(([part, value]) => `${translate(language, PART_WORDS[part])} ${money(value)}`);
+    // The battery's figure explained (what the maker's cash flow can be compared with) in place of its two parts,
+    // where the backend kept it; a charge-only hour says what it charged.
+    const flow = bucket.battery_flow === null || !(drawn.includes("battery") || drawn.includes("own")) ? null : flowWords(language, bucket.battery_flow, money);
+    const said = figures
+      .filter(([part]) => flow === null || (part !== "battery" && part !== "own"))
+      .map(([part, value]) => `${translate(language, PART_WORDS[part])} ${money(value)}`);
+    if (flow !== null) {
+      said.unshift(flow);
+    }
     return {
       key: bucket.key,
       lanes,

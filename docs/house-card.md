@@ -133,6 +133,13 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   Under it, on the same hours and the same time axis, what the battery earned each hour as kr bars (below the line where
   it gave energy back for less than it cost to store); a tap on either is that hour. A month has a kr bar per day and a
   year one per month. The battery's hourly figures are kept 40 days, its daily ones 400.
+  A tap explains the figure: "08:00: discharged 3.5 kWh, worth 8.10 kr, minus 5.60 kr that the energy cost to charge =
+  2.50 kr", and an hour that charged says "charged 4.2 kWh for 3.90 kr (counted when the energy is used)" (the same
+  words on the Earnings tab's battery part). It will not match the battery maker's cash-flow figure to the öre: that one
+  counts what is bought and sold on the grid in the hour, so a charge shows as a cost in the hour it is made, while
+  SpotNav counts a kWh's cost when that kWh is used, at the average of what the stored energy cost, with the sun's
+  energy valued at the sell price. Over a few days the two should be close. Days from before the breakdown was kept
+  show the short figure.
 
 ### The details
 
