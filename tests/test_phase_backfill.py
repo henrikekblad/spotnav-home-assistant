@@ -346,7 +346,7 @@ def test_live_hours_win_and_read_back_hours_are_marked() -> None:
     kept = PhasePeaks()
     kept.hours[hour] = _mark(4.0, 20)  # sampled live
     kept.hours[hour + 1] = HourMark(heat_kw=(1.0, 0.0, 0.0))  # live, nothing counted in it
-    kept.hours[hour + 2] = _mark(12.0, 10, backfilled=True)
+    kept.hours[hour + 2] = _mark(12.0, 10, backfilled=True, lost=7)
     kept.hours[hour + 3] = _mark(5.0, 30, backfilled=True)
     history = PhasePeaks()
     for offset in range(-1, 4):
@@ -362,6 +362,7 @@ def test_live_hours_win_and_read_back_hours_are_marked() -> None:
     assert kept.hours[hour + 2].minutes == 25, "read back again with more minutes"
     # Nothing is lowered by the new reading: the larger of each peak and total.
     assert kept.hours[hour + 2].house_a == (12.0, 12.0, 12.0) and kept.hours[hour + 2].total_all == 36.0
+    assert kept.hours[hour + 2].lost == 7, "nor are the minutes lost in either reading forgotten"
     assert kept.hours[hour + 3].minutes == 30, "and kept where the new reading has fewer"
     assert sorted(kept.hours) == [hour - 1, hour, hour + 1, hour + 2, hour + 3]
     assert kept.covered(hour - 1, 5) and not kept.covered(hour - 2, 2)
@@ -370,7 +371,7 @@ def test_live_hours_win_and_read_back_hours_are_marked() -> None:
 def test_read_back_hours_survive_the_store_and_say_how_many_days_rest_on_them() -> None:
     import json
 
-    now = T0 + 6 * 86400
+    now = T0 + 6 * 86400 + 10 * 3600  # 20:00: the hours kept are each day's 16:00 to 20:00, its evening
     hour = int(now // 3600)
     peaks = PhasePeaks()
     per_day = DAY_MINUTES // 30 + 1

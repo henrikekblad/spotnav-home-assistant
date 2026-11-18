@@ -78,7 +78,8 @@ gave: that is the point), so the numbers have to hold by themselves:
 * **Seven days must be seven days.** `DAY_MINUTES` in one stretch (the battery idle every night at three) would make
   a "day" of two night hours, and seven of them a week that never saw an evening. A day therefore counts, toward
   `MIN_READY_DAYS` and toward `READY_DAYS` alike, only **spread over the day**: its counted minutes in at least
-  `SPREAD_HOURS` (12) clock hours, half the day, or at least `SPREAD_MINUTES` (600) of them; and no more days count than the time from the first to
+  `SPREAD_HOURS` (12) clock hours, half the day, or at least `SPREAD_MINUTES` (600) of them in at least
+  `SPREAD_MINUTES_HOURS` (8) clock hours; and no more days count than the time from the first to
   the last counted hour holds (whole days, one day's slack: seven days in a row reach from the first's noon to the
   seventh's). The further margin falls by the same days, and the learning is done at `READY_DAYS` of them: fourteen
   days of night hours never end it (`days`, by `DAY_MINUTES` alone, is kept for the diagnostics).
@@ -87,7 +88,11 @@ gave: that is the point), so the numbers have to hold by themselves:
   battery holding the meter at nought hides whole evenings). Each hour read back keeps how many of its minutes
   were lost so (`HourMark.lost`). A day whose history lost more than `HISTORY_LOST_SHARE` (30 %) of the minutes that
   could have counted (counted plus lost) does not count as a day at all: with a third of a day unseen, its peak
-  may well be in the part not seen (its peaks are still kept: they can only raise what is learned). And a day that
+  may well be in the part not seen (its peaks are still kept: they can only raise what is learned). Nor does a
+  day's history count without its **evening**: counted minutes in at least `EVENING_COUNTED_HOURS` (3) of the clock
+  hours `EVENING_HOURS` (16 to 22, the site's own time), where a house's peaks are and where a battery covering
+  the house leaves the history least. And the learning is never done on the history alone: it needs
+  `READY_LIVE_DAYS` (3) days sampled live among its days, each one short of that a day short of the end. A day that
   counts only with its history weighs `HISTORY_DAY_WEIGHT` (half) of a day sampled live, both in the further margin
   (ten days of history alone keep the whole 4 A; each live day then takes off twice what a history day does) and in
   the end of the learning (`READY_DAYS` reached with the history's days at half).
@@ -107,6 +112,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, tzinfo
 import logging
 import math
 from typing import TYPE_CHECKING, Any, Final
@@ -149,6 +155,14 @@ SPREAD_MINUTES: Final = 600
 #: on the history weighs this much of a day sampled live, in the further margin and in the end of the learning.
 HISTORY_LOST_SHARE: Final = 0.30
 HISTORY_DAY_WEIGHT: Final = 0.5
+#: A day reaching `SPREAD_MINUTES` must still have them in at least this many clock hours.
+SPREAD_MINUTES_HOURS: Final = 8
+#: A day's history counts only with counted minutes in at least `EVENING_COUNTED_HOURS` of the evening's clock hours,
+#: `EVENING_HOURS` in the site's own time (from, to: the end not included), where a house's peaks are.
+EVENING_HOURS: Final = (16, 22)
+EVENING_COUNTED_HOURS: Final = 3
+#: The learning is done only with at least this many of its days sampled live, however long the history.
+READY_LIVE_DAYS: Final = 3
 #: A phase's current is read as at most this (A): anything beyond is a broken reading, not kept.
 MAX_A: Final = 1000.0
 #: An exact sample whose house reads below this on a phase (A, negative) is not counted exactly (see the module).
@@ -526,6 +540,9 @@ class PhasePeaks:
 
     def __init__(self) -> None:
         self.hours: dict[int, HourMark] = {}
+        #: The site's own time zone, for the evening's hours (`EVENING_HOURS`); UTC without one.
+        self.time_zone: tzinfo | None = None
+        self._local: tuple[tzinfo | None, dict[int, int]] = (None, {})
         self._minute: _Minute | None = None
         #: The last closed minutes, newest last (a minute counts once both its neighbours are known settled).
         self._closed: deque[_Minute] = deque(maxlen=3)
@@ -589,6 +606,19 @@ class PhasePeaks:
         for hour in [hour for hour in self.hours if hour < oldest]:
             del self.hours[hour]
 
+    def _local_hour(self, hour: int) -> int:
+        """The clock hour (0-23) of the epoch hour `hour` in the site's time."""
+        zone = self.time_zone
+        if zone is None:
+            return hour % 24
+        if self._local[0] is not zone or len(self._local[1]) > 4 * WINDOW_DAYS * 24:
+            self._local = (zone, {})
+        known = self._local[1]
+        local = known.get(hour)
+        if local is None:
+            local = known[hour] = datetime.fromtimestamp(hour * _HOUR_S, zone).hour
+        return local
+
     def learned(self, now: float) -> Learned:
         """The window's peaks (see the module)."""
         oldest = int(now // _HOUR_S) - WINDOW_DAYS * 24
@@ -606,6 +636,8 @@ class PhasePeaks:
         exact_past: dict[int, list[int]] = {}
         ends: dict[int, tuple[int, int]] = {}
         exact_ends: dict[int, tuple[int, int]] = {}
+        #: Per day with history: its evening hours with counted minutes (live or read back).
+        evenings: dict[int, int] = {}
         hours = minutes = exact_minutes = history_hours = 0
         for hour, mark in self.hours.items():
             if hour < oldest:
@@ -632,6 +664,8 @@ class PhasePeaks:
                 first, last = exact_ends.get(day, (hour, hour))
                 exact_ends[day] = (min(first, hour), max(last, hour))
             if counted:
+                if EVENING_HOURS[0] <= self._local_hour(hour) < EVENING_HOURS[1]:
+                    evenings[day] = evenings.get(day, 0) + 1
                 hours += 1
                 history_hours += 1 if mark.backfilled else 0
                 kept = (past if mark.backfilled else live).setdefault(day, [0, 0, 0])
@@ -639,10 +673,12 @@ class PhasePeaks:
                 kept[1] += 1
                 first, last = ends.get(day, (hour, hour))
                 ends[day] = (min(first, hour), max(last, hour))
-        # A day's history counts only where few of its minutes were lost to readings that stood still.
+        # A day's history counts only where few of its minutes were lost to readings that stood still, and where
+        # the day's evening is among the minutes counted.
         dropped = {
             day for day, (counted, _hours, lost) in past.items()
-            if counted + lost and lost / (counted + lost) > HISTORY_LOST_SHARE
+            if (counted + lost and lost / (counted + lost) > HISTORY_LOST_SHARE)
+            or (counted and evenings.get(day, 0) < EVENING_COUNTED_HOURS)
         }
         day_count = live_count = spread_count = spread_live = exact_count = exact_live_count = 0
         first_hour: int | None = None
@@ -651,7 +687,9 @@ class PhasePeaks:
         exact_last: int | None = None
 
         def spread_over_the_day(counted: list[int]) -> bool:
-            return counted[0] >= DAY_MINUTES and (counted[0] >= SPREAD_MINUTES or counted[1] >= SPREAD_HOURS)
+            return counted[0] >= DAY_MINUTES and (
+                counted[1] >= SPREAD_HOURS or (counted[0] >= SPREAD_MINUTES and counted[1] >= SPREAD_MINUTES_HOURS)
+            )
 
         # The days with exact minutes spread over them, by the same rule (a dropped day's history left out).
         for day in set(exact_live) | set(exact_past):
@@ -676,9 +714,9 @@ class PhasePeaks:
                 continue
             day_count += 1
             live_count += 1 if own[0] >= DAY_MINUTES else 0
-            if counted >= SPREAD_MINUTES or own[1] + more[1] >= SPREAD_HOURS:
+            if spread_over_the_day([counted, own[1] + more[1]]):
                 spread_count += 1
-                spread_live += 1 if own[0] >= SPREAD_MINUTES or own[1] >= SPREAD_HOURS else 0
+                spread_live += 1 if spread_over_the_day(own) else 0
                 first_hour = ends[day][0] if first_hour is None else min(first_hour, ends[day][0])
                 last_hour = ends[day][1] if last_hour is None else max(last_hour, ends[day][1])
         # No more days than the time from the first to the last counted hour holds (a day more than its whole days:
@@ -687,6 +725,8 @@ class PhasePeaks:
         spread = min(spread_count, span_days)
         # The same days with the history's at their weight: what the further margin falls by and the learning ends by.
         weighted = min(float(spread), spread_live + HISTORY_DAY_WEIGHT * (spread_count - spread_live))
+        # And never done on the history alone: each live day short of `READY_LIVE_DAYS` is a day short of the end.
+        weighted = min(weighted, float(READY_DAYS - max(READY_LIVE_DAYS - spread_live, 0)))
         factor = 1.0
         if total_all is not None and total_counted is not None:
             factor = max(1.0, total_all / max(total_counted, 1.0))
@@ -761,7 +801,7 @@ class PhasePeaks:
                     if mark.house_a is not None and mark.minutes == 0:
                         mark.exact_minutes -= 1
                         mark.minutes = 1
-                    mark.lost = min(mark.lost, kept.lost, 60 - mark.counted)
+                    mark.lost = min(max(mark.lost, kept.lost), 60 - mark.counted)
             mark.backfilled = True
             self.hours[hour] = mark
             taken += 1 if mark.counted else 0
@@ -975,6 +1015,7 @@ class SitePhasePeaks:
         from ..debug_day import DayStore  # noqa: PLC0415 - Home Assistant's storage, kept out of the pure part
 
         self.peaks = PhasePeaks()
+        self._zone()
         self._hass = hass
         self._store = None if hass is None or entry_id is None else DayStore(hass, store_key(entry_id), self._data)
         self._failed = False
@@ -1003,7 +1044,14 @@ class SitePhasePeaks:
                 self._failed = True
                 _LOGGER.warning("SpotNav site: the house's per-phase peaks could not be sampled", exc_info=True)
 
+    def _zone(self) -> None:
+        """The site's time zone (Home Assistant's own) to the marks, for the evening's hours."""
+        from homeassistant.util import dt as dt_util  # noqa: PLC0415 - kept out of the pure part
+
+        self.peaks.time_zone = dt_util.DEFAULT_TIME_ZONE
+
     def learned(self, now: float) -> Learned:
+        self._zone()
         return self.peaks.learned(now)
 
     def start_backfill(self, site: SiteCapacityController) -> None:
@@ -1043,6 +1091,7 @@ class SitePhasePeaks:
 
 __all__: Sequence[str] = (
     "BATTERY_BAND_W", "DAY_MINUTES", "EXTRA_MARGIN_A", "HISTORY_DAY_WEIGHT", "HISTORY_LOST_SHARE", "HourMark",
+    "EVENING_COUNTED_HOURS", "EVENING_HOURS", "READY_LIVE_DAYS", "SPREAD_MINUTES_HOURS",
     "Learned", "MARGIN_A", "MIN_READY_DAYS", "PhasePeaks", "SPREAD_HOURS", "SPREAD_MINUTES",
     "READY_DAYS", "Reading", "SitePhasePeaks", "PLANT_MISMATCH_A", "WINDOW_DAYS", "exact_phase_a", "extra_margin_a",
     "house_phase", "house_phase_a", "house_sum_a",

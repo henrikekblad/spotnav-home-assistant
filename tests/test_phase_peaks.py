@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta, timezone
 import json
 import math
 from typing import Any
@@ -12,6 +13,8 @@ from custom_components.spotnav.battery.gate import HOUSE_PEAK_DEFAULT_KW, MIN_RA
 from custom_components.spotnav.site.phase_peaks import (
     BATTERY_BAND_W,
     DAY_MINUTES,
+    EVENING_COUNTED_HOURS,
+    EVENING_HOURS,
     EXTRA_MARGIN_A,
     HISTORY_DAY_WEIGHT,
     HISTORY_LOST_SHARE,
@@ -19,6 +22,7 @@ from custom_components.spotnav.site.phase_peaks import (
     MIN_READY_DAYS,
     PLANT_MISMATCH_A,
     READY_DAYS,
+    READY_LIVE_DAYS,
     SPREAD_HOURS,
     SPREAD_MINUTES,
     WINDOW_DAYS,
@@ -302,10 +306,11 @@ def test_days_count_before_the_learning_is_done_only_spread_over_the_day_and_ove
 
 
 def test_a_day_read_back_with_many_minutes_lost_does_not_count_and_history_days_weigh_half() -> None:
-    def kept(history_days: int, live_days: int, *, lost: int = 0) -> PhasePeaks:
+    def kept(history_days: int, live_days: int, *, lost: int = 0, first_hour: int = 8) -> PhasePeaks:
+        """Days with counted minutes in twelve clock hours from `first_hour` (from 8: the evening among them)."""
         peaks = PhasePeaks()
         for day in range(history_days + live_days):
-            for hour in range(SPREAD_HOURS):
+            for hour in range(first_hour, first_hour + SPREAD_HOURS):
                 peaks.hours[T0 // 3600 + day * 24 + hour] = HourMark(
                     house_a=(5.0, 3.0, 8.0), minutes=20, backfilled=day < history_days,
                     lost=lost if day < history_days else 0,
@@ -336,6 +341,29 @@ def test_a_day_read_back_with_many_minutes_lost_does_not_count_and_history_days_
     assert learned.days == 0 and learned.history_days_dropped == 10 and learned.phase_peaks() is None
     assert learned.raw_a == (5.0, 3.0, 8.0), "its peaks are still kept: they can only raise what is learned"
     assert kept(10, 0, lost=over - 1).learned(now).days == 10
+    # A day read back without its evening (its counted hours 00 to 12) is no day either: the evening is where a
+    # house's peaks are, and where a battery holding the meter still hides them from the history.
+    learned = kept(10, 0, first_hour=0).learned(now)
+    assert learned.days == 0 and learned.history_days_dropped == 10 and learned.phase_peaks() is None
+    assert learned.raw_a == (5.0, 3.0, 8.0)
+    assert EVENING_HOURS == (16, 22) and EVENING_COUNTED_HOURS == 3
+    assert kept(10, 0, first_hour=7).learned(now).days == 10, "16, 17 and 18"
+    assert kept(10, 0, first_hour=6).learned(now).days == 0, "16 and 17 only"
+    # The evening is the site's own: those same hours are 16 to 04 eight hours west of Greenwich.
+    west = kept(10, 0, first_hour=0)
+    west.time_zone = timezone(timedelta(hours=-8))
+    assert west.learned(now).days == 10
+    # Days sampled live need no such proof: every minute of theirs was judged.
+    assert kept(0, 10, first_hour=0).learned(now).days == 10
+    # A long history alone never ends the learning: twenty-four days of it and two live would be fourteen at
+    # their weights, and are thirteen for the one live day short of three.
+    later = T0 + 27 * 86400
+    learned = kept(24, 2).learned(later)
+    assert learned.days == 26 and not learned.ready and learned.days_left == 1
+    assert learned.extra_margin_a == pytest.approx(extra_margin_a(13)) and learned.extra_margin_a > 0
+    assert kept(26, 0).learned(later).days_weighted == READY_DAYS - READY_LIVE_DAYS
+    learned = kept(22, 3).learned(later)
+    assert learned.ready and learned.extra_margin_a == 0.0
 
 
 def test_a_minute_lost_to_an_unjudged_sample_is_kept_with_the_hour_and_the_store() -> None:
@@ -809,15 +837,15 @@ def test_the_site_s_reading_without_the_plant_s_entities_has_no_plant_power() ->
 
 
 def test_the_exact_peaks_stand_alone_only_after_two_weeks_of_exact_days_spread_over_the_day() -> None:
-    def kept(exact_hours: int, *, history_days: int = 0, first_from: int = 0) -> PhasePeaks:
-        """Two weeks: every day twelve hours by the band (9 A on L3), and `exact_hours` hours of exact minutes
-        (4 A) from the hour `first_from` (the first day) or 0."""
+    def kept(exact_hours: int, *, history_days: int = 0, first_from: int = 8) -> PhasePeaks:
+        """Two weeks: every day twelve hours by the band (9 A on L3) from 08:00, and `exact_hours` hours of exact
+        minutes (4 A) from the hour `first_from` (the first day) or 8."""
         peaks = PhasePeaks()
         for day in range(READY_DAYS):
-            start = first_from if day == 0 else 0
+            start = first_from if day == 0 else 8
             for hour in range(24):
                 mark = HourMark(backfilled=day < history_days)
-                if hour < SPREAD_HOURS:
+                if 8 <= hour < 8 + SPREAD_HOURS:
                     mark.house_a, mark.minutes, mark.total_all, mark.total_counted = (5.0, 3.0, 9.0), 20, 17.0, 17.0
                 if start <= hour < start + exact_hours:
                     mark.exact_a, mark.exact_minutes = (4.0, 4.0, 4.0), 40
