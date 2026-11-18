@@ -30,6 +30,7 @@ from ..site.spotnav_saving import (
     GridShares,
     Prices,
     car_days,
+    car_hours,
     day_savings,
     default_share,
     session_savings,
@@ -134,8 +135,17 @@ async def async_day_savings(
 ) -> tuple[dict[date, DaySaving], date | None]:
     """Each day's parts of what SpotNav saved (`site/spotnav_saving.day_savings`) and the first day the car's figure
     is known from."""
+    savings, since, _hours = await async_day_savings_by_hour(hass, site_entry_id, controller, days)
+    return savings, since
+
+
+async def async_day_savings_by_hour(
+    hass: HomeAssistant, site_entry_id: str, controller: Any, days: Sequence[date]
+) -> tuple[dict[date, DaySaving], date | None, dict[datetime, float]]:
+    """`async_day_savings` and, from the same computation, the car's saving per UTC hour its charges started in
+    (`site/spotnav_saving.car_hours`), for a day's hourly bars."""
     if not days:
-        return {}, None
+        return {}, None, {}
     now = controller.demand.now()
     tz = controller.demand.tracker.tz
     zone = time_zones.require_zone(tz)
@@ -160,6 +170,7 @@ async def async_day_savings(
     return (
         day_savings(days, battery_money=battery_money, heat_days=heat_days, car=car, car_since=since, today=today),
         since,
+        car_hours(shown, savings),
     )
 
 

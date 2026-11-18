@@ -15,6 +15,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-01",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -22,7 +23,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -38,6 +40,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-02",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -45,7 +48,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -61,6 +65,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-03",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -68,7 +73,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -84,6 +90,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-04",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -91,7 +98,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -107,6 +115,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-05",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -114,7 +123,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -130,6 +140,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-06",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -137,7 +148,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -153,6 +165,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-07",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -160,7 +173,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -176,6 +190,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-08",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -183,7 +198,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -199,6 +215,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-09",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -206,7 +223,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -222,6 +240,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-10",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -229,7 +248,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     },
     {
       "arbitrage": 5250.0,
@@ -245,6 +265,7 @@
       "heat": 290.2,
       "house": 131.6,
       "key": "2026-11",
+      "own_battery": 2625.0,
       "periods": 374,
       "saving": 2080.0,
       "saving_battery": null,
@@ -252,7 +273,8 @@
       "saving_heat": 120.0,
       "sell": 60.0,
       "solar": 96.0,
-      "use": 421.8
+      "use": 421.8,
+      "would_battery": 3225.0
     },
     {
       "arbitrage": null,
@@ -268,6 +290,7 @@
       "heat": null,
       "house": 0.0,
       "key": "2026-12",
+      "own_battery": null,
       "periods": 0,
       "saving": null,
       "saving_battery": null,
@@ -275,7 +298,8 @@
       "saving_heat": null,
       "sell": null,
       "solar": null,
-      "use": 0.0
+      "use": 0.0,
+      "would_battery": null
     }
   ],
   "complete": false,
@@ -413,6 +437,12 @@
     "currency": "SEK",
     "major_unit": "kr",
     "minor_unit": "öre"
+  },
+  "own_control": {
+    "days": 7,
+    "earned": 2625.0,
+    "would": 3225.0,
+    "would_days": 6
   },
   "period": "year",
   "review": {

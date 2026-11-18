@@ -15,6 +15,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T00:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -22,7 +23,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -38,6 +40,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T01:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -45,7 +48,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -61,6 +65,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T02:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -68,7 +73,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -84,6 +90,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T03:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -91,7 +98,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -107,6 +115,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T04:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -114,7 +123,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -130,6 +140,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T05:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -137,7 +148,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -153,6 +165,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T06:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -160,7 +173,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": -15.0,
@@ -176,6 +190,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T07:00:00+01:00",
+      "own_battery": -15.0,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -183,7 +198,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -199,6 +215,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T08:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -206,7 +223,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -222,6 +240,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T09:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -229,7 +248,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -245,6 +265,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T10:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -252,7 +273,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 1.5,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -268,6 +290,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T11:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -275,7 +298,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 1.5,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -291,6 +315,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T12:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -298,7 +323,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 1.5,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -314,6 +340,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T13:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -321,7 +348,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 1.5,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -337,6 +365,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T14:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -344,7 +373,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -360,6 +390,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T15:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -367,7 +398,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -383,6 +415,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T16:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -390,7 +423,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": 120.0,
@@ -406,6 +440,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T17:00:00+01:00",
+      "own_battery": 120.0,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -413,7 +448,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": 140.0,
@@ -429,6 +465,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T18:00:00+01:00",
+      "own_battery": 140.0,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -436,7 +473,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": 90.0,
@@ -452,6 +490,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T19:00:00+01:00",
+      "own_battery": 90.0,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -459,7 +498,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": 40.0,
@@ -475,6 +515,7 @@
       "heat": 0.8,
       "house": 0.4,
       "key": "2026-11-15T20:00:00+01:00",
+      "own_battery": 40.0,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -482,7 +523,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 1.2
+      "use": 1.2,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -498,6 +540,7 @@
       "heat": 0.6,
       "house": 0.0,
       "key": "2026-11-15T21:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -505,7 +548,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 0.6
+      "use": 0.6,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -521,14 +565,16 @@
       "heat": 0.6,
       "house": 0.0,
       "key": "2026-11-15T22:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
-      "saving": null,
+      "saving": 300.0,
       "saving_battery": null,
-      "saving_car": null,
+      "saving_car": 300.0,
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 0.6
+      "use": 0.6,
+      "would_battery": null
     },
     {
       "arbitrage": null,
@@ -544,6 +590,7 @@
       "heat": 0.6,
       "house": 0.0,
       "key": "2026-11-15T23:00:00+01:00",
+      "own_battery": null,
       "periods": 4,
       "saving": null,
       "saving_battery": null,
@@ -551,7 +598,8 @@
       "saving_heat": null,
       "sell": 60.0,
       "solar": 0.0,
-      "use": 0.6
+      "use": 0.6,
+      "would_battery": null
     }
   ],
   "complete": true,
@@ -698,6 +746,12 @@
     "currency": "SEK",
     "major_unit": "kr",
     "minor_unit": "öre"
+  },
+  "own_control": {
+    "days": 1,
+    "earned": 375.0,
+    "would": 475.0,
+    "would_days": 1
   },
   "period": "day",
   "review": {
