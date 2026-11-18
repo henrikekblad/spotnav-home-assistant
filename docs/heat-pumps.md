@@ -32,6 +32,45 @@ When the pump runs its own price control (NIBE Smart Price Adaption, CTC's Smart
 EffektGuard is set up, the diagnostics mark the pump as **watch only**: a later SpotNav heat control will leave such
 a pump to it and only watch.
 
+## The heat card
+
+The heat card (`type: custom:spotnav-heat-card`, with `site:` or `charger:`) has a header and three tabs. The header
+says after the card's name what the heating does now: **Värmer 2,1 kW**, **Varmvatten 2,9 kW** or **Vilar** from the
+heat pump's own facts or its meter, and **Sänkt till 06:00** or **Höjd till 15:00** while SpotNav's own control holds
+the heat down or up. Before SpotNav controls anything, **Test** stands first (tap it for what that means). The **i**
+opens the details, the gear (administrators) the settings.
+
+* **Now**: the dial for the wanted temperature with its band, the coldest room and the outdoor temperature, **Hemma**
+  or **Borta**, what SpotNav would do (or does) and what the relay does, a thin strip of **the plan's next twelve
+  hours** (a cell an hour: a lowering, a pre-heat or raise, the cooler night, hot water as a dot) with the same in
+  words under it, and today's heat, hot water and cost. The strip ends at midnight until tomorrow's prices are in.
+  The sensors, the zones and how the pump is controlled are in the gear's settings.
+* **Plan**: the day's chart: the rooms, the comfort band, the setpoint, SpotNav's lowerings (what it did solid, what it
+  plans lighter), the relay, hot water and the car. The arrows step back through past days (tap the day to choose
+  one); this tab shows days only. Tap or point at the chart for a time's figures.
+* **Use**: bars per hour, day or month (the period picker: Day, Month, Year), in **kWh or money** (the switch at the
+  right, remembered). Each bar is stacked by **what is actually measured**: the **heat pump** (its meter less the hot
+  water), **hot water** (the meter's plateaus of about 3 kW, on the days Home Assistant still has in 5-minute detail;
+  on older days it stays in the heat pump's part and the card says for how many days it is split out), each **zone
+  with a meter of its own** by its name (an air-to-air heat pump; the four largest), and **other heating** (every
+  other heat counted: further zones, a meter moved to Heat in the house card's pie). A zone without a meter is in no
+  bar: nothing is guessed. The parts in the legend are toggles with their sums (remembered). The headline is **what
+  SpotNav saved on heat** over the period, the same figure as *Heat* in the house card's Earnings tab; a period
+  without one is headed by the heat's total.
+
+Plan and Use share the period: a day chosen in one is the day in the other, and a month or year chosen in Use is
+still there after a look at Plan. The tab, the unit and the hidden parts are remembered per card in the browser.
+
+**The details** (the **i**) use the same period picker and show everything at once: the cost with what SpotNav's plan
+would have saved hatched on top, the use in figures (the immersion heater too, where its power is read), **degree
+days** and kWh per degree day with the monthly trend, **comfort** (the coldest room and the hours under the band),
+**what SpotNav would have done** in shadow, a day's review of the relay beside SpotNav's plan, **the house model**
+(how far its forecast of the heating was from the meter, in kW, over the reviewed days) and a day's hot-water runs.
+
+A wall screen can show one tab only, without the tab row: `tab: now`, `plan` or `use` (the card editor's **Show only
+tab**). It is a setting of this card, not of SpotNav. In a box of fixed height the dial, the chart or the bars take
+the box's spare height and the explaining lines and notes go. Every tab fits a 650×520 box with the tab row shown.
+
 ## The heat's figures: the heat pump and the zones
 
 The heat pump's meter (found by itself, or chosen in the site settings) is the heat card's own measure: its
@@ -44,8 +83,9 @@ heat pump's meter, or nested inside it, is left out), and a zone without a meter
 
 * **Today** on the heat card: *heat* holds the zones (and says how much as *of which zones*); *hot water* stays the
   heat pump meter's split, and the cost counts the zones at each period's price.
-* **The heat history**: each bar, the total and the cost hold the zones in the hours the heat pump's meter has, with
-  *Of which zones* beside the total. The zones count from the day their meter has readings, so the use takes a step
+* **The Use tab and the details**: each bar, the total and the cost hold the zones in the hours the heat pump's meter
+  has, a zone with its own meter as a part of its own and the rest as *other heating*, with *Of which zones* beside
+  the total in the details. The zones count from the day their meter has readings, so the use takes a step
   up there; the history says from which day. The **degree-day** figure and its trend stay the heat pump's alone, so a
   zone added does not look like a worse house.
 * **The house card**: its flow's Heat is the same sum, with its own pie where it holds more than one source
@@ -153,8 +193,8 @@ SpotNav never turns an automation off. Another heat optimiser (EffektGuard) or t
 control from starting.
 
 **What you see**: the line under the switch (off; checking; controlling and until when; or what it waits for), the
-heat card's header saying what the control does now after its name (**· Sänker till 20,5 °C**, **· Sänker**,
-**· Höjer** for SG Ready's raise, **· Normal**) instead of **· Test**, and SpotNav's own lowerings as solid columns
-in the day's chart (**SpotNav sänkte**), beside the plan's lighter ones, the rooms and the setpoint. Tap or point at
-the chart for a time's figures; tap its heading to fold it away (each browser remembers that per site). The diagnostics (`heat_settings.control`) keep the switchings, the check's
+heat card's header saying what the control does now after its name (**· Sänkt till 19:00**, **· Höjd till 15:00**
+for SG Ready's raise, else what the heat pump does) with no **Test** before it, and SpotNav's own lowerings as solid
+columns in the Plan tab's chart (**SpotNav sänkte**), beside the plan's lighter ones, the rooms and the setpoint. Tap
+or point at the chart for a time's figures. The diagnostics (`heat_settings.control`) keep the switchings, the check's
 results and why each decision was made.
