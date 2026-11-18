@@ -38,7 +38,8 @@ wrong mapping shows as it does live (`PLANT_MISMATCH_A`, a charger's reading abo
 **Bounded.** The recorder is read in its own executor (`get_instance(hass).async_add_executor_job`), `CHUNK_HOURS`
 at a time, never in the event loop; the samples are replayed in the event loop in slices of `SLICE_S` with a pause
 between them. A run stops at `MAX_ROWS` rows or `MAX_RUN_S` seconds (checked between the slices too) and is
-cancelled at the site's unload; whatever ends it, an error included, the hours replayed so far are kept. It does
+cancelled at the site's unload; whatever ends it, an error included, the hours replayed so far are kept, less
+those of the read it was cut short in (an hour replayed in part is never kept as read). It does
 not run while the recorder migrates its tables, and after a run that could not read the next comes in an hour. Hours the store already has are not read again. One line in the log says what a run gave.
 """
 
@@ -417,6 +418,8 @@ class Backfill:
         first -= first % CHUNK_HOURS
         last_sample = now - now % SAMPLE_S
         fresh_start = True
+        #: The first hour of the read being replayed, `None` between reads.
+        unfinished: int | None = None
         try:
             for chunk in range(first, newest + 1, CHUNK_HOURS):
                 start = float(chunk * _HOUR_S)
@@ -436,14 +439,17 @@ class Backfill:
                     )
                     return StatesThen.rows(states, start, fresh_start=include_start)
 
+                unfinished = chunk
                 rows = await recorder.async_add_executor_job(read)
                 summary["rows"] += replay.states.load_rows(rows, fresh_start=fresh_start)
                 fresh_start = False
                 in_time = True
                 if not replay.states.empty:
-                    summary["hours_read"] += CHUNK_HOURS
                     in_time = await self._async_replay(replay, start, end, started + MAX_RUN_S)
                     summary["samples"] = replay.samples
+                if in_time:
+                    unfinished = None
+                    summary["hours_read"] += 0 if replay.states.empty else CHUNK_HOURS
                 if not in_time or time.monotonic() - started > MAX_RUN_S:
                     summary["stopped"] = "time"
                     break
@@ -454,7 +460,12 @@ class Backfill:
             summary["stopped"] = "error"
             raise
         finally:
-            # Whatever ended the run (its end, a limit, an error, the unload): the hours replayed so far are kept.
+            # Whatever ended the run (its end, a limit, an error, the unload): the hours replayed so far are kept,
+            # but none of a read cut short. An hour replayed in part would be kept as read, with the minutes of
+            # its other part never counted and never read again.
+            if unfinished is not None:
+                for hour in [hour for hour in replay.peaks.hours if hour >= unfinished]:
+                    del replay.peaks.hours[hour]
             self._keep(replay, summary, entity_ids, now, started)
         return summary
 

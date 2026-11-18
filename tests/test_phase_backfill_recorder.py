@@ -201,3 +201,36 @@ async def test_nothing_is_read_while_the_recorder_migrates(
     await backfill._async_due(played.controller)
     assert backfill.last["stopped"] == "migration" and reads == []
     assert scheduled == [phase_backfill.ERROR_RETRY_S]
+
+
+async def test_a_read_cut_short_leaves_none_of_its_hours_as_read(
+    recorder_mock, hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    played = await _world(hass, freezer)
+    await _steady(played, 12)
+    await async_wait_recording_done(hass)
+    now = T0 + 12 * 60
+    freezer.move_to(START + timedelta(minutes=12))
+    peaks: PhasePeaks = played.controller.phase_peaks.peaks
+    backfill = Backfill(hass, peaks, lambda: None)
+    replayed = backfill._async_replay
+    calls: list[float] = []
+
+    async def cut_short(replay: Any, start: float, end: float, until: float) -> bool:
+        calls.append(start)
+        if start < T0:
+            return await replayed(replay, start, end, until)
+        # The read of the hour itself: its first six minutes replayed, then the run's time is up.
+        await replayed(replay, start, start + 360, until)
+        return False
+
+    monkeypatch.setattr(backfill, "_async_replay", cut_short)
+    summary = await backfill.async_once(played.controller, now)
+    hour = int(T0 // 3600)
+    assert summary["stopped"] == "time" and calls[-1] == T0
+    # Minutes of it were counted in the replay, and none of that is kept: the hour is read whole the next time.
+    assert hour not in peaks.hours and not peaks.covered(hour, 1)
+    assert peaks.hours and all(kept < hour for kept in peaks.hours)
+    monkeypatch.setattr(backfill, "_async_replay", replayed)
+    again = await backfill.async_once(played.controller, now)
+    assert again["stopped"] is None and peaks.hours[hour].minutes >= 8
