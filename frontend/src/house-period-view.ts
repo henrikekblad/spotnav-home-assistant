@@ -121,8 +121,12 @@ export interface BarPart {
 
 export interface Bar {
   key: string;
-  /** One or two lanes side by side, each a stack of parts (all above zero, or one part below it). */
+  /** One or two lanes side by side, each a stack of parts (all above zero, or all below it). */
   lanes: BarPart[][];
+  /** Where each lane stands among `slotCount` places side by side (default: its own index among the lanes), so a
+   * stack above the line and one below it share a place. */
+  slots?: number[];
+  slotCount?: number;
   words: string;
   axis: string;
 }
@@ -187,8 +191,9 @@ export function barChart(input: BarChartInput): HTMLElement {
     button.type = "button";
     button.dataset["bar"] = bar.key;
     button.setAttribute("aria-label", bar.words);
-    const width = 100 / bar.lanes.length;
-    bar.lanes.forEach((lane, at) => {
+    const width = 100 / (bar.slotCount ?? bar.lanes.length);
+    bar.lanes.forEach((lane, index_) => {
+      const at = bar.slots?.[index_] ?? index_;
       const sum = laneSum(lane);
       if (sum === 0) {
         return;

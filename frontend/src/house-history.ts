@@ -58,6 +58,20 @@ export interface HouseBucket {
    * backend before them. */
   buy: number | null;
   sell: number | null;
+  /** What the battery earned in the bucket under its own control (not SpotNav's), and what SpotNav's plan would
+   * have earned on the same days (`site/spotnav_saving.py`); `null` where SpotNav controlled, where no day is
+   * reviewed (the plan's), on a day's hours (the plan's) and from a backend before them. */
+  own_battery: number | null;
+  would_battery: number | null;
+}
+
+/** Before SpotNav controls the battery: what the battery's own control earned over the period's such days, and what
+ * SpotNav's plan would have earned on them (`null` with none reviewed; known for `would_days` of `days`). */
+export interface HouseOwnControl {
+  earned: number;
+  would: number | null;
+  days: number;
+  would_days: number;
 }
 
 /** What SpotNav saved over the period: each part over the days that have it, with the days counted. */
@@ -135,6 +149,8 @@ export interface HouseHistory {
   forecast: { house: ForecastError | null; sun: ForecastError | null; sun_corrected: ForecastError | null; soc: ForecastError | null };
   /** `null` without any part and from a backend before it. */
   saving: HouseSaving | null;
+  /** `null` where SpotNav controlled the battery throughout, without a battery and from a backend before it. */
+  own_control: HouseOwnControl | null;
 }
 
 export type HouseHistoryDecode = { ok: true; value: HouseHistory } | { ok: false; failure: "unsupported" | "malformed" };
@@ -191,6 +207,14 @@ function savingSums(value: unknown): HouseSaving | null {
   };
 }
 
+function ownControl(value: unknown): HouseOwnControl | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const source = record(value);
+  return { earned: number(source.earned), would: numberOrNull(source.would), days: count(source.days), would_days: count(source.would_days) };
+}
+
 function count(value: unknown): number {
   return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : bad();
 }
@@ -234,6 +258,8 @@ function bucket(value: unknown): HouseBucket {
     arbitrage: newNumber(source, "arbitrage"),
     buy: newNumber(source, "buy"),
     sell: newNumber(source, "sell"),
+    own_battery: newNumber(source, "own_battery"),
+    would_battery: newNumber(source, "would_battery"),
   };
 }
 
@@ -338,6 +364,7 @@ export function decodeHouseHistory(raw: unknown): HouseHistoryDecode {
           soc: forecastError(forecast.soc),
         },
         saving: savingSums(source.saving),
+        own_control: ownControl(source.own_control),
       },
     };
   } catch {

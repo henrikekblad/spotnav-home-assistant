@@ -11,7 +11,8 @@ import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./hous
 import type { HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
 import { earnedBars, earnedStrip, earnedTotal, energyChart, kwhText, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
-import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice } from "./house-tabs";
+import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
+import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
 import type { HistoryPeriod } from "./period-history";
 import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { hiddenIn, type HiddenSeries } from "./house-series";
@@ -53,6 +54,8 @@ export interface HouseUi {
   tab?: HouseTab;
   /** The tab the card's YAML locks: the row is not drawn. */
   locked?: HouseTab | null;
+  /** How the tab row was last worded (`house-tabs.ts`: long names, short ones or icons), so a redraw starts there. */
+  tabFit?: TabFit;
   /** The period the period tabs show (default today). */
   choice?: PeriodChoice;
   /** In a box of fixed height: the height of the shown tab's main picture (its spare room given to it). */
@@ -61,6 +64,8 @@ export interface HouseUi {
   bar?: string | null;
   /** The series hidden from the chart's legend, per view (absent: each view's defaults, `house-series.ts`). */
   hidden?: HiddenSeries;
+  /** The Earnings tab's parts the viewer hid (`house-earnings.ts`); none by default. */
+  earnHidden?: readonly string[];
   /** The chart's view: the energy (default) or the price with the battery. */
   view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
@@ -90,6 +95,8 @@ export interface HouseHandlers {
   onPeriod?(choice: PeriodChoice): void;
   /** A bar chosen in the period tabs' bars (kept over a redraw). */
   onBar?(key: string | null): void;
+  /** The viewer hid or showed a part of the Earnings tab: the whole hidden list after the change. */
+  onEarnPart?(hidden: string[]): void;
 }
 
 export interface HouseRenderInput {
@@ -1584,6 +1591,50 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
   }
 }
 
+/** Earnings: the heading with the sum of the parts drawn, the parts as toggles with their sums, the period's bars (an
+ * hour, a day or a month each, a stack per part) and what each figure counts (`house-earnings.ts`). */
+function earnPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
+  const { doc, language } = input;
+  panel.append(picker(input, today));
+  const history = historyOrStatus(input, panel);
+  if (history === null) {
+    return;
+  }
+  const money = (minor: number): string => amount(language, minor, history.money ?? answer.money);
+  const hidden = new Set(input.ui.earnHidden ?? []);
+  if (earnParts(history).length === 0) {
+    panel.append(statusParagraph(doc, language, "house.earn.none", "no-earnings"));
+    return;
+  }
+  const total = earnTotal(history, hidden);
+  const heading = element(doc, "p", PERIOD_VIEW_CLASSES.total, total === null ? translate(language, "house.earn.noneShown") : translate(language, "house.earn.total", { amount: money(total) }));
+  heading.dataset["line"] = "earn-total";
+  panel.append(heading, earnLegend(doc, language, history, hidden, money, (next) => input.handlers.onEarnPart?.(next)));
+  const bars = earnBars({
+    doc,
+    language,
+    answer: history,
+    hidden,
+    height: barsHeight(input),
+    money,
+    selected: input.ui.bar ?? null,
+    ...(input.handlers.onBar === undefined ? {} : { onSelect: input.handlers.onBar.bind(input.handlers) }),
+    boxed: boxed(input),
+  });
+  if (bars !== null) {
+    panel.append(bars);
+  }
+  if (boxed(input)) {
+    return;
+  }
+  const notes = earnNotes(language, history, hidden, money);
+  if (notes.length > 0) {
+    const line = element(doc, "p", `${C.muted} spotnav-house-earn-notes`, notes.join(" "));
+    line.dataset["line"] = "earn-notes";
+    panel.append(line);
+  }
+}
+
 // ------------------------------------------------------------------------------------------------ body
 
 /** The card's whole content for one state. */
@@ -1612,7 +1663,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const tab: HouseTab = locked ?? input.ui.tab ?? "now";
   card.dataset["tab"] = tab;
   if (locked === null) {
-    card.append(tabList(doc, language, tab, input.idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey)));
+    card.append(tabList(doc, language, tab, input.idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey), input.ui.tabFit ?? "long"));
   }
   const panel = tabPanel(doc, tab, input.idPrefix, locked === null);
   card.append(panel);
@@ -1626,6 +1677,8 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     flowPanel(input, answer, panel, today);
   } else if (tab === "graph") {
     graphPanel(input, answer, panel, today);
+  } else if (tab === "earn") {
+    earnPanel(input, answer, panel, today);
   } else {
     pricePanel(input, answer, panel, today);
   }

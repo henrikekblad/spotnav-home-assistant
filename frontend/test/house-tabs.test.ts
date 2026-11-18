@@ -68,14 +68,55 @@ describe("the tablist", () => {
     const list = tabList(document, "sv", "graph", "t", vi.fn());
     expect(list.getAttribute("role")).toBe("tablist");
     const tabs = Array.from(list.querySelectorAll<HTMLButtonElement>("[role='tab']"));
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Nu", "Energiflöde", "Energigraf", "Pris och batteri"]);
-    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "true", "false"]);
-    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, 0, -1]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Nu", "Energiflöde", "Energigraf", "Intäkt", "Pris och batteri"]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "true", "false", "false"]);
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, 0, -1, -1]);
     expect(tabs[2]!.getAttribute("aria-controls")).toBe("t-panel-graph");
     const card = render(house(), { tab: "graph" });
     const panel = card.querySelector("[role='tabpanel']")!;
     expect(panel.id).toBe("t-panel-graph");
     expect(panel.getAttribute("aria-labelledby")).toBe("t-tab-graph");
+  });
+
+  it("words the row by the room it has: long names, short ones, then icons, the long name always its accessible name", () => {
+    const list = tabList(document, "sv", "now", "t", vi.fn());
+    const tabs = Array.from(list.querySelectorAll<HTMLButtonElement>("[role='tab']"));
+    const names = (): Array<string | null> => tabs.map((tab) => tab.textContent);
+    const long = ["Nu", "Energiflöde", "Energigraf", "Intäkt", "Pris och batteri"];
+    expect(list.dataset["fit"]).toBe("long");
+    expect(tabs.every((tab) => !tab.hasAttribute("title"))).toBe(true);
+    // The row as laid out: long names take 420 px, short ones 250 px, icons always fit.
+    const room = (width: number): void => {
+      Object.defineProperty(list, "clientWidth", { configurable: true, get: () => width });
+      Object.defineProperty(list, "scrollWidth", { configurable: true, get: () => Math.max(width, list.dataset["fit"] === "long" ? 420 : list.dataset["fit"] === "short" ? 250 : 180) });
+    };
+    room(600);
+    expect(fitTabs(list, "sv")).toBe("long");
+    expect(names()).toEqual(long);
+    room(328);
+    expect(fitTabs(list, "sv")).toBe("short");
+    expect(names()).toEqual(["Nu", "Flöde", "Graf", "Intäkt", "Pris"]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-label"))).toEqual(long);
+    expect(tabs.map((tab) => tab.title)).toEqual(long);
+    // Each tab is held as wide as its selected form (the styles read the words), so choosing a tab never rewords.
+    expect(tabs.map((tab) => tab.dataset["text"])).toEqual(["Nu", "Flöde", "Graf", "Intäkt", "Pris"]);
+    room(200);
+    expect(fitTabs(list, "sv")).toBe("icons");
+    expect(names()).toEqual(["", "", "", "", ""]);
+    expect(tabs.every((tab) => tab.querySelector("svg[aria-hidden='true']") !== null)).toBe(true);
+    expect(tabs.map((tab) => tab.getAttribute("aria-label"))).toEqual(long);
+    expect(tabs.map((tab) => tab.title)).toEqual(long);
+    // Wider again: the long names come back, and the tooltips go.
+    room(600);
+    list.dataset["fit"] = "";
+    expect(fitTabs(list, "sv")).toBe("long");
+    expect(names()).toEqual(long);
+    expect(tabs.every((tab) => !tab.hasAttribute("title"))).toBe(true);
+    // A row not laid out (0 px) keeps its long names; a redraw starts from the last wording.
+    expect(fitTabs(tabList(document, "sv", "now", "t", vi.fn()), "sv")).toBe("long");
+    expect(tabList(document, "de", "now", "t", vi.fn(), "short").querySelector("[data-tab='graph']")?.textContent).toBe("Grafik");
+    setTabFit(list, "en", "short");
+    expect(names()).toEqual(["Now", "Flow", "Chart", "Earned", "Price"]);
   });
 
   it("moves with the arrow keys (wrapping), Home and End, and shows the tab moved to", () => {
@@ -127,13 +168,14 @@ describe("the locked tab", () => {
   it("takes `tab` from the YAML, refuses a tab it does not know, and reads `all` as none", () => {
     expect(parseHouseConfig({ type: "custom:spotnav-house-card", site: "s", tab: "graph" })).toEqual({ type: "custom:spotnav-house-card", site: "s", tab: "graph" });
     expect(parseHouseConfig({ type: "custom:spotnav-house-card", site: "s", tab: "all" })).toEqual({ type: "custom:spotnav-house-card", site: "s" });
-    expect(() => parseHouseConfig({ type: "x", site: "s", tab: "history" })).toThrow(/tab must be one of now, flow, graph, price/);
+    expect(() => parseHouseConfig({ type: "x", site: "s", tab: "history" })).toThrow(/tab must be one of now, flow, graph, earn, price/);
+    expect(parseHouseConfig({ type: "custom:spotnav-house-card", site: "s", tab: "earn" }).tab).toBe("earn");
   });
 
   it("offers the choice in the card editor's form", () => {
     const form = houseConfigForm("sv");
     const tab = (form.schema as Array<{ name: string; selector: { select?: { options: Array<{ value: string; label: string }> } } }>).find((field) => field.name === "tab")!;
-    expect(tab.selector.select!.options.map((option) => option.label)).toEqual(["(alla)", "Nu", "Energiflöde", "Energigraf", "Pris och batteri"]);
+    expect(tab.selector.select!.options.map((option) => option.label)).toEqual(["(alla)", "Nu", "Energiflöde", "Energigraf", "Intäkt", "Pris och batteri"]);
     expect(form.computeLabel({ name: "tab" })).toBe("Visa bara flik");
   });
 
