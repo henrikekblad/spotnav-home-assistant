@@ -12,6 +12,28 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
 * SolarEdge Modbus Multi, `solaredge_modbus_multi` (WillCodeForCats `0ab6569`): `<model>_<serial>[_B<n>]_<key>`;
   the storage controls sit on the inverter, the battery's facts on its own `B<n>` device.
 * SolaX Modbus, `solax_modbus` (wills106 `8a1f3fc`): `<hub name>_<key>`, the SolaX plugin's devices only.
+* Three more plugins of `solax_modbus` (wills106 `4acd644`, read 2026-11-18), each its own adapter, told apart by
+  the manufacturer the plugin gives the device, and read only (no control is mapped for any of them):
+  * Sofar (`plugin_sofar.py`, "Sofar Solar"): the level is `battery_capacity_total` (%, all battery inputs; the
+    per-input `battery_capacity_1..8` are not read). The floor is 100 less `bat_config_depth_of_discharge` (%, a
+    sensor that is disabled by default). The size and the ratings are learnt: `bat_config_capacity` (Ah) and the
+    `bat_config_maximum_..._current_limit` are the settings of one battery input and not the plant's. The mode is
+    the select `charger_use_mode` ("Energy Storage Mode"), free in "Self Use". The inverter's AC output per phase
+    exists (`active_power_output_l1..3`, kW, signed) but no source read states its sign, so it is not the plant's
+    power per phase (`plant_phase_power`) until someone confirms it on a device.
+  * Growatt (`plugin_growatt.py`, "Growatt New Energy"): the level is `battery_soc` on the SPH/SPA family (the
+    plugin's GEN3) and on the TL-XH, TL3-XH and WIT hybrids (GEN4). No size and no rating is an entity, so both are
+    learnt. The floor is `load_first_battery_minimum_soc` (GEN3, a number and a sensor of the same key) or
+    `ems_discharging_stop_soc_on_grid` (GEN4, a number that needs newer firmware and is disabled by default); the
+    off-grid stop SoC is not the floor on the grid. The mode is the select `priority` (GEN3), free in "Load First"; GEN4 has no single mode
+    entity (nine time slots), so nothing is said of who runs it.
+  * Solinteg (`plugin_solinteg.py`; the device's manufacturer is the plugin author's name, "Gabriel C."): the level
+    is `battery_soc`, the size `battery_rated_capacity` (Wh, register 32007, only from inverter firmware
+    V27.52.3.0). The ratings are the BMS' present limits `battery_charge_limit` and `battery_discharge_limit` (A)
+    times `battery_voltage`, an estimate as for GoodWe. The floor is the number `battery_soc_min_ongrid` (register
+    52503; the inverter applies it only while its "Battery SOC Protection On Grid" is on, which is not read). The
+    mode is the select `working_mode`, free in "General". The cells' warmest temperature
+    (`battery_max_cell_temperature`) is not the average and is not read.
 * Victron, core `victron_gx` (victron-mqtt 2026.11.1): `<installation>_<device type>_<device id>_<short id>`; the HACS
   `victron_mqtt` (tomer-w/ha-victron-mqtt 2026.11.2, same short ids) is read the same way.
 * Victron Modbus, community `victron` (sfstar/hass-victron `32fb345`): `<unit id>_<register key>`, the GX system at unit
@@ -25,8 +47,8 @@ Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy
   13.2 kW beside a battery rated 23.04 kW): the battery charges and discharges through it, so the plan takes the lower.
 * **The reserve** (`reserves`): the SoC the battery itself does not discharge below (its discharge cut-off or backup
   reserve). Several may be read; the highest that can be read counts. Sigenergy's are disabled by default; Huawei's
-  need the installer password; GoodWe states the depth of discharge (the floor is 100 less it); Victron's is the ESS minimum SoC. SolaX: none
-  mapped yet.
+  need the installer password; GoodWe and Sofar state the depth of discharge (the floor is 100 less it); Victron's
+  is the ESS minimum SoC. SolaX: none mapped yet.
 
 And one live reading (read 2026-11-16):
 
@@ -149,8 +171,9 @@ class Adapter:
     grid_status: tuple[Match, str] | None = None
     hold: ControlSpec | None = None
     grid_charge: ControlSpec | None = None
-    #: As `site_detection.BatteryRow.device_manufacturer`: for an integration that speaks for several makers.
-    manufacturer: str | None = None
+    #: As `site_detection.BatteryRow.device_manufacturer`: for an integration that speaks for several makers. A
+    #: lower-case part of the device's manufacturer, or several of which one is enough.
+    manufacturer: str | tuple[str, ...] | None = None
     #: The plant's maximum output (kW), when it can be lower than the battery's rating.
     plant_max: Match | None = None
     #: Where the battery's own floor is kept (see the module).
@@ -306,6 +329,46 @@ SOLAX: Final = Adapter(
     ),
 )
 
+SOFAR: Final = Adapter(
+    brand="sofar",
+    label="Sofar (SolaX Modbus)",
+    platforms=("solax_modbus",),
+    manufacturer="sofar",
+    facts={"soc": _key("battery_capacity_total")},
+    modes=(ModeRule(_key("charger_use_mode", "select"), frozenset({"Self Use"}), "energy storage mode"),),
+    reserves=(ReserveSource(_key("bat_config_depth_of_discharge"), depth=True),),
+)
+
+GROWATT: Final = Adapter(
+    brand="growatt",
+    label="Growatt (SolaX Modbus)",
+    platforms=("solax_modbus",),
+    manufacturer="growatt",
+    facts={"soc": _key("battery_soc")},
+    modes=(ModeRule(_key("priority", "select"), frozenset({"Load First"}), "priority", required=False),),
+    reserves=(
+        ReserveSource(_key("load_first_battery_minimum_soc", "number", "sensor")),
+        ReserveSource(_key("ems_discharging_stop_soc_on_grid", "number")),
+    ),
+)
+
+SOLINTEG: Final = Adapter(
+    brand="solinteg",
+    label="Solinteg (SolaX Modbus)",
+    platforms=("solax_modbus",),
+    manufacturer=("solinteg", "gabriel c."),
+    facts={
+        "soc": _key("battery_soc"),
+        "capacity": _key("battery_rated_capacity"),
+        "charge_current": _key("battery_charge_limit"),
+        "discharge_current": _key("battery_discharge_limit"),
+        "voltage": _key("battery_voltage"),
+        "firmware": _key("software_version"),
+    },
+    modes=(ModeRule(_key("working_mode", "select"), frozenset({"General"}), "working mode"),),
+    reserves=(ReserveSource(_key("battery_soc_min_ongrid", "number")),),
+)
+
 VICTRON: Final = Adapter(
     brand="victron",
     label="Victron (GX)",
@@ -405,7 +468,9 @@ ENPHASE: Final = Adapter(
     ),
 )
 
-ADAPTERS: Final[tuple[Adapter, ...]] = (SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, VICTRON, VICTRON_MODBUS, GOODWE, ENPHASE)
+ADAPTERS: Final[tuple[Adapter, ...]] = (
+    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, ENPHASE,
+)
 
 
 def adapter_for(platform: str, manufacturer: str | None = None) -> Adapter | None:
@@ -413,7 +478,8 @@ def adapter_for(platform: str, manufacturer: str | None = None) -> Adapter | Non
     for adapter in ADAPTERS:
         if platform not in adapter.platforms:
             continue
-        if adapter.manufacturer is not None and adapter.manufacturer not in (manufacturer or "").lower():
+        wanted = (adapter.manufacturer,) if isinstance(adapter.manufacturer, str) else adapter.manufacturer
+        if wanted is not None and not any(part in (manufacturer or "").lower() for part in wanted):
             continue
         return adapter
     return None

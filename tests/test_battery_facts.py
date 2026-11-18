@@ -180,7 +180,8 @@ def test_solax_reads_the_soc_not_the_bms_capacity_and_needs_its_own_maker() -> N
     facts = _facts("solax")
 
     assert facts.sources["soc"] == "sensor.solax_battery_capacity"
-    assert adapter_for("solax_modbus", "Sofar") is None
+    assert adapter_for("solax_modbus", "Ginlog Solis") is None and adapter_for("solax_modbus", None) is None
+    assert adapter_for("solax_modbus", "Sofar Solar").brand == "sofar"
 
 
 def test_solax_under_another_remote_control_is_not_free() -> None:
@@ -325,6 +326,8 @@ def test_goodwe_states_the_depth_of_discharge() -> None:
 PLAN_REASON = {
     "sigenergy": None, "huawei": None, "solaredge": None, "victron": None, "victron_modbus": None,
     "solax": "no_capacity", "goodwe": "no_capacity", "enphase": "no_rated_power",
+    # The other `solax_modbus` plugins: Sofar and Growatt state no size (learnt), Solinteg states all the plan needs.
+    "sofar": "no_capacity", "growatt": "no_capacity", "solinteg": None,
 }
 
 

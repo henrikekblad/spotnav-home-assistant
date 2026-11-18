@@ -489,6 +489,249 @@
    "grid_charge_usable": true
   }
  },
+ "sofar": {
+  "_source": "Unique ids from wills106/homeassistant-solax-modbus 4acd644 (`<hub name>_<key>`), plugin_sofar.py; the whole entity sets are in tests/fixtures/solax_plugins.",
+  "platform": "solax_modbus",
+  "manufacturer": "Sofar Solar",
+  "battery": "sensor.sofar_battery_power_total",
+  "entities": [
+   {
+    "entity_id": "sensor.sofar_battery_power_total",
+    "unique_id": "Sofar_battery_power_total",
+    "device": "battery",
+    "state": "1.2",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sofar_battery_capacity_total",
+    "unique_id": "Sofar_battery_capacity_total",
+    "device": "battery",
+    "state": "57",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sofar_battery_capacity_1",
+    "unique_id": "Sofar_battery_capacity_1",
+    "device": "battery",
+    "state": "55",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sofar_batconfig_depth_of_discharge",
+    "unique_id": "Sofar_bat_config_depth_of_discharge",
+    "device": "battery",
+    "state": "80",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sofar_batconfig_capacity",
+    "unique_id": "Sofar_bat_config_capacity",
+    "device": "battery",
+    "state": "50",
+    "unit": "Ah",
+    "device_class": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "select.sofar_energy_storage_mode",
+    "unique_id": "Sofar_charger_use_mode",
+    "device": "battery",
+    "state": "Time of Use",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "sofar",
+   "soc_pct": 57.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "self_managed",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
+ },
+ "growatt": {
+  "_source": "Unique ids from wills106/homeassistant-solax-modbus 4acd644 (`<hub name>_<key>`), plugin_growatt.py; the whole entity sets are in tests/fixtures/solax_plugins.",
+  "platform": "solax_modbus",
+  "manufacturer": "Growatt New Energy",
+  "battery": "sensor.growatt_battery_combined_power",
+  "entities": [
+   {
+    "entity_id": "sensor.growatt_battery_combined_power",
+    "unique_id": "Growatt_battery_combined_power",
+    "device": "battery",
+    "state": "-850",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_soc",
+    "unique_id": "Growatt_battery_soc",
+    "device": "battery",
+    "state": "41",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_battery_soh",
+    "unique_id": "Growatt_battery_soh",
+    "device": "battery",
+    "state": "98",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.growatt_load_first_battery_minimum_soc",
+    "unique_id": "Growatt_load_first_battery_minimum_soc",
+    "device": "battery",
+    "state": "12",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.growatt_load_first_battery_minimum_soc",
+    "unique_id": "Growatt_load_first_battery_minimum_soc",
+    "device": "battery",
+    "state": "12",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.growatt_priority",
+    "unique_id": "Growatt_priority",
+    "device": "battery",
+    "state": "Load First",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "growatt",
+   "soc_pct": 41.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
+ },
+ "solinteg": {
+  "_source": "Unique ids from wills106/homeassistant-solax-modbus 4acd644 (`<hub name>_<key>`), plugin_solinteg.py; the whole entity sets are in tests/fixtures/solax_plugins.",
+  "platform": "solax_modbus",
+  "manufacturer": "Gabriel C.",
+  "battery": "sensor.solinteg_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.solinteg_battery_power",
+    "unique_id": "Solinteg_battery_power",
+    "device": "battery",
+    "state": "-1500",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solinteg_battery_soc",
+    "unique_id": "Solinteg_battery_soc",
+    "device": "battery",
+    "state": "64.5",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solinteg_battery_rated_capacity",
+    "unique_id": "Solinteg_battery_rated_capacity",
+    "device": "battery",
+    "state": "10240",
+    "unit": "Wh",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solinteg_battery_voltage",
+    "unique_id": "Solinteg_battery_voltage",
+    "device": "battery",
+    "state": "200",
+    "unit": "V",
+    "device_class": "voltage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solinteg_battery_charge_limit",
+    "unique_id": "Solinteg_battery_charge_limit",
+    "device": "battery",
+    "state": "25",
+    "unit": "A",
+    "device_class": "current",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solinteg_battery_discharge_limit",
+    "unique_id": "Solinteg_battery_discharge_limit",
+    "device": "battery",
+    "state": "30",
+    "unit": "A",
+    "device_class": "current",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solinteg_battery_soc_min_on_grid",
+    "unique_id": "Solinteg_battery_soc_min_ongrid",
+    "device": "battery",
+    "state": "15",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.solinteg_working_mode",
+    "unique_id": "Solinteg_working_mode",
+    "device": "battery",
+    "state": "General",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "solinteg",
+   "soc_pct": 64.5,
+   "capacity_kwh": 10.24,
+   "rated_charge_kw": 5.0,
+   "rated_discharge_kw": 6.0,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
+ },
  "victron": {
   "_source": "Unique ids from core victron_gx with victron-mqtt 2026.11.1 (`<installation>_<device type>_<id>_<short id>`).",
   "platform": "victron_gx",
