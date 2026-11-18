@@ -12,7 +12,9 @@ from custom_components.spotnav.battery.gate import HOUSE_PEAK_DEFAULT_KW, MIN_RA
 from custom_components.spotnav.site.phase_peaks import (
     BATTERY_BAND_W,
     DAY_MINUTES,
+    EXTRA_MARGIN_A,
     MARGIN_A,
+    MIN_READY_DAYS,
     PLANT_MISMATCH_A,
     READY_DAYS,
     WINDOW_DAYS,
@@ -20,6 +22,7 @@ from custom_components.spotnav.site.phase_peaks import (
     Reading,
     SitePhasePeaks,
     exact_phase_a,
+    extra_margin_a,
     house_phase,
     house_phase_a,
     house_sum_a,
@@ -169,11 +172,11 @@ def _days(peaks: PhasePeaks, days: int, *, minutes_a_day: int = DAY_MINUTES + 5,
     return now + 86400
 
 
-def test_the_learned_peaks_count_only_after_two_weeks_with_enough_minutes() -> None:
+def test_the_learning_is_done_only_after_two_weeks_with_enough_minutes() -> None:
     peaks = PhasePeaks()
     now = _days(peaks, READY_DAYS - 1)
     learned = peaks.learned(now)
-    assert not learned.ready and learned.phase_peaks() is None
+    assert not learned.ready and learned.usable
     assert learned.days == READY_DAYS - 1
     assert learned.days_left == 1 and learned.as_dict()["days_left"] == 1
     assert PhasePeaks().learned(now).days_left == READY_DAYS
@@ -184,6 +187,51 @@ def test_the_learned_peaks_count_only_after_two_weeks_with_enough_minutes() -> N
     learned = peaks.learned(now)
     assert learned.ready and learned.days == READY_DAYS and learned.days_left == 0
     assert learned.phase_peaks() == pytest.approx({"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 8.0 + MARGIN_A})
+
+
+def test_the_further_margin_falls_in_a_straight_line_from_the_first_usable_day_to_two_weeks() -> None:
+    assert MIN_READY_DAYS >= 2, "one day never suffices (see the module)"
+    assert all(extra_margin_a(days) is None for days in range(MIN_READY_DAYS))
+    assert extra_margin_a(MIN_READY_DAYS) == pytest.approx(EXTRA_MARGIN_A)
+    assert extra_margin_a(READY_DAYS) == 0.0 and extra_margin_a(READY_DAYS + 9) == 0.0
+    steps = [extra_margin_a(days) for days in range(MIN_READY_DAYS, READY_DAYS + 1)]
+    assert all(earlier > later for earlier, later in zip(steps, steps[1:], strict=False))
+    assert steps[0] - steps[1] == pytest.approx(EXTRA_MARGIN_A / (READY_DAYS - MIN_READY_DAYS))
+
+
+def test_too_few_days_use_nothing_learned_and_the_first_usable_ones_carry_the_whole_further_margin() -> None:
+    peaks = PhasePeaks()
+    now = _days(peaks, MIN_READY_DAYS - 1)
+    learned = peaks.learned(now)
+    # The peaks are there, and not used: the conservative rule stays.
+    assert learned.peaks_a is not None and not learned.usable and learned.phase_peaks() is None
+    assert learned.extra_margin_a is None and learned.as_dict()["extra_margin_a"] is None
+    assert learned.as_dict()["usable"] is False and learned.as_dict()["days_min"] == MIN_READY_DAYS
+    now = _days(peaks, 1, start=now)
+    learned = peaks.learned(now)
+    assert learned.usable and not learned.ready and learned.days == MIN_READY_DAYS
+    assert learned.days_left == READY_DAYS - MIN_READY_DAYS
+    assert learned.extra_margin_a == pytest.approx(EXTRA_MARGIN_A)
+    assert learned.phase_peaks() == pytest.approx({
+        "L1": 5.0 + MARGIN_A + EXTRA_MARGIN_A, "L2": 3.0 + MARGIN_A + EXTRA_MARGIN_A,
+        "L3": 8.0 + MARGIN_A + EXTRA_MARGIN_A,
+    })
+    # What the status says of the peaks themselves does not hold the further margin.
+    assert learned.as_dict()["peaks_a"] == {"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 8.0 + MARGIN_A}
+    # Half-way: half of it.
+    half = (MIN_READY_DAYS + READY_DAYS) // 2
+    now = _days(peaks, half - MIN_READY_DAYS, start=now)
+    learned = peaks.learned(now)
+    assert learned.phase_peaks()["L3"] == pytest.approx(
+        8.0 + MARGIN_A + EXTRA_MARGIN_A * (READY_DAYS - half) / (READY_DAYS - MIN_READY_DAYS)
+    )
+
+
+def test_a_day_with_too_few_minutes_is_not_one_of_the_first_usable_days() -> None:
+    peaks = PhasePeaks()
+    now = _days(peaks, MIN_READY_DAYS - 1)
+    now = _days(peaks, 1, minutes_a_day=DAY_MINUTES - 10, start=now)
+    assert peaks.learned(now).phase_peaks() is None
 
 
 def test_the_learned_peak_is_the_window_s_largest_hour_not_a_quantile() -> None:
@@ -445,6 +493,48 @@ def test_the_cap_falls_back_to_the_conservative_rule_without_three_usable_phases
     assert _cap(25.0) == pytest.approx(
         (25.0 - 2.0 - HOUSE_PEAK_DEFAULT_KW * 1000 / (400.0 / 3 ** 0.5)) * 3 * (400.0 / 3 ** 0.5) / 1000
     )
+
+
+def _learned_days(days: int, house=(8.0, 6.0, 10.0)):
+    peaks = PhasePeaks()
+    now = _days(peaks, days, reading=_reading(site=house))
+    return peaks.learned(now)
+
+
+def test_a_20_a_site_grows_its_cap_with_the_days_kept_and_holds_the_fuse_on_every_phase() -> None:
+    volts = 400.0 / 3 ** 0.5
+    house = (8.0, 6.0, 10.0)
+    # No day, and too few: the old rule (4 kW on one phase), which leaves nothing on 20 A.
+    for days in (0, MIN_READY_DAYS - 1):
+        learned = _learned_days(days) if days else PhasePeaks().learned(T0)
+        assert learned.phase_peaks() is None
+        assert _cap(peaks=learned.phase_peaks()) == pytest.approx(_cap()) and _cap() < MIN_RATE_KW
+    # The first usable days: a grid charge, with the whole further margin.
+    first = _cap(peaks=_learned_days(MIN_READY_DAYS).phase_peaks())
+    assert first == pytest.approx((20.0 - 2.0 - (10.0 + MARGIN_A + EXTRA_MARGIN_A)) * 3 * volts / 1000)
+    assert first > 0.0
+    # Two weeks: the normal margin alone.
+    done = _cap(peaks=_learned_days(READY_DAYS).phase_peaks())
+    assert done == pytest.approx((20.0 - 2.0 - (10.0 + MARGIN_A)) * 3 * volts / 1000)
+    # It only grows on the way, and with Home Assistant down every phase stays under the fuse with what the cap
+    # kept free: the house's peak there, the battery's third, the cap's own margin and the learned margins.
+    caps = [_cap(peaks=_learned_days(days).phase_peaks()) for days in range(MIN_READY_DAYS, READY_DAYS + 1)]
+    assert caps == sorted(caps) and caps[0] == pytest.approx(first) and caps[-1] == pytest.approx(done)
+    for days, cap in zip(range(MIN_READY_DAYS, READY_DAYS + 1), caps, strict=True):
+        battery_a = cap * 1000 / 3 / volts
+        for peak in house:
+            assert peak + battery_a <= 20.0 - 2.0 - MARGIN_A - extra_margin_a(days) + 1e-9
+    # Never above what the fuse allows a house without any load.
+    assert done < (20.0 - 2.0) * 3 * volts / 1000
+
+
+def test_the_learned_peaks_replace_the_old_rule_even_where_that_gave_less_or_more() -> None:
+    # A quiet house on 25 A: the learned cap is larger than the 4 kW rule's already at the first usable days.
+    quiet = _learned_days(MIN_READY_DAYS, house=(3.0, 2.0, 4.0)).phase_peaks()
+    assert _cap(25.0, peaks=quiet) > _cap(25.0)
+    # A house that peaks above 4 kW on a phase: smaller than the old rule's.
+    heavy = _learned_days(MIN_READY_DAYS, house=(3.0, 2.0, 19.0)).phase_peaks()
+    assert _cap(35.0, peaks=heavy) < _cap(35.0)
 
 
 def test_the_cap_never_goes_below_zero() -> None:

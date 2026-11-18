@@ -53,7 +53,7 @@ import contextlib
 import logging
 import math
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
@@ -76,7 +76,7 @@ from ..const import (
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
-from ..site.phase_peaks import Learned
+from ..site.phase_peaks import MIN_READY_DAYS, Learned
 from . import gate
 from .commands import (
     ACTION_CURTAIL_EXPORT,
@@ -1159,8 +1159,14 @@ class BatteryControl:
         fuse_a = self.site.config.get(CONF_MAIN_FUSE_A)
         return float(fuse_a) if isinstance(fuse_a, (int, float)) and not isinstance(fuse_a, bool) else None
 
-    def _grid_charge_cap_kw(self, now: datetime, options: gate.Options) -> float | None:
-        """The HA-down grid charge cap (`gate.grid_charge_cap_kw`) on the site's readings now."""
+    def _grid_charge_cap_kw(
+        self, now: datetime, options: gate.Options, *, peaks: Mapping[str, float] | None | bool = True
+    ) -> float | None:
+        """The HA-down grid charge cap (`gate.grid_charge_cap_kw`) on the site's readings now. `peaks`: the house's
+        per-phase peaks to reckon with instead of the ones in use now (`_phase_peaks`), `None` for the conservative
+        rule; for the status, which says what the cap would be either way."""
+        if peaks is True:
+            peaks = self._phase_peaks(now)
         control = control_for(self.facts.brand)
         import_limit_kw = None
         if options.import_limit_acts and control is not None:
@@ -1169,7 +1175,7 @@ class BatteryControl:
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
             plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
-            import_limit_acts=options.import_limit_acts, house_phase_peaks_a=self._phase_peaks(now),
+            import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
         )
 
     def _learned(self, now: datetime) -> Learned | None:
@@ -1184,46 +1190,70 @@ class BatteryControl:
             return None
 
     def _phase_peaks(self, now: datetime) -> dict[str, float] | None:
-        """The per-phase peaks the grid charge cap uses once they are learned, else `None` (the conservative rule)."""
+        """The per-phase peaks the grid charge cap uses, with the further margin of the days counted so far
+        (`Learned.phase_peaks`); `None` while too few days count (the conservative rule)."""
         learned = self._learned(now)
         return None if learned is None else learned.phase_peaks()
 
     def _cap_status(self, now: datetime, options: gate.Options) -> dict[str, Any]:
-        """The grid charge cap and what it rests on, for the status and the diagnostics."""
+        """The grid charge cap and what it rests on, for the status and the diagnostics. `rule`: `learned` (the
+        house's per-phase peaks, the learning done), `learning` (those peaks with the further margin of the days
+        counted so far), `conservative` (too few days: 4 kW on one phase), `import_limit` (no cap of this kind) or
+        `error`. `cap_conservative_kw` and `cap_learned_kw` say what the cap would be by the conservative rule and
+        by the learned peaks without the further margin (`None` where there is no cap of this kind, or no peaks)."""
         learned = self._learned(now)
+        without: float | None = None
+        done: float | None = None
         try:
             cap: float | None = self._grid_charge_cap_kw(now, options)
+            if cap is not None:
+                without = self._grid_charge_cap_kw(now, options, peaks=None)
+                if learned is not None and learned.peaks_a is not None:
+                    done = self._grid_charge_cap_kw(
+                        now, options, peaks=dict(zip(gate.PHASE_NAMES, learned.peaks_a, strict=True))
+                    )
             failed = False
         except Exception:  # noqa: BLE001 - the status must never fail on it
             cap, failed = None, True
+        usable = learned is not None and learned.phase_peaks() is not None
         return {
             "cap_kw": None if cap is None else round(cap, 2),
             "rule": "error" if failed else "import_limit" if cap is None else (
-                "learned" if learned is not None and learned.phase_peaks() is not None else "conservative"
+                "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
             ),
             "main_fuse_a": self._main_fuse_a(),
+            "cap_conservative_kw": None if without is None else round(without, 2),
+            "cap_learned_kw": None if done is None else round(done, 2),
             "learned": None if learned is None else learned.as_dict(),
         }
 
     def learning_hold(self, now: datetime) -> dict[str, Any] | None:
         """The learning of the house's per-phase peaks while it holds the grid charge back, for the house card's status
         line: `{what: "phase_peaks", days_left, cap_kw}` (`cap_kw` 0 when no grid charge can run), `None` when it
-        holds nothing back: grid charging not allowed, the peaks learned, the plant's import limit guarding the fuse,
-        or the cautious cap still at least the battery's own rated charge."""
+        holds nothing back: grid charging not allowed, the learning done, the plant's import limit guarding the
+        fuse, the cap of the days counted so far (the conservative rule, or the learned peaks with their further
+        margin) still at least the battery's own rated charge, or that further margin costing nothing (the cap the
+        same without it: the house itself is what leaves no more). `days_left`: to the next step, the first usable
+        days while the conservative rule counts, the end of the learning after that."""
         options = self.options()
         if ACTION_GRID_CHARGE not in self.allowed(options):
             return None
         learned = self._learned(now)
         status = self._cap_status(now, options)
         cap = status["cap_kw"]
-        if learned is None or learned.ready or status["rule"] != "conservative" or cap is None:
+        if learned is None or learned.ready or status["rule"] not in ("conservative", "learning") or cap is None:
             return None
         rated = self.facts.max_charge_kw
         if rated is not None and cap >= rated:
             return None
+        days_left = learned.days_left
+        if status["rule"] == "conservative":
+            days_left = max(MIN_READY_DAYS - learned.days, 1)
+        elif status["cap_learned_kw"] is not None and cap >= status["cap_learned_kw"]:
+            return None
         return {
             "what": "phase_peaks",
-            "days_left": learned.days_left,
+            "days_left": days_left,
             "cap_kw": 0.0 if cap < gate.MIN_RATE_KW else cap,
         }
 
@@ -1776,4 +1806,12 @@ class BatteryControl:
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
             "log": list(self.log),
+            "phase_backfill": self._backfill_status(),
         }
+
+    def _backfill_status(self) -> dict[str, Any] | None:
+        """What reading the house's per-phase peaks back from the recorder gave (`site/phase_backfill.py`)."""
+        try:
+            return self.site.phase_peaks.backfill_status()
+        except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            return None

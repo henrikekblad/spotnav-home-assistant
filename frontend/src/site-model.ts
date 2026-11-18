@@ -104,15 +104,28 @@ export type PhaseValues = { L1: number; L2: number; L3: number };
 
 export interface GridChargeCap {
   cap_kw: number | null;
+  /** `learned`, `learning` (the learned peaks with a further margin while the days are few), `conservative`,
+   * `import_limit` or `error`. */
   rule: string;
   main_fuse_a: number | null;
+  /** What the cap would be by the conservative rule, and by the learned peaks without the further margin. */
+  cap_conservative_kw: number | null;
+  cap_learned_kw: number | null;
   learned: {
     ready: boolean;
     raw_a: PhaseValues | null;
     factor: number;
     margin_a: number;
     peaks_a: PhaseValues | null;
+    /** Whether the cap uses the learned peaks (`days_min` days counted), and the further margin it adds to them
+     * until `days_needed` (A; `null` while they are not used). */
+    usable: boolean;
+    extra_margin_a: number | null;
     days_counted: number;
+    days_min: number;
+    /** The counted days, and the hours, that rest on the recorder's history rather than live samples. */
+    days_from_history: number;
+    hours_from_history: number;
     days_needed: number;
     /** Whole days still to count before the learned peaks count (0 once ready). */
     days_left: number;
@@ -189,6 +202,8 @@ const GRID_CHARGE_CAP = O({
   cap_kw: N("number"),
   rule: "string",
   main_fuse_a: N("number"),
+  cap_conservative_kw: N("number"),
+  cap_learned_kw: N("number"),
   learned: N(
     O({
       ready: "boolean",
@@ -196,7 +211,12 @@ const GRID_CHARGE_CAP = O({
       factor: "number",
       margin_a: "number",
       peaks_a: N(PHASE_VALUES),
+      usable: "boolean",
+      extra_margin_a: N("number"),
       days_counted: "number",
+      days_min: "number",
+      days_from_history: "number",
+      hours_from_history: "number",
       days_needed: "number",
       days_left: "number",
       hours: "number",

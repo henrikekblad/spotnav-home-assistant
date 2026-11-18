@@ -40,6 +40,8 @@
       "cap_kw": null,
       "rule": "import_limit",
       "main_fuse_a": null,
+      "cap_conservative_kw": null,
+      "cap_learned_kw": null,
       "learned": null
     }
   }

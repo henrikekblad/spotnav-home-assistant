@@ -5,8 +5,9 @@ phase under the main fuse even if Home Assistant stops while a grid charge runs 
 command stays). Without a per-phase history the cap takes the house's peak as `max(p90, 4 kW)` all on one phase,
 which on a 20 A fuse leaves no grid charge at all. With one, each phase's own learned peak counts.
 
-**What is measured** (`SitePhasePeaks.sample`, every `SAMPLE_S` from what the site already holds; no recorder query,
-no service call): per phase, the site meter's current, signed as load balancing takes it (its magnitude, negative
+**What is measured** (`SitePhasePeaks.sample`, every `SAMPLE_S` from what the site already holds; no service call.
+The days before SpotNav kept any are read back once from Home Assistant's recorder and run through the very same
+reading, `site/phase_backfill.py`): per phase, the site meter's current, signed as load balancing takes it (its magnitude, negative
 where the phase's active power is known to export), less each charger's own measured current on that phase, less
 the home battery's share:
 
@@ -37,7 +38,7 @@ the home battery's share:
 samples, every one of them counting), the minutes counted, and two figures for the bias below; `WINDOW_DAYS` days,
 in the site's own store (bounded, read as untrusted: anything malformed is dropped).
 
-**What the cap uses** (`learned`): once `READY_DAYS` days in the window each have at least `DAY_MINUTES` counted
+**What the cap uses** (`learned`): once `MIN_READY_DAYS` days in the window each have at least `DAY_MINUTES` counted
 minutes (either way), per phase **the largest hourly peak in the whole window** (not a quantile: the minutes that count are biased
 toward the battery standing idle, mostly night, so the rarest peaks are the ones to keep; a 1-minute mean already
 leaves out a motor's start), scaled up by the **bias factor** and plus `MARGIN_A`. The bias factor is how much larger
@@ -45,8 +46,30 @@ the house's whole load (its current summed over the phases, known exactly whatev
 minute than in the minutes that counted (at least 1): a house whose battery covers its evening peaks has those peaks
 reckoned at that ratio. Exact minutes are kept apart from these and count as they are, unscaled: the cap takes per
 phase the larger of the two (each plus `MARGIN_A`); once `READY_DAYS` days each have `DAY_MINUTES` exact minutes,
-the exact peaks alone (the battery's band no longer needed). Before that the conservative rule stays. Loads that back off by themselves (a heat pump's own
+the exact peaks alone (the battery's band no longer needed). Loads that back off by themselves (a heat pump's own
 load monitor shedding its immersion heater) never peak on the meter, so they are left out as they should be.
+
+**A cap that grows with the days kept** (`extra_margin_a`). Below `MIN_READY_DAYS` counted days nothing learned is
+used: the conservative rule stays. From there to `READY_DAYS` the learned peaks count with a further margin on top of
+`MARGIN_A`, `EXTRA_MARGIN_A` at `MIN_READY_DAYS` and falling in a straight line to nothing at `READY_DAYS`. The
+learned peaks then replace the conservative rule altogether (the cap may be larger than that rule gave: that is the
+point), so the numbers have to hold by themselves:
+
+* What few days miss is a peak not yet seen. The cap does not take each phase's own peak: it takes the **largest
+  phase's** peak as the house on every phase (`gate.grid_charge_cap_kw`), so a load that moves to another phase, or a
+  heavy load on a phase that was quiet so far, is covered up to the largest phase's. What is left to miss is the
+  largest phase's own peak growing. On the one house measured so far (11 days of November, heat pump, cooking, 20 A)
+  that figure after one day was up to 5.1 A below the 11 days' largest, after two days at most 1.2 A, after three at
+  most 1.1 A, after a week 0.3 A. One day is therefore never enough.
+* `MIN_READY_DAYS` = 3: one more than the first number that held on that house, since it is one house. Three days
+  each with two counted hours cannot all be one quiet day, and nearly every site reaches them at once from the
+  recorder's history (ten days by default).
+* `EXTRA_MARGIN_A` = 4 A (0.9 kW on the phase, with `MARGIN_A` 6 A in all at three days): well over three times what
+  three days missed there. It is not sized for a large appliance never run in those days on top of the largest
+  phase's peak at its worst minute; nor is `MARGIN_A` after two weeks. What covers that is that the peak kept is the
+  window's largest minute on the largest phase with every other load of that minute in it, and that a main fuse
+  carries an overload of that size for the minutes such a coincidence lasts.
+* The days counted need `DAY_MINUTES` each as before, and the bias factor applies as before.
 
 The sun: on a hybrid inverter the sun's power reaches the meter through the plant, so without the plant's per-phase
 power it hides house load in the meter's reading while it shines. It only ever lowers what is seen, and the largest
@@ -91,6 +114,10 @@ READY_DAYS: Final = 14
 DAY_MINUTES: Final = 120
 #: Added to each phase's learned peak (A).
 MARGIN_A: Final = 2.0
+#: The counted days from which the learned peaks are used at all, and the further margin (A) they are used with at
+#: that many days, falling in a straight line to nothing at `READY_DAYS` (see the module for the reasoning).
+MIN_READY_DAYS: Final = 3
+EXTRA_MARGIN_A: Final = 4.0
 #: A phase's current is read as at most this (A): anything beyond is a broken reading, not kept.
 MAX_A: Final = 1000.0
 #: An exact sample whose house reads below this on a phase (A, negative) is not counted exactly (see the module).
@@ -102,6 +129,17 @@ _HOUR_S: Final = 3600
 _MINUTE_S: Final = 60
 
 Triple = tuple[float, float, float]
+
+
+def extra_margin_a(days: int) -> float | None:
+    """The margin on top of `MARGIN_A` the learned peaks are used with at `days` counted days (A): `None` below
+    `MIN_READY_DAYS` (nothing learned is used), `EXTRA_MARGIN_A` at `MIN_READY_DAYS`, falling in a straight line to 0
+    at `READY_DAYS` and beyond (see the module)."""
+    if days < MIN_READY_DAYS:
+        return None
+    if days >= READY_DAYS:
+        return 0.0
+    return EXTRA_MARGIN_A * (READY_DAYS - days) / (READY_DAYS - MIN_READY_DAYS)
 
 
 def _finite(value: Any) -> float | None:
@@ -277,7 +315,8 @@ class HourMark:
     """One clock hour's high-water marks: per phase the largest minute counted by the battery's band (A) and the
     minutes so counted, the same for the exact minutes (`exact_a`, `exact_minutes`), the house's whole load's largest
     minute among every minute (`total_all`) and among the band's counted ones (`total_counted`), and the heat pump's
-    per-phase peak (kW)."""
+    per-phase peak (kW). `backfilled`: read back from the recorder's history (`site/phase_backfill.py`), not sampled
+    live."""
 
     house_a: Triple | None = None
     minutes: int = 0
@@ -286,12 +325,19 @@ class HourMark:
     heat_kw: Triple | None = None
     exact_a: Triple | None = None
     exact_minutes: int = 0
+    backfilled: bool = False
+
+    @property
+    def counted(self) -> int:
+        """The minutes counted, either way."""
+        return self.minutes + self.exact_minutes
 
     def as_dict(self) -> dict[str, Any]:
         def rounded(values: Triple | None, digits: int = 2) -> list[float] | None:
             return None if values is None else [round(value, digits) for value in values]
 
         return {
+            **({"h": True} if self.backfilled else {}),
             "a": rounded(self.house_a),
             "n": self.minutes,
             "all": None if self.total_all is None else round(self.total_all, 2),
@@ -325,6 +371,7 @@ class HourMark:
             heat_kw=_triple(raw.get("heat")),
             exact_a=exact if exact_minutes else None,
             exact_minutes=exact_minutes,
+            backfilled=raw.get("h") is True,  # absent in marks kept before the backfill
         )
 
 
@@ -336,12 +383,13 @@ def _heat_w(heat_kw: Triple | None) -> Triple | None:
 class Learned:
     """What the window says (`PhasePeaks.learned`)."""
 
-    #: Whether the learned peaks count (`READY_DAYS` days with `DAY_MINUTES` counted minutes).
+    #: Whether the learning is done (`READY_DAYS` days with `DAY_MINUTES` counted minutes): no further margin.
     ready: bool
     #: Per phase the largest hourly peak in the window counted by the battery's band (A), `None` while none counted.
     raw_a: Triple | None
-    #: The bias factor (at least 1) and the per-phase peaks the cap uses (A): the larger of raw x factor and the exact
-    #: peak, plus `MARGIN_A`; the exact peak alone once `exact_days` reach `READY_DAYS`.
+    #: The bias factor (at least 1) and the per-phase peaks (A): the larger of raw x factor and the exact peak, plus
+    #: `MARGIN_A`; the exact peak alone once `exact_days` reach `READY_DAYS`. The cap uses them plus `extra_margin_a`
+    #: (`phase_peaks`).
     factor: float
     peaks_a: Triple | None
     days: int
@@ -353,12 +401,26 @@ class Learned:
     exact_a: Triple | None = None
     exact_days: int = 0
     exact_minutes: int = 0
+    #: The hours read back from the recorder's history, and how many of `days` count only with them.
+    history_hours: int = 0
+    history_days: int = 0
 
     @property
     def days_left(self) -> int:
-        """The days still to count before the learned peaks count (0 once `ready`): whole days, so already rounded
+        """The days still to count before the learning is done (0 once `ready`): whole days, so already rounded
         up, and at least, since a day counts only with `DAY_MINUTES` counted minutes."""
         return 0 if self.ready else max(READY_DAYS - self.days, 1)
+
+    @property
+    def extra_margin_a(self) -> float | None:
+        """The further margin the peaks are used with now (`extra_margin_a`), `None` while they are not used."""
+        return None if self.peaks_a is None else extra_margin_a(self.days)
+
+    @property
+    def usable(self) -> bool:
+        """Whether the cap uses the learned peaks (`MIN_READY_DAYS` counted days), with a further margin until
+        `ready`."""
+        return self.extra_margin_a is not None
 
     @property
     def basis(self) -> str:
@@ -381,7 +443,12 @@ class Learned:
             "factor": round(self.factor, 3),
             "margin_a": MARGIN_A,
             "peaks_a": per_phase(self.peaks_a),
+            "usable": self.usable,
+            "extra_margin_a": None if self.extra_margin_a is None else round(self.extra_margin_a, 2),
             "days_counted": self.days,
+            "days_min": MIN_READY_DAYS,
+            "days_from_history": self.history_days,
+            "hours_from_history": self.history_hours,
             "days_needed": READY_DAYS,
             "days_left": self.days_left,
             "hours": self.hours,
@@ -394,10 +461,12 @@ class Learned:
         }
 
     def phase_peaks(self) -> dict[str, float] | None:
-        """The per-phase peaks the cap uses, by phase name, `None` until `ready`."""
-        if not self.ready or self.peaks_a is None:
+        """The per-phase peaks the cap uses, by phase name: the learned ones plus the further margin of the days
+        counted so far (`extra_margin_a`); `None` below `MIN_READY_DAYS` (the conservative rule)."""
+        extra = self.extra_margin_a
+        if extra is None or self.peaks_a is None:
             return None
-        return dict(zip(PHASES, self.peaks_a, strict=True))
+        return {phase: value + extra for phase, value in zip(PHASES, self.peaks_a, strict=True)}
 
 
 class PhasePeaks:
@@ -475,8 +544,9 @@ class PhasePeaks:
         total_all: float | None = None
         total_counted: float | None = None
         days: dict[int, int] = {}
+        live_days: dict[int, int] = {}
         exact_days: dict[int, int] = {}
-        hours = minutes = exact_minutes = 0
+        hours = minutes = exact_minutes = history_hours = 0
         for hour, mark in self.hours.items():
             if hour < oldest:
                 continue
@@ -495,6 +565,11 @@ class PhasePeaks:
                 days[hour // 24] = days.get(hour // 24, 0) + mark.exact_minutes
                 exact_days[hour // 24] = exact_days.get(hour // 24, 0) + mark.exact_minutes
             hours += 1 if band or exactly else 0
+            if band or exactly:
+                if mark.backfilled:
+                    history_hours += 1
+                else:
+                    live_days[hour // 24] = live_days.get(hour // 24, 0) + mark.counted
         factor = 1.0
         if total_all is not None and total_counted is not None:
             factor = max(1.0, total_all / max(total_counted, 1.0))
@@ -518,7 +593,37 @@ class PhasePeaks:
             exact_a=exact,
             exact_days=exact_day_count,
             exact_minutes=exact_minutes,
+            history_hours=history_hours,
+            history_days=day_count - sum(
+                1 for day, counted in days.items() if counted >= DAY_MINUTES and live_days.get(day, 0) >= DAY_MINUTES
+            ),
         )
+
+    def covered(self, first_hour: int, hours: int) -> bool:
+        """Whether every one of `hours` clock hours from `first_hour` has a mark (sampled or read back)."""
+        return all(hour in self.hours for hour in range(first_hour, first_hour + hours))
+
+    def merge_history(self, history: PhasePeaks, now: float) -> int:
+        """The marks read back from the recorder (`site/phase_backfill.py`) into these; how many hours with counted
+        minutes were taken (an hour read back with nothing counted is kept too, so it is not read again).
+        An hour with minutes counted live keeps its own mark whatever the history says (the live reading knows when
+        each sensor last reported, the history only when it last changed). An hour already read back is replaced only
+        by a mark with more counted minutes."""
+        newest = int(now // _HOUR_S)
+        oldest = newest - WINDOW_DAYS * 24
+        taken = 0
+        for hour, mark in history.hours.items():
+            if not oldest <= hour <= newest:
+                continue
+            kept = self.hours.get(hour)
+            if kept is not None and kept.counted and (not kept.backfilled or kept.counted >= mark.counted):
+                continue
+            if kept is not None:  # nothing counted in it: only its heat pump's peak is worth keeping
+                mark.heat_kw = _max_triple(mark.heat_kw, kept.heat_kw)
+            mark.backfilled = True
+            self.hours[hour] = mark
+            taken += 1 if mark.counted else 0
+        return taken
 
     def as_dict(self) -> dict[str, Any]:
         return {"hours": {str(hour): mark.as_dict() for hour, mark in sorted(self.hours.items())}}
@@ -551,19 +656,31 @@ def store_key(entry_id: str) -> str:
 
 
 def _charger_draw(
-    site: SiteCapacityController, charger_entry_id: str, max_age_s: float, now: float
+    site: SiteCapacityController, charger_entry_id: str, max_age_s: float, now: float, *, from_history: bool = False
 ) -> tuple[Triple | None, tuple[float, ...]]:
-    """What one charger draws per phase now (A; `None` when it draws on a phase not known) and its readings."""
+    """What one charger draws per phase now (A; `None` when it draws on a phase not known) and its readings.
+
+    `from_history`: the reading is one of the recorder's (`site/phase_backfill.py`), which keeps when a state last
+    changed, not when it was last reported. A current that stood still for longer than the site's maximum age may
+    then be a charger that stopped reporting or a car drawing evenly, and it cannot be told which: such a reading
+    of `DRAWING_A` or more makes the sample not count (`None`), rather than count the car as house (a false peak of
+    the car's whole current) or take off a current the car may no longer draw."""
     measured = site.charger_measured_current(charger_entry_id)
     if measured is None:
         return (0.0, 0.0, 0.0), ()
     values: list[float] = []
+    unknown = False
     for phase in PHASES:
         value = measured.get(phase)
         ages = [age for age in (value.age_s, value.report_age_s) if age is not None]
-        fresh = value.value is not None and value.problem is None and ages and min(ages) <= max_age_s
+        usable = value.value is not None and value.problem is None
+        fresh = usable and ages and min(ages) <= max_age_s
+        if from_history and usable and not fresh and float(value.value) >= DRAWING_A:  # type: ignore[arg-type]
+            unknown = True
         values.append(max(float(value.value), 0.0) if fresh else 0.0)  # type: ignore[arg-type]
     readings = tuple(values)
+    if unknown:
+        return None, readings
     phases, phase = site.reckoned_phases(charger_entry_id)
     if phases == 3:
         return (values[0], values[1], values[2]), readings
@@ -629,7 +746,8 @@ def _finite_any(value: Any) -> float | None:
 
 
 def read_site(site: SiteCapacityController, now: float) -> Reading:
-    """One sample's inputs from what the site holds now."""
+    """One sample's inputs from what the site holds now. The one reading there is: the recorder's history is run
+    through it too, as a site that holds the states of then (`site/phase_backfill.py` `SiteAt`, `from_history`)."""
     from ..battery.gate import phase_volts  # noqa: PLC0415 - the battery package imports the site
     from ..planning.grid_voltage import stored_voltage_between_phases_v  # noqa: PLC0415
 
@@ -646,10 +764,11 @@ def read_site(site: SiteCapacityController, now: float) -> Reading:
         else:
             site_a = (values[0], values[1], values[2])
     max_age_s = float(site.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+    from_history = getattr(site, "from_history", False) is True
     chargers: list[float] | None = [0.0, 0.0, 0.0]
     readings: list[float] = []
     for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
-        draw, own = _charger_draw(site, charger_entry_id, max_age_s, now)
+        draw, own = _charger_draw(site, charger_entry_id, max_age_s, now, from_history=from_history)
         readings.extend(own)
         if draw is None or chargers is None:
             chargers = None
@@ -674,8 +793,11 @@ class SitePhasePeaks:
         from ..debug_day import DayStore  # noqa: PLC0415 - Home Assistant's storage, kept out of the pure part
 
         self.peaks = PhasePeaks()
+        self._hass = hass
         self._store = None if hass is None or entry_id is None else DayStore(hass, store_key(entry_id), self._data)
         self._failed = False
+        #: The reading back of the recorder's history (`site/phase_backfill.py`), once started.
+        self.backfill: Any = None
 
     def _data(self) -> dict[str, Any]:
         return self.peaks.as_dict()
@@ -702,7 +824,31 @@ class SitePhasePeaks:
     def learned(self, now: float) -> Learned:
         return self.peaks.learned(now)
 
+    def start_backfill(self, site: SiteCapacityController) -> None:
+        """Read the days before these marks back from the recorder, in the background (`site/phase_backfill.py`);
+        stopped by `async_close`. Never raises."""
+        if self._hass is None or self.backfill is not None:
+            return
+        try:
+            from .phase_backfill import Backfill  # noqa: PLC0415 - it imports this module
+
+            self.backfill = Backfill(self._hass, self.peaks, self._history_taken)
+            self.backfill.start(site)
+        except Exception:  # noqa: BLE001 - without it the marks grow from the live samples alone
+            _LOGGER.debug("SpotNav phase peaks: the backfill could not be started", exc_info=True)
+
+    def _history_taken(self) -> None:
+        if self._store is not None:
+            self._store.changed()
+
+    def backfill_status(self) -> dict[str, Any] | None:
+        """What the last reading back of the recorder's history gave, for the diagnostics; `None` before one ran."""
+        backfill = self.backfill
+        return None if backfill is None or backfill.last is None else {"runs": backfill.runs, **backfill.last}
+
     async def async_close(self) -> None:
+        if self.backfill is not None:
+            await self.backfill.async_stop()
         if self._store is not None:
             await self._store.async_close()
 
@@ -714,6 +860,7 @@ class SitePhasePeaks:
 
 
 __all__: Sequence[str] = (
-    "BATTERY_BAND_W", "DAY_MINUTES", "Learned", "MARGIN_A", "PhasePeaks", "READY_DAYS", "Reading", "SitePhasePeaks",
-    "PLANT_MISMATCH_A", "WINDOW_DAYS", "exact_phase_a", "house_phase", "house_phase_a", "house_sum_a",
+    "BATTERY_BAND_W", "DAY_MINUTES", "EXTRA_MARGIN_A", "Learned", "MARGIN_A", "MIN_READY_DAYS", "PhasePeaks",
+    "READY_DAYS", "Reading", "SitePhasePeaks", "PLANT_MISMATCH_A", "WINDOW_DAYS", "exact_phase_a", "extra_margin_a",
+    "house_phase", "house_phase_a", "house_sum_a",
 )
