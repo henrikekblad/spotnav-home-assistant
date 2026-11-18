@@ -50,18 +50,18 @@ describe("the grid charge cap block", () => {
     expect(gridChargeCapLine("sv", status({ rule: "conservative", learned: null }))).toContain(
       "(försiktigt tills de första dygnen är inlärda)",
     );
-    expect(few.days_min).toBe(3);
+    expect(few.days_min).toBe(7);
   });
 
   it("says the days left to the first usable days while the cautious rule counts", () => {
     const learned = {
       ...fixture("checking.json")["status"].grid_charge_cap.learned,
-      ready: false, usable: false, extra_margin_a: null, days_counted: 1, days_left: 13,
+      ready: false, usable: false, extra_margin_a: null, days_counted: 5, days_left: 9,
     };
     expect(gridChargeCapLine("sv", status({ rule: "conservative", cap_kw: 0, learned }))).toBe(
       "Ingen laddning från nätet: huset kan nå säkringen själv (försiktigt tills de första dygnen är inlärda, 2 dygn kvar).",
     );
-    expect(gridChargeCapLine("en", status({ rule: "conservative", learned: { ...learned, days_counted: 2 } }))).toContain(
+    expect(gridChargeCapLine("en", status({ rule: "conservative", learned: { ...learned, days_counted: 6 } }))).toContain(
       "(cautious until the first days are learned, 1 day left)",
     );
   });
@@ -69,7 +69,7 @@ describe("the grid charge cap block", () => {
   it("says the days left to the whole learning while the learned peaks carry a further margin", () => {
     const learned = {
       ...fixture("checking.json")["status"].grid_charge_cap.learned,
-      ready: false, usable: true, extra_margin_a: 3.27, days_counted: 5, days_left: 9, days_from_history: 5,
+      ready: false, usable: true, extra_margin_a: 3.27, days_counted: 8, days_left: 9, days_from_history: 5,
     };
     expect(gridChargeCapLine("sv", status({ rule: "learning", cap_kw: 1.44, learned }))).toBe(
       "Högst 1,4 kW från nätet, så säkringen klarar sig även om Home Assistant stannar (medan husets toppar lärs in, 9 dygn kvar).",

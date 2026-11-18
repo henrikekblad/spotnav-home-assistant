@@ -19,7 +19,7 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   charge is capped so that it, the chargers' last currents and the house's peak keep every phase under the fuse
   while Home Assistant is down (`grid_charge_cap_kw`; Sigenergy has no dead-man: a command stays until something
   writes it). The house's peak is each phase's own, learned from the site's meter (`site/phase_peaks.py`, the days
-  before it from the recorder's history), once three days of it are kept, with a further margin that falls to
+  before it from the recorder's history), once a week of it is kept, with a further margin that falls to
   nothing at two weeks; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
@@ -440,7 +440,8 @@ def grid_charge_cap_kw(
     `house_phase_peaks_a` (the learned peaks with their margins, `site/phase_peaks.py` `Learned.phase_peaks`) the
     largest phase's, taken as the house on every phase; without them the larger of the house forecast's p90 for the
     hour and `HOUSE_PEAK_DEFAULT_KW`, all on that one phase. The learned peaks replace that rule, so the cap may be
-    larger or smaller than it gave; the battery's charge takes
+    larger or smaller than it gave; they are never taken below the forecast's p90 for the hour spread evenly over
+    three phases (what the house is expected to reach at least, on a day colder than the days learned); the battery's charge takes
     `1 / plant_phases` of its power on each phase (Sigenergy's three-phase plants balance it). `None` (no cap of this
     kind) only while the person's on-site test showed the plant's own import limit acts (`import_limit_acts`) and that
     limit reads at most the fuse (`import_limit_holds`). With the fuse unknown no grid charge may run (0)."""
@@ -455,6 +456,10 @@ def grid_charge_cap_kw(
     learned = _learned_peaks(house_phase_peaks_a)
     if learned is not None:
         house_a = max(learned)
+        if house_peak_kw is not None and math.isfinite(house_peak_kw):
+            # Never below the forecast's own high figure for the hour, spread evenly over the three phases: a cold
+            # day ahead that the days learned so far have not seen still counts.
+            house_a = max(house_a, max(house_peak_kw, 0.0) * 1000.0 / (3.0 * volts))
     else:
         peak = HOUSE_PEAK_DEFAULT_KW
         if house_peak_kw is not None and math.isfinite(house_peak_kw):

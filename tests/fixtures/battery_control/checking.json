@@ -43,7 +43,7 @@
         "usable": true,
         "extra_margin_a": 0.0,
         "days_counted": 15,
-        "days_min": 3,
+        "days_min": 7,
         "days_from_history": 9,
         "hours_from_history": 210,
         "days_needed": 14,

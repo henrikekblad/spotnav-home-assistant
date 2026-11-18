@@ -472,7 +472,11 @@ def test_the_cap_uses_each_phase_s_learned_peak_once_ready() -> None:
     assert peaks["L3"] + cap * 1000 / 3 / volts + 2.0 == pytest.approx(20.0)
     # The chargers' last currents still count, and the conservative p90 no longer does.
     assert _cap(peaks=peaks, cars_a=4.0) == pytest.approx(2.0 * 3 * volts / 1000)
+    # The forecast's high figure for the hour no longer counts on one phase, only as a floor spread over three:
+    # 8 kW is 11.5 A a phase (below L3's 12 A), 9 kW is 13 A a phase (a day colder than any learned).
     assert _cap(peaks=peaks, house_peak_kw=8.0) == pytest.approx(cap)
+    assert _cap(peaks=peaks, house_peak_kw=9.0) == pytest.approx((20.0 - 2.0 - 9000.0 / 3 / volts) * 3 * volts / 1000)
+    assert _cap(peaks=peaks, house_peak_kw=math.nan) == pytest.approx(cap)
 
 
 def test_the_cap_on_a_single_phase_plant_counts_the_worst_phase() -> None:

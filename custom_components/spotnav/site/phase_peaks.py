@@ -61,12 +61,12 @@ point), so the numbers have to hold by themselves:
   largest phase's own peak growing. On the one house measured so far (11 days of November, heat pump, cooking, 20 A)
   that figure after one day was up to 5.1 A below the 11 days' largest, after two days at most 1.2 A, after three at
   most 1.1 A, after a week 0.3 A. One day is therefore never enough.
-* `MIN_READY_DAYS` = 3: one more than the first number that held on that house, since it is one house. Three days
-  each with two counted hours cannot all be one quiet day, and nearly every site reaches them at once from the
-  recorder's history (ten days by default).
-* `EXTRA_MARGIN_A` = 4 A (0.9 kW on the phase, with `MARGIN_A` 6 A in all at three days): well over three times what
-  three days missed there. It is not sized for a large appliance never run in those days on top of the largest
-  phase's peak at its worst minute; nor is `MARGIN_A` after two weeks. What covers that is that the peak kept is the
+* `MIN_READY_DAYS` = 7: a whole week, so every weekday's habits (the weekend's cooking, the washing day) are in
+  it once. One house's eleven days are no ground for fewer, and a week costs little: a site whose sensors have been
+  in Home Assistant for a while has more than seven days at once from the recorder's history (ten by default).
+* `EXTRA_MARGIN_A` = 4 A (0.9 kW on the phase, with `MARGIN_A` 6 A in all at seven days): over ten times what a
+  week missed there. It is not sized for a large appliance never run in those days on top of the largest phase's
+  peak at its worst minute; nor is `MARGIN_A` after two weeks. What covers that is that the peak kept is the
   window's largest minute on the largest phase with every other load of that minute in it, and that a main fuse
   carries an overload of that size for the minutes such a coincidence lasts.
 * The days counted need `DAY_MINUTES` each as before, and the bias factor applies as before.
@@ -116,7 +116,7 @@ DAY_MINUTES: Final = 120
 MARGIN_A: Final = 2.0
 #: The counted days from which the learned peaks are used at all, and the further margin (A) they are used with at
 #: that many days, falling in a straight line to nothing at `READY_DAYS` (see the module for the reasoning).
-MIN_READY_DAYS: Final = 3
+MIN_READY_DAYS: Final = 7
 EXTRA_MARGIN_A: Final = 4.0
 #: A phase's current is read as at most this (A): anything beyond is a broken reading, not kept.
 MAX_A: Final = 1000.0
