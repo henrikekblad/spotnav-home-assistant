@@ -169,7 +169,9 @@ class MeterRow:
     signed_current: bool = False
     invert_power: bool = False
     reject: re.Pattern[str] | None = None
-    device_manufacturer: str | None = None
+    # A lower-case part of the device's manufacturer, or several of which one must be found: for an
+    # integration whose plugins speak for several makers (`solax_modbus`).
+    device_manufacturer: str | tuple[str, ...] | None = None
     device_model: str | None = None
     # Sigen reports no grid-meter voltage: the inverter's phase voltage (another device of the same
     # config entry) completes the set, and the candidate says so.
@@ -199,7 +201,7 @@ class BatteryRow:
     # and `discharge_regex` the discharge power.
     discharge_regex: re.Pattern[str] | None = None
     # As `MeterRow.device_manufacturer`: for an integration whose plugins speak for several makers.
-    device_manufacturer: str | None = None
+    device_manufacturer: str | tuple[str, ...] | None = None
     device_model: str | None = None
     reject: re.Pattern[str] | None = None
     # As `MeterRow.label`.
@@ -564,7 +566,7 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         ),
     ),
     # SolaX's own plugin of the `solax_modbus` integration (other plugins of it have their own
-    # conventions). `measured_power_l1..3` is the grid meter's power per phase; the integration's own
+    # conventions and their own rows below). `measured_power_l1..3` is the grid meter's power per phase; the integration's own
     # computed Grid Export reads it as export when positive, and its house load is the inverter's power
     # minus it, so the power is negated to import-positive. The sign is read from the code, not
     # confirmed on a device, which the candidate says. The meter 2 entities end the same way and are
@@ -579,6 +581,79 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         invert_power=True,
         reject=_re(r"meter_2"),
         warnings=(WARNING_SIGN_UNVERIFIED,),
+    ),
+    # Three more plugins of `solax_modbus` (wills106 `4acd644`, read 2026-11-18), each told from the others by
+    # the manufacturer its plugin gives the device (`plugin_manufacturer`), with unique ids `<hub name>_<key>`.
+    # None is confirmed on a device, which each candidate says. The inverter's own phase current is never read
+    # as the grid's: Growatt's and Solinteg's `grid_current_l1..3` are the inverter's output.
+    #
+    # Sofar (`plugin_sofar.py`, "Sofar Solar": HYD hybrids and KTL-X PV inverters; the "Sofar Old" plugin has
+    # other keys and is not read). The PCC block is the grid connection point: `active_power_pcc_l1..3` and
+    # `active_power_pcc_total` (kW, signed), `current_pcc_l1..3` (A, unsigned: a magnitude) and `voltage_l1..3`.
+    # The plugin states no sign; evcc reads the same registers (0x0488, 0x0493...) times -10 into its
+    # import-positive grid power (`sofarsolar-g3.yaml`, evcc `1d62b73`), so the power is export-positive:
+    # negated. The off-grid (EPS) output's `offgrid_voltage_l1..3` end the same way and are left out, as are
+    # the split-phase `..._l1n` and `..._l2n` and the line voltages `voltage_line_l1..3`.
+    MeterRow(
+        platforms=("solax_modbus",),
+        device_manufacturer="sofar",
+        patterns=(
+            _p("power", r"(?:^|_)active_power_pcc_l(?P<n>[123])$"),
+            _p("voltage", r"(?:^|_)voltage_l(?P<n>[123])$"),
+            _p("current", r"(?:^|_)current_pcc_l(?P<n>[123])$"),
+        ),
+        totals=(_p("grid_power", r"(?:^|_)active_power_pcc_total$"),),
+        invert_power=True,
+        reject=_re(r"off_?grid"),
+        warnings=(WARNING_SIGN_UNVERIFIED,),
+        label="SolaX Modbus, Sofar plugin",
+    ),
+    # Growatt (`plugin_growatt.py`, "Growatt New Energy"). Only the three-phase storage family the plugin
+    # calls GEN3 (SPH TL3 BH-UP) has the meter per phase: `ac_power_to_user_l1..3` (from the grid: import) and
+    # `ac_power_to_grid_l1..3` (export), two entities that are both >= 0, with `ac_power_to_user_total` and
+    # `ac_power_to_grid_total` (evcc adds the first and subtracts the second for its import-positive grid
+    # power, `growatt-hybrid.yaml`). `grid_voltage_l1..3` is the inverter's AC voltage. The TL-XH, TL3-XH and
+    # WIT hybrids (GEN4) and the single-phase SPH report totals only (`total_forward_power`,
+    # `total_reverse_power`), which make no meter per phase: such a site keeps its own grid meter. The backup
+    # output's `backup_grid_voltage_l1..3` are left out.
+    MeterRow(
+        platforms=("solax_modbus",),
+        device_manufacturer="growatt",
+        patterns=(
+            _p("power", r"(?:^|_)ac_power_to_user_l(?P<n>[123])$"),
+            _p("power_export", r"(?:^|_)ac_power_to_grid_l(?P<n>[123])$"),
+            _p("voltage", r"(?:^|_)grid_voltage_l(?P<n>[123])$"),
+        ),
+        totals=(
+            _p("grid_power", r"(?:^|_)ac_power_to_user_total$"),
+            _p("grid_power_export", r"(?:^|_)ac_power_to_grid_total$"),
+        ),
+        reject=_re(r"backup_grid_voltage"),
+        warnings=(WARNING_SIGN_UNVERIFIED,),
+        label="SolaX Modbus, Growatt plugin",
+    ),
+    # Solinteg (`plugin_solinteg.py`: MHT and M2HT, also M-TEC Energy Butler and Wattsonic). The plugin gives
+    # the device its author's name as the manufacturer ("Gabriel C."); "solinteg" is matched too, should that
+    # be put right. `measured_power_l1..3` ("Meter Active Power L1", registers 10994-10998, disabled by
+    # default) and `measured_power` (11000) are the meter's: the plugin's house load is the inverter's AC
+    # power minus the meter's, and its Energy dashboard grid power is the meter's negated, so the power is
+    # export-positive (evcc reads it times -1, `solinteg-gen3.yaml`): negated. `grid_voltage_l1..3` is named
+    # "Inverter Voltage" and is the voltage at the inverter. The meter has no current per phase:
+    # `grid_current_l1..3` is named "Inverter Current" and is the inverter's own, so the current is estimated
+    # from the power. A single-phase unit has neither the voltages nor L2 and L3, and makes no meter. The
+    # M2HT-10K-30 is known as a three-phase hybrid only since the plugin's fix for its issue 2416 (`ca73b3a`,
+    # release 2026.10.02): before it there are no per-phase entities to find.
+    MeterRow(
+        platforms=("solax_modbus",),
+        device_manufacturer=("solinteg", "gabriel c."),
+        patterns=(
+            _p("power", r"(?:^|_)measured_power_l(?P<n>[123])$"),
+            _p("voltage", r"(?:^|_)grid_voltage_l(?P<n>[123])$"),
+        ),
+        totals=(_p("grid_power", r"(?:^|_)measured_power$"),),
+        invert_power=True,
+        warnings=(WARNING_SIGN_UNVERIFIED,),
+        label="SolaX Modbus, Solinteg plugin",
     ),
 )
 
@@ -606,8 +681,8 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         ("solaredge_modbus",), _re(r"_battery_.+_dc_power$"), label="SolarEdge Modbus (Home Assistant core)"
     ),
     BatteryRow(("homewizard",), _re(r"_active_power_w$"), device_model="bat"),
-    # SolaX's own plugins of `solax_modbus` (devices made by "SolaX Power"; the Sofar and Growatt plugins
-    # use the same key with their own registers). `battery_power_charge` ("Battery Power Charge", "Total
+    # SolaX's own plugins of `solax_modbus` (devices made by "SolaX Power"; the "Sofar Old" plugin and
+    # Growatt's off-grid SPF use the same key with their own registers, and are not read). `battery_power_charge` ("Battery Power Charge", "Total
     # Battery Power Charge" on Gen5/Gen6) is charge-positive: the integration's own house load is PV power
     # minus it minus the grid meter's power, and a SolaX battery was seen at +1768 W charging and -1243 W
     # discharging. The parallel-mode entities (`pm_` and the per-inverter `pm_iN_`) are left out.
@@ -616,6 +691,35 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
         _re(r"(?:^|_)battery_power_charge$"),
         device_manufacturer="solax",
         reject=_re(r"(?:^|_)pm_(?:i\d+_)?battery_power_charge$"),
+    ),
+    # The Sofar plugin (wills106 `4acd644`): `battery_power_total` ("Battery Power Total", register 0x0667, kW
+    # in steps of 0.1) is all the battery inputs together; the per-input `battery_power_1..8` are left out.
+    # The plugin states no sign for it. Its passive mode's battery power limits are "positive values indicate
+    # charging" (`docs/sofar-energy-storage-modes.md`), and evcc reads the inputs' power times -10 into its
+    # discharge-positive battery power (`sofarsolar-g3.yaml`, evcc `1d62b73`), so it is charge-positive.
+    BatteryRow(
+        ("solax_modbus",),
+        _re(r"(?:^|_)battery_power_total$"),
+        device_manufacturer="sofar",
+        label="SolaX Modbus, Sofar plugin",
+    ),
+    # The Growatt plugin: `battery_combined_power` is the plugin's own charge power minus discharge power on
+    # the hybrids (GEN3 and GEN4), so charge-positive. An AC-coupled SPA has no combined entity and is read
+    # from the pair it is made of, `battery_charge_power` and `battery_discharge_power` (both >= 0). The
+    # per-module `bms_<n>_...` powers and the VPP block's `battery_combined_power_vpp` are left out, and so is
+    # the off-grid SPF, which has no charge power of this name.
+    BatteryRow(
+        ("solax_modbus",),
+        _re(r"(?:^|_)battery_combined_power$"),
+        device_manufacturer="growatt",
+        label="SolaX Modbus, Growatt plugin (hybrid)",
+    ),
+    BatteryRow(
+        ("solax_modbus",),
+        _re(r"(?:^|_)battery_charge_power$"),
+        discharge_regex=_re(r"(?:^|_)battery_discharge_power$"),
+        device_manufacturer="growatt",
+        label="SolaX Modbus, Growatt plugin (AC-coupled)",
     ),
     # Discharge-positive: negate.
     BatteryRow(("powerwall",), _re(r"battery_instant_power$"), inverted=True),
@@ -640,6 +744,18 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("sungrow",), _re(r"total_field_energy_storage_active_power$")),
     BatteryRow(("sungrow",), _re(r"battery_charge_power$"), discharge_regex=_re(r"battery_discharge_power$")),
     BatteryRow(("solis_modbus",), _re(r"battery_power_net$"), inverted=True),
+    # The Solinteg plugin of `solax_modbus` (wills106 `4acd644`): `battery_power` (register 30258, W). The
+    # plugin's own "Battery Charge Direction" reads "charge" while it is zero or negative and "discharge"
+    # while positive, and its Energy dashboard battery power (discharge-positive, SolaX's charge power negated)
+    # takes it as it is, as evcc does (`solinteg-gen3.yaml`). The Energy dashboard's own `battery_power`, on
+    # the integration's virtual device, has another manufacturer and is not read.
+    BatteryRow(
+        ("solax_modbus",),
+        _re(r"(?:^|_)battery_power$"),
+        inverted=True,
+        device_manufacturer=("solinteg", "gabriel c."),
+        label="SolaX Modbus, Solinteg plugin",
+    ),
     # Charge and discharge as two non-negative entities.
     # Core `sma`: `<entry>-<key>_<idx>` with the keys `battery_power_charge_total` / `_discharge_total` (the
     # per-phase `_a`/`_b`/`_c` ones are not matched); older releases had no `_total` and no index.
@@ -830,12 +946,23 @@ def _usable(entity: RegistryEntity, excluded_device_ids: frozenset[str]) -> bool
     return entity.device_id is None or entity.device_id not in excluded_device_ids
 
 
-def _device_ok(row_manufacturer: str | None, row_model: str | None, device: RegistryDevice | None) -> bool:
+def manufacturer_matches(wanted: str | tuple[str, ...] | None, manufacturer: str | None) -> bool:
+    """Whether a device's manufacturer is the one a row or an adapter is for: `wanted` (lower case, or
+    several of which one is enough) is a part of it. A row for any maker (`None`) matches all."""
+    if wanted is None:
+        return True
+    text = (manufacturer or "").lower()
+    return any(part in text for part in ((wanted,) if isinstance(wanted, str) else wanted))
+
+
+def _device_ok(
+    row_manufacturer: str | tuple[str, ...] | None, row_model: str | None, device: RegistryDevice | None
+) -> bool:
     if row_manufacturer is None and row_model is None:
         return True
     if device is None:
         return False
-    if row_manufacturer is not None and row_manufacturer not in (device.manufacturer or "").lower():
+    if not manufacturer_matches(row_manufacturer, device.manufacturer):
         return False
     if row_model is not None and row_model not in (device.model or "").lower():
         return False
@@ -1539,7 +1666,8 @@ UPDATE_BEHAVIOUR: Final[dict[str, UpdateBehaviour]] = {
     "fronius": UpdateBehaviour(60.0, None),
     "enphase_envoy": UpdateBehaviour(60.0, None),
     "ferroamp": UpdateBehaviour(30.0, None),
-    "solax_modbus": UpdateBehaviour(15.0, "Polling interval"),
+    # Every plugin of it: the default of its three intervals, which the per-phase meter entities follow.
+    "solax_modbus": UpdateBehaviour(15.0, "Default polling interval"),
     "solis_modbus": UpdateBehaviour(10.0, "Scan interval"),
     # `sungrow` is not listed: its local Modbus entries poll every 30 s but its iSolarCloud entries every
     # 300 s, and nothing in the registry tells the two apart.

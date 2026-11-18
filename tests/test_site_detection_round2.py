@@ -260,7 +260,8 @@ def test_the_solax_second_meter_is_left_out() -> None:
 
 
 def test_another_plugin_of_the_integration_is_not_assumed_to_share_solax_conventions() -> None:
-    assert solax_hybrid(manufacturer="Solinteg").detect().meters == ()
+    # A plugin with no row of its own. Sofar, Growatt and Solinteg have theirs (`test_site_detection_solax_plugins`).
+    assert solax_hybrid(manufacturer="Ginlog Solis").detect().meters == ()
 
 
 def solax_battery(*, manufacturer: str = "SolaX Power", parallel: bool = False) -> Registry:
