@@ -55,7 +55,7 @@ from .grid_tariff import async_webhook_update_grid_tariff
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle, webhook_update_guest
-from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
+from .sessions import async_request_savings, SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .site_webhook import SITE_ACTIONS
 from .settings import (
     async_update_settings,
@@ -208,6 +208,10 @@ APP_READS_EFFECTIVE_TARGET: Final = "effective_target"
 #: in the dashboard and in `update_grid_tariff`'s answer. Its write without them keeps the stored figures.
 APP_READS_SUPPLIER_FEES: Final = "supplier_fees"
 APP_UNREAD_SUPPLIER_FEE_KEYS: Final = ("supplier_markup", "sell_adjustment", "sells")
+#: What SpotNav saved against charging at once on plug-in (`plug_in_saving` on the `sessions` answer's summaries and
+#: sessions, `api/sessions.py`): left out for an app that does not read `APP_READS_PLUG_IN_SAVING` (its decoder
+#: refuses a session with an unknown key).
+APP_READS_PLUG_IN_SAVING: Final = "plug_in_saving"
 #: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
@@ -501,14 +505,18 @@ async def _dashboard(hass: HomeAssistant, entry: ChargerConfigEntry, payload: di
 
 async def _sessions(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
     """A read twinning `spotnav/get_sessions`: the same request fields (`month`, `format`, `limit`, `from`,
-    `to`) and the same answer, with the routing `action` beside it. Nothing is withheld."""
+    `to`) and the same answer, with the routing `action` beside it. `plug_in_saving` (on each summary and session)
+    only for a request that reads it (`reads: ["plug_in_saving"]`)."""
     version = payload.get("api_version", SESSIONS_API_VERSION)
     if type(version) is not int or version != SESSIONS_API_VERSION:
         return web.json_response(
             {"ok": False, "error": ERROR_UNSUPPORTED_VERSION, "action": "sessions"}, status=400
         )
     try:
-        answer = sessions_answer(hass, entry.entry_id, payload)
+        savings = None
+        if APP_READS_PLUG_IN_SAVING in _opted_in(payload):
+            savings = await async_request_savings(hass, entry.entry_id, payload)
+        answer = sessions_answer(hass, entry.entry_id, payload, savings)
     except SessionsRefusal as refusal:
         return web.json_response({"ok": False, "error": refusal.code, "action": "sessions"}, status=400)
     return web.json_response({"ok": True, "action": "sessions", **answer})

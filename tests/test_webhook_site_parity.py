@@ -25,6 +25,7 @@ from custom_components.spotnav.api.house import websocket_get_house
 from custom_components.spotnav.api.house_history import websocket_get_house_history
 from custom_components.spotnav.api.house_loads import websocket_get_house_loads
 from custom_components.spotnav.api.house_now import websocket_get_house_now
+from custom_components.spotnav.api.sessions import websocket_get_sessions
 from custom_components.spotnav.api.site_view import websocket_get_site_settings_view
 from custom_components.spotnav.api.site_webhook import SITE_ACTIONS
 from custom_components.spotnav.battery import gate
@@ -297,6 +298,25 @@ async def test_a_charger_says_whether_its_webhook_answers_for_a_site(hass: HomeA
     assert status == 200 and [in_site["charger"]["capabilities"][flag] for flag in flags] == [True] * 4
     status, alone = await post(client, "webhook-entry_b", {"action": "dashboard", "api_version": 1})
     assert status == 200 and [alone["charger"]["capabilities"][flag] for flag in flags] == [False] * 4
+
+
+async def test_the_sessions_answer_has_the_plug_in_saving_for_an_app_that_reads_it(
+    hass: HomeAssistant, freezer, hass_client_no_auth
+) -> None:
+    await _site(hass, freezer)
+    client = await hass_client_no_auth()
+    expected = await result(hass, websocket_get_sessions)
+    assert "plug_in_saving" in expected["this_month"]
+    status, body = await post(client, HOOK, {"action": "sessions", "reads": ["plug_in_saving"]})
+    assert status == 200 and body == {**expected, "ok": True, "action": "sessions"}
+    _pinned("sessions_plug_in_saving.json", _pin(body))
+    # An app released before it gets the answer it knows.
+    status, plain = await post(client, HOOK, {"action": "sessions"})
+    assert status == 200 and "plug_in_saving" not in json.dumps(plain)
+    _pinned("sessions_success.json", _pin(plain))
+    # A CSV has no savings either way.
+    status, csv = await post(client, HOOK, {"action": "sessions", "format": "csv", "reads": ["plug_in_saving"]})
+    assert status == 200 and csv["format"] == "csv"
 
 
 async def test_polling_house_now_reads_the_recorder_at_most_once_per_five_minute_row(
