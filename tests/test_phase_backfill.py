@@ -154,11 +154,27 @@ async def test_the_history_replayed_gives_the_marks_the_live_samples_of_the_same
     assert mark.house_a[0] < 6.0, "the car's 10 A never counted as house"
 
 
-async def test_the_entities_read_are_the_ones_the_site_s_reading_touches(hass: HomeAssistant, freezer: Any) -> None:
+async def test_the_entities_fetched_are_named_by_the_configuration_whatever_is_there_now(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    from custom_components.spotnav.site.phase_peaks import entities
+
     played = await _world(hass, freezer, plant=True)
+    # The plant's sensors have no state yet (its integration not started): a live reading stops at the first of
+    # them, the configuration names all three.
+    named = entities(played.controller)
+    assert set(PLANT) <= set(named) and not set(PLANT) <= set(entities_read(played.controller, T0))
     for entity_id in PLANT:
         played.set(entity_id, 0.1, "kW")
     read = entities_read(played.controller, T0)
+    assert set(read) <= set(named), "nothing a reading touches is left out"
+    # A heat pump's power meter: its per-phase siblings, there or not.
+    forecast = played.controller.house_forecast
+    played.controller.house_forecast = SimpleNamespace(
+        heat=SimpleNamespace(meter=SimpleNamespace(entity_id="sensor.heat_power", kind="power"))
+    )
+    assert {f"sensor.heat_power_l{n}" for n in (1, 2, 3)} <= set(entities(played.controller))
+    played.controller.house_forecast = forecast
     assert {BATTERY, *PLANT} <= set(read)
     assert {f"sensor.home_site_{kind}_{phase}" for kind in ("power", "reactive", "voltage") for phase in ("l1", "l2", "l3")} <= set(read)
     assert {f"sensor.home_charger_{phase}" for phase in ("l1", "l2", "l3")} <= set(read)

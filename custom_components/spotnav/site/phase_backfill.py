@@ -48,7 +48,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.util import dt as dt_util
 
-from .phase_peaks import SAMPLE_S, WINDOW_DAYS, PhasePeaks, read_site
+from .phase_peaks import SAMPLE_S, WINDOW_DAYS, PhasePeaks, entities, read_site
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -247,7 +247,10 @@ class SiteAt:
 
 
 def entities_read(site: SiteCapacityController, now: float) -> list[str]:
-    """The entities one reading of the site reads now (`phase_peaks.read_site`): the ones to fetch the history of."""
+    """The entities one reading of the site happens to read now (`phase_peaks.read_site`). Not what the history is
+    fetched by (a reading stops at the first entity that is not there, and what is there changes from moment to
+    moment: `phase_peaks.entities` names them all by the configuration); for the tests, which check that list
+    against this."""
     states = _StatesRead(site.hass.states)
     read_site(SiteAt(site, states), now)  # type: ignore[arg-type]
     return sorted(states.entity_ids)
@@ -354,7 +357,7 @@ class Backfill:
             "hours_read": 0, "hours_taken": 0, "stopped": None, "without_history": [],
         }
         self.last = summary
-        entity_ids = entities_read(site, now)
+        entity_ids = entities(site)
         summary["entities"] = len(entity_ids)
         try:
             from homeassistant.components.recorder import get_instance, history  # noqa: PLC0415 - only when loaded

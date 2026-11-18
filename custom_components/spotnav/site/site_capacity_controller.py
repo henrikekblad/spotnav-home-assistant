@@ -4915,6 +4915,33 @@ class SiteCapacityController:
         self._calculation = (key, now, result)
         return result
 
+    def measurement_entity_ids(self) -> list[str]:
+        """Every entity the site's measurement, its chargers' measured currents and its battery's power are read
+        from, by the configuration alone (whatever their states are now): the ones `measurement_result`,
+        `charger_measured_current` and `battery_live_w` read. For the house's per-phase peaks read back from the
+        recorder, which fetches their history."""
+        entity_ids: set[str] = set()
+        mode = self.config.get(CONF_MEASUREMENT_MODE)
+        if mode == MEASUREMENT_MODE_DIRECT:
+            site_source = self._resolve_site_current_source()
+            if site_source is not None:
+                entity_ids.update(_source_entity_ids(site_source))
+        elif mode == MEASUREMENT_MODE_DERIVED:
+            for phase_entities in (self.config.get(CONF_DERIVED_ENTITIES) or {}).values():
+                entity_ids.update((phase_entities or {}).values())
+        phase_wiring: dict[str, dict[str, Any]] = self.config.get(CONF_PHASE_WIRING) or {}
+        for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+            measured_source = source_from_dict(
+                (phase_wiring.get(charger_entry_id) or {}).get(CONF_MEASURED_CURRENT_SOURCE)
+            )
+            if measured_source is not None:
+                entity_ids.update(_source_entity_ids(measured_source))
+        battery_source = source_from_dict(self.config.get(CONF_BATTERY_PER_PHASE_SOURCE))
+        if battery_source is not None:
+            entity_ids.update(_source_entity_ids(battery_source))
+        entity_ids.update(self.battery_entity_ids())
+        return sorted(entity_id for entity_id in entity_ids if isinstance(entity_id, str) and entity_id)
+
     def measurement_result(self) -> SiteCapacityResult:
         """The site's measurement alone on the states it reads, no charger asking for anything: what `result` says
         of each phase's current, its direction and whether the measurement is usable, calculated afresh and kept

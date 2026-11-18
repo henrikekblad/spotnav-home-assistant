@@ -782,17 +782,50 @@ def _charger_draw(
     return tuple(largest if name == phase else 0.0 for name in PHASES), readings, False  # type: ignore[return-value]
 
 
-def _heat_phase_w(site: SiteCapacityController) -> Triple | None:
-    """The heat pump's meter's per-phase power (W) where its sensor has `_l1` .. `_l3` siblings, else `None`."""
-    from homeassistant.const import UnitOfPower  # noqa: PLC0415 - kept beside its only use
-
+def heat_phase_entities(site: SiteCapacityController) -> tuple[str, str, str] | None:
+    """The heat pump's meter's per-phase power entities, by the site's configuration: its power sensor's `_l1` ..
+    `_l3` siblings (whether they exist is for the one that reads them); `None` without a power meter."""
     meter = getattr(getattr(getattr(site, "house_forecast", None), "heat", None), "meter", None)
     entity_id = getattr(meter, "entity_id", None)
     if not isinstance(entity_id, str) or getattr(meter, "kind", None) != "power":
         return None
+    return (f"{entity_id}_l1", f"{entity_id}_l2", f"{entity_id}_l3")
+
+
+def plant_phase_entities(site: SiteCapacityController) -> tuple[tuple[str, str, str], float] | None:
+    """The entities of the plant's own power per phase and their sign, as the battery's facts name them from its
+    adapter (`battery/adapters.py` `plant_phase_power`); `None` where they name none."""
+    facts = getattr(getattr(site, "battery_shadow", None), "facts", None)
+    entity_ids = getattr(facts, "plant_phase_entities", None)
+    sign = getattr(facts, "plant_phase_sign", None)
+    if not entity_ids or len(entity_ids) != 3 or sign not in (1.0, -1.0):
+        return None
+    return (entity_ids[0], entity_ids[1], entity_ids[2]), sign
+
+
+def entities(site: SiteCapacityController) -> list[str]:
+    """Every entity a reading of the site may read (`read_site`), by its configuration and the battery's adapter,
+    whatever their states are now: the site's measurement, each charger's measured current and the battery's power
+    (`SiteCapacityController.measurement_entity_ids`), the plant's per-phase power and the heat pump's meter's.
+    The ones whose history is read back (`site/phase_backfill.py`)."""
+    found = set(site.measurement_entity_ids())
+    plant = plant_phase_entities(site)
+    if plant is not None:
+        found.update(plant[0])
+    found.update(heat_phase_entities(site) or ())
+    return sorted(found)
+
+
+def _heat_phase_w(site: SiteCapacityController) -> Triple | None:
+    """The heat pump's meter's per-phase power (W) where its sensor has `_l1` .. `_l3` siblings, else `None`."""
+    from homeassistant.const import UnitOfPower  # noqa: PLC0415 - kept beside its only use
+
+    entity_ids = heat_phase_entities(site)
+    if entity_ids is None:
+        return None
     values: list[float] = []
-    for suffix in ("_l1", "_l2", "_l3"):
-        state = site.hass.states.get(f"{entity_id}{suffix}")
+    for entity_id in entity_ids:
+        state = site.hass.states.get(entity_id)
         if state is None:
             return None
         value = _finite_any(state.state)
@@ -808,11 +841,10 @@ def _plant_phase_w(site: SiteCapacityController, max_age_s: float, now: float) -
     facts name its entities and all three read a power reported within `max_age_s`; else `None`."""
     from ..battery.facts import to_kw  # noqa: PLC0415 - the battery package imports the site
 
-    facts = getattr(getattr(site, "battery_shadow", None), "facts", None)
-    entity_ids = getattr(facts, "plant_phase_entities", None)
-    sign = getattr(facts, "plant_phase_sign", None)
-    if not entity_ids or len(entity_ids) != 3 or sign not in (1.0, -1.0):
+    named = plant_phase_entities(site)
+    if named is None:
         return None
+    entity_ids, sign = named
     values: list[float] = []
     for entity_id in entity_ids:
         state = site.hass.states.get(entity_id)
