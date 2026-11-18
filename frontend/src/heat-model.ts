@@ -53,6 +53,7 @@ const CONFIG = O({
   target_c: "number",
   mode: "string",
   away_until: N("string"),
+  away_delta_c: "number",
   night: NIGHT,
   indoor_sensors: A("string"),
   outdoor_sensor: N("string"),
@@ -278,6 +279,8 @@ export interface HeatConfig {
   target_c: number;
   mode: string;
   away_until: string | null;
+  /** The setback while away (°C below the target, 1 to 6 in half degrees; the plan never goes under 16 °C). */
+  away_delta_c: number;
   night: HeatNight;
   indoor_sensors: string[];
   outdoor_sensor: string | null;

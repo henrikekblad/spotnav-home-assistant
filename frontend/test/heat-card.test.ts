@@ -341,6 +341,7 @@ describe("the settings section", () => {
       ["zone:climate.golvvarme_tvattstuga", "Golvvärme tvättstuga−1,0 °C"],
       ["zone:climate.ovanvaning", "Värmepump ovanvåning−0,5 °C"],
       ["night", "Svalare natt−1,0 °C 23:00–06:00"],
+      ["awayDelta", "Sänkning när borta−3,0 °C"],
     ]);
     section.querySelector<HTMLButtonElement>("button[data-edit='zone:climate.ovanvaning']")!.click();
     expect(edits).toEqual(["zone:climate.ovanvaning"]);
@@ -353,7 +354,7 @@ describe("the settings section", () => {
     );
     expect(section.textContent).not.toContain("styr ingen värme än");
     // A row that opens an editor says its help there, not under the row.
-    for (const key of ["indoor", "outdoor", "path", "hotWater", "zones", "night"]) {
+    for (const key of ["indoor", "outdoor", "path", "hotWater", "zones", "night", "awayDelta"]) {
       expect(section.querySelector(`[data-help='${key}']`), key).toBeNull();
     }
   });
@@ -658,6 +659,28 @@ describe("SpotNav controlling the heat", () => {
     expect(a.body.textContent).toContain("blockerar eller sänker");
     expect(b.body.textContent).toContain("höja värmen i billiga timmar");
     expect(b.body.textContent).toContain("aldrig båda samtidigt");
+  });
+
+  it("writes the away setback from its editor and refuses a value off its range or step", async () => {
+    const value = answer();
+    expect(value.config.away_delta_c).toBe(3);
+    const write = vi.fn(async () => null);
+    const input = { doc: document, language: "sv" as const, idPrefix: "t", answer: value, write };
+    const handlers = { onCancel: vi.fn(), onDone: vi.fn() };
+    const editor = heatEditor(input as never, "awayDelta", handlers as never)!;
+    expect(editor.title).toBe("Sänkning när borta");
+    const form = editor.body as HTMLFormElement;
+    const delta = form.querySelector<HTMLInputElement>("input[data-field='delta']")!;
+    expect([delta.min, delta.max, delta.step, delta.value]).toEqual(["1", "6", "0.5", "3"]);
+    for (const bad of ["0.5", "6.5", "2.2"]) {
+      delta.value = bad;
+      form.dispatchEvent(new Event("submit", { cancelable: true }));
+      await vi.waitFor(() => expect(form.querySelector<HTMLButtonElement>("button[type='submit']")!.disabled).toBe(false));
+    }
+    expect(write).not.toHaveBeenCalled();
+    delta.value = "4.5";
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ away_delta_c: 4.5 }));
   });
 
   it("keeps the switch away from a path it cannot steer", () => {

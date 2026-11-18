@@ -1059,7 +1059,8 @@ export type HeatSettingKey =
   | `zone:${string}`
   | `sensor:${string}`
   | "steer"
-  | "night";
+  | "night"
+  | "awayDelta";
 
 /** The "Heating" section of the settings dialog: one row per setting, each opening its editor (`onEdit`). */
 export function heatSettingsSection(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement {
@@ -1156,6 +1157,7 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
       ? translate(language, "heat.settings.nightValue", { delta: degrees(language, night.delta_c), start: night.start, end: night.end })
       : translate(language, "settings.value.off"),
   );
+  row("awayDelta", translate(language, "heat.settings.away"), translate(language, "heat.settings.awayValue", { delta: degrees(language, config.away_delta_c) }));
   return section;
 }
 

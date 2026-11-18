@@ -89,6 +89,9 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
   if (key === "away") {
     return { title: t("heat.away.title"), body: awayEditor(input, handlers) };
   }
+  if (key === "awayDelta") {
+    return { title: t("heat.settings.away"), body: awayDeltaEditor(input, handlers) };
+  }
   if (key === "night") {
     return { title: t("heat.settings.night"), body: nightEditor(input, handlers) };
   }
@@ -300,6 +303,33 @@ function nightEditor(input: HeatEditorInput, handlers: EditorHandlers): HTMLForm
       return translate(language, "heat.error.step");
     }
     return await input.write({ night: { on: on.checked, delta_c: value, start: startInput.value, end: endInput.value } });
+  });
+  return editor.form;
+}
+
+function awayDeltaEditor(input: HeatEditorInput, handlers: EditorHandlers): HTMLFormElement {
+  const { doc, language, answer } = input;
+  const editor = shell(doc, language, "awayDelta", handlers);
+  const help = doc.createElement("p");
+  help.className = VISUAL_CLASSES.entityHelp;
+  help.textContent = translate(language, "heat.settings.awayHelp");
+  const delta = doc.createElement("input");
+  delta.type = "number";
+  delta.min = "1";
+  delta.max = "6";
+  delta.step = "0.5";
+  delta.value = String(answer.config.away_delta_c);
+  delta.dataset["field"] = "delta";
+  editor.body.append(help, field(doc, translate(language, "heat.settings.awayDelta"), delta));
+  editor.submit(async () => {
+    const value = Number(delta.value.replace(",", "."));
+    if (!Number.isFinite(value) || value < 1 || value > 6) {
+      return translate(language, "heat.error.range");
+    }
+    if (Math.abs(value * 2 - Math.round(value * 2)) > 1e-9) {
+      return translate(language, "heat.error.step");
+    }
+    return await input.write({ away_delta_c: value });
   });
   return editor.form;
 }

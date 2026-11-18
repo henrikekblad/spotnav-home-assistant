@@ -45,6 +45,9 @@ opens the details, the gear (administrators) the settings.
   hours** (a cell an hour: a lowering, a pre-heat or raise, the cooler night, hot water as a dot) with the same in
   words under it, and today's heat, hot water and cost. The strip ends at midnight until tomorrow's prices are in.
   The sensors, the zones and how the pump is controlled are in the gear's settings.
+  **Borta** holds the house **3 °C below the wanted temperature** (never below 16 °C) until two hours before the
+  return time, then warms it up. The gear's **Setback when away** (*Sänkning när borta*) sets those degrees, 1 to 6
+  in half degrees; the warm-up before the return is the same.
 * **Plan**: the day's chart: the rooms, the comfort band, the setpoint, SpotNav's lowerings (what it did solid, what it
   plans lighter), the relay, hot water and the car. The arrows step back through past days (tap the day to choose
   one); this tab shows days only. Tap or point at the chart for a time's figures.
