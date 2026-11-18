@@ -35,7 +35,9 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     mode is the select `working_mode`, free in "General". The cells' warmest temperature
     (`battery_max_cell_temperature`) is not the average and is not read.
 * Victron, core `victron_gx` (victron-mqtt 2026.11.1): `<installation>_<device type>_<device id>_<short id>`; the HACS
-  `victron_mqtt` (tomer-w/ha-victron-mqtt 2026.11.2, same short ids) is read the same way.
+  `victron_mqtt` (tomer-w/ha-victron-mqtt 2026.11.2, same short ids) is read the same way. The firmware a control
+  check is kept per is the GX's Venus OS version (`platform_venus_firmware_installed_version`, read 2026-11-18 in
+  victron-mqtt 2026.11.1): the ESS loop and its control points are the GX's.
 * Victron Modbus, community `victron` (sfstar/hass-victron `32fb345`): `<unit id>_<register key>`, the GX system at unit
   100, a battery monitor or BMS at 225 by default.
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
@@ -380,6 +382,9 @@ VICTRON: Final = Adapter(
         "charge_current": _key("battery_max_charge_current"),
         "discharge_current": _key("battery_max_discharge_current"),
         "voltage": _key("system_dc_battery_voltage"),
+        # The GX's Venus OS version (`/Firmware/Installed/Version` on the platform service): its ESS loop and the
+        # control points are the GX's, so a change of it is what a control check is kept per.
+        "firmware": _key("platform_venus_firmware_installed_version"),
     },
     # The ESS minimum SoC (Settings/CGwacs/BatteryLife/MinimumSocLimit), the floor the system discharges to.
     reserves=(ReserveSource(_key("system_ess_min_soc_limit", "number")),),
