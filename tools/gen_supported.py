@@ -9,7 +9,10 @@ Sources, one per category:
 * grid meters: `site/site_detection.py` (`METER_ROWS`, the Easee Equalizer, `UPDATE_BEHAVIOUR`);
 * house batteries: `site/site_detection.py` (`BATTERY_ROWS`);
 * vehicles: the recorded entity shapes in `tests/test_vehicle_catalogue.py`, read as data;
-* solar forecast: the Energy dashboard contract read by `planning/hybrid_forecast.py`.
+* solar forecast: the Energy dashboard contract read by `planning/hybrid_forecast.py`;
+* the overview of inverters and batteries: `OVERVIEW` below for what the market has, with what SpotNav reads,
+  controls and has seen on real hardware worked out from the tables above and `battery/adapters.py` and
+  `battery/commands.py`.
 
 Display names are the only hand-written data here (`NAMES`); the test fails when a table gains an
 integration that has no name.
@@ -20,11 +23,14 @@ from __future__ import annotations
 import ast
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from custom_components.spotnav.battery import adapters as ba  # noqa: E402
+from custom_components.spotnav.battery import commands as bc  # noqa: E402
 from custom_components.spotnav.execution import charger_profiles as cp  # noqa: E402
 from custom_components.spotnav.execution import other_controllers as oc  # noqa: E402
 from custom_components.spotnav.site import site_detection as sd  # noqa: E402
@@ -659,6 +665,301 @@ def batteries_section() -> list[str]:
     ]
 
 
+# ---- inverters and batteries: the overview ----------------------------------------------------------
+
+
+class Overview(NamedTuple):
+    """One maker in the overview. What SpotNav reads, controls and has seen is worked out from `keys` (the rows of
+    `METER_ROWS` and `BATTERY_ROWS`, as `row_keys` names them) and `adapter` (a brand of `battery/adapters.py`).
+    The rest is hand-written from the sources the module names, and says "unknown" where they say nothing."""
+
+    brand: str
+    #: The Home Assistant integrations, with where each comes from.
+    integrations: str
+    keys: tuple[str, ...] = ()
+    adapter: str | None = None
+    #: The control column for a maker SpotNav has no commands for.
+    control: str = "Unknown"
+    note: str = ""
+
+
+UNKNOWN = "Unknown"
+#: The makers `docs/home-battery.md` offers the control for (the first brand); the others with commands are not yet.
+CONTROL_IN_TESTING: frozenset[str] = frozenset({"sigenergy"})
+CONTROL_OPT_IN = "Opt-in, in testing"
+CONTROL_MAPPED = "Mapped, never run on a device"
+
+#: Sources: `battery/adapters.py`, `battery/commands.py`, `battery/coexist.py`, `site/site_detection.py`, and the
+#: research notes `plans/research_integrations/` (`battery_local_control_guide_2026-11-14.md`, `site.md`,
+#: `commercial_energy_gap_2026-11-14.md`, `solinteg_m2ht_2026-11.md`) and `plans/v3_battery_control_optin.md`.
+#: Repository names are the ones `tools/upstream_drift/upstreams.py` or those notes give; none is guessed.
+OVERVIEW: tuple[Overview, ...] = (
+    Overview(
+        "Sigenergy",
+        "`sigen`, HACS (TypQxQ/Sigenergy-Local-Modbus)",
+        keys=("sigen",),
+        adapter="sigenergy",
+        note="Keeps the last command: no dead-man, so SpotNav caps a grid charge for the case that Home Assistant "
+        "stops. Has its own grid import and export limits; SpotNav uses the export limit. Often run by Sigen AI mode.",
+    ),
+    Overview(
+        "Huawei (SUN2000, LUNA2000)",
+        "`huawei_solar`, HACS (wlcrs/huawei_solar)",
+        keys=("huawei_solar",),
+        adapter="huawei",
+        note="Control needs the installer password in the integration. A forced charge ends by itself after its "
+        "duration. The cloud integrations (FusionSolar) are too slow and are not read.",
+    ),
+    Overview(
+        "SolarEdge",
+        "`solaredge_modbus_multi`, HACS (WillCodeForCats/solaredge-modbus-multi); `solaredge_modbus`, HACS "
+        "(binsentsu) and Home Assistant core",
+        keys=("solaredge_modbus_multi", "solaredge_modbus"),
+        adapter="solaredge",
+        note="Control is mapped for Modbus Multi only, and only while the storage is in Remote Control; a command ends "
+        "by itself after its timeout. The cloud integration (`solaredge`, every 15 minutes) is not read.",
+    ),
+    Overview(
+        "SolaX (X1 and X3 hybrids)",
+        "`solax_modbus`, HACS (wills106/homeassistant-solax-modbus), its SolaX plugin",
+        keys=("solax_modbus/solax",),
+        adapter="solax",
+        note="Remote control ends by itself when it is no longer renewed. One Modbus client at a time.",
+    ),
+    Overview(
+        "Sofar (HYD hybrids, KTL-X)",
+        "`solax_modbus`, HACS, its Sofar plugin. Also reachable through `solarman` (see Deye). Not read: the core "
+        "`sofar` integration",
+        keys=("solax_modbus/sofar",),
+        adapter="sofar",
+        control="Not mapped. The integration has a passive mode with a grid power target and battery power limits",
+        note="The passive mode has its own setting for what the inverter does when commands stop coming.",
+    ),
+    Overview(
+        "Growatt (SPH, SPA, MIN TL-XH, MOD and MID TL3-XH, WIT)",
+        "`solax_modbus`, HACS, its Growatt plugin. Not read: core `growatt_server` (cloud, every 5 minutes) and a "
+        "HACS Modbus integration by 0xAHA",
+        keys=("solax_modbus/growatt",),
+        adapter="growatt",
+        control="Not mapped. What can be controlled locally depends on the model",
+        note="Only the three-phase SPH reports the grid per phase. The off-grid SPF is not read.",
+    ),
+    Overview(
+        "Solinteg (MHT, M2HT; also M-TEC Energy Butler, Wattsonic)",
+        "`solax_modbus`, HACS, its Solinteg plugin",
+        keys=("solax_modbus/solinteg",),
+        adapter="solinteg",
+        control="Not mapped. The integration has an EMS mode with a battery power target",
+        note="Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes. "
+        "Has its own site import limit; whether it acts under EMS control is unknown. One Modbus TCP client at a time.",
+    ),
+    Overview(
+        "Sungrow (SH hybrids)",
+        "`sungrow`, HACS (KRoperUK/sungrow-hass); the mkaiser Modbus YAML package (plain `modbus` sensors, not an "
+        "integration)",
+        keys=("sungrow", "modbus"),
+        control="Not mapped. Forced charge and discharge exist locally",
+        note="No battery level or size is read yet. iSolarCloud entries update only every 5 minutes.",
+    ),
+    Overview(
+        "GoodWe (ET, EH)",
+        "`goodwe`, Home Assistant core",
+        keys=("goodwe",),
+        adapter="goodwe",
+        control="Not mapped. Core has only whole operating modes and the depth of discharge, no power setpoint",
+    ),
+    Overview(
+        "Fronius (GEN24 with BYD)",
+        "`fronius`, Home Assistant core (reads only). Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus)",
+        keys=("fronius",),
+        control="Not mapped. Modbus control exists (charge and discharge limits, grid charging, reserve)",
+        note="Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute.",
+    ),
+    Overview(
+        "Victron (GX with ESS)",
+        "`victron_gx`, Home Assistant core; `victron_mqtt`, HACS (tomer-w/ha-victron-mqtt); `victron`, HACS "
+        "(sfstar/hass-victron)",
+        keys=("victron_gx", "victron_mqtt", "victron"),
+        adapter="victron",
+        control="Not mapped. ESS mode, grid setpoint and minimum SoC exist locally",
+        note="The limits are settings stored on the GX, and repeated writes wear its flash.",
+    ),
+    Overview(
+        "Enphase",
+        "`enphase_envoy`, Home Assistant core",
+        keys=("enphase_envoy",),
+        adapter="enphase",
+        control="Not possible locally on Envoy firmware 8.2.4225 and later: the battery's mode is set in the "
+        "Enphase app. Planned later through its cloud, for slow actions only",
+        note="The local API needs a token from Enphase's cloud, renewed yearly.",
+    ),
+    Overview(
+        "Tesla Powerwall",
+        "`powerwall`, `tesla_fleet` and `teslemetry`, Home Assistant core; `tesla_custom`, HACS (alandtse/tesla)",
+        keys=("powerwall", "tesla_fleet", "teslemetry", "tesla_custom"),
+        control="Not possible locally: reserve, mode and grid charging go through Tesla's cloud. Planned later for "
+        "slow actions only",
+        note="Powerwall 3 has a more restricted local API. No battery level or size is read yet.",
+    ),
+    Overview(
+        "Deye, Sunsynk, Sol-Ark",
+        "`solarman`, HACS (davidrapan/ha-solarman). Not read: the sunsynk add-on (kellerza/sunsynk) and the cloud "
+        "integrations",
+        keys=("solarman",),
+        control="Not mapped. Work mode and programme slots are written in community setups, not confirmed",
+        note="No battery level or size is read yet.",
+    ),
+    Overview(
+        "Solis",
+        "`solis_modbus`, HACS (Pho3niX90/solis_modbus). Not read: the Solis plugins of `solax_modbus` and the cloud "
+        "integration (`solis`)",
+        keys=("solis_modbus",),
+        note="The meter may sit on the load or the PV side: check that it measures the main feed.",
+    ),
+    Overview(
+        "FoxESS (H1, H3, KH, AC1, AC3)",
+        "`foxess_modbus`, HACS (nathanmarlor/foxess_modbus). The cloud integration (`foxess`) is not read",
+        keys=("foxess_modbus",),
+        control="Not mapped. Work mode, charge periods and SoC limits exist locally, depending on the model",
+        note="Only the battery's power is read, not the grid.",
+    ),
+    Overview(
+        "SMA",
+        "`sma`, Home Assistant core; `pysmaplus`, HACS",
+        keys=("sma", "pysmaplus"),
+        control="Unknown: Modbus setpoints exist, but no Home Assistant integration for them was found",
+        note="Core does not support ennexOS devices such as the Tripower X.",
+    ),
+    Overview(
+        "Kostal (Plenticore)",
+        "`kostal_plenticore`, Home Assistant core: not read",
+        control="Not mapped. Power control is Modbus \"external battery control\", set up by the installer; no Home "
+        "Assistant integration for it was found",
+        note="External control falls back to the inverter's own after a timeout.",
+    ),
+    Overview("SAJ", UNKNOWN, note="Named among the batteries Tibber runs (not verified)."),
+    Overview(
+        "Alpha ESS",
+        "Not read: `alphaess`, HACS (cloud), and an AlphaESS plugin of `solax_modbus`",
+    ),
+    Overview(
+        "sonnen",
+        "`sonnenbatterie`, HACS (weltmeyer/ha_sonnenbatterie): not read",
+        control="Not mapped. Operating mode, charge and discharge power and reserve exist locally",
+        note="Joins Tibber's virtual power plant.",
+    ),
+    Overview(
+        "Emaldo",
+        "ha-emaldo (cloud and local UDP): not read",
+        control="Not possible locally. Planned later through its cloud, for slow actions that end by themselves",
+        note="Emaldo steers its batteries from its own cloud for grid services.",
+    ),
+    Overview(
+        "Pixii (Pixii Home)",
+        "None found",
+        control="Unknown: its command documentation is not public",
+        note="Greenely runs Pixii Home in Sweden. An owner reports local MQTT readings.",
+    ),
+    Overview(
+        "Ferroamp (EnergyHub)",
+        "`ferroamp`, HACS (henricm/ha-ferroamp)",
+        keys=("ferroamp",),
+        control="Not mapped. The integration has charge, discharge and auto services",
+        note="The EnergyHub balances load by itself and may fight active control. MQTT is enabled by Ferroamp's "
+        "support. Pools batteries for grid services with Ntricity.",
+    ),
+    Overview(
+        "Homevolt (Tibber)",
+        "`homevolt`, Home Assistant core: not read",
+        control="Not mapped. Battery mode, a power setpoint and grid limits exist locally",
+        note="The local API is activated by Tibber's support. Usually run by Tibber Grid Rewards.",
+    ),
+    Overview("HomeWizard (its battery)", "`homewizard`, Home Assistant core", keys=("homewizard",)),
+    Overview(
+        "Zendure (SolarFlow, Hyper, AIO)",
+        "`zendure_ha`, HACS (Zendure/Zendure-HA)",
+        keys=("zendure_ha",),
+        note="With several devices on one account only one is read.",
+    ),
+    Overview(
+        "Anker Solix (Solarbank)",
+        "`anker_solix`, HACS (thomluther/ha-anker-solix)",
+        keys=("anker_solix",),
+        note="Read from Anker's cloud, a minute or more between values.",
+    ),
+    Overview(
+        "EcoFlow (PowerStream, Ocean Pro)",
+        "`ecoflow_cloud`, HACS (tolwi/hassio-ecoflow-cloud)",
+        keys=("ecoflow_cloud",),
+        note="PowerOcean and Stream batteries are not read.",
+    ),
+    Overview(
+        "Marstek",
+        "`marstek_local_api`, HACS (jaapp/ha-marstek-local-api)",
+        keys=("marstek_local_api",),
+    ),
+)
+
+
+def _overview_reads(entry: Overview) -> tuple[list[str], bool]:
+    """What SpotNav reads of a maker, and whether any of it was confirmed on real hardware."""
+    wanted = set(entry.keys)
+    parts = []
+    if any(wanted & set(row_keys(row)) for row in sd.METER_ROWS):
+        parts.append("grid meter")
+    if any(wanted & set(row_keys(row)) for row in sd.BATTERY_ROWS):
+        parts.append("battery power")
+    if entry.adapter is not None:
+        adapter = next(adapter for adapter in ba.ADAPTERS if adapter.brand == entry.adapter)
+        parts.append("battery level" + (", size" if "capacity" in adapter.facts or "capacity_ah" in adapter.facts else ""))
+    tested = any((category, key) in TESTED_ON for category in ("meter", "battery") for key in entry.keys)
+    return parts, tested
+
+
+def _overview_row(entry: Overview) -> tuple[str, ...]:
+    parts, tested = _overview_reads(entry)
+    reads = "No" if not parts else ("Yes" if tested else "Yes, untested") + ": " + ", ".join(parts)
+    control = entry.control
+    if any(control.brand == entry.adapter for control in bc.CONTROLS):
+        control = CONTROL_OPT_IN if entry.adapter in CONTROL_IN_TESTING else CONTROL_MAPPED
+    seen = [
+        f"{name} read ({TESTED_ON[(category, key)]})"
+        for category, name in (("meter", "Grid meter"), ("battery", "Battery power"))
+        for key in entry.keys
+        if (category, key) in TESTED_ON
+    ]
+    return (entry.brand, entry.integrations, reads, control, "; ".join(seen) or "Nothing yet", entry.note)
+
+
+def overview_section() -> list[str]:
+    return [
+        "## Hybrid inverters and home batteries: overview",
+        "",
+        "Every hybrid inverter and home battery we know of in the Nordics and Europe, and how far SpotNav gets with "
+        "each. The detailed rows are under [grid meters](#supported-grid-meters) and "
+        "[house batteries](#supported-house-batteries); what the battery plan needs from each is in "
+        "[The battery plan](battery-plan.md#what-the-plan-needs).",
+        "",
+        "- **SpotNav reads**: what it finds by itself through the integration. *Untested* means read from the "
+        "integration's source and not yet confirmed on real hardware. A battery that is not read can still be used "
+        "by picking its power sensor yourself on the site.",
+        f"- **SpotNav controls**: *{CONTROL_OPT_IN}* is [SpotNav's own battery control]"
+        "(home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing), off by default. "
+        f"*{CONTROL_MAPPED}* means SpotNav has the commands for that integration behind the same switch and the same "
+        "check of the battery, but nobody has run them on a battery yet. *Not mapped* means SpotNav only reads, "
+        "with what the integration itself could do locally. Without control SpotNav still plans in shadow where it "
+        "reads the battery's level, and still signals a grid charge to your own planner or automation.",
+        "- **Unknown** is where neither SpotNav's tables nor our notes say. Corrections are welcome: "
+        f"[Hardware tested]({ISSUES_URL}).",
+        "",
+        *table(
+            ("Brand", "Home Assistant integration", "SpotNav reads", "SpotNav controls", "Seen on real hardware", "Notes"),
+            [_overview_row(entry) for entry in OVERVIEW],
+        ),
+        "",
+    ]
+
+
 # ---- vehicles -------------------------------------------------------------------------------------
 
 
@@ -914,10 +1215,12 @@ def render() -> str:
         "",
         f"Using one of these? Tell us whether it works: [Hardware tested]({ISSUES_URL}).",
         "",
-        "Jump to: [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), "
+        "Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), "
+        "[chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), "
         "[house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), "
         "[solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).",
         "",
+        *overview_section(),
         *chargers_section(),
         *meters_section(),
         *batteries_section(),
