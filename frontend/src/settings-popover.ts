@@ -51,7 +51,7 @@ import {
 import { entityEditorBody, modeLabel } from "./entity-editor";
 import { formatNumber, type FormatContext } from "./format";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
-import { heatEditor, writeHeat } from "./heat-editors";
+import { heatEditor, writeHeat, type HeatWriteOptions } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
 import { daysLeft, numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -767,7 +767,7 @@ export class SiteSections {
 
   // ---- heat
 
-  async writeHeatChanges(changes: Partial<Record<keyof HeatConfig, unknown>>): Promise<string | null> {
+  async writeHeatChanges(changes: Partial<Record<keyof HeatConfig, unknown>>, options?: HeatWriteOptions): Promise<string | null> {
     const hass = this.input.hass();
     const target = this.input.target();
     const answer = this.heat;
@@ -775,7 +775,7 @@ export class SiteSections {
     if (hass === null || target === null || answer === null) {
       return translate(language, "heat.error.generic");
     }
-    const result = await writeHeat(hass, target, answer, changes, language);
+    const result = await writeHeat(hass, target, answer, changes, language, options);
     if (result.config !== null && this.heat !== null) {
       this.heat = { ...this.heat, config: result.config };
     }
@@ -792,7 +792,7 @@ export class SiteSections {
     const { doc, idPrefix } = this.input;
     const language = this.language;
     let built: { title: string; body: HTMLElement } | null = null;
-    const probe = heatEditor({ doc, language, idPrefix, answer, write: (changes) => this.writeHeatChanges(changes) }, key, {
+    const probe = heatEditor({ doc, language, idPrefix, answer, write: (changes, options) => this.writeHeatChanges(changes, options) }, key, {
       onDone: () => undefined,
       onCancel: () => undefined,
     });
@@ -800,7 +800,7 @@ export class SiteSections {
       return;
     }
     this.input.openEditor(probe.title, (handlers) => {
-      built = heatEditor({ doc, language, idPrefix, answer, write: (changes) => this.writeHeatChanges(changes) }, key, handlers);
+      built = heatEditor({ doc, language, idPrefix, answer, write: (changes, options) => this.writeHeatChanges(changes, options) }, key, handlers);
       return (built?.body ?? element(doc, "form")) as HTMLFormElement;
     });
   }
@@ -1033,7 +1033,7 @@ export class SettingsPopover {
         language: this.language,
         idPrefix: this.input.idPrefix,
         answer,
-        write: (changes) => this.sections.writeHeatChanges(changes),
+        write: (changes, options) => this.sections.writeHeatChanges(changes, options),
       },
       key,
       { onDone: () => dialog.hide(), onCancel: () => dialog.hide() },

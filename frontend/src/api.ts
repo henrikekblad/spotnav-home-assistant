@@ -769,6 +769,7 @@ export async function updateHeat(
   target: { site: string } | { charger: string },
   changes: Record<string, unknown>,
   expected: Record<string, unknown>,
+  enableControlEntities = false,
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/update_heat",
@@ -776,6 +777,8 @@ export async function updateHeat(
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     changes,
     expected,
+    // The person's confirm of the opt-in's question: the control path's disabled entities are enabled first.
+    ...(enableControlEntities ? { enable_control_entities: true } : {}),
   });
 }
 

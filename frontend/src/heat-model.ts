@@ -161,6 +161,7 @@ const ANSWER = O({
       capabilities: A("string"),
       disabled: A("string"),
       device_id: N("string"),
+      paths: A(O({ path: "string", control_entity: "string", control_entity_b: N("string") })),
     }),
   ),
   meter: N(
@@ -255,6 +256,9 @@ const ANSWER = O({
       paused_until: N("string"),
       raised: "boolean",
       raise_until: N("string"),
+      path: N("string"),
+      untested: "boolean",
+      enable_entities: N(O({ integration: "string", entities: A(O({ entity_id: "string", name: "string" })) })),
     }),
   ),
   ahead: A(O({ start: "string", action: "string", target_c: "number", reason: "string", hot_water: "boolean" })),
@@ -361,7 +365,12 @@ export interface HeatRelay {
   effect: HeatEffect;
 }
 
-/** SpotNav's own switching of the relay ("Styr värmen"), `heat/control.py`. */
+/** The paths steered through a switch a person wires: their words name the relay. */
+export function isRelayPath(path: string | null): boolean {
+  return path === null || path === "none" || path === "relay" || path === "sg_ready";
+}
+
+/** SpotNav's own steering of the pump ("Styr värmen"), `heat/control.py`. */
 export interface HeatControl {
   enabled: boolean;
   /** "off", "verifying", "running" or "waiting". */
@@ -377,6 +386,12 @@ export interface HeatControl {
   /** SpotNav holds SG Ready's B closed (the pump raises its heat), until when. */
   raised: boolean;
   raise_until: string | null;
+  /** The control path steered ("relay", "sg_ready", "sg_ready_api", "offset"); `null` while it has nothing to steer. */
+  path: string | null;
+  /** The path has not run on a real heat pump yet: the card says so. */
+  untested: boolean;
+  /** The path's entities that are disabled in their integration: enabled on the person's confirm; `null` when none is. */
+  enable_entities: { integration: string; entities: { entity_id: string; name: string }[] } | null;
 }
 
 export interface HeatZone {
@@ -427,6 +442,8 @@ export interface HeatAnswer {
     capabilities: string[];
     disabled: string[];
     device_id: string | null;
+    /** The control paths the pump's own entities offer: a chosen path's entities are filled in from them. */
+    paths: { path: string; control_entity: string; control_entity_b: string | null }[];
   } | null;
   meter: {
     status: string;

@@ -58,7 +58,7 @@ describe("decoding the backend's own answer", () => {
     const controlled = answer("controlled.json");
     expect(controlled.control!.state).toBe("running");
     expect(controlled.band.hours[7]!.executed_min).toBe(60);
-    for (const name of ["villa.json", "network_pump.json", "controlled.json"]) {
+    for (const name of ["villa.json", "network_pump.json", "controlled.json", "sg_api_pump.json"]) {
       const raw = read(name);
       const paths: (string | number)[][] = [];
       const walk = (value: unknown, path: (string | number)[]): void => {
@@ -687,6 +687,115 @@ describe("SpotNav controlling the heat", () => {
     const pump = answer("network_pump.json");
     const section = heatSettingsSection(document, "sv", pump, () => undefined);
     expect(section.querySelector("[data-row='steer']")).toBeNull();
+  });
+});
+
+describe("the control paths through the pump's own settings", () => {
+  const handlers = { onCancel: vi.fn(), onDone: vi.fn() };
+  const editorInput = (value: HeatAnswer, write = vi.fn(async () => null)) => ({ doc: document, language: "sv" as const, idPrefix: "t", answer: value, write });
+  const choose = (form: HTMLFormElement, value: string): void => {
+    const radio = form.querySelector<HTMLInputElement>(`input[type='radio'][value='${value}']`)!;
+    radio.checked = true;
+    radio.dispatchEvent(new Event("change"));
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+  };
+
+  it("reads the paths found on the pump, the path steered and the entities to enable", () => {
+    const value = answer("sg_api_pump.json");
+    expect(value.pump!.paths.map((item) => item.path)).toEqual(["sg_ready_api", "offset"]);
+    expect(value.control!.path).toBe("sg_ready_api");
+    expect(value.control!.untested).toBe(true);
+    expect(value.control!.enable_entities!.entities).toHaveLength(2);
+    // The older fixtures carry the same keys: nothing found, nothing to enable, a relay that is tried.
+    expect(answer("network_pump.json").pump!.paths).toEqual([]);
+    expect([answer("controlled.json").control!.path, answer("controlled.json").control!.untested]).toEqual(["relay", false]);
+  });
+
+  it("shows the switch, the path's two entities and that the path is untried", () => {
+    const section = heatSettingsSection(document, "sv", answer("sg_api_pump.json"), () => undefined);
+    const rows = Object.fromEntries([...section.querySelectorAll<HTMLElement>("[data-row]")].map((row) => [row.dataset["row"], row.textContent]));
+    expect(rows["steer"]).toBe("Styr värmenAv");
+    expect(rows["path"]).toBe("StyrningSG Ready via integrationen (NIBE S)");
+    expect(rows["control"]).toBe("StyrutgångRequested operating mode (SG Ready)");
+    expect(rows["controlB"]).toBe("AktiveringActivate SG Ready via API");
+    expect(section.querySelector("[data-help='untested']")!.textContent).toContain("inte provat på en riktig värmepump");
+    // A relay says nothing of the kind.
+    expect(heatSettingsSection(document, "sv", answer("controlled.json"), () => undefined).querySelector("[data-help='untested']")).toBeNull();
+  });
+
+  it("marks the paths found on the pump and fills a chosen one's entities in", async () => {
+    const value = answer("sg_api_pump.json");
+    const write = vi.fn(async () => null);
+    const form = heatEditor(editorInput(value, write) as never, "path", handlers as never)!.body as HTMLFormElement;
+    const labels = [...form.querySelectorAll<HTMLInputElement>("input[type='radio']")].map((radio) => [radio.value, radio.closest("label")!.nextElementSibling?.textContent ?? ""]);
+    expect(labels.map(([path]) => path)).toEqual(["none", "relay", "sg_ready", "sg_ready_api", "offset", "setpoint"]);
+    expect(labels.filter(([, text]) => text!.includes("Hittad på värmepumpen")).map(([path]) => path)).toEqual(["sg_ready_api", "offset"]);
+    choose(form, "offset");
+    await vi.waitFor(() =>
+      expect(write).toHaveBeenCalledWith({ control_path: "offset", control_entity: "number.s1155_heating_offset_climate_system_1_40031", control_entity_b: null }),
+    );
+    const again = heatEditor(editorInput(value, write) as never, "path", handlers as never)!.body as HTMLFormElement;
+    choose(again, "relay");
+    await vi.waitFor(() => expect(write).toHaveBeenLastCalledWith({ control_path: "relay" }));
+    // A pump without it is not offered SG Ready through the integration.
+    const plain = heatEditor(editorInput(answer()) as never, "path", handlers as never)!.body as HTMLFormElement;
+    expect([...plain.querySelectorAll<HTMLInputElement>("input[type='radio']")].map((radio) => radio.value)).toEqual(["none", "relay", "sg_ready", "offset", "setpoint"]);
+  });
+
+  it("offers the mode's number and the activation switch each in its own editor", () => {
+    const value = answer("sg_api_pump.json");
+    const values = (key: "control" | "controlB"): string[] =>
+      [...(heatEditor(editorInput(value) as never, key, handlers as never)!.body as HTMLFormElement).querySelectorAll<HTMLInputElement>("input[type='radio']")].map((radio) => radio.value);
+    expect(values("control")).toEqual(["", "number.s1155_requested_operating_mode_sg_ready_46009"]);
+    expect(values("controlB")).toEqual(["", "switch.s1155_activate_sg_ready_via_api_43033"]);
+    const mode = heatEditor(editorInput(value) as never, "control", handlers as never)!;
+    expect(mode.body.textContent).toContain("aldrig till det tvingade läget");
+    const activation = heatEditor(editorInput(value) as never, "controlB", handlers as never)!;
+    expect(activation.title).toBe("Aktivering");
+    expect(activation.body.textContent).toContain("om den inte redan var på");
+    const offset = { ...value, config: { ...value.config, control_path: "offset", control_entity: "number.s1155_heating_offset_climate_system_1_40031", control_entity_b: null } };
+    expect(heatEditor(editorInput(offset) as never, "control", handlers as never)!.body.textContent).toContain("sätter sedan tillbaka värdet den hittade");
+  });
+
+  it("lists the entities it turns on with the switch and sends the confirm with the write", async () => {
+    const value = answer("sg_api_pump.json");
+    const write = vi.fn(async () => null);
+    const editor = heatEditor(editorInput(value, write) as never, "steer", handlers as never)!;
+    const text = editor.body.textContent!;
+    expect(text).toContain("genom värmepumpens egen inställning");
+    expect(text).toContain("inte provat på en riktig värmepump");
+    expect(text).toContain("avstängda i S1155: Activate SG Ready via API och Requested operating mode (SG Ready)");
+    choose(editor.body as HTMLFormElement, "on");
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ control_enabled: true }, { enable: true }));
+    // Nothing to enable: no confirm is sent, and the relay keeps its own words.
+    const relayWrite = vi.fn(async () => null);
+    const off = { ...answer("controlled.json"), config: { ...answer("controlled.json").config, control_enabled: false } };
+    const relay = heatEditor(editorInput(off, relayWrite) as never, "steer", handlers as never)!;
+    expect(relay.body.textContent).toContain("sluter värmepumpens relä");
+    expect(relay.body.textContent).not.toContain("avstängda i");
+    choose(relay.body as HTMLFormElement, "on");
+    await vi.waitFor(() => expect(relayWrite).toHaveBeenCalledWith({ control_enabled: true }, { enable: false }));
+  });
+
+  it("words the waits for the pump's own setting, not for a relay", () => {
+    const value = answer("sg_api_pump.json");
+    const waiting = (reason: string, state = "waiting"): HeatAnswer => ({ ...value, control: { ...value.control!, enabled: true, state, reason } });
+    expect(controlLine("sv", waiting("relay_unavailable"))).toBe("Väntar: värmepumpens inställning går inte att läsa.");
+    expect(controlLine("sv", waiting("foreign_change"))).toBe("Väntar: någon annan ändrade inställningen. SpotNav styr igen i morgon.");
+    expect(controlLine("en", waiting("check_failed"))).toBe("The heat pump did not answer. Check the setting and turn on again.");
+    expect(controlLine("sv", waiting("wait", "verifying"))).toBe("Provar att värmepumpen svarar: väntar på en stund när den värmer.");
+    // What is not about the relay keeps its words, and so does the relay's own path.
+    expect(controlLine("sv", waiting("pump_price_control"))).toBe("Väntar: värmepumpens egen prisstyrning är på.");
+    const relay = answer("controlled.json");
+    expect(controlLine("sv", { ...relay, control: { ...relay.control!, state: "waiting", reason: "relay_unavailable" } })).toBe("Väntar: reläet går inte att läsa.");
+  });
+
+  it("calls a pre-heat a raise by SG Ready through the API, and keeps the pre-heat's words on an offset", () => {
+    const value = answer("sg_api_pump.json");
+    const preheat = { ...value, status: { ...value.status, would: { action: "preheat", target_c: 21.5, until: "2026-11-16T17:00:00+00:00", reason: "cheap_before_dear" } } };
+    expect(wouldLine("sv", preheat)).toMatch(/^Skulle höja värmen \(SG Ready\)/);
+    const offset = { ...preheat, config: { ...preheat.config, control_path: "offset", control_entity_b: null } };
+    expect(wouldLine("sv", offset)).toMatch(/^Skulle förvärma/);
   });
 });
 
