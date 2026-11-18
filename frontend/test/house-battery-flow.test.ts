@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { earnBars } from "../src/house-earnings";
 import { decodeHouseHistory, type BatteryFlow, type HouseHistory } from "../src/house-history";
-import { earnedBars, flowWords } from "../src/house-period-view";
+import { flowWords } from "../src/house-period-view";
 import { LANGUAGES } from "../src/i18n";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "house_history");
@@ -52,7 +52,7 @@ describe("the readout of a bar", () => {
     buckets: answer.buckets.map((bucket, at) => (at === index ? { ...bucket, battery_flow: flow } : bucket)),
   });
 
-  it("explains the hour in the Earnings tab, and the day in the price tab's kr bars, and falls back without it", () => {
+  it("explains the hour in the Earnings tab, and falls back without it", () => {
     const day = withFlow(history("villa_day.json"), 17, BOTH);
     const chart = earnBars({ doc: document, language: "sv", answer: day, hidden: new Set(), height: 150, money: kr, selected: null })!;
     const label = chart.querySelectorAll(".spotnav-house-pbar")[17]!.getAttribute("aria-label")!;
@@ -62,9 +62,6 @@ describe("the readout of a bar", () => {
     const old = earnBars({ doc: document, language: "sv", answer: withFlow(day, 17, null), hidden: new Set(), height: 150, money: kr, selected: null })!;
     expect(old.querySelectorAll(".spotnav-house-pbar")[17]!.getAttribute("aria-label")).toMatch(/^17:00: .*kr$/);
     expect(old.querySelectorAll(".spotnav-house-pbar")[17]!.getAttribute("aria-label")).not.toContain("urladdat");
-    const month = withFlow(history("villa_month.json"), 9, BOTH);
-    const bars = earnedBars(document, "sv", month, 120, kr, null)!;
-    expect(bars.querySelectorAll(".spotnav-house-pbar")[9]!.getAttribute("aria-label")).toContain("urladdat 3,5 kWh");
   });
 
   it("decodes an answer from before the breakdown with none", () => {

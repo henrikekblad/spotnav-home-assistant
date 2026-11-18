@@ -10,8 +10,8 @@ import { HOUSE_CARD_ELEMENT, houseConfigForm, LIVE_REFRESH_MS, parseHouseConfig,
 import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { decodeHouseNow, dotLap, fitName, nodeSpots, NOW_STYLES, patchSchematic, planRuns, planSentence, renderSchematic, schematicHeight, schematicLines, type HouseNow } from "../src/house-now";
-import { earnedBars, earnedTotal, energyChart, flowTiles, niceStep, tilesBlock } from "../src/house-period-view";
-import { choiceLabel, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, TAB_STYLES, writeTab, type PeriodChoice } from "../src/house-tabs";
+import { energyChart, flowTiles, niceStep, tilesBlock } from "../src/house-period-view";
+import { choiceLabel, dayOnly, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, TAB_STYLES, writeTab, type PeriodChoice } from "../src/house-tabs";
 import { houseBody, type HouseTabsData, type HouseUi } from "../src/house-view";
 import { translate } from "../src/i18n";
 import { FakeHass } from "./helpers";
@@ -257,9 +257,9 @@ describe("the period picker", () => {
     expect(old.querySelector<HTMLButtonElement>("[data-step='back']")!.disabled).toBe(true);
   });
 
-  it("is shared by the three period tabs and not shown in Now", () => {
+  it("is shared by the period tabs (Price and battery shows days only) and not shown in Now", () => {
     const choice: PeriodChoice = { period: "month", date: "2026-10-01" };
-    for (const tab of ["flow", "graph", "price"] as const) {
+    for (const tab of ["flow", "graph"] as const) {
       expect(render(house(), { tab, choice }).querySelector("select[data-pick='month']")).not.toBeNull();
     }
     expect(render(house(), { tab: "now", choice }).querySelector("[data-step]")).toBeNull();
@@ -449,34 +449,32 @@ describe("the period tabs' content", () => {
     expect(niceStep(2.2, 3)).toBe(1);
   });
 
-  it("Price and battery: what the battery earned under one heading, as kr bars on the price chart's hours", () => {
+  it("Price and battery: the day's prices and the battery's plan, no kr bars and no earnings heading (Earnings has them)", () => {
     const answer = house();
     const day = history("villa_day.json");
-    const total = earnedTotal(day)!;
-    expect(total).toBeCloseTo(day.buckets.reduce((sum, bucket) => sum + (bucket.arbitrage ?? 0), 0));
     // The day's history on the house fixture's day, so its hours meet the chart's.
     const today = { ...day, date: "2026-11-13", buckets: day.buckets.map((bucket) => ({ ...bucket, key: `2026-11-13${bucket.key.slice(10)}` })) };
     const card = render(answer, { tab: "price" }, { history: { kind: "ready", answer: today } }, "sv");
     expect(card.querySelector(".spotnav-house-surface .spotnav-house-price-buy")).not.toBeNull();
-    expect(card.querySelector("[data-line='earned']")?.textContent).toBe("Batteriet tjänade 11 kr");
+    expect(card.querySelector("[data-line='earned']")).toBeNull();
     expect(card.querySelector("[data-line='earned-sub']")?.textContent).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade. · Elkostnad 38 kr");
-    // The kr bars share the chart's x-axis: as wide, the same plot edges, under it, and a tap on them is that hour.
-    const strip = card.querySelector<SVGSVGElement>(".spotnav-house-earned-strip")!;
-    const chart = card.querySelector<SVGSVGElement>(".spotnav-house-surface svg")!;
-    expect(strip.getAttribute("viewBox")!.split(" ")[2]).toBe(chart.getAttribute("viewBox")!.split(" ")[2]);
-    expect(strip.querySelector(".spotnav-house-period-part[data-series='cost']")).not.toBeNull();
-    expect(card.querySelector(".spotnav-house-earned-box")?.previousElementSibling?.classList.contains("spotnav-house-surface")).toBe(true);
-    // One hint only.
-    expect(card.textContent).not.toContain("Tryck på en stapel");
-    // A house without a battery: no kr bars.
-    const alone = history("house_alone_year.json");
-    expect(earnedBars(document, "en", alone, 120, (minor) => `${minor}`, null)).toBeNull();
-    // A year: a bar a month, its heading their sum.
-    const year = render(answer, { tab: "price", choice: { period: "year", date: null } }, { history: { kind: "ready", answer: history("villa_year.json") } }, "sv");
-    expect(year.querySelectorAll(".spotnav-house-pbar")).toHaveLength(12);
-    expect(year.querySelector("[data-line='earned']")?.textContent).toMatch(/^Batteriet tjänade /);
-    expect(year.querySelector("[data-line='earned-sub']")?.textContent).toMatch(/Elkostnad /);
-    expect(year.querySelector("[data-line='saving']")).toBeNull();
+    expect(card.querySelector(".spotnav-house-earned-strip")).toBeNull();
+    expect(card.querySelector(".spotnav-house-earned-box")).toBeNull();
+    // A tapped hour still says what the battery earned in it.
+    const surface = card.querySelector<HTMLElement>(".spotnav-house-surface")!;
+    const readouts: string[] = [];
+    for (let step = 0; step < 24; step += 1) {
+      surface.dispatchEvent(new KeyboardEvent("keydown", { key: step === 0 ? "Home" : "ArrowRight", bubbles: true }));
+      readouts.push(card.querySelector(".spotnav-readout")?.textContent ?? "");
+    }
+    expect(readouts.some((words) => /batteriet (tjänade|förlorade)|urladdat|laddat/.test(words))).toBe(true);
+    // Days only: a month or a year chosen elsewhere is the day inside it, and the picker offers no kinds.
+    const year = render(answer, { tab: "price", choice: { period: "year", date: null } }, { history: { kind: "ready", answer: today } }, "sv");
+    expect(year.querySelectorAll(".spotnav-house-pbar")).toHaveLength(0);
+    expect(year.querySelector("[data-kind]")).toBeNull();
+    expect(year.querySelector(".spotnav-house-surface .spotnav-house-price-buy")).not.toBeNull();
+    expect(dayOnly({ period: "month", date: "2026-10-01" }, "2026-11-13")).toEqual({ period: "day", date: "2026-10-01" });
+    expect(dayOnly({ period: "year", date: null }, "2026-11-13")).toEqual({ period: "day", date: null });
   });
 
   it("reads a history bucket from a backend before the kr bars and the prices as none", () => {
@@ -486,7 +484,6 @@ describe("the period tabs' content", () => {
     expect(decoded.ok).toBe(true);
     const older = decoded.ok ? decoded.value : null!;
     expect(older.buckets.every((bucket) => bucket.arbitrage === null && bucket.buy === null && bucket.sell === null)).toBe(true);
-    expect(earnedTotal(older)).toBeNull();
     expect(decodeHouseHistory({ ...raw, buckets: (raw["buckets"] as object[]).map((bucket) => ({ ...bucket, arbitrage: "1" })) }).ok).toBe(false);
   });
 });

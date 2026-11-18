@@ -518,109 +518,6 @@ function energyWords(language: Language, bucket: HouseBucket, when: string, seri
   return parts.join(" · ");
 }
 
-/** What the battery earned over the period (minor unit): the buckets' arbitrage summed; `null` with none. */
-export function earnedTotal(answer: HouseHistory): number | null {
-  const values = answer.buckets.map((bucket) => bucket.arbitrage).filter((value): value is number => value !== null);
-  return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0);
-}
-
-/** The kr bars of a month or a year, a bar a day or a month (see the module); `null` without a figure. `money` writes
- * an amount in the major unit. */
-export function earnedBars(
-  doc: Document,
-  language: Language,
-  answer: HouseHistory,
-  height: number,
-  money: (minor: number) => string,
-  selected: string | null,
-  onSelect?: (key: string | null) => void,
-): HTMLElement | null {
-  if (earnedTotal(answer) === null) {
-    return null;
-  }
-  const buckets = answer.buckets;
-  const bars: Bar[] = buckets.map((bucket, index) => {
-    const words = bucketWords(language, answer.period, bucket.key, index, buckets.length);
-    const value = bucket.arbitrage;
-    const flow = bucket.battery_flow === null ? null : flowWords(language, bucket.battery_flow, money);
-    return {
-      key: bucket.key,
-      lanes: value === null || value === 0 ? [] : [[{ series: value < 0 ? "cost" : "earned", value }]],
-      words:
-        flow !== null
-          ? `${words.when}: ${flow}`
-          : value === null
-            ? translate(language, "hist.house.barNone", { when: words.when })
-            : translate(language, value < 0 ? "house.value.barCost" : "house.value.bar", { when: words.when, amount: money(Math.abs(value)) }),
-      axis: words.axis,
-    };
-  });
-  return barChart({
-    doc,
-    label: translate(language, "house.value.label"),
-    bars,
-    height,
-    scale: (value) => money(value),
-    hint: translate(language, "hist.house.hint"),
-    selected,
-    ...(onSelect === undefined ? {} : { onSelect }),
-  });
-}
-
-/** The day's kr bars under its price chart, on the chart's own hours and x-axis (`left`, `right` its plot's edges in
- * the chart's units): what the battery earned each hour, up from the line, down where it lost; `null` per hour where
- * nothing is known. A strip with its own two figures (the most and the least) at the left. */
-export function earnedStrip(
-  doc: Document,
-  values: Array<number | null>,
-  geometry: { width: number; left: number; right: number },
-  height: number,
-  money: (minor: number) => string,
-): { element: SVGSVGElement; select: (index: number | null) => void } {
-  const { width, left, right } = geometry;
-  const root = svgOf(doc, "svg", { viewBox: `0 0 ${width} ${height}`, width, height, class: "spotnav-house-earned-strip", "aria-hidden": "true" });
-  const known = values.filter((value): value is number => value !== null);
-  const most = Math.max(0, ...known);
-  const least = Math.min(0, ...known);
-  const span = most - least > 0 ? most - least : 1;
-  const top = 4;
-  const usable = height - top - 2;
-  const zero = top + (most / span) * usable;
-  const slot = (right - left) / Math.max(1, values.length);
-  const marks: SVGRectElement[] = [];
-  values.forEach((value, index) => {
-    const highlight = svgOf(doc, "rect", { class: "spotnav-house-period-band", x: left + index * slot, y: 0, width: slot, height });
-    highlight.style.display = "none";
-    root.append(highlight);
-    marks.push(highlight);
-    if (value === null || value === 0) {
-      return;
-    }
-    const size = (Math.abs(value) / span) * usable;
-    const rect = svgOf(doc, "rect", {
-      class: "spotnav-house-period-part",
-      x: left + index * slot + Math.min(1, slot * 0.15),
-      y: value > 0 ? zero - size : zero,
-      width: Math.max(0.5, slot - 2 * Math.min(1, slot * 0.15)),
-      height: Math.max(0.5, size),
-      rx: 1.5,
-    });
-    rect.dataset["series"] = value < 0 ? "cost" : "earned";
-    root.append(rect);
-  });
-  root.append(svgOf(doc, "line", { class: "spotnav-house-earned-zero", x1: left, x2: right, y1: zero, y2: zero }));
-  if (most > 0) {
-    root.append(Object.assign(svgOf(doc, "text", { class: C.tickLabel, x: left - 4, y: top + 8, "text-anchor": "end" }), { textContent: money(most) }));
-  }
-  if (least < 0) {
-    root.append(Object.assign(svgOf(doc, "text", { class: C.tickLabel, x: left - 4, y: height - 2, "text-anchor": "end" }), { textContent: money(least) }));
-  }
-  return {
-    element: root,
-    select: (index) => marks.forEach((mark, at) => (mark.style.display = at === index ? "" : "none")),
-  };
-}
-
 export const PERIOD_VIEW_STYLES = `
   .${P.tiles} {
     display: grid;
@@ -783,15 +680,9 @@ export const PERIOD_VIEW_STYLES = `
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
   }
-  .spotnav-house-period-chart, .spotnav-house-earned-strip {
+  .spotnav-house-period-chart {
     display: block;
     overflow: visible;
-  }
-  .spotnav-house-earned-box {
-    margin-top: 2px;
-    touch-action: pan-y;
-    user-select: none;
-    -webkit-user-select: none;
   }
   .spotnav-house-period-part { fill: var(--spotnav-tile-colour); }
   .spotnav-house-period-band { fill: var(--secondary-background-color, rgba(127, 127, 127, 0.15)); opacity: 0.8; }
@@ -800,10 +691,6 @@ export const PERIOD_VIEW_STYLES = `
     stroke: var(--spotnav-sun-colour);
     stroke-width: 2;
     stroke-linejoin: round;
-  }
-  .spotnav-house-earned-zero {
-    stroke: var(--secondary-text-color, #727272);
-    stroke-width: 1;
   }
   .${P.key} .spotnav-house-key-line {
     height: 0;
