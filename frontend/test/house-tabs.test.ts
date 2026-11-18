@@ -582,7 +582,7 @@ describe("the card element's tabs", () => {
     again.remove();
   });
 
-  it("keeps the deep analysis in the history dialog: with Detailed on, the last days as the front once had them", async () => {
+  it("keeps the deep analysis in the details dialog, every section shown: the last days as the front once had them", async () => {
     const hass = new FakeHass();
     const element = await mount({}, hass);
     const root = element.shadowRoot!;
@@ -591,8 +591,7 @@ describe("the card element's tabs", () => {
     hass.resolveNext(read("house_history", "villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
     const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
-    expect(dialog.querySelector("[data-part='recent']")).toBeNull();
-    dialog.querySelector<HTMLButtonElement>("[data-detailed]")!.click();
+    expect(dialog.querySelector("[data-detailed]")).toBeNull();
     const recent = dialog.querySelector<HTMLElement>("[data-part='recent']")!;
     expect(recent.querySelector("h4")?.textContent).toBe(translate("en", "hist.house.recent"));
     expect(recent.querySelector("[data-part='modes'][data-view='perfect']")).not.toBeNull();

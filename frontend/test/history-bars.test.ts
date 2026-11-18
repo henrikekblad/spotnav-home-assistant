@@ -267,7 +267,8 @@ describe("what SpotNav saved in the house history", () => {
     expect(block.querySelector("[data-row='heat']")?.textContent).toContain("2 dygn");
     expect(block.querySelector("[data-row='battery']")).toBeNull();
     expect(rows.length).toBe(3);
-    expect(bar(body, "2026-11-12").getAttribute("aria-label") ?? bar(body, "2026-11-12").textContent).toContain("SpotNav sparade 3,3 kr");
+    // SpotNav's saving per part is the card's Earnings tab: a bar here says the cost against no battery alone.
+    expect(bar(body, "2026-11-12").getAttribute("aria-label")).toBe("tors 12 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,0 kr");
   });
 
   it("is left out without any part, and an older answer without it still decodes", () => {

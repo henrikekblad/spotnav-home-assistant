@@ -80,7 +80,7 @@ export interface HouseHandlers {
   /** The viewer hid or showed a series: the view's whole hidden list after the change. */
   onLegend?(view: HouseChartView, hidden: string[]): void;
   onSelect(index: number | null): void;
-  /** The clock in the header: the history dialog (`history-dialog.ts`). Without it the card has no clock. */
+  /** The "i" in the header: the details, the history dialog (`history-dialog.ts`). Without it the card has none. */
   onHistory?(opener: HTMLElement): void;
   /** An administrator's settings gear: the shared settings popover. Without it the card has no gear. */
   onSettings?(): void;
@@ -493,7 +493,7 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
   const status = test !== null ? test.status : now !== null && now !== "test" ? statusLine(doc, now.text, now.code) : null;
   const buttons: HTMLButtonElement[] = [];
   if (onHistory !== undefined) {
-    const button = headerButton(doc, "history", translate(language, "hist.open"));
+    const button = headerButton(doc, "info", translate(language, "house.details.open"));
     button.addEventListener("click", () => onHistory(button));
     buttons.push(button);
   }

@@ -210,10 +210,10 @@ export class SpotnavHouseCard extends HTMLElement {
         language: () => this.language ?? resolveLanguage(null),
         width: () => this.width,
         decode: decodeHouseHistory,
-        // With Detailed on, the analysis of the last days the front once kept behind "Show details".
+        // Under the period: the analysis of the last days the front once kept behind "Show details".
         body: (input) => {
           const body = houseHistoryBody(input);
-          if (input.ui.detailed && this.state.kind === "ready") {
+          if (this.state.kind === "ready") {
             const block = periodElement(input.doc, "section", VISUAL_CLASSES.historyTile);
             block.dataset["part"] = "recent";
             block.append(
@@ -223,10 +223,6 @@ export class SpotnavHouseCard extends HTMLElement {
             body.append(block);
           }
           return body;
-        },
-        flowHouse: (answer, back, kind) => {
-          const running = answer.today >= answer.date && answer.today < answer.end;
-          this.ensureLoads().open({ kind, period: answer.period, date: answer.date, running, ...apart(answer.energy_flow) }, null, back);
         },
       });
     }

@@ -1,15 +1,16 @@
-// The house card's history (`spotnav/get_house_history`): one day, month or year of the house, behind the clock in the
-// card's header. The decoded answer and the dialog's body: the bars of the period (what the house cost per hour, day or
-// month, with the battery's saving hatched on top), the energy flow summed from the backend's per-period flows, the money
-// (what the period cost, the battery against no battery, what the sun gave) and, with Detailed on, the battery's
-// modes side by side, the forecasts' errors and each reviewed day. Every figure is the backend's; text is written
+// The house card's history (`spotnav/get_house_history`): one day, month or year of the house, behind the "i" in the
+// card's header. The decoded answer and the dialog's body: the card's own period picker (`house-tabs.ts`), the bars
+// of the period (what the house cost per hour, day or month, with the battery's saving hatched on top: the comparison
+// the card's tabs do not have), the money (what the period cost, the battery against no battery, what the sun gave),
+// what SpotNav saved as sums (its bars are the card's Earnings tab), the battery's modes side by side, the forecasts'
+// errors and each reviewed day, every section shown. The energy flow is the card's own tab. Every figure is the backend's; text is written
 // with `textContent` only.
 
 import { dateLabel, formatFixed, formatNumber } from "./format";
-import { renderFlow } from "./house-flow";
 import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow, type PerfectFigures } from "./house-model";
 import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { amount } from "./house-view";
+import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -18,7 +19,6 @@ import {
   figureRow,
   note,
   periodBars,
-  periodNav,
   periodStart,
   section,
   statusLine,
@@ -465,9 +465,6 @@ function houseBars(input: HouseHistoryInput, answer: HouseHistory): HTMLElement 
         figures += ` (${translate(language, "hist.days", { days: String(item.battery_days) })})`;
       }
     }
-    if (item.saving !== null) {
-      figures += ` · ${translate(language, "hist.house.spotnav")} ${amount(language, item.saving, answer.money)}`;
-    }
     return {
       key: item.key,
       value: null,
@@ -483,30 +480,6 @@ function houseBars(input: HouseHistoryInput, answer: HouseHistory): HTMLElement 
     saving: translate(language, "hist.house.legend.saving"),
     extra: translate(language, "hist.house.legend.extra"),
   });
-}
-
-function flowSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElement | null {
-  const flow = answer.energy_flow;
-  if (flow === null) {
-    return null;
-  }
-  const { doc, language } = input;
-  const block = section(doc, translate(language, "hist.house.flow"), "energy-flow");
-  const onHouse = input.handlers.onFlowHouse?.bind(input.handlers) ?? null;
-  const diagram = renderFlow(doc, language, flow, Math.max(240, Math.floor(input.width) - 22), `${input.idPrefix}-history`, true, onHouse);
-  if (diagram === null) {
-    block.append(note(doc, translate(language, "hist.house.noEnergy"), "no-energy"));
-    return block;
-  }
-  block.append(diagram, note(doc, translate(language, flow.step_min < 60 ? "house.flow.ruleQuarter" : "house.flow.rule")));
-  if (flow.nodes.some((node) => node.role === "heat")) {
-    block.append(note(doc, translate(language, flow.heat_hours < flow.hours ? "house.flow.heatPart" : "house.flow.heatRule")));
-  }
-  if (onHouse !== null && diagram.querySelector(".spotnav-house-flow-action") !== null) {
-    const heat = diagram.querySelector(".spotnav-house-flow-action[data-role='heat']") !== null;
-    block.append(note(doc, translate(language, heat ? "house.loads.tapHeat" : "house.loads.tap"), "loads"));
-  }
-  return block;
 }
 
 function share(language: Language, part: number, whole: number): string {
@@ -733,7 +706,10 @@ export function houseHistoryBody(input: HouseHistoryInput): HTMLElement {
   const answer = state.kind === "ready" ? state.answer : state.kind === "failed" ? (state.answer ?? null) : null;
   const today = answer?.today ?? input.today;
   const shown = answer !== null && ui.date === null && answer.period === ui.period ? answer.date : ui.date ?? today;
-  body.append(periodNav(doc, language, ui, today, shown.length === 10 ? periodStart(ui.period, shown) : shown, input.handlers));
+  // The card's own period picker (`house-tabs.ts`), so a period is chosen the same way in both places.
+  const first = shown.length === 10 ? periodStart(ui.period, shown) : shown;
+  const choice: PeriodChoice = { period: ui.period, date: first >= periodStart(ui.period, today) ? null : first };
+  body.append(periodPicker(doc, language, choice, today, (next) => input.handlers.onPeriod(next.period, next.date)));
   if (state.kind === "loading") {
     body.append(statusLine(doc, language, "hist.loading"));
     return body;
@@ -752,16 +728,20 @@ export function houseHistoryBody(input: HouseHistoryInput): HTMLElement {
   if (shownAnswer.energy_flow === null && shownAnswer.buckets.length === 0) {
     period.append(note(doc, translate(language, "hist.house.noMeters"), "no-meters"));
   }
-  for (const part of [houseBars(input, shownAnswer), perfectSection(input, shownAnswer), flowSection(input, shownAnswer), moneySection(input, shownAnswer), spotnavSection(input, shownAnswer)]) {
+  // Every section is shown (the card itself is small now; nothing is behind a "Show details"). The energy flow is
+  // the card's own tab, and SpotNav's saving per part is drawn in its Earnings tab; here its sums stand as rows.
+  for (const part of [
+    houseBars(input, shownAnswer),
+    perfectSection(input, shownAnswer),
+    moneySection(input, shownAnswer),
+    spotnavSection(input, shownAnswer),
+    modesSection(input, shownAnswer),
+    perfectDetailsSection(input, shownAnswer),
+    forecastSection(input, shownAnswer),
+    daysSection(input, shownAnswer),
+  ]) {
     if (part !== null) {
       period.append(part);
-    }
-  }
-  if (ui.detailed) {
-    for (const part of [modesSection(input, shownAnswer), perfectDetailsSection(input, shownAnswer), forecastSection(input, shownAnswer), daysSection(input, shownAnswer)]) {
-      if (part !== null) {
-        period.append(part);
-      }
     }
   }
   body.append(period);

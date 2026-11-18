@@ -204,7 +204,7 @@ describe("the body", () => {
     expect(header.querySelector("h3.spotnav-name")!.textContent).toBe("Huset");
     expect(header.querySelector(".spotnav-visually-hidden")!.textContent).toBe("SpotNav");
     const buttons = [...header.querySelectorAll<HTMLButtonElement>(".spotnav-header-actions > button.spotnav-icon-button")];
-    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Historik", translate("sv", "popover.open")]);
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(["Detaljer", translate("sv", "popover.open")]);
     expect(buttons[1]!.dataset["action"]).toBe("settings");
     // No pill any more: the status is muted text after the name.
     expect(card.querySelector(".spotnav-house-chip")).toBeNull();
@@ -1370,7 +1370,7 @@ describe("the element", () => {
     expect(hass.liveMessages).toHaveLength(asked);
   });
 
-  it("asks only for today; the clock opens the history at the running month and steps by period", async () => {
+  it("asks only for today; the details open the history at the running month and step by period", async () => {
     const hass = new FakeHass();
     const element = mount({ type: "custom:spotnav-house-card", site: "site_villa" }, hass);
     await vi.advanceTimersByTimeAsync(0);
@@ -1393,8 +1393,11 @@ describe("the element", () => {
     expect(hass.messages[2]).toMatchObject({ period: "month", date: "2026-10-01" });
     hass.resolveNext(read("house_history/villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
-    dialog.querySelector<HTMLButtonElement>("button[data-period='day']")!.click();
+    dialog.querySelector<HTMLButtonElement>("button[data-kind='day']")!.focus();
+    dialog.querySelector<HTMLButtonElement>("button[data-kind='day']")!.click();
     await vi.advanceTimersByTimeAsync(0);
+    // The dialog is drawn anew; the focus stays on the kind chosen.
+    expect((root.activeElement as HTMLElement | null)?.dataset["kind"]).toBe("day");
     expect(hass.messages[3]).toMatchObject({ type: "spotnav/get_house_history", period: "day" });
     hass.resolveNext(read("house_history/villa_day.json"));
     await vi.advanceTimersByTimeAsync(0);
