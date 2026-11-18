@@ -31,6 +31,7 @@ SOLAREDGE_STATES = {
     "command_timeout": "3600",
 }
 HUAWEI_STATES = {"forcible": "Stopped", "discharge_power": "5000", "charge_power": "5000"}
+FERROAMP_STATES = {"command": "unknown"}
 SOLAX_STATES = {"power_control": "Disabled", "active_power": "0", "autorepeat": "0", "trigger": "unknown"}
 
 STEPS = {"charge_limit": 0.001, "discharge_limit": 0.001}
@@ -92,7 +93,10 @@ class FakeBattery:
             self.sent = dict(self.states)
         elif op.method == "service":
             value = str(op.value)
-            if value == "stop":
+            if brand == "ferroamp":
+                kind, _, power = value.partition(":")
+                self.states[op.role] = f"{kind} ({power})" if power else kind
+            elif value == "stop":
                 self.states[op.role] = "Stopped"
             else:
                 kind, _, power = value.partition(":")
@@ -114,7 +118,7 @@ class FakeBattery:
             mode = self.states["control_mode"]
             state = "free" if mode == "Remote Control" else "self_managed"
             return Management(state, "self_consumption", {"storage control mode": mode})
-        if brand == "huawei":
+        if brand in ("huawei", "ferroamp"):
             return Management("free", "self_consumption", {"working mode": "maximise_self_consumption"})
         mode = self.states["power_control"]
         state = "free" if mode == "Disabled" else "self_managed"

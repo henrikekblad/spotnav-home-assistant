@@ -1,0 +1,88 @@
+"""Ferroamp's control recipe (henricm/ha-ferroamp `b18097f`): the services, the read-back and the hand-back."""
+
+from __future__ import annotations
+
+import pytest
+
+from custom_components.spotnav.battery.adapters import FERROAMP, adapter_for
+from custom_components.spotnav.battery.commands import (
+    FERROAMP_CONTROL,
+    NORMAL,
+    SETPOINT_WRITES_UNSTATED,
+    control_for,
+    ferroamp_last_cmd,
+    service_call,
+    table,
+)
+from custom_components.spotnav.battery.executor import Executor
+from tests.battery_control_fakes import FERROAMP_STATES, T0, FakeBattery, run, written
+
+
+def test_the_recipe_is_in_the_table_and_covers_the_house_with_auto() -> None:
+    assert control_for("ferroamp") is not None and adapter_for("ferroamp") is FERROAMP
+    actions = {row["action"] for row in table() if row["brand"] == "ferroamp"}
+    assert actions == {"hold", "grid_charge", "discharge_house", "export_discharge", "self_consume"}
+    assert FERROAMP_CONTROL.wanted("discharge_house", 3.0)["command"] == "auto"
+    assert FERROAMP_CONTROL.write_cap("setpoint") == SETPOINT_WRITES_UNSTATED
+    assert FERROAMP_CONTROL.write_cap("setting") == 96
+    assert NORMAL["ferroamp"] == {"command": "auto"}
+
+
+def test_the_power_is_the_whole_systems_in_whole_500_w_steps() -> None:
+    assert FERROAMP_CONTROL.wanted("grid_charge", 3.2)["command"] == "charge:3000"
+    assert FERROAMP_CONTROL.wanted("export_discharge", 5.0)["command"] == "discharge:5000"
+    assert FERROAMP_CONTROL.wanted("hold", 0)["command"] == "charge:0"
+    assert control_for("ferroamp", "discharge_zero").wanted("hold", 0)["command"] == "discharge:0"
+
+
+def test_the_last_request_sensor_reads_as_a_comparable_value() -> None:
+    assert ferroamp_last_cmd("charge (1000)") == "charge:1000"
+    assert ferroamp_last_cmd("discharge (500)") == "discharge:500"
+    assert ferroamp_last_cmd("auto") == "auto"
+    assert ferroamp_last_cmd("unknown") == "auto" and ferroamp_last_cmd(None) == "auto"
+    assert ferroamp_last_cmd("unavailable") is None
+
+
+def test_the_services_take_the_hubs_device_as_target_and_a_request_has_no_duration() -> None:
+    services = FERROAMP_CONTROL.role("command").services
+    assert service_call("service", "sensor.x", "charge:3000", device_id="D", services=services) == (
+        "ferroamp", "charge", {"target": "D", "power": 3000}
+    )
+    assert service_call("service", "sensor.x", "discharge:0", device_id="D", services=services)[2] == {
+        "target": "D", "power": 0
+    }
+    assert service_call("service", "sensor.x", "auto", device_id="D", services=services) == (
+        "ferroamp", "autocharge", {"target": "D"}
+    )
+
+
+def test_a_charge_is_sent_and_handed_back_with_auto() -> None:
+    executor = Executor(FERROAMP_CONTROL)
+    battery = FakeBattery(FERROAMP_CONTROL, dict(FERROAMP_STATES))
+    now, results = run(executor, battery, T0, 4, "grid_charge", 3.0)
+    assert written(results) == [("command", "charge:3000")]
+    assert battery.states["command"] == "charge (3000)"
+    assert battery.writes[0].device_id == "DEVICE"
+    now, results = run(executor, battery, now, 4, "hold")
+    assert written(results) == [("command", "charge:0")]
+    _now, results = run(executor, battery, now, 6, "self_consume")
+    assert written(results) == [("command", "auto")]
+    assert ferroamp_last_cmd(battery.states["command"]) == "auto"
+
+
+def test_a_request_left_by_someone_else_is_not_overwritten() -> None:
+    executor = Executor(FERROAMP_CONTROL)
+    battery = FakeBattery(FERROAMP_CONTROL, {"command": "charge (2000)"})
+    _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0)
+    assert written(results) == []
+    assert executor.state.phase != "active"
+
+
+@pytest.mark.parametrize("action", ["hold", "grid_charge", "discharge_house", "export_discharge"])
+def test_every_action_ends_with_the_hub_back_on_auto(action: str) -> None:
+    executor = Executor(FERROAMP_CONTROL)
+    battery = FakeBattery(FERROAMP_CONTROL, dict(FERROAMP_STATES))
+    now, _ = run(executor, battery, T0, 8, action, 3.0)
+    assert executor.state.phase == "active"
+    run(executor, battery, now, 240, action, 3.0, stopping="stop")
+    assert executor.state.phase in ("idle", "blocked") and ferroamp_last_cmd(battery.states["command"]) == "auto"

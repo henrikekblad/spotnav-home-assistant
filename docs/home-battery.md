@@ -67,6 +67,21 @@ administrators can confirm, and never over the webhook. The entities per brand:
   control mode and AC charge policy.
 * Huawei: forcible charge/discharge write, maximum charging and discharging power.
 * SolaX: remote control autorepeat duration, active power, power control and trigger.
+* Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
+  discharge and autocharge services.
+
+**Ferroamp (EnergyHub), untested.** Control goes through the `ferroamp` integration's services (Ferroamp's MQTT API,
+which Ferroamp's support enables): a charge or discharge request with a power in watts for the whole system (steps of
+500 W), and `autocharge`, which hands the batteries back to the hub. A hold is a charge request of 0 W (the check also
+tries a discharge request of 0 W; neither is documented by Ferroamp, so the hub may refuse it), covering the house is
+`auto`, and every hand-back is `auto`. Things to know: the API has no timeout for a request, so a command stays if
+Home Assistant stops, and SpotNav caps a grid charge for that case as for Sigenergy; the integration reads nothing
+back but the last request seen on the bus, so only the battery's power shows whether the hub obeyed; the hub takes
+one request at a time and refuses a second while one is running; and SpotNav does not start while another request
+(Ferroamp's own app, an automation) is standing. The hub's ACE moves energy between the phases to keep each grid
+phase under the threshold set in EnergyCloud (set it at the main fuse). It runs inside the hub, but Ferroamp does not
+document whether it acts on a grid charge, so SpotNav counts the charge as spread evenly over the three phases, and
+the cap does not depend on ACE.
 
 **Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see

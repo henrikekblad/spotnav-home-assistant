@@ -61,6 +61,8 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("select", "remotecontrol_power_control"),
         ("button", "remotecontrol_trigger"),
     ),
+    # Nothing ships disabled in `ferroamp`; the sensor of the last request is the read-back.
+    "ferroamp": (("sensor", "last_cmd"),),
 }
 
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).

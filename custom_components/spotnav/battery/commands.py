@@ -101,6 +101,23 @@ The entity keys, options and services below were checked against each integratio
   sensor"), so it does not need Remote EMS, but it needs the plant's grid sensor. Its never-set all-ones value reads
   `unknown` as the battery limits do; it is restored as the plant's maximum output (`plant_max_active_power`), the most
   the plant can export anyway, and the export control is not started without that figure.
+* **Ferroamp**, `ferroamp`, henricm/ha-ferroamp `b18097f914abdc30d33beef0da1bdfd79674130f` (1.18.0, read 2026-11-18;
+  the ExtApi spec is Rev E, 2021-03): services `ferroamp.charge` and `ferroamp.discharge` (`power` W, the whole
+  system's, not per battery or phase; the service form's slider is 500-30000 W in steps of 500) and
+  `ferroamp.autocharge` (hands the batteries back to the hub), each with `target`, the EnergyHub's device id
+  (`__init__.py`, `services.yaml`). They publish to `extapi/control/request` and read nothing back; the sensor
+  `<slug>_ehub_last_cmd` (`sensor.py`, state `charge (1000)`, `discharge (500)` or `auto`, kept over a restart)
+  shows the last request on the topic, whoever sent it, and its attributes the hub's ack or nak, which SpotNav does
+  not read: the state proves only that a request was published, so the battery's power is what judges the effect
+  (`local_readback`). The spec documents no timeout for a request (nothing renews it, no watchdog is mapped) and
+  no value that holds: a hold is `charge` at 0 W, `discharge` at 0 W the second variant for the verification to try
+  (not verified on a hub; the hub may nak a 0). One request at a time: a new one while another runs is nak'd, so a
+  write can be dropped without an error. A discharge to the house is `auto`, the hub's own
+  strategy (`discharge` at a power may export); a person who has FerroAI or a peak-shaving strategy on in EnergyCloud
+  gets that strategy there. **ACE** (adaptive current equalisation) moves
+  energy between the phases in the hub to keep each grid phase under the threshold set in EnergyCloud; it runs in
+  the hub, but its reach (20 A per hub) and whether it acts on the batteries' own grid charge are not documented, so
+  the grid charge cap keeps the even split over three phases (`grid_charge_phases`) and does not count on ACE.
 * Victron, GoodWe, Enphase and brands without an adapter: **none**. (Victron's discharge cap is a setting stored on
   the GX; GoodWe's and Enphase's controls in core are whole-mode switches or a reserve trick, see
   `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
@@ -116,7 +133,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
-from .adapters import HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, Adapter, Match, _key
+from .adapters import FERROAMP, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, Adapter, Match, _key
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -451,6 +468,21 @@ def huawei_forcible(state: str | None) -> str | None:
     return f"{'charge' if found.group(1) == 'Charging' else 'discharge'}:{int(found.group(2))}"
 
 
+# --- Ferroamp's last request ---------------------------------------------------------------------------------
+
+_FERROAMP_RUN = re.compile(r"^(charge|discharge) \((\d+(?:\.\d+)?)\)$")
+
+
+def ferroamp_last_cmd(state: str | None) -> str | None:
+    """"charge (1000)" -> `charge:1000`, "auto" -> `auto`; a sensor that never saw a request ("unknown") reads
+    `auto`, the hub's own state; `None` for anything else (unavailable, a command not known)."""
+    text = "" if state is None else state.strip().lower()
+    if text in ("", "unknown", "none", "auto"):
+        return "auto"
+    found = _FERROAMP_RUN.match(text)
+    return None if found is None else f"{found.group(1)}:{int(float(found.group(2)))}"
+
+
 # --- the brands --------------------------------------------------------------------------------------------------
 
 _SIG_ENABLE = Role("remote_ems", "switch", _key("plant_remote_ems_enable", "switch"), restored=False)
@@ -746,15 +778,66 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
     " limit is restored as the plant's maximum output.",
 )
 
+_FA_CMD = Role(
+    "command", "service", _key("last_cmd"), scale=1000.0, step=500.0, restored=False,
+    services={"charge": "ferroamp.charge", "discharge": "ferroamp.discharge", "auto": "ferroamp.autocharge"},
+    normalize=ferroamp_last_cmd, write_class="setpoint",
+)
+
+
+def _fa(kind: str) -> Callable[[float, int], tuple[Want, ...]]:
+    def build(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+        return (Want("command", f"{kind}:{int(native(_FA_CMD, rate_kw))}"),)
+
+    return build
+
+
+#: Ferroamp's holds, in the order the verification tries them: a request of 0 W either way (neither is documented).
+FERROAMP_HOLDS: Final = (
+    HoldVariant("charge_zero", lambda _r, _w: (Want("command", "charge:0"),), ("command",), "charge at 0 W", idle=True),
+    HoldVariant(
+        "discharge_zero", lambda _r, _w: (Want("command", "discharge:0"),), ("command",), "discharge at 0 W", idle=True
+    ),
+)
+
+FERROAMP_CONTROL: Final = BrandControl(
+    brand="ferroamp",
+    adapter=FERROAMP,
+    roles=(_FA_CMD,),
+    states={
+        ACTION_HOLD: FERROAMP_HOLDS[0].build,
+        ACTION_GRID_CHARGE: _fa("charge"),
+        # The hub's own strategy covers the house from the battery: `discharge` at a power could export.
+        ACTION_DISCHARGE_HOUSE: lambda _r, _w: (Want("command", "auto"),),
+        ACTION_EXPORT_DISCHARGE: _fa("discharge"),
+    },
+    enter_order=("command",),
+    restore_order=("command",),
+    # Someone else's request left standing (Ferroamp's own app, an automation) is not overwritten.
+    requires=(("command", frozenset({"auto"}), "ferroamp_command_running"),),
+    peak_first={ACTION_HOLD: ("command",), ACTION_GRID_CHARGE: ("command",)},
+    local_readback=True,
+    # The hub's three phases take a charge evenly unless ACE moves it (see the module): no reliance on ACE.
+    grid_charge_phases=3,
+    hold_variants=FERROAMP_HOLDS,
+    variant=FERROAMP_HOLDS[0].name,
+    # The spec says nothing of how often a request may be sent, nor of a timeout: the moderate cap.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    note="Untested. A request stays until another one or `auto`; one request at a time, a second is nak'd.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
     "sigenergy": _SIGENERGY_NORMAL,
     "huawei": {"forcible": "stop"},
     "solax": {"trigger": True},
+    "ferroamp": {"command": "auto"},
 }
 
-CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL)
+CONTROLS: Final[tuple[BrandControl, ...]] = (
+    SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, FERROAMP_CONTROL,
+)
 
 
 #: The export-limit controls: only where the brand's adapter already knows the entity (`EXPORT_LIMIT_TABLE` lists
@@ -875,6 +958,9 @@ def service_call(
     if full is None:
         raise ValueError(f"no service for {kind!r}")
     domain, service = full.split(".", 1)
+    if domain == "ferroamp":
+        # `target` is the EnergyHub's device id; a request has no duration (nothing renews it).
+        return domain, service, {"target": device_id} | ({"power": int(power)} if kind != "auto" else {})
     data: dict[str, Any] = {"device_id": device_id}
     if kind != "stop":
         data |= {"power": int(power), "duration": max(1, min(1440, watchdog_s // 60))}
