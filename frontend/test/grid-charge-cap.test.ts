@@ -56,12 +56,12 @@ describe("the grid charge cap block", () => {
   it("says the days left to the first usable days while the cautious rule counts", () => {
     const learned = {
       ...fixture("checking.json")["status"].grid_charge_cap.learned,
-      ready: false, usable: false, extra_margin_a: null, days_counted: 5, days_left: 9,
+      ready: false, usable: false, extra_margin_a: null, days_counted: 9, days_spread: 5, days_left: 9,
     };
     expect(gridChargeCapLine("sv", status({ rule: "conservative", cap_kw: 0, learned }))).toBe(
       "Ingen laddning från nätet: huset kan nå säkringen själv (försiktigt tills de första dygnen är inlärda, 2 dygn kvar).",
     );
-    expect(gridChargeCapLine("en", status({ rule: "conservative", learned: { ...learned, days_counted: 6 } }))).toContain(
+    expect(gridChargeCapLine("en", status({ rule: "conservative", learned: { ...learned, days_spread: 6 } }))).toContain(
       "(cautious until the first days are learned, 1 day left)",
     );
   });
@@ -74,9 +74,19 @@ describe("the grid charge cap block", () => {
     expect(gridChargeCapLine("sv", status({ rule: "learning", cap_kw: 1.44, learned }))).toBe(
       "Högst 1,4 kW från nätet, så säkringen klarar sig även om Home Assistant stannar (medan husets toppar lärs in, 9 dygn kvar).",
     );
-    expect(gridChargeCapLine("en", status({ rule: "learning", cap_kw: 0, learned }))).toContain(
-      "(while the house's peaks are being learned, 9 days left)",
+    // No charge at all: one reason. The learning's margin where the learned peaks alone would leave a charge
+    // (the fixture's 3.2 kW), the house itself where they would not.
+    expect(gridChargeCapLine("en", status({ rule: "learning", cap_kw: 0, learned }))).toBe(
+      "No charging from the grid while the house's peaks are being learned (9 days left).",
     );
+    expect(gridChargeCapLine("sv", status({ rule: "learning", cap_kw: 0, cap_learned_kw: 0, learned }))).toBe(
+      "Ingen laddning från nätet: huset kan nå säkringen själv (inlärt per fas).",
+    );
+    for (const language of LANGUAGES) {
+      const line = gridChargeCapLine(language, status({ rule: "learning", cap_kw: 0, learned }));
+      expect(line, language).toMatch(/9/);
+      expect(line, language).not.toContain("{");
+    }
     for (const language of LANGUAGES) {
       const line = gridChargeCapLine(language, status({ rule: "learning", cap_kw: 1.44, learned }));
       expect(line, language).toMatch(/1[.,]4.*9/);

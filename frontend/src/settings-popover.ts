@@ -269,11 +269,18 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
     learned === null
       ? 0
       : cap.rule === "conservative"
-        ? Math.max(learned.days_min - learned.days_counted, 1)
+        ? Math.max(learned.days_min - learned.days_spread, 1)
         : cap.rule === "learning"
           ? learned.days_left
           : 0;
   const left = days > 0 ? days : null;
+  if (cap.rule === "learning" && cap.cap_kw === 0) {
+    // One reason, not two: the learning's further margin where the learned peaks alone would leave a charge, the
+    // house itself where they would not.
+    return cap.cap_learned_kw !== null && cap.cap_learned_kw > 0 && left !== null
+      ? translate(language, "battery.cap.zeroLearning", { left: daysLeft(language, left) })
+      : translate(language, "battery.cap.zero", { rule: translate(language, "battery.cap.rule.learned") });
+  }
   const rule = left === null ? words : `${words}, ${daysLeft(language, left)}`;
   return cap.cap_kw === 0
     ? translate(language, "battery.cap.zero", { rule })

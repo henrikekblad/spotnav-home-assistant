@@ -1674,6 +1674,7 @@
   "battery.cap.rule.learned": "per fase geleerd",
   "battery.cap.rule.conservative": "voorzichtig tot de eerste dagen zijn geleerd",
   "battery.cap.rule.learning": "terwijl de pieken van het huis worden geleerd",
+  "battery.cap.zeroLearning": "Niet laden uit het net terwijl de pieken van het huis worden geleerd ({left}).",
   "house.learning.cappedWhile": "Laden uit het net hoogstens {kw} kW terwijl de pieken van het huis worden geleerd ({left}).",
   "battery.note.aiModeBack": "Zet de AI-modus weer aan in de Sigenergy-app als je die terug wilt.",
   "battery.failed": "De batterijsturing kon niet worden gelezen.",

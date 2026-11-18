@@ -1674,6 +1674,7 @@
   "battery.cap.rule.learned": "opittu vaiheittain",
   "battery.cap.rule.conservative": "varovainen, kunnes ensimmäiset vuorokaudet on opittu",
   "battery.cap.rule.learning": "kun talon huippuja opetellaan",
+  "battery.cap.zeroLearning": "Ei latausta verkosta, kun talon huippuja opetellaan ({left}).",
   "house.learning.cappedWhile": "Lataus verkosta enintään {kw} kW, kun talon huippuja opetellaan ({left}).",
   "battery.note.aiModeBack": "Kytke AI-tila uudelleen päälle Sigenergy-sovelluksessa, jos haluat sen takaisin.",
   "battery.failed": "Akun ohjausta ei voitu lukea.",

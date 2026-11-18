@@ -1674,6 +1674,7 @@
   "battery.cap.rule.learned": "indlært pr. fase",
   "battery.cap.rule.conservative": "forsigtigt, indtil de første døgn er indlært",
   "battery.cap.rule.learning": "mens husets toppe læres",
+  "battery.cap.zeroLearning": "Ingen opladning fra nettet, mens husets toppe læres ({left}).",
   "house.learning.cappedWhile": "Opladning fra nettet højst {kw} kW, mens husets toppe læres ({left}).",
   "battery.note.aiModeBack": "Slå AI-tilstand til igen i Sigenergy-appen, hvis du vil have den tilbage.",
   "battery.failed": "Batteristyringen kunne ikke læses.",

@@ -1674,6 +1674,7 @@
   "battery.cap.rule.learned": "pro Phase gelernt",
   "battery.cap.rule.conservative": "vorsichtig, bis die ersten Tage gelernt sind",
   "battery.cap.rule.learning": "während die Spitzen des Hauses gelernt werden",
+  "battery.cap.zeroLearning": "Kein Laden aus dem Netz, während die Spitzen des Hauses gelernt werden ({left}).",
   "house.learning.cappedWhile": "Netzladung höchstens {kw} kW, während die Spitzen des Hauses gelernt werden ({left}).",
   "battery.note.aiModeBack": "Schalte den KI-Modus in der Sigenergy-App wieder ein, wenn du ihn zurückhaben willst.",
   "battery.failed": "Die Speichersteuerung konnte nicht gelesen werden.",

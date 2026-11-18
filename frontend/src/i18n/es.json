@@ -1674,6 +1674,7 @@
   "battery.cap.rule.learned": "aprendido por fase",
   "battery.cap.rule.conservative": "prudente hasta aprender los primeros días",
   "battery.cap.rule.learning": "mientras se aprenden los picos de la casa",
+  "battery.cap.zeroLearning": "Sin carga desde la red mientras se aprenden los picos de la casa ({left}).",
   "house.learning.cappedWhile": "Carga de la red como máximo a {kw} kW mientras se aprenden los picos de la casa ({left}).",
   "battery.note.aiModeBack": "Vuelve a activar el modo IA en la app de Sigenergy si quieres recuperarlo.",
   "battery.failed": "No se pudo leer el control de la batería.",
