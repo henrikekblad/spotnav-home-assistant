@@ -459,7 +459,7 @@ describe("the period tabs' content", () => {
     const card = render(answer, { tab: "price" }, { history: { kind: "ready", answer: today } }, "sv");
     expect(card.querySelector(".spotnav-house-surface .spotnav-house-price-buy")).not.toBeNull();
     expect(card.querySelector("[data-line='earned']")?.textContent).toBe("Batteriet tjänade 11 kr");
-    expect(card.querySelector("[data-line='earned-sub']")?.textContent).toBe("Samma mått som Sigenergy-appen. · Elkostnad 38 kr");
+    expect(card.querySelector("[data-line='earned-sub']")?.textContent).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade. · Elkostnad 38 kr");
     // The kr bars share the chart's x-axis: as wide, the same plot edges, under it, and a tap on them is that hour.
     const strip = card.querySelector<SVGSVGElement>(".spotnav-house-earned-strip")!;
     const chart = card.querySelector<SVGSVGElement>(".spotnav-house-surface svg")!;

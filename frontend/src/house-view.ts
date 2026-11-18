@@ -205,13 +205,10 @@ export function savingTotalLine(language: Language, answer: HouseAnswer): string
   return [head, ...parts.map((part) => translate(language, `house.saving.part.${part}`, { amount: bareAmount(language, saving[part]!) }))].join(" · ");
 }
 
-/** The brands whose own app is verified to show the same measure as the headline, by name in the hint. */
-const SAME_MEASURE_APPS: Record<string, string> = { sigenergy: "Sigenergy" };
-
-/** Under the headline: "the same measure as the Sigenergy app" for a brand verified to match, else what it counts. */
-export function todayHint(language: Language, answer: HouseAnswer): string {
-  const brand = SAME_MEASURE_APPS[answer.battery?.brand ?? ""];
-  return brand === undefined ? translate(language, "house.todayHint") : translate(language, "house.todayHintApp", { brand });
+/** Under the headline: what it counts. No maker's app is named as showing the same: a maker's app may count the
+ * battery's cash flow hour by hour (a charge as a cost when it happens), which this does not. */
+export function todayHint(language: Language, _answer: HouseAnswer): string {
+  return translate(language, "house.todayHint");
 }
 
 /** Under the headline: what the electricity bought cost, and the sun sold when it came to at least half a unit

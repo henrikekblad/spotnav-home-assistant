@@ -127,7 +127,9 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   can be compared before control is turned on. The would-be figure is never in the headline, a day not reviewed yet
   counts as it went, and a single day has it in words under the bars (today's comes the night after).
 * **Price and battery**: headed by what the battery earned in the period ("The battery earned 11 kr", its arbitrage, the
-  sum of the bars), with "The same measure as the Sigenergy app" and what the electricity cost under it. A day has the
+  sum of the bars), with what it counts ("What the battery gave back, at the price then, less what charging it cost") and what the
+  electricity cost under it. It is not the cash flow some battery apps show per hour, which books a charge as a cost when
+  it happens. A day has the
   buying price (every fee included) and the selling price per hour, with the battery's level on its own 0–100 % axis,
   dashed where it is planned; the hours the plan charges from the grid are tinted violet, those it sells more lightly.
   Under it, on the same hours and the same time axis, what the battery earned each hour as kr bars (below the line where

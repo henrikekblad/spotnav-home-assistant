@@ -251,7 +251,7 @@ describe("the tab", () => {
     const kept = render(old, { choice: { period: "day", date: "2026-11-15" } });
     expect(kept.querySelector("[data-part='earn-bars']")).toBeNull();
     expect(kept.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 7,4 kr");
-    expect(kept.querySelector("[data-line='earn-notes']")?.textContent).toMatch(/^Timvärden sparas i 40 dagar; den här dagen har bara sina summor\./);
+    expect(kept.querySelector("[data-line='earn-notes']")?.textContent).toMatch(/^Den här dagen saknar timvärden \(de sparas i 40 dagar\)\./);
   });
 
   it("says when there is nothing, is loading or failed, and drops its words in a box of fixed height", () => {

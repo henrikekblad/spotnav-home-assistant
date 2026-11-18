@@ -356,7 +356,7 @@ describe("the battery app's views, calm", () => {
     const tabs = { live: null, history: { kind: "ready" as const, answer: dayHistory() }, day: null, today: "2026-11-13" };
     const priced = houseBody({ doc: document, language: "sv", state: { kind: "ready", answer: answer() }, ui: { selected: null, tab: "price" }, handlers: { onSelect: vi.fn() }, width: 340, nowMs: NOW, idPrefix: "p", tabs });
     expect(priced.querySelector("[data-line='earned']")?.textContent).toBe("Batteriet tjänade 11 kr");
-    expect(priced.querySelector("[data-line='earned-sub']")?.textContent).toBe("Samma mått som Sigenergy-appen. · Elkostnad 38 kr");
+    expect(priced.querySelector("[data-line='earned-sub']")?.textContent).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade. · Elkostnad 38 kr");
     expect(card.querySelector("[data-line='earned']")).toBeNull();
     // The level is the schematic's in Now, the mode under it.
     expect(now.querySelector(".spotnav-house-sub")?.textContent).toBe("Läge Balanserad · inga livevärden än");
@@ -372,7 +372,7 @@ describe("the battery app's views, calm", () => {
       const card = houseBody({ doc: document, language: "en", state: { kind: "ready", answer: other }, ui: { selected: null, tab: "price" }, handlers: { onSelect: vi.fn() }, width: 340, nowMs: NOW, idPrefix: "p", tabs });
       expect(card.querySelector("[data-line='earned-sub']")?.textContent).toMatch(/^What the battery gave back, at the price then, less what charging it cost\./);
     }
-    expect(todayHint("en", value)).toBe("The same measure as the Sigenergy app.");
+    expect(todayHint("en", value)).toBe("What the battery gave back, at the price then, less what charging it cost.");
   });
 
   it("draw the energy in Energy chart and the price with the battery in Price and battery, no toggle in either", () => {
@@ -670,7 +670,7 @@ describe("a past day's answer", () => {
 
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.inForce", "house.compare.none", "house.compare.spotnav", "house.compare.own", "house.todayHint", "house.todayHintApp", "house.todayCost"] as const) {
+      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.inForce", "house.compare.none", "house.compare.spotnav", "house.compare.own", "house.todayHint", "house.todayCost"] as const) {
         expect(translate(language, key, { day: "d", days: "2", amount: "", mode: "" })).not.toBe(key);
       }
     }
