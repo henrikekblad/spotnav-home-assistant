@@ -31,6 +31,8 @@
    "cap_kw": 0.0,
    "rule": "conservative",
    "main_fuse_a": 20.0,
+   "cap_conservative_kw": 0.0,
+   "cap_learned_kw": 4.02,
    "learned": {
     "ready": false,
     "raw_a": null,
@@ -41,7 +43,14 @@
      "L2": 4.5,
      "L3": 12.2
     },
+    "usable": false,
+    "extra_margin_a": null,
     "days_counted": 0,
+    "days_min": 7,
+    "days_spread": 0,
+    "days_from_history": 0,
+    "days_from_history_dropped": 0,
+    "hours_from_history": 0,
     "days_needed": 14,
     "days_left": 14,
     "hours": 3,
