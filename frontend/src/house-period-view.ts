@@ -3,8 +3,10 @@
 // and battery tab: what the battery earned (its arbitrage, `HouseBucket.arbitrage`, the card's headline measure and
 // the one the battery's own app shows), under a day's price chart on its own hours, and per day or month alone.
 //
-// * The tiles are the energy flow's own blocks (`site/energy_flow.py`), so they add up with the diagram above them:
-//   sun, house, discharged, charged, bought, sold, and heat and car where the site has them.
+// * The tiles are the energy flow's own blocks (`site/energy_flow.py`): sun, house, discharged, charged, bought,
+//   sold, and heat and car where the site has them. They are shown only where the period has no diagram to carry the
+//   figures, and never one of 0 kWh.
+// * The Earnings tab's bars (`house-earnings.ts`) are these bars too, a stack per part.
 // * The bars are HTML buttons in one row with a single tab stop: the arrow keys, Home and End move between them, and
 //   hover, focus, a tap or a drag shows a bar's figures in the readout under them. A kr bar grows up from the zero
 //   line when the battery earned and down when it lost.
@@ -69,11 +71,15 @@ function node(flow: EnergyFlow, side: "source" | "use", role: string): number | 
   return found === undefined ? null : found.kwh;
 }
 
-/** The tiles of a period's energy flow (see the module); a part the site does not have is left out. */
+/** Below this (kWh) a tile's figure would read "0,0 kWh": it is left out. */
+export const MIN_TILE_KWH = 0.05;
+
+/** The tiles of a period's energy flow (see the module); a part the site does not have, or with no energy, is left
+ * out: never a tile of 0 kWh. */
 export function flowTiles(flow: EnergyFlow): Tile[] {
   const tiles: Tile[] = [];
   const add = (key: string, series: string, name: TranslationKey, kwh: number | null): void => {
-    if (kwh !== null) {
+    if (kwh !== null && kwh >= MIN_TILE_KWH) {
       tiles.push({ key, series, name, kwh });
     }
   };
@@ -88,10 +94,15 @@ export function flowTiles(flow: EnergyFlow): Tile[] {
   return tiles;
 }
 
-export function tilesBlock(doc: Document, language: Language, flow: EnergyFlow): HTMLElement {
+/** The tiles as a list; `null` with none to show. */
+export function tilesBlock(doc: Document, language: Language, flow: EnergyFlow): HTMLElement | null {
+  const tiles = flowTiles(flow);
+  if (tiles.length === 0) {
+    return null;
+  }
   const list = element(doc, "ul", P.tiles);
   list.dataset["part"] = "tiles";
-  for (const tile of flowTiles(flow)) {
+  for (const tile of tiles) {
     const item = element(doc, "li", P.tile);
     item.dataset["tile"] = tile.key;
     item.dataset["series"] = tile.series;

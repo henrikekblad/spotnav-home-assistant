@@ -153,6 +153,8 @@ export class SpotnavHouseCard extends HTMLElement {
   private settingsPopover: SettingsPopover | null = null;
   private historyDialog: HistoryDialog<HouseHistory> | null = null;
   private loadsPopover: LoadsPopover | null = null;
+  private pillProbe: SVGTextElement | null = null;
+  private readonly pillWidths = new Map<string, number>();
 
   constructor() {
     super();
@@ -660,6 +662,46 @@ export class SpotnavHouseCard extends HTMLElement {
     return true;
   }
 
+  /** The width of an energy flow pill's words as the card draws them (`house-flow.ts`): a hidden text in the card's
+   * own styles, kept; `null` where the browser cannot say (nothing laid out). */
+  private readonly pillMeasure = (words: string): number | null => {
+    const known = this.pillWidths.get(words);
+    if (known !== undefined) {
+      return known;
+    }
+    if (this.pillProbe === null) {
+      const doc = this.ownerDocument;
+      const holder = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+      holder.setAttribute("class", "spotnav-house-flow-chart spotnav-house-flow-probe");
+      holder.setAttribute("width", "0");
+      holder.setAttribute("height", "0");
+      holder.setAttribute("aria-hidden", "true");
+      this.pillProbe = doc.createElementNS("http://www.w3.org/2000/svg", "text");
+      this.pillProbe.setAttribute("class", "spotnav-house-flow-name");
+      holder.append(this.pillProbe);
+      this.layer.append(holder);
+    }
+    const probe = this.pillProbe as SVGTextElement & { getComputedTextLength?: () => number };
+    if (typeof probe.getComputedTextLength !== "function") {
+      return null;
+    }
+    probe.textContent = words;
+    let width = 0;
+    try {
+      width = probe.getComputedTextLength();
+    } catch {
+      return null;
+    }
+    if (!(width > 0)) {
+      return null;
+    }
+    if (this.pillWidths.size > 200) {
+      this.pillWidths.clear();
+    }
+    this.pillWidths.set(words, width);
+    return width;
+  };
+
   /** Draw again, unless the pointer is over the card: then once it leaves (a refresh, not a choice of the reader's). */
   private renderSoon(): void {
     if (this.hovering) {
@@ -773,6 +815,7 @@ export class SpotnavHouseCard extends HTMLElement {
         nowMs: Date.now(),
         idPrefix: this.idPrefix,
         entityWords: entityWordsOf(this.hassObject),
+        measure: this.pillMeasure,
         ...(tabs === undefined ? {} : { tabs }),
       }),
     );

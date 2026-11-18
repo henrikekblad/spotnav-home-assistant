@@ -3,6 +3,9 @@
 // energy, and a curved band from each source to each use as thick as the energy between them. Every figure is the
 // backend's (`site/energy_flow.py`, which states how the flows are allocated); this only places them.
 //
+// * Every block has its name and its share of the period's energy in a pill at its top ("Bil · 35 %"), one rule for
+//   a short and a tall block; a column grows as wide as its widest pill needs (measured by the card where it can),
+//   taking the width from the bands between the columns before any word is squeezed.
 // * A block is never shorter than `MIN_NODE` (its words must fit), the rest of the height is shared by energy; every
 //   band has one scale (the fullest block's), so a band is as thick at both ends, and a block made taller for its
 //   words holds its bands centred.
@@ -28,10 +31,17 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** The shortest block (px): the name's pill and one line. */
 export const MIN_NODE = 44;
-/** From this height a block has the kWh big and the share at its bottom. */
+/** From this height a block has the kWh big under its pill (and the battery's level at its bottom). */
 const TALL_NODE = 64;
 const PAD = 6;
 const PILL_H = 17;
+/** The room each side of the pill's words (px). */
+export const PILL_PAD = 8;
+/** The bands between the columns keep at least this share of the width, and this many px. */
+const BAND_SHARE = 0.22;
+const BAND_MIN = 56;
+/** A pill's words where they cannot be measured (px per character of the 12 px semi-bold name). */
+const NAME_CHAR_PX = 6.3;
 /** The height each block of the fuller side asks of the diagram. */
 const BLOCK_ROOM = 80;
 /** Blocks with less energy (kWh) are not drawn. */
@@ -59,6 +69,33 @@ export function flowHeight(width: number, blocks = 3): number {
 
 function nodeWidth(width: number): number {
   return Math.round(Math.min(120, Math.max(84, width * 0.27)));
+}
+
+/** The width of a pill's words (px) as drawn; `null` where it cannot be measured (the card measures real text). */
+export type PillMeasure = (words: string) => number | null;
+
+function wordsWidth(words: string, measure: PillMeasure | null): number {
+  const measured = measure?.(words) ?? null;
+  return measured !== null && measured > 0 ? measured : words.length * NAME_CHAR_PX;
+}
+
+/** The two columns' widths: each at least the usual one and wide enough for its widest pill with its padding, taken
+ * from the bands between them; where the bands would get too narrow both give way in proportion. */
+export function columnWidths(width: number, widestLeft: number, widestRight: number): [number, number] {
+  const usual = nodeWidth(width);
+  const want = (widest: number): number => Math.max(usual, Math.ceil(widest + 2 * PILL_PAD + 2 * PAD));
+  const left = want(widestLeft);
+  const right = want(widestRight);
+  const room = width - Math.max(BAND_MIN, width * BAND_SHARE);
+  if (left + right <= room) {
+    return [left, right];
+  }
+  const over = left + right - room;
+  const spare = left + right - 2 * usual;
+  if (spare <= 0) {
+    return [usual, usual];
+  }
+  return [Math.max(usual, Math.floor(left - (over * (left - usual)) / spare)), Math.max(usual, Math.floor(right - (over * (right - usual)) / spare))];
 }
 
 function svg<K extends keyof SVGElementTagNameMap>(doc: Document, name: K, attributes: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
@@ -142,6 +179,8 @@ export function renderFlow(
   onHouse: ((opener: HTMLElement, kind: LoadsKind) => void) | null = null,
   /** A height of its own (a box of fixed height gives its spare room); never below what the blocks' words need. */
   fitHeight: number | null = null,
+  /** The pills' words measured as drawn (the card's own); without it they are estimated. */
+  measure: PillMeasure | null = null,
 ): SVGSVGElement | null {
   const big = new Set(flow.nodes.filter((node) => node.kwh >= MIN_SHOWN_KWH).map((node) => node.id));
   const linked = new Set(flow.links.filter((link) => link.kwh > 0 && big.has(link.from) && big.has(link.to)).flatMap((link) => [link.from, link.to]));
@@ -153,12 +192,16 @@ export function renderFlow(
   }
   const blocks = Math.max(sources.length, uses.length);
   const height = fitHeight === null ? flowHeight(width, blocks) : Math.round(Math.max(fitHeight, blocks * (MIN_NODE + GAP) + GAP));
-  const nodeW = nodeWidth(width);
   const left = place(sources, height);
   const right = place(uses, height);
   const total = sources.reduce((sum, node) => sum + node.kwh, 0);
   // A past day's battery level is the one at its end, not now.
   const labels = flowLabels(language, total, past);
+  // Every block's pill says its name and its share; a column is as wide as its widest pill needs.
+  const pillWords = (node: FlowNode): string => `${roleWord(language, node.role)} · ${labels.share(node.kwh)}`;
+  const pillWidths = new Map<string, number>(shown.map((node) => [node.id, wordsWidth(pillWords(node), measure)]));
+  const widest = (nodes: FlowNode[]): number => Math.max(0, ...nodes.map((node) => pillWidths.get(node.id) ?? 0));
+  const [leftW, rightW] = columnWidths(width, widest(sources), widest(uses));
   const root = svg(doc, "svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", class: "spotnav-house-flow-chart" });
   root.setAttribute(
     "aria-label",
@@ -199,8 +242,8 @@ export function renderFlow(
       }
     }
   }
-  const x0 = nodeW;
-  const x1 = width - nodeW;
+  const x0 = leftW;
+  const x1 = width - rightW;
   const mid = (x0 + x1) / 2;
   links.forEach((link, index) => {
     const [a0, a1] = outAt.get(link)!;
@@ -231,9 +274,9 @@ export function renderFlow(
     path.append(title);
     bands.append(path);
   });
-  for (const [placedMap, x] of [
-    [left, 0],
-    [right, x1],
+  for (const [placedMap, x, nodeW] of [
+    [left, 0, leftW],
+    [right, x1, rightW],
   ] as const) {
     for (const { node, y, h } of placedMap.values()) {
       const group = svg(doc, "g", { class: "spotnav-house-flow-node", "data-role": node.role, "data-side": node.side });
@@ -248,26 +291,27 @@ export function renderFlow(
         created.textContent = words;
         group.append(created);
       };
-      // The name in its own lighter pill at the top; in a short block the pill (name · share) and the kWh under it
-      // are centred, in a tall one the pill sits a margin from the top, the kWh big below it (smaller from 1 000 kWh)
-      // and the share a margin from the bottom.
+      // The name and the share in a lighter pill at the top, with room each side of the words; in a short block the
+      // pill and the kWh under it are centred, in a tall one the pill sits a margin from the top with the kWh big
+      // below it (smaller from 1 000 kWh) and the battery's level a margin from the bottom.
       const short = h < TALL_NODE;
       const top = short ? y + (h - (PILL_H + 4 + 12)) / 2 : y + PAD;
       const pill = svg(doc, "rect", { x: x + PAD, y: top.toFixed(1), width: nodeW - 2 * PAD, height: PILL_H, rx: PILL_H / 2, class: "spotnav-house-flow-pill" });
       group.append(pill);
-      text("name", short ? `${name} · ${labels.share(node.kwh)}` : name, x + nodeW / 2, top + PILL_H - 5, "middle");
+      text("name", pillWords(node), x + nodeW / 2, top + PILL_H - 5, "middle");
+      // Words still wider than the pill's room (the columns could not grow more) are drawn narrower, never clipped.
+      const pillRoom = nodeW - 2 * PAD - 2 * PILL_PAD;
+      if ((pillWidths.get(node.id) ?? 0) > pillRoom) {
+        const words = group.lastElementChild!;
+        words.setAttribute("textLength", pillRoom.toFixed(1));
+        words.setAttribute("lengthAdjust", "spacingAndGlyphs");
+      }
       if (short) {
         text("share", labels.kwh(node.kwh), x + PAD + 1, top + PILL_H + 4 + 10);
       } else {
         text(node.kwh >= 1000 ? "value-long" : "value", labels.kwh(node.kwh), x + PAD + 1, top + PILL_H + 19);
-        const bottom = y + h - PAD - 1;
-        if (node.soc_pct === null) {
-          text("share", labels.share(node.kwh), x + PAD + 1, bottom);
-        } else if (h >= TALL_NODE + 18) {
-          text("share", labels.soc(node.soc_pct), x + PAD + 1, bottom - 14);
-          text("share", labels.share(node.kwh), x + PAD + 1, bottom);
-        } else {
-          text("share", `${labels.share(node.kwh)} · ${labels.soc(node.soc_pct)}`, x + PAD + 1, bottom);
+        if (node.soc_pct !== null) {
+          text("share", labels.soc(node.soc_pct), x + PAD + 1, y + h - PAD - 1);
         }
       }
       const title = svg(doc, "title");

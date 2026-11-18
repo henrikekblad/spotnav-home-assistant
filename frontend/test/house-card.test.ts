@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
-import { blockHeights, flowHeight, flowLabels, MIN_BAND, MIN_NODE } from "../src/house-flow";
+import { blockHeights, columnWidths, flowHeight, flowLabels, MIN_BAND, MIN_NODE, PILL_PAD, renderFlow } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { amount, heatLine, hourFigures, houseBody, houseDetails, learningLines, withPrices, type Loadable, reviewLine, savingLine, savingTotalLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
@@ -1048,10 +1048,10 @@ describe("today's energy flow", () => {
     expect(nodes).toEqual(["source:solar", "source:battery", "source:grid", "use:battery", "use:house", "use:heat", "use:car", "use:grid"]);
     expect(svgRoot.querySelectorAll(".spotnav-house-flow-band")).toHaveLength(answer().energy_flow!.links.length);
     const grid = svgRoot.querySelector(".spotnav-house-flow-node[data-role='grid'][data-side='source']")!;
-    expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät", "76,9 kWh", "83 %"]);
+    // One rule for a tall block and a short one: the share in the name's pill, never at the block's bottom.
+    expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät · 83 %", "76,9 kWh"]);
     expect(grid.querySelector(".spotnav-house-flow-pill")).not.toBeNull();
     const sun = svgRoot.querySelector(".spotnav-house-flow-node[data-role='solar']")!;
-    // A short block puts its share in the name's pill and the energy alone under it.
     expect(Array.from(sun.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Sol · 8 %", "7,5 kWh"]);
     const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
     expect(battery.textContent).toContain("nu 48 %");
@@ -1099,6 +1099,43 @@ describe("today's energy flow", () => {
     const today = flowBody({ ...value, energy_flow: empty }, {}, "sv").querySelector("[data-part='energy-flow']")!;
     expect(today.querySelector("svg")).toBeNull();
     expect(today.textContent).toContain("Dagens energiflöde visas när de första fem minuterna är inne.");
+  });
+
+  it("grows a column as wide as its widest pill needs, from the bands, and gives the pill's words room each side", () => {
+    // The usual width holds a short pill; a wider one grows its own column alone.
+    const [usualLeft, usualRight] = columnWidths(328, 40, 40);
+    expect(usualLeft).toBe(usualRight);
+    const [left, right] = columnWidths(328, 40, 96);
+    expect(left).toBe(usualLeft);
+    expect(right).toBe(96 + 2 * PILL_PAD + 12);
+    // The bands keep their share of the width: two very wide columns give way in proportion, never below the usual.
+    const [tightLeft, tightRight] = columnWidths(328, 160, 160);
+    expect(tightLeft + tightRight).toBeLessThanOrEqual(328 * 0.78);
+    expect(tightLeft).toBeGreaterThanOrEqual(usualLeft);
+    // Drawn: the pill's words are measured as drawn (here 7 px a character), and the pill is wider than them by the
+    // padding each side; words the column cannot hold are squeezed, never clipped.
+    const flow = answer().energy_flow!;
+    const measure = (words: string): number => words.length * 7;
+    const drawn = renderFlow(document, "sv", flow, 328, "t", false, null, null, measure)!;
+    for (const node of Array.from(drawn.querySelectorAll(".spotnav-house-flow-node"))) {
+      const pill = node.querySelector(".spotnav-house-flow-pill")!;
+      const name = node.querySelector(".spotnav-house-flow-name")!;
+      expect(name.textContent).toMatch(/ · \d+ %$/);
+      expect(Number(pill.getAttribute("width"))).toBeGreaterThanOrEqual(measure(name.textContent!) + 2 * PILL_PAD - 0.01);
+      expect(name.hasAttribute("textLength")).toBe(false);
+      // The share is in the pill alone: no other text of the block is a bare percentage.
+      expect(Array.from(node.querySelectorAll("text")).filter((text) => /^\d+ %$/.test(text.textContent ?? ""))).toHaveLength(0);
+    }
+    const uses = Array.from(drawn.querySelectorAll<SVGRectElement>(".spotnav-house-flow-node[data-side='use'] .spotnav-house-flow-block"));
+    const sources = Array.from(drawn.querySelectorAll<SVGRectElement>(".spotnav-house-flow-node[data-side='source'] .spotnav-house-flow-block"));
+    // "Batteri · 41 %" (14 characters) is the widest on the right: that column is the wider one.
+    expect(Number(uses[0]!.getAttribute("width"))).toBe(14 * 7 + 2 * PILL_PAD + 12);
+    expect(Number(sources[0]!.getAttribute("width"))).toBeLessThan(Number(uses[0]!.getAttribute("width")));
+    expect(Number(uses[0]!.getAttribute("x"))).toBe(328 - Number(uses[0]!.getAttribute("width")));
+    const squeezed = renderFlow(document, "sv", flow, 328, "t", false, null, null, (words) => words.length * 20)!;
+    expect(squeezed.querySelector(".spotnav-house-flow-name")?.getAttribute("lengthAdjust")).toBe("spacingAndGlyphs");
+    // Without a measure (nothing laid out) the words are estimated and the diagram is still drawn.
+    expect(renderFlow(document, "sv", flow, 328, "t", false, null, null, () => null)).not.toBeNull();
   });
 
   it("keeps a month's or a year's figures narrow: no decimal from 100 kWh, a smaller figure from 1 000 kWh", () => {

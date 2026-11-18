@@ -9,9 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOUSE_CARD_ELEMENT, houseConfigForm, LIVE_REFRESH_MS, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { decodeHouseNow, dotLap, fitName, patchSchematic, planRuns, planSentence, renderSchematic, schematicLines, type HouseNow } from "../src/house-now";
-import { earnedBars, earnedTotal, energyChart, flowTiles, niceStep } from "../src/house-period-view";
-import { choiceLabel, kindChoice, periodPicker, readTab, stepChoice, tabForKey, tabKey, tabList, writeTab, type PeriodChoice } from "../src/house-tabs";
+import { decodeHouseNow, dotLap, fitName, nodeSpots, NOW_STYLES, patchSchematic, planRuns, planSentence, renderSchematic, schematicHeight, schematicLines, type HouseNow } from "../src/house-now";
+import { earnedBars, earnedTotal, energyChart, flowTiles, niceStep, tilesBlock } from "../src/house-period-view";
+import { choiceLabel, fitTabs, kindChoice, periodPicker, readTab, setTabFit, stepChoice, tabForKey, tabKey, tabList, writeTab, type PeriodChoice } from "../src/house-tabs";
 import { houseBody, type HouseTabsData, type HouseUi } from "../src/house-view";
 import { translate } from "../src/i18n";
 import { FakeHass } from "./helpers";
@@ -326,22 +326,42 @@ describe("Now", () => {
 });
 
 describe("the period tabs' content", () => {
-  it("Energy flow: today's flow from the card's answer with a tile per block; another period from the history", () => {
+  it("Energy flow: today's flow from the card's answer; tiles only where no diagram can be drawn, never one of 0 kWh", () => {
     const answer = house();
     const today = render(answer, { tab: "flow" }, {}, "sv");
     expect(today.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
-    const tiles = Array.from(today.querySelectorAll<HTMLElement>("[data-tile]")).map((tile) => `${tile.dataset["tile"]}:${tile.textContent}`);
+    // The diagram carries the figures: no tiles under it.
+    expect(today.querySelector("[data-tile]")).toBeNull();
+    const tiles = Array.from(tilesBlock(document, "sv", answer.energy_flow!)!.querySelectorAll<HTMLElement>("[data-tile]")).map((tile) => `${tile.dataset["tile"]}:${tile.textContent}`);
     expect(tiles).toEqual(["sun:7,5 kWhSol", "house:16,7 kWhHus", "discharged:8,6 kWhUrladdat", "charged:38,0 kWhLaddat", "bought:76,9 kWhKöpt", "sold:0,1 kWhSålt", "heat:12,6 kWhVärme", "car:25,5 kWhBil"]);
+    // A morning with nothing yet between two blocks to draw: no diagram, so the tiles carry what there is, and a
+    // part with no energy has none.
+    const flow = answer.energy_flow!;
+    const early = {
+      ...answer,
+      energy_flow: {
+        ...flow,
+        nodes: flow.nodes.map((node) => ({ ...node, kwh: node.role === "house" ? 0.3 : node.role === "grid" && node.side === "source" ? 0.3 : node.role === "heat" ? 0.04 : 0 })),
+        links: [],
+      },
+    };
+    const waiting = render(early, { tab: "flow" }, {}, "sv");
+    expect(waiting.querySelector("[data-part='energy-flow'] svg")).toBeNull();
+    expect(Array.from(waiting.querySelectorAll<HTMLElement>("[data-tile]")).map((tile) => `${tile.dataset["tile"]}:${tile.textContent}`)).toEqual(["house:0,3 kWhHus", "bought:0,3 kWhKöpt"]);
+    const nothing = { ...early, energy_flow: { ...early.energy_flow, nodes: early.energy_flow.nodes.map((node) => ({ ...node, kwh: 0 })) } };
+    expect(render(nothing, { tab: "flow" }, {}, "sv").querySelector("[data-part='tiles']")).toBeNull();
+    expect(tilesBlock(document, "sv", nothing.energy_flow)).toBeNull();
     const month = history("villa_month.json");
     const loading = render(answer, { tab: "flow", choice: { period: "month", date: null } }, { history: { kind: "loading" } });
     expect(loading.querySelector("[data-line='loading']")?.getAttribute("aria-busy")).toBe("true");
     const shown = render(answer, { tab: "flow", choice: { period: "month", date: null } }, { history: { kind: "ready", answer: month } });
-    expect(shown.querySelectorAll("[data-tile]")).toHaveLength(flowTiles(month.energy_flow!).length);
+    expect(shown.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
+    expect(shown.querySelector("[data-tile]")).toBeNull();
     const failed = render(answer, { tab: "flow", choice: { period: "month", date: null } }, { history: { kind: "failed", code: "unknown_command" } });
     expect(failed.querySelector("[data-line='failed']")?.textContent).toBe(translate("en", "hist.unsupported"));
-    // A house alone has no sun, battery or heat tile.
+    // A house alone has no sun, battery or heat tile, and none for what it neither sold nor charged.
     const alone = history("house_alone_year.json");
-    expect(flowTiles(alone.energy_flow!).map((tile) => tile.key)).toEqual(["house", "bought", "sold", "car"]);
+    expect(flowTiles(alone.energy_flow!).map((tile) => tile.key)).toEqual(["house", "bought"]);
   });
 
   it("Energy chart: today's hours with the forecast, a month by the day and a year by the month", () => {
@@ -495,7 +515,7 @@ describe("the card element's tabs", () => {
     expect(hass.messages[1]).toEqual({ type: "spotnav/get_house_history", api_version: 1, site_id: "site_villa", period: "month" });
     hass.resolveNext(read("house_history", "villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(root.querySelectorAll("[data-tile]").length).toBeGreaterThan(0);
+    expect(root.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
     // The period stays chosen across the tabs, read once.
     root.querySelector<HTMLButtonElement>("[role='tab'][data-tab='graph']")!.click();
     await vi.advanceTimersByTimeAsync(0);
