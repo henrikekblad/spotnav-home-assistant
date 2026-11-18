@@ -34,6 +34,7 @@ from custom_components.spotnav.heat.review import review_day
 from custom_components.spotnav.heat.rooms import SensorReading, indoor
 from custom_components.spotnav.heat.indoor_day import LIVE_STEP_MIN, indoor_day
 from custom_components.spotnav.heat.view import (
+    AHEAD_HOUR_KEYS,
     BAND_HOUR_KEYS,
     HEAT_KEYS,
     HeatViewInputs,
@@ -454,3 +455,23 @@ def test_the_villa_has_its_indoor_curve_up_to_now() -> None:
     assert before["coldest"] == "sensor.toalett_nv_temperatur"
     assert curve["rooms"][0] == {"entity_id": "sensor.inomhus_kok_temperatur", "name": "Inomhus kök temperatur"}
     assert villa_answer(indoor_day=None)["indoor_day"] is None
+
+
+def test_the_hours_ahead_end_at_midnight_until_tomorrow_has_its_prices() -> None:
+    """The strip under the dial: the plan from the running hour on. Today's hours are the band's own; tomorrow's are
+    planned only once every hour of tomorrow is priced."""
+    answer = villa_answer()
+    ahead = answer["ahead"]
+    assert all(tuple(hour) == AHEAD_HOUR_KEYS for hour in ahead)
+    band_ahead = [hour for hour in answer["band"]["hours"] if not hour["past"]]
+    assert [hour["start"] for hour in ahead] == [hour["start"] for hour in band_ahead]
+    assert len(ahead) == 7 and ahead[0]["start"] == (MIDNIGHT + timedelta(hours=17)).isoformat()
+    assert [(hour["action"], hour["target_c"]) for hour in ahead] == [(hour["action"], hour["target_c"]) for hour in band_ahead]
+    two_days = _slots() + tuple(
+        (start + timedelta(days=1), end + timedelta(days=1), price) for start, end, price in _slots()
+    )
+    longer = villa_answer(prices=two_days)["ahead"]
+    assert len(longer) == 12
+    assert [hour["start"] for hour in longer] == [(MIDNIGHT + timedelta(hours=17 + index)).isoformat() for index in range(12)]
+    # The cooler night runs on past midnight, and tomorrow has no hot water of its own yet.
+    assert longer[7]["action"] == "night" and all(not hour["hot_water"] for hour in longer[7:])

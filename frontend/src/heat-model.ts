@@ -256,6 +256,7 @@ const ANSWER = O({
       raise_until: N("string"),
     }),
   ),
+  ahead: A(O({ start: "string", action: "string", target_c: "number", reason: "string", hot_water: "boolean" })),
 });
 
 const WRITE = O({
@@ -316,6 +317,15 @@ export interface HeatBandHour {
   executed_min: number | null;
   /** Minutes SpotNav held SG Ready's second contact (B, the raise) closed; `null` where the pump cannot be raised. */
   raised_min: number | null;
+}
+
+export interface HeatAheadHour {
+  start: string;
+  startMs: number;
+  action: string;
+  target_c: number;
+  reason: string;
+  hot_water: boolean;
 }
 
 export interface HeatEffect {
@@ -462,6 +472,9 @@ export interface HeatAnswer {
   relay: HeatRelay | null;
   review: HeatReview | null;
   control: HeatControl | null;
+  /** The plan from the running hour on, twelve hours at most (the strip under the dial); it ends at midnight until
+   * tomorrow has its prices. */
+  ahead: HeatAheadHour[];
 }
 
 export interface HeatWriteAnswer {
@@ -504,7 +517,15 @@ export function decodeHeat(raw: unknown): Decoded<HeatAnswer> {
     }
     hours.push({ ...hour, startMs: ms });
   }
-  return { ok: true, value: { ...answer, band: { ...answer.band, hours } } };
+  const ahead: HeatAheadHour[] = [];
+  for (const hour of answer.ahead) {
+    const ms = instant(hour.start);
+    if (ms === null) {
+      return { ok: false, failure: "malformed" };
+    }
+    ahead.push({ ...hour, startMs: ms });
+  }
+  return { ok: true, value: { ...answer, band: { ...answer.band, hours }, ahead } };
 }
 
 /** `spotnav/update_heat`'s answer, or why it cannot be read. */
