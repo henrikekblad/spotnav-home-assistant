@@ -23,6 +23,8 @@ ERROR_CHARGER_UNLOADED: Final = "spotnav_charger_unloaded"
 ERROR_NOT_ADMIN: Final = "spotnav_not_admin"
 ERROR_UNKNOWN_SITE: Final = "spotnav_unknown_site"
 ERROR_NO_SITE: Final = "spotnav_no_site"
+#: A write the webhook's secret may never make (a control opt-in: load balancing, battery control, heat control).
+ERROR_NOT_PERMITTED_OVER_WEBHOOK: Final = "spotnav_not_permitted_over_webhook"
 
 
 def unsupported_version_text(speaks: int) -> str:

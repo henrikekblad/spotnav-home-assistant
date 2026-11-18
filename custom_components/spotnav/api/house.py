@@ -743,6 +743,25 @@ def house_answer(
     )
 
 
+async def async_house_answer(hass: HomeAssistant, site: Any, date_raw: Any = None) -> dict[str, Any]:
+    """The whole read for one site and day (the WebSocket command and the webhook's `get_house` alike): the cached
+    reads, then `house_answer`. A `PowerMonthRefusal` for a request it cannot honour."""
+    controller = site_controller_for(hass, site.entry_id)
+    flow = day = soc = car = saving = None
+    heat: dict[datetime, float] = {}
+    if site.state is ConfigEntryState.LOADED and controller is not None:
+        day = requested_day(date_raw, controller.demand.now(), controller.demand.tracker.tz)
+        read = await _or_none(async_cached_day_flow(hass, site.entry_id, controller, day), "energy flow")
+        periods = () if read is None else read.periods
+        flow = None if read is None else read.flow
+        soc = await _or_none(async_cached_recorded_soc(hass, site.entry_id, controller, day), "recorded SoC")
+        car = await _or_none(async_cached_car_hours(hass, site.entry_id, controller, day, periods), "cars' hours")
+        tz = controller.demand.tracker.tz
+        heat = hour_figures(periods, "heat", lambda m: hour_start(m, tz))
+        saving = await _or_none(async_saving(hass, site.entry_id, controller, day), "saving")
+    return house_answer(hass, site, flow, day, soc, car, heat, saving)
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "spotnav/get_house",
@@ -762,21 +781,7 @@ async def websocket_get_house(
         send_unsupported_version(connection, msg, HOUSE_API_VERSION)
         return
     try:
-        site = _site_of_request(hass, msg)
-        controller = site_controller_for(hass, site.entry_id)
-        flow = day = soc = car = saving = None
-        heat: dict[datetime, float] = {}
-        if site.state is ConfigEntryState.LOADED and controller is not None:
-            day = requested_day(msg.get("date"), controller.demand.now(), controller.demand.tracker.tz)
-            read = await _or_none(async_cached_day_flow(hass, site.entry_id, controller, day), "energy flow")
-            periods = () if read is None else read.periods
-            flow = None if read is None else read.flow
-            soc = await _or_none(async_cached_recorded_soc(hass, site.entry_id, controller, day), "recorded SoC")
-            car = await _or_none(async_cached_car_hours(hass, site.entry_id, controller, day, periods), "cars' hours")
-            tz = controller.demand.tracker.tz
-            heat = hour_figures(periods, "heat", lambda m: hour_start(m, tz))
-            saving = await _or_none(async_saving(hass, site.entry_id, controller, day), "saving")
-        answer = house_answer(hass, site, flow, day, soc, car, heat, saving)
+        answer = await async_house_answer(hass, _site_of_request(hass, msg), msg.get("date"))
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return

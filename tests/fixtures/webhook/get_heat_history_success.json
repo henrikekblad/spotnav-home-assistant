@@ -1,0 +1,37 @@
+{
+  "action": "get_heat_history",
+  "api_version": 1,
+  "buckets": [],
+  "comfort": {
+    "coldest": null,
+    "hours": 0,
+    "hours_below": 0,
+    "low_c": 20.5,
+    "sensors": 2
+  },
+  "complete": false,
+  "date": "2026-09-01",
+  "degree_days": null,
+  "end": "2026-10-01",
+  "energy": null,
+  "generated_at": "2026-09-22T07:00:00+00:00",
+  "immersion": null,
+  "indoor_day": null,
+  "meter": null,
+  "model": null,
+  "money": {
+    "currency": "SEK",
+    "major_unit": "kr",
+    "minor_unit": "\u00f6re"
+  },
+  "ok": true,
+  "parts": [],
+  "period": "month",
+  "review": null,
+  "runs": [],
+  "saving": null,
+  "shadow": null,
+  "site_id": "site_entry_a",
+  "time_zone": "Europe/Stockholm",
+  "today": "2026-09-22"
+}

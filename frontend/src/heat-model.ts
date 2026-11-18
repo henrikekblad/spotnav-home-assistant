@@ -185,7 +185,7 @@ const ANSWER = O({
       runs: A(RUN),
       baseline_kw: N("number"),
       cost: N("number"),
-      money: N(O({ currency: "string", major: "string", minor: "string" })),
+      money: N(O({ currency: "string", major_unit: "string", minor_unit: "string" })),
     }),
   ),
   status: O({
@@ -446,7 +446,7 @@ export interface HeatAnswer {
     runs: { start: string; end: string; kwh: number }[];
     baseline_kw: number | null;
     cost: number | null;
-    money: { currency: string; major: string; minor: string } | null;
+    money: { currency: string; major_unit: string; minor_unit: string } | null;
   } | null;
   status: {
     pump_state: string | null;

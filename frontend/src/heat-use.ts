@@ -63,11 +63,11 @@ export function partSeries(parts: readonly HeatPart[], part: HeatPart): string {
 
 /** Money in the minor unit shown in the major one (whole units from 10 up), as the heat card writes it. */
 export function useMoney(language: Language, minor: number, units: HeatHistory["money"]): string {
-  if (units === null || units.major === null) {
-    return `${formatFixed(language, minor, 0)}${units?.minor ? ` ${units.minor}` : ""}`;
+  if (units === null || units.major_unit === null) {
+    return `${formatFixed(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
   }
   const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major}`;
+  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major_unit}`;
 }
 
 /** Whether the period can be shown in money: some part has a priced hour. */
@@ -105,7 +105,7 @@ export function unitSwitch(doc: Document, language: Language, answer: HeatHistor
   const shown = shownUnit(answer, unit);
   for (const [value, words] of [
     ["kwh", "kWh"],
-    ["money", answer.money?.major ?? answer.money?.currency ?? ""],
+    ["money", answer.money?.major_unit ?? answer.money?.currency ?? ""],
   ] as const) {
     const button = element(doc, "button", undefined, words);
     button.type = "button";

@@ -1,0 +1,19 @@
+{
+  "action": "get_house_loads",
+  "api_version": 1,
+  "belongs": {},
+  "date": "2026-09-22",
+  "end": "2026-09-23",
+  "house_kwh": null,
+  "implausible": [],
+  "kind": "house",
+  "loads": [],
+  "meters_kwh": 0,
+  "moved": [],
+  "ok": true,
+  "other_kwh": null,
+  "over_kwh": 0.0,
+  "period": "day",
+  "site_id": "site_entry_a",
+  "through": null
+}

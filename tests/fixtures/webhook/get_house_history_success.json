@@ -1,0 +1,30 @@
+{
+  "action": "get_house_history",
+  "api_version": 1,
+  "buckets": [],
+  "complete": false,
+  "cost": null,
+  "date": "2026-09-22",
+  "end": "2026-09-23",
+  "energy_flow": null,
+  "forecast": {
+    "house": null,
+    "soc": null,
+    "sun": null,
+    "sun_corrected": null
+  },
+  "generated_at": "2026-09-22T07:00:00+00:00",
+  "money": {
+    "currency": "SEK",
+    "major_unit": "kr",
+    "minor_unit": "\u00f6re"
+  },
+  "ok": true,
+  "own_control": null,
+  "period": "day",
+  "review": null,
+  "saving": null,
+  "site_id": "site_entry_a",
+  "time_zone": "Europe/Stockholm",
+  "today": "2026-09-22"
+}

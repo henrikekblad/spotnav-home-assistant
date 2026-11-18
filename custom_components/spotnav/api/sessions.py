@@ -24,7 +24,8 @@ the day's average price) and say so. Nothing here writes.
 The WebSocket answer of a charger in a loaded site also has `plug_in_saving` (major unit) on each summary and session:
 what SpotNav saved against charging at once on plug-in, the house card's own figure for the car
 (`api/saving.py`, `site/spotnav_saving.py`), `null` where it cannot be known (a session from before plug-in times
-were kept). The card's history shows it; the webhook's answer (the app) is as before.
+were kept). The card's history shows it; the webhook's answer (the app) has it when the request reads it
+(`reads: ["plug_in_saving"]`, `api/webhook.py`), and is as before without.
 """
 
 from __future__ import annotations
@@ -266,18 +267,26 @@ async def websocket_get_sessions(
     if isinstance(charger, DashboardFailure):
         connection.send_error(msg["id"], charger.code, charger.message)
         return
-    savings = None
-    if msg.get("format", "json") == "json":
-        try:
-            savings = await async_charger_savings(hass, charger.entry_id)
-        except Exception:  # noqa: BLE001 - the history is still shown, with the day's average as before
-            _LOGGER.debug("SpotNav sessions: what SpotNav saved could not be worked out", exc_info=True)
     try:
-        answer = sessions_answer(hass, charger.entry_id, msg, savings)
+        answer = sessions_answer(hass, charger.entry_id, msg, await async_request_savings(hass, charger.entry_id, msg))
     except SessionsRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return
     connection.send_result(msg["id"], answer)
+
+
+async def async_request_savings(
+    hass: HomeAssistant, charger_entry_id: str, request: Mapping[str, Any]
+) -> dict[str, float | None] | None:
+    """`async_charger_savings` for a JSON request (a CSV has none), `None` when it cannot be worked out: the history
+    is still shown, with the day's average as before."""
+    if request.get("format", "json") != "json":
+        return None
+    try:
+        return await async_charger_savings(hass, charger_entry_id)
+    except Exception:  # noqa: BLE001 - the history is still shown
+        _LOGGER.debug("SpotNav sessions: what SpotNav saved could not be worked out", exc_info=True)
+        return None
 
 
 async def async_charger_savings(hass: HomeAssistant, charger_entry_id: str) -> dict[str, float | None] | None:

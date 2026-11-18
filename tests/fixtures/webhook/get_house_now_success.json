@@ -1,0 +1,24 @@
+{
+  "action": "get_house_now",
+  "api_version": 1,
+  "at": "2026-09-22T07:00:00+00:00",
+  "battery_kw": null,
+  "car_connected": true,
+  "car_kw": null,
+  "car_soc_pct": null,
+  "grid_kw": 4.0,
+  "has": {
+    "battery": false,
+    "car": true,
+    "heat": false,
+    "sun": false
+  },
+  "heat_from": null,
+  "heat_kw": null,
+  "house_kw": null,
+  "ok": true,
+  "site_id": "site_entry_a",
+  "soc_pct": null,
+  "sun_from": null,
+  "sun_kw": null
+}

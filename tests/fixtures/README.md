@@ -27,6 +27,12 @@ the heat pump's meter split into heat and hot water, and the cooler night on (an
 settings' choices); `network_pump.json` a NIBE on its local integration whose own price control runs, away until
 Friday (a household member's answer, with the notes).
 
+`webhook/get_house*.json`, `get_heat*.json`, `update_heat_*.json`, `battery_control_*.json`,
+`get_site_settings_view_success.json` and `sessions_*.json` are the charger webhook's site actions on the pilot's site
+(no sun, no battery, two indoor sensors), each the WebSocket twin's answer with `ok` and `action` beside it
+(`tests/test_webhook_site_parity.py`); the richer shapes of the same documents are the directories above. The heat
+documents' `money` has the house documents' keys (`currency`, `major_unit`, `minor_unit`).
+
 `target_suggestion/pilot.json` is `spotnav/suggest_import_target`'s answer for the pilot's site from a month of fake
 statistics (`tests/test_target_suggestion_api.py`); `webhook/suggest_import_target_success.json` the webhook's.
 

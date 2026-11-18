@@ -1221,7 +1221,14 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "get_power_month",
         "site_import_target",
         "suggest_import_target",
+        "get_house",
+        "get_heat",
+        "battery_control",
+        "get_site_settings_view",
     ]
+    # The site's reads over the webhook: a charger in no site has none.
+    for action in ("get_house", "get_heat", "battery_control", "get_site_settings_view"):
+        assert charger["capabilities"][action] is False
     for action in (
         "price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode", "release_import_target", "get_power_month",
         "site_import_target", "suggest_import_target",

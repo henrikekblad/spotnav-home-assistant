@@ -1,0 +1,7 @@
+{
+  "action": "battery_control",
+  "api_version": 1,
+  "error": "spotnav_invalid_value",
+  "ok": false,
+  "status": null
+}

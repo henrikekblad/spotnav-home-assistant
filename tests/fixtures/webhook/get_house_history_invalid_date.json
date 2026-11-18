@@ -1,0 +1,5 @@
+{
+  "action": "get_house_history",
+  "error": "spotnav_invalid_date",
+  "ok": false
+}

@@ -314,6 +314,21 @@ def forget_cached_loads(hass: HomeAssistant, site_entry_id: str) -> None:
             del cache[key]
 
 
+async def async_loads_answer(hass: HomeAssistant, site: Any, request: Mapping[str, Any]) -> dict[str, Any]:
+    """The answer to one request for one site (the WebSocket command and the webhook's `get_house_loads` alike): its
+    `period`, `date` and `kind` judged, then `loads_answer`. Every refusal is a `PowerMonthRefusal`."""
+    kind = request.get("kind", KIND_HOUSE)
+    if kind not in (KIND_HOUSE, KIND_HEAT):
+        raise PowerMonthRefusal(ERROR_INVALID_KIND, "The pie is house or heat")
+    try:
+        return await loads_answer(hass, site, request.get("period"), request.get("date"), kind)
+    except PowerMonthRefusal:
+        raise
+    except Exception:  # noqa: BLE001 - no recorder, statistics that fail: the card says it could not be read
+        _LOGGER.debug("SpotNav house loads: the meters could not be read", exc_info=True)
+        raise PowerMonthRefusal(ERROR_READ_FAILED, "The meters could not be read") from None
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "spotnav/get_house_loads",
@@ -334,19 +349,10 @@ async def websocket_get_house_loads(
     if type(version) is not int or version != HOUSE_LOADS_API_VERSION:
         send_unsupported_version(connection, msg, HOUSE_LOADS_API_VERSION)
         return
-    kind = msg.get("kind", KIND_HOUSE)
-    if kind not in (KIND_HOUSE, KIND_HEAT):
-        connection.send_error(msg["id"], ERROR_INVALID_KIND, "The pie is house or heat")
-        return
     try:
-        site = _site_of_request(hass, msg)
-        answer = await loads_answer(hass, site, msg.get("period"), msg.get("date"), kind)
+        answer = await async_loads_answer(hass, _site_of_request(hass, msg), msg)
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
-        return
-    except Exception:  # noqa: BLE001 - no recorder, statistics that fail: the card says it could not be read
-        _LOGGER.debug("SpotNav house loads: the meters could not be read", exc_info=True)
-        connection.send_error(msg["id"], ERROR_READ_FAILED, "The meters could not be read")
         return
     connection.send_result(msg["id"], answer)
 

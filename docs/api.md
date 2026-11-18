@@ -8,6 +8,21 @@ and a per-charger **webhook** (for clients that cannot open a WebSocket, such as
 contracts are version 1; each response carries `api_version`. A request for another version is
 refused with `spotnav_unsupported_api_version`.
 
+**Version 1 is frozen (since SpotNav 3.0).** Every document on this page, over both transports, changes under
+`api_version` 1 only by addition: a new key, a new action or command, a new stable code, a new value where the
+document says the list is open (status codes, capability flags). A key is never renamed, removed or given another
+type or unit, and a required request field is never added, under version 1: such a change is a new `api_version`
+for that contract, answered beside version 1 for as long as a released app or card asks for it. So a client
+decodes the keys it needs strictly and ignores the keys it does not know. The exceptions are the documents an app
+released before 3.0 decodes with exact keys (the dashboard, the settings record, the sessions and the vehicle
+rows): the webhook adds to those only for a request that names the addition in `reads` (below). The contract
+fixtures under `tests/fixtures/` are the shapes, written by the backend and read by the card's and the app's tests.
+
+**Money.** A document that states sums of money carries one block for its units,
+`money: {"currency", "major_unit", "minor_unit"}` (`"SEK"`, `"kr"`, `"öre"`), `null` where the site has no
+electricity price. The house and the heat documents share it (the heat documents' `major`/`minor` of the 3.0
+previews are gone). Sums are in the minor unit unless a key says otherwise.
+
 ## Pairing
 
 The app never holds a Home Assistant password or token. It pairs through one fixed, public
@@ -40,7 +55,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | Action | Effect |
 | ------ | ------ |
 | `dashboard` | The dashboard document below, for this charger. Takes an optional `api_version`. |
-| `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
+| `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. With `"reads": ["plug_in_saving"]` each summary and session also has `plug_in_saving` (see [the site over the webhook](#the-site-over-the-webhook)). A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
 | `price_days` | The charger's electricity prices for today and tomorrow and the history profile, as day documents (see below). Takes an optional `api_version` (`1`). |
 | `settings` | Replace the charger's settings: `{"expected_revision": n, "settings": {...}}`. |
 | `plan_preview` | What a `settings` replacement of this body would plan, with nothing saved: `{"settings": {...}}` (see **Plan preview over the webhook** below). |
@@ -65,6 +80,15 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `release_import_target` | Set the site's import target aside for this charge until its departure: `{}` (see below). |
 | `get_power_month` | One month of this charger's site's measured import: `{"month"}` (optional), the answer of `spotnav/get_power_month` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [Power by month](#power-by-month)). |
 | `suggest_import_target` | A suggested import target for this charger's site from Home Assistant's statistics: `{}`, the answer of `spotnav/suggest_import_target` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [A suggested import target](#a-suggested-import-target)). |
+| `get_house` | The house card's view of this charger's site: `{"date"}` (optional), the answer of `spotnav/get_house` (see [the site over the webhook](#the-site-over-the-webhook)). |
+| `get_house_now` | The site's live flows: `{}`, the answer of `spotnav/get_house_now`. Cheap enough to poll every 10 s. |
+| `get_house_history` | One day, month or year of the house: `{"period", "date"}`, the answer of `spotnav/get_house_history`. |
+| `get_house_loads` | The pie behind House or Heat: `{"period", "date", "kind"}`, the answer of `spotnav/get_house_loads`. |
+| `get_heat` | The heat card's view of the site: `{}`, the answer of `spotnav/get_heat` as someone who is no administrator reads it. |
+| `get_heat_history` | One day, month or year of the heating: `{"period", "date"}`, the answer of `spotnav/get_heat_history`. |
+| `update_heat` | The dial and home or away: `{"changes": {"target_c", "mode", "away_until"}, "expected"}`, the envelope of `spotnav/update_heat`. Nothing else may be named. |
+| `battery_control` | The site's battery control status; with `{"changes": {"battery_mode"}}` the battery mode is written first. Nothing else may be named. |
+| `get_site_settings_view` | The settings' site block: `{}`, the answer of `spotnav/get_site_settings_view`. |
 
 **Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
 cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
@@ -624,7 +648,10 @@ integration refused the write). Each write is logged at INFO.
 **Capabilities of the webhook.** The dashboard's `charger.capabilities` has `plan_preview`, `dismiss_setup_item` and
 `fix_own_mode` beside `price_days`, `true` where the webhook answers that action. An older Home Assistant leaves them
 out (and answers the action `Unsupported action`), so an app offers the feature only where its key is `true`.
-`site_import_target` is `true` where `update_site_settings` takes `import_target_kw` (below).
+`site_import_target` is `true` where `update_site_settings` takes `import_target_kw` (below). Since 3.0 the list
+ends with `get_house`, `get_heat`, `battery_control` and `get_site_settings_view`: `true` where this charger's
+webhook answers the site's actions (the charger is in a loaded site), `false` for a charger in no site, and absent
+from a 2.x Home Assistant (see [the site over the webhook](#the-site-over-the-webhook)).
 
 **Where a meter belongs.** Since 3.0 `spotnav/update_site_settings` takes `meter_belongs` in `changes`: `{statistic
 id: "house" | "heat" | "car" | "none"}` for Energy dashboard individual devices, merged into the site's stored choices
@@ -654,8 +681,106 @@ write keeps it. The dashboard shows it in `grid_tariff.demand.import_target_kw`.
 
 **Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
 its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and
-`update_charger_priority`, need nothing more. Only switching active load balancing and choosing the entities SpotNav
-uses stay WebSocket-only.
+`update_charger_priority`, need nothing more. What stays WebSocket-only, for a signed-in administrator: the control
+opt-ins (active load balancing, the battery control's switch and its other options, the heat control's switch) and
+choosing the entities SpotNav uses (the heat sensors, zones and control path among them). Naming one of them over the
+webhook is `spotnav_not_permitted_over_webhook` (HTTP 403) and nothing is written.
+
+### The site over the webhook
+
+Since 3.0 a charger's webhook also answers for the charger's **site**: the house, the heating and the home battery,
+which the [house card](house-card.md) and the heat card read over the WebSocket. Each action is the twin of a
+WebSocket command and answers that command's own document for the same moment, with `"ok": true` and the routing
+`"action"` beside it (`tests/test_webhook_site_parity.py` asserts the two equal). The site is always the webhook's
+own charger's: a `site_id` or `charger_id` in the body is not read. `api_version` is optional in every body (`1`).
+
+| Action | Twin | Body | Example (`tests/fixtures/webhook/`) |
+| ------ | ---- | ---- | ------- |
+| `get_house` | `spotnav/get_house` | `date` (`YYYY-MM-DD`, optional: a past day) | `get_house_success.json`, `get_house_no_site.json` |
+| `get_house_now` | `spotnav/get_house_now` | | `get_house_now_success.json` |
+| `get_house_history` | `spotnav/get_house_history` | `period` (`day`, `month`, `year`), `date` (optional: today) | `get_house_history_success.json`, `get_house_history_invalid_date.json` |
+| `get_house_loads` | `spotnav/get_house_loads` | `period`, `date`, `kind` (`house`, `heat`), all optional | `get_house_loads_success.json` |
+| `get_heat` | `spotnav/get_heat` | | `get_heat_success.json` |
+| `get_heat_history` | `spotnav/get_heat_history` | `period`, `date` (optional) | `get_heat_history_success.json` |
+| `update_heat` | `spotnav/update_heat` | `changes`, `expected` | `update_heat_success.json`, `update_heat_away.json`, `update_heat_conflict.json`, `update_heat_invalid_value.json`, `update_heat_not_permitted.json` |
+| `battery_control` | `spotnav/battery_control` | `changes` (optional) | `battery_control_success.json`, `battery_control_mode.json`, `battery_control_invalid_value.json`, `battery_control_not_permitted.json` |
+| `get_site_settings_view` | `spotnav/get_site_settings_view` | | `get_site_settings_view_success.json` |
+
+Richer examples of each document (a villa with sun, a battery and a heat pump) are the WebSocket shapes in
+`tests/fixtures/house/`, `house_now/`, `house_history/`, `house_loads/`, `heat_card/`, `heat_history/`,
+`battery_control/` and `site_view/`.
+
+**Refusals of the reads** are HTTP 400 with `{"ok": false, "error", "action"}` and the command's own stable code:
+`spotnav_unsupported_api_version`, `spotnav_no_site` (the charger is in no site, or the site is not loaded),
+`spotnav_invalid_date` (a date or period that cannot be shown), `spotnav_invalid_kind`, `spotnav_read_failed` (the
+pie's statistics could not be read).
+
+**Detecting it.** `charger.capabilities` in the dashboard: `get_house` (with it `get_house_now`,
+`get_house_history`, `get_house_loads`), `get_heat` (with it `get_heat_history`, `update_heat`), `battery_control`
+and `get_site_settings_view`. A 2.x Home Assistant has none of the keys and answers the actions `Unsupported action`.
+What a site has to show is in the answers themselves: `get_house_now`'s `has` (`sun`, `battery`, `car`, `heat`),
+`get_site_settings_view`'s `battery.found`, and in `get_heat` a `meter`, a `pump`, `zones` or indoor sensors.
+
+**`get_house_now` is made to be polled.** It reads what the site already holds in memory (the grid power, the
+chargers' draw, the battery's facts, the power sensors' states); the one recorder read behind it, the day's energy
+flow for a site whose sun or heat has no power sensor, is kept until the recorder's next 5-minute row. The answer is
+about 0.3 to 0.4 kB and takes about 0.1 ms to build. An app may ask every 10 s while its Now tab is in view; the
+other reads are heavier (`get_house` and `get_heat` are 8 to 20 kB, a history 3 to 16 kB) and are meant
+for once on opening a tab and then about once a minute.
+
+**`get_heat`** answers the heat card's whole view (`heat/view.py` has the shape): `config` (the settings below),
+`comfort` (the band around the target now), `indoor` (the measured value, the coldest room, each sensor), `outdoor`,
+`zones`, `pump`, `meter`, `today` (the day's heat, hot water and `cost`, with `money`), `status` (what the pump does
+and what SpotNav would do or does), `band` (the day's plan by the hour), `control`, `relay`, `review`, `indoor_day`,
+`notes`, `ahead` (the next 12 hours of the plan) and `shadow` (`false` only while SpotNav's heat control runs). Over the webhook `writable` is `false` and
+`choices` is `null`: they describe the configuration (sensors, zones, control path), which is set in Home Assistant.
+The dial and home or away are everyone's, whatever `writable` says.
+
+**`get_heat_history`** answers one day, month or year of the heating (`heat/history.py` has the shape): `energy`,
+`buckets` (an hour, a day or a month each, with its `parts` and `saving`), `parts`, `saving`, `degree_days`,
+`comfort`, `shadow`, `runs`, `review`, `indoor_day`, `model` and `money`. `period` and `date` as
+`get_house_history`'s.
+
+**`update_heat`** writes the everyday choices of the heat card, judged as `spotnav/update_heat` judges them:
+
+- `target_c`: 16 to 25 in steps of 0.5 (`out_of_range`, `not_a_step`, `invalid_value`).
+- `mode`: `home` or `away`; going away needs `away_until`, an ISO instant with its offset, in the future and at
+  most 90 days ahead (`away_until_required` and the range codes). Home clears it.
+- `expected` (optional) names the values last read; a stored value that differs is `spotnav_conflict` and nothing
+  is written.
+
+The answer is the command's envelope with the `action`: `{"api_version": 1, "ok", "error", "field_errors":
+[{"field", "code"}], "config", "action": "update_heat"}`, `config` re-read after the write. HTTP 200 written; 400
+`spotnav_invalid_value` (with `field_errors`; an unknown field is `unknown_field`); 409 `spotnav_conflict`; 403
+`spotnav_not_permitted_over_webhook` for any other heat setting: `control_enabled` ("Styr värmen"), `night`,
+the sensors, the zones, the control path and the meter are written in Home Assistant by an administrator.
+
+```json
+{"version": 1, "action": "update_heat", "changes": {"target_c": 21.5}, "expected": {"target_c": 21.0}}
+→ {"api_version": 1, "ok": true, "error": null, "field_errors": [], "config": {"target_c": 21.5, …},
+   "action": "update_heat"}
+```
+
+**`battery_control`** answers `{"api_version": 1, "ok", "error", "status", "action": "battery_control"}`, `status`
+the control's state, its one line, the options, what it needs and its notes (see [home batteries](home-battery.md);
+`tests/fixtures/battery_control/` has a plant under control). With `changes` it writes first, and the only key the
+webhook takes is `battery_mode`: `self_consumption`, `balanced` or `max_profit`. HTTP 200 written (the plan is made
+again at once); 400 `spotnav_invalid_value` (another mode, an unknown key, no changes); 403
+`spotnav_not_permitted_over_webhook` for `battery_control_enabled` ("Styr batteriet") and the other
+`battery_control_*` options, alone or beside a mode, with nothing written; 400 `spotnav_no_site`. A refusal has
+`"status": null`. An app shows the switch read-only (`status.options.battery_control_enabled`, `status.state`).
+
+**`get_site_settings_view`** answers the settings' site block as an administrator reads it, with one difference
+the webhook's dashboard also has: `site.active_control.writable` is `false`. `writable` is `true` for what the
+webhook's own writes change (`update_site_settings`, `choose_price_source`, `update_grid_tariff`); the price's
+fees (`price_settings.fees`) are shown but have no webhook write.
+
+**`plug_in_saving` on `sessions`.** With `"reads": ["plug_in_saving"]` the webhook's `sessions` answer is the
+WebSocket's whole: every summary (`this_month`, `last_month`, `months`, `days`, `month_summary`, `month_days`) and
+every session has `plug_in_saving`, what SpotNav saved against charging at once on plug-in (major unit; `null` where
+it cannot be known, such as a session from before plug-in times were kept). The keys are absent for a charger in no
+loaded site and for a request that does not read them. Examples: `sessions_plug_in_saving.json`,
+`sessions_success.json`.
 
 ## WebSocket commands
 
@@ -676,6 +801,9 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_house_now` | The [house card's](house-card.md#now) live flows for its Now tab, read-only: `{"api_version": 1, "charger_id" or "site_id"}`. Answers `{api_version, site_id, at, grid_kw, sun_kw, sun_from, battery_kw, soc_pct, car_kw, car_connected, car_soc_pct, heat_kw, heat_from, house_kw, has: {sun, battery, car, heat}}`: `grid_kw` the net grid power now (+ import), `battery_kw` the battery's (+ charging), `car_kw` what the chargers draw, `car_connected` whether a car is plugged in (`null` without chargers), `car_soc_pct` its level where its plan's vehicle reads one, `sun_kw` the Energy dashboard's solar power sensors summed (`sun_from: "power"`) or the last energy-flow period's mean when it ended within 20 minutes (`"recent"`), `heat_kw` likewise from the heat pump's meter, `house_kw` the whole house (the heat included) as grid + sun − battery − cars, never below 0; each `null` unread, and `has` the parts the site has. The card polls it every 30 s while the tab is shown. Refusals as `get_house`'s. |
 | `spotnav/get_house_history` | One day, month or year of the house for the card's history and its period tabs: `{"api_version": 1, "charger_id" or "site_id", "period", "date"}`. Each of its `buckets` (an hour, a day or a month) has, besides the energy, the cost and the reviews, `arbitrage`: what the battery earned in it, the card's headline measure (minor unit; each kWh it gave back over what that energy cost to store, as `battery/stored_value.py` keeps it: by the hour 40 days back, by the day 400 days back; `null` without a battery or where nothing is kept), and `buy`, `sell`: the mean prices over its priced periods (minor unit per kWh, weighted by minutes; `null` unpriced). The full shape is in `site/house_period.py`. |
 | `spotnav/get_house_loads` | What the house's known meters used over one period, for the [house card's](house-card.md#what-the-house-used) pie: `{"api_version": 1, "charger_id" or "site_id", "period", "date", "kind"}`, `period` `day` (the default), `month` or `year`, `date` a day inside it (absent: today), `kind` `house` (the default) or `heat`. Answers `{api_version, site_id, kind, period, date, end, through, house_kwh, meters_kwh, other_kwh, over_kwh, loads: [{statistic_id, name, kwh, source, changed}], moved: [{statistic_id, name, belongs}], belongs: {statistic_id: belongs}, implausible: [{statistic_id, name, hours, left_out}]}`: `house_kwh` is the energy flow's house block (with `kind: "heat"` its heat block) for the period (`null` without the Energy dashboard's grid meter); `loads` the Energy dashboard's individual devices (largest first) less those sorted out by themselves (a charger's sensor or device, the heat pump's meter, a heating zone's sensor or device), any nested in another device and any the household moved (`moved`, with where to: `heat`, `car` or `none`); with `kind: "heat"` the heat pump's meter (`source` `heat_pump`), each heating zone counted (`zone`) and each meter moved to heat (`meter`, `changed` true). Read from the recorder's statistics up to `through`; an hour above what the block used in it (+0.2 kWh) or above the main fuse is not counted and the meter is in `implausible` (`left_out` when no hour was left). `other_kwh` the block less them, never below 0, and `over_kwh` how much they exceed it; `belongs` the stored choices (the `expected` of a write). Read-only; refusals as the house history's, `spotnav_invalid_kind` for another `kind`, and `spotnav_read_failed` when the statistics cannot be read. |
+| `spotnav/get_heat` | The heat card's view of one site: `{"api_version": 1, "charger_id" or "site_id"}`. The shape is in `heat/view.py`; `writable` and `choices` (the entities each setting may be set to) only for an administrator. Refusals as `get_house`'s. Over the webhook: `get_heat` (see [the site over the webhook](#the-site-over-the-webhook)). |
+| `spotnav/update_heat` | Change the site's heat settings with a compare-and-set: `{"api_version": 1, "charger_id" or "site_id", "changes", "expected"}`, keys `target_c`, `mode`, `away_until`, `night`, `indoor_sensors`, `indoor_offsets`, `outdoor_sensor`, `control_path`, `control_entity`, `control_entity_b`, `hot_water_entity`, `zones`, `control_enabled`, `heat_meter_entity`. Answers `{api_version, ok, error, field_errors, config}`; `error` is `spotnav_conflict`, `spotnav_invalid_value` (with `field_errors`) or `spotnav_not_admin` (someone who is no administrator named anything but `target_c`, `mode`, `away_until`). Over the webhook: `update_heat`, those three keys only. |
+| `spotnav/get_heat_history` | One day, month or year of a site's heating: `{"api_version": 1, "charger_id" or "site_id", "period", "date"}`, as `get_house_history`. The shape is in `heat/history.py`. Over the webhook: `get_heat_history`. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
 | `spotnav/plan_preview` | What a Save would plan, with nothing saved (see [Plan preview](#plan-preview)). |

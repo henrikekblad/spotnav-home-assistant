@@ -65,7 +65,14 @@ from ..site.site_capacity_controller import (
     SiteCapacityController,
     SiteControllerClosed,
 )
-from .common import ERROR_NOT_ADMIN, ERROR_UNSUPPORTED_VERSION, is_admin, lookup_site, send_unsupported_version
+from .common import (
+    ERROR_NOT_ADMIN,
+    ERROR_NOT_PERMITTED_OVER_WEBHOOK,
+    ERROR_UNSUPPORTED_VERSION,
+    is_admin,
+    lookup_site,
+    send_unsupported_version,
+)
 from .entity_fields import import_target_error, stored_import_target_kw
 from .heat import forget_cached_heat
 from .heat_history import forget_cached_heat_history
@@ -95,8 +102,6 @@ ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 ERROR_UNAVAILABLE: Final = "spotnav_site_unavailable"
 ERROR_ACTIVE_CONTROL_UNAVAILABLE: Final = "spotnav_active_control_unavailable"
 ERROR_CONFIRMATION_FAILED: Final = "spotnav_confirmation_failed"
-#: The webhook's secret may write solar settings but never touch load balancing.
-ERROR_NOT_PERMITTED_OVER_WEBHOOK: Final = "spotnav_not_permitted_over_webhook"
 
 
 _SOLAR_PRIORITY: Final = "solar_priority"

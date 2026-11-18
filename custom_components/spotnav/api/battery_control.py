@@ -26,6 +26,7 @@ from ..battery import gate
 from ..runtime import site_controller_for
 from .common import (
     ERROR_NOT_ADMIN,
+    ERROR_NOT_PERMITTED_OVER_WEBHOOK,
     is_admin,
     lookup_charger,
     lookup_site,
@@ -42,6 +43,37 @@ ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 
 def _answer(status: dict[str, Any] | None = None, error: str | None = None) -> dict[str, Any]:
     return {"api_version": BATTERY_CONTROL_API_VERSION, "ok": error is None, "error": error, "status": status}
+
+
+#: What the charger webhook's secret may write: the everyday choice of what the battery is for. The opt-in
+#: (`battery_control_enabled`) and the other options need a signed-in administrator.
+WEBHOOK_WRITABLE: Final = (gate.CONF_MODE,)
+
+
+async def async_battery_control_answer(
+    hass: HomeAssistant, entry: ConfigEntry | None, changes: Any, *, admin: bool, over_webhook: bool = False
+) -> dict[str, Any]:
+    """The answer for one site (the WebSocket command and the webhook's `battery_control` alike): its status, after
+    writing `changes` when given. `over_webhook`: only `WEBHOOK_WRITABLE` may be named; another option is
+    `spotnav_not_permitted_over_webhook` and nothing is written."""
+    controller = None if entry is None else site_controller_for(hass, entry.entry_id)
+    if controller is None:
+        return _answer(error=ERROR_NO_SITE)
+    control = controller.battery_control
+    if changes is None:
+        return _answer(control.status())
+    if over_webhook:
+        if isinstance(changes, dict) and any(
+            key in gate.WRITABLE and key not in WEBHOOK_WRITABLE for key in changes
+        ):
+            return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK)
+    elif not admin:
+        return _answer(error=ERROR_NOT_ADMIN)
+    if not isinstance(changes, dict) or not changes or any(
+        not gate.valid_change(key, value) for key, value in changes.items()
+    ):
+        return _answer(error=ERROR_INVALID_VALUE)
+    return _answer(await control.async_update_options(dict(changes)))
 
 
 def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
@@ -71,25 +103,10 @@ async def websocket_battery_control(
     if isinstance(version, bool) or version != BATTERY_CONTROL_API_VERSION:
         send_unsupported_version(connection, msg, BATTERY_CONTROL_API_VERSION)
         return
-    entry = _site_of(hass, msg)
-    controller = None if entry is None else site_controller_for(hass, entry.entry_id)
-    if controller is None:
-        connection.send_result(msg["id"], _answer(error=ERROR_NO_SITE))
-        return
-    control = controller.battery_control
-    changes = msg.get("changes")
-    if changes is not None:
-        if not is_admin(connection):
-            connection.send_result(msg["id"], _answer(error=ERROR_NOT_ADMIN))
-            return
-        if not isinstance(changes, dict) or not changes or any(
-            not gate.valid_change(key, value) for key, value in changes.items()
-        ):
-            connection.send_result(msg["id"], _answer(error=ERROR_INVALID_VALUE))
-            return
-        connection.send_result(msg["id"], _answer(await control.async_update_options(dict(changes))))
-        return
-    connection.send_result(msg["id"], _answer(control.status()))
+    answer = await async_battery_control_answer(
+        hass, _site_of(hass, msg), msg.get("changes"), admin=is_admin(connection)
+    )
+    connection.send_result(msg["id"], answer)
 
 
 @callback

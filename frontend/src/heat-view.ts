@@ -188,16 +188,16 @@ function kwh(language: Language, value: number): string {
 }
 
 function context(language: Language, answer: HeatAnswer): FormatContext {
-  return { language, timeZone: answer.time_zone, unit: "kWh", currency: answer.today?.money?.currency ?? null, majorUnit: answer.today?.money?.major ?? null };
+  return { language, timeZone: answer.time_zone, unit: "kWh", currency: answer.today?.money?.currency ?? null, majorUnit: answer.today?.money?.major_unit ?? null };
 }
 
 /** Money given in the minor unit, shown in the major one: whole units from 10 up ("19 kr"), else two decimals. */
-export function amount(language: Language, minor: number, money: { major: string; minor: string } | null): string {
+export function amount(language: Language, minor: number, money: { major_unit: string; minor_unit: string } | null): string {
   if (money === null) {
     return formatFixed(language, minor, 0);
   }
   const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${money.major}`;
+  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${money.major_unit}`;
 }
 
 /** A local moment as the card says it: the time today, else the day and the time ("fre 20 nov. 16:00"). */

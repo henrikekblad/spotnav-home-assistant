@@ -81,7 +81,7 @@ export interface HeatHistory {
   end: string;
   today: string;
   complete: boolean;
-  money: { currency: string; major: string | null; minor: string | null } | null;
+  money: { currency: string; major_unit: string | null; minor_unit: string | null } | null;
   meter: { entity_id: string; name: string | null } | null;
   energy: {
     total_kwh: number;
@@ -201,7 +201,7 @@ export function decodeHeatHistory(raw: unknown): HeatHistoryDecode {
         end: isoDay(source.end),
         today: isoDay(source.today),
         complete: flag(source.complete),
-        money: nullable(source.money, (item) => ({ currency: text(item.currency), major: textOrNull(item.major), minor: textOrNull(item.minor) })),
+        money: nullable(source.money, (item) => ({ currency: text(item.currency), major_unit: textOrNull(item.major_unit), minor_unit: textOrNull(item.minor_unit) })),
         meter: nullable(source.meter, (item) => ({ entity_id: text(item.entity_id), name: textOrNull(item.name) })),
         energy: nullable(source.energy, (item) => ({
           total_kwh: number(item.total_kwh),
@@ -332,11 +332,11 @@ function celsius(language: Language, value: number): string {
 
 /** Money in the minor unit shown in the major one (whole units from 10 up), as the heat card writes it. */
 function money(language: Language, minor: number, units: HeatHistory["money"]): string {
-  if (units === null || units.major === null) {
-    return `${formatNumber(language, minor, 0)}${units?.minor ? ` ${units.minor}` : ""}`;
+  if (units === null || units.major_unit === null) {
+    return `${formatNumber(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
   }
   const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major}`;
+  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major_unit}`;
 }
 
 /** The cost bars with what SpotNav's plan would have saved hatched on top: drawn only where some bucket has that
