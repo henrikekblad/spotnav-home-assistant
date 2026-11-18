@@ -154,10 +154,16 @@ def battery_found(hass: HomeAssistant, site: ConfigEntry) -> bool:
 
 
 def site_settings_view(
-    hass: HomeAssistant, site: ConfigEntry, *, writable: bool, forecast_domains: frozenset[str] = frozenset()
+    hass: HomeAssistant,
+    site: ConfigEntry,
+    *,
+    writable: bool,
+    forecast_domains: frozenset[str] = frozenset(),
+    active_control_writable: bool | None = None,
 ) -> dict[str, Any]:
     """The whole answer; `forecast_domains` (`async_forecast_capable_domains`, read first) lists the solar forecast
-    sources the `site` block offers."""
+    sources the `site` block offers. `active_control_writable` (default: as `writable`): `False` for the charger
+    webhook, whose secret never switches load balancing (`site.active_control.writable`)."""
     return {
         "api_version": SITE_VIEW_API_VERSION,
         "site_id": site.entry_id,
@@ -168,7 +174,13 @@ def site_settings_view(
         "battery": {"found": battery_found(hass, site)},
         "setup": serialize_setup(capture_site_setup(hass, site)),
         "price_settings": price_settings_block(hass, site, writable=writable),
-        "site": capture_site_block(hass, site, forecast_domains=forecast_domains, can_act=writable),
+        "site": capture_site_block(
+            hass,
+            site,
+            forecast_domains=forecast_domains,
+            can_act=writable,
+            active_control_writable=active_control_writable,
+        ),
     }
 
 
