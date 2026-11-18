@@ -56,6 +56,7 @@ from .. import time_zones
 from ..battery.plan_runtime import site_car_windows
 from ..const import CONF_HEAT, CONF_HEAT_METER_ENTITY, DOMAIN
 from ..heat.config import (
+    F_INDOOR_OFFSETS,
     F_NIGHT,
     F_ZONES,
     FIELDS,
@@ -180,8 +181,22 @@ def _same(name: str, stored: Any, expected: Any) -> bool:
 
 
 #: What the charger webhook's secret may write (the owner's decisions of 2026-11-18): the dial, home/away, the
-#: cooler night and each zone's offset. The control opt-in, the control path and every entity choice are not here.
-WEBHOOK_FIELDS: Final = frozenset({*USER_FIELDS, F_NIGHT, F_ZONES})
+#: cooler night and each zone's and each indoor sensor's offset. The control opt-in, the control path and every
+#: entity choice are not here.
+WEBHOOK_FIELDS: Final = frozenset({*USER_FIELDS, F_NIGHT, F_ZONES, F_INDOOR_OFFSETS})
+
+
+def _own_sensors(stored: HeatConfig, changes: Mapping[str, Any]) -> bool:
+    """Whether a webhook write's `indoor_offsets` (when named) names only the stored indoor sensors: an offset never
+    brings a sensor in. The list is sparse as stored (a sensor left out, or at 0, has no offset; `null` clears them
+    all), so it cannot take a sensor out either. A shape the judge will refuse passes here."""
+    raw = changes.get(F_INDOOR_OFFSETS)
+    if not isinstance(raw, list):
+        return True
+    return all(
+        not isinstance(item, Mapping) or "entity_id" not in item or item["entity_id"] in stored.indoor_sensors
+        for item in raw
+    )
 
 
 def _same_zones(stored: HeatConfig, changes: Mapping[str, Any]) -> bool:
@@ -200,8 +215,9 @@ def write_heat(
 ) -> None:
     """Judge and write one change of the site's heat settings, or raise `HeatWriteRefusal` (see the module). One
     synchronous step on the event loop from the compare to the write, so two writes cannot interleave.
-    `over_webhook`: the charger webhook's secret wrote it (the paired app): `WEBHOOK_FIELDS` only, and `zones` only
-    with the zones as stored (their offsets may change, never which entities they are); anything else
+    `over_webhook`: the charger webhook's secret wrote it (the paired app): `WEBHOOK_FIELDS` only, `zones` only
+    with the zones as stored (their offsets may change, never which entities they are) and `indoor_offsets` only
+    for the stored indoor sensors; anything else
     (`control_enabled`, the sensors, the control path) is `spotnav_not_permitted_over_webhook`."""
     if not isinstance(changes, dict) or not changes:
         raise HeatWriteRefusal(ERROR_INVALID_VALUE, [FieldError("changes", "invalid_changes")])
@@ -213,7 +229,8 @@ def write_heat(
     if unknown:
         raise HeatWriteRefusal(ERROR_INVALID_VALUE, list(dict.fromkeys(unknown)))
     if over_webhook:
-        if set(changes) - WEBHOOK_FIELDS or not _same_zones(stored_config(site), changes):
+        stored = stored_config(site)
+        if set(changes) - WEBHOOK_FIELDS or not _same_zones(stored, changes) or not _own_sensors(stored, changes):
             raise HeatWriteRefusal(ERROR_NOT_PERMITTED_OVER_WEBHOOK)
     elif not admin and set(changes) - USER_FIELDS:
         raise HeatWriteRefusal(ERROR_NOT_ADMIN)

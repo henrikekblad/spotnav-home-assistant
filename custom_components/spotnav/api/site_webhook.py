@@ -19,8 +19,8 @@ Reads (HTTP 200, or 400 with `{"ok": false, "error": <the command's stable code>
 Writes, the everyday choices only (the owner's decision of 2026-11-18, `plans/app_3_0_plan.md`):
 
 * `update_heat` (`spotnav/update_heat`: `changes`, `expected`): the dial (`target_c`), home/away (`mode`,
-  `away_until`), the cooler night (`night`) and each stored zone's offset (`zones`, the same entities in the same
-  order), judged by the command's own rules (`heat/config.py`) under its compare-and-set.
+  `away_until`), the cooler night (`night`), each stored zone's offset (`zones`, the same entities in the same
+  order) and each stored indoor sensor's offset (`indoor_offsets`), judged by the command's own rules (`heat/config.py`) under its compare-and-set.
 * `battery_control` with `changes`: `battery_mode` only (`self_consumption`, `balanced`, `max_profit`).
 
 The control opt-ins stay with a signed-in administrator in Home Assistant: `control_enabled` ("Styr värmen") and

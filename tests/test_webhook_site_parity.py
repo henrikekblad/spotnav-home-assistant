@@ -275,6 +275,39 @@ async def test_the_cooler_night_and_each_zones_offset_are_written_but_never_whic
         assert site.data[CONF_HEAT]["zones"] == offsets, changed
     _pinned("update_heat_zones_not_permitted.json", _pin(body))
 
+    # Each indoor sensor's offset against the house temperature: sparse, as stored (0 or left out is none).
+    sensors = list(site.data[CONF_HEAT]["indoor_sensors"])
+    assert sensors == ["sensor.kok", "sensor.ovanvaning"]
+    wanted = [{"entity_id": "sensor.kok", "offset_c": 0.5}, {"entity_id": "sensor.ovanvaning", "offset_c": -1.5}]
+    status, body = await post(
+        client, HOOK, {"action": "update_heat", "changes": {"indoor_offsets": wanted}, "expected": {"indoor_offsets": []}}
+    )
+    assert status == 200 and body["ok"] is True and body["config"]["indoor_offsets"] == wanted, body
+    _pinned("update_heat_indoor_offsets.json", _pin(body))
+    twin = await result(hass, websocket_update_heat, changes={"indoor_offsets": wanted}, expected={"indoor_offsets": wanted})
+    assert body == {**twin, "action": "update_heat"}
+    status, body = await post(
+        client, HOOK, {"action": "update_heat", "changes": {"indoor_offsets": [{"entity_id": "sensor.kok", "offset_c": 0}, wanted[1]]}}
+    )
+    assert status == 200 and body["config"]["indoor_offsets"] == wanted[1:], "an offset of 0 is none"
+    for offset in (4.0, 0.3, "warm"):
+        changed = [{"entity_id": "sensor.kok", "offset_c": offset}]
+        status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"indoor_offsets": changed}})
+        assert status == 400 and [item["field"] for item in body["field_errors"]] == ["indoor_offsets"], (offset, body)
+    # A sensor that is not one of the indoor sensors is never brought in, alone or beside one that is.
+    hass.states.async_set("sensor.sovrum", "19.8", {"device_class": "temperature", "unit_of_measurement": "°C"})
+    for changed in (
+        [{"entity_id": "sensor.sovrum", "offset_c": 1.0}],
+        [wanted[0], {"entity_id": "sensor.sovrum", "offset_c": 1.0}],
+        [{"entity_id": "switch.larm_rele_1", "offset_c": 1.0}],
+    ):
+        status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"indoor_offsets": changed}})
+        assert status == 403 and body["error"] == "spotnav_not_permitted_over_webhook", (changed, body)
+        assert site.data[CONF_HEAT]["indoor_offsets"] == wanted[1:] and site.data[CONF_HEAT]["indoor_sensors"] == sensors
+    _pinned("update_heat_indoor_offsets_not_permitted.json", _pin(body))
+    status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"indoor_offsets": None}})
+    assert status == 200 and body["config"]["indoor_offsets"] == [] and body["config"]["indoor_sensors"] == sensors
+
 
 async def test_the_heat_control_opt_in_and_the_configuration_are_never_written_over_the_webhook(
     hass: HomeAssistant, freezer, hass_client_no_auth
@@ -291,7 +324,10 @@ async def test_the_heat_control_opt_in_and_the_configuration_are_never_written_o
         {"control_entity_b": "switch.larm_rele_1"},
         {"hot_water_entity": "switch.larm_rele_1"},
         {"indoor_sensors": ["sensor.kok"]},
-        {"indoor_offsets": [{"entity_id": "sensor.kok", "offset_c": 0.5}]},
+        # A sensor's offset is allowed, for the indoor sensors chosen only, and never beside the sensors themselves.
+        {"indoor_offsets": [{"entity_id": "sensor.cpu_load", "offset_c": 0.5}]},
+        {"indoor_offsets": [{"entity_id": "sensor.kok", "offset_c": 0.5}, {"entity_id": "sensor.sovrum", "offset_c": 1.0}]},
+        {"indoor_offsets": [{"entity_id": "sensor.kok", "offset_c": 0.5}], "indoor_sensors": ["sensor.kok"]},
         {"outdoor_sensor": "sensor.kok"},
         {"heat_meter_entity": "sensor.kok"},
         # The cooler night is allowed, but not beside the opt-in or a control path.

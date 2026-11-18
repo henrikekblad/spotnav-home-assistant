@@ -86,7 +86,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `get_house_loads` | The pie behind House or Heat: `{"period", "date", "kind"}`, the answer of `spotnav/get_house_loads`. |
 | `get_heat` | The heat card's view of the site: `{}`, the answer of `spotnav/get_heat` as someone who is no administrator reads it. |
 | `get_heat_history` | One day, month or year of the heating: `{"period", "date"}`, the answer of `spotnav/get_heat_history`. |
-| `update_heat` | The dial, home or away, the cooler night and each zone's offset: `{"changes": {"target_c", "mode", "away_until", "night", "zones"}, "expected"}`, the envelope of `spotnav/update_heat`. Nothing else may be named. |
+| `update_heat` | The dial, home or away, the cooler night and each zone's and indoor sensor's offset: `{"changes": {"target_c", "mode", "away_until", "night", "zones", "indoor_offsets"}, "expected"}`, the envelope of `spotnav/update_heat`. Nothing else may be named. |
 | `battery_control` | The site's battery control status; with `{"changes": {"battery_mode"}}` the battery mode is written first. Nothing else may be named. |
 | `get_site_settings_view` | The settings' site block: `{}`, the answer of `spotnav/get_site_settings_view`. |
 
@@ -702,7 +702,7 @@ own charger's: a `site_id` or `charger_id` in the body is not read. `api_version
 | `get_house_loads` | `spotnav/get_house_loads` | `period`, `date`, `kind` (`house`, `heat`), all optional | `get_house_loads_success.json` |
 | `get_heat` | `spotnav/get_heat` | | `get_heat_success.json` |
 | `get_heat_history` | `spotnav/get_heat_history` | `period`, `date` (optional) | `get_heat_history_success.json` |
-| `update_heat` | `spotnav/update_heat` | `changes`, `expected` | `update_heat_success.json`, `update_heat_away.json`, `update_heat_night.json`, `update_heat_zone_offsets.json`, `update_heat_conflict.json`, `update_heat_invalid_value.json`, `update_heat_not_permitted.json`, `update_heat_zones_not_permitted.json` |
+| `update_heat` | `spotnav/update_heat` | `changes`, `expected` | `update_heat_success.json`, `update_heat_away.json`, `update_heat_night.json`, `update_heat_zone_offsets.json`, `update_heat_indoor_offsets.json`, `update_heat_indoor_offsets_not_permitted.json`, `update_heat_conflict.json`, `update_heat_invalid_value.json`, `update_heat_not_permitted.json`, `update_heat_zones_not_permitted.json` |
 | `battery_control` | `spotnav/battery_control` | `changes` (optional) | `battery_control_success.json`, `battery_control_mode.json`, `battery_control_invalid_value.json`, `battery_control_not_permitted.json` |
 | `get_site_settings_view` | `spotnav/get_site_settings_view` | | `get_site_settings_view_success.json` |
 
@@ -752,6 +752,10 @@ The dial and home or away are everyone's, whatever `writable` says.
   in steps of 0.5. The list must name exactly the zones stored (`config.zones`), in their order: which entities
   are zones is configuration, and a list that adds, drops, swaps or reorders one is
   `spotnav_not_permitted_over_webhook`.
+- `indoor_offsets`: each indoor sensor's own aim against the house temperature, `[{"entity_id", "offset_c"}]` with
+  `offset_c` -3 to 3 in steps of 0.5. The list is sparse, as `config.indoor_offsets` is: a sensor left out or at 0
+  has no offset, and `null` clears them all. Every `entity_id` must be one of the stored `config.indoor_sensors`;
+  naming any other entity is `spotnav_not_permitted_over_webhook`. Which sensors are read never changes by it.
 - `expected` (optional) names the values last read; a stored value that differs is `spotnav_conflict` and nothing
   is written.
 
@@ -759,8 +763,8 @@ The answer is the command's envelope with the `action`: `{"api_version": 1, "ok"
 [{"field", "code"}], "config", "action": "update_heat"}`, `config` re-read after the write. HTTP 200 written; 400
 `spotnav_invalid_value` (with `field_errors`; an unknown field is `unknown_field`); 409 `spotnav_conflict`; 403
 `spotnav_not_permitted_over_webhook` for any other heat setting, alone or beside an allowed one:
-`control_enabled` ("Styr värmen"), the control path and its entities, the hot water entity, the sensors and their
-offsets, which entities are zones, and the meter are written in Home Assistant by an administrator.
+`control_enabled` ("Styr värmen"), the control path and its entities, the hot water entity, which sensors are read
+(`indoor_sensors`, `outdoor_sensor`), which entities are zones, and the meter are written in Home Assistant by an administrator.
 
 ```json
 {"version": 1, "action": "update_heat", "changes": {"target_c": 21.5}, "expected": {"target_c": 21.0}}
@@ -809,7 +813,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_house_history` | One day, month or year of the house for the card's history and its period tabs: `{"api_version": 1, "charger_id" or "site_id", "period", "date"}`. Each of its `buckets` (an hour, a day or a month) has, besides the energy, the cost and the reviews, `arbitrage`: what the battery earned in it, the card's headline measure (minor unit; each kWh it gave back over what that energy cost to store, as `battery/stored_value.py` keeps it: by the hour 40 days back, by the day 400 days back; `null` without a battery or where nothing is kept), `battery_flow`: what that is made of, `{discharged, worth, cost, charged, charge_cost}` (kWh and minor units; the energy given back, what it was worth, what it cost out of the stock, and the energy charged with its cost; kept as `arbitrage` is, `null` where it is not), and `buy`, `sell`: the mean prices over its priced periods (minor unit per kWh, weighted by minutes; `null` unpriced). The full shape is in `site/house_period.py`. |
 | `spotnav/get_house_loads` | What the house's known meters used over one period, for the [house card's](house-card.md#what-the-house-used) pie: `{"api_version": 1, "charger_id" or "site_id", "period", "date", "kind"}`, `period` `day` (the default), `month` or `year`, `date` a day inside it (absent: today), `kind` `house` (the default) or `heat`. Answers `{api_version, site_id, kind, period, date, end, through, house_kwh, meters_kwh, other_kwh, over_kwh, loads: [{statistic_id, name, kwh, source, changed}], moved: [{statistic_id, name, belongs}], belongs: {statistic_id: belongs}, implausible: [{statistic_id, name, hours, left_out}]}`: `house_kwh` is the energy flow's house block (with `kind: "heat"` its heat block) for the period (`null` without the Energy dashboard's grid meter); `loads` the Energy dashboard's individual devices (largest first) less those sorted out by themselves (a charger's sensor or device, the heat pump's meter, a heating zone's sensor or device), any nested in another device and any the household moved (`moved`, with where to: `heat`, `car` or `none`); with `kind: "heat"` the heat pump's meter (`source` `heat_pump`), each heating zone counted (`zone`) and each meter moved to heat (`meter`, `changed` true). Read from the recorder's statistics up to `through`; an hour above what the block used in it (+0.2 kWh) or above the main fuse is not counted and the meter is in `implausible` (`left_out` when no hour was left). `other_kwh` the block less them, never below 0, and `over_kwh` how much they exceed it; `belongs` the stored choices (the `expected` of a write). Read-only; refusals as the house history's, `spotnav_invalid_kind` for another `kind`, and `spotnav_read_failed` when the statistics cannot be read. |
 | `spotnav/get_heat` | The heat card's view of one site: `{"api_version": 1, "charger_id" or "site_id"}`. The shape is in `heat/view.py`; `writable` and `choices` (the entities each setting may be set to) only for an administrator. Refusals as `get_house`'s. Over the webhook: `get_heat` (see [the site over the webhook](#the-site-over-the-webhook)). |
-| `spotnav/update_heat` | Change the site's heat settings with a compare-and-set: `{"api_version": 1, "charger_id" or "site_id", "changes", "expected"}`, keys `target_c`, `mode`, `away_until`, `night`, `indoor_sensors`, `indoor_offsets`, `outdoor_sensor`, `control_path`, `control_entity`, `control_entity_b`, `hot_water_entity`, `zones`, `control_enabled`, `heat_meter_entity`. Answers `{api_version, ok, error, field_errors, config}`; `error` is `spotnav_conflict`, `spotnav_invalid_value` (with `field_errors`) or `spotnav_not_admin` (someone who is no administrator named anything but `target_c`, `mode`, `away_until`). Over the webhook: `update_heat`, those three keys, `night` and the stored zones' offsets only. |
+| `spotnav/update_heat` | Change the site's heat settings with a compare-and-set: `{"api_version": 1, "charger_id" or "site_id", "changes", "expected"}`, keys `target_c`, `mode`, `away_until`, `night`, `indoor_sensors`, `indoor_offsets`, `outdoor_sensor`, `control_path`, `control_entity`, `control_entity_b`, `hot_water_entity`, `zones`, `control_enabled`, `heat_meter_entity`. Answers `{api_version, ok, error, field_errors, config}`; `error` is `spotnav_conflict`, `spotnav_invalid_value` (with `field_errors`) or `spotnav_not_admin` (someone who is no administrator named anything but `target_c`, `mode`, `away_until`). Over the webhook: `update_heat`, those three keys, `night` and the offsets of the stored zones and indoor sensors only. |
 | `spotnav/get_heat_history` | One day, month or year of a site's heating: `{"api_version": 1, "charger_id" or "site_id", "period", "date"}`, as `get_house_history`. The shape is in `heat/history.py`. Over the webhook: `get_heat_history`. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
