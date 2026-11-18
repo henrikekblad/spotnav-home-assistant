@@ -282,8 +282,15 @@ describe("Now", () => {
     expect(svg.querySelector(".spotnav-now-value[data-k='value-sun']")?.getAttribute("data-tone")).toBe("sun");
     // The car plugged in: its level, and today's energy small under it.
     expect(svg.querySelector(".spotnav-now-words[data-role='car']")?.textContent).toBe("Bil73 %25,5 kWh i dag");
-    // A filled arrowhead on each flowing line.
+    // A filled arrowhead on each flowing line, which the styles show only where the dots stand still.
     expect(svg.querySelectorAll(".spotnav-now-arrow")).toHaveLength(4);
+    expect(NOW_STYLES).toMatch(/\.spotnav-now-arrow \{[^}]*display: none;/);
+    expect(NOW_STYLES).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.spotnav-now-arrow \{ display: inline; \}/);
+    // The house's day figure says the car is not in it (a battery's own app counts the charger in).
+    expect(svg.querySelector(".spotnav-now-words[data-role='house']")?.textContent).toBe("Hus i dag29,4 kWhutan bilen");
+    // The heat sits well below the house, so its line straight down is long enough to show its flow.
+    const spots = nodeSpots(340, schematicHeight(340));
+    expect(spots.heat.y - spots.house.y).toBeGreaterThanOrEqual(90);
     expect(svg.querySelector("title")?.textContent).toContain("Köper 0,4 kW från nätet");
     // A house alone: one low row, the grid to the house, no other corner.
     const alone = renderSchematic({ doc: document, language: "en", answer: house("house_learning.json"), live: live("house_alone_now.json"), width: 340, idPrefix: "t" });
