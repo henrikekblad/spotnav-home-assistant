@@ -50,6 +50,7 @@
       "battery_control_shadow_only": true,
       "battery_mode": "max_profit"
     },
+    "per_phase": null,
     "report": null,
     "state": "off",
     "trial": null,

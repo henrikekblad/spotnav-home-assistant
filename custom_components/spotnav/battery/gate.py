@@ -83,6 +83,8 @@ WRITABLE: Final = (*DEFAULTS, CONF_MODE)
 #: The battery's modes the routine judges, and normal (the hand-back's check).
 BATTERY_MODES: Final = ("hold", "charge", "discharge_house")
 MODE_NORMAL: Final = "normal"
+#: The capability a plant with targets per phase is checked for (`verify.py`); never needed for control to run.
+MODE_PER_PHASE: Final = "per_phase"
 #: Outcomes that pass.
 PASSING: Final = frozenset({"obeyed", "restored"})
 #: Outcomes that fail outright.
@@ -314,6 +316,24 @@ def allowed_actions(report: Mapping[str, Any] | None, options: Options) -> froze
         if options.allow_sell:
             allowed.add(ACTION_EXPORT_DISCHARGE)
     return frozenset(allowed)
+
+
+def per_phase(report: Mapping[str, Any] | None) -> str:
+    """The capability "a target per phase acts on that phase, on the meter's phase of that name" on this firmware:
+    `verified`, `failed` or `pending` (not tried, or not judgeable yet). A grid charge runs per phase only on
+    `verified`; anything else is the balanced charge."""
+    row = _modes(report).get(MODE_PER_PHASE)
+    verdict = mode_verdict(row.get("outcome")) if isinstance(row, Mapping) else "pending"
+    return {"pass": "verified", "fail": "failed"}.get(verdict, "pending")
+
+
+def per_phase_failed(report: Mapping[str, Any], outcome: str, now: datetime) -> dict[str, Any]:
+    """The report with the capability withdrawn: a running charge per phase showed the plant not following its
+    targets (`executor._judge_phases`). The row is decided, so no later run tries it on this firmware."""
+    modes = {name: dict(row) for name, row in _modes(report).items() if isinstance(row, Mapping)}
+    modes[MODE_PER_PHASE] = {**modes.get(MODE_PER_PHASE, {}), "mode": MODE_PER_PHASE, "outcome": outcome,
+                             "withdrawn_at": now.isoformat()}
+    return {**report, "modes": modes, "updated_at": now.isoformat()}
 
 
 def hold_variant(report: Mapping[str, Any] | None) -> str | None:

@@ -167,7 +167,8 @@ def test_each_phase_gets_what_its_own_headroom_allows_within_the_plan_s_power_an
     # A held car with "car first": the sum yields as the balanced charge does.
     held = replace(running, car_held=True, car_first=True, facts=replace(running.facts, power_kw=1.1), grid_import_kw=3.0)
     assert phase_charge_kw(held, (1.01, 0.0, 0.13), yield_now=True) == (None, "fuse_headroom")
-    assert phase_charge_kw(held, (1.01, 0.0, 0.13), yield_now=False) == ((1.01, 0.0, 0.13), None)
+    # Between its steps it keeps what it has, to the rounding (no write: within the tolerance).
+    assert phase_charge_kw(held, (1.01, 0.0, 0.13), yield_now=False) == ((1.0, 0.0, 0.13), None)
 
 
 # --- the writes ------------------------------------------------------------------------------------------------------

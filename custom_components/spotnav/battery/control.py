@@ -36,6 +36,15 @@ The order on every path:
   the acknowledgement withdrawn) a note asks the person to set AI mode again in the app (the hand-back leaves the
   plant in Maximum Self Consumption); seeing AI mode again ends the note and the takeover. Without the
   acknowledgement a plant in AI mode is only watched.
+* **A grid charge per phase** (`commands.PhaseControl`, no brand named here): where the brand has targets per
+  phase, they and what they require are found and enabled, the plant's own power per phase is read
+  (`_phase_missing`) and the verification's mode `per_phase` passed on this firmware (`gate.per_phase`), the
+  executor runs the brand's phased control (`_sync_phases`, changed only while it holds nothing) and a grid charge
+  is given each phase's HA-down cap (`gate.grid_charge_phase_caps_kw`) when those allow at least
+  `PER_PHASE_GAIN_KW` more in all than the balanced cap (`_charge_limits`); the slot is then capped at their sum.
+  Anything else is the balanced charge under the balanced cap, as before: the targets not there, not verified, a
+  reading per phase missing, the plant's own import limit guarding the fuse, a balanced house. A running charge
+  per phase that the plant does not follow withdraws the capability (`gate.per_phase_failed`).
 * **The export limit** (`export_curtail.py`): a second executor on the brand's export control
   (`commands.EXPORT_CONTROLS`): `curtail_export` while the sell price now is below zero (`sell_source`, by default
   the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the battery or the grid meter
@@ -76,18 +85,21 @@ from ..const import (
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
-from ..site.phase_peaks import MIN_READY_DAYS, Learned
+from ..site.phase_peaks import MIN_READY_DAYS, Learned, plant_phase_w
 from . import gate
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     OUTPUT_TYPE_PHASES,
     WATCHDOG_S,
     BrandControl,
+    Phases,
     control_for,
     export_control_for,
+    reading,
     service_call,
 )
 from .executor import (
+    BATTERY_MAX_AGE_S,
     HEADROOM_MARGIN_A,
     ExecInputs,
     ExecState,
@@ -148,6 +160,9 @@ _METHOD_SERVICES: Final = {
 }
 #: Every action control may run when the report allows it; selling only with `battery_control_allow_sell`.
 _PLAN_ACTIONS: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE, ACTION_DISCHARGE_HOUSE})
+#: A grid charge runs per phase only when the phases' caps allow at least this much more in all than the balanced
+#: cap (kW): a balanced house keeps the brand's own charge.
+PER_PHASE_GAIN_KW: Final = 0.5
 #: The note shown after control is turned off on a plant taken over from AI mode.
 NOTE_AI_MODE_BACK: Final = "ai_mode_back"
 
@@ -773,7 +788,140 @@ class BatteryControl:
         if executor is not None and executor.control.hold_variants:
             names = executor.control.variant_names()
             executor.use_variant(gate.hold_variant_to_run(self.report(), names) or names[0])
+        self._sync_phases()
         return executor
+
+    # ---- per phase
+
+    def _sync_phases(self) -> bool:
+        """Have the executor run the brand's targets per phase when they are there and verified, its plain control
+        otherwise (changed only while it holds nothing). Whether it runs them now."""
+        executor = self.executor
+        if executor is None:
+            return False
+        executor.use_phases(self._phased_wanted())
+        return executor.control.phased
+
+    def _phased_wanted(self) -> bool:
+        return gate.per_phase(self.report()) == "verified" and self._phase_missing() is None
+
+    def _phase_missing(self) -> str | None:
+        """Why a grid charge per phase cannot run on this plant now, as a stable code; `None` when everything it
+        needs is there: the brand's targets per phase and what they require, found, enabled and reading so; a
+        three-phase plant; the plant's own power per phase; the site's reading of each phase."""
+        control = control_for(self.facts.brand)
+        spec = None if control is None else control.phase_control
+        if control is None or spec is None:
+            return "not_supported"
+        if self._plant_phases(control) != 3:
+            return "not_three_phase"
+        reads = read_role_reads(self.hass, self.site.config, control.with_phases(True))
+        for role in (*spec.targets, *(role for role, _states, _why in spec.requires)):
+            read = reads.get(role.name)
+            if read is None or not read.found:
+                return f"control_not_found:{role.name}"
+            if not read.enabled:
+                return f"control_disabled:{role.name}"
+        for role, states, why in spec.requires:
+            if reading(role, reads[role.name].state) not in states:
+                return why
+        if self.facts.plant_phase_entities is None:
+            return "plant_phase_power"
+        if self._phase_headroom_a() is None or self._grid_phase_kw() is None:
+            return "site_phases"
+        return None
+
+    def _phase_headroom_a(self) -> Phases | None:
+        """Each phase's headroom now (A), `None` when one is unknown."""
+        headroom = self.site.result.phase_headroom_a
+        values = [headroom.get(phase) for phase in gate.PHASE_NAMES]  # type: ignore[call-overload]
+        if not all(value is not None and math.isfinite(value) for value in values):
+            return None
+        return (float(values[0]), float(values[1]), float(values[2]))
+
+    def _grid_phase_kw(self) -> Phases | None:
+        """The site meter's power per phase (kW, + import), `None` when one is unknown."""
+        signed = self.site.result.phase_signed_active_power_w
+        values = [signed.get(phase) for phase in gate.PHASE_NAMES]  # type: ignore[call-overload]
+        if not all(value is not None and math.isfinite(value) for value in values):
+            return None
+        return (values[0] / 1000.0, values[1] / 1000.0, values[2] / 1000.0)
+
+    def _plant_phase_kw(self, now: datetime) -> Phases | None:
+        """The plant's own power per phase (kW, + output; the adapter's `plant_phase_power`), `None` when it is not
+        read or older than a battery reading may be."""
+        try:
+            watts = plant_phase_w(self.site, BATTERY_MAX_AGE_S, now.timestamp())
+        except Exception:  # noqa: BLE001 - unknown: a charge per phase then counts none of its own draw back
+            self._look_failed("plant_phase_power")
+            return None
+        return None if watts is None else (watts[0] / 1000.0, watts[1] / 1000.0, watts[2] / 1000.0)
+
+    def _phase_caps_kw(self, now: datetime) -> Phases:
+        """The HA-down cap of a grid charge on each phase (`gate.grid_charge_phase_caps_kw`) on the site's readings
+        now, by the same house peaks, chargers and margin as the balanced cap."""
+        return gate.grid_charge_phase_caps_kw(
+            self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
+            cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
+            house_phase_peaks_a=self._phase_peaks(now) or None,
+        )
+
+    def _charge_limits(
+        self, now: datetime, options: gate.Options, *, phased: bool | None = None
+    ) -> tuple[float | None, Phases | None]:
+        """The HA-down cap a grid charge runs under now (kW, `None`: the plant's own import limit guards the fuse)
+        and, when it runs per phase, each phase's cap (the first is then their sum). Per phase only on a control
+        that runs the targets (`phased`, by default the executor's as synced now), verified and with everything
+        there, and only when the phases allow at least `PER_PHASE_GAIN_KW` more than the balanced cap."""
+        cap = self._grid_charge_cap_kw(now, options)
+        if phased is None:
+            phased = self._sync_phases()
+        if cap is None or not phased or not self._phased_wanted():
+            return cap, None
+        caps = self._phase_caps_kw(now)
+        total = sum(caps)
+        if total < cap + PER_PHASE_GAIN_KW:
+            return cap, None
+        return total, caps
+
+    def _per_phase_status(self, now: datetime, options: gate.Options) -> dict[str, Any] | None:
+        """The capability for the status: `state` (`verified`, `pending`, `failed`, or `unavailable` with `why`,
+        `_phase_missing`), `used` (a grid charge now would run per phase), `caps_kw` (each phase's HA-down cap) and
+        `charging_kw` (what a running charge per phase is commanded at). `None` for a brand without targets per
+        phase."""
+        control = control_for(self.facts.brand)
+        if control is None or control.phase_control is None:
+            return None
+
+        def per_phase(values: Phases) -> dict[str, float]:
+            return {phase: round(value, 2) for phase, value in zip(gate.PHASE_NAMES, values, strict=True)}
+
+        missing = self._phase_missing()
+        executor = self.executor
+        state = None if executor is None else executor.state
+        probing = self.verification is not None and not self.verification.done
+        running = (
+            state.phase_kw if state is not None and state.phase == "active" and state.action == ACTION_GRID_CHARGE
+            and not probing else None
+        )
+        phased = executor is not None and executor.control.phased
+        return {
+            "state": "unavailable" if missing is not None else gate.per_phase(self.report()),
+            "why": missing,
+            "used": self._charge_limits(now, options, phased=phased)[1] is not None,
+            "caps_kw": per_phase(self._phase_caps_kw(now)),
+            "charging_kw": None if running is None else per_phase(running),
+        }
+
+    def _per_phase_due(self, report: dict[str, Any] | None) -> bool:
+        """Whether a run should try the mode `per_phase`: everything it needs is there, it is still undecided on
+        this firmware, and the routine has runs left and has not failed."""
+        attempts = (report or {}).get("attempts")
+        return (
+            gate.per_phase(report) == "pending" and gate.report_status(report) != "failed"
+            and not (isinstance(attempts, int) and attempts >= gate.MAX_ATTEMPTS)
+            and self._phase_missing() is None
+        )
 
     async def async_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
         """One look of control as it runs the plan: refused unless control is on (the routine passed)."""
@@ -857,9 +1005,11 @@ class BatteryControl:
         attempt = (previous or {}).get("attempts")
         self._verify_attempt = (attempt if isinstance(attempt, int) else 0) + 1
         self._verify_key = key
+        modes = gate.BATTERY_MODES if previous is None else gate.modes_to_run(previous)
+        if self._per_phase_due(previous):
+            modes = (*modes, gate.MODE_PER_PHASE)
         self.verification = Verification(
-            executor, now, firmware=self.facts.firmware, modes=None if previous is None else gate.modes_to_run(previous),
-            tried=gate.variants_tried(previous),
+            executor, now, firmware=self.facts.firmware, modes=modes, tried=gate.variants_tried(previous),
         )
         # The attempt counts from its start: a restart in the middle neither forgets it nor runs again at once.
         self._keep_report(key, gate.merge_report(
@@ -900,16 +1050,25 @@ class BatteryControl:
         sample = Sample(
             inputs.facts.power_kw, inputs.battery_age_s, inputs.facts.soc_pct, inputs.house_deficit_kw,
             inputs.grid_import_kw if inputs.measurement_ok else None,
+            self._grid_phase_kw() if inputs.measurement_ok else None, inputs.plant_phase_kw,
         )
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
-        if action == ACTION_GRID_CHARGE:
+        probe = verification.probe()
+        if action == ACTION_GRID_CHARGE and probe is None:
+            # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
             cap = self._grid_charge_cap_kw(now, self.options())
             if cap is not None and cap < gate.MIN_RATE_KW:
                 # No grid charge fits under the HA-down cap now: tried again at a later run.
                 verification.not_judgeable(now, "grid_charge_cap")
                 action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
             rate = rate if cap is None else min(rate, cap)
-        inputs = replace(inputs, action=action, rate_kw=rate, slot_end=None)
+        # The routine's own modes never take the phases' caps: `charge` is the balanced one, and the probe of
+        # `per_phase` is a discharge on one phase (`Verification.probe`), which needs none. The reads are the
+        # control's as it is now (the mode `per_phase` has just made it the phased one).
+        inputs = replace(
+            inputs, action=action, rate_kw=rate, slot_end=None, phase_caps_kw=None, phase_probe_kw=probe,
+            reads=self._reads(executor.control),
+        )
         result = await self._async_step(executor, inputs, allowed=True)
         capability = Capability(
             rated_charge_kw=inputs.facts.max_charge_kw,
@@ -926,7 +1085,7 @@ class BatteryControl:
         """Start a run at a suitable moment when the report for this firmware still needs one."""
         report = self.report()
         state = self.state(options)
-        if state not in ("waiting", "on") or not gate.needs_run(report):
+        if state not in ("waiting", "on") or not (gate.needs_run(report) or self._per_phase_due(report)):
             self.waiting_for = None
             return
         if not self.firmware_known():
@@ -1058,7 +1217,7 @@ class BatteryControl:
             if action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
                 rate = self._bounded_rate(action, abs(power_kw) if power_kw is not None else TEST_CHARGE_KW)
             if action == ACTION_GRID_CHARGE:
-                cap = self._grid_charge_cap_kw(now, options)
+                cap = self._charge_limits(now, options)[0]
                 if cap is not None and cap < gate.MIN_RATE_KW:
                     raise TrialRefused("grid_charge_cap")
                 rate = rate if cap is None else min(rate, cap)
@@ -1090,7 +1249,7 @@ class BatteryControl:
         self-consumption while the cap leaves no grid charge."""
         rate = self._bounded_rate(trial.action, trial.rate_kw)
         if trial.action == ACTION_GRID_CHARGE:
-            cap = self._grid_charge_cap_kw(now, options)
+            cap = self._charge_limits(now, options)[0]
             if cap is not None and cap < gate.MIN_RATE_KW:
                 return (ACTION_SELF_CONSUME, 0.0, trial.until)
             rate = rate if cap is None else min(rate, cap)
@@ -1114,9 +1273,12 @@ class BatteryControl:
         control = control_for(self.facts.brand, self.hold_variant())
         if control is None:
             return
+        # As control would run it: the brand's targets per phase where they are there and verified.
+        control = control.with_phases(self._phased_wanted())
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
         slot, why = gate.restricted(
-            self._merged_slot(now), allowed, self._grid_charge_cap_kw(now, options), self._export_cap_kw()
+            self._merged_slot(now), allowed, self._charge_limits(now, options, phased=control.phased)[0],
+            self._export_cap_kw(),
         )
         action = None if slot is None else slot[0]
         if action in (None, ACTION_SELF_CONSUME):
@@ -1144,7 +1306,7 @@ class BatteryControl:
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         slot, why = gate.restricted(
-            self._merged_slot(now), gate.allowed_actions(self.report(), options), self._grid_charge_cap_kw(now, options),
+            self._merged_slot(now), gate.allowed_actions(self.report(), options), self._charge_limits(now, options)[0],
             self._export_cap_kw(),
         )
         if why != self._restricted:
@@ -1279,6 +1441,9 @@ class BatteryControl:
         cap = status["cap_kw"]
         if learned is None or learned.ready or status["rule"] not in ("conservative", "learning") or cap is None:
             return None
+        # A charge per phase runs under the phases' own caps, which may leave more than the balanced one.
+        effective = self._charge_limits(now, options)[0]
+        cap = cap if effective is None else max(cap, round(effective, 2))
         rated = self.facts.max_charge_kw
         if rated is not None and cap >= rated:
             return None
@@ -1537,10 +1702,21 @@ class BatteryControl:
         if slot is _UNSET:
             slot = self._control_slot(now, options)
         car_first, car_held = self._shedding(now, config)
+        phase_caps: Phases | None = None
+        if slot is not None and slot[0] == ACTION_GRID_CHARGE:
+            # The cap of the control that will run it, again: a slot capped for a charge per phase is never run as
+            # the balanced one above the balanced cap (the control changes only while it holds nothing).
+            cap, phase_caps = self._charge_limits(now, options, phased=control.phased)
+            if cap is not None and slot[1] > cap:
+                slot = (slot[0], cap, slot[2]) if cap >= gate.MIN_RATE_KW else (ACTION_SELF_CONSUME, 0.0, slot[2])
+                phase_caps = phase_caps if cap >= gate.MIN_RATE_KW else None
         return ExecInputs(
             now=now,
             facts=facts,
             reads=self._reads(control),
+            phase_caps_kw=phase_caps,
+            phase_headroom_a=self._phase_headroom_a(),
+            plant_phase_kw=self._plant_phase_kw(now),
             action=None if slot is None else slot[0],
             rate_kw=0.0 if slot is None else slot[1],
             slot_end=None if slot is None else slot[2],
@@ -1660,6 +1836,7 @@ class BatteryControl:
         if any(event["kind"] == "enter" for event in result.events) and taken_over(inputs.facts, executor.control):
             # Taken over from the plant's own optimiser: turning control off reminds the person to set it again.
             self.took_from_ai = True
+        self._withdraw_per_phase(result, inputs.now)
         if result.persist_first:
             # The snapshot is on disk before the first write, so a crash in between still restores it.
             await self._async_save()
@@ -1670,6 +1847,18 @@ class BatteryControl:
         self._failed = tuple(failed)
         await self._async_save()
         return result
+
+    def _withdraw_per_phase(self, result: StepResult, now: datetime) -> None:
+        """A running charge per phase that the plant did not follow (`executor._judge_phases` handed it back): the
+        capability is withdrawn for this firmware, so the next grid charge is the balanced one."""
+        judged = next((event for event in result.events
+                       if event["kind"] == "monitor" and str(event["reason"]) in ("phase_over", "phase_no_effect")), None)
+        report = None if judged is None else self.report()
+        if judged is None or report is None:
+            return
+        outcome = "partial" if judged["reason"] == "phase_over" else "ignored"
+        self._keep_report(self.firmware_key(), gate.per_phase_failed(report, outcome, now))
+        self._log([{"at": now.isoformat(), "kind": "per_phase_withdrawn", "reason": judged["reason"]}])
 
     async def _async_until_handed_back(self, reason: str) -> None:
         executor = self.executor
@@ -1826,7 +2015,15 @@ class BatteryControl:
             "notes": [dict(note) for note in self.notes],
             "trial": None if self.trial is None else self.trial.as_dict(),
             "grid_charge_cap": self._cap_status(dt_util.now(), options),
+            "per_phase": self._per_phase_block(dt_util.now(), options),
         }
+
+    def _per_phase_block(self, now: datetime, options: gate.Options) -> dict[str, Any] | None:
+        try:
+            return self._per_phase_status(now, options)
+        except Exception:  # noqa: BLE001 - the status must never fail on it
+            self._look_failed("per_phase_status")
+            return None
 
     def snapshot(self) -> dict[str, Any]:
         executor = self.executor

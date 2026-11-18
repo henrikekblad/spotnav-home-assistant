@@ -49,6 +49,17 @@
         "suggested_kw": 4.4,
         "holds": true
       }
+    },
+    "per_phase": {
+      "state": "unavailable",
+      "why": "control_disabled:phase_l1_target",
+      "used": false,
+      "caps_kw": {
+        "L1": 0.16,
+        "L2": 0.16,
+        "L3": 0.16
+      },
+      "charging_kw": null
     }
   }
 }
