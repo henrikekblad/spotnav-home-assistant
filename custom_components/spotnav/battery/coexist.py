@@ -16,6 +16,10 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   batteries supported by Tibber" (Huawei, KOSTAL, SAJ, Solis, SolaX per a LinkedIn post [U]); sonnen joins Tibber's
   VPP [V]; Ferroamp pools with Ntricity and Varberg Energi for FCR-D [V]; a Sigenergy plant "can be taken over by a
   VPP operator" instead of AI mode [F].
+* Sofar's, Growatt's and Solinteg's own modes are the options of each plugin's mode select in `solax_modbus`
+  (wills106 `4acd644`: "Energy Storage Mode", "Priority", "Working Mode"), not an app's names. Solinteg's
+  aggregators are the third-party EMS a Swedish retailer lists as compatible (KP Energy [F],
+  `plans/research_integrations/solinteg_m2ht_2026-11.md`).
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -59,6 +63,13 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
     Coexistence("homevolt", "Homevolt", ("homevolt",), "Tibber app: Smart Control", ("Tibber Grid Rewards [V]",)),
     Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app", ("Tibber VPP [V]",)),
     Coexistence("solax", "SolaX", ("solax_modbus",), "SolaX Cloud", ("Tibber [U]",)),
+    # The other plugins of `solax_modbus` that have an adapter, after SolaX so that the integration alone still
+    # names SolaX. Their own modes are the ones the plugin's mode select lists.
+    Coexistence("sofar", "Sofar", ("solax_modbus",), "Sofar: time-of-use, timing and peak-cut modes"),
+    Coexistence("growatt", "Growatt", ("solax_modbus", "growatt_server"),
+                "Growatt: battery-first and grid-first time slots"),
+    Coexistence("solinteg", "Solinteg", ("solax_modbus",), "Solinteg app: economic and time-of-use modes",
+                ("CheckWatt [F]", "Samvolt [F]", "Enequi [F]")),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi",), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

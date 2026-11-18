@@ -1,0 +1,801 @@
+{
+ "_source": "wills106/homeassistant-solax-modbus 4acd644, plugin_solinteg.py: every entity description whose allowedtypes match the inverter type `HYBRID | X1 | MPPT2`, internal sensors left out. A single-phase MHS-5K-30D (model series 31).",
+ "plugin": "solinteg",
+ "manufacturer": "Gabriel C.",
+ "model": "MHS-5K-30D",
+ "hub": "Solinteg",
+ "entities": [
+  {
+   "domain": "button",
+   "key": "control_cmd_restart",
+   "name": "Restart",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "control_cmd_start",
+   "name": "Start",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "control_cmd_stop",
+   "name": "Stop Soft(Backup on)",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "control_cmd_stop_full",
+   "name": "Stop Full",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "control_offgrid_off",
+   "name": "On-grid",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "control_offgrid_on",
+   "name": "Off-grid",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "battery_charge_current_limit",
+   "name": "Battery Charge Current Limit",
+   "unit": "A",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "battery_charge_discharge_power_target",
+   "name": "EMS BattCtrl Charge Discharge Power Target",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "battery_discharge_current_limit",
+   "name": "Battery Discharge Current Limit",
+   "unit": "A",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "battery_soc_min_offgrid",
+   "name": "Battery SOC Min Off Grid",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "battery_soc_min_ongrid",
+   "name": "Battery SOC Min On Grid",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "charge_cutoff_soc",
+   "name": "Charge Cutoff SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "ems_acctrl_phase_a_power",
+   "name": "EMS ACCtrl Phase A Power Scheduling",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "ems_acctrl_phase_b_power",
+   "name": "EMS ACCtrl Phase B Power Scheduling",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "ems_acctrl_phase_c_power",
+   "name": "EMS ACCtrl Phase C Power Scheduling",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "ems_acctrl_total_power",
+   "name": "EMS ACCtrl Total AC Power Scheduling",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "ems_battctrl_max_ac_power_limit",
+   "name": "EMS BattCtrl Max Grid Export",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "ems_battctrl_min_ac_power_limit",
+   "name": "EMS BattCtrl Max Grid Import",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "export_limit_value",
+   "name": "Export Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "import_limit_value",
+   "name": "Import Limit",
+   "unit": "kW",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "maximum_battery_charge_power",
+   "name": "Maximum Battery Charge Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "maximum_battery_discharge_power",
+   "name": "Maximum Battery Discharge Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "peak_shaving_battery_max_grid_charge",
+   "name": "Peak Shaving Battery Max Grid Charge",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "peak_shaving_max_grid_import_power",
+   "name": "Peak Shaving Max Grid Import Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "peak_shaving_minimum_soc",
+   "name": "Peak Shaving Minimum SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_soc_prot_offgrid",
+   "name": "Battery SOC Protection Off Grid",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_soc_prot_ongrid",
+   "name": "Battery SOC Protection On Grid",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_soc_prot_relax",
+   "name": "Battery Protection Relax",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_soc_reset",
+   "name": "Battery SOC Reset",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "ems_acctrl_mode",
+   "name": "EMS ACCtrl AC Power Scheduling Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "ems_battctrl_priority_power_output",
+   "name": "EMS BattCtrl Priority of Power Output",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "export_limit_switch",
+   "name": "Export Limit Switch",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "grid_unbalanced_output",
+   "name": "Grid Unbalanced Output",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "import_limit_switch",
+   "name": "Import Limit Switch",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "peak_shaving_switch",
+   "name": "Peak Shaving Switch",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "shadow_scan",
+   "name": "Shadow Scan",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "ups_function",
+   "name": "UPS Function",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "working_mode",
+   "name": "Working Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_charge_direction",
+   "name": "Battery Charge Direction",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_charge_limit",
+   "name": "Battery Charge Limit",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_charge_today",
+   "name": "Battery Charge Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_charge_total",
+   "name": "Battery Charge Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_current",
+   "name": "Battery Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge_limit",
+   "name": "Battery Discharge Limit",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge_today",
+   "name": "Battery Discharge Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge_total",
+   "name": "Battery Discharge Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_firmware",
+   "name": "Battery Firmware",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_hardware",
+   "name": "Battery Hardware",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_manufacturer",
+   "name": "Battery Manufacturer",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_max_cell_temperature",
+   "name": "Bat. Max Cell Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_max_cell_temperature_id",
+   "name": "Bat. Max Cell Temperature ID",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_max_cell_voltage",
+   "name": "Bat. Max Cell Voltage",
+   "unit": "V",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_max_cell_voltage_id",
+   "name": "Bat. Max Cell Voltage ID",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_min_cell_voltage",
+   "name": "Bat. Min Cell Voltage",
+   "unit": "V",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_min_cell_voltage_id",
+   "name": "Bat. Min Cell Voltage ID",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_power",
+   "name": "Battery Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_rated_capacity",
+   "name": "Battery Rated Capacity",
+   "unit": "Wh",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_soc",
+   "name": "Battery SOC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_soh",
+   "name": "Battery SOH",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_temperature",
+   "name": "Battery Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_voltage",
+   "name": "Battery Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "energy_ac_generation_today",
+   "name": "Energy AC Generation Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "energy_ac_generation_total",
+   "name": "Energy AC Generation Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "energy_generation_today",
+   "name": "Energy Generation Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "energy_generation_total",
+   "name": "Energy Generation Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_arm_flags1",
+   "name": "Fault ARM Flags1",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_arm_flags2",
+   "name": "Fault ARM Flags2",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_flags1",
+   "name": "Fault Flags1",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_flags2",
+   "name": "Fault Flags2",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_flags3",
+   "name": "Fault Flags3",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_current_l1",
+   "name": "Inverter Current L1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_export_today",
+   "name": "Grid Export Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_export_total",
+   "name": "Grid Export Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_frequency",
+   "name": "Inverter Frequency",
+   "unit": "Hz",
+   "device_class": "frequency",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_import_today",
+   "name": "Grid Import Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_import_total",
+   "name": "Grid Import Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "house_energy_today",
+   "name": "House Energy Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "house_energy_total",
+   "name": "House Energy Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "house_total_load",
+   "name": "House Total Load",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inv_temp_r",
+   "name": "Inv Temperature Phase-R",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inv_temp_s",
+   "name": "Inv.Temperature Phase-S",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inv_temp_t",
+   "name": "Inv.Temperature Phase-T",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inv_temperature_rad",
+   "name": "Inv.Temperature Radiator",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_load",
+   "name": "AC Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_status",
+   "name": "Inverter Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "measured_power",
+   "name": "Meter Active Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "measured_power_l1",
+   "name": "Meter Active Power L1",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "meter_grid_export_total",
+   "name": "Meter Grid Export Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "meter_grid_import_total",
+   "name": "Meter Grid Import Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "operation_flags",
+   "name": "Inverter Operation Flags",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1",
+   "name": "PV Current 1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2",
+   "name": "PV Current 2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_1",
+   "name": "PV Power 1",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_2",
+   "name": "PV Power 2",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total",
+   "name": "PV Power Total",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1",
+   "name": "PV Voltage 1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2",
+   "name": "PV Voltage 2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "shadow_scan",
+   "name": "Shadow Scan",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "software_version",
+   "name": "Firmware",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  }
+ ]
+}

@@ -56,3 +56,24 @@ def test_the_phase_switching_note_names_exactly_the_platforms_that_can_switch() 
     assert "Phase switching for solar through the Force single phase switch; needs the smart charging strategy Default." in (
         _generator().charger_notes(peblar)
     )
+
+
+def test_the_overview_names_every_battery_spotnav_reads_and_works_out_what_it_does_with_each() -> None:
+    gen = _generator()
+    keys = {key for entry in gen.OVERVIEW for key in entry.keys}
+    adapters = {entry.adapter for entry in gen.OVERVIEW if entry.adapter}
+
+    # Every battery row and every adapter is some maker's in the overview, so the overview cannot fall behind.
+    missing = sorted(key for row in gen.sd.BATTERY_ROWS for key in gen.row_keys(row) if key not in keys)
+    assert not missing, f"add the integration to OVERVIEW in tools/gen_supported.py: {missing}"
+    assert {adapter.brand for adapter in gen.ba.ADAPTERS} - {"victron_modbus"} <= adapters
+
+    rows = {entry.brand: gen._overview_row(entry) for entry in gen.OVERVIEW}
+    assert rows["Sigenergy"][2].startswith("Yes: ") and rows["Sigenergy"][3] == gen.CONTROL_OPT_IN
+    assert rows["Huawei (SUN2000, LUNA2000)"][3] == gen.CONTROL_MAPPED
+    # Read only and untested: the three plugins of SolaX Modbus beside SolaX's own.
+    for brand in ("Sofar", "Growatt", "Solinteg"):
+        row = next(row for name, row in rows.items() if name.startswith(brand))
+        assert row[2].startswith("Yes, untested: ") and row[3].startswith("Not mapped") and row[4] == "Nothing yet"
+    assert rows["SAJ"][1:5] == ("Unknown", "No", "Unknown", "Nothing yet")
+    assert "\n## Hybrid inverters and home batteries: overview\n" in gen.render()

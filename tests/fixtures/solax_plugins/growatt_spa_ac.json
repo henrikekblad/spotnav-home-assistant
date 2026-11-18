@@ -1,0 +1,1545 @@
+{
+ "_source": "wills106/homeassistant-solax-modbus 4acd644, plugin_growatt.py: every entity description whose allowedtypes match the inverter type `AC | GEN3 | X1`, internal sensors left out. An AC-coupled SPA 3000TL BL (serial WPD...).",
+ "plugin": "growatt",
+ "manufacturer": "Growatt New Energy",
+ "model": null,
+ "hub": "Growatt",
+ "entities": [
+  {
+   "domain": "button",
+   "key": "active_power_not_limited",
+   "name": "Active Power Not Limited",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "reactive_power_not_limited",
+   "name": "Reactive Power Not Limited",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "sync_rtc",
+   "name": "Sync RTC",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "active_power_limit",
+   "name": "Active Power Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "battery_first_charge_rate",
+   "name": "Battery First Charge Rate",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "battery_first_maximum_soc",
+   "name": "Battery First Maximum SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "grid_export_limit",
+   "name": "Grid Export Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "grid_first_battery_minimum_soc",
+   "name": "Grid First Battery Minimum SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "grid_first_discharge_rate",
+   "name": "Grid First Discharge Rate",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "load_first_battery_minimum_soc",
+   "name": "Load First Battery Minimum SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "reactive_power_limit",
+   "name": "Reactive Power Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "vpp_power",
+   "name": "VPP Power",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "vpp_time",
+   "name": "VPP Time",
+   "unit": "min",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_first_charge_from_grid",
+   "name": "Battery First Charge From Grid",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_first_time_1",
+   "name": "Battery First Time 1",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_first_time_2",
+   "name": "Battery First Time 2",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_first_time_3",
+   "name": "Battery First Time 3",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_first_time_4",
+   "name": "Battery First Time 4",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_first_time_5",
+   "name": "Battery First Time 5",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "battery_first_time_6",
+   "name": "Battery First Time 6",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "grid_first_time_1",
+   "name": "Grid First Time 1",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "grid_first_time_2",
+   "name": "Grid First Time 2",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "grid_first_time_3",
+   "name": "Grid First Time 3",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "grid_first_time_4",
+   "name": "Grid First Time 4",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "grid_first_time_5",
+   "name": "Grid First Time 5",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "grid_first_time_6",
+   "name": "Grid First Time 6",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "inverter_switch",
+   "name": "Inverter Switch",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "limit_grid_export",
+   "name": "Limit Grid Export",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "load_first_time_1",
+   "name": "Load First Time 1",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "load_first_time_2",
+   "name": "Load First Time 2",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "load_first_time_3",
+   "name": "Load First Time 3",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "priority",
+   "name": "Priority",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "select_baud_rate",
+   "name": "Select baud rate",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "vpp_remote_control",
+   "name": "VPP Remote Control",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "vpp_status",
+   "name": "VPP Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_power_to_grid",
+   "name": "AC Power to Grid",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_power_to_grid_total",
+   "name": "AC Power to Grid Total",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_power_to_user_total",
+   "name": "AC Power to User Total",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_inverter_vpp",
+   "name": "Active Power Inverter VPP",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_charge_power",
+   "name": "Battery Charge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge_power",
+   "name": "Battery Discharge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_charge_from_grid",
+   "name": "Battery First Charge From Grid",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_charge_rate",
+   "name": "Battery First Charge Rate",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_maximum_soc",
+   "name": "Battery First Maximum SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_1",
+   "name": "Battery First Time 1",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_1_begin",
+   "name": "Battery First Time 1 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_1_end",
+   "name": "Battery First Time 1 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_2",
+   "name": "Battery First Time 2",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_2_begin",
+   "name": "Battery First Time 2 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_2_end",
+   "name": "Battery First Time 2 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_3",
+   "name": "Battery First Time 3",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_3_begin",
+   "name": "Battery First Time 3 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_3_end",
+   "name": "Battery First Time 3 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_4",
+   "name": "Battery First Time 4",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_4_begin",
+   "name": "Battery First Time 4 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_4_end",
+   "name": "Battery First Time 4 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_5",
+   "name": "Battery First Time 5",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_5_begin",
+   "name": "Battery First Time 5 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_5_end",
+   "name": "Battery First Time 5 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_6",
+   "name": "Battery First Time 6",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_6_begin",
+   "name": "Battery First Time 6 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_first_time_6_end",
+   "name": "Battery First Time 6 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_highest_temperature",
+   "name": "Battery highest Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_lowest_temperature",
+   "name": "Battery lowest Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_operating_status_VPP",
+   "name": "Battery Status VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_soc",
+   "name": "Battery SOC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_soh",
+   "name": "Battery SOH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_temperature",
+   "name": "Battery Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_type",
+   "name": "Battery Type",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_voltage",
+   "name": "Battery Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "boost_temperature",
+   "name": "Boost Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "firmware_control_version",
+   "name": "Firmware Control Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "firmware_version",
+   "name": "Firmware Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_current",
+   "name": "Grid Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_battery_minimum_soc",
+   "name": "Grid First Battery Minimum SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_discharge_rate",
+   "name": "Grid First Discharge Rate",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_1",
+   "name": "Grid First Time 1",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_1_begin",
+   "name": "Grid First Time 1 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_1_end",
+   "name": "Grid First Time 1 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_2",
+   "name": "Grid First Time 2",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_2_begin",
+   "name": "Grid First Time 2 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_2_end",
+   "name": "Grid First Time 2 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_3",
+   "name": "Grid First Time 3",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_3_begin",
+   "name": "Grid First Time 3 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_3_end",
+   "name": "Grid First Time 3 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_4",
+   "name": "Grid First Time 4",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_4_begin",
+   "name": "Grid First Time 4 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_4_end",
+   "name": "Grid First Time 4 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_5",
+   "name": "Grid First Time 5",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_5_begin",
+   "name": "Grid First Time 5 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_5_end",
+   "name": "Grid First Time 5 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_6",
+   "name": "Grid First Time 6",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_6_begin",
+   "name": "Grid First Time 6 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_first_time_6_end",
+   "name": "Grid First Time 6 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_frequency",
+   "name": "Grid Frequency",
+   "unit": "Hz",
+   "device_class": "frequency",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_power",
+   "name": "Grid Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "house_load",
+   "name": "House Load",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_module",
+   "name": "Inverter Module",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_operating_status_vpp",
+   "name": "Inverter Status VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_temperature",
+   "name": "Inverter Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_voltage",
+   "name": "Grid Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ipm_inverter_temperature",
+   "name": "IPM Inverter Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "language",
+   "name": "Language",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_battery_minimum_soc",
+   "name": "Load First Battery Minimum SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_1",
+   "name": "Load First Time 1",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_1_begin",
+   "name": "Load First Time 1 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_1_end",
+   "name": "Load First Time 1 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_2",
+   "name": "Load First Time 2",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_2_begin",
+   "name": "Load First Time 2 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_2_end",
+   "name": "Load First Time 2 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_3",
+   "name": "Load First Time 3",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_3_begin",
+   "name": "Load First Time 3 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "load_first_time_3_end",
+   "name": "Load First Time 3 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "output_power",
+   "name": "Output Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "priority",
+   "name": "Priority",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1",
+   "name": "PV Current 1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1_vpp",
+   "name": "PV Current 1 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2",
+   "name": "PV Current 2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2_vpp",
+   "name": "PV Current 2 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_3_vpp",
+   "name": "PV Current 3 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_isolation_resistance",
+   "name": "PV Isolation Resistance",
+   "unit": "kΩ",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_1",
+   "name": "PV Power 1",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_2",
+   "name": "PV Power 2",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total",
+   "name": "PV Power Total",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total_vpp",
+   "name": "PV Power Total VPP",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1",
+   "name": "PV Voltage 1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1_vpp",
+   "name": "PV Voltage 1 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2",
+   "name": "PV Voltage 2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2_vpp",
+   "name": "PV Voltage 2 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_3_vpp",
+   "name": "PV Voltage 3 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive_power_inverter_vpp",
+   "name": "Reactive Power Inverter VPP",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "rtc",
+   "name": "RTC",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "run_mode",
+   "name": "Machine Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "self_electric_energy_today",
+   "name": "Self Electric Energy Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "self_electric_energy_total",
+   "name": "Self Electric Energy Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "self_power",
+   "name": "Self Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "serialnumber",
+   "name": "Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "system_electric_energy_today",
+   "name": "System Electric Energy Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "system_electric_energy_total",
+   "name": "System Electric Energy Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "system_power",
+   "name": "System Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_battery_input_energy",
+   "name": "Today's Battery Input Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_battery_output_energy",
+   "name": "Today's Battery Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_grid_export",
+   "name": "Today's Grid Export",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_grid_import",
+   "name": "Today's Grid Import",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_load",
+   "name": "Today's Load",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_power_generation",
+   "name": "Today's Power Generation",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_pv1_solar_energy",
+   "name": "Today's PV1 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_pv2_solar_energy",
+   "name": "Today's PV2 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_solar_energy",
+   "name": "Today's Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_battery_input_energy",
+   "name": "Total Battery Input Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_battery_output_energy",
+   "name": "Total Battery Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_grid_export",
+   "name": "Total Grid Export",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_grid_import",
+   "name": "Total Grid Import",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_house_load",
+   "name": "Total House Load",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_load",
+   "name": "Total Load",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_power_generation",
+   "name": "Total Power Generation",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_pv1_solar_energy",
+   "name": "Total PV1 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_pv2_solar_energy",
+   "name": "Total PV2 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy",
+   "name": "Total Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy_vpp",
+   "name": "Total Solar Energy VPP",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_work_time_hours",
+   "name": "Total Work Time Hours",
+   "unit": "h",
+   "device_class": "duration",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "work_mode_priority_vpp",
+   "name": "Work Mode - Priority VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_1_begin",
+   "name": "Battery First Time 1 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_1_end",
+   "name": "Battery First Time 1 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_2_begin",
+   "name": "Battery First Time 2 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_2_end",
+   "name": "Battery First Time 2 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_3_begin",
+   "name": "Battery First Time 3 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_3_end",
+   "name": "Battery First Time 3 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_4_begin",
+   "name": "Battery First Time 4 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_4_end",
+   "name": "Battery First Time 4 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_5_begin",
+   "name": "Battery First Time 5 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_5_end",
+   "name": "Battery First Time 5 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_6_begin",
+   "name": "Battery First Time 6 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "battery_first_time_6_end",
+   "name": "Battery First Time 6 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_1_begin",
+   "name": "Grid First Time 1 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_1_end",
+   "name": "Grid First Time 1 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_2_begin",
+   "name": "Grid First Time 2 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_2_end",
+   "name": "Grid First Time 2 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_3_begin",
+   "name": "Grid First Time 3 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_3_end",
+   "name": "Grid First Time 3 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_4_begin",
+   "name": "Grid First Time 4 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_4_end",
+   "name": "Grid First Time 4 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_5_begin",
+   "name": "Grid First Time 5 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_5_end",
+   "name": "Grid First Time 5 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_6_begin",
+   "name": "Grid First Time 6 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "grid_first_time_6_end",
+   "name": "Grid First Time 6 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "load_first_time_1_begin",
+   "name": "Load First Time 1 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "load_first_time_1_end",
+   "name": "Load First Time 1 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "load_first_time_2_begin",
+   "name": "Load First Time 2 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "load_first_time_2_end",
+   "name": "Load First Time 2 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "load_first_time_3_begin",
+   "name": "Load First Time 3 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "load_first_time_3_end",
+   "name": "Load First Time 3 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  }
+ ]
+}

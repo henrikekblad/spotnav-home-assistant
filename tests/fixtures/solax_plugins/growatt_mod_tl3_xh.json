@@ -1,0 +1,2929 @@
+{
+ "_source": "wills106/homeassistant-solax-modbus 4acd644, plugin_growatt.py: every entity description whose allowedtypes match the inverter type `HYBRID | GEN4 | X3`, internal sensors left out. A MOD 5000 TL3-XH (serial PYL...), under the integration's default hub name.",
+ "plugin": "growatt",
+ "manufacturer": "Growatt New Energy",
+ "model": null,
+ "hub": "SolaX",
+ "entities": [
+  {
+   "domain": "button",
+   "key": "active_power_not_limited",
+   "name": "Active Power Not Limited",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "reactive_power_not_limited",
+   "name": "Reactive Power Not Limited",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "sync_rtc",
+   "name": "Sync RTC",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "time_1_clear",
+   "name": "Time 1 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "time_1_update",
+   "name": "Time 1 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "time_2_clear",
+   "name": "Time 2 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "time_2_update",
+   "name": "Time 2 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "time_3_clear",
+   "name": "Time 3 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "time_3_update",
+   "name": "Time 3 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "time_4_clear",
+   "name": "Time 4 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_4_update",
+   "name": "Time 4 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_5_clear",
+   "name": "Time 5 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_5_update",
+   "name": "Time 5 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_6_clear",
+   "name": "Time 6 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_6_update",
+   "name": "Time 6 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_7_clear",
+   "name": "Time 7 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_7_update",
+   "name": "Time 7 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_8_clear",
+   "name": "Time 8 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_8_update",
+   "name": "Time 8 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_9_clear",
+   "name": "Time 9 Clear",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "button",
+   "key": "time_9_update",
+   "name": "Time 9 Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "active_power_limit",
+   "name": "Active Power Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "charge_stop_soc_from_grid",
+   "name": "Charge Stop SOC from Grid",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "ems_charging_rate",
+   "name": "EMS Charging Rate",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "ems_charging_stop_soc",
+   "name": "EMS Charging Stop SOC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "ems_discharging_rate",
+   "name": "EMS Discharging Rate",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "ems_discharging_stop_soc",
+   "name": "EMS Discharging Stop SOC (off grid)",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "ems_discharging_stop_soc_on_grid",
+   "name": "EMS Discharging Stop SOC (on grid)",
+   "unit": "%",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "number",
+   "key": "grid_export_limit",
+   "name": "Grid Export Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "max_charge_power_from_grid",
+   "name": "Max charge power from grid",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "peak_export_limit",
+   "name": "Peak Export Limit",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "peak_import_limit",
+   "name": "Peak Import Limit",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "reactive_power_limit",
+   "name": "Reactive Power Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "reserved_soc_peak_shaving",
+   "name": "Reserved SoC for Peak Shaving",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "vpp_ac_charge_max_power",
+   "name": "VPP AC Charge Max Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "vpp_ac_charge_max_power_2",
+   "name": "VPP AC Charge Max Power 2",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "vpp_power",
+   "name": "VPP Power",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "vpp_time",
+   "name": "VPP Time",
+   "unit": "min",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "charger_switch",
+   "name": "Allow Grid Charge",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "inverter_switch",
+   "name": "Inverter Switch",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "limit_grid_export",
+   "name": "Limit Grid Export",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "peak_shaving_enable",
+   "name": "Peak Shaving Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "reserved_soc_peak_shaving_enable",
+   "name": "Reserved SoC for Peak Shaving Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "select_baud_rate",
+   "name": "Select baud rate",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_1_enabled",
+   "name": "Time 1 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "time_1_mode",
+   "name": "Time 1 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "time_2_enabled",
+   "name": "Time 2 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_2_mode",
+   "name": "Time 2 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_3_enabled",
+   "name": "Time 3 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_3_mode",
+   "name": "Time 3 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_4_enabled",
+   "name": "Time 4 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_4_mode",
+   "name": "Time 4 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_5_enabled",
+   "name": "Time 5 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_5_mode",
+   "name": "Time 5 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_6_enabled",
+   "name": "Time 6 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_6_mode",
+   "name": "Time 6 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_7_enabled",
+   "name": "Time 7 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_7_mode",
+   "name": "Time 7 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_8_enabled",
+   "name": "Time 8 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_8_mode",
+   "name": "Time 8 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_9_enabled",
+   "name": "Time 9 Active",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "time_9_mode",
+   "name": "Time 9 Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "select",
+   "key": "vpp_allow_ac_charging",
+   "name": "VPP Allow AC charging",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "vpp_remote_control",
+   "name": "VPP Remote Control",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "vpp_status",
+   "name": "VPP Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_inverter_vpp",
+   "name": "Active Power Inverter VPP",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "backup_grid_voltage_l1",
+   "name": "Backup Grid Voltage L1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "backup_grid_voltage_l2",
+   "name": "Backup Grid Voltage L2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "backup_grid_voltage_l3",
+   "name": "Backup Grid Voltage L3",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "backup_status",
+   "name": "Backup Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_charge_power",
+   "name": "Battery Charge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_combined_power",
+   "name": "Battery Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_combined_power_vpp",
+   "name": "Battery Combined Power VPP",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_current",
+   "name": "Battery Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge_power",
+   "name": "Battery Discharge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_operating_status_VPP",
+   "name": "Battery Status VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_soc",
+   "name": "Battery SOC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_type",
+   "name": "Battery Type",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_voltage",
+   "name": "Battery Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_awake_modules",
+   "name": "BMS 1 Awake Modules",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_charge_power",
+   "name": "BMS 1 Charge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_discharge_power",
+   "name": "BMS 1 Discharge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_charge_cycles",
+   "name": "BMS 1 Module 1 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_combined_current",
+   "name": "BMS 1 Module 1 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_combined_power",
+   "name": "BMS 1 Module 1 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_max_cell_temp",
+   "name": "BMS 1 Module 1 Max Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_min_cell_temp",
+   "name": "BMS 1 Module 1 Min Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_serialnumber",
+   "name": "BMS 1 Module 1 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_soc",
+   "name": "BMS 1 Module 1 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_soh",
+   "name": "BMS 1 Module 1 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_status",
+   "name": "BMS 1 Module 1 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_toe",
+   "name": "BMS 1 Module 1 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_volt",
+   "name": "BMS 1 Module 1 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_1_warning_text",
+   "name": "BMS 1 Module 1 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_charge_cycles",
+   "name": "BMS 1 Module 2 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_combined_current",
+   "name": "BMS 1 Module 2 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_combined_power",
+   "name": "BMS 1 Module 2 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_max_cell_temp",
+   "name": "BMS 1 Module 2 Max Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_min_cell_temp",
+   "name": "BMS 1 Module 2 Min Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_serialnumber",
+   "name": "BMS 1 Module 2 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_soc",
+   "name": "BMS 1 Module 2 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_soh",
+   "name": "BMS 1 Module 2 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_status",
+   "name": "BMS 1 Module 2 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_toe",
+   "name": "BMS 1 Module 2 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_volt",
+   "name": "BMS 1 Module 2 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_2_warning_text",
+   "name": "BMS 1 Module 2 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_charge_cycles",
+   "name": "BMS 1 Module 3 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_combined_current",
+   "name": "BMS 1 Module 3 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_combined_power",
+   "name": "BMS 1 Module 3 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_max_cell_temp",
+   "name": "BMS 1 Module 3 Max Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_min_cell_temp",
+   "name": "BMS 1 Module 3 Min Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_serialnumber",
+   "name": "BMS 1 Module 3 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_soc",
+   "name": "BMS 1 Module 3 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_soh",
+   "name": "BMS 1 Module 3 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_status",
+   "name": "BMS 1 Module 3 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_toe",
+   "name": "BMS 1 Module 3 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_volt",
+   "name": "BMS 1 Module 3 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_3_warning_text",
+   "name": "BMS 1 Module 3 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_charge_cycles",
+   "name": "BMS 1 Module 4 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_combined_current",
+   "name": "BMS 1 Module 4 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_combined_power",
+   "name": "BMS 1 Module 4 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_max_cell_temp",
+   "name": "BMS 1 Module 4 Max Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_min_cell_temp",
+   "name": "BMS 1 Module 4 Min Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_serialnumber",
+   "name": "BMS 1 Module 4 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_soc",
+   "name": "BMS 1 Module 4 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_soh",
+   "name": "BMS 1 Module 4 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_status",
+   "name": "BMS 1 Module 4 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_toe",
+   "name": "BMS 1 Module 4 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_volt",
+   "name": "BMS 1 Module 4 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_4_warning_text",
+   "name": "BMS 1 Module 4 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_charge_cycles",
+   "name": "BMS 1 Module 5 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_combined_current",
+   "name": "BMS 1 Module 5 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_combined_power",
+   "name": "BMS 1 Module 5 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_max_cell_temp",
+   "name": "BMS 1 Module 5 Max Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_min_cell_temp",
+   "name": "BMS 1 Module 5 Min Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_serialnumber",
+   "name": "BMS 1 Module 5 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_soc",
+   "name": "BMS 1 Module 5 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_soh",
+   "name": "BMS 1 Module 5 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_status",
+   "name": "BMS 1 Module 5 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_toe",
+   "name": "BMS 1 Module 5 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_volt",
+   "name": "BMS 1 Module 5 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_5_warning_text",
+   "name": "BMS 1 Module 5 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_charge_cycles",
+   "name": "BMS 1 Module 6 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_combined_current",
+   "name": "BMS 1 Module 6 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_combined_power",
+   "name": "BMS 1 Module 6 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_max_cell_temp",
+   "name": "BMS 1 Module 6 Max Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_min_cell_temp",
+   "name": "BMS 1 Module 6 Min Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_serialnumber",
+   "name": "BMS 1 Module 6 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_soc",
+   "name": "BMS 1 Module 6 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_soh",
+   "name": "BMS 1 Module 6 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_status",
+   "name": "BMS 1 Module 6 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_toe",
+   "name": "BMS 1 Module 6 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_volt",
+   "name": "BMS 1 Module 6 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_6_warning_text",
+   "name": "BMS 1 Module 6 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_module_count",
+   "name": "BMS 1 Module Count",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_monitoring_version",
+   "name": "BMS 1 Monitoring Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_serialnumber",
+   "name": "BMS 1 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_soc",
+   "name": "BMS 1 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_soh",
+   "name": "BMS 1 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_status",
+   "name": "BMS 1 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_temp_a",
+   "name": "BMS 1 Temp A",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_temp_b",
+   "name": "BMS 1 Temp B",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_1_toe",
+   "name": "BMS 1 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_awake_modules",
+   "name": "BMS 2 Awake Modules",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_charge_power",
+   "name": "BMS 2 Charge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_discharge_power",
+   "name": "BMS 2 Discharge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_charge_cycles",
+   "name": "BMS 2 Module 1 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_combined_current",
+   "name": "BMS 2 Module 1 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_combined_power",
+   "name": "BMS 2 Module 1 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_max_cell_temp",
+   "name": "BMS 2 Module 1 Max Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_min_cell_temp",
+   "name": "BMS 2 Module 1 Min Cell Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_serialnumber",
+   "name": "BMS 2 Module 1 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_soc",
+   "name": "BMS 2 Module 1 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_soh",
+   "name": "BMS 2 Module 1 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_status",
+   "name": "BMS 2 Module 1 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_toe",
+   "name": "BMS 2 Module 1 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_volt",
+   "name": "BMS 2 Module 1 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_1_warning_text",
+   "name": "BMS 2 Module 1 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_charge_cycles",
+   "name": "BMS 2 Module 2 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_combined_current",
+   "name": "BMS 2 Module 2 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_combined_power",
+   "name": "BMS 2 Module 2 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_serialnumber",
+   "name": "BMS 2 Module 2 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_soc",
+   "name": "BMS 2 Module 2 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_soh",
+   "name": "BMS 2 Module 2 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_status",
+   "name": "BMS 2 Module 2 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_toe",
+   "name": "BMS 2 Module 2 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_volt",
+   "name": "BMS 2 Module 2 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_2_warning_text",
+   "name": "BMS 2 Module 2 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_charge_cycles",
+   "name": "BMS 2 Module 3 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_combined_current",
+   "name": "BMS 2 Module 3 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_combined_power",
+   "name": "BMS 2 Module 3 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_serialnumber",
+   "name": "BMS 2 Module 3 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_soc",
+   "name": "BMS 2 Module 3 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_soh",
+   "name": "BMS 2 Module 3 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_status",
+   "name": "BMS 2 Module 3 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_toe",
+   "name": "BMS 2 Module 3 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_volt",
+   "name": "BMS 2 Module 3 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_3_warning_text",
+   "name": "BMS 2 Module 3 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_charge_cycles",
+   "name": "BMS 2 Module 4 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_combined_current",
+   "name": "BMS 2 Module 4 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_combined_power",
+   "name": "BMS 2 Module 4 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_serialnumber",
+   "name": "BMS 2 Module 4 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_soc",
+   "name": "BMS 2 Module 4 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_soh",
+   "name": "BMS 2 Module 4 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_status",
+   "name": "BMS 2 Module 4 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_toe",
+   "name": "BMS 2 Module 4 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_volt",
+   "name": "BMS 2 Module 4 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_4_warning_text",
+   "name": "BMS 2 Module 4 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_charge_cycles",
+   "name": "BMS 2 Module 5 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_combined_current",
+   "name": "BMS 2 Module 5 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_combined_power",
+   "name": "BMS 2 Module 5 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_serialnumber",
+   "name": "BMS 2 Module 5 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_soc",
+   "name": "BMS 2 Module 5 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_soh",
+   "name": "BMS 2 Module 5 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_status",
+   "name": "BMS 2 Module 5 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_toe",
+   "name": "BMS 2 Module 5 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_volt",
+   "name": "BMS 2 Module 5 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_5_warning_text",
+   "name": "BMS 2 Module 5 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_charge_cycles",
+   "name": "BMS 2 Module 6 Charge Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_combined_current",
+   "name": "BMS 2 Module 6 Combined Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_combined_power",
+   "name": "BMS 2 Module 6 Combined Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_serialnumber",
+   "name": "BMS 2 Module 6 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_soc",
+   "name": "BMS 2 Module 6 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_soh",
+   "name": "BMS 2 Module 6 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_status",
+   "name": "BMS 2 Module 6 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_toe",
+   "name": "BMS 2 Module 6 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_volt",
+   "name": "BMS 2 Module 6 Volt",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_6_warning_text",
+   "name": "BMS 2 Module 6 Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_module_count",
+   "name": "BMS 2 Module Count",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_monitoring_version",
+   "name": "BMS 2 Monitoring Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_serialnumber",
+   "name": "BMS 2 Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_soc",
+   "name": "BMS 2 SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_soh",
+   "name": "BMS 2 SoH",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_status",
+   "name": "BMS 2 Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_temp_a",
+   "name": "BMS 2 Temp A",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_temp_b",
+   "name": "BMS 2 Temp B",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_2_toe",
+   "name": "BMS 2 Total Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_type",
+   "name": "BMS Type",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bmss_connceted",
+   "name": "BMS's Connected",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "boost_temperature",
+   "name": "Boost Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "communication_board_temperature",
+   "name": "Communication Board Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "firmware_control_version",
+   "name": "Firmware Control Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "firmware_version",
+   "name": "Firmware Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_current_l1",
+   "name": "Grid Current L1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_current_l2",
+   "name": "Grid Current L2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_current_l3",
+   "name": "Grid Current L3",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_frequency",
+   "name": "Grid Frequency",
+   "unit": "Hz",
+   "device_class": "frequency",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_power_l1",
+   "name": "Grid Power L1",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_power_l2",
+   "name": "Grid Power L2",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_power_l3",
+   "name": "Grid Power L3",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_status",
+   "name": "Grid Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_voltage_l1",
+   "name": "Grid Voltage L1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_voltage_l2",
+   "name": "Grid Voltage L2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_voltage_l3",
+   "name": "Grid Voltage L3",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_fault_text",
+   "name": "Inverter Fault Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_operating_status_vpp",
+   "name": "Inverter Status VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_state",
+   "name": "Inverter Run State",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_temperature",
+   "name": "Inverter Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_total_module_count",
+   "name": "Inverter Total Module Count",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_warning_text",
+   "name": "Inverter Warning Text",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ipm_inverter_temperature",
+   "name": "IPM Inverter Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "language",
+   "name": "Language",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "output_power",
+   "name": "Output Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "priority",
+   "name": "Priority",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1",
+   "name": "PV Current 1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1_vpp",
+   "name": "PV Current 1 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2",
+   "name": "PV Current 2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2_vpp",
+   "name": "PV Current 2 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_3_vpp",
+   "name": "PV Current 3 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_isolation_resistance",
+   "name": "PV Isolation Resistance",
+   "unit": "kΩ",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_1",
+   "name": "PV Power 1",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_2",
+   "name": "PV Power 2",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total",
+   "name": "PV Power Total",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total_vpp",
+   "name": "PV Power Total VPP",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1",
+   "name": "PV Voltage 1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1_vpp",
+   "name": "PV Voltage 1 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2",
+   "name": "PV Voltage 2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2_vpp",
+   "name": "PV Voltage 2 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_3_vpp",
+   "name": "PV Voltage 3 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive_power_inverter_vpp",
+   "name": "Reactive Power Inverter VPP",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "rtc",
+   "name": "RTC",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "run_mode",
+   "name": "Machine Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "serialnumber",
+   "name": "Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_1_begin_read",
+   "name": "Time 1 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "time_1_enabled_read",
+   "name": "Time 1 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "time_1_end_read",
+   "name": "Time 1 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "time_1_mode_read",
+   "name": "Time 1 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "time_2_begin_read",
+   "name": "Time 2 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_2_enabled_read",
+   "name": "Time 2 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_2_end_read",
+   "name": "Time 2 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_2_mode_read",
+   "name": "Time 2 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_3_begin_read",
+   "name": "Time 3 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_3_enabled_read",
+   "name": "Time 3 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_3_end_read",
+   "name": "Time 3 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_3_mode_read",
+   "name": "Time 3 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_4_begin_read",
+   "name": "Time 4 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_4_enabled_read",
+   "name": "Time 4 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_4_end_read",
+   "name": "Time 4 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_4_mode_read",
+   "name": "Time 4 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_5_begin_read",
+   "name": "Time 5 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_5_enabled_read",
+   "name": "Time 5 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_5_end_read",
+   "name": "Time 5 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_5_mode_read",
+   "name": "Time 5 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_6_begin_read",
+   "name": "Time 6 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_6_enabled_read",
+   "name": "Time 6 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_6_end_read",
+   "name": "Time 6 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_6_mode_read",
+   "name": "Time 6 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_7_begin_read",
+   "name": "Time 7 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_7_enabled_read",
+   "name": "Time 7 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_7_end_read",
+   "name": "Time 7 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_7_mode_read",
+   "name": "Time 7 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_8_begin_read",
+   "name": "Time 8 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_8_enabled_read",
+   "name": "Time 8 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_8_end_read",
+   "name": "Time 8 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_8_mode_read",
+   "name": "Time 8 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_9_begin_read",
+   "name": "Time 9 Begin (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_9_enabled_read",
+   "name": "Time 9 Active (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_9_end_read",
+   "name": "Time 9 End (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "time_9_mode_read",
+   "name": "Time 9 Mode (read)",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_battery_input_energy",
+   "name": "Today's Battery Input Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_battery_output_energy",
+   "name": "Today's Battery Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_grid_export",
+   "name": "Today's Grid Export",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_grid_import",
+   "name": "Today's Grid Import",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_power_generation",
+   "name": "Today's Power Generation",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_pv1_solar_energy",
+   "name": "Today's PV1 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_pv2_solar_energy",
+   "name": "Today's PV2 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_solar_energy",
+   "name": "Today's Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_yield",
+   "name": "Today's Load Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_battery_input_energy",
+   "name": "Total Battery Input Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_battery_output_energy",
+   "name": "Total Battery Output Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_forward_power",
+   "name": "Total Import Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_grid_export",
+   "name": "Total Grid Export",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_grid_import",
+   "name": "Total Grid Import",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_grid_power",
+   "name": "Total Grid Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_grid_power_va",
+   "name": "Grid Power Total",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_load_power",
+   "name": "Total Load Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_power_generation",
+   "name": "Total Power Generation",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_pv1_solar_energy",
+   "name": "Total PV1 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_pv2_solar_energy",
+   "name": "Total PV2 Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_pv_power",
+   "name": "Total PV Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_reverse_power",
+   "name": "Total Export Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy",
+   "name": "Total Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy_vpp",
+   "name": "Total Solar Energy VPP",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_work_time_hours",
+   "name": "Total Work Time Hours",
+   "unit": "h",
+   "device_class": "duration",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "total_yield",
+   "name": "Total Load Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "work_mode_priority",
+   "name": "Work Mode - Priority",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "work_mode_priority_vpp",
+   "name": "Work Mode - Priority VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "time_1_begin",
+   "name": "Time 1 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "time_1_end",
+   "name": "Time 1 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "time",
+   "key": "time_2_begin",
+   "name": "Time 2 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_2_end",
+   "name": "Time 2 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_3_begin",
+   "name": "Time 3 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_3_end",
+   "name": "Time 3 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_4_begin",
+   "name": "Time 4 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_4_end",
+   "name": "Time 4 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_5_begin",
+   "name": "Time 5 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_5_end",
+   "name": "Time 5 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_6_begin",
+   "name": "Time 6 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_6_end",
+   "name": "Time 6 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_7_begin",
+   "name": "Time 7 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_7_end",
+   "name": "Time 7 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_8_begin",
+   "name": "Time 8 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_8_end",
+   "name": "Time 8 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_9_begin",
+   "name": "Time 9 Begin",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "time",
+   "key": "time_9_end",
+   "name": "Time 9 End",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  }
+ ]
+}

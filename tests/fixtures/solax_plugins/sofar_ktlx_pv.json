@@ -1,0 +1,913 @@
+{
+ "_source": "wills106/homeassistant-solax-modbus 4acd644, plugin_sofar.py: every entity description whose allowedtypes match the inverter type `PV | X3 | GEN`, internal sensors left out. A three-phase KTL-X G3 PV inverter (serial SS2E...).",
+ "plugin": "sofar",
+ "manufacturer": "Sofar Solar",
+ "model": null,
+ "hub": "Sofar",
+ "entities": [
+  {
+   "domain": "button",
+   "key": "feedin_limitation_mode",
+   "name": "FeedIn: Update",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "sync_rtc",
+   "name": "Update System Time",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "feedin_max_power",
+   "name": "FeedIn: Maximum Power",
+   "unit": "W",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "feedin_limitation_mode",
+   "name": "FeedIn: Limitation Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "remote_switch_on_off",
+   "name": "Remote Switch On Off",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_load_sys",
+   "name": "Active Power Load Sys",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_output_l1",
+   "name": "Active Power Output L1",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_output_l1n",
+   "name": "Active Power Output L1N",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_output_l2",
+   "name": "Active Power Output L2",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_output_l2n",
+   "name": "Active Power Output L2N",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_output_l3",
+   "name": "Active Power Output L3",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_output_total",
+   "name": "Active Power Output Total",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_pcc_l1",
+   "name": "Active Power PCC L1",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_pcc_l1n",
+   "name": "Active Power PCC L1N",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_pcc_l2",
+   "name": "Active Power PCC L2",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_pcc_l2n",
+   "name": "Active Power PCC L2N",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_pcc_l3",
+   "name": "Active Power PCC L3",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_pcc_total",
+   "name": "Active Power PCC Total",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_pv_ext",
+   "name": "Active Power PV Ext",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "apparent_power_output_total",
+   "name": "Apparent Power Output Total",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "apparent_power_pcc_total",
+   "name": "Apparent Power PCC Total",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_version",
+   "name": "BMS Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "cell_max_voltage",
+   "name": "cell max voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "cell_min_voltage",
+   "name": "cell min voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "cell_{}_voltage",
+   "name": "cell {} voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_output_l1",
+   "name": "Current Output L1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_output_l1n",
+   "name": "Current Output L1N",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_output_l2",
+   "name": "Current Output L2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_output_l2n",
+   "name": "Current Output L2N",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_output_l3",
+   "name": "Current Output L3",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_pcc_l1",
+   "name": "Current PCC L1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_pcc_l1n",
+   "name": "Current PCC L1N",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_pcc_l2",
+   "name": "Current PCC L2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_pcc_l2n",
+   "name": "Current PCC L2N",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "current_pcc_l3",
+   "name": "Current PCC L3",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "export_energy_today",
+   "name": "Export Energy Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "export_energy_total",
+   "name": "Export Energy Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_1",
+   "name": "Fault 1",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_10",
+   "name": "Fault 10",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_11",
+   "name": "Fault 11",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_12",
+   "name": "Fault 12",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_2",
+   "name": "Fault 2",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_3",
+   "name": "Fault 3",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_4",
+   "name": "Fault 4",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_5",
+   "name": "Fault 5",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_6",
+   "name": "Fault 6",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_7",
+   "name": "Fault 7",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_8",
+   "name": "Fault 8",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_9",
+   "name": "Fault 9",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "feedin_limitation_mode",
+   "name": "FeedIn: Limitation Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_frequency",
+   "name": "Grid Frequency",
+   "unit": "Hz",
+   "device_class": "frequency",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "hardware_version",
+   "name": "Hardware Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "heatsink_temperature_1",
+   "name": "Heatsink Temperature 1",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "heatsink_temperature_2",
+   "name": "Heatsink Temperature 2",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "import_energy_today",
+   "name": "Import Energy Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "import_energy_total",
+   "name": "Import Energy Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_temperature_1",
+   "name": "Inverter Temperature 1",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_temperature_2",
+   "name": "Inverter Temperature 2",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "load_consumption_today",
+   "name": "Load Consumption Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "load_consumption_total",
+   "name": "Load Consumption Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "module_temperature_1",
+   "name": "Module Temperature 1",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "module_temperature_2",
+   "name": "Module Temperature 2",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_current",
+   "name": "Pack Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_cycles",
+   "name": "Pack Cycles",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_full_charge_capacity",
+   "name": "Pack Full charge capacity",
+   "unit": "Ah",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_id",
+   "name": "Pack ID",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_remaining_capacity",
+   "name": "Pack remaining capacity",
+   "unit": "Ah",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_serial_number",
+   "name": "Pack Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_temperature_env",
+   "name": "Pack Temperature Env",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_temperature_mos",
+   "name": "Pack Temperature MOS",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_temperature_{}",
+   "name": "Pack Temperature {}",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pack_time",
+   "name": "Pack Time",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "power_factor_output_l1",
+   "name": "Power Factor Output L1",
+   "unit": null,
+   "device_class": "power_factor",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "power_factor_output_l2",
+   "name": "Power Factor Output L2",
+   "unit": null,
+   "device_class": "power_factor",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "power_factor_output_l3",
+   "name": "Power Factor Output L3",
+   "unit": null,
+   "device_class": "power_factor",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "power_factor_pcc_l1",
+   "name": "Power Factor PCC L1",
+   "unit": null,
+   "device_class": "power_factor",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "power_factor_pcc_l2",
+   "name": "Power Factor PCC L2",
+   "unit": null,
+   "device_class": "power_factor",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "power_factor_pcc_l3",
+   "name": "Power Factor PCC L3",
+   "unit": null,
+   "device_class": "power_factor",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1",
+   "name": "PV Current 1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2",
+   "name": "PV Current 2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_1",
+   "name": "PV Power 1",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_2",
+   "name": "PV Power 2",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total",
+   "name": "PV Power Total",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1",
+   "name": "PV Voltage 1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2",
+   "name": "PV Voltage 2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_output_l1",
+   "name": "Reactive Power Output L1",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_output_l2",
+   "name": "Reactive Power Output L2",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_output_l3",
+   "name": "Reactive Power Output L3",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_output_total",
+   "name": "Reactive Power Output Total",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_pcc_l1",
+   "name": "Reactive Power PCC L1",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_pcc_l2",
+   "name": "Reactive Power PCC L2",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_pcc_l3",
+   "name": "Reactive Power PCC L3",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive Power_pcc_total",
+   "name": "Reactive Power PCC Total",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "realtime_capacity",
+   "name": "Realtime Capacity",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "rtc",
+   "name": "System Time",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "serial_number",
+   "name": "Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "soc",
+   "name": "SOC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "software_version",
+   "name": "Software Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "soh",
+   "name": "SOH",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "solar_generation_today",
+   "name": "Solar Generation Today",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "solar_generation_total",
+   "name": "Solar Generation Total",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "system_state",
+   "name": "System State",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_current",
+   "name": "Total Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_voltage",
+   "name": "Total Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_l1",
+   "name": "Voltage L1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_l2",
+   "name": "Voltage L2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_l3",
+   "name": "Voltage L3",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_line_l1",
+   "name": "Voltage Line L1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_line_l2",
+   "name": "Voltage Line L2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_line_l3",
+   "name": "Voltage Line L3",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_phase_l1n",
+   "name": "Voltage Phase L1N",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "voltage_phase_l2n",
+   "name": "Voltage Phase L2N",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "waiting_time",
+   "name": "Waiting Time",
+   "unit": "s",
+   "device_class": null,
+   "enabled": true
+  }
+ ]
+}

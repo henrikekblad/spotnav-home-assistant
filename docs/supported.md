@@ -12,7 +12,48 @@ Each row says how it is known to work:
 
 Using one of these? Tell us whether it works: [Hardware tested](../../../issues/new?template=hardware_report.yml).
 
-Jump to: [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
+Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), [chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), [house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), [solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).
+
+## Hybrid inverters and home batteries: overview
+
+Every hybrid inverter and home battery we know of in the Nordics and Europe, and how far SpotNav gets with each. The detailed rows are under [grid meters](#supported-grid-meters) and [house batteries](#supported-house-batteries); what the battery plan needs from each is in [The battery plan](battery-plan.md#what-the-plan-needs).
+
+- **SpotNav reads**: what it finds by itself through the integration. *Untested* means read from the integration's source and not yet confirmed on real hardware. A battery that is not read can still be used by picking its power sensor yourself on the site.
+- **SpotNav controls**: *Opt-in, in testing* is [SpotNav's own battery control](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing), off by default. *Mapped, never run on a device* means SpotNav has the commands for that integration behind the same switch and the same check of the battery, but nobody has run them on a battery yet. *Not mapped* means SpotNav only reads, with what the integration itself could do locally. Without control SpotNav still plans in shadow where it reads the battery's level, and still signals a grid charge to your own planner or automation.
+- **Unknown** is where neither SpotNav's tables nor our notes say. Corrections are welcome: [Hardware tested](../../../issues/new?template=hardware_report.yml).
+
+| Brand | Home Assistant integration | SpotNav reads | SpotNav controls | Seen on real hardware | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Sigenergy | `sigen`, HACS (TypQxQ/Sigenergy-Local-Modbus) | Yes: grid meter, battery power, battery level, size | Opt-in, in testing | Grid meter read (Sigenergy); Battery power read (Sigenergy) | Keeps the last command: no dead-man, so SpotNav caps a grid charge for the case that Home Assistant stops. Has its own grid import and export limits; SpotNav uses the export limit. Often run by Sigen AI mode. |
+| Huawei (SUN2000, LUNA2000) | `huawei_solar`, HACS (wlcrs/huawei_solar) | Yes, untested: grid meter, battery power, battery level, size | Mapped, never run on a device | Nothing yet | Control needs the installer password in the integration. A forced charge ends by itself after its duration. The cloud integrations (FusionSolar) are too slow and are not read. |
+| SolarEdge | `solaredge_modbus_multi`, HACS (WillCodeForCats/solaredge-modbus-multi); `solaredge_modbus`, HACS (binsentsu) and Home Assistant core | Yes, untested: grid meter, battery power, battery level, size | Mapped, never run on a device | Nothing yet | Control is mapped for Modbus Multi only, and only while the storage is in Remote Control; a command ends by itself after its timeout. The cloud integration (`solaredge`, every 15 minutes) is not read. |
+| SolaX (X1 and X3 hybrids) | `solax_modbus`, HACS (wills106/homeassistant-solax-modbus), its SolaX plugin | Yes: grid meter, battery power, battery level, size | Mapped, never run on a device | Battery power read (SolaX) | Remote control ends by itself when it is no longer renewed. One Modbus client at a time. |
+| Sofar (HYD hybrids, KTL-X) | `solax_modbus`, HACS, its Sofar plugin. Also reachable through `solarman` (see Deye). Not read: the core `sofar` integration | Yes, untested: grid meter, battery power, battery level | Not mapped. The integration has a passive mode with a grid power target and battery power limits | Nothing yet | The passive mode has its own setting for what the inverter does when commands stop coming. |
+| Growatt (SPH, SPA, MIN TL-XH, MOD and MID TL3-XH, WIT) | `solax_modbus`, HACS, its Growatt plugin. Not read: core `growatt_server` (cloud, every 5 minutes) and a HACS Modbus integration by 0xAHA | Yes, untested: grid meter, battery power, battery level | Not mapped. What can be controlled locally depends on the model | Nothing yet | Only the three-phase SPH reports the grid per phase. The off-grid SPF is not read. |
+| Solinteg (MHT, M2HT; also M-TEC Energy Butler, Wattsonic) | `solax_modbus`, HACS, its Solinteg plugin | Yes, untested: grid meter, battery power, battery level, size | Not mapped. The integration has an EMS mode with a battery power target | Nothing yet | Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes. Has its own site import limit; whether it acts under EMS control is unknown. One Modbus TCP client at a time. |
+| Sungrow (SH hybrids) | `sungrow`, HACS (KRoperUK/sungrow-hass); the mkaiser Modbus YAML package (plain `modbus` sensors, not an integration) | Yes, untested: grid meter, battery power | Not mapped. Forced charge and discharge exist locally | Nothing yet | No battery level or size is read yet. iSolarCloud entries update only every 5 minutes. |
+| GoodWe (ET, EH) | `goodwe`, Home Assistant core | Yes, untested: grid meter, battery power, battery level | Not mapped. Core has only whole operating modes and the depth of discharge, no power setpoint | Nothing yet |  |
+| Fronius (GEN24 with BYD) | `fronius`, Home Assistant core (reads only). Not read: `fronius_modbus`, HACS (redpomodoro/fronius_modbus) | Yes, untested: grid meter, battery power | Not mapped. Modbus control exists (charge and discharge limits, grid charging, reserve) | Nothing yet | Its Modbus control has an optional fall-back if commands stop. The meter updates about once a minute. |
+| Victron (GX with ESS) | `victron_gx`, Home Assistant core; `victron_mqtt`, HACS (tomer-w/ha-victron-mqtt); `victron`, HACS (sfstar/hass-victron) | Yes, untested: grid meter, battery power, battery level, size | Not mapped. ESS mode, grid setpoint and minimum SoC exist locally | Nothing yet | The limits are settings stored on the GX, and repeated writes wear its flash. |
+| Enphase | `enphase_envoy`, Home Assistant core | Yes, untested: grid meter, battery power, battery level, size | Not possible locally on Envoy firmware 8.2.4225 and later: the battery's mode is set in the Enphase app. Planned later through its cloud, for slow actions only | Nothing yet | The local API needs a token from Enphase's cloud, renewed yearly. |
+| Tesla Powerwall | `powerwall`, `tesla_fleet` and `teslemetry`, Home Assistant core; `tesla_custom`, HACS (alandtse/tesla) | Yes, untested: battery power | Not possible locally: reserve, mode and grid charging go through Tesla's cloud. Planned later for slow actions only | Nothing yet | Powerwall 3 has a more restricted local API. No battery level or size is read yet. |
+| Deye, Sunsynk, Sol-Ark | `solarman`, HACS (davidrapan/ha-solarman). Not read: the sunsynk add-on (kellerza/sunsynk) and the cloud integrations | Yes, untested: grid meter, battery power | Not mapped. Work mode and programme slots are written in community setups, not confirmed | Nothing yet | No battery level or size is read yet. |
+| Solis | `solis_modbus`, HACS (Pho3niX90/solis_modbus). Not read: the Solis plugins of `solax_modbus` and the cloud integration (`solis`) | Yes, untested: grid meter, battery power | Unknown | Nothing yet | The meter may sit on the load or the PV side: check that it measures the main feed. |
+| FoxESS (H1, H3, KH, AC1, AC3) | `foxess_modbus`, HACS (nathanmarlor/foxess_modbus). The cloud integration (`foxess`) is not read | Yes, untested: battery power | Not mapped. Work mode, charge periods and SoC limits exist locally, depending on the model | Nothing yet | Only the battery's power is read, not the grid. |
+| SMA | `sma`, Home Assistant core; `pysmaplus`, HACS | Yes, untested: grid meter, battery power | Unknown: Modbus setpoints exist, but no Home Assistant integration for them was found | Nothing yet | Core does not support ennexOS devices such as the Tripower X. |
+| Kostal (Plenticore) | `kostal_plenticore`, Home Assistant core: not read | No | Not mapped. Power control is Modbus "external battery control", set up by the installer; no Home Assistant integration for it was found | Nothing yet | External control falls back to the inverter's own after a timeout. |
+| SAJ | Unknown | No | Unknown | Nothing yet | Named among the batteries Tibber runs (not verified). |
+| Alpha ESS | Not read: `alphaess`, HACS (cloud), and an AlphaESS plugin of `solax_modbus` | No | Unknown | Nothing yet |  |
+| sonnen | `sonnenbatterie`, HACS (weltmeyer/ha_sonnenbatterie): not read | No | Not mapped. Operating mode, charge and discharge power and reserve exist locally | Nothing yet | Joins Tibber's virtual power plant. |
+| Emaldo | ha-emaldo (cloud and local UDP): not read | No | Not possible locally. Planned later through its cloud, for slow actions that end by themselves | Nothing yet | Emaldo steers its batteries from its own cloud for grid services. |
+| Pixii (Pixii Home) | None found | No | Unknown: its command documentation is not public | Nothing yet | Greenely runs Pixii Home in Sweden. An owner reports local MQTT readings. |
+| Ferroamp (EnergyHub) | `ferroamp`, HACS (henricm/ha-ferroamp) | Yes, untested: grid meter, battery power | Not mapped. The integration has charge, discharge and auto services | Nothing yet | The EnergyHub balances load by itself and may fight active control. MQTT is enabled by Ferroamp's support. Pools batteries for grid services with Ntricity. |
+| Homevolt (Tibber) | `homevolt`, Home Assistant core: not read | No | Not mapped. Battery mode, a power setpoint and grid limits exist locally | Nothing yet | The local API is activated by Tibber's support. Usually run by Tibber Grid Rewards. |
+| HomeWizard (its battery) | `homewizard`, Home Assistant core | Yes, untested: grid meter, battery power | Unknown | Nothing yet |  |
+| Zendure (SolarFlow, Hyper, AIO) | `zendure_ha`, HACS (Zendure/Zendure-HA) | Yes, untested: battery power | Unknown | Nothing yet | With several devices on one account only one is read. |
+| Anker Solix (Solarbank) | `anker_solix`, HACS (thomluther/ha-anker-solix) | Yes, untested: battery power | Unknown | Nothing yet | Read from Anker's cloud, a minute or more between values. |
+| EcoFlow (PowerStream, Ocean Pro) | `ecoflow_cloud`, HACS (tolwi/hassio-ecoflow-cloud) | Yes, untested: battery power | Unknown | Nothing yet | PowerOcean and Stream batteries are not read. |
+| Marstek | `marstek_local_api`, HACS (jaapp/ha-marstek-local-api) | Yes, untested: battery power | Unknown | Nothing yet |  |
 
 ## Supported EV chargers
 
@@ -144,6 +185,9 @@ Solar and hybrid need the grid's signed power. A derived site has it per phase; 
 | Sungrow (`sungrow`) | Derived from power and voltage, current exact | None needed |  | Detected from the integration's source |
 | Sungrow Modbus package (`modbus`) | Derived from power and voltage, current exact | None needed |  | Detected from the integration's source |
 | SolaX Modbus (`solax_modbus`) | Derived from power and voltage, current estimated | Export-positive power, negated | Only devices from solax. Which way the power counts is read from the source, not confirmed on a device. Updates about every 15 s. | Detected from the integration's source |
+| SolaX Modbus, Sofar plugin (`solax_modbus`) | Derived from power and voltage, current exact | Export-positive power, negated | Only devices from sofar. Which way the power counts is read from the source, not confirmed on a device. Total grid power for solar and hybrid: one signed entity. Updates about every 15 s. The HYD hybrids and the KTL-X inverters with a meter; the older inverters of the integration's "Sofar Old" plugin are not detected. | Detected from the integration's source |
+| SolaX Modbus, Growatt plugin (`solax_modbus`) | Derived from power and voltage, current estimated | Import and export are two entities | Only devices from growatt. Which way the power counts is read from the source, not confirmed on a device. Total grid power for solar and hybrid: an import and an export entity. Updates about every 15 s. Only the three-phase SPH (TL3 BH-UP) reports the grid per phase. The TL-XH, TL3-XH and WIT hybrids and the single-phase SPH report totals only, so the site needs its own grid meter. | Detected from the integration's source |
+| SolaX Modbus, Solinteg plugin (`solax_modbus`) | Derived from power and voltage, current estimated | Export-positive power, negated | Only devices from solinteg (named "gabriel c." by the integration). Which way the power counts is read from the source, not confirmed on a device. Total grid power for solar and hybrid: one signed entity. Updates about every 15 s. Also M-TEC Energy Butler and Wattsonic. Three-phase units only. The meter's power per phase is disabled by default and is offered to be enabled. The inverter's own phase current is not the grid's and is not used. An M2HT-10K-30 needs the integration's release 2026.10.02 or later to be read as a three-phase hybrid. | Detected from the integration's source |
 | Easee Equalizer (`easee`) | Direct phase current, all phases on one entity | Negative current while exporting, read as its size | The Equalizer balances load by itself and may fight active control. Its values come every 5-10 minutes and are written only on a change: too seldom for load balancing, enough for solar. | Set up by users: detected and configured, charging not yet confirmed (Easee Equalizer) |
 
 Devices known to balance load by themselves, which SpotNav warns about: Easee Equalizer; Zaptec Sense; Zaptec APM; Ferroamp; ONEp1; Perific.
@@ -161,6 +205,9 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | SolarEdge Modbus (Home Assistant core) (`solaredge_modbus`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | HomeWizard (`homewizard`) | Charge-positive, used as it is | Only devices whose model contains "bat". | Detected from the integration's source |
 | SolaX Modbus (`solax_modbus`) | Charge-positive, used as it is | Only devices from solax. | Tested: charging verified (SolaX) |
+| SolaX Modbus, Sofar plugin (`solax_modbus`) | Charge-positive, used as it is | Only devices from sofar. The older inverters of the integration's "Sofar Old" plugin are not detected. | Detected from the integration's source |
+| SolaX Modbus, Growatt plugin (hybrid) (`solax_modbus`) | Charge-positive, used as it is | Only devices from growatt. The off-grid SPF is not detected. | Detected from the integration's source |
+| SolaX Modbus, Growatt plugin (AC-coupled) (`solax_modbus`) | Charge and discharge are two entities, combined | Only devices from growatt. The off-grid SPF is not detected. | Detected from the integration's source |
 | Tesla Powerwall (`powerwall`) | Discharge-positive, negated |  | Detected from the integration's source |
 | Tesla Fleet / Teslemetry / Tesla Custom Integration (`tesla_fleet`, `teslemetry`, `tesla_custom`) | Discharge-positive, negated |  | Detected from the integration's source |
 | Fronius (`fronius`) | Discharge-positive, negated |  | Detected from the integration's source |
@@ -173,6 +220,7 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Sungrow (`sungrow`) | Charge-positive, used as it is |  | Detected from the integration's source |
 | Sungrow (`sungrow`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
 | Solis Modbus (`solis_modbus`) | Discharge-positive, negated |  | Detected from the integration's source |
+| SolaX Modbus, Solinteg plugin (`solax_modbus`) | Discharge-positive, negated | Only devices from solinteg (named "gabriel c." by the integration). Also M-TEC Energy Butler and Wattsonic. | Detected from the integration's source |
 | SMA (`sma`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
 | Ferroamp (`ferroamp`) | Discharge-positive, negated |  | Detected from the integration's source |
 | Zendure (`zendure_ha`) | Charge and discharge are two entities, combined | Each Zendure device has its own battery power and the integration has no total: with several devices on one account, SpotNav reads one of them. | Detected from the integration's source |
@@ -249,11 +297,14 @@ The integrations below are the ones the detection was checked against, from each
 
 The Hybrid strategy holds back grid energy when a solar forecast promises sun. It reads the forecast through the Energy dashboard's solar forecast contract, so any integration that feeds the Energy dashboard's solar forecast can be chosen on the site. SpotNav only reads the estimate an integration already has and never asks it to fetch. Forecasts in 15, 30 or 60 minute slots are summed per hour. Without a source, Hybrid plans exactly like Cheapest.
 
-| Integration | Verification |
-| --- | --- |
-| Forecast.Solar (`forecast_solar`) | Detected from the integration's source |
-| Solcast Solar (`solcast_solar`) | Tested: charging verified (Solcast) |
-| Open-Meteo Solar Forecast (`open_meteo_solar_forecast`) | Detected from the integration's source |
+| Source | What it is | Verification |
+| --- | --- | --- |
+| Forecast.Solar (`forecast_solar`) | Chosen on the site; read through the Energy dashboard. | Detected from the integration's source |
+| Solcast Solar (`solcast_solar`) | Chosen on the site; read through the Energy dashboard. | Tested: charging verified (Solcast) |
+| Open-Meteo Solar Forecast (`open_meteo_solar_forecast`) | Chosen on the site; read through the Energy dashboard. | Detected from the integration's source |
+| [SpotNav's own solar forecast](forecasts.md#spotnavs-own-solar-forecast-background-only) | Built in, no integration to add: an irradiance forecast from [Open-Meteo](https://open-meteo.com/) (weather data by Open-Meteo.com, CC BY 4.0), fetched by your own Home Assistant, and your own measured solar production. | Runs in the background only: logged and scored each night beside the source you chose, and not yet used by Hybrid or any other plan |
+
+Whichever source you choose, Solcast included, SpotNav learns a correction for it from your own production (a factor for clear hours and one for cloudy hours). The battery plan reads the corrected forecast once the correction has learnt; Hybrid keeps reading the forecast as the source gives it. See [the solar forecast correction](forecasts.md#the-solar-forecast-correction).
 
 ## Supported price areas
 

@@ -1,0 +1,785 @@
+{
+ "_source": "wills106/homeassistant-solax-modbus 4acd644, plugin_growatt.py: every entity description whose allowedtypes match the inverter type `HYBRID | SPF | X1`, internal sensors left out. An off-grid SPF 5000 ES (serial YRE...).",
+ "plugin": "growatt",
+ "manufacturer": "Growatt New Energy",
+ "model": null,
+ "hub": "Growatt",
+ "entities": [
+  {
+   "domain": "button",
+   "key": "active_power_not_limited",
+   "name": "Active Power Not Limited",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "reactive_power_not_limited",
+   "name": "Reactive Power Not Limited",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "button",
+   "key": "sync_rtc",
+   "name": "Sync RTC",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "active_power_limit",
+   "name": "Active Power Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "max_ac_charge_current",
+   "name": "Max AC Charge Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "reactive_power_limit",
+   "name": "Reactive Power Limit",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "ac_input_mode",
+   "name": "AC Input Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "buzzer",
+   "name": "Buzzer",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "inverter_switch",
+   "name": "Inverter Switch",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "output_frequency_type",
+   "name": "Output Frequency Type",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "output_voltage_type",
+   "name": "Output Voltage Type",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "overload_restart",
+   "name": "Overload Restart",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "overtemperature_restart",
+   "name": "Overtemperature Restart",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "pv_input_mode",
+   "name": "PV Input Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "state_charge",
+   "name": "State Charge",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "state_power",
+   "name": "State Power",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_battery_charge",
+   "name": "AC Battery Charge",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_charge_apparent_power",
+   "name": "AC Charge Apparent Power",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_charge_power",
+   "name": "AC Charge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_discharge_apparent_power",
+   "name": "AC Discharge Apparent Power",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_discharge_power",
+   "name": "AC Discharge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_input_apparent_power",
+   "name": "AC Input Apparent Power",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_input_mode",
+   "name": "AC Input Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "ac_input_power",
+   "name": "AC Input Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "active_power_inverter_vpp",
+   "name": "Active Power Inverter VPP",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge_apparent_power",
+   "name": "Battery Discharge Apparent Power",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge_power",
+   "name": "Battery Discharge Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_operating_status_VPP",
+   "name": "Battery Status VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_over_charge",
+   "name": "Battery Over Charge",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_power_charge",
+   "name": "Battery Power Charge",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_soc",
+   "name": "Battery SOC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_type",
+   "name": "Battery Type",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_voltage",
+   "name": "Battery Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "buzzer",
+   "name": "Buzzer",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "constant_power_ok",
+   "name": "Constant Power OK",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "dcdc_temperature",
+   "name": "DC-DC Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "fault_code",
+   "name": "Fault Code",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "firmware_control_version",
+   "name": "Firmware Control Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "firmware_version",
+   "name": "Firmware Version",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_frequency",
+   "name": "Grid Frequency",
+   "unit": "Hz",
+   "device_class": "frequency",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_voltage",
+   "name": "Grid Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_current",
+   "name": "Inverter Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_fan_speed",
+   "name": "Inverter Fan Speed",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_load",
+   "name": "Inverter Load",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_operating_status_vpp",
+   "name": "Inverter Status VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "inverter_temperature",
+   "name": "Inverter Temperature",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "language",
+   "name": "Language",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "max_ac_charge_current",
+   "name": "Max AC Charge Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "max_charge_current",
+   "name": "Max Charge Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "mppt_fan_speed",
+   "name": "MPPT Fan Speed",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "output_active_power",
+   "name": "Output Active Power",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "output_apparent_power",
+   "name": "Output Apparent Power",
+   "unit": "VA",
+   "device_class": "apparent_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "output_current",
+   "name": "Output Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "output_frequency",
+   "name": "Output Frequency",
+   "unit": "Hz",
+   "device_class": "frequency",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "output_frequency_type",
+   "name": "Output Frequency Type",
+   "unit": "Hz",
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "output_voltage",
+   "name": "Output Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "output_voltage_dc",
+   "name": "Output Voltage DC",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "output_voltage_type",
+   "name": "Output Voltage Type",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "overload_restart",
+   "name": "Overload Restart",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "overtemperature_restart",
+   "name": "Overtemperature Restart",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1",
+   "name": "PV Charger Current 1",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_1_vpp",
+   "name": "PV Current 1 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2",
+   "name": "PV Charger Current 2",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_2_vpp",
+   "name": "PV Current 2 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_current_3_vpp",
+   "name": "PV Current 3 VPP",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_input_mode",
+   "name": "PV Input Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_1",
+   "name": "PV Power 1",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_2",
+   "name": "PV Power 2",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total",
+   "name": "PV Power Total",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_power_total_vpp",
+   "name": "PV Power Total VPP",
+   "unit": "W",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1",
+   "name": "PV Voltage 1",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_1_vpp",
+   "name": "PV Voltage 1 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2",
+   "name": "PV Voltage 2",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_2_vpp",
+   "name": "PV Voltage 2 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv_voltage_3_vpp",
+   "name": "PV Voltage 3 VPP",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "reactive_power_inverter_vpp",
+   "name": "Reactive Power Inverter VPP",
+   "unit": "var",
+   "device_class": "reactive_power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "rtc",
+   "name": "RTC",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "run_mode",
+   "name": "Machine Status",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "serialnumber",
+   "name": "Serial Number",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "state_charge",
+   "name": "State Charge",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "state_power",
+   "name": "State Power",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_ac_charge",
+   "name": "Today's AC Charge",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_ac_discharge",
+   "name": "Today's AC Discharge",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_battery_discharge",
+   "name": "Today's Battery Discharge",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_solar_energy",
+   "name": "Today's Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_solar_energy_pv1",
+   "name": "Today's Solar Energy PV1",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "today_s_solar_energy_pv2",
+   "name": "Today's Solar Energy PV2",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_ac_charge",
+   "name": "Total AC Charge",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_ac_discharge",
+   "name": "Total AC Discharge",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_battery_discharge",
+   "name": "Total Battery Discharge",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy",
+   "name": "Total Solar Energy",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy_pv1",
+   "name": "Total Solar Energy PV1",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy_pv2",
+   "name": "Total Solar Energy PV2",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_solar_energy_vpp",
+   "name": "Total Solar Energy VPP",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "total_work_time",
+   "name": "Total Work Time",
+   "unit": "s",
+   "device_class": "duration",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "warning_code",
+   "name": "Warning Code",
+   "unit": null,
+   "device_class": null,
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "work_mode_priority_vpp",
+   "name": "Work Mode - Priority VPP",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  }
+ ]
+}
