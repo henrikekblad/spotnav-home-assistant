@@ -774,10 +774,24 @@ def vehicles_section() -> list[str]:
 # ---- solar forecast -------------------------------------------------------------------------------
 
 
+#: SpotNav's own solar forecast, as `docs/forecasts.md` describes it (its section "SpotNav's own solar forecast
+#: (background only)"), with the same attribution of the weather data.
+OWN_FORECAST_LINK = "forecasts.md#spotnavs-own-solar-forecast-background-only"
+OWN_FORECAST_ROW: tuple[str, str, str] = (
+    f"[SpotNav's own solar forecast]({OWN_FORECAST_LINK})",
+    "Built in, no integration to add: an irradiance forecast from [Open-Meteo](https://open-meteo.com/) (weather "
+    "data by Open-Meteo.com, CC BY 4.0), fetched by your own Home Assistant, and your own measured solar production.",
+    "Runs in the background only: logged and scored each night beside the source you chose, and not yet used by "
+    "Hybrid or any other plan",
+)
+
+
 def forecast_section() -> list[str]:
     rows = [
-        (f"{name} (`{domain}`)", verified("forecast", domain)) for domain, name in FORECAST_SOURCES
+        (f"{name} (`{domain}`)", "Chosen on the site; read through the Energy dashboard.", verified("forecast", domain))
+        for domain, name in FORECAST_SOURCES
     ]
+    rows.append(OWN_FORECAST_ROW)
     return [
         "## Supported solar forecast",
         "",
@@ -787,7 +801,12 @@ def forecast_section() -> list[str]:
         "estimate an integration already has and never asks it to fetch. Forecasts in 15, 30 or 60 "
         "minute slots are summed per hour. Without a source, Hybrid plans exactly like Cheapest.",
         "",
-        *table(("Integration", "Verification"), rows),
+        *table(("Source", "What it is", "Verification"), rows),
+        "",
+        "Whichever source you choose, Solcast included, SpotNav learns a correction for it from your own production "
+        "(a factor for clear hours and one for cloudy hours). The battery plan reads the corrected forecast once the "
+        "correction has learnt; Hybrid keeps reading the forecast as the source gives it. See "
+        "[the solar forecast correction](forecasts.md#the-solar-forecast-correction).",
         "",
     ]
 

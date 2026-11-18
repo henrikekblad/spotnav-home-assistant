@@ -256,11 +256,14 @@ The integrations below are the ones the detection was checked against, from each
 
 The Hybrid strategy holds back grid energy when a solar forecast promises sun. It reads the forecast through the Energy dashboard's solar forecast contract, so any integration that feeds the Energy dashboard's solar forecast can be chosen on the site. SpotNav only reads the estimate an integration already has and never asks it to fetch. Forecasts in 15, 30 or 60 minute slots are summed per hour. Without a source, Hybrid plans exactly like Cheapest.
 
-| Integration | Verification |
-| --- | --- |
-| Forecast.Solar (`forecast_solar`) | Detected from the integration's source |
-| Solcast Solar (`solcast_solar`) | Tested: charging verified (Solcast) |
-| Open-Meteo Solar Forecast (`open_meteo_solar_forecast`) | Detected from the integration's source |
+| Source | What it is | Verification |
+| --- | --- | --- |
+| Forecast.Solar (`forecast_solar`) | Chosen on the site; read through the Energy dashboard. | Detected from the integration's source |
+| Solcast Solar (`solcast_solar`) | Chosen on the site; read through the Energy dashboard. | Tested: charging verified (Solcast) |
+| Open-Meteo Solar Forecast (`open_meteo_solar_forecast`) | Chosen on the site; read through the Energy dashboard. | Detected from the integration's source |
+| [SpotNav's own solar forecast](forecasts.md#spotnavs-own-solar-forecast-background-only) | Built in, no integration to add: an irradiance forecast from [Open-Meteo](https://open-meteo.com/) (weather data by Open-Meteo.com, CC BY 4.0), fetched by your own Home Assistant, and your own measured solar production. | Runs in the background only: logged and scored each night beside the source you chose, and not yet used by Hybrid or any other plan |
+
+Whichever source you choose, Solcast included, SpotNav learns a correction for it from your own production (a factor for clear hours and one for cloudy hours). The battery plan reads the corrected forecast once the correction has learnt; Hybrid keeps reading the forecast as the source gives it. See [the solar forecast correction](forecasts.md#the-solar-forecast-correction).
 
 ## Supported price areas
 
