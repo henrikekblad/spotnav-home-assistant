@@ -59,7 +59,18 @@ The entity keys, options and services below were checked against each integratio
   (B at +1 kW: L2 exported 0.81 kW with 0.18 kW of house on it), all at 0 leaves the house on the grid. Phases A, B, C
   are the meter's L1, L2, L3 there, and a new target settles in under 5 s. The plant's own power per phase
   (`adapters.SIGENERGY.plant_phase_power`) reads the target back as power. Whether the grid import limit (40040)
-  acts in this mode is not known, so it is never counted on here.
+  acts in this mode is not known, so it is never counted on here. The plant's **total** active power target (40001,
+  number `plant_active_power_fixed_target`) acts in the same mode, so the phased control owns it too and keeps it at
+  0, and the plain control refuses to start while it or a phase target reads anything else (`watched`): Remote EMS
+  on passes through PCS Remote Control for some seconds when 40031 still holds 0, and a target left there by
+  someone would run. **How often they may be written:** Sigenergy Modbus Protocol V2.9 lists 40001 and
+  40008-40012 in Table 5-2-2, "Plant parameter setting power dispatch register definition (holding register)"
+  (`sig29.txt` lines 1244-1300): "For these registers to take effect ... remote EMS enable (40029) is set to 0x01
+  ... remote EMS control mode (40031) is set to 0x00", and "These registers only control the power of PCS and is
+  independent of loads and grid sensors". It says nothing of how often they may be written, nor whether they are
+  kept over a power cycle; the only rate it gives is the bus's own, "Minimum Request period : 1000 ms" (lines
+  570-582). They are dispatch registers, meant for an EMS that steers the plant, but with no word on wear their
+  daily cap is a moderate `SETPOINT_WRITES_UNSTATED` (500), not the 2000 of a setpoint documented as volatile.
 * **SolarEdge Modbus Multi**, `solaredge_modbus_multi`, WillCodeForCats `0ab6569f1e20bb5abf735e5b5edf253cd8766cfd`:
   only while the storage control mode is already Remote Control (`select.py` `StorageControlMode`, option 4): the
   command mode (`storage_command_mode`, `const.py` `STORAGE_MODE`), the charge and discharge limits (W) and the
@@ -123,6 +134,16 @@ WATCHDOG_S: Final = 1800
 WATCHDOG_RENEW_S: Final = 900
 
 RoleMethod = Literal["number", "select", "switch", "button", "service"]
+#: What a role is, for how often it may be written in a day (`BrandControl.write_caps`): a `setting` (a limit, a mode,
+#: a switch: possibly stored in flash) or a `setpoint` made for continuous outside control.
+WriteClass = Literal["setting", "setpoint"]
+WRITE_CLASSES: Final[tuple[WriteClass, ...]] = ("setting", "setpoint")
+#: Writes a day per class, outside restores and watchdog renewals. A setting, and anything of a brand or role not
+#: checked: 96. A setpoint whose maker says it is volatile or made for continuous control: about 2000 (still a
+#: runaway guard: reaching it hands back). A setpoint the maker's protocol says nothing about: 500.
+SETTING_WRITES: Final = 96
+SETPOINT_WRITES_CONTINUOUS: Final = 2000
+SETPOINT_WRITES_UNSTATED: Final = 500
 #: The export-limit rule's action (`export_curtail.py`): the site's export limit at 0 kW. Not a battery plan action.
 ACTION_CURTAIL_EXPORT: Final = "curtail_export"
 
@@ -157,6 +178,8 @@ class Role:
     normalize: Callable[[str | None], str | None] | None = None
     #: Readings that mean the role is not in use (a select unavailable while its switch is off): no snapshot needed.
     idle_when: frozenset[str] = frozenset()
+    #: Which daily write budget its writes count against (`BrandControl.write_cap`).
+    write_class: WriteClass = "setting"
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,8 +227,17 @@ class PhaseControl:
     #: What a target reads for a charge of 1 kW from that phase, in kW before the role's `scale` (-1: negative
     #: takes from the grid, positive puts out).
     charge_sign: float
-    #: The state that makes the plant follow the targets, beside the targets themselves.
-    follow: tuple[Want, ...]
+    #: The state that makes the plant follow the targets, beside the targets themselves: wants, or a function of the
+    #: charge per phase for a brand whose state depends on it (a mode per direction, a total beside the phases).
+    follow: tuple[Want, ...] | Callable[[Phases], tuple[Want, ...]]
+    #: What a target sets: the `plant`'s own power on that phase (judged on the adapter's `plant_phase_power`), or
+    #: the `grid`'s power on it (a grid setpoint per phase; judged on the site meter's phase, the house included).
+    target_kind: Literal["plant", "grid"] = "plant"
+    #: Other targets that act in the same state and must be 0 (a total beside the phases): owned, written to 0
+    #: before anything else in every action, handed back as 0.
+    zero: tuple[Role, ...] = ()
+    #: Roles renewed to keep a brand's watchdog alive while the phased control runs (added to the control's own).
+    watchdog_roles: tuple[str, ...] = ()
     #: Roles that must read one of these states for the targets to act, never written (`(role, states, reason)`).
     requires: tuple[tuple[Role, frozenset[str], str], ...] = ()
     #: The orders with the targets in them (`BrandControl.enter_order`, `restore_order`), and the roles that stop a
@@ -225,12 +257,20 @@ class PhaseControl:
         return 0.0 if size == 0 else round(sign * size, 6)
 
     def wants(self, charge_kw: Phases) -> tuple[Want, ...]:
-        """A charge per phase: the state that follows the targets, and each phase's target."""
-        return (*self.follow, *(Want(role.name, self.value(index, charge_kw[index])) for index, role in enumerate(self.targets)))
+        """A charge per phase: the state that follows the targets, the other targets at 0, and each phase's target."""
+        follow = self.follow(charge_kw) if callable(self.follow) else self.follow
+        return (
+            *follow, *(Want(role.name, 0.0) for role in self.zero),
+            *(Want(role.name, self.value(index, charge_kw[index])) for index, role in enumerate(self.targets)),
+        )
 
     def idle(self) -> tuple[Want, ...]:
         """Every target at 0: what every action other than a charge per phase writes."""
-        return tuple(Want(role.name, 0.0) for role in self.targets)
+        return tuple(Want(role.name, 0.0) for role in (*self.zero, *self.targets))
+
+    def owned(self) -> tuple[Role, ...]:
+        """Every role the phased control adds: the targets, the others kept at 0, and what must read so."""
+        return (*self.zero, *self.targets, *(role for role, _states, _why in self.requires))
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,12 +327,22 @@ class BrandControl:
     phase_control: PhaseControl | None = None
     #: Whether this control runs the targets per phase (`with_phases`): its roles, orders and states hold them.
     phased: bool = False
+    #: Entities this control does not write but that must read a value, where they exist and are enabled, before it
+    #: starts anything (`(role, value, reason)`): another control's targets left standing would act under it.
+    watched: tuple[tuple[Role, Native, str], ...] = ()
+    #: Writes a day per class (`WriteClass`), where they differ from `SETTING_WRITES`: only for a class the brand's
+    #: own documents were read for (see the module).
+    write_caps: Mapping[str, int] = field(default_factory=dict)
 
     def role(self, name: str) -> Role:
-        for role in self.roles:
+        for role in (*self.roles, *(role for role, _value, _why in self.watched)):
             if role.name == name:
                 return role
         raise KeyError(name)
+
+    def write_cap(self, write_class: str) -> int:
+        """The day's writes of a class: the brand's own figure, else a setting's (also for a class not checked)."""
+        return self.write_caps.get(write_class, SETTING_WRITES)
 
     def variant_names(self) -> tuple[str, ...]:
         return tuple(variant.name for variant in self.hold_variants)
@@ -332,13 +382,17 @@ class BrandControl:
         def with_idle(build: Callable[[float, int], tuple[Want, ...]]) -> Callable[[float, int], tuple[Want, ...]]:
             return lambda rate_kw, watchdog_s: (*idle, *build(rate_kw, watchdog_s))
 
+        owned = {role.name for role in spec.owned()}
         return replace(
             self,
-            roles=(*self.roles, *spec.targets, *(role for role, _states, _why in spec.requires)),
+            roles=(*self.roles, *spec.owned()),
             states={action: with_idle(build) for action, build in self.states.items()},
             enter_order=spec.enter_order, restore_order=spec.restore_order,
             peak_first={**self.peak_first, ACTION_GRID_CHARGE: spec.stop_first},
             requires=(*self.requires, *((role.name, states, why) for role, states, why in spec.requires)),
+            # What it owns it writes itself; nothing of them is left to watch.
+            watched=tuple(row for row in self.watched if row[0].name not in owned),
+            watchdog_roles=(*self.watchdog_roles, *spec.watchdog_roles),
             phased=True,
         )
 
@@ -463,9 +517,17 @@ SIGENERGY_HOLDS: Final = (
 
 _SIG_PCS: Final = "PCS Remote Control"  # 0: the plant follows its active power targets
 _SIG_PHASE_TARGETS: Final = (
-    Role("phase_l1_target", "number", _key("plant_phase_a_active_power_fixed_target", "number"), step=0.01, restored=False),
-    Role("phase_l2_target", "number", _key("plant_phase_b_active_power_fixed_target", "number"), step=0.01, restored=False),
-    Role("phase_l3_target", "number", _key("plant_phase_c_active_power_fixed_target", "number"), step=0.01, restored=False),
+    Role("phase_l1_target", "number", _key("plant_phase_a_active_power_fixed_target", "number"), step=0.01,
+         restored=False, write_class="setpoint"),
+    Role("phase_l2_target", "number", _key("plant_phase_b_active_power_fixed_target", "number"), step=0.01,
+         restored=False, write_class="setpoint"),
+    Role("phase_l3_target", "number", _key("plant_phase_c_active_power_fixed_target", "number"), step=0.01,
+         restored=False, write_class="setpoint"),
+)
+# 40001, the plant's total active power target: acts in PCS Remote Control as the phase targets do.
+_SIG_TOTAL_TARGET: Final = Role(
+    "power_target", "number", _key("plant_active_power_fixed_target", "number"), step=0.01, restored=False,
+    write_class="setpoint",
 )
 _SIG_PHASE_SWITCH: Final = Role(
     "phase_control", "switch", _key("plant_independent_phase_power_control_enable", "switch"), restored=False
@@ -479,16 +541,18 @@ SIGENERGY_PHASES: Final = PhaseControl(
     targets=_SIG_PHASE_TARGETS,
     charge_sign=-1.0,
     follow=(Want("remote_ems", True), Want("control_mode", _SIG_PCS)),
+    target_kind="plant",
+    zero=(_SIG_TOTAL_TARGET,),
     requires=((_SIG_PHASE_SWITCH, frozenset({"on"}), "phase_control_off"),),
     enter_order=(
-        "charge_limit", "discharge_limit", "phase_l1_target", "phase_l2_target", "phase_l3_target", "remote_ems",
-        "control_mode",
+        "power_target", "charge_limit", "discharge_limit", "phase_l1_target", "phase_l2_target", "phase_l3_target",
+        "remote_ems", "control_mode",
     ),
     restore_order=(
-        "phase_l1_target", "phase_l2_target", "phase_l3_target", "control_mode", "remote_ems", "charge_limit",
-        "discharge_limit",
+        "phase_l1_target", "phase_l2_target", "phase_l3_target", "power_target", "control_mode", "remote_ems",
+        "charge_limit", "discharge_limit",
     ),
-    stop_first=("phase_l1_target", "phase_l2_target", "phase_l3_target", "control_mode"),
+    stop_first=("phase_l1_target", "phase_l2_target", "phase_l3_target", "power_target", "control_mode"),
 )
 
 SIGENERGY_CONTROL: Final = BrandControl(
@@ -529,6 +593,10 @@ SIGENERGY_CONTROL: Final = BrandControl(
     # (V2.7: 40032 acts in 3 and 4, 40034 in 5 and 6; V2.9: everywhere) until the mode is written.
     prime={"charge_limit": 0.0, "discharge_limit": 0.0},
     phase_control=SIGENERGY_PHASES,
+    # A target left standing would run in the seconds of PCS Remote Control a Remote EMS on passes through.
+    watched=tuple((role, 0.0, "stale_target") for role in (_SIG_TOTAL_TARGET, *_SIG_PHASE_TARGETS)),
+    # The protocol is silent on how often the dispatch registers may be written (see the module): the moderate cap.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
 )
 
 #: An inverter's Output Type (Sigenergy's enum, lower-cased) as the phases it feeds.
@@ -537,7 +605,8 @@ OUTPUT_TYPE_PHASES: Final[Mapping[str, int]] = {"l_n": 1, "l1_l2_n": 2, "l1_l2_l
 # The normal state has no wanted value for these: the switch goes off, the select to MSC (only while it can).
 # The targets per phase go back to 0 (only a phased control has their entities).
 _SIGENERGY_NORMAL: Final = {
-    "remote_ems": False, "control_mode": _SIG_MSC, **{role.name: 0.0 for role in _SIG_PHASE_TARGETS},
+    "remote_ems": False, "control_mode": _SIG_MSC,
+    **{role.name: 0.0 for role in (_SIG_TOTAL_TARGET, *_SIG_PHASE_TARGETS)},
 }
 
 _SE_MODE = Role("command_mode", "select", _key("storage_command_mode", "select"))

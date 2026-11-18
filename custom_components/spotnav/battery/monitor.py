@@ -80,6 +80,10 @@ HOLD_CHARGE_TOLERANCE_KW: Final = 0.5
 PHASE_GRACE_S: Final = 120.0
 PHASE_GAP_S: Final = 30.0
 PHASE_OVER_KW: Final = 0.3
+#: A phase over its target (the runaway) is judged sooner and more often: from this long after the charge's writes
+#: were taken (s; a target settles in under 5 s), a reading every this long (s).
+PHASE_OVER_GRACE_S: Final = 20.0
+PHASE_OVER_GAP_S: Final = 10.0
 
 PhaseVerdict = Literal["ok", "over", "partial", "no_effect"]
 

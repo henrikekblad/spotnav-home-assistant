@@ -29,6 +29,7 @@ SIGEN_KEYS = [
     "plant_ess_max_discharging_limit", "plant_grid_maximum_import_limitation",
     "plant_independent_phase_power_control_enable", "plant_phase_a_active_power_fixed_target",
     "plant_phase_b_active_power_fixed_target", "plant_phase_c_active_power_fixed_target",
+    "plant_active_power_fixed_target",
 ]
 
 
