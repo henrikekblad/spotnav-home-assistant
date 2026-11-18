@@ -1,12 +1,12 @@
-// The house card's body: a header, the one chart with its legend and readout, one line of money and one line of how
-// well the forecasts hit, and the details behind a tap (the share of the perfect plan first, the battery's modes side
-// by side, the reviewed days, the sources and what was assumed). Built fresh for each state with `textContent` only;
+// The house card's body: a header and the tabs (Now, Energy flow, Energy chart, Earnings, Price and battery), each
+// with its picture and its lines of money, and the sources with what was assumed for the foot of the history dialog
+// (`house-history.ts`, which holds the analysis of a period). Built fresh for each state with `textContent` only;
 // every figure is the backend's.
 
 import { attachScrub } from "./chart-scrub";
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
-import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
+import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./house-model";
 import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
 import type { HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
@@ -14,12 +14,11 @@ import { earnedBars, earnedStrip, earnedTotal, energyChart, kwhText, tilesBlock,
 import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
 import { periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
 import type { HistoryPeriod } from "./period-history";
-import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { hiddenIn, type HiddenSeries } from "./house-series";
 import { cardHeader, headerButton, headerTitle } from "./card-header";
 import { statusLine, testStatus } from "./heat-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
-import { daysLeft, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { daysLeft, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 const HOUR_MS = 3_600_000;
@@ -48,8 +47,6 @@ export interface HouseTabsData {
 }
 
 export interface HouseUi {
-  /** Kept for older callers; the details now live in the history dialog (`houseDetails`). */
-  detailsOpen?: boolean;
   /** The tab shown (default the first). */
   tab?: HouseTab;
   /** The tab the card's YAML locks: the row is not drawn. */
@@ -75,7 +72,6 @@ export interface HouseUi {
 }
 
 export interface HouseHandlers {
-  onDetails?(open: boolean): void;
   onView?(view: HouseChartView): void;
   /** The viewer hid or showed a series: the view's whole hidden list after the change. */
   onLegend?(view: HouseChartView, hidden: string[]): void;
@@ -209,37 +205,6 @@ export function savingTotalLine(language: Language, answer: HouseAnswer): string
   return [head, ...parts.map((part) => translate(language, `house.saving.part.${part}`, { amount: bareAmount(language, saving[part]!) }))].join(" · ");
 }
 
-/** In the details: what each part of SpotNav's saving is compared with, one line each; the heat said to be an
- * estimate. `null` without the saving. */
-function savingDetails(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
-  const saving = answer.saving;
-  if (saving === null) {
-    return null;
-  }
-  const block = element(doc, "div", H.line);
-  block.dataset["line"] = "saving-details";
-  block.append(element(doc, "p", `${C.muted}`, translate(language, "house.saving.details.head")));
-  const lines: string[] = [];
-  if (saving.battery !== null) {
-    lines.push(translate(language, "house.saving.details.battery"));
-  } else if (saving.battery_share === 0) {
-    lines.push(translate(language, "house.saving.details.batteryOwn"));
-  }
-  if (saving.car !== null) {
-    lines.push(translate(language, "house.saving.details.car"));
-    if (saving.car_since !== null) {
-      lines.push(translate(language, "house.saving.details.carSince", { date: dateLabel(language, saving.car_since) }));
-    }
-  }
-  if (saving.heat !== null) {
-    lines.push(translate(language, "house.saving.details.heat"));
-  }
-  for (const line of lines) {
-    block.append(element(doc, "p", C.muted, line));
-  }
-  return block;
-}
-
 /** The brands whose own app is verified to show the same measure as the headline, by name in the hint. */
 const SAME_MEASURE_APPS: Record<string, string> = { sigenergy: "Sigenergy" };
 
@@ -261,16 +226,6 @@ export function todayDetail(language: Language, answer: HouseAnswer): string | n
     parts.push(translate(language, "house.todaySold", { amount: amount(language, today.sold, answer.money) }));
   }
   return parts.join(" · ");
-}
-
-/** A signed saving: whole units from one up, one decimal below ("+25 kr", "−4 kr", "+0,4 kr"). */
-function signedAmount(language: Language, minor: number, money: HouseAnswer["money"]): string {
-  if (money === null || money.major_unit === null) {
-    return `${minor > 0 ? "+" : ""}${amount(language, minor, money)}`;
-  }
-  const major = minor / 100;
-  const shown = formatFixed(language, major, Math.abs(major) >= 1 ? 0 : 1);
-  return `${major > 0 ? "+" : ""}${shown} ${money.major_unit}`;
 }
 
 function context(language: Language, answer: HouseAnswer): FormatContext {
@@ -346,33 +301,6 @@ export function hourFigures(
   return parts.join(" · ");
 }
 
-/** The money line: the reviewed days side by side, else what the plan expects, else why there is no plan. */
-export function savingLine(language: Language, answer: HouseAnswer): string | null {
-  const battery = answer.battery;
-  if (battery === null) {
-    return null;
-  }
-  const review = battery.review;
-  if (review !== null) {
-    return translate(language, `house.saving.week.${pluralForm(language, review.days)}`, {
-      days: String(review.days),
-      plan: amount(language, review.plan_saving, answer.money),
-      own: amount(language, review.own_saving, answer.money),
-    });
-  }
-  const planned = (battery.modes as Partial<Record<string, { planned_saving: number | null }>>)[battery.mode]?.planned_saving ?? null;
-  if (battery.status === "planned" && planned !== null && battery.horizon_end !== null) {
-    const ctx = context(language, answer);
-    const end = Date.parse(battery.horizon_end);
-    return translate(language, "house.saving.ahead", {
-      amount: amount(language, planned, answer.money),
-      until: `${dayCue(ctx, end - 1)} ${clock(ctx, end)}`,
-    });
-  }
-  return translate(language, battery.status === "waiting" ? "house.saving.waiting" : "house.saving.noPlan");
-}
-
-/** The review line: the last week's mean error of each forecast, or that the first review is tonight. */
 /** The heat pump's line: the shown day's heat beside the house's whole load over the same hours; with more than one
  * meter that could be it, where to choose; `null` without a meter, or one found with no hour measured yet. */
 export function heatLine(language: Language, answer: HouseAnswer, words?: EntityWords): string | null {
@@ -415,30 +343,6 @@ export function learningLines(language: Language, answer: HouseAnswer): string[]
     );
   }
   return lines;
-}
-
-export function reviewLine(language: Language, answer: HouseAnswer): string {
-  const house = answer.house.review;
-  if (house === null) {
-    return translate(language, "house.review.learning");
-  }
-  const parts = [translate(language, "house.review.house", { error: plusMinus(language, house.mae, "kW") })];
-  const sun = answer.sun;
-  if (sun !== null && sun.review !== null) {
-    parts.push(
-      sun.review_corrected === null
-        ? translate(language, "house.review.sun", { error: plusMinus(language, sun.review.mae, "kWh") })
-        : translate(language, "house.review.sunCorrected", {
-            error: plusMinus(language, sun.review.mae, "kWh"),
-            corrected: plusMinus(language, sun.review_corrected.mae, "kWh"),
-          }),
-    );
-  }
-  const soc = answer.battery?.soc_review ?? null;
-  if (soc !== null) {
-    parts.push(translate(language, "house.review.soc", { error: `±${formatNumber(language, soc.mae, 0)} %` }));
-  }
-  return `${translate(language, "house.review.head")} ${parts.join(" · ")}`;
 }
 
 // ------------------------------------------------------------------------------------------------ parts
@@ -517,192 +421,6 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
     wrap.append(test.explain);
   }
   return wrap;
-}
-
-/** The comparison in the main body before the first perfect plan (from then on the perfect share in the details stands
- * in for it), its baseline in its title: each of SpotNav's modes over the reviewed nights and the battery's own control
- * (its optimiser named where known), against the battery only storing its own sun (self-consumption, the zero line and
- * so not a row), the chosen mode marked, a short bar each so the order shows. */
-function compareBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
-  const battery = answer.battery;
-  if (battery === null) {
-    return null;
-  }
-  const rows: Array<{ key: string; name: string; value: number | null; days: number; inForce: boolean }> = [];
-  const optimiser = battery.management === "self_managed" ? OPTIMISER_NAMES[battery.brand ?? ""] : undefined;
-  const ownName = `${translate(language, "house.compare.own")}${optimiser === undefined ? "" : ` (${optimiser})`}`;
-  let heading: string;
-  if (answer.day !== null && !answer.day.today) {
-    // A past day: its own review, or plainly none.
-    const review = answer.day_review;
-    for (const mode of SAVING_MODES) {
-      const value = review?.modes[mode] ?? null;
-      rows.push({ key: mode, name: spotnavMode(language, mode), value, days: value === null ? 0 : 1, inForce: review !== null && mode === review.mode });
-    }
-    rows.push({ key: "own", name: ownName, value: review === null ? null : review.own_saving, days: review === null ? 0 : 1, inForce: false });
-    heading = review === null ? translate(language, "house.compare.headingNone") : translate(language, "house.compare.headingDay", { day: dateLabel(language, review.date) });
-  } else {
-    for (const mode of SAVING_MODES) {
-      const figures = battery.modes[mode];
-      if (figures !== undefined) {
-        rows.push({ key: mode, name: spotnavMode(language, mode), value: figures.reviewed_days > 0 ? figures.reviewed_saving : null, days: figures.reviewed_days, inForce: mode === battery.mode });
-      }
-    }
-    if (rows.length === 0) {
-      return null;
-    }
-    const review = battery.review;
-    rows.push({ key: "own", name: ownName, value: review === null ? null : review.own_saving, days: review === null ? 0 : review.days, inForce: false });
-    const most = Math.max(...rows.map((row) => row.days));
-    heading = most > 0 ? translate(language, `house.compare.heading.${pluralForm(language, most)}`, { days: String(most) }) : translate(language, "house.compare.headingNone");
-  }
-  const days = Math.max(...rows.map((row) => row.days));
-  const section = element(doc, "section", H.compare);
-  section.dataset["part"] = "modes";
-  section.append(element(doc, "p", `${C.muted} ${H.compareHead}`, heading));
-  const largest = Math.max(1, ...rows.map((row) => Math.abs(row.value ?? 0)));
-  const grid = element(doc, "div", H.compareGrid);
-  for (const row of rows) {
-    const name = element(doc, "span", H.compareName, row.name);
-    if (row.inForce) {
-      name.append(" ", element(doc, "span", H.chip, translate(language, "house.compare.inForce")));
-    }
-    const track = element(doc, "span", H.compareTrack);
-    track.setAttribute("aria-hidden", "true");
-    if (row.value !== null && row.value !== 0) {
-      const fill = element(doc, "span", H.compareFill);
-      fill.style.width = `${Math.round((Math.abs(row.value) / largest) * 100)}%`;
-      fill.dataset["sign"] = row.value < 0 ? "minus" : "plus";
-      track.append(fill);
-    }
-    let figure = row.value === null ? translate(language, "house.compare.none") : signedAmount(language, row.value, answer.money);
-    if (row.value !== null && row.days < days) {
-      figure += ` (${translate(language, `house.compare.days.${pluralForm(language, row.days)}`, { days: String(row.days) })})`;
-    }
-    const value = element(doc, "span", row.value === null ? `${H.compareValue} ${C.muted}` : H.compareValue, figure);
-    const line = element(doc, "div", H.compareRow);
-    line.dataset["row"] = row.key;
-    if (row.inForce) {
-      line.dataset["inForce"] = "true";
-    }
-    line.append(name, track, value);
-    grid.append(line);
-  }
-  section.append(grid);
-  return section;
-}
-
-/** The battery maker's own optimiser by brand, named where the battery runs it. */
-const OPTIMISER_NAMES: Record<string, string> = { sigenergy: "Sigenergy AI" };
-
-/** The battery's own control as the comparison names it: its optimiser where the battery runs one ("Sigenergy AI"). */
-function ownControlName(language: Language, answer: HouseAnswer): string {
-  const battery = answer.battery;
-  const optimiser = battery?.management === "self_managed" ? OPTIMISER_NAMES[battery.brand ?? ""] : undefined;
-  return optimiser ?? translate(language, "house.compare.own");
-}
-
-/** The perfect plan's figures shown: a past day's own, else the reviewed week's; `null` before the first. */
-function perfectShown(answer: HouseAnswer) {
-  const past = answer.day !== null && !answer.day.today;
-  const perfect = past ? (answer.day_review?.perfect ?? null) : (answer.battery?.review?.perfect ?? null);
-  return hasPerfect(perfect) ? { perfect, past } : null;
-}
-
-/** The comparison as each way's share of the perfect plan in hindsight (`perfect-view.ts`): the headline, a bar per
- * way and the plain notes; the money behind it is in the details. `null` before the first perfect plan. */
-function perfectBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
-  const shown = perfectShown(answer);
-  if (shown === null) {
-    return null;
-  }
-  const { perfect, past } = shown;
-  const ownName = ownControlName(language, answer);
-  const section = element(doc, "section", H.compare);
-  section.dataset["part"] = "modes";
-  section.dataset["view"] = "perfect";
-  const heading = past
-    ? translate(language, "perfect.headingDay", { day: dateLabel(language, answer.day!.date) })
-    : translate(language, `perfect.heading.${pluralForm(language, perfect.days + perfect.partial)}`, { days: String(perfect.days + perfect.partial) });
-  section.append(element(doc, "p", `${C.muted} ${H.compareHead}`, heading));
-  const headline = perfectHeadline(language, perfect, ownName);
-  if (headline !== null) {
-    const line = element(doc, "p", H.perfectHead, headline);
-    line.dataset["line"] = "perfect-headline";
-    section.append(line);
-  }
-  const inForce = past ? (answer.day_review?.mode ?? null) : (answer.battery?.mode ?? null);
-  section.append(perfectRows(doc, language, perfect, ownName, inForce), ...perfectNotes(doc, language, perfect, ownName, past));
-  return section;
-}
-
-/** The modes the comparison shows: self-consumption is what they are measured against. */
-const SAVING_MODES = MODES.filter((mode) => mode !== "self_consumption");
-
-function spotnavMode(language: Language, mode: BatteryMode): string {
-  return translate(language, "house.compare.spotnav", { mode: modeName(language, mode) });
-}
-
-/** The day (or the week) in the battery app's terms: what the battery saved against no battery at all, what the sun
- * gave, and both together, each with a line saying what it is compared with. A past day says how much of it the figures
- * cover; today shows the reviewed days' sums. `null` where nothing is known yet. */
-function baselinesBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
-  const battery = answer.battery;
-  if (battery === null) {
-    return null;
-  }
-  let heading: string;
-  let figures: Array<{ key: string; value: number | null }>;
-  let coverage = "";
-  if (answer.day !== null && !answer.day.today) {
-    const review = answer.day_review;
-    if (review === null || (review.battery_saving === null && review.sun_gave === null)) {
-      return null;
-    }
-    heading = translate(language, "house.baselines.headingDay", { day: dateLabel(language, review.date) });
-    figures = [
-      { key: "battery", value: review.battery_saving },
-      { key: "sun", value: review.sun_gave },
-      { key: "both", value: review.against_nothing },
-    ];
-    if (review.day_quarters > 0 && review.covered_quarters < review.day_quarters) {
-      coverage = translate(language, "house.baselines.partial", { covered: String(review.covered_quarters), total: String(review.day_quarters) });
-    }
-    if (review.sun_gave !== null && review.sun_quarters < review.covered_quarters) {
-      coverage = `${coverage} ${translate(language, "house.baselines.sunPartial", { sun: String(review.sun_quarters), covered: String(review.covered_quarters) })}`.trim();
-    }
-  } else {
-    const review = battery.review;
-    if (review === null || (review.battery_saving === null && review.sun_gave === null)) {
-      return null;
-    }
-    heading = translate(language, `house.baselines.headingWeek.${pluralForm(language, review.days)}`, { days: String(review.days) });
-    figures = [
-      { key: "battery", value: review.battery_saving },
-      { key: "sun", value: review.sun_gave },
-    ];
-  }
-  const section = element(doc, "section", H.base);
-  section.dataset["part"] = "baselines";
-  section.append(element(doc, "p", `${C.muted} ${H.compareHead}`, heading));
-  for (const figure of figures) {
-    if (figure.value === null) {
-      continue;
-    }
-    const row = element(doc, "div", H.baseRow);
-    row.dataset["row"] = figure.key;
-    row.append(
-      element(doc, "span", undefined, translate(language, `house.baselines.${figure.key}` as TranslationKey)),
-      element(doc, "span", H.baseValue, amount(language, figure.value, answer.money)),
-    );
-    section.append(row, element(doc, "p", `${C.muted} ${H.baseNote}`, translate(language, `house.baselines.${figure.key}Note` as TranslationKey)));
-  }
-  if (coverage !== "") {
-    const partial = element(doc, "p", `${C.muted} ${H.baseNote}`, coverage);
-    partial.dataset["line"] = "baselines-coverage";
-    section.append(partial);
-  }
-  return section;
 }
 
 /** The legend: one button per series the chart has (pressed: shown), each hides or shows its series. */
@@ -918,60 +636,6 @@ function pctOf(language: Language, part: number, whole: number): string {
   return whole > 0 ? `${formatNumber(language, (part / whole) * 100, 0)} %` : "–";
 }
 
-function flowBlock(doc: Document, language: Language, flow: DayFlow | null): HTMLElement | null {
-  if (flow === null) {
-    return null;
-  }
-  const section = element(doc, "section", `${H.section} ${H.flow}`);
-  section.append(element(doc, "h3", H.heading, translate(language, "house.flow.heading")));
-  const rows: Array<[TranslationKey, Array<[string, TranslationKey, number | null]>]> = [
-    [
-      "house.flow.from",
-      [
-        ["solar", "house.flow.solar", flow.sources.solar],
-        ["battery", "house.flow.battery", flow.sources.battery],
-        ["grid", "house.flow.grid", flow.sources.grid],
-      ],
-    ],
-    [
-      "house.flow.to",
-      [
-        ["battery", "house.flow.battery", flow.uses.battery],
-        ["load", "house.flow.load", flow.uses.load],
-        ["grid", "house.flow.grid", flow.uses.grid],
-      ],
-    ],
-  ];
-  for (const [label, parts] of rows) {
-    const shown = parts.filter((part): part is [string, TranslationKey, number] => part[2] !== null);
-    const whole = shown.reduce((sum, part) => sum + part[2], 0);
-    const row = element(doc, "div", H.flowRow);
-    const bar = element(doc, "div", H.flowBar);
-    bar.setAttribute("aria-hidden", "true");
-    for (const [name, , value] of shown) {
-      if (value <= 0) {
-        continue;
-      }
-      const piece = element(doc, "span", H.flowPart);
-      piece.dataset["part"] = name;
-      piece.style.flexGrow = String(value);
-      bar.append(piece);
-    }
-    row.append(element(doc, "span", H.flowLabel, translate(language, label)), bar);
-    const key = element(
-      doc,
-      "p",
-      H.flowKey,
-      shown.map(([, word, value]) => `${translate(language, word)} ${kwh(language, value)} (${pctOf(language, value, whole)})`).join(" · "),
-    );
-    section.append(row, key);
-  }
-  if (flow.sources.solar !== null && flow.sun_hours < flow.hours) {
-    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.sunLater")));
-  }
-  return section;
-}
-
 /** The day's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. Today before
  * anything can be drawn (its first minutes), a short line says it is on its way. */
 function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement | null {
@@ -1007,126 +671,6 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
   return section;
 }
 
-/** How the energy flow is counted, in the details: the fixed rule the split follows and where the car or the heat pump
- * could not be read; `null` without a drawn flow (`drawn`: the front has its diagram). */
-function flowNotes(doc: Document, language: Language, answer: HouseAnswer, drawn: boolean): HTMLElement | null {
-  const flow = answer.energy_flow;
-  if (flow === null || !drawn) {
-    return null;
-  }
-  const section = element(doc, "section", H.section);
-  section.dataset["part"] = "flow-notes";
-  section.append(
-    element(doc, "h3", H.heading, translate(language, "house.flow.how")),
-    element(doc, "p", `${C.muted} ${H.note}`, translate(language, flow.step_min < 60 ? "house.flow.ruleQuarter" : "house.flow.rule")),
-  );
-  if (flow.car_hours < flow.hours && flow.nodes.some((node) => node.role === "car")) {
-    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.carPart")));
-  }
-  if (flow.nodes.some((node) => node.role === "heat")) {
-    section.append(
-      element(doc, "p", `${C.muted} ${H.note}`, translate(language, flow.heat_hours < flow.hours ? "house.flow.heatPart" : "house.flow.heatRule")),
-    );
-  }
-  return section;
-}
-
-function modesTable(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
-  const battery = answer.battery;
-  if (battery === null) {
-    return null;
-  }
-  const section = element(doc, "section", H.section);
-  section.append(element(doc, "h3", H.heading, translate(language, "house.modes.heading")));
-  const table = element(doc, "table", H.table);
-  const head = element(doc, "thead");
-  const headRow = element(doc, "tr");
-  const reviewedDays = Math.max(0, ...MODES.map((mode) => battery.modes[mode]?.reviewed_days ?? 0));
-  for (const key of ["house.modes.mode", "house.modes.ahead", "house.modes.reviewed"] as const) {
-    headRow.append(element(doc, "th", undefined, translate(language, key, { days: String(reviewedDays) })));
-  }
-  head.append(headRow);
-  const body = element(doc, "tbody");
-  for (const mode of MODES) {
-    const figures = battery.modes[mode];
-    if (figures === undefined) {
-      continue;
-    }
-    const row = element(doc, "tr");
-    if (mode === battery.mode) {
-      row.dataset["inForce"] = "true";
-    }
-    const name = mode === battery.mode ? translate(language, "house.modes.inForce", { mode: modeName(language, mode) }) : modeName(language, mode);
-    row.append(
-      element(doc, "td", undefined, name),
-      element(doc, "td", undefined, figures.planned_saving === null ? "–" : amount(language, figures.planned_saving, answer.money)),
-      element(doc, "td", undefined, figures.reviewed_saving === null ? "–" : amount(language, figures.reviewed_saving, answer.money)),
-    );
-    body.append(row);
-  }
-  if (battery.review !== null) {
-    const own = element(doc, "tr");
-    own.append(
-      element(doc, "td", undefined, translate(language, battery.management === "self_managed" ? "house.modes.ownOptimiser" : "house.modes.own")),
-      element(doc, "td", undefined, "–"),
-      element(doc, "td", undefined, amount(language, battery.review.own_saving, answer.money)),
-    );
-    body.append(own);
-  }
-  table.append(head, body);
-  section.append(table, element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.modes.note")));
-  return section;
-}
-
-/** The money behind the shares, the battery's work and the cells' temperature, in the details. */
-function perfectDetailsBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
-  const past = answer.day !== null && !answer.day.today;
-  const perfect = past ? (answer.day_review?.perfect ?? null) : (answer.battery?.review?.perfect ?? null);
-  if (perfect === null || ((perfect.days === 0 || perfect.saving === null) && perfect.temperature === null)) {
-    return null;
-  }
-  return perfectDetails(doc, language, perfect, answer.money, ownControlName(language, answer));
-}
-
-function daysTable(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
-  if (answer.days.length === 0) {
-    return null;
-  }
-  const section = element(doc, "section", H.section);
-  section.append(element(doc, "h3", H.heading, translate(language, "house.days.heading")));
-  const table = element(doc, "table", H.table);
-  const columns: Array<{ key: TranslationKey; cell: (day: HouseAnswer["days"][number]) => string }> = [
-    { key: "house.days.house", cell: (day) => (day.house_mae === null ? "–" : formatFixed(language, day.house_mae, 2)) },
-  ];
-  if (answer.sun !== null) {
-    columns.push(
-      { key: "house.days.sun", cell: (day) => (day.sun_mae === null ? "–" : formatFixed(language, day.sun_mae, 2)) },
-      { key: "house.days.corrected", cell: (day) => (day.sun_corrected_mae === null ? "–" : formatFixed(language, day.sun_corrected_mae, 2)) },
-    );
-  }
-  if (answer.battery !== null) {
-    columns.push(
-      { key: "house.days.plan", cell: (day) => (day.plan_saving === null ? "–" : amount(language, day.plan_saving, answer.money)) },
-      { key: "house.days.own", cell: (day) => (day.own_saving === null ? "–" : amount(language, day.own_saving, answer.money)) },
-    );
-  }
-  const head = element(doc, "thead");
-  const headRow = element(doc, "tr");
-  headRow.append(element(doc, "th", undefined, translate(language, "house.days.date")));
-  columns.forEach((column) => headRow.append(element(doc, "th", undefined, translate(language, column.key))));
-  head.append(headRow);
-  const body = element(doc, "tbody");
-  for (const day of answer.days) {
-    const row = element(doc, "tr");
-    row.append(element(doc, "td", undefined, dateLabel(language, day.date)));
-    columns.forEach((column) => row.append(element(doc, "td", undefined, column.cell(day))));
-    body.append(row);
-  }
-  table.append(head, body);
-  section.append(table, element(doc, "p", `${C.muted} ${H.note}`, translate(language, answer.sun === null ? "house.days.noteHouse" : "house.days.note")));
-  return section;
-}
-
 const ESTIMATE_KEYS: Record<string, TranslationKey> = {
   min_soc_assumed: "house.estimate.min_soc_assumed",
   round_trip_assumed: "house.estimate.round_trip_assumed",
@@ -1141,9 +685,10 @@ const ESTIMATE_KEYS: Record<string, TranslationKey> = {
   rated_learned: "house.estimate.rated_learned",
 };
 
-function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, words: EntityWords | undefined): HTMLElement {
+/** Where the house's figures come from and what was assumed, at the foot of the history dialog. */
+export function houseSources(doc: Document, language: Language, answer: HouseAnswer, words: EntityWords | undefined): HTMLElement {
   const section = element(doc, "section", H.section);
-  section.append(element(doc, "h3", H.heading, translate(language, "house.sources.heading")));
+  section.append(element(doc, "h5", H.heading, translate(language, "house.sources.heading")));
   const list = element(doc, "ul", `${H.facts} ${C.muted}`);
   const add = (text: string): void => {
     list.append(element(doc, "li", undefined, text));
@@ -1235,40 +780,6 @@ function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, wo
     section.append(element(doc, "p", `${C.muted} ${H.note}`, note));
   }
   return section;
-}
-
-// ------------------------------------------------------------------------------------------------ details
-
-/** The analysis behind the house's last week, which the front once kept behind "Show details" and the history dialog
- * now shows with Detailed on: the share of the perfect plan (or, before the first, the modes side by side), what
- * SpotNav's saving is compared with, how the flow is counted, the battery against no battery, the modes ahead and
- * reviewed, the money behind the shares, the forecasts' errors, the days and the sources. */
-export function houseDetails(doc: Document, language: Language, answer: HouseAnswer, words?: EntityWords, idPrefix = "spotnav-house"): HTMLElement {
-  const details = element(doc, "div", H.details);
-  details.id = `${idPrefix}-details`;
-  const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
-  review.dataset["line"] = "review";
-  const perfect = perfectShown(answer) !== null;
-  const week = savingLine(language, answer);
-  const weekLine = week === null ? null : element(doc, "p", H.line, week);
-  weekLine?.setAttribute("data-line", "saving");
-  for (const part of [
-    weekLine,
-    perfect ? perfectBlock(doc, language, answer) : compareBlock(doc, language, answer),
-    savingDetails(doc, language, answer),
-    answer.energy_flow === null ? flowBlock(doc, language, answer.flow) : flowNotes(doc, language, answer, true),
-    baselinesBlock(doc, language, answer),
-    modesTable(doc, language, answer),
-    perfectDetailsBlock(doc, language, answer),
-    review,
-    daysTable(doc, language, answer),
-    sourcesBlock(doc, language, answer, words),
-  ]) {
-    if (part !== null) {
-      details.append(part);
-    }
-  }
-  return details;
 }
 
 // ------------------------------------------------------------------------------------------------ tabs

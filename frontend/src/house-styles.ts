@@ -33,10 +33,10 @@ export const HOUSE_CLASSES = {
   swatch: "spotnav-house-swatch",
   line: "spotnav-house-line",
   detailsToggle: "spotnav-house-details-toggle",
-  details: "spotnav-house-details",
   section: "spotnav-house-section",
   heading: "spotnav-house-heading",
   table: "spotnav-house-table",
+  wayTable: "spotnav-house-way-table",
   facts: "spotnav-house-facts",
   note: "spotnav-house-note",
   priceBuy: "spotnav-house-price-buy",
@@ -46,24 +46,14 @@ export const HOUSE_CLASSES = {
   today: "spotnav-house-today",
   todayDetail: "spotnav-house-today-detail",
   flow: "spotnav-house-flow",
-  flowRow: "spotnav-house-flow-row",
-  flowLabel: "spotnav-house-flow-label",
-  flowBar: "spotnav-house-flow-bar",
-  flowPart: "spotnav-house-flow-part",
-  flowKey: "spotnav-house-flow-key",
   flowChart: "spotnav-house-flow-chart",
   readout: "spotnav-house-readout",
-  compare: "spotnav-house-compare",
-  compareHead: "spotnav-house-compare-head",
   compareGrid: "spotnav-house-compare-grid",
   compareRow: "spotnav-house-compare-row",
   compareName: "spotnav-house-compare-name",
   compareTrack: "spotnav-house-compare-track",
   compareFill: "spotnav-house-compare-fill",
   compareValue: "spotnav-house-compare-value",
-  base: "spotnav-house-base",
-  baseRow: "spotnav-house-base-row",
-  baseValue: "spotnav-house-base-value",
   baseNote: "spotnav-house-base-note",
   perfectHead: "spotnav-house-perfect-head",
 } as const;
@@ -92,13 +82,6 @@ export const HOUSE_STYLES = `
     --spotnav-heat-colour: var(--spotnav-heat, #e5554b);
     --spotnav-flow-heat: var(--spotnav-flow-heat-colour, #ff8f87);
     --spotnav-flow-other: #b0bec5;
-  }
-  .${H.compare} {
-    margin-top: 8px;
-  }
-  .${H.compareHead} {
-    margin: 0 0 2px;
-    font-size: 0.78rem;
   }
   .${H.compareRow} {
     display: grid;
@@ -132,20 +115,6 @@ export const HOUSE_STYLES = `
   }
   .${H.compareValue} {
     text-align: right;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-  .${H.base} {
-    margin-top: 8px;
-  }
-  .${H.baseRow} {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    padding-top: 4px;
-    font-size: 0.86rem;
-  }
-  .${H.baseValue} {
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
@@ -296,42 +265,6 @@ export const HOUSE_STYLES = `
     margin: 2px 0 0;
     overflow-wrap: break-word;
   }
-  .${H.flowRow} {
-    display: grid;
-    grid-template-columns: 3.2rem 1fr;
-    align-items: center;
-    gap: 6px;
-    margin-top: 4px;
-  }
-  .${H.flowLabel} {
-    font-size: 0.78rem;
-    color: var(--secondary-text-color, #727272);
-  }
-  .${H.flowBar} {
-    display: flex;
-    height: 14px;
-    border-radius: 4px;
-    overflow: hidden;
-    background: var(--divider-color, #e0e0e0);
-  }
-  .${H.flowPart}[data-part="solar"] {
-    background: var(--spotnav-sun-colour);
-  }
-  .${H.flowPart}[data-part="battery"] {
-    background: var(--spotnav-battery-colour);
-  }
-  .${H.flowPart}[data-part="grid"] {
-    background: var(--spotnav-grid-colour);
-  }
-  .${H.flowPart}[data-part="load"] {
-    background: var(--spotnav-house-colour);
-  }
-  .${H.flowKey} {
-    margin: 2px 0 0 3.6rem;
-    font-size: 0.76rem;
-    color: var(--secondary-text-color, #727272);
-    font-variant-numeric: tabular-nums;
-  }
   .${H.bar} {
     fill: var(--spotnav-house-colour);
     opacity: 0.85;
@@ -476,15 +409,6 @@ export const HOUSE_STYLES = `
   .${H.detailsToggle} {
     margin-top: 4px;
   }
-  .${H.details} {
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px solid var(--divider-color, #e0e0e0);
-  }
-  /* The perfect share leads the details: the same room after it as between the details' sections. */
-  .${H.details} > .${H.compare} {
-    margin-bottom: 12px;
-  }
   .${H.section} + .${H.section} {
     margin-top: 10px;
   }
@@ -527,6 +451,32 @@ export const HOUSE_STYLES = `
   }
   .${H.table} tr[data-in-force] td:first-child {
     font-weight: 600;
+  }
+  /* A way per block: its name on a line of its own, its figures under their headings, so five columns fit a phone. */
+  .${H.wayTable} thead th:first-child,
+  .${H.wayTable} td:first-child {
+    text-align: end;
+  }
+  .${H.wayTable} td:first-child {
+    white-space: nowrap;
+  }
+  .${H.wayTable} {
+    margin: 6px 0 4px;
+  }
+  /* The history's sections of many sentences: a little air between them. */
+  section[data-part="perfect"] > p + p,
+  section[data-part="modes"] > p + p,
+  section[data-part="how"] > p + p {
+    margin-top: 4px;
+  }
+  section[data-part="how"] > .${H.section} {
+    margin-top: 8px;
+  }
+  .${H.wayTable} tbody th {
+    padding: 6px 4px 0;
+    text-align: start;
+    white-space: normal;
+    font-weight: 500;
   }
   .${H.facts} {
     margin: 0;

@@ -28,7 +28,7 @@ import type { HistoryPeriod } from "./period-history";
 import { HOUSE_STYLES } from "./house-styles";
 import { PERIOD_STYLES } from "./period-history";
 import { readHiddenSeries, writeHiddenSeries } from "./house-series";
-import { houseBody, houseDetails, localDate, type HouseState, type HouseTabsData, type HouseUi, type Loadable } from "./house-view";
+import { houseBody, houseSources, localDate, type HouseState, type HouseTabsData, type HouseUi, type Loadable } from "./house-view";
 import { element as periodElement } from "./period-history";
 import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language } from "./i18n";
 import { SettingsPopover, stubTarget } from "./settings-popover";
@@ -210,19 +210,14 @@ export class SpotnavHouseCard extends HTMLElement {
         language: () => this.language ?? resolveLanguage(null),
         width: () => this.width,
         decode: decodeHouseHistory,
-        // Under the period: the analysis of the last days the front once kept behind "Show details".
+        // The card's own answer says since when the car is counted and where the figures come from.
         body: (input) => {
-          const body = houseHistoryBody(input);
-          if (this.state.kind === "ready") {
-            const block = periodElement(input.doc, "section", VISUAL_CLASSES.historyTile);
-            block.dataset["part"] = "recent";
-            block.append(
-              periodElement(input.doc, "h4", VISUAL_CLASSES.historyTileHeading, translate(input.language, "hist.house.recent")),
-              houseDetails(input.doc, input.language, this.state.answer, entityWordsOf(this.hassObject), `${this.idPrefix}-history`),
-            );
-            body.append(block);
-          }
-          return body;
+          const answer = this.state.kind === "ready" ? this.state.answer : null;
+          return houseHistoryBody({
+            ...input,
+            carSince: answer?.saving?.car_since ?? null,
+            sources: answer === null ? null : houseSources(input.doc, input.language, answer, entityWordsOf(this.hassObject)),
+          });
         },
       });
     }
