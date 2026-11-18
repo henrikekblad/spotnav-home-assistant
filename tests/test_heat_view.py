@@ -281,6 +281,9 @@ def control_status(state: str, reason: str | None, **extra: Any) -> dict[str, An
         "paused_until": None,
         "raised": False,
         "raise_until": None,
+        "path": "relay",
+        "untested": False,
+        "enable_entities": None,
         **extra,
     }
 

@@ -545,14 +545,17 @@
       "name": "Värmepanna: sänk värmekurvan när elen är dyr"
     },
     "check": null,
+    "enable_entities": null,
     "enabled": true,
     "lowered": false,
+    "path": "relay",
     "paused_until": null,
     "raise_until": null,
     "raised": false,
     "reason": "automation",
     "since": null,
     "state": "waiting",
+    "untested": false,
     "until": null
   },
   "indoor": {

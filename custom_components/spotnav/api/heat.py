@@ -1,7 +1,7 @@
 """The heat card's commands (SpotNav 3.0, plan `plans/v3_heat_card.md`): `spotnav/get_heat` reads the card's view of
 a site, `spotnav/update_heat` writes the site's heat settings (`heat/config.py`) with a compare-and-set. Nothing here writes
-to a heating device; `control_enabled` is the person's opt-in that lets the heat control (`heat/control.py`) switch
-the relay, and a write makes it look at once (turned off, it opens what it holds).
+to a heating device; `control_enabled` is the person's opt-in that lets the heat control (`heat/control.py`) steer
+the pump through the chosen path, and a write makes it look at once (turned off, it gives back what it holds).
 
 `spotnav/get_heat` (API v1): `{api_version: 1, site_id | charger_id}`, any user who can see the card; the answer is
 `heat/view.py:heat_view` (its docstring has the shape; `writable` and `choices` only for an administrator). Read from
@@ -21,7 +21,13 @@ shadow logs each change of what it would do now (in the diagnostics). Refusals a
      changes: {target_c?, mode?, away_until?, away_delta_c?, night?, indoor_sensors?, indoor_offsets?, outdoor_sensor?,
                control_path?, control_entity?, control_entity_b?, hot_water_entity?, zones?, control_enabled?,
                heat_meter_entity?},
-     expected: {the same keys: the values the caller last saw}}
+     expected: {the same keys: the values the caller last saw},
+     enable_control_entities?: true}
+
+`enable_control_entities` is the person's confirm of the opt-in's question (the status's `control.enable_entities`):
+before anything is written, the stored control path's entities that are disabled in their integration are enabled
+and that integration reloaded once (`heat/optin.py`). An administrator only, never over the webhook;
+`spotnav_enable_failed` when it could not be done (nothing is written then).
 
 The answer is one envelope for every outcome: `{api_version, ok, error, field_errors, config}`, `config` re-read
 after the write (the settings as `HeatConfig.as_dict()` plus `heat_meter_entity`, the heat pump meter's setting,
@@ -68,6 +74,7 @@ from ..heat.config import (
     comparable,
     read_config,
 )
+from ..heat import optin as heat_optin
 from ..heat.control import raise_entity
 from ..heat.detect import other_controllers, read_heat_pumps
 from ..heat.facts import HeatPumpFacts
@@ -113,6 +120,7 @@ INDOOR_CHOICE: Final = (10.0, 30.0)
 
 ERROR_CONFLICT: Final = "spotnav_conflict"
 ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
+ERROR_ENABLE_FAILED: Final = "spotnav_enable_failed"
 
 F_METER: Final = "heat_meter_entity"
 WRITABLE: Final = (*FIELDS, F_METER)
@@ -299,10 +307,11 @@ def write_envelope(site: ConfigEntry | None, error: str | None = None, field_err
         vol.Optional("site_id"): object,
         vol.Optional("changes"): object,
         vol.Optional("expected"): object,
+        vol.Optional("enable_control_entities"): bool,
     }
 )
-@callback
-def websocket_update_heat(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+@websocket_api.async_response
+async def websocket_update_heat(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """Change the site's heat settings (see the module)."""
     version = msg.get("api_version")
     if type(version) is not int or version != HEAT_API_VERSION:
@@ -313,6 +322,17 @@ def websocket_update_heat(hass: HomeAssistant, connection: websocket_api.ActiveC
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return
+    if msg.get("enable_control_entities") is True:
+        # The person's confirm of the opt-in's question: an administrator's only.
+        if not is_admin(connection):
+            connection.send_result(msg["id"], write_envelope(site, ERROR_NOT_ADMIN))
+            return
+        try:
+            await heat_optin.async_enable(hass, stored_config(site))
+        except Exception:  # noqa: BLE001 - the answer says so; nothing is written
+            _LOGGER.exception("SpotNav heat control: enabling the control entities failed")
+            connection.send_result(msg["id"], write_envelope(site, ERROR_ENABLE_FAILED))
+            return
     try:
         write_heat(hass, site, msg.get("changes"), msg.get("expected"), admin=is_admin(connection))
     except HeatWriteRefusal as refusal:
@@ -711,7 +731,7 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
         "indoor": list(config.indoor_sensors),
         "outdoor": [config.outdoor_sensor] if config.outdoor_sensor else [],
         "zones": [zone.entity_id for zone in config.zones],
-        "relay": [e for e in (config.control_entity, config.control_entity_b) if e and config.control_path in ("relay", "sg_ready")],
+        "relay": [e for e in (config.control_entity, config.control_entity_b) if e and config.control_path in ("relay", "sg_ready", "sg_ready_api")],
         "offset": [config.control_entity] if config.control_path == "offset" and config.control_entity else [],
         "setpoint": [config.control_entity] if config.control_path == "setpoint" and config.control_entity else [],
         "hot_water": [config.hot_water_entity] if config.hot_water_entity else [],
