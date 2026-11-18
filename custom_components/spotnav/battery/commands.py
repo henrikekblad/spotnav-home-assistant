@@ -50,6 +50,16 @@ The entity keys, options and services below were checked against each integratio
   Consumption either way (research §2.2), so the hand-back is clean and a plant taken from AI mode is not put back
   in it (the person is reminded to set it again in the app). The discharge cut-off SoC is never
   written: with it above the SoC the plant grid-charges to reach it (research §3.1 D).
+  **Per phase** (`SIGENERGY_PHASES`, seen on the owner's plant 2026-11-18, SPC117, sigen 2.0.3): with independent
+  phase power control on (40030, switch `plant_independent_phase_power_control_enable`, disabled by default; it read
+  on as found) Remote EMS in the control mode "PCS Remote Control" (40031 = 0) follows the plant's active power
+  target per phase (40008/40010/40012, numbers `plant_phase_{a,b,c}_active_power_fixed_target`, kW, disabled by
+  default; available also while Remote EMS is off). The target is the plant's AC power on that phase: negative
+  takes from the grid on it (B at -1 kW: L2 imported 1.0 kW more, the battery charged 0.7 kW), positive puts out on it
+  (B at +1 kW: L2 exported 0.81 kW with 0.18 kW of house on it), all at 0 leaves the house on the grid. Phases A, B, C
+  are the meter's L1, L2, L3 there, and a new target settles in under 5 s. The plant's own power per phase
+  (`adapters.SIGENERGY.plant_phase_power`) reads the target back as power. Whether the grid import limit (40040)
+  acts in this mode is not known, so it is never counted on here.
 * **SolarEdge Modbus Multi**, `solaredge_modbus_multi`, WillCodeForCats `0ab6569f1e20bb5abf735e5b5edf253cd8766cfd`:
   only while the storage control mode is already Remote Control (`select.py` `StorageControlMode`, option 4): the
   command mode (`storage_command_mode`, `const.py` `STORAGE_MODE`), the charge and discharge limits (W) and the
@@ -171,6 +181,58 @@ class HoldVariant:
     idle: bool = False
 
 
+#: A power per phase in the order of the site's meter: L1, L2, L3 (kW).
+Phases = tuple[float, float, float]
+
+
+@dataclass(frozen=True, slots=True)
+class PhaseControl:
+    """A plant that takes a power target per phase: what a grid charge sized to each phase's own headroom needs
+    (`gate.grid_charge_phase_caps_kw`). Data only; the executor, the monitor and the verification know no brand.
+
+    A brand fills in the three target roles **in the order of the site's meter** (the role for L1 first: a plant
+    whose phase A is not the meter's L1 lists them in the meter's order), the sign and unit of a target, the state
+    that makes the plant follow the targets, and what must read so for them to act. The control that runs it is
+    `BrandControl.with_phases(True)`: its grid charge writes a target per phase, every other action writes the
+    targets to 0, and every hand-back stops the targets first. The plant's power per phase, by which the effect is
+    judged, is the adapter's `plant_phase_power` (positive for output). It is used only once the verification's
+    mode `per_phase` passed on this firmware (`verify.py`: a small target on each phase in turn, read back as that
+    phase's power with the right sign, on the meter's phase of that name)."""
+
+    #: The targets' roles for L1, L2, L3 (numbers, never restored: handed back as 0).
+    targets: tuple[Role, Role, Role]
+    #: What a target reads for a charge of 1 kW from that phase, in kW before the role's `scale` (-1: negative
+    #: takes from the grid, positive puts out).
+    charge_sign: float
+    #: The state that makes the plant follow the targets, beside the targets themselves.
+    follow: tuple[Want, ...]
+    #: Roles that must read one of these states for the targets to act, never written (`(role, states, reason)`).
+    requires: tuple[tuple[Role, frozenset[str], str], ...] = ()
+    #: The orders with the targets in them (`BrandControl.enter_order`, `restore_order`), and the roles that stop a
+    #: charge per phase, written first on every hand-back and change of action (`BrandControl.peak_first`).
+    enter_order: tuple[str, ...] = ()
+    restore_order: tuple[str, ...] = ()
+    stop_first: tuple[str, ...] = ()
+
+    def names(self) -> tuple[str, str, str]:
+        return (self.targets[0].name, self.targets[1].name, self.targets[2].name)
+
+    def value(self, index: int, charge_kw: float) -> float:
+        """The native target for a charge of `charge_kw` on that phase (negative: a discharge), its size rounded
+        down to the role's step."""
+        size = native(self.targets[index], abs(charge_kw))
+        sign = self.charge_sign if charge_kw >= 0 else -self.charge_sign
+        return 0.0 if size == 0 else round(sign * size, 6)
+
+    def wants(self, charge_kw: Phases) -> tuple[Want, ...]:
+        """A charge per phase: the state that follows the targets, and each phase's target."""
+        return (*self.follow, *(Want(role.name, self.value(index, charge_kw[index])) for index, role in enumerate(self.targets)))
+
+    def idle(self) -> tuple[Want, ...]:
+        """Every target at 0: what every action other than a charge per phase writes."""
+        return tuple(Want(role.name, 0.0) for role in self.targets)
+
+
 @dataclass(frozen=True, slots=True)
 class BrandControl:
     brand: str
@@ -220,6 +282,11 @@ class BrandControl:
     #: with the switch (`Role.idle_when`) was never read back: the plant may still hold the command it had, and these
     #: keep that command from acting until the role is written again (`executor.ExecState.unsure`).
     prime: Mapping[str, Native] = field(default_factory=dict)
+    #: The plant's power target per phase, where the brand has one (`PhaseControl`); `None`: a grid charge is spread
+    #: by the plant itself (`grid_charge_phases`).
+    phase_control: PhaseControl | None = None
+    #: Whether this control runs the targets per phase (`with_phases`): its roles, orders and states hold them.
+    phased: bool = False
 
     def role(self, name: str) -> Role:
         for role in self.roles:
@@ -241,19 +308,57 @@ class BrandControl:
         variant = next((item for item in self.hold_variants if item.name == name), None)
         if variant is None or variant.name == self.variant:
             return self
+        if self.phased:
+            return self.with_phases(False).with_hold(name).with_phases(True)
         return replace(
             self, states={**self.states, ACTION_HOLD: variant.build},
             peak_first={**self.peak_first, ACTION_HOLD: variant.peak_first}, variant=variant.name,
         )
 
+    def with_phases(self, on: bool) -> BrandControl:
+        """This control running the brand's targets per phase (`PhaseControl`), or not; itself for a brand without
+        them. The phased control has the targets (and what they require) among its roles and orders, writes them to
+        0 in every action, and stops them first; a grid charge given a power per phase (`wanted`'s `phases`) writes
+        the targets instead of the brand's own charge. The executor changes between the two only while it holds
+        nothing (`Executor.use_phases`)."""
+        spec = self.phase_control
+        if spec is None or on == self.phased:
+            return self
+        if not on:
+            base = next(control for control in CONTROLS if control.brand == self.brand)
+            return base.with_hold(self.variant)
+        idle = spec.idle()
+
+        def with_idle(build: Callable[[float, int], tuple[Want, ...]]) -> Callable[[float, int], tuple[Want, ...]]:
+            return lambda rate_kw, watchdog_s: (*idle, *build(rate_kw, watchdog_s))
+
+        return replace(
+            self,
+            roles=(*self.roles, *spec.targets, *(role for role, _states, _why in spec.requires)),
+            states={action: with_idle(build) for action, build in self.states.items()},
+            enter_order=spec.enter_order, restore_order=spec.restore_order,
+            peak_first={**self.peak_first, ACTION_GRID_CHARGE: spec.stop_first},
+            requires=(*self.requires, *((role.name, states, why) for role, states, why in spec.requires)),
+            phased=True,
+        )
+
     def supports(self, action: str) -> bool:
         return action == ACTION_SELF_CONSUME or action in self.states
 
-    def wanted(self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S) -> dict[str, Native]:
-        """Every restored role's wanted value for the action (`SNAPSHOT` where the action leaves it)."""
+    def wanted(
+        self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S, phases: Phases | None = None
+    ) -> dict[str, Native]:
+        """Every restored role's wanted value for the action (`SNAPSHOT` where the action leaves it). `phases`: a
+        grid charge per phase on a phased control (kW on L1, L2, L3, negative for a discharge), instead of the
+        brand's own charge at `rate_kw`."""
         wanted: dict[str, Native] = {role.name: SNAPSHOT for role in self.roles if role.restored}
         if action != ACTION_SELF_CONSUME:
-            for want in self.states[action](rate_kw, watchdog_s):
+            spec = self.phase_control
+            if phases is not None and self.phased and spec is not None and action == ACTION_GRID_CHARGE:
+                wants = spec.wants(phases)
+            else:
+                wants = self.states[action](rate_kw, watchdog_s)
+            for want in wants:
                 wanted[want.role] = want.value
         return wanted
 
@@ -356,6 +461,36 @@ SIGENERGY_HOLDS: Final = (
     ),
 )
 
+_SIG_PCS: Final = "PCS Remote Control"  # 0: the plant follows its active power targets
+_SIG_PHASE_TARGETS: Final = (
+    Role("phase_l1_target", "number", _key("plant_phase_a_active_power_fixed_target", "number"), step=0.01, restored=False),
+    Role("phase_l2_target", "number", _key("plant_phase_b_active_power_fixed_target", "number"), step=0.01, restored=False),
+    Role("phase_l3_target", "number", _key("plant_phase_c_active_power_fixed_target", "number"), step=0.01, restored=False),
+)
+_SIG_PHASE_SWITCH: Final = Role(
+    "phase_control", "switch", _key("plant_independent_phase_power_control_enable", "switch"), restored=False
+)
+#: Sigenergy's targets per phase (see the module): phase A, B, C are L1, L2, L3; a negative target charges. The
+#: independent phase switch (40030) is read, never written: it changes how the plant shares its power in the
+#: person's own modes too, so SpotNav runs per phase only where the person has it on. The targets are written while
+#: Remote EMS is still off (they are available then), so the mode finds them in place; a hand-back writes them to 0,
+#: then the mode to Maximum Self Consumption, then Remote EMS off. The battery limits are left as found.
+SIGENERGY_PHASES: Final = PhaseControl(
+    targets=_SIG_PHASE_TARGETS,
+    charge_sign=-1.0,
+    follow=(Want("remote_ems", True), Want("control_mode", _SIG_PCS)),
+    requires=((_SIG_PHASE_SWITCH, frozenset({"on"}), "phase_control_off"),),
+    enter_order=(
+        "charge_limit", "discharge_limit", "phase_l1_target", "phase_l2_target", "phase_l3_target", "remote_ems",
+        "control_mode",
+    ),
+    restore_order=(
+        "phase_l1_target", "phase_l2_target", "phase_l3_target", "control_mode", "remote_ems", "charge_limit",
+        "discharge_limit",
+    ),
+    stop_first=("phase_l1_target", "phase_l2_target", "phase_l3_target", "control_mode"),
+)
+
 SIGENERGY_CONTROL: Final = BrandControl(
     brand="sigenergy",
     adapter=SIGENERGY,
@@ -393,13 +528,17 @@ SIGENERGY_CONTROL: Final = BrandControl(
     # written before the switch): both limits at 0 make a Command Charging or Discharging mode left there do nothing
     # (V2.7: 40032 acts in 3 and 4, 40034 in 5 and 6; V2.9: everywhere) until the mode is written.
     prime={"charge_limit": 0.0, "discharge_limit": 0.0},
+    phase_control=SIGENERGY_PHASES,
 )
 
 #: An inverter's Output Type (Sigenergy's enum, lower-cased) as the phases it feeds.
 OUTPUT_TYPE_PHASES: Final[Mapping[str, int]] = {"l_n": 1, "l1_l2_n": 2, "l1_l2_l3": 3, "l1_l2_l3_n": 3}
 
 # The normal state has no wanted value for these: the switch goes off, the select to MSC (only while it can).
-_SIGENERGY_NORMAL: Final = {"remote_ems": False, "control_mode": _SIG_MSC}
+# The targets per phase go back to 0 (only a phased control has their entities).
+_SIGENERGY_NORMAL: Final = {
+    "remote_ems": False, "control_mode": _SIG_MSC, **{role.name: 0.0 for role in _SIG_PHASE_TARGETS},
+}
 
 _SE_MODE = Role("command_mode", "select", _key("storage_command_mode", "select"))
 _SE_CHARGE = Role("charge_limit", "number", _key("storage_charge_limit", "number"), scale=1000.0, step=1.0)
@@ -559,6 +698,20 @@ def control_for(brand: str | None, variant: str | None = None) -> BrandControl |
     SpotNav writes nothing to."""
     control = next((control for control in CONTROLS if control.brand == brand), None)
     return None if control is None else control.with_hold(variant)
+
+
+def phase_table() -> list[dict[str, Any]]:
+    """The brands with targets per phase and what a charge of 1 kW on each phase writes, for diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for control in CONTROLS:
+        spec = control.phase_control
+        if spec is not None:
+            rows.append({
+                "brand": control.brand, "targets": list(spec.names()),
+                "writes": {want.role: want.value for want in spec.wants((1.0, 1.0, 1.0))},
+                "requires": {role.name: sorted(states) for role, states, _why in spec.requires},
+            })
+    return rows
 
 
 def export_control_for(brand: str | None) -> BrandControl | None:
