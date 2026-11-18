@@ -57,6 +57,12 @@
         "exact_days": 3,
         "exact_minutes": 4000,
         "basis": "mixed"
+      },
+      "import_limit": {
+        "value_kw": 13.8,
+        "max_kw": 6.93,
+        "suggested_kw": 6.9,
+        "holds": false
       }
     }
   }

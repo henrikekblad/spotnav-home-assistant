@@ -923,9 +923,11 @@ def _import_limit(hass: HomeAssistant, state: str) -> None:
     [
         # The default 4 kW peak on one phase leaves 5.7 A of 25 A (less the 2 A margin): 3.935 kW balanced.
         (25.0, False, None, "3.935"),
-        # Shown to act and reading under the fuse: only the live clamp on the measured headroom.
-        (25.0, True, "10", "12.47"),
-        # Shown to act but reading above the fuse: the cap stays.
+        # Shown to act and reading at most what keeps the worst phase under the fuse (7.93 kW in all with 4 kW on
+        # one phase): only the live clamp on the measured headroom.
+        (25.0, True, "7.5", "12.47"),
+        # Shown to act but reading more than that (the plant limits the total, not each phase): the cap stays.
+        (25.0, True, "10", "3.935"),
         (25.0, True, "100", "3.935"),
     ],
 )
@@ -941,6 +943,40 @@ async def test_the_grid_charge_is_capped_per_phase_until_the_import_limit_is_sho
     await _looks(control, dt_util.now(), 6)
     assert hass.states.get(CHARGE).state[:len(written)] == written
     assert any(row["kind"] == "restricted" for row in control.log) is (written != "12.47")
+
+
+async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_and_never_writes_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    # The limit's entity is disabled (the integration's default): nothing read, the suggestion still made.
+    block = control.status()["grid_charge_cap"]["import_limit"]
+    assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False}
+    # The fuse as three-phase power (13.8 kW), as left after the on-site test: read, and refused as a guard.
+    _import_limit(hass, "13.8")
+    _options(hass, site, import_limit_acts=True)
+    cap = control.status()["grid_charge_cap"]
+    assert cap["import_limit"] == {"value_kw": 13.8, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False}
+    assert cap["rule"] == "conservative" and cap["cap_kw"] < gate.MIN_RATE_KW
+    await _looks(control, dt_util.now(), 6)
+    assert plant.calls == [], "no grid charge under a limit that lets one phase pass the fuse"
+    # Set to the suggested value by the person: the rule holds and the charge runs; SpotNav wrote the limit never.
+    _import_limit(hass, "4.4")
+    cap = control.status()["grid_charge_cap"]
+    assert cap["import_limit"]["holds"] is True and cap["rule"] == "import_limit" and cap["cap_kw"] is None
+    await _looks(control, dt_util.now() + timedelta(minutes=5), 6)
+    assert hass.states.get(MODE).state == "Command Charging (Grid First)"
+    assert not any(call[2].get("entity_id") == IMPORT_LIMIT for call in plant.calls)
+    # A car that keeps its last 6 A if Home Assistant stops takes 12 A of the total: 4.4 kW no longer guards.
+    monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
+    cap = control.status()["grid_charge_cap"]
+    assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False}
+    assert cap["rule"] == "conservative"
+    # Not shown to act on site: read and suggested, never in force.
+    monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
+    _options(hass, site, import_limit_acts=False)
+    assert control.status()["grid_charge_cap"]["import_limit"]["holds"] is False
 
 
 async def test_no_grid_charge_where_the_cap_leaves_too_little(

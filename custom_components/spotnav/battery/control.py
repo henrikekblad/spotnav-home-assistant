@@ -1168,15 +1168,46 @@ class BatteryControl:
         if peaks is True:
             peaks = self._phase_peaks(now)
         control = control_for(self.facts.brand)
-        import_limit_kw = None
-        if options.import_limit_acts and control is not None:
-            import_limit_kw = _float(read_plant_entity(self.hass, self.site.config, control.import_limit))
+        import_limit_kw = self._import_limit_kw(control) if options.import_limit_acts else None
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
             plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
         )
+
+    def _import_limit_kw(self, control: BrandControl | None) -> float | None:
+        """What the plant's own grid import limit reads now (kW), `None` when the brand has none, it is disabled or
+        it was never set. Only read: SpotNav never writes it."""
+        if control is None:
+            return None
+        return _float(read_plant_entity(self.hass, self.site.config, control.import_limit))
+
+    def _import_limit_status(self, now: datetime, options: gate.Options) -> dict[str, Any] | None:
+        """The plant's own grid import limit against what keeps the worst phase under the fuse
+        (`gate.import_limit_max_kw`), for the status: `value_kw` (what it reads), `max_kw` (the most that guards the
+        fuse with the chargers' last currents as they are now), `suggested_kw` (the same with no car charging, rounded
+        down to 0.1 kW: what the person may set; SpotNav never writes it) and `holds` (shown to act and at most
+        `max_kw`: the rule in force). `None` for a brand without such a limit."""
+        control = control_for(self.facts.brand)
+        if control is None or control.import_limit is None:
+            return None
+        value = self._import_limit_kw(control)
+        rule: dict[str, Any] = {
+            "margin_a": HEADROOM_MARGIN_A, "house_peak_kw": self._house_peak_kw(now),
+            "house_phase_peaks_a": self._phase_peaks(now),
+        }
+        fuse_a, volts = self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config)
+        cars_a = self._cars_allowed_a()
+        most = gate.import_limit_max_kw(fuse_a, volts, cars_a=cars_a, **rule)
+        free = gate.import_limit_max_kw(fuse_a, volts, cars_a=0.0, **rule)
+        suggested = None if free is None else math.floor(free * 10.0 + 1e-9) / 10.0
+        return {
+            "value_kw": None if value is None else round(value, 3),
+            "max_kw": None if most is None else round(most, 2),
+            "suggested_kw": None if suggested is None or suggested < gate.MIN_RATE_KW else suggested,
+            "holds": options.import_limit_acts and gate.import_limit_holds(value, fuse_a, volts, cars_a=cars_a, **rule),
+        }
 
     def _learned(self, now: datetime) -> Learned | None:
         """The site's learned per-phase house peaks (`site/phase_peaks.py`), `None` when it keeps none."""
@@ -1200,11 +1231,15 @@ class BatteryControl:
         house's per-phase peaks, the learning done), `learning` (those peaks with the further margin of the days
         counted so far), `conservative` (too few days: 4 kW on one phase), `import_limit` (no cap of this kind) or
         `error`. `cap_conservative_kw` and `cap_learned_kw` say what the cap would be by the conservative rule and
-        by the learned peaks without the further margin (`None` where there is no cap of this kind, or no peaks)."""
+        by the learned peaks without the further margin (`None` where there is no cap of this kind, or no peaks).
+        `import_limit`: the plant's own import limit against the most that guards the fuse
+        (`_import_limit_status`)."""
         learned = self._learned(now)
         without: float | None = None
         done: float | None = None
+        import_limit: dict[str, Any] | None = None
         try:
+            import_limit = self._import_limit_status(now, options)
             cap: float | None = self._grid_charge_cap_kw(now, options)
             if cap is not None:
                 without = self._grid_charge_cap_kw(now, options, peaks=None)
@@ -1225,6 +1260,7 @@ class BatteryControl:
             "cap_conservative_kw": None if without is None else round(without, 2),
             "cap_learned_kw": None if done is None else round(done, 2),
             "learned": None if learned is None else learned.as_dict(),
+            "import_limit": import_limit,
         }
 
     def learning_hold(self, now: datetime) -> dict[str, Any] | None:

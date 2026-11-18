@@ -8,7 +8,7 @@
       "battery_control_shadow_only": false,
       "battery_control_ai_takeover_ack": false,
       "battery_control_allow_sell": false,
-      "battery_control_import_limit_acts": false,
+      "battery_control_import_limit_acts": true,
       "battery_mode": "balanced"
     },
     "state": "on",
@@ -42,7 +42,13 @@
       "main_fuse_a": null,
       "cap_conservative_kw": null,
       "cap_learned_kw": null,
-      "learned": null
+      "learned": null,
+      "import_limit": {
+        "value_kw": 4.0,
+        "max_kw": 4.47,
+        "suggested_kw": 4.4,
+        "holds": true
+      }
     }
   }
 }

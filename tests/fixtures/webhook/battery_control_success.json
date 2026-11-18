@@ -10,6 +10,7 @@
       "cap_conservative_kw": 0.0,
       "cap_kw": 0.0,
       "cap_learned_kw": null,
+      "import_limit": null,
       "learned": {
         "basis": "none",
         "days_counted": 0,
