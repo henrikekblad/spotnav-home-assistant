@@ -123,7 +123,7 @@ house's peak; what is left is spread over the plant's phases. The house's peak i
   taken below the house forecast's high figure for the hour spread over the three phases, so a day colder than the
   days learned still counts.
 * **A day counts**, toward the seven days and toward the two weeks alike, only when its minutes are spread over
-  the day: in at least twelve of its clock hours (or ten hours of minutes). Two quiet hours every night are not a
+  the day: in at least twelve of its clock hours (or ten hours of minutes in at least eight). Two quiet hours every night are not a
   day, however many nights. With a Sigenergy plant whose per-phase
   power sensors are enabled (`Plant phase A/B/C active power`, disabled by default in the integration) every minute
   can be reckoned; without them only the minutes where the battery is nearly idle (within 0.5 kW), and what the
@@ -133,7 +133,9 @@ house's peak; what is left is spread over the plant's phases. The house's peak i
   sensors have been in Home Assistant for a while usually has its week at once. The history says when a value last
   changed, not when it was last reported, so a reading that stood still for more than two minutes counts nothing
   there. That makes such days weaker evidence, and they are treated so: a day that lost more than 30 % of its
-  minutes that way is no day, and a day from the history counts half of a day sampled live when the further margin
+  minutes that way is no day, nor is one without its evening (minutes reckoned in at least three of the hours
+  16 to 22, where a house's peaks are), the two weeks need at least three days sampled live however long the
+  history, and a day from the history counts half of a day sampled live when the further margin
   is taken off (ten days of history alone keep the whole 4 A) and toward the two weeks. A sensor that is excluded
   from the recorder has no history: if the site's measurement needs it (on a Sigenergy plant the grid's reactive
   power and the inverter's phase voltages), no earlier day can be reckoned and the learning starts from now; the log
