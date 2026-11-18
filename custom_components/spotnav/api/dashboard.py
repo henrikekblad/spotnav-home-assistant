@@ -196,7 +196,9 @@ STRATEGY_HYBRID_REASON: Final = "needs_solar_and_price_control"
 MAX_RESPONSE_BYTES: Final = 256 * 1024
 
 #: Capability facts every charger advertises, all of them, in this order. The first six are about
-#: this charger's configuration and adapter (`execution/chargers/`); the last eleven are the
+#: this charger's configuration and adapter (`execution/chargers/`); the last four are the site's reads and everyday
+#: writes over the charger's webhook (SpotNav 3.0, `api/site_webhook.py`; `true` for a charger a loaded site lists,
+#: and absent from an older Home Assistant); the eleven between are the
 #: server's abilities and always `true` (`price_days`, `plan_preview`, `dismiss_setup_item`, `fix_own_mode`,
 #: `release_import_target`, `get_power_month`, `suggest_import_target`: the
 #: webhook answers that action, so an app can tell an older Home Assistant that does not; `site_import_target`:
@@ -222,6 +224,10 @@ CAPABILITY_KEYS: Final = (
     "get_power_month",
     "site_import_target",
     "suggest_import_target",
+    "get_house",
+    "get_heat",
+    "battery_control",
+    "get_site_settings_view",
 )
 
 
@@ -702,8 +708,12 @@ def capabilities_for(
     `auto_price`: the Auto preview exists; `current_limit`: a current-limit entity is configured, or
     the adapter sets a current some other way; `set_current` and `regulated_current`: what the
     charger's adapter supports now (see `CAPABILITY_KEYS`); `target_soc`: `target_soc_capable`;
-    `load_balancing`: a loaded site lists it; the last eleven are the server's abilities.
+    `load_balancing`: a loaded site lists it; the next eleven are the server's abilities. The last four (SpotNav
+    3.0) are the site's reads and everyday writes over this charger's webhook (`api/site_webhook.py`), true for a
+    charger a loaded site lists: `get_house` (with `get_house_now`, `get_house_history`, `get_house_loads`),
+    `get_heat` (with `get_heat_history`, `update_heat`), `battery_control` and `get_site_settings_view`.
     """
+    in_site = site_binding(hass, entry.entry_id) is not None
     adapter_capabilities = None if controller is None else controller.adapter.capabilities
     set_current = bool(adapter_capabilities is not None and adapter_capabilities.set_current)
     return (
@@ -715,7 +725,7 @@ def capabilities_for(
             bool(adapter_capabilities is not None and adapter_capabilities.regulated_current),
         ),
         ("target_soc", target_soc_capable(hass, entry.entry_id)),
-        ("load_balancing", site_binding(hass, entry.entry_id) is not None),
+        ("load_balancing", in_site),
         ("refresh_vehicle", True),
         ("set_charge_limit", True),
         ("target_stop", True),
@@ -727,6 +737,10 @@ def capabilities_for(
         ("get_power_month", True),
         ("site_import_target", True),
         ("suggest_import_target", True),
+        ("get_house", in_site),
+        ("get_heat", in_site),
+        ("battery_control", in_site),
+        ("get_site_settings_view", in_site),
     )
 
 

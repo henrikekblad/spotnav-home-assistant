@@ -1,0 +1,31 @@
+{
+  "action": "update_heat",
+  "api_version": 1,
+  "config": {
+    "away_until": "2026-09-25T16:00:00+02:00",
+    "control_enabled": false,
+    "control_entity": null,
+    "control_entity_b": null,
+    "control_path": "none",
+    "heat_meter_entity": null,
+    "hot_water_entity": null,
+    "indoor_offsets": [],
+    "indoor_sensors": [
+      "sensor.kok",
+      "sensor.ovanvaning"
+    ],
+    "mode": "away",
+    "night": {
+      "delta_c": 1.0,
+      "end": "06:00",
+      "on": false,
+      "start": "23:00"
+    },
+    "outdoor_sensor": null,
+    "target_c": 21.5,
+    "zones": []
+  },
+  "error": null,
+  "field_errors": [],
+  "ok": true
+}

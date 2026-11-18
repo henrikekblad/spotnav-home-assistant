@@ -1,0 +1,5 @@
+{
+  "action": "get_house",
+  "error": "spotnav_no_site",
+  "ok": false
+}

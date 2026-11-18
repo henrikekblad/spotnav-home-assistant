@@ -1,0 +1,547 @@
+{
+  "action": "get_heat",
+  "ahead": [
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T07:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T08:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T09:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T10:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T11:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T12:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T13:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "normal",
+      "hot_water": false,
+      "reason": "normal",
+      "start": "2026-09-22T14:00:00+00:00",
+      "target_c": 21.0
+    },
+    {
+      "action": "preheat",
+      "hot_water": false,
+      "reason": "cheap_before_dear",
+      "start": "2026-09-22T15:00:00+00:00",
+      "target_c": 21.5
+    },
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-09-22T16:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-09-22T17:00:00+00:00",
+      "target_c": 20.5
+    },
+    {
+      "action": "lower",
+      "hot_water": false,
+      "reason": "dear_hour",
+      "start": "2026-09-22T18:00:00+00:00",
+      "target_c": 20.5
+    }
+  ],
+  "api_version": 1,
+  "band": {
+    "date": "2026-09-22",
+    "hot_water_pick": null,
+    "hours": [
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 331.59,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-21T22:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 324.35,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-21T23:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 320.8,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T00:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 318.15,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T01:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 321.79,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T02:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 345.58,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T03:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 414.93,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T04:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 483.37,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T05:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": true,
+        "price": 409.27,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T06:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 363.38,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T07:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 319.84,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T08:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 287.39,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T09:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": true,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 260.01,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T10:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": true,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 249.49,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T11:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": true,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 256.5,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T12:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": true,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 277.75,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T13:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 323.21,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T14:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "preheat",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 396.65,
+        "raised_min": null,
+        "reason": "cheap_before_dear",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T15:00:00+00:00",
+        "target_c": 21.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 568.78,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T16:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 721.07,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T17:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 550.76,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T18:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 417.2,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T19:00:00+00:00",
+        "target_c": 21.0
+      },
+      {
+        "action": "lower",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 420.18,
+        "raised_min": null,
+        "reason": "dear_hour",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T20:00:00+00:00",
+        "target_c": 20.5
+      },
+      {
+        "action": "normal",
+        "car": false,
+        "executed_min": 0,
+        "hot_water": false,
+        "past": false,
+        "price": 366.46,
+        "raised_min": null,
+        "reason": "normal",
+        "relay_expected": false,
+        "relay_min": null,
+        "start": "2026-09-22T21:00:00+00:00",
+        "target_c": 21.0
+      }
+    ]
+  },
+  "choices": null,
+  "comfort": {
+    "aim_c": 21.0,
+    "away_until": null,
+    "high_c": 21.5,
+    "low_c": 20.5,
+    "mode": "home",
+    "target_c": 21.0
+  },
+  "config": {
+    "away_until": null,
+    "control_enabled": false,
+    "control_entity": null,
+    "control_entity_b": null,
+    "control_path": "none",
+    "heat_meter_entity": null,
+    "hot_water_entity": null,
+    "indoor_offsets": [],
+    "indoor_sensors": [
+      "sensor.kok",
+      "sensor.ovanvaning"
+    ],
+    "mode": "home",
+    "night": {
+      "delta_c": 1.0,
+      "end": "06:00",
+      "on": false,
+      "start": "23:00"
+    },
+    "outdoor_sensor": null,
+    "target_c": 21.0,
+    "zones": []
+  },
+  "control": {
+    "automation": null,
+    "check": null,
+    "enabled": false,
+    "lowered": false,
+    "paused_until": null,
+    "raise_until": null,
+    "raised": false,
+    "reason": null,
+    "since": null,
+    "state": "off",
+    "until": null
+  },
+  "indoor": {
+    "coldest": "sensor.ovanvaning",
+    "coldest_name": "ovanvaning",
+    "relative_c": 20.5,
+    "sensors": [
+      {
+        "entity_id": "sensor.kok",
+        "name": "kok",
+        "offset_c": 0.0,
+        "rise_c": null,
+        "status": "ok",
+        "value_c": 21.3
+      },
+      {
+        "entity_id": "sensor.ovanvaning",
+        "name": "ovanvaning",
+        "offset_c": 0.0,
+        "rise_c": null,
+        "status": "ok",
+        "value_c": 20.5
+      }
+    ],
+    "value_c": 20.5
+  },
+  "indoor_day": {
+    "end": "2026-09-22T22:00:00+00:00",
+    "high_c": 21.5,
+    "low_c": 20.5,
+    "points": [],
+    "rooms": [
+      {
+        "entity_id": "sensor.kok",
+        "name": "kok"
+      },
+      {
+        "entity_id": "sensor.ovanvaning",
+        "name": "ovanvaning"
+      }
+    ],
+    "setpoint": null,
+    "start": "2026-09-21T22:00:00+00:00",
+    "step_min": 15
+  },
+  "meter": null,
+  "notes": [],
+  "now": "2026-09-22T07:00:00+00:00",
+  "ok": true,
+  "outdoor": null,
+  "pump": null,
+  "relay": null,
+  "review": null,
+  "shadow": true,
+  "site_id": "site_entry_a",
+  "status": {
+    "guard": null,
+    "kw": null,
+    "pump_state": null,
+    "pump_state_source": null,
+    "would": {
+      "action": "normal",
+      "reason": "normal",
+      "target_c": 21.0,
+      "until": "2026-09-22T15:00:00+00:00"
+    }
+  },
+  "time_zone": "Europe/Stockholm",
+  "today": null,
+  "writable": false,
+  "zones": []
+}

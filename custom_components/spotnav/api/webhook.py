@@ -56,6 +56,7 @@ from .price_source import async_webhook_answer_price_duplicate, async_webhook_ch
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle, webhook_update_guest
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
+from .site_webhook import SITE_ACTIONS
 from .settings import (
     async_update_settings,
     settings_answer,
@@ -600,8 +601,10 @@ def _bounded_write(
     return handler
 
 
-#: Every action the webhook answers. `dashboard`, `sessions`, `price_days`, `get_power_month` and
-#: `suggest_import_target` are the reads.
+#: Every action the webhook answers. `dashboard`, `sessions`, `price_days`, `get_power_month`,
+#: `suggest_import_target` and the site's reads (`api/site_webhook.py`: `get_house`, `get_house_now`,
+#: `get_house_history`, `get_house_loads`, `get_heat`, `get_heat_history`, `get_site_settings_view` and
+#: `battery_control` without `changes`) are the reads.
 ACTIONS: Final[dict[str, Handler]] = {
     "start": _start,
     "stop": _stop,
@@ -634,6 +637,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "suggest_import_target": webhook_suggest_import_target,
     "dismiss_setup_item": webhook_dismiss_setup_item,
     **CAMERA_ACTIONS,
+    **SITE_ACTIONS,
 }
 
 

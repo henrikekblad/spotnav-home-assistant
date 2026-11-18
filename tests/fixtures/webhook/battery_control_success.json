@@ -1,0 +1,58 @@
+{
+  "action": "battery_control",
+  "api_version": 1,
+  "error": null,
+  "ok": true,
+  "status": {
+    "allowed_actions": [],
+    "device_id": null,
+    "grid_charge_cap": {
+      "cap_conservative_kw": 0.0,
+      "cap_kw": 0.0,
+      "cap_learned_kw": null,
+      "learned": {
+        "basis": "none",
+        "days_counted": 0,
+        "days_from_history": 0,
+        "days_from_history_dropped": 0,
+        "days_left": 14,
+        "days_min": 7,
+        "days_needed": 14,
+        "days_spread": 0,
+        "exact_a": null,
+        "exact_days": 0,
+        "exact_minutes": 0,
+        "extra_margin_a": null,
+        "factor": 1.0,
+        "heat_peak_w": null,
+        "hours": 0,
+        "hours_from_history": 0,
+        "margin_a": 2.0,
+        "minutes": 0,
+        "peaks_a": null,
+        "raw_a": null,
+        "ready": false,
+        "usable": false
+      },
+      "main_fuse_a": 25.0,
+      "rule": "conservative"
+    },
+    "key": "unknown | unknown unknown",
+    "line": "off",
+    "needs": [],
+    "notes": [],
+    "options": {
+      "battery_control_ai_takeover_ack": false,
+      "battery_control_allow_sell": false,
+      "battery_control_enabled": false,
+      "battery_control_import_limit_acts": false,
+      "battery_control_shadow_only": true,
+      "battery_mode": "balanced"
+    },
+    "report": null,
+    "state": "off",
+    "trial": null,
+    "verification": null,
+    "waiting_for": null
+  }
+}

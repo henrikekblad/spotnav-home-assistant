@@ -48,6 +48,15 @@ async def test_every_documented_action_has_a_handler() -> None:
         "take_reference_picture",
         "delete_reference_picture",
         "reference_picture",
+        "get_house",
+        "get_house_now",
+        "get_house_history",
+        "get_house_loads",
+        "get_heat",
+        "get_heat_history",
+        "get_site_settings_view",
+        "battery_control",
+        "update_heat",
     }
 
 
