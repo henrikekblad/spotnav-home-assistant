@@ -952,6 +952,10 @@ def _plant_phase_w(site: SiteCapacityController, max_age_s: float, now: float) -
     return (values[0], values[1], values[2])
 
 
+#: The plant's own power per phase for the battery control's charge per phase (`battery/control.py`).
+plant_phase_w = _plant_phase_w
+
+
 def _finite_any(value: Any) -> float | None:
     try:
         number = float(value)
@@ -1092,7 +1096,7 @@ class SitePhasePeaks:
 __all__: Sequence[str] = (
     "BATTERY_BAND_W", "DAY_MINUTES", "EXTRA_MARGIN_A", "HISTORY_DAY_WEIGHT", "HISTORY_LOST_SHARE", "HourMark",
     "EVENING_COUNTED_HOURS", "EVENING_HOURS", "READY_LIVE_DAYS", "SPREAD_MINUTES_HOURS",
-    "Learned", "MARGIN_A", "MIN_READY_DAYS", "PhasePeaks", "SPREAD_HOURS", "SPREAD_MINUTES",
+    "Learned", "MARGIN_A", "MIN_READY_DAYS", "PhasePeaks", "SPREAD_HOURS", "SPREAD_MINUTES", "plant_phase_w",
     "READY_DAYS", "Reading", "SitePhasePeaks", "PLANT_MISMATCH_A", "WINDOW_DAYS", "exact_phase_a", "extra_margin_a",
     "house_phase", "house_phase_a", "house_sum_a",
 )

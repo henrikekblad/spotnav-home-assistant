@@ -25,6 +25,13 @@ What each command expects:
 * `charge`/`discharge` at a rate: below `FAIL_FRACTION` of what the battery can deliver (at least `FLOOR_KW`) is
   `no_effect`, below `PARTIAL_FRACTION` is `partial`. A deliverable rate under `FLOOR_KW` is not judged.
 
+* a charge **per phase** (`judge_phases`, a plant that takes a target per phase, `commands.PhaseControl`): judged
+  on the plant's own power per phase (the adapter's `plant_phase_power`, + output), each phase against its own
+  target. A phase that takes more than its target by `PHASE_OVER_KW` (or a quarter of the target) is `over`: that is
+  the one that matters for the fuse, since each target is sized to its phase's headroom. Every phase with a target
+  below `FAIL_FRACTION` of it is `no_effect`, one below `PARTIAL_FRACTION` is `partial`. The executor counts
+  `CONFIRM_READINGS` in a row, `PHASE_GAP_S` apart, after `PHASE_GRACE_S` (a target settles in seconds).
+
 **In shadow** nothing was commanded, so the monitor cannot tell whether a command would have taken: "a hold of 0 kW
 would not have taken, the battery kept discharging" is unknowable without writing. A dry run (`Command.written`
 false) runs the same windows on the real readings and reports, once, either that it could not have judged (and
@@ -67,6 +74,18 @@ COUNTERS: Final[tuple[str, ...]] = ("writes", "no_effect", "partial")
 
 #: What an idle hold's battery may charge (kW) before a reading counts as a hold not taken.
 HOLD_CHARGE_TOLERANCE_KW: Final = 0.5
+
+#: A charge per phase: how long after its targets changed it is first judged (s), how far apart its readings are
+#: (s), and how much more than its target a phase may take (kW, or a quarter of the target when that is more).
+PHASE_GRACE_S: Final = 120.0
+PHASE_GAP_S: Final = 30.0
+PHASE_OVER_KW: Final = 0.3
+#: A phase over its target (the runaway) is judged sooner and more often: from this long after the charge's writes
+#: were taken (s; a target settles in under 5 s), a reading every this long (s).
+PHASE_OVER_GRACE_S: Final = 20.0
+PHASE_OVER_GAP_S: Final = 10.0
+
+PhaseVerdict = Literal["ok", "over", "partial", "no_effect"]
 
 CommandKind = Literal["hold", "charge", "discharge", "curtail"]
 ReadingVerdict = Literal["ok", "partial", "no_effect"]
@@ -205,6 +224,26 @@ def judge(
     if achieved < max(FAIL_FRACTION * expected_kw, FLOOR_KW):
         return "no_effect"
     if achieved < PARTIAL_FRACTION * expected_kw:
+        return "partial"
+    return "ok"
+
+
+def judge_phases(
+    targets_kw: tuple[float, float, float], plant_kw: tuple[float, float, float], *, tapering: bool = False
+) -> PhaseVerdict:
+    """One reading of a charge per phase: each phase's draw (the plant's own power on it, `plant_kw`, + output)
+    against its target (`targets_kw`, the charge commanded on it, 0 for none). `tapering`: the battery is near full,
+    so a draw below the target says nothing (a draw above it still does)."""
+    draws = [max(-power, 0.0) for power in plant_kw]
+    targets = [max(target, 0.0) for target in targets_kw]
+    if any(draw > target + max(PHASE_OVER_KW, FAIL_FRACTION * target) for draw, target in zip(draws, targets, strict=True)):
+        return "over"
+    judged = [(draw, target) for draw, target in zip(draws, targets, strict=True) if target >= FLOOR_KW]
+    if tapering or not judged:
+        return "ok"
+    if all(draw < FAIL_FRACTION * target for draw, target in judged):
+        return "no_effect"
+    if any(draw < PARTIAL_FRACTION * target for draw, target in judged):
         return "partial"
     return "ok"
 

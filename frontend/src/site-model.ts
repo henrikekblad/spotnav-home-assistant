@@ -101,6 +101,33 @@ export interface BatteryStatus {
   notes: { code: string; at: string }[];
   trial: unknown;
   grid_charge_cap: GridChargeCap;
+  /** A grid charge per phase, where the plant takes a target per phase; `null` for a brand without, and from a
+   * Home Assistant that does not send it yet. */
+  per_phase: PerPhase | null;
+}
+
+/** The plant's own grid import limit against the most that still guards the fuse: it limits the total over the
+ * phases, so that is less than the fuse (`holds`: shown to act and at most `max_kw`). SpotNav never writes it;
+ * `suggested_kw` is what the person may set. */
+export interface ImportLimit {
+  value_kw: number | null;
+  max_kw: number | null;
+  suggested_kw: number | null;
+  holds: boolean;
+  /** Why the site's sources refuse the rule whatever the limit reads (another inverter's sun, a single-phase
+   * plant, a charger run through the plant); `null` when they do not. */
+  why: string | null;
+}
+
+export interface PerPhase {
+  /** `verified`, `pending`, `failed`, or `unavailable` (with `why`). */
+  state: string;
+  why: string | null;
+  /** A grid charge now would run per phase. */
+  used: boolean;
+  /** Each phase's cap (kW), and what a running charge per phase is commanded at. */
+  caps_kw: PhaseValues;
+  charging_kw: PhaseValues | null;
 }
 
 export type PhaseValues = { L1: number; L2: number; L3: number };
@@ -143,6 +170,8 @@ export interface GridChargeCap {
     exact_minutes: number;
     basis: string;
   } | null;
+  /** `null` for a brand without such a limit, and from a Home Assistant that does not send it yet. */
+  import_limit: ImportLimit | null;
 }
 
 export interface BatteryAnswer {
@@ -236,6 +265,17 @@ const GRID_CHARGE_CAP = O({
       basis: "string",
     }),
   ),
+  import_limit: N(
+    O({ value_kw: N("number"), max_kw: N("number"), suggested_kw: N("number"), holds: "boolean", why: N("string") }),
+  ),
+});
+
+const PER_PHASE = O({
+  state: "string",
+  why: N("string"),
+  used: "boolean",
+  caps_kw: PHASE_VALUES,
+  charging_kw: N(PHASE_VALUES),
 });
 
 const STATUS: Spec = O({
@@ -253,6 +293,7 @@ const STATUS: Spec = O({
   notes: A(O({ code: "string", at: "string" })),
   trial: "any",
   grid_charge_cap: GRID_CHARGE_CAP,
+  per_phase: N(PER_PHASE),
 });
 
 const BATTERY = O({ api_version: "number", ok: "boolean", error: N("string"), status: N(STATUS) });
@@ -322,8 +363,28 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
   }
 }
 
+/** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
+ * `status.per_phase` and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
+function withLaterBlocks(raw: unknown): unknown {
+  const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
+  if (typeof status !== "object" || status === null || Array.isArray(status)) {
+    return raw;
+  }
+  const block = status as Record<string, unknown>;
+  const cap = block["grid_charge_cap"];
+  const plainCap = typeof cap === "object" && cap !== null && !Array.isArray(cap);
+  return {
+    ...(raw as Record<string, unknown>),
+    status: {
+      ...block,
+      ...(plainCap ? { grid_charge_cap: { import_limit: null, ...(cap as Record<string, unknown>) } } : {}),
+      per_phase: block["per_phase"] ?? null,
+    },
+  };
+}
+
 export function decodeBatteryControl(raw: unknown): Decoded<BatteryAnswer> {
-  const decoded = versioned<BatteryAnswer>(raw, BATTERY_CONTROL_API_VERSION, BATTERY);
+  const decoded = versioned<BatteryAnswer>(withLaterBlocks(raw), BATTERY_CONTROL_API_VERSION, BATTERY);
   if (decoded.ok && decoded.value.ok !== (decoded.value.error === null)) {
     return { ok: false, failure: "malformed" };
   }

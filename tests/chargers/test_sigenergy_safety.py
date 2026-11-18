@@ -34,6 +34,7 @@ from custom_components.spotnav.const import (
     ENTRY_TYPE_CHARGER,
     MEASUREMENT_MODE_DERIVED,
 )
+from custom_components.spotnav.execution.chargers import sigenergy
 from custom_components.spotnav.execution.chargers.base import (
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
@@ -374,11 +375,52 @@ async def test_a_dc_charger_on_a_site_is_capped_at_the_fuse(hass: HomeAssistant)
     assert calls[-1].data["value"] == pytest.approx(19 * KW_400, abs=0.001)
     assert power_range(adapter.current)["max_a"] == 19
 
-    # The site's battery import limit confirmed to act (test T3): the cap is lifted, the rating bounds it.
+    # The person's word that the plant's import limit acts lifts nothing: the lift is off until it is shown on site
+    # that the limit curtails this charger.
     hass.config_entries.async_update_entry(site, data={**site.data, "battery_control_import_limit_acts": True})
-    assert evdc_fuse_cap_a(hass, "evdc") is None
-    assert power_range(adapter.current)["max_a"] == 36
+    assert sigenergy.EVDC_CAP_LIFTED_BY_IMPORT_LIMIT is False
+    assert evdc_fuse_cap_a(hass, "evdc") == 19
+    assert power_range(adapter.current)["max_a"] == 19
     adapter.cancel_pending_reads()
+
+
+async def test_the_fuse_cap_would_lift_only_while_the_import_limit_holds_now(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With the lift turned on: only while the battery gate's own rule holds now, asked without this charger's own
+    current; the cap stays when the site has no battery control, the rule does not hold, or the asking raises."""
+    from custom_components.spotnav import runtime
+
+    from ..helpers import make_site_entry
+
+    _charger_entry(hass)
+    site = make_site_entry(hass, entry_id="home", main_fuse_a=20.0, safety_margin_a=1.0, charger_entry_ids=["evdc"],
+                           phase_wiring={"evdc": {"phases": 3, "phase": None}})
+    hass.config_entries.async_update_entry(site, data={**site.data, "battery_control_import_limit_acts": True})
+    monkeypatch.setattr(sigenergy, "EVDC_CAP_LIFTED_BY_IMPORT_LIMIT", True)
+    assert evdc_fuse_cap_a(hass, "evdc") == 19, "no site controller: nothing to ask"
+
+    asked: list[str | None] = []
+
+    class Control:
+        answer: Any = True
+
+        def import_limit_guards(self, *, without_charger: str | None = None) -> bool:
+            asked.append(without_charger)
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            return self.answer
+
+    control = Control()
+    monkeypatch.setattr(runtime, "site_controller_for", lambda hass, entry_id: type("Site", (), {"battery_control": control})())
+    assert evdc_fuse_cap_a(hass, "evdc") is None and asked == ["evdc"]
+    control.answer = False
+    assert evdc_fuse_cap_a(hass, "evdc") == 19
+    control.answer = RuntimeError("no reading")
+    assert evdc_fuse_cap_a(hass, "evdc") == 19
+    hass.config_entries.async_update_entry(site, data={**site.data, "battery_control_import_limit_acts": False})
+    control.answer = True
+    assert evdc_fuse_cap_a(hass, "evdc") == 19, "never without the person's word"
 
 
 async def test_a_dc_charger_in_no_site_has_no_fuse_cap(hass: HomeAssistant) -> None:

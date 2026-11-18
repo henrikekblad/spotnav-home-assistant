@@ -38,6 +38,9 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "plant_phase_a_active_power_fixed_target"),
         ("number", "plant_phase_b_active_power_fixed_target"),
         ("number", "plant_phase_c_active_power_fixed_target"),
+        # The plant's total active power target (40001): acts in the same mode; kept at 0, and read by the plain
+        # control so a value left there never runs.
+        ("number", "plant_active_power_fixed_target"),
     ),
     "solaredge": (
         ("number", "storage_command_timeout"),

@@ -15,12 +15,15 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   `battery_control_allow_sell`, which is read for one release only, as the source of a one-time migration
   (`legacy_mode`) and is no longer written.
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
-  import limit acts under Remote EMS. Until then, and whenever that limit does not read at most the fuse, a grid
+  import limit acts under Remote EMS. Until then, and whenever that limit reads more than keeps the worst phase
+  under the fuse (`import_limit_max_kw`: the plant limits the **total** import, not each phase), a grid
   charge is capped so that it, the chargers' last currents and the house's peak keep every phase under the fuse
   while Home Assistant is down (`grid_charge_cap_kw`; Sigenergy has no dead-man: a command stays until something
   writes it). The house's peak is each phase's own, learned from the site's meter (`site/phase_peaks.py`, the days
   before it from the recorder's history), once a week of it is kept, with a further margin that falls to
-  nothing at two weeks; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase.
+  nothing at two weeks; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase. Where the plant
+  takes a target per phase (`commands.PhaseControl`, verified as the mode `per_phase`) the cap is each phase's own
+  (`grid_charge_phase_caps_kw`), so a house that loads one phase leaves the others' room to the charge.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -80,6 +83,8 @@ WRITABLE: Final = (*DEFAULTS, CONF_MODE)
 #: The battery's modes the routine judges, and normal (the hand-back's check).
 BATTERY_MODES: Final = ("hold", "charge", "discharge_house")
 MODE_NORMAL: Final = "normal"
+#: The capability a plant with targets per phase is checked for (`verify.py`); never needed for control to run.
+MODE_PER_PHASE: Final = "per_phase"
 #: Outcomes that pass.
 PASSING: Final = frozenset({"obeyed", "restored"})
 #: Outcomes that fail outright.
@@ -313,6 +318,24 @@ def allowed_actions(report: Mapping[str, Any] | None, options: Options) -> froze
     return frozenset(allowed)
 
 
+def per_phase(report: Mapping[str, Any] | None) -> str:
+    """The capability "a target per phase acts on that phase, on the meter's phase of that name" on this firmware:
+    `verified`, `failed` or `pending` (not tried, or not judgeable yet). A grid charge runs per phase only on
+    `verified`; anything else is the balanced charge."""
+    row = _modes(report).get(MODE_PER_PHASE)
+    verdict = mode_verdict(row.get("outcome")) if isinstance(row, Mapping) else "pending"
+    return {"pass": "verified", "fail": "failed"}.get(verdict, "pending")
+
+
+def per_phase_failed(report: Mapping[str, Any], outcome: str, now: datetime) -> dict[str, Any]:
+    """The report with the capability withdrawn: a running charge per phase showed the plant not following its
+    targets (`executor._judge_phases`). The row is decided, so no later run tries it on this firmware."""
+    modes = {name: dict(row) for name, row in _modes(report).items() if isinstance(row, Mapping)}
+    modes[MODE_PER_PHASE] = {**modes.get(MODE_PER_PHASE, {}), "mode": MODE_PER_PHASE, "outcome": outcome,
+                             "withdrawn_at": now.isoformat()}
+    return {**report, "modes": modes, "updated_at": now.isoformat()}
+
+
 def hold_variant(report: Mapping[str, Any] | None) -> str | None:
     """The hold variant that passed (`verify.py`), `None` when hold has not passed or the brand has one hold."""
     row = _modes(report).get("hold")
@@ -405,26 +428,131 @@ def phase_volts(volts_between_phases: float) -> float:
     return volts_between_phases / math.sqrt(3.0)
 
 
-def import_limit_holds(import_limit_kw: float | None, main_fuse_a: float | None, volts_between_phases: float) -> bool:
-    """Whether the plant's own grid import limit reads a value at or below the fuse (as three-phase kW)."""
-    fuse = fuse_kw(main_fuse_a, volts_between_phases, 0.0)
-    return (
-        fuse is not None and import_limit_kw is not None and math.isfinite(import_limit_kw)
-        and 0.0 <= import_limit_kw <= fuse + 1e-6
-    )
+def _usable(value: float | None) -> bool:
+    return value is not None and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _learned_peaks(house_phase_peaks_a: Mapping[str, float] | None) -> list[float] | None:
-    """The learned per-phase peaks when each of the three phases has a usable one, else `None` (the conservative
-    rule): a phase missing is never taken as a phase without load."""
+    """The learned per-phase peaks, in the order of `PHASE_NAMES`, when each of the three phases has a usable one,
+    else `None` (the conservative rule): a phase missing is never taken as a phase without load."""
     if not house_phase_peaks_a or set(house_phase_peaks_a) != set(_PHASE_NAMES):
         return None
     peaks: list[float] = []
-    for value in house_phase_peaks_a.values():
+    for name in _PHASE_NAMES:
+        value = house_phase_peaks_a[name]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             return None
         peaks.append(max(float(value), 0.0))
     return peaks
+
+
+def house_peaks_a(
+    volts_between_phases: float, house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
+) -> tuple[float, float, float]:
+    """The house's peak on L1, L2 and L3 (A) that every HA-down rule reckons with.
+
+    With the learned peaks (`house_phase_peaks_a`, with their margins, `site/phase_peaks.py` `Learned.phase_peaks`)
+    each phase's own, never below the house forecast's p90 for the hour spread evenly over the three phases (what
+    the house is expected to reach at least, on a day colder than the days learned). Without them the conservative
+    rule: the larger of that p90 and `HOUSE_PEAK_DEFAULT_KW`, all on one phase, and since any phase can be that
+    one, on each."""
+    volts = phase_volts(volts_between_phases)
+    learned = _learned_peaks(house_phase_peaks_a)
+    known = house_peak_kw is not None and math.isfinite(house_peak_kw)
+    if learned is not None:
+        floor_a = max(house_peak_kw, 0.0) * 1000.0 / (3.0 * volts) if known else 0.0  # type: ignore[arg-type]
+        return (max(learned[0], floor_a), max(learned[1], floor_a), max(learned[2], floor_a))
+    peak = max(HOUSE_PEAK_DEFAULT_KW, house_peak_kw) if known else HOUSE_PEAK_DEFAULT_KW  # type: ignore[type-var]
+    amps = peak * 1000.0 / volts
+    return (amps, amps, amps)
+
+
+def _fuse_known(main_fuse_a: float | None, volts_between_phases: float, cars_a: float) -> bool:
+    return (
+        main_fuse_a is not None and math.isfinite(main_fuse_a) and main_fuse_a > 0 and volts_between_phases > 0
+        and math.isfinite(cars_a)
+    )
+
+
+def import_limit_max_kw(
+    main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
+    house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
+) -> float | None:
+    """The largest value of the plant's own grid import limit (kW) that keeps every phase under the fuse with Home
+    Assistant down; `None` when the fuse or the chargers cannot be read (no value guards then).
+
+    The plant limits the **total** import over its phases (seen on site 2026-11-18: 40040 at 6 kW held the sum at
+    6.0 kW by cutting the battery's charge), and it spreads that charge evenly. With the limit at `L` amps (the sum
+    over the phases), a house drawing `h1, h2, h3` and a charge the plant cuts until the sum is `L`, a phase carries
+
+        h_i + (L - h1 - h2 - h3) / 3  =  L / 3 + h_i - mean(h)
+
+    which is largest when that phase is at its peak `p` while the other two draw nothing: `L / 3 + 2 p / 3`. The
+    worst phase stays at or under the fuse less the margin exactly when
+
+        L  <=  3 (fuse - margin) - 2 (p_max + cars)
+
+    with `p_max` the largest phase's house peak (`house_peaks_a`: learned, else the conservative 4 kW on one
+    phase) and the chargers' last currents (`cars_a`) counted as one phase's load, as the cap counts them (a
+    three-phase car would count for nothing here: the plant's limit sees its whole draw). The form that takes every
+    phase at its peak at once, `3 (fuse - margin) - sum(p_max - p_i)`, is **not** safe: it leaves the charge the room
+    of the quiet phases, and a third of that lands on the loaded one (18 A on L2 alone on a 20 A fuse: 27 A)."""
+    if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
+        return None
+    assert main_fuse_a is not None
+    worst_a = max(house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a))
+    amps = 3.0 * (main_fuse_a - margin_a) - 2.0 * (worst_a + max(cars_a, 0.0))
+    return max(amps, 0.0) * phase_volts(volts_between_phases) / 1000.0
+
+
+def import_limit_holds(
+    import_limit_kw: float | None, main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float = 0.0,
+    cars_a: float = 0.0, house_peak_kw: float | None = None, house_phase_peaks_a: Mapping[str, float] | None = None,
+) -> bool:
+    """Whether the plant's own grid import limit reads a value that keeps the worst phase under the fuse
+    (`import_limit_max_kw`). A limit that reads nothing, or one too small to leave a grid charge worth running
+    beside it (`MIN_RATE_KW`), guards nothing."""
+    most = import_limit_max_kw(
+        main_fuse_a, volts_between_phases, margin_a=margin_a, cars_a=cars_a, house_peak_kw=house_peak_kw,
+        house_phase_peaks_a=house_phase_peaks_a,
+    )
+    return (
+        most is not None and most >= MIN_RATE_KW and import_limit_kw is not None and math.isfinite(import_limit_kw)
+        and 0.0 <= import_limit_kw <= most + 1e-6
+    )
+
+
+def grid_charge_phase_caps_kw(
+    main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
+    house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
+) -> tuple[float, float, float]:
+    """The most a grid charge may be commanded at on L1, L2 and L3 (kW) where the plant takes a target per phase,
+    so that no phase passes the fuse even if Home Assistant stops while it runs (the targets stay, as each charger's
+    last current does):
+
+        cap_i = V * max(0, fuse - margin - house_peak_i - cars) / 1000
+
+    with each phase's own house peak (`house_peaks_a`) and the chargers' last currents (`cars_a`) counted on
+    every phase. With the fuse or the chargers unknown no phase may charge (0)."""
+    if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
+        return (0.0, 0.0, 0.0)
+    assert main_fuse_a is not None
+    volts = phase_volts(volts_between_phases)
+    house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
+    room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - peak, 0.0) * volts / 1000.0 for peak in house]
+    return (room[0], room[1], room[2])
+
+
+def phase_split_kw(total_kw: float, caps_kw: tuple[float, float, float]) -> tuple[float, float, float]:
+    """`total_kw` spread over the phases as evenly as their caps allow: every phase the same, a phase with less
+    room at its cap and the rest shared by the others. Never above a phase's cap, never above the total."""
+    caps = [max(cap, 0.0) if math.isfinite(cap) else 0.0 for cap in caps_kw]
+    left = min(max(total_kw, 0.0), sum(caps)) if math.isfinite(total_kw) else 0.0
+    out = [0.0, 0.0, 0.0]
+    for position, index in enumerate(sorted(range(3), key=lambda i: caps[i])):
+        out[index] = min(caps[index], left / (3 - position))
+        left -= out[index]
+    return (out[0], out[1], out[2])
 
 
 def grid_charge_cap_kw(
@@ -444,27 +572,19 @@ def grid_charge_cap_kw(
     three phases (what the house is expected to reach at least, on a day colder than the days learned); the battery's charge takes
     `1 / plant_phases` of its power on each phase (Sigenergy's three-phase plants balance it). `None` (no cap of this
     kind) only while the person's on-site test showed the plant's own import limit acts (`import_limit_acts`) and that
-    limit reads at most the fuse (`import_limit_holds`). With the fuse unknown no grid charge may run (0)."""
-    if import_limit_acts and import_limit_holds(import_limit_kw, main_fuse_a, volts_between_phases):
-        return None
-    if (
-        main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0
-        or not math.isfinite(cars_a)
+    limit reads at most what keeps the worst phase under the fuse (`import_limit_holds`, `import_limit_max_kw`: the
+    plant's limit is a total, so that is less than the fuse as three-phase power). With the fuse unknown no grid
+    charge may run (0)."""
+    if import_limit_acts and import_limit_holds(
+        import_limit_kw, main_fuse_a, volts_between_phases, margin_a=margin_a, cars_a=cars_a,
+        house_peak_kw=house_peak_kw, house_phase_peaks_a=house_phase_peaks_a,
     ):
+        return None
+    if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return 0.0
+    assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
-    learned = _learned_peaks(house_phase_peaks_a)
-    if learned is not None:
-        house_a = max(learned)
-        if house_peak_kw is not None and math.isfinite(house_peak_kw):
-            # Never below the forecast's own high figure for the hour, spread evenly over the three phases: a cold
-            # day ahead that the days learned so far have not seen still counts.
-            house_a = max(house_a, max(house_peak_kw, 0.0) * 1000.0 / (3.0 * volts))
-    else:
-        peak = HOUSE_PEAK_DEFAULT_KW
-        if house_peak_kw is not None and math.isfinite(house_peak_kw):
-            peak = max(peak, house_peak_kw)
-        house_a = peak * 1000.0 / volts
+    house_a = max(house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a))
     room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - house_a
     phases = min(max(int(plant_phases), 1), 3)
     return max(room_a, 0.0) * phases * volts / 1000.0
