@@ -40,12 +40,13 @@ SET_UP = "Set up by users: detected and configured, charging not yet confirmed"
 DETECTED = "Detected from the integration's source"
 
 #: Hardware confirmed on real equipment, by the owner or a user's report. Everything else is read from the
-#: integration's source. Keys: (category, home assistant domain).
+#: integration's source. Keys: (category, home assistant domain); a row for one maker's devices of an integration
+#: that speaks for several (`solax_modbus`) is `<domain>/<maker>` and never takes the bare domain's entry.
 TESTED_ON: dict[tuple[str, str], str] = {
     ("charger", "ocpp"): "Charge Amps HALO",
     ("meter", "sigen"): "Sigenergy",
     ("battery", "sigen"): "Sigenergy",
-    ("battery", "solax_modbus"): "SolaX",
+    ("battery", "solax_modbus/solax"): "SolaX",
     ("vehicle", "kia_uvo"): "Kia EV6",
     ("charger", "easee"): "Easee Home",
     ("meter", "tibber"): "Tibber Pulse",
@@ -68,8 +69,20 @@ SET_UP_ON: dict[tuple[str, str], str] = {
 }
 
 #: What others found on real hardware that a user should know, by (category, Home Assistant domain): appended to the
-#: row's notes. Short and plain; each from an upstream report, not from SpotNav's own tests.
+#: row's notes. Short and plain; each from an upstream report, not from SpotNav's own tests. A row for one maker's
+#: devices is keyed `<domain>/<maker>`, as in `TESTED_ON`, and there the note is what the plugin's source says.
 HARDWARE_NOTES: dict[tuple[str, str], str] = {
+    ("meter", "solax_modbus/sofar"): "The HYD hybrids and the KTL-X inverters with a meter; the older inverters of "
+    "the integration's \"Sofar Old\" plugin are not detected.",
+    ("meter", "solax_modbus/growatt"): "Only the three-phase SPH (TL3 BH-UP) reports the grid per phase. The TL-XH, "
+    "TL3-XH and WIT hybrids and the single-phase SPH report totals only, so the site needs its own grid meter.",
+    ("meter", "solax_modbus/solinteg"): "Also M-TEC Energy Butler and Wattsonic. Three-phase units only. The meter's "
+    "power per phase is disabled by default and is offered to be enabled. The inverter's own phase current is not "
+    "the grid's and is not used. An M2HT-10K-30 needs the integration's release 2026.10.02 or later to be read as a "
+    "three-phase hybrid.",
+    ("battery", "solax_modbus/sofar"): "The older inverters of the integration's \"Sofar Old\" plugin are not detected.",
+    ("battery", "solax_modbus/growatt"): "The off-grid SPF is not detected.",
+    ("battery", "solax_modbus/solinteg"): "Also M-TEC Energy Butler and Wattsonic.",
     ("charger", "wallbox"): "Since mid-2025 the Wallbox cloud allows about one request a minute per account, and "
     "Home Assistant's own polling already uses it: keep one charger per account, or use OCPP, which is recommended "
     "for Wallbox.",
@@ -231,6 +244,32 @@ def verified(category: str, *domains: str) -> str:
         if hardware:
             return f"{SET_UP} ({hardware})"
     return DETECTED
+
+
+def makers(row: sd.MeterRow | sd.BatteryRow) -> tuple[str, ...]:
+    """The makers a row is for, as the row names them (lower case); empty for a row for any maker."""
+    wanted = row.device_manufacturer
+    return () if wanted is None else (wanted,) if isinstance(wanted, str) else wanted
+
+
+def verified_row(category: str, row: sd.MeterRow | sd.BatteryRow) -> str:
+    """`verified` for a table row: by its maker where the row is for one maker's devices."""
+    return verified(category, *row_keys(row))
+
+
+def row_keys(row: sd.MeterRow | sd.BatteryRow) -> tuple[str, ...]:
+    """The keys of a row in `TESTED_ON` and `HARDWARE_NOTES`: its domains, with its maker where it is for one."""
+    named = makers(row)
+    return tuple(f"{platform}/{named[0]}" if named else platform for platform in row.platforms)
+
+
+def maker_note(row: sd.MeterRow | sd.BatteryRow) -> str:
+    named = makers(row)
+    if not named:
+        return ""
+    if len(named) == 1:
+        return f"Only devices from {named[0]}."
+    return f"Only devices from {named[0]} (named \"{'\" or \"'.join(named[1:])}\" by the integration)."
 
 
 def duration(seconds: float) -> str:
@@ -508,7 +547,7 @@ def meter_signs(row: sd.MeterRow) -> str:
 def meter_notes(row: sd.MeterRow) -> str:
     lines = []
     if row.device_manufacturer:
-        lines.append(f"Only devices from {row.device_manufacturer}.")
+        lines.append(maker_note(row))
     if row.device_model:
         lines.append(f"Only devices whose model contains \"{row.device_model}\".")
     if row.voltage_any_device:
@@ -523,7 +562,7 @@ def meter_notes(row: sd.MeterRow) -> str:
     behaviour = [sd.UPDATE_BEHAVIOUR[p] for p in row.platforms if p in sd.UPDATE_BEHAVIOUR]
     if behaviour and behaviour[0].interval_s > 0:
         lines.append(f"Updates about every {duration(behaviour[0].interval_s)}.")
-    lines.extend(HARDWARE_NOTES[("meter", p)] for p in row.platforms if ("meter", p) in HARDWARE_NOTES)
+    lines.extend(HARDWARE_NOTES[("meter", p)] for p in row_keys(row) if ("meter", p) in HARDWARE_NOTES)
     return " ".join(lines)
 
 
@@ -541,7 +580,7 @@ def meters_section() -> list[str]:
                 meter_measurement(row),
                 meter_signs(row),
                 meter_notes(row),
-                verified("meter", *row.platforms),
+                verified_row("meter", row),
             )
         )
     rows.append(
@@ -601,13 +640,13 @@ def batteries_section() -> list[str]:
         notes = " ".join(
             line
             for line in (
-                f"Only devices from {row.device_manufacturer}." if row.device_manufacturer else "",
+                maker_note(row),
                 f"Only devices whose model contains \"{row.device_model}\"." if row.device_model else "",
-                *(HARDWARE_NOTES[("battery", p)] for p in row.platforms if ("battery", p) in HARDWARE_NOTES),
+                *(HARDWARE_NOTES[("battery", p)] for p in row_keys(row) if ("battery", p) in HARDWARE_NOTES),
             )
             if line
         )
-        rows.append((f"{names} ({domains_text(row.platforms)})", convention, notes, verified("battery", *row.platforms)))
+        rows.append((f"{names} ({domains_text(row.platforms)})", convention, notes, verified_row("battery", row)))
     return [
         "## Supported house batteries",
         "",

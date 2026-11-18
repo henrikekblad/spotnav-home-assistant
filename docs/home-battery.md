@@ -50,6 +50,12 @@ card's gear or the charging card's **Settings** (administrators only). The secti
 * No other controller may run the battery (Predbat, EMHASS, CheckWatt, a VPP in Remote EMS): SpotNav then only
   watches (see below).
 
+**Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
+integration (level and power, and what each states of its size and floor: see
+[The battery plan](battery-plan.md#what-the-plan-needs)), so the site can tell the car's draw from the battery's and the
+battery plan can run in shadow. It has no control for them and writes nothing to them. All three are read from the
+integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+
 **Switching on starts a check, not control.** SpotNav first checks that the battery obeys, each step through the
 same write path control uses: hold (the battery stops discharging), charge 2 kW from the grid, cover the house, and
 hand back (every setting back as found). Each step waits up to 5 minutes for the writes, 5 minutes to settle and
