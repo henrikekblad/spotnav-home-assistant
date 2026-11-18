@@ -28,7 +28,7 @@ def auto_enable_custom_integrations(recorder_db_url: str, enable_custom_integrat
 
 
 def _without_flag(mark: HourMark) -> dict[str, Any]:
-    return {key: value for key, value in mark.as_dict().items() if key != "h"}
+    return {key: value for key, value in mark.as_dict().items() if key not in ("h", "l")}
 
 
 async def test_the_recorder_s_history_is_read_back_off_the_event_loop_into_the_hours_missing(
@@ -66,7 +66,7 @@ async def test_the_recorder_s_history_is_read_back_off_the_event_loop_into_the_h
     assert threads and threading.get_ident() not in threads, "the recorder is never read in the event loop"
     assert changed == [True]
     mark = peaks.hours[hour]
-    assert mark.backfilled and mark.minutes >= 20
+    assert mark.backfilled and mark.minutes >= 20 and mark.lost == 0
     assert mark.house_a is not None and mark.house_a[2] == pytest.approx(3500.0 / VOLTS + 0.45, abs=0.1)
     # The very marks the same history gives replayed straight, which are the live samples' (`test_phase_backfill`).
     _same(_without_flag(mark), _without_flag(played.replayed(T0 - 3600, now).hours[hour]))

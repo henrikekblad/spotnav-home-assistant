@@ -13,11 +13,16 @@ from custom_components.spotnav.site.phase_peaks import (
     BATTERY_BAND_W,
     DAY_MINUTES,
     EXTRA_MARGIN_A,
+    HISTORY_DAY_WEIGHT,
+    HISTORY_LOST_SHARE,
     MARGIN_A,
     MIN_READY_DAYS,
     PLANT_MISMATCH_A,
     READY_DAYS,
+    SPREAD_HOURS,
+    SPREAD_MINUTES,
     WINDOW_DAYS,
+    HourMark,
     PhasePeaks,
     Reading,
     SitePhasePeaks,
@@ -172,11 +177,20 @@ def _days(peaks: PhasePeaks, days: int, *, minutes_a_day: int = DAY_MINUTES + 5,
     return now + 86400
 
 
+def _spread_days(peaks: PhasePeaks, days: int, *, reading=None, start=T0, hours: int = SPREAD_HOURS) -> float:
+    """`days` days, each with counted minutes in `hours` of its clock hours."""
+    for day in range(days):
+        for hour in range(hours):
+            _close(peaks, _feed(peaks, start + day * 86400 + hour * 3600, 11, reading))
+    return start + days * 86400
+
+
 def test_the_learning_is_done_only_after_two_weeks_with_enough_minutes() -> None:
     peaks = PhasePeaks()
     now = _days(peaks, READY_DAYS - 1)
     learned = peaks.learned(now)
-    assert not learned.ready and learned.usable
+    # Thirteen days, each with its two hours in one stretch: not done, and not days that count before that.
+    assert not learned.ready and not learned.usable and learned.days_spread == 0
     assert learned.days == READY_DAYS - 1
     assert learned.days_left == 1 and learned.as_dict()["days_left"] == 1
     assert PhasePeaks().learned(now).days_left == READY_DAYS
@@ -201,15 +215,15 @@ def test_the_further_margin_falls_in_a_straight_line_from_the_first_usable_day_t
 
 def test_too_few_days_use_nothing_learned_and_the_first_usable_ones_carry_the_whole_further_margin() -> None:
     peaks = PhasePeaks()
-    now = _days(peaks, MIN_READY_DAYS - 1)
+    now = _spread_days(peaks, MIN_READY_DAYS - 1)
     learned = peaks.learned(now)
     # The peaks are there, and not used: the conservative rule stays.
     assert learned.peaks_a is not None and not learned.usable and learned.phase_peaks() is None
     assert learned.extra_margin_a is None and learned.as_dict()["extra_margin_a"] is None
     assert learned.as_dict()["usable"] is False and learned.as_dict()["days_min"] == MIN_READY_DAYS
-    now = _days(peaks, 1, start=now)
+    now = _spread_days(peaks, 1, start=now)
     learned = peaks.learned(now)
-    assert learned.usable and not learned.ready and learned.days == MIN_READY_DAYS
+    assert learned.usable and not learned.ready and learned.days == MIN_READY_DAYS == learned.days_spread
     assert learned.days_left == READY_DAYS - MIN_READY_DAYS
     assert learned.extra_margin_a == pytest.approx(EXTRA_MARGIN_A)
     assert learned.phase_peaks() == pytest.approx({
@@ -220,7 +234,7 @@ def test_too_few_days_use_nothing_learned_and_the_first_usable_ones_carry_the_wh
     assert learned.as_dict()["peaks_a"] == {"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 8.0 + MARGIN_A}
     # Half-way: half of it.
     half = (MIN_READY_DAYS + READY_DAYS) // 2
-    now = _days(peaks, half - MIN_READY_DAYS, start=now)
+    now = _spread_days(peaks, half - MIN_READY_DAYS, start=now)
     learned = peaks.learned(now)
     assert learned.phase_peaks()["L3"] == pytest.approx(
         8.0 + MARGIN_A + EXTRA_MARGIN_A * (READY_DAYS - half) / (READY_DAYS - MIN_READY_DAYS)
@@ -229,9 +243,102 @@ def test_too_few_days_use_nothing_learned_and_the_first_usable_ones_carry_the_wh
 
 def test_a_day_with_too_few_minutes_is_not_one_of_the_first_usable_days() -> None:
     peaks = PhasePeaks()
-    now = _days(peaks, MIN_READY_DAYS - 1)
+    now = _spread_days(peaks, MIN_READY_DAYS - 1)
     now = _days(peaks, 1, minutes_a_day=DAY_MINUTES - 10, start=now)
     assert peaks.learned(now).phase_peaks() is None
+
+
+def test_days_count_before_the_learning_is_done_only_spread_over_the_day_and_over_the_week() -> None:
+    # A week of days each with two hours in one stretch (the battery idle every night at three): seven days by
+    # their minutes, none that counts.
+    nights = PhasePeaks()
+    now = _days(nights, MIN_READY_DAYS)
+    learned = nights.learned(now)
+    assert learned.days == MIN_READY_DAYS and learned.days_spread == 0 and learned.phase_peaks() is None
+    # Eleven clock hours a day: still not; twelve: yes.
+    eleven = PhasePeaks()
+    assert eleven.learned(_spread_days(eleven, MIN_READY_DAYS, hours=SPREAD_HOURS - 1)).days_spread == 0
+    twelve = PhasePeaks()
+    assert twelve.learned(_spread_days(twelve, MIN_READY_DAYS)).days_spread == MIN_READY_DAYS
+    # Or ten hours of minutes in fewer clock hours.
+    long = PhasePeaks()
+    now = T0
+    for day in range(MIN_READY_DAYS):
+        _close(long, _feed(long, T0 + day * 86400, SPREAD_MINUTES + 2))
+    assert long.learned(T0 + MIN_READY_DAYS * 86400).days_spread == MIN_READY_DAYS
+    # Days that count are no more than the time from the first to the last counted hour holds, a day's slack
+    # given: seven days whose first counts only its last ten hours and whose last only its first ten reach over
+    # five days and twenty hours, which is six.
+    def week(first_from: int, last_from: int) -> int:
+        kept = PhasePeaks()
+        for day in range(MIN_READY_DAYS):
+            start = first_from if day == 0 else last_from if day == MIN_READY_DAYS - 1 else 6
+            for hour in range(start, start + 10):
+                kept.hours[T0 // 3600 + day * 24 + hour] = HourMark(house_a=(5.0, 3.0, 8.0), minutes=60)
+        return kept.learned(T0 + 8 * 86400).days_spread
+
+    assert week(14, 0) == MIN_READY_DAYS - 1
+    assert week(10, 0) == MIN_READY_DAYS
+    for days in (1, 2):
+        kept = PhasePeaks()
+        _spread_days(kept, days)
+        assert kept.learned(T0 + 3 * 86400).days_spread == days
+
+
+def test_a_day_read_back_with_many_minutes_lost_does_not_count_and_history_days_weigh_half() -> None:
+    def kept(history_days: int, live_days: int, *, lost: int = 0) -> PhasePeaks:
+        peaks = PhasePeaks()
+        for day in range(history_days + live_days):
+            for hour in range(SPREAD_HOURS):
+                peaks.hours[T0 // 3600 + day * 24 + hour] = HourMark(
+                    house_a=(5.0, 3.0, 8.0), minutes=20, backfilled=day < history_days,
+                    lost=lost if day < history_days else 0,
+                )
+        return peaks
+
+    now = T0 + 20 * 86400
+    # Ten days of history, few minutes lost: they count, and carry the whole further margin (ten at half weight
+    # are five, less than the first usable days).
+    learned = kept(10, 0, lost=5).learned(now)
+    assert learned.days == 10 == learned.days_spread and learned.history_days == 10 and learned.history_days_dropped == 0
+    assert learned.days_weighted == pytest.approx(10 * HISTORY_DAY_WEIGHT)
+    assert learned.usable and learned.extra_margin_a == pytest.approx(EXTRA_MARGIN_A)
+    assert extra_margin_a(10) < EXTRA_MARGIN_A
+    # Fourteen days of history are not the end of the learning: seven at their weight.
+    learned = kept(READY_DAYS, 0).learned(now)
+    assert not learned.ready and learned.days_left == READY_DAYS - READY_DAYS // 2
+    assert learned.extra_margin_a == pytest.approx(EXTRA_MARGIN_A)
+    # Seven of history and five live: 8.5 days for the margin.
+    learned = kept(7, 5).learned(now)
+    assert learned.days == 12 and learned.extra_margin_a == pytest.approx(extra_margin_a(8.5))
+    # Live days alone fall as before; ten of history and nine live end the learning.
+    assert kept(0, 10).learned(now).extra_margin_a == pytest.approx(extra_margin_a(10))
+    assert kept(10, 9).learned(now).ready and kept(10, 9).learned(now).extra_margin_a == 0.0
+    # More than the share of a day's minutes lost to readings that stood still: its history is no day.
+    over = int(20 * HISTORY_LOST_SHARE / (1 - HISTORY_LOST_SHARE)) + 1
+    learned = kept(10, 0, lost=over).learned(now)
+    assert learned.days == 0 and learned.history_days_dropped == 10 and learned.phase_peaks() is None
+    assert learned.raw_a == (5.0, 3.0, 8.0), "its peaks are still kept: they can only raise what is learned"
+    assert kept(10, 0, lost=over - 1).learned(now).days == 10
+
+
+def test_a_minute_lost_to_an_unjudged_sample_is_kept_with_the_hour_and_the_store() -> None:
+    peaks = PhasePeaks()
+    lost = Reading(site_a=None, chargers_a=(0.0, 0.0, 0.0), charger_readings=(), battery_w=0.0, phase_volts=VOLTS,
+                   unjudged=True)
+    now = _feed(peaks, T0, 5)
+    now = _feed(peaks, now, 4, lost)
+    _close(peaks, _feed(peaks, now, 5))
+    mark = peaks.hours[T0 // 3600]
+    assert mark.lost == 4 and mark.minutes >= 8
+    mark.backfilled = True
+    again = PhasePeaks()
+    again.load(json.loads(json.dumps(peaks.as_dict())), now + 600)
+    assert again.hours[T0 // 3600].lost == 4
+    # A live sample without the measurement is not a lost minute of this kind.
+    live = PhasePeaks()
+    _close(live, _feed(live, T0, 5, _reading(site=None)))
+    assert live.hours[T0 // 3600].lost == 0
 
 
 def test_the_learned_peak_is_the_window_s_largest_hour_not_a_quantile() -> None:
@@ -514,7 +621,7 @@ def test_the_cap_falls_back_to_the_conservative_rule_without_three_usable_phases
 
 def _learned_days(days: int, house=(8.0, 6.0, 10.0)):
     peaks = PhasePeaks()
-    now = _days(peaks, days, reading=_reading(site=house))
+    now = _spread_days(peaks, days, reading=_reading(site=house))
     return peaks.learned(now)
 
 

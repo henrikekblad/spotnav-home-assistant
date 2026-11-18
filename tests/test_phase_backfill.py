@@ -196,6 +196,9 @@ async def test_a_charger_s_current_standing_still_while_it_draws_counts_nothing_
     # charger fell silent or the car draws evenly: neither the car as house (a false 14 A) nor a house without it.
     assert mark.counted <= 2
     assert mark.house_a is None or max(mark.house_a) < 2100.0 / VOLTS + 0.5
+    # Those minutes are kept as lost to a reading whose freshness could not be judged: with so many, the day's
+    # history is no day (`HISTORY_LOST_SHARE`).
+    assert mark.lost >= 24
 
 
 async def test_a_charger_standing_still_at_nothing_is_no_car(hass: HomeAssistant, freezer: Any) -> None:
@@ -203,6 +206,7 @@ async def test_a_charger_standing_still_at_nothing_is_no_car(hass: HomeAssistant
     await _steady(played, 30, charger=lambda tick: 0.0)
     mark = played.replayed(T0, T0 + 30 * 60).hours[int(T0 // 3600)]
     assert mark.minutes >= 25 and mark.house_a == pytest.approx((1102 / VOLTS, 602 / VOLTS, 2102 / VOLTS), abs=0.5)
+    assert mark.lost == 0
 
 
 async def test_a_meter_that_stood_still_counts_nothing_and_never_lowers_a_peak(hass: HomeAssistant, freezer: Any) -> None:
@@ -213,6 +217,7 @@ async def test_a_meter_that_stood_still_counts_nothing_and_never_lowers_a_peak(h
     replayed = played.replayed(T0, T0 + 40 * 60)
     mark = replayed.hours[int(T0 // 3600)]
     assert 10 <= mark.minutes <= 22, "the still minutes beyond the maximum age are not counted"
+    assert 16 <= mark.lost <= 19 and mark.lost + mark.minutes <= 40
     # And a meter with no history at all counts nothing.
     for phase in ("l1", "l2", "l3"):
         del played.history[f"sensor.home_site_power_{phase}"]

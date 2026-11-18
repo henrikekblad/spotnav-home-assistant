@@ -4,6 +4,8 @@ integration's (read back on the next poll, dropped in read-only mode, raising), 
 
 from __future__ import annotations
 
+import math
+
 import asyncio
 import json
 from dataclasses import replace
@@ -1009,7 +1011,7 @@ async def test_the_learned_per_phase_house_peaks_replace_the_one_phase_rule_afte
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     from custom_components.spotnav.site.phase_peaks import (
-        DAY_MINUTES, EXTRA_MARGIN_A, MARGIN_A, MIN_READY_DAYS, READY_DAYS, HourMark,
+        EXTRA_MARGIN_A, HISTORY_DAY_WEIGHT, MARGIN_A, MIN_READY_DAYS, READY_DAYS, SPREAD_HOURS, HourMark,
     )
 
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
@@ -1032,9 +1034,10 @@ async def test_the_learned_per_phase_house_peaks_replace_the_one_phase_rule_afte
     marks = controller.phase_peaks.peaks.hours
 
     def keep(days: range, *, backfilled: bool = False) -> None:
+        # Each of the days before today, its counted minutes spread over twelve of its clock hours.
         for day in days:
-            for offset in range(DAY_MINUTES // 30 + 1):
-                marks[hour - 24 * day - offset - 1] = HourMark(
+            for offset in range(SPREAD_HOURS):
+                marks[(hour // 24 - 1 - day) * 24 + offset] = HourMark(
                     house_a=(5.0, 3.0, 9.0), minutes=30, total_all=17.0, total_counted=17.0, backfilled=backfilled
                 )
 
@@ -1051,10 +1054,13 @@ async def test_the_learned_per_phase_house_peaks_replace_the_one_phase_rule_afte
     assert cap["cap_conservative_kw"] == conservative and cap["cap_learned_kw"] == pytest.approx(expected, abs=0.01)
     assert cap["learned"]["extra_margin_a"] == EXTRA_MARGIN_A and cap["learned"]["usable"] is True
     assert cap["learned"]["days_from_history"] == MIN_READY_DAYS
-    assert cap["learned"]["hours_from_history"] == MIN_READY_DAYS * (DAY_MINUTES // 30 + 1)
+    assert cap["learned"]["hours_from_history"] == MIN_READY_DAYS * SPREAD_HOURS
+    assert cap["learned"]["days_spread"] == MIN_READY_DAYS and cap["learned"]["days_from_history_dropped"] == 0
     # The house card says so while the cap is below the battery's rating.
     assert control.learning_hold(now) == {
-        "what": "phase_peaks", "days_left": READY_DAYS - MIN_READY_DAYS, "cap_kw": pytest.approx(growing, abs=0.01),
+        # The days read back weigh half toward the end of the learning.
+        "what": "phase_peaks", "days_left": math.ceil(READY_DAYS - MIN_READY_DAYS * HISTORY_DAY_WEIGHT),
+        "cap_kw": pytest.approx(growing, abs=0.01),
     }
     # A house so near the fuse that the further margin costs nothing holds nothing back by its learning.
     kept = dict(marks)
@@ -1065,15 +1071,19 @@ async def test_the_learned_per_phase_house_peaks_replace_the_one_phase_rule_afte
     assert control.learning_hold(now) is None
     for mark in kept.values():
         mark.house_a = (5.0, 3.0, 9.0)
-    # Two weeks, the later days sampled live.
+    # Two weeks in all, the later days sampled live: not done yet, the days read back weighing half.
     keep(range(MIN_READY_DAYS, READY_DAYS))
+    cap = control.status()["grid_charge_cap"]
+    assert cap["rule"] == "learning" and cap["learned"]["days_left"] == math.ceil(MIN_READY_DAYS * HISTORY_DAY_WEIGHT)
+    live_days = math.ceil(READY_DAYS - MIN_READY_DAYS * HISTORY_DAY_WEIGHT)
+    keep(range(MIN_READY_DAYS, MIN_READY_DAYS + live_days))
     assert control._grid_charge_cap_kw(now, control.options()) == pytest.approx(expected)
     cap = control.status()["grid_charge_cap"]
     assert cap["rule"] == "learned" and cap["cap_kw"] == pytest.approx(expected, abs=0.01)
     assert cap["cap_learned_kw"] == cap["cap_kw"] and cap["learned"]["extra_margin_a"] == 0.0
     assert cap["learned"]["days_from_history"] == MIN_READY_DAYS
     assert cap["learned"]["peaks_a"] == {"L1": 5.0 + MARGIN_A, "L2": 3.0 + MARGIN_A, "L3": 9.0 + MARGIN_A}
-    assert control.snapshot()["status"]["grid_charge_cap"]["learned"]["days_counted"] == READY_DAYS
+    assert control.snapshot()["status"]["grid_charge_cap"]["learned"]["days_counted"] == MIN_READY_DAYS + live_days
     assert control.learning_hold(now) is None
 
 

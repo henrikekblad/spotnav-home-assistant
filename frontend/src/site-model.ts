@@ -123,8 +123,11 @@ export interface GridChargeCap {
     extra_margin_a: number | null;
     days_counted: number;
     days_min: number;
+    /** The days that count until the learning is done: spread over the day, against `days_min`. */
+    days_spread: number;
     /** The counted days, and the hours, that rest on the recorder's history rather than live samples. */
-    days_from_history: number;
+    /** Of them, the days whose history does not count (too many minutes lost to readings that stood still). */
+    days_from_history_dropped: number;
     hours_from_history: number;
     days_needed: number;
     /** Whole days still to count before the learned peaks count (0 once ready). */
@@ -215,7 +218,9 @@ const GRID_CHARGE_CAP = O({
       extra_margin_a: N("number"),
       days_counted: "number",
       days_min: "number",
+      days_spread: "number",
       days_from_history: "number",
+      days_from_history_dropped: "number",
       hours_from_history: "number",
       days_needed: "number",
       days_left: "number",

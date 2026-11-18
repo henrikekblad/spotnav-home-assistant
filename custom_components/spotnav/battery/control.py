@@ -1248,7 +1248,7 @@ class BatteryControl:
             return None
         days_left = learned.days_left
         if status["rule"] == "conservative":
-            days_left = max(MIN_READY_DAYS - learned.days, 1)
+            days_left = max(MIN_READY_DAYS - learned.days_spread, 1)
         elif status["cap_learned_kw"] is not None and cap >= status["cap_learned_kw"]:
             return None
         return {
