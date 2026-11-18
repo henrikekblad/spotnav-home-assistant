@@ -77,7 +77,7 @@ from ..const import (
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.phase_peaks import MIN_READY_DAYS, Learned
-from . import gate
+from . import gate, optin
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     OUTPUT_TYPE_PHASES,
@@ -1744,6 +1744,16 @@ class BatteryControl:
                 return read.device_id
         return None
 
+    def enable_entities(self) -> dict[str, Any] | None:
+        """The brand's control entities that are disabled in Home Assistant, for the card's opt-in dialog (`optin`);
+        `None` when none is."""
+        return optin.describe(self.hass, self.site.config, self.facts.brand)
+
+    async def async_enable_entities(self) -> list[str]:
+        """Enable the control entities `enable_entities` lists and reload their integration once; only ever called
+        on the person's confirm (an administrator, never over the webhook). Answers the entity ids enabled."""
+        return await optin.async_enable(self.hass, self.site.config, self.facts.brand)
+
     def _line(self, options: gate.Options) -> str:
         """The one line under the switch, as a stable code (the card words it)."""
         state = self.state(options)
@@ -1787,6 +1797,7 @@ class BatteryControl:
             "waiting_for": self.waiting_for,
             "needs": self._needs(),
             "device_id": self._settings_device(),
+            "enable_entities": self.enable_entities(),
             "notes": [dict(note) for note in self.notes],
             "trial": None if self.trial is None else self.trial.as_dict(),
             "grid_charge_cap": self._cap_status(dt_util.now(), options),

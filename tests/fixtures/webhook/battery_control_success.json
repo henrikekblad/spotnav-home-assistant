@@ -6,6 +6,7 @@
   "status": {
     "allowed_actions": [],
     "device_id": null,
+    "enable_entities": null,
     "grid_charge_cap": {
       "cap_conservative_kw": 0.0,
       "cap_kw": 0.0,
