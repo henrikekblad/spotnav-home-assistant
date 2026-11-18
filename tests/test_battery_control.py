@@ -952,12 +952,13 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     # The limit's entity is disabled (the integration's default): nothing read, the suggestion still made.
     block = control.status()["grid_charge_cap"]["import_limit"]
-    assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False}
+    assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": "sources_unknown"}
+    await _looks(control, dt_util.now(), 1)
     # The fuse as three-phase power (13.8 kW), as left after the on-site test: read, and refused as a guard.
     _import_limit(hass, "13.8")
     _options(hass, site, import_limit_acts=True)
     cap = control.status()["grid_charge_cap"]
-    assert cap["import_limit"] == {"value_kw": 13.8, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False}
+    assert cap["import_limit"] == {"value_kw": 13.8, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": None}
     assert cap["rule"] == "conservative" and cap["cap_kw"] < gate.MIN_RATE_KW
     await _looks(control, dt_util.now(), 6)
     assert plant.calls == [], "no grid charge under a limit that lets one phase pass the fuse"
@@ -971,12 +972,73 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     # A car that keeps its last 6 A if Home Assistant stops takes 12 A of the total: 4.4 kW no longer guards.
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
     cap = control.status()["grid_charge_cap"]
-    assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False}
+    assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False, "why": None}
     assert cap["rule"] == "conservative"
     # Not shown to act on site: read and suggested, never in force.
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
     _options(hass, site, import_limit_acts=False)
     assert control.status()["grid_charge_cap"]["import_limit"]["holds"] is False
+
+
+@pytest.mark.parametrize(
+    ("case", "why"),
+    [("foreign_pv", "foreign_pv"), ("single_phase", "plant_not_three_phase"), ("dc_charger", "dc_charger"),
+     ("unread", "sources_unknown")],
+)
+async def test_the_import_limit_rule_is_refused_where_the_plant_does_not_see_every_source_or_spread_evenly(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], case: str, why: str
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _import_limit(hass, "4.0")
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, import_limit_acts=True)
+    now = dt_util.now()
+    await control._async_read_sources(now)
+    assert control.status()["grid_charge_cap"]["import_limit"]["holds"] is True
+    assert control.import_limit_guards() is True
+    if case == "foreign_pv":
+        # The Energy dashboard's sun is another inverter's (not an entity of the plant's integration entry).
+        control._sources = (now, control._foreign_sun(("sensor.other_inverter_energy",)))
+        assert control._foreign_sun(("sensor.sigen_plant_battery_power",)) is None
+    elif case == "single_phase":
+        monkeypatch.setattr(BatteryControl, "_plant_phases", lambda self, control: 1)
+    elif case == "dc_charger":
+        charger = hass.config_entries.async_get_entry((controller.config.get("charger_entry_ids") or [])[0])
+        hass.config_entries.async_update_entry(charger, data={**charger.data, "current_control": "power"})
+    else:
+        control._sources = None
+    cap = control.status()["grid_charge_cap"]
+    assert cap["import_limit"]["holds"] is False and cap["import_limit"]["why"] == why
+    assert cap["rule"] == "conservative" and control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW
+    # The DC charger's own cap asks the same, except that the charger itself is no reason against it.
+    assert control.import_limit_guards() is (case == "dc_charger")
+
+
+async def test_the_import_limit_guards_a_charger_only_while_it_holds_now_counting_the_other_chargers(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = await _started(hass, site, controller, plan_source=lambda _now: None)
+    await control._async_read_sources(dt_util.now())
+    charger = (controller.config.get("charger_entry_ids") or [])[0]
+    # The person's word alone is not enough: the limit must read, and read little enough.
+    _options(hass, site, import_limit_acts=True)
+    assert control.import_limit_guards(without_charger=charger) is False, "the limit reads nothing"
+    _import_limit(hass, "13.8")
+    assert control.import_limit_guards(without_charger=charger) is False, "the fuse as power guards no phase"
+    _import_limit(hass, "4.4")
+    assert control.import_limit_guards(without_charger=charger) is True
+    _options(hass, site, import_limit_acts=False)
+    assert control.import_limit_guards(without_charger=charger) is False
+    _options(hass, site, import_limit_acts=True)
+    # The charger's own (lifted) current never undoes the lift; another charger's does.
+    monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, entry_id: 30.0)
+    assert control.import_limit_guards(without_charger=charger) is True
+    assert control.import_limit_guards(without_charger="another") is False
+    assert control._cars_allowed_a(without=charger) == 0.0 and control._cars_allowed_a() == 30.0
+    # Anything that cannot be read: not guarded.
+    monkeypatch.setattr(type(controller.phase_peaks), "learned", lambda self, now: 1 / 0)
+    assert control.import_limit_guards(without_charger=charger) is False
 
 
 async def test_no_grid_charge_where_the_cap_leaves_too_little(

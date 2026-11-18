@@ -114,6 +114,9 @@ export interface ImportLimit {
   max_kw: number | null;
   suggested_kw: number | null;
   holds: boolean;
+  /** Why the site's sources refuse the rule whatever the limit reads (another inverter's sun, a single-phase
+   * plant, a charger run through the plant); `null` when they do not. */
+  why: string | null;
 }
 
 export interface PerPhase {
@@ -262,7 +265,9 @@ const GRID_CHARGE_CAP = O({
       basis: "string",
     }),
   ),
-  import_limit: N(O({ value_kw: N("number"), max_kw: N("number"), suggested_kw: N("number"), holds: "boolean" })),
+  import_limit: N(
+    O({ value_kw: N("number"), max_kw: N("number"), suggested_kw: N("number"), holds: "boolean", why: N("string") }),
+  ),
 });
 
 const PER_PHASE = O({

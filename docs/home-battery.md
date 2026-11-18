@@ -189,6 +189,21 @@ SpotNav therefore lets the limit replace the cap above only when both hold:
   with the other two quiet, still stays under the fuse when the plant shares out what the limit leaves. The house
   peak is the same as for the cap: the learned one, and 4 kW on one phase until then.
 
+The rule rests on two things about the plant, and is refused where they do not hold:
+
+* **The plant spreads a balanced charge evenly over the three phases.** That is what a three-phase SigenStor is said
+  to do, but it has to be read on your plant: during a balanced grid charge (the check's *charge* step), the plant's
+  `Phase A/B/C active power` must read about a third of the charge each. Do that before you turn
+  `battery_control_import_limit_acts` on (again). A plant that is not three-phase never gets the rule.
+* **The plant's limit sees everything that feeds or loads the phases.** With another inverter's sun (a solar source
+  in the Energy dashboard that is not the plant's own), or a charger that runs through the plant and can put out as
+  well (Sigenergy's DC charger, V2G), the total the plant holds says too little about one phase. The rule is then
+  refused whatever the limit reads, and the battery's status says why (`foreign_pv`, `dc_charger`,
+  `plant_not_three_phase`).
+
+A Sigenergy DC charger keeps its own cap at the fuse for now, whatever the limit reads: that the limit curtails the
+charger when the battery reaches its floor has not been shown on site.
+
 On a 20 A fuse that is 4.4 kW until the peaks are learned, and 4.1 kW for a house whose worst phase peaks at 18 A,
 well under the fuse's 13.8 kW. The battery section says what the limit reads and the most it may read
 ("Anläggningens importgräns står på 13,8 kW. Den begränsar summan över de tre faserna, inte varje fas, och skyddar

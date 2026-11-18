@@ -102,7 +102,7 @@ describe("the grid charge cap block", () => {
   });
 
   it("names the import limit when there is no cap, and shows nothing when it cannot", () => {
-    const guarding = { value_kw: 4.0, max_kw: 4.47, suggested_kw: 4.4, holds: true };
+    const guarding = { value_kw: 4.0, max_kw: 4.47, suggested_kw: 4.4, holds: true, why: null };
     expect(gridChargeCapLine("sv", status({ cap_kw: null, rule: "import_limit", learned: null, import_limit: guarding }))).toBe(
       "Anläggningens egen importgräns (4 kW) skyddar säkringen vid laddning från nätet. Den begränsar summan över de tre"
         + " faserna och är därför satt lägre än säkringen: en fas kan bära husets topp ensam.",
@@ -117,7 +117,7 @@ describe("the grid charge cap block", () => {
 
   it("says why an import limit at the fuse does not guard it, and the most it may read", () => {
     const acts = { options: { ...fixture("checking.json")["status"].options, battery_control_import_limit_acts: true } };
-    const tooHigh = { value_kw: 13.8, max_kw: 4.47, suggested_kw: 4.4, holds: false };
+    const tooHigh = { value_kw: 13.8, max_kw: 4.47, suggested_kw: 4.4, holds: false, why: null };
     expect(importLimitHint("sv", status({ import_limit: tooHigh }, ["grid_charge"], acts))).toBe(
       "Anläggningens importgräns står på 13,8 kW. Den begränsar summan över de tre faserna, inte varje fas, och skyddar"
         + " säkringen först vid högst 4,4 kW: en fas kan bära husets topp ensam.",
@@ -181,7 +181,7 @@ describe("the grid charge cap block", () => {
     mistyped["status"].per_phase = { state: "verified", why: null, used: true, caps_kw: { L1: 1, L2: 0 }, charging_kw: null };
     expect(decodeBatteryControl(mistyped).ok).toBe(false);
     const extra = fixture("checking.json");
-    extra["status"].grid_charge_cap.import_limit = { value_kw: 1, max_kw: 1, suggested_kw: 1, holds: false, more: 1 };
+    extra["status"].grid_charge_cap.import_limit = { value_kw: 1, max_kw: 1, suggested_kw: 1, holds: false, why: null, more: 1 };
     expect(decodeBatteryControl(extra).ok).toBe(false);
   });
 

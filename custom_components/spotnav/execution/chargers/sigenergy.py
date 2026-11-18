@@ -97,9 +97,10 @@ PENDING_WRITE_S: Final = 15.0
 #: Where the last plausible rating of each DC charger is kept, by its power number.
 RATING_STORE_KEY: Final = "spotnav.evdc_ratings"
 RATING_STORE_VERSION: Final = 1
-#: Whether a site whose battery import limit the owner confirmed (`battery_control_import_limit_acts`, test T3) lifts
-#: the fuse cap (`evdc_fuse_cap_a`). Change here once the owner has decided.
-EVDC_CAP_LIFTED_BY_IMPORT_LIMIT: Final = True
+#: Whether a site whose plant's own import limit guards the fuse now (`BatteryControl.import_limit_guards`) lifts the
+#: fuse cap (`evdc_fuse_cap_a`). Off until an on-site test shows that the limit (40040) curtails the DC charger when
+#: the battery reaches its floor: seen so far is only that it cuts the battery's own grid charge.
+EVDC_CAP_LIFTED_BY_IMPORT_LIMIT: Final = False
 
 
 def evdc_fuse_cap_a(hass: HomeAssistant, charger_entry_id: str | None) -> int | None:
@@ -109,9 +110,12 @@ def evdc_fuse_cap_a(hass: HomeAssistant, charger_entry_id: str | None) -> int | 
     Load balancing measures the room net of the battery and the sun, so on a site with a home battery it can let a
     DC charger's limit sit far above the fuse (25 kW on a 20 A fuse) while the battery carries the car. When the
     battery reaches its floor all of that lands on the grid at once, faster than the regulator lowers it. Capped
-    at the fuse, the grid carries at most what the fuse does. A site whose plant's own grid import limit was shown to
-    act (the owner's test T3, `battery_control_import_limit_acts`) is held by that limit instead, so the cap is lifted
-    there (`EVDC_CAP_LIFTED_BY_IMPORT_LIMIT`).
+    at the fuse, the grid carries at most what the fuse does. The cap could be lifted where the plant's own grid
+    import limit guards the fuse (`EVDC_CAP_LIFTED_BY_IMPORT_LIMIT`, off until that is shown on site for this
+    charger): then only while that limit holds **now** by the battery gate's own rule (`gate.import_limit_holds`
+    through `BatteryControl.import_limit_guards`: the person said it acts, it reads at most what keeps the worst
+    phase under the fuse by the same fuse, margin and learned peaks, counting the other chargers' last currents and
+    never this charger's own lifted one), never on the person's word alone, and not when any of it cannot be read.
     """
     from ...battery.gate import Options  # noqa: PLC0415 - the battery package imports the execution
     from ...planning.first_run import site_for_charger, site_limit_a  # noqa: PLC0415 - the planning imports execution
@@ -122,7 +126,15 @@ def evdc_fuse_cap_a(hass: HomeAssistant, charger_entry_id: str | None) -> int | 
     if site is None:
         return None
     if EVDC_CAP_LIFTED_BY_IMPORT_LIMIT and Options.from_config(site.data).import_limit_acts:
-        return None
+        from ...runtime import site_controller_for  # noqa: PLC0415 - the runtime imports the execution
+
+        controller = site_controller_for(hass, site.entry_id)
+        control = None if controller is None else getattr(controller, "battery_control", None)
+        try:
+            if control is not None and control.import_limit_guards(without_charger=charger_entry_id):
+                return None
+        except Exception:  # noqa: BLE001 - fail closed: the cap stays
+            pass
     limit = site_limit_a(site)
     return None if limit is None else max(0, limit)
 

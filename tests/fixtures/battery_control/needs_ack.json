@@ -48,7 +48,8 @@
         "value_kw": 4.0,
         "max_kw": 4.47,
         "suggested_kw": 4.4,
-        "holds": true
+        "holds": true,
+        "why": null
       }
     },
     "per_phase": {

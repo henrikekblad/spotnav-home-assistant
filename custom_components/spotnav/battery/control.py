@@ -76,14 +76,18 @@ from homeassistant.loader import async_get_loaded_integration
 from homeassistant.util import dt as dt_util
 
 from ..const import (
+    CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CURRENT_CONTROL,
     CONF_MAIN_FUSE_A,
     CONF_SOLAR_PRIORITY,
+    CURRENT_CONTROL_POWER,
     DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
+from ..site.energy_statistics import async_energy_prefs, energy_statistic_ids
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.phase_peaks import MIN_READY_DAYS, Learned, plant_phase_w
 from . import gate, optin
@@ -160,6 +164,8 @@ _METHOD_SERVICES: Final = {
 }
 #: Every action control may run when the report allows it; selling only with `battery_control_allow_sell`.
 _PLAN_ACTIONS: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE, ACTION_DISCHARGE_HOUSE})
+#: How often the site's energy sources are read again for the import-limit rule (s).
+SOURCES_REFRESH_S: Final = 3600.0
 #: A grid charge runs per phase only when the phases' caps allow at least this much more in all than the balanced
 #: cap (kW): a balanced house keeps the brand's own charge.
 PER_PHASE_GAIN_KW: Final = 0.5
@@ -336,6 +342,9 @@ class BatteryControl:
         self._failed_looks = 0
         #: The house's p90 for the running hour (`_house_peak_kw`), read once an hour.
         self._peak: tuple[datetime, float | None] | None = None
+        #: When the site's energy sources were last read and why they refuse the import-limit rule (`None`: they do
+        #: not); not read yet: the rule is refused (`_import_limit_refusal`).
+        self._sources: tuple[datetime, str | None] | None = None
         battery_shadow = getattr(site, "battery_shadow", None)
         if battery_shadow is not None:
             # The outside-control watch does not count SpotNav's own writes as someone else's, and the shadow hold
@@ -666,6 +675,7 @@ class BatteryControl:
     async def _async_look(self, now: datetime) -> None:
         options = self.options()
         self.facts = self._read_facts()
+        await self._async_read_sources(now)
         self._transitions(options, now)
         trial = self.trial
         withdrawn = self._takeover_withdrawn(options)
@@ -1330,7 +1340,8 @@ class BatteryControl:
         if peaks is True:
             peaks = self._phase_peaks(now)
         control = control_for(self.facts.brand)
-        import_limit_kw = self._import_limit_kw(control) if options.import_limit_acts else None
+        guards = options.import_limit_acts and self._import_limit_refusal() is None
+        import_limit_kw = self._import_limit_kw(control) if guards else None
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
@@ -1345,12 +1356,94 @@ class BatteryControl:
             return None
         return _float(read_plant_entity(self.hass, self.site.config, control.import_limit))
 
+    async def _async_read_sources(self, now: datetime) -> None:
+        """Read, at most every `SOURCES_REFRESH_S`, whether the site has a sun source that is not the plant's own
+        (the Energy dashboard's solar statistics against the battery's integration entry). Never raises: a read that
+        fails refuses the import-limit rule until the next one."""
+        if self._sources is not None and 0 <= (now - self._sources[0]).total_seconds() < SOURCES_REFRESH_S:
+            return
+        try:
+            prefs = await async_energy_prefs(self.hass)
+            solar = () if prefs is None else energy_statistic_ids(prefs)[0]
+            reason = self._foreign_sun(solar)
+        except Exception:  # noqa: BLE001 - unknown sources guard nothing
+            self._look_failed("energy_sources")
+            reason = "sources_unknown"
+        self._sources = (now, reason)
+
+    def _foreign_sun(self, statistic_ids: tuple[str, ...]) -> str | None:
+        """`foreign_pv` when one of the Energy dashboard's solar statistics is not an entity of the battery's own
+        integration entry (another inverter, a statistic that is no entity), else `None`."""
+        if not statistic_ids:
+            return None
+        from homeassistant.helpers import entity_registry as er  # noqa: PLC0415 - kept beside its only use
+
+        registry = er.async_get(self.hass)
+        entity_id = self.site.config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
+        battery = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
+        own = None if battery is None else battery.config_entry_id
+        for statistic_id in statistic_ids:
+            entry = registry.async_get(statistic_id)
+            if own is None or entry is None or entry.config_entry_id != own:
+                return "foreign_pv"
+        return None
+
+    def _import_limit_refusal(self, *, dc_charger: bool = True) -> str | None:
+        """Why the plant's own import limit cannot be the fuse's guard on this site whatever it reads, as a stable
+        code; `None` when it can. The rule (`gate.import_limit_max_kw`) rests on the plant seeing every source and
+        spreading its charge evenly over three phases, so it is refused for a plant that is not three-phase
+        (`plant_not_three_phase`: a single-phase source), a sun source that is not the plant's (`foreign_pv`: it
+        lowers the total the plant sees while one phase carries more), sources not read yet (`sources_unknown`), and
+        a charger run by power through the plant (`dc_charger`: Sigenergy's DC charger, which can also put out, V2G;
+        `dc_charger` false leaves that one out, for that charger's own fuse cap)."""
+        control = control_for(self.facts.brand)
+        if control is None or control.import_limit is None:
+            return "not_supported"
+        if self._plant_phases(control) != 3:
+            return "plant_not_three_phase"
+        if self._sources is None:
+            return "sources_unknown"
+        if self._sources[1] is not None:
+            return self._sources[1]
+        if dc_charger:
+            for charger_entry_id in self.site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+                entry = self.hass.config_entries.async_get_entry(charger_entry_id)
+                if entry is not None and entry.data.get(CONF_CURRENT_CONTROL) == CURRENT_CONTROL_POWER:
+                    return "dc_charger"
+        return None
+
+    def import_limit_guards(self, *, without_charger: str | None = None) -> bool:
+        """Whether the plant's own import limit guards the fuse **now** (`gate.import_limit_holds`), for a charger
+        that runs through the plant (`execution/chargers/sigenergy.py`): the person said it acts, it reads a value,
+        the site's sources allow the rule, and that value keeps the worst phase under the fuse by the same fuse,
+        margin and learned peaks as the battery's cap, with the **other** chargers' last currents (`without_charger`
+        is left out: its own lifted current must not undo the lift). Anything that cannot be read: `False`."""
+        try:
+            now = dt_util.now()
+            options = self.options()
+            if not options.import_limit_acts or self._import_limit_refusal(dc_charger=False) is not None:
+                return False
+            value = self._import_limit_kw(control_for(self.facts.brand))
+            peaks = getattr(self.site, "phase_peaks", None)
+            if value is None or peaks is None:
+                return False
+            learned = peaks.learned(now.timestamp())  # raises: not guarded (never the cautious rule by default)
+            return gate.import_limit_holds(
+                value, self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
+                margin_a=HEADROOM_MARGIN_A, cars_a=self._cars_allowed_a(without=without_charger),
+                house_peak_kw=self._house_peak_kw(now), house_phase_peaks_a=learned.phase_peaks(),
+            )
+        except Exception:  # noqa: BLE001 - fail closed: the fuse cap stays
+            self._look_failed("import_limit_guards")
+            return False
+
     def _import_limit_status(self, now: datetime, options: gate.Options) -> dict[str, Any] | None:
         """The plant's own grid import limit against what keeps the worst phase under the fuse
         (`gate.import_limit_max_kw`), for the status: `value_kw` (what it reads), `max_kw` (the most that guards the
         fuse with the chargers' last currents as they are now), `suggested_kw` (the same with no car charging, rounded
-        down to 0.1 kW: what the person may set; SpotNav never writes it) and `holds` (shown to act and at most
-        `max_kw`: the rule in force). `None` for a brand without such a limit."""
+        down to 0.1 kW: what the person may set; SpotNav never writes it), `holds` (shown to act and at most
+        `max_kw`: the rule in force) and `why` (why the site's sources refuse the rule whatever the limit reads,
+        `_import_limit_refusal`). `None` for a brand without such a limit."""
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
             return None
@@ -1361,6 +1454,7 @@ class BatteryControl:
         }
         fuse_a, volts = self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config)
         cars_a = self._cars_allowed_a()
+        refusal = self._import_limit_refusal()
         most = gate.import_limit_max_kw(fuse_a, volts, cars_a=cars_a, **rule)
         free = gate.import_limit_max_kw(fuse_a, volts, cars_a=0.0, **rule)
         suggested = None if free is None else math.floor(free * 10.0 + 1e-9) / 10.0
@@ -1368,7 +1462,9 @@ class BatteryControl:
             "value_kw": None if value is None else round(value, 3),
             "max_kw": None if most is None else round(most, 2),
             "suggested_kw": None if suggested is None or suggested < gate.MIN_RATE_KW else suggested,
-            "holds": options.import_limit_acts and gate.import_limit_holds(value, fuse_a, volts, cars_a=cars_a, **rule),
+            "holds": options.import_limit_acts and refusal is None
+            and gate.import_limit_holds(value, fuse_a, volts, cars_a=cars_a, **rule),
+            "why": refusal,
         }
 
     def _learned(self, now: datetime) -> Learned | None:
@@ -1486,15 +1582,17 @@ class BatteryControl:
         volts = gate.phase_volts(volts_between_phases)
         return [max(-float(value), 0.0) / volts for value in signed]  # type: ignore[arg-type]
 
-    def _cars_allowed_a(self) -> float:
+    def _cars_allowed_a(self, *, without: str | None = None) -> float:
         """What the site's chargers may draw per phase if nothing writes them again (A, summed): each one's last
         current (`charger_allowed_a`), `ASSUMED_CURRENT_A` when it is not known; infinite (no grid charge) when the
-        chargers cannot be read."""
+        chargers cannot be read. `without`: a charger left out (`import_limit_guards`)."""
         from ..execution.controller import ASSUMED_CURRENT_A  # noqa: PLC0415 - the charger side imports the site
 
         try:
             total = 0.0
             for charger_entry_id in self.site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+                if charger_entry_id == without:
+                    continue
                 amps = self.site.charger_allowed_a(charger_entry_id)
                 total += float(ASSUMED_CURRENT_A) if amps is None else max(amps, 0.0)
         except Exception:  # noqa: BLE001 - unknown: no grid charge on the HA-down rule

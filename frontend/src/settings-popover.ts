@@ -300,7 +300,7 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
 export function importLimitHint(language: Language, status: BatteryStatus): string | null {
   const limit = status.grid_charge_cap.import_limit;
   if (
-    limit === null || limit.holds || limit.suggested_kw === null
+    limit === null || limit.holds || limit.suggested_kw === null || limit.why !== null
     || !status.options.battery_control_import_limit_acts || !status.allowed_actions.includes("grid_charge")
   ) {
     return null;
