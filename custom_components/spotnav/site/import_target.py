@@ -54,9 +54,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import math
-from typing import Final
+from typing import Any, Final
 
-from ..const import REGULATOR_DWELL_S
+from ..const import CONF_IMPORT_TARGET_KW, REGULATOR_DWELL_S
 from ..core.electric import PHASE_V
 from .demand_tracker import GAP_MAX_S, HOUR_S, RunningHour
 
@@ -500,3 +500,11 @@ def lowering_floor_a(
             covered_a = battery_discharge_w / volts if volts > 0 else 0.0
             covered_a = min(covered_a, min(max(0.0, margin) for margin in margins))  # type: ignore[type-var]
     return max(floors) - covered_a
+
+
+def stored_import_target_kw(data: Any) -> float | None:
+    """The site's import target as stored (kW), or `None` for none or one that cannot be read."""
+    value = data.get(CONF_IMPORT_TARGET_KW) if hasattr(data, "get") else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return None
+    return float(value)

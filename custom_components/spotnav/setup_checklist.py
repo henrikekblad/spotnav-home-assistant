@@ -65,6 +65,7 @@ from .const import (
 from .planning.auto_settings import DRIVER_TARGET_SOC, AutoSettings
 from .runtime import charger_data, domain_data
 from .site.grid_sign import KIND_CURRENT, KIND_POWER
+from .site.import_target import stored_import_target_kw
 
 SETUP_VEHICLE: Final = "vehicle"
 SETUP_CAR_LEVEL: Final = "car_level"
@@ -262,7 +263,6 @@ def capture_setup(
 def capture_site_setup(hass: HomeAssistant, site: ConfigEntry) -> tuple[SetupItem, ...]:
     """The rows still left for a site (see the module), in `SITE_SETUP_ITEMS` order, dismissed rows left out."""
     # Imported here: these modules import the API layer, which imports this one.
-    from .api.entity_fields import stored_import_target_kw  # noqa: PLC0415
     from .api.heat import stored_config  # noqa: PLC0415
     from .battery.gate import Options  # noqa: PLC0415
     from .heat.config import PATH_NONE  # noqa: PLC0415

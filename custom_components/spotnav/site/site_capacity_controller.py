@@ -94,6 +94,7 @@ from .import_target import (
     member_w,
     plan_remaining_kwh,
     share_budget,
+    stored_import_target_kw,
     TargetMember,
     TargetShare,
 )
@@ -5334,8 +5335,6 @@ class SiteCapacityController:
 
     def _import_target_kw(self) -> float | None:
         """The site's import target as stored, read from its entry: it is written without a reload."""
-        from ..api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports this module
-
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         return stored_import_target_kw(self.config if entry is None else entry.data)
 

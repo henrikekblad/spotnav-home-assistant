@@ -46,10 +46,10 @@ from ..const import CONF_ENTRY_TYPE, CONF_GRID_POWER_SOURCE, CONF_MEASUREMENT_MO
 from ..planning.first_run import site_for_charger
 from ..pricing.price_source import site_demand_components
 from ..runtime import site_controller_for
+from ..site.import_target import stored_import_target_kw
 from ..site.power_history import ARCHIVE_MONTHS, month_from, month_of_now, months_before
 from ..site.solar_capability import solar_capability
 from .common import ERROR_CHARGER_REQUIRED, ERROR_UNSUPPORTED_VERSION, lookup_charger, send_unsupported_version
-from .entity_fields import stored_import_target_kw
 
 POWER_MONTH_API_VERSION: Final = 1
 #: The charger webhook's action for the same.

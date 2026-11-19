@@ -22,7 +22,6 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from .price_entities import price_sensors
-from .api.entity_fields import stored_import_target_kw
 from .pricing.price_source import SIGNAL_PRICE_SOURCES, site_demand_components
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
@@ -41,6 +40,7 @@ from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, 
 from .runtime import controller_for, price_data
 from .sessions.sensors import session_entities
 from .site.forecast_shape import standard_forecast
+from .site.import_target import stored_import_target_kw
 from .site.site_capacity import site_activity
 from .site.site_capacity_controller import SiteCapacityController
 from .site.solar_surplus import SiteSurplus

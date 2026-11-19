@@ -69,7 +69,6 @@ from ..const import (
     CONF_POWER_ENTITY,
     CONF_GRID_POWER_INVERTED,
     CONF_GRID_POWER_SOURCE,
-    CONF_IMPORT_TARGET_KW,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
@@ -93,6 +92,7 @@ from ..core.electric import stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
 from ..site.heat_meter import needs_setting
+from ..site.import_target import stored_import_target_kw
 from ..site.battery_limit import battery_import_limit, WARNING_CODE as BATTERY_LIMIT_WARNING
 from ..site.site_detection import (
     apply_meter_candidate,
@@ -1078,14 +1078,6 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
         for sub in DERIVED_SUBFIELDS:
             values[derived_field(phase, sub)] = subvalues.get(sub) or ""
     return values
-
-
-def stored_import_target_kw(data: Any) -> float | None:
-    """The site's import target as stored (kW), or `None` for none or one that cannot be read."""
-    value = data.get(CONF_IMPORT_TARGET_KW) if hasattr(data, "get") else None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-        return None
-    return float(value)
 
 
 def import_target_error(changes: dict[str, Any]) -> FieldError | None:
