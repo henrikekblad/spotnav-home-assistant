@@ -57,14 +57,13 @@ def test_the_last_request_sensor_reads_as_a_comparable_value() -> None:
 
 
 def test_the_services_take_the_hubs_device_as_target_and_a_request_has_no_duration() -> None:
-    services = FERROAMP_CONTROL.role("command").services
-    assert service_call("service", "sensor.x", "charge:3000", device_id="D", services=services) == (
+    role = FERROAMP_CONTROL.role("command")
+    shape = {"services": role.services, "device_field": role.device_field, "duration": role.duration}
+    assert service_call("service", "sensor.x", "charge:3000", device_id="D", **shape) == (
         "ferroamp", "charge", {"target": "D", "power": 3000}
     )
-    assert service_call("service", "sensor.x", "discharge:0", device_id="D", services=services)[2] == {
-        "target": "D", "power": 0
-    }
-    assert service_call("service", "sensor.x", "auto", device_id="D", services=services) == (
+    assert service_call("service", "sensor.x", "discharge:0", device_id="D", **shape)[2] == {"target": "D", "power": 0}
+    assert service_call("service", "sensor.x", "auto", device_id="D", **shape) == (
         "ferroamp", "autocharge", {"target": "D"}
     )
 

@@ -203,6 +203,10 @@ class Role:
     restored: bool = True
     #: For a service role: `(write, service)` pairs by the kind of value wanted (`charge`, `discharge`, `stop`).
     services: Mapping[str, str] = field(default_factory=dict)
+    #: For a service role: the call's field that names the battery's device (Huawei `device_id`, Ferroamp `target`),
+    #: and whether a call with a power carries the watchdog as its `duration` in minutes (`service_call`).
+    device_field: str = "device_id"
+    duration: bool = True
     #: A read that is the register's "never set" (restored as the rating): its kind (`charge`, `discharge`).
     unset_as_rating: str | None = None
     #: Read as unset when `unknown` (Sigenergy 2.0.1 shows the all-ones value as `unknown`).
@@ -819,6 +823,8 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
 _FA_CMD = Role(
     "command", "service", _key("last_cmd"), scale=1000.0, step=500.0, restored=False,
     services={"charge": "ferroamp.charge", "discharge": "ferroamp.discharge", "auto": "ferroamp.autocharge"},
+    # `target` is the EnergyHub's device id; a request has no duration (nothing renews it).
+    device_field="target", duration=False,
     normalize=ferroamp_last_cmd, write_class="setpoint",
     # The state is the request as published; only the hub's ack for that transaction shows it was taken.
     answer=Answer("transId", "status", frozenset({"ack"})),
@@ -979,14 +985,16 @@ def export_table() -> list[dict[str, Any]]:
 
 def service_call(
     method: RoleMethod, entity_id: str | None, value: Native, *, device_id: str | None = None,
-    services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S,
+    services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S, device_field: str = "device_id",
+    duration: bool = True,
 ) -> tuple[str, str, dict[str, Any]]:
     """The Home Assistant service call `(domain, service, data)` that writes `value` to a role.
 
     Numbers, selects, switches and buttons use HA's own entity services (core `number.set_value`,
-    `select.select_option`, `switch.turn_on`/`turn_off`, `button.press`). A service role (Huawei's forcible charge)
-    turns `charge:<W>` / `discharge:<W>` / `stop` into its integration's service, for the battery's device, with the
-    watchdog as the duration in minutes."""
+    `select.select_option`, `switch.turn_on`/`turn_off`, `button.press`). A service role (Huawei's forcible charge,
+    Ferroamp's requests) turns `charge:<W>` / `discharge:<W>` / a kind without a power (`stop`, `auto`) into its
+    integration's service, for the battery's device in the role's `device_field`, with the power where the value has
+    one and, where the role says so (`Role.duration`), the watchdog as the duration in minutes."""
     if method == "number":
         return "number", "set_value", {"entity_id": entity_id, "value": value}
     if method == "select":
@@ -1002,10 +1010,9 @@ def service_call(
     if full is None:
         raise ValueError(f"no service for {kind!r}")
     domain, service = full.split(".", 1)
-    if domain == "ferroamp":
-        # `target` is the EnergyHub's device id; a request has no duration (nothing renews it).
-        return domain, service, {"target": device_id} | ({"power": int(power)} if kind != "auto" else {})
-    data: dict[str, Any] = {"device_id": device_id}
-    if kind != "stop":
-        data |= {"power": int(power), "duration": max(1, min(1440, watchdog_s // 60))}
+    data: dict[str, Any] = {device_field: device_id}
+    if power:
+        data["power"] = int(power)
+        if duration:
+            data["duration"] = max(1, min(1440, watchdog_s // 60))
     return domain, service, data

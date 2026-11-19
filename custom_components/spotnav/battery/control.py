@@ -216,9 +216,10 @@ def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]
 
 async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> bool:
     """One write as a service call; `False` when it raised (the executor counts it as not taken)."""
+    role = executor.control.role(op.role)
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-        services=executor.control.role(op.role).services, watchdog_s=watchdog_s,
+        services=role.services, watchdog_s=watchdog_s, device_field=role.device_field, duration=role.duration,
     )
     try:
         await hass.services.async_call(domain, service, data, blocking=True)
@@ -2036,9 +2037,11 @@ class BatteryControl:
             _LOGGER.warning("SpotNav battery control: a write of %s was refused by the gate", op.role)
             self._log([{"at": dt_util.now().isoformat(), "kind": "refused", "reason": op.role}])
             return False
+        role = executor.control.role(op.role)
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-            services=executor.control.role(op.role).services, watchdog_s=self._watchdog_s,
+            services=role.services, watchdog_s=self._watchdog_s, device_field=role.device_field,
+            duration=role.duration,
         )
         try:
             await self.hass.services.async_call(domain, service, data, blocking=True)
