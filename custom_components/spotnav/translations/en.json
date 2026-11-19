@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav does not know this integration. Choose Manual instead.",
       "charger_not_controllable": "SpotNav cannot start or stop this charger. It can only be read.",
       "no_price_areas": "The list of price areas could not be read. Try again in a minute.",
-      "no_pending_entry": "Nothing was waiting to be saved."
+      "no_pending_entry": "Nothing was waiting to be saved.",
+      "unknown_price_area": "That price area is not known. Pick another one.",
+      "invalid_price_fees": "The price entry's fees are not valid."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",

@@ -196,6 +196,32 @@ def instance_base_url(hass: HomeAssistant) -> str:
     return webhook_base_url(hass, PAIRING_WEBHOOK_ID)[0]
 
 
+_LOG_INTERVAL_S = 60.0
+_last_logged: float | None = None
+DEVICE_LABEL_MAX = 64
+
+
+def _log_refused(message: str, reason: object) -> None:
+    """The endpoint is public: a refusal is one WARNING per interval at most, the rest debug. Never an id."""
+    global _last_logged  # noqa: PLW0603 - one process-wide rate limit
+    now = time.monotonic()
+    if _last_logged is None or now - _last_logged >= _LOG_INTERVAL_S:
+        _last_logged = now
+        _LOGGER.warning(message, reason)
+    else:
+        _LOGGER.debug(message, reason)
+
+
+def _device_label(device: object) -> str:
+    """The phone's name as shown on the discovery card: control characters out, whitespace folded, at most
+    `DEVICE_LABEL_MAX` characters, `(unknown device)` when nothing is left."""
+    if not isinstance(device, str):
+        return "(unknown device)"
+    text = "".join(" " if ch.isspace() else ch for ch in device[: DEVICE_LABEL_MAX * 4] if ch.isprintable() or ch.isspace())
+    label = " ".join(text.split())[:DEVICE_LABEL_MAX].strip()
+    return label or "(unknown device)"
+
+
 async def async_handle_pairing_webhook(
     hass: HomeAssistant, _webhook_id: str, request: web.Request
 ) -> web.Response:
@@ -214,7 +240,7 @@ async def async_handle_pairing_webhook(
         raise ValueError("Unsupported action")
     except (KeyError, TypeError, ValueError) as error:
         # The message only, never the payload: request ids and codes must not reach a log.
-        _LOGGER.warning("Rejected SpotNav pairing request: %s", error)
+        _log_refused("Rejected SpotNav pairing request: %s", error)
         return web.json_response({"ok": False, "error": str(error)}, status=400)
 
 
@@ -225,13 +251,13 @@ def _async_request(hass: HomeAssistant, payload: dict[str, Any], remote: str | N
         raise ValueError("A six-digit code is required")
     device = payload.get("device")
     # Cosmetic: a missing model must not refuse an otherwise valid attempt.
-    device_label = device.strip() if isinstance(device, str) and device.strip() else "(unknown device)"
+    device_label = _device_label(device)
 
     register = domain_data(hass).pairing
     wait_s = register.retry_after_s(remote)
     if wait_s > 0:
         retry_after_s = max(1, math.ceil(wait_s))
-        _LOGGER.warning("Refused a SpotNav pairing request: too soon after the last from this address")
+        _log_refused("Refused a SpotNav pairing request: %s", "too soon after the last from this address")
         return web.json_response(
             {
                 "ok": False,
@@ -243,7 +269,7 @@ def _async_request(hass: HomeAssistant, payload: dict[str, Any], remote: str | N
         )
     record = register.open(code, device_label, remote)
     if record is None:
-        _LOGGER.warning("Refused a SpotNav pairing request: too many awaiting approval")
+        _log_refused("Refused a SpotNav pairing request: %s", "too many awaiting approval")
         raise ValueError("Too many pairing requests are awaiting approval")
 
     # Surfaced in Settings -> Devices & Services; only the request id travels, the code stays in the register.

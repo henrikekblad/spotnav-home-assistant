@@ -524,3 +524,33 @@ async def test_an_instance_without_sites_hands_over_an_empty_list(hass: HomeAssi
     assert _register(hass).approve(request_id) is True
     answer = await _poll(client, request_id)
     assert answer["sites"] == [] and "site_id" not in answer["chargers"][0]
+
+
+async def test_refusals_warn_once_per_interval_and_never_log_the_id(
+    hass: HomeAssistant, hass_client_no_auth, caplog, monkeypatch
+) -> None:
+    import logging
+
+    from custom_components.spotnav.api import pairing as pairing_module
+
+    monkeypatch.setattr(pairing_module, "_last_logged", None)
+    await _loaded(hass)
+    client = await hass_client_no_auth()
+
+    with caplog.at_level(logging.DEBUG, logger=pairing_module.__name__):
+        for _ in range(4):
+            await client.post(f"/api/webhook/{PAIRING_WEBHOOK_ID}", json={"version": 2})
+
+    refused = [r for r in caplog.records if "pairing request" in r.getMessage()]
+    assert [r.levelno for r in refused] == [logging.WARNING, logging.DEBUG, logging.DEBUG, logging.DEBUG]
+    assert all(PAIRING_WEBHOOK_ID not in r.getMessage() for r in refused)
+
+
+def test_the_device_label_is_sanitised_and_bounded() -> None:
+    from custom_components.spotnav.api.pairing import DEVICE_LABEL_MAX, _device_label
+
+    assert _device_label("Pixel 8") == "Pixel 8"
+    assert _device_label("  Pixel\n\t8\x00\x1b[31m ") == "Pixel 8[31m"
+    assert _device_label("x" * 5_000_000) == "x" * DEVICE_LABEL_MAX
+    for empty in ("", "   ", "\x00\x01\n", None, 42, ["a"]):
+        assert _device_label(empty) == "(unknown device)"

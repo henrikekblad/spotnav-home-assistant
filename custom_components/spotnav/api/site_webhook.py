@@ -168,7 +168,7 @@ async def _update_heat(hass: HomeAssistant, site: ConfigEntry | None, payload: d
     action = "update_heat"
     if not _speaks(payload, HEAT_API_VERSION):
         return _refused(action, ERROR_UNSUPPORTED_VERSION)
-    if site is None:
+    if site is None or site.state is not ConfigEntryState.LOADED:
         return _refused(action, ERROR_NO_SITE)
     try:
         write_heat(hass, site, payload.get("changes"), payload.get("expected"), admin=False, over_webhook=True)

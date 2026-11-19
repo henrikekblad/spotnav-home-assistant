@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav no conoce esta integración. Elige Manual en su lugar.",
       "charger_not_controllable": "SpotNav no puede iniciar ni detener este cargador. Solo se puede leer.",
       "no_price_areas": "No se pudo leer la lista de zonas de precios. Inténtalo de nuevo en un minuto.",
-      "no_pending_entry": "No había nada pendiente de guardar."
+      "no_pending_entry": "No había nada pendiente de guardar.",
+      "unknown_price_area": "Esa zona de precios no se conoce. Elige otra.",
+      "invalid_price_fees": "Las tarifas de la entrada de precio no son válidas."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "El margen de seguridad debe ser menor que el fusible general; de lo contrario no queda corriente para los cargadores.",

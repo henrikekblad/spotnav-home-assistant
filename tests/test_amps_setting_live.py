@@ -17,6 +17,7 @@ from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
+import pytest
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.util import dt as dt_util
 
@@ -259,5 +260,23 @@ async def test_nothing_is_written_while_no_charge_of_ours_runs(hass: HomeAssista
 
     await world.set_amps(11)
 
+    assert world.writes == []
+    await world.shutdown()
+
+
+async def test_a_start_with_an_amps_out_of_range_is_refused_before_anything_changes(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    world = await _world(hass, timers)
+    await install_schedule(world.controller, _later_window(16))
+    await hass.async_block_till_done()
+    plan = world.controller.plan
+
+    for amps in (999, 0):
+        with pytest.raises(ValueError):
+            await world.executor.async_manual_start(amps)
+
+    assert world.controller.plan is plan
+    assert not world.controller.charging
     assert world.writes == []
     await world.shutdown()

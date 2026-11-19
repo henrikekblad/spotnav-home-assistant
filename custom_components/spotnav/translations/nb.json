@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav kjenner ikke denne integrasjonen. Velg Manuell i stedet.",
       "charger_not_controllable": "SpotNav kan ikke starte eller stoppe denne laderen. Den kan bare leses.",
       "no_price_areas": "Listen over prisområder kunne ikke leses. Prøv igjen om et minutt.",
-      "no_pending_entry": "Ingenting ventet på å bli lagret."
+      "no_pending_entry": "Ingenting ventet på å bli lagret.",
+      "unknown_price_area": "Prisområdet er ukjent. Velg et annet.",
+      "invalid_price_fees": "Prisoppføringen har ugyldige avgifter."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Sikkerhetsmarginen må være lavere enn hovedsikringen, ellers blir det ingen strøm igjen til laderne.",

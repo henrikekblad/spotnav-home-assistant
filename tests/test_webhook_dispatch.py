@@ -134,3 +134,73 @@ async def test_the_dashboard_names_each_action_an_app_must_tell_an_older_home_as
     for action in ("price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode", "release_import_target", "get_power_month"):
         assert action in CAPABILITY_KEYS and action in webhook_module.ACTIONS
         assert capabilities[action] is True
+
+
+@pytest.mark.parametrize("amps", [999, 0, -5, True, 12.5, "16", [16]])
+async def test_a_start_with_a_bad_amps_is_a_stable_400_before_anything_changes(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch, amps
+) -> None:
+    await setup_charger(hass)
+    client = await hass_client_no_auth()
+    calls: list[object] = []
+
+    async def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(webhook_module, "async_manual_action", spy)
+
+    response = await client.post("/api/webhook/webhook-a", json={"version": 1, "action": "start", "amps": amps})
+
+    assert response.status == 400
+    assert await response.json() == {"ok": False, "error": "invalid_amps"}
+    assert calls == []
+
+
+async def test_a_start_with_good_or_no_amps_goes_through(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await setup_charger(hass)
+    client = await hass_client_no_auth()
+    calls: list[object] = []
+
+    async def spy(entry, action, **kwargs):
+        calls.append((action, kwargs))
+
+    monkeypatch.setattr(webhook_module, "async_manual_action", spy)
+
+    for body in ({"amps": 16}, {"amps": 16.0}, {}):
+        response = await client.post("/api/webhook/webhook-a", json={"version": 1, "action": "start", **body})
+        assert response.status == 200
+    assert calls == [("start", {"amps": 16}), ("start", {"amps": 16}), ("start", {"amps": None})]
+
+
+async def test_an_unexpected_failure_logs_its_traceback_once_per_interval(
+    hass: HomeAssistant,
+    hass_client_no_auth,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(webhook_module, "_last_failure_traceback", None)
+    await setup_charger(hass)
+    client = await hass_client_no_auth()
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(webhook_module, "async_manual_action", boom)
+    with caplog.at_level(logging.DEBUG, logger=webhook_module.__name__):
+        for _ in range(3):
+            response = await client.post("/api/webhook/webhook-a", json={"version": 1, "action": "start"})
+            assert response.status == 502
+
+    failed = [r for r in caplog.records if "charger command failed" in r.getMessage()]
+    assert [r.levelno for r in failed] == [logging.ERROR, logging.DEBUG, logging.DEBUG]
+    assert [bool(r.exc_info) for r in failed] == [True, False, False]
+
+
+def test_an_infinite_amps_is_refused_like_any_other() -> None:
+    import json
+
+    payload = json.loads('{"amps": 1e400}')
+    with pytest.raises(ValueError, match="invalid_amps"):
+        webhook_module._start_amps(payload)

@@ -268,7 +268,8 @@ def _epoch(moment: datetime | None) -> int:
 
 
 def _instant(raw: Any) -> datetime | None:
-    return dt_util.parse_datetime(raw) if isinstance(raw, str) else None
+    parsed = dt_util.parse_datetime(raw) if isinstance(raw, str) else None
+    return parsed if parsed is not None and parsed.tzinfo is not None else None
 
 
 class _NotifierStore(Store[dict[str, Any]]):

@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav ei tunne tätä integraatiota. Valitse sen sijaan Manuaalinen.",
       "charger_not_controllable": "SpotNav ei voi käynnistää tai pysäyttää tätä laturia. Sitä voi vain lukea.",
       "no_price_areas": "Hinta-alueiden luetteloa ei voitu lukea. Yritä uudelleen minuutin kuluttua.",
-      "no_pending_entry": "Mikään ei odottanut tallennusta."
+      "no_pending_entry": "Mikään ei odottanut tallennusta.",
+      "unknown_price_area": "Hinta-aluetta ei tunneta. Valitse toinen.",
+      "invalid_price_fees": "Hintatietueen maksut eivät kelpaa."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Turvamarginaalin on oltava pääsulaketta pienempi, muuten latureille ei jää virtaa.",

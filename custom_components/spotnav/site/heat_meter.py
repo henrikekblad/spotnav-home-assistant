@@ -263,6 +263,8 @@ async def async_heat_hours(
     without a meter."""
     if not meter.found or meter.entity_id is None or end <= start:
         return {}
+    if "recorder" not in hass.config.components:
+        return {}
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
     from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
 

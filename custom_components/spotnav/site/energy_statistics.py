@@ -147,6 +147,8 @@ async def async_soc_statistics(
     hass: HomeAssistant, entity_id: str, start: datetime, end: datetime
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """The SoC sensor's 5-minute and hourly means in `[start, end)`, in the recorder's executor."""
+    if "recorder" not in hass.config.components:
+        return [], []
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
     from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
 
@@ -163,6 +165,8 @@ async def async_mean_max_statistics(
 ) -> tuple[list[tuple[datetime, float | None, float | None]], int]:
     """A measured sensor's `(start, mean, max)` per 5 minutes in `[start, end)`, else per hour where the 5-minute
     statistics are gone (kept 10 days by default), with the period's minutes; in the recorder's executor."""
+    if "recorder" not in hass.config.components:
+        return [], 60
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
     from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
 
@@ -207,6 +211,8 @@ async def async_statistics(
 ) -> dict[str, list[dict[str, Any]]]:
     """The statistics' `change` (kWh) per `period` in `[start, end)`, in the recorder's executor."""
     if not ids:
+        return {}
+    if "recorder" not in hass.config.components:
         return {}
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
     from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
