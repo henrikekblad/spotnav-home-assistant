@@ -106,6 +106,8 @@ export const ENTITY_CONFIG_API_VERSION = 1;
 
 /** The debug-bundle command's own version. */
 export const DEBUG_API_VERSION = 1;
+/** `spotnav/beta`'s contract version (`beta.ts`). */
+export const BETA_API_VERSION = 1;
 /** `spotnav/get_blueprints` (`api/blueprints.py`). */
 export const BLUEPRINTS_API_VERSION = 1;
 

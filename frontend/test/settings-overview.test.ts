@@ -285,6 +285,30 @@ describe("Download debug info", () => {
     expect(debugButton(reader.element)).toBeNull();
   });
 
+  it("shows the beta tester row to administrators, its state as the value, its box in a dialog", async () => {
+    const beta = JSON.parse(
+      readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "beta", "ended.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    const admin = await mounted();
+    admin.hass.betaHandler = async () => beta;
+    await openSettings(admin.element);
+    await settle();
+    const row = section(admin.element, "support")?.querySelector<HTMLElement>("[data-row='beta']");
+    expect(row?.textContent).toContain(translate("en", "beta.label"));
+    expect(row?.querySelector("[data-edit='beta']")?.textContent).toBe(translate("en", "beta.ended"));
+    expect(admin.hass.betaMessages[0]).toMatchObject({ type: "spotnav/beta", api_version: 1, charger_id: "entry_a", action: "get" });
+    // The overview itself holds no input: the box opens in its own dialog.
+    expect(section(admin.element, "support")?.querySelector("input")).toBeNull();
+    row?.querySelector<HTMLButtonElement>("[data-edit='beta']")?.click();
+    await settle();
+    expect(shadow(admin.element).querySelector("[data-beta='box'] [data-beta-field='on']")).not.toBeNull();
+
+    const reader = await mounted(fixture("start_idle"), false);
+    await openSettings(reader.element);
+    expect(shadow(reader.element).querySelector("[data-row='beta']")).toBeNull();
+    expect(reader.hass.betaMessages).toHaveLength(0);
+  });
+
   it("asks for the bundle and saves it as spotnav-debug-<date>.json", async () => {
     vi.setSystemTime(new Date(2026, 9, 3, 12, 0, 0));
     const { hass, element } = await mounted();

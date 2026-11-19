@@ -21,6 +21,7 @@ import {
   getCardInfo,
   getDebugBundle,
   getHeat,
+  betaCommand,
   getSiteEntityConfig,
   getSiteMarketOptions,
   getSiteSettingsView,
@@ -37,6 +38,7 @@ import {
 import { clientBlock, decodeCardInfo, servedHashFromBundle } from "./card-identity";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug";
+import { betaEditor, betaSummary, readBeta, type BetaAnswer, type BetaCall } from "./beta";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
 import {
   decodeEntityAnswer,
@@ -1739,7 +1741,62 @@ export class SettingsPopover {
       actions.append(send);
     }
     section.append(actions);
+    const siteId = this.state.kind === "ready" ? this.state.view.site_id : null;
+    if (this.isAdmin() && siteId !== null) {
+      section.append(this.betaRow(siteId));
+    }
     return section;
+  }
+
+  private betaAnswer: BetaAnswer | null = null;
+  private betaReadFor: string | null = null;
+
+  private betaCall(siteId: string): BetaCall {
+    return async (request) => {
+      const hass = this.input.hass();
+      if (hass === null || !this.isAdmin()) {
+        throw new Error("not available");
+      }
+      return await betaCommand(hass, { site_id: siteId }, request);
+    };
+  }
+
+  /** "Betatestare": its state as the row's value (read once per site), its box in the popover's dialog. */
+  private betaRow(siteId: string): HTMLElement {
+    const doc = this.input.doc;
+    const language = this.language;
+    const call = this.betaCall(siteId);
+    const label = translate(language, "beta.label");
+    const value = betaSummary(language, this.betaAnswer);
+    const [row] = settingRow(doc, {
+      key: "beta",
+      label,
+      value,
+      onTap: () =>
+        this.openEditor(label, (handlers) =>
+          betaEditor(
+            { doc, language, idPrefix: this.input.idPrefix, call, onAnswer: (answer) => this.showBeta(answer) },
+            () => handlers.onDone(),
+          ),
+        ),
+      changeableText: translate(language, "settings.row.changeable", { label, value }),
+    });
+    if (this.betaReadFor !== siteId) {
+      this.betaReadFor = siteId;
+      void readBeta(call).then((answer) => this.showBeta(answer));
+    }
+    return row!;
+  }
+
+  private showBeta(answer: BetaAnswer | null): void {
+    if (answer === null) {
+      return;
+    }
+    this.betaAnswer = answer;
+    const value = this.dialog === null ? null : this.input.owner.querySelector<HTMLElement>("[data-edit='beta']");
+    if (value !== null) {
+      value.textContent = betaSummary(this.language, answer);
+    }
   }
 
   /** "Send debug info" in the popover's dialog; the command is the installation's, so it needs no charger. */

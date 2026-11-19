@@ -130,6 +130,10 @@ describe("the popover from the house card", () => {
           }
           case "spotnav/get_entity_config":
             return { api_version: 1, ok: false, error: "spotnav_unknown_site", field_errors: [], config: null };
+          case "spotnav/beta":
+            return JSON.parse(
+              readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "beta", "on_done_failed.json"), "utf-8"),
+            ) as unknown;
           default:
             return {};
         }
@@ -177,6 +181,22 @@ describe("the popover from the house card", () => {
     expect(messages.find((message) => message["type"] === "spotnav/dismiss_setup_item")).toEqual({
       type: "spotnav/dismiss_setup_item", item: "charger",
     });
+  });
+
+  it("lists the beta tester row in Support by the site, and opens its box", async () => {
+    const { root, messages } = await mount();
+    const popover = await open(root);
+    await vi.advanceTimersByTimeAsync(0);
+    const support = popover.querySelector<HTMLElement>("[data-section='support']")!;
+    const value = support.querySelector<HTMLButtonElement>("[data-row='beta'] [data-edit='beta']")!;
+    expect(messages.find((message) => message["type"] === "spotnav/beta")).toEqual({
+      type: "spotnav/beta", api_version: 1, site_id: "site_villa", action: "get",
+    });
+    expect(value.textContent).toMatch(/^Betaperiod till /);
+    value.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector("[data-beta='box']")).not.toBeNull();
+    expect(root.querySelectorAll("[data-beta='steps'] li")).toHaveLength(5);
   });
 
   it("shows the battery's line, checklist and report, and turns the switch off", async () => {
