@@ -76,7 +76,10 @@ def stored_safety_margin_a(data: Mapping[str, Any] | None) -> float:
 
 
 def site_fuse_kw(data: Mapping[str, Any] | None) -> float | None:
-    """The site's main fuse as three-phase power (kW) on its network, without the margin; `None` where none is set."""
-    if data is None:
+    """The site's main fuse as three-phase power (kW) on its network, without the margin; `None` where none is set.
+    Fails closed: a fuse that is stored but unusable (0, negative, not a finite number) is 0 kW, no import at all."""
+    stored = None if data is None else data.get(CONF_MAIN_FUSE_A)
+    if stored is None:
         return None
-    return fuse_kw(data.get(CONF_MAIN_FUSE_A), stored_voltage_between_phases_v(data))
+    kw = fuse_kw(stored, stored_voltage_between_phases_v(data))
+    return 0.0 if kw is None else kw

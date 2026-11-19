@@ -236,7 +236,7 @@ def _heat(hass: HomeAssistant, controller: Any, read: Mapping[datetime, float] |
 
 
 def fuse_kw(controller: Any) -> float | None:
-    """The site's main fuse as power (kW, `site_fuse_kw`); `None` where it is not set."""
+    """The site's main fuse as power (kW, `site_fuse_kw`); `None` where it is not set, 0 kW where it is unusable."""
     return site_fuse_kw(controller.config)
 
 

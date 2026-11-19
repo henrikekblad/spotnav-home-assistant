@@ -63,8 +63,15 @@ def test_single_phase_is_230_volts_on_either_network(volts: float) -> None:
 @pytest.mark.parametrize("fuse", [None, 0, -5, True, "20", math.nan, math.inf])
 def test_no_fuse_is_no_fuse_power(fuse: object) -> None:
     assert fuse_kw(fuse, 400.0) is None  # type: ignore[arg-type]
-    assert site_fuse_kw({CONF_MAIN_FUSE_A: fuse}) is None
+
+
+def test_a_missing_fuse_is_unbounded_and_an_unusable_one_fails_closed() -> None:
     assert site_fuse_kw(None) is None
+    assert site_fuse_kw({}) is None
+    assert site_fuse_kw({CONF_MAIN_FUSE_A: None}) is None
+    for broken in (0, 0.0, -5, True, "20", "", math.nan, math.inf, -math.inf, [20]):
+        assert site_fuse_kw({CONF_MAIN_FUSE_A: broken}) == 0.0, broken
+        assert site_fuse_kw({CONF_MAIN_FUSE_A: broken, CONF_VOLTAGE_BETWEEN_PHASES_V: 230}) == 0.0, broken
 
 
 def test_margin_above_the_fuse_is_no_power() -> None:
@@ -97,8 +104,9 @@ def _site(data: dict) -> SimpleNamespace:
 
 @pytest.mark.parametrize(
     ("data", "kw"),
-    [(TN, 13.8564), (IT, 7.9674), ({CONF_MAIN_FUSE_A: 20}, 13.8564), ({}, None)],
-    ids=["tn", "it", "no_voltage_is_tn", "no_fuse"],
+    [(TN, 13.8564), (IT, 7.9674), ({CONF_MAIN_FUSE_A: 20}, 13.8564), ({}, None), ({CONF_MAIN_FUSE_A: 0}, 0.0),
+     ({CONF_MAIN_FUSE_A: "x"}, 0.0)],
+    ids=["tn", "it", "no_voltage_is_tn", "no_fuse", "zero_fuse", "text_fuse"],
 )
 def test_heat_cap_and_house_card_fuse_follow_the_network(data: dict, kw: float | None) -> None:
     from custom_components.spotnav.api.house import fuse_kw as house_fuse_kw
@@ -109,7 +117,10 @@ def test_heat_cap_and_house_card_fuse_follow_the_network(data: dict, kw: float |
 
 
 @pytest.mark.parametrize(
-    ("data", "watts"), [(TN, 13856.4), (IT, 7967.4), ({}, math.inf)], ids=["tn", "it", "no_fuse"]
+    ("data", "watts"),
+    [(TN, 13856.4), (IT, 7967.4), ({}, math.inf), ({CONF_MAIN_FUSE_A: 0}, 0.0), ({CONF_MAIN_FUSE_A: -20}, 0.0),
+     ({CONF_MAIN_FUSE_A: "20"}, 0.0), ({CONF_MAIN_FUSE_A: math.nan}, 0.0)],
+    ids=["tn", "it", "no_fuse", "zero_fuse", "negative_fuse", "text_fuse", "nan_fuse"],
 )
 def test_import_target_ceiling_follows_the_network(data: dict, watts: float) -> None:
     from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
@@ -157,3 +168,17 @@ def test_every_reader_takes_a_missing_margin_as_one_amp(monkeypatch: pytest.Monk
     hass = SimpleNamespace(config_entries=SimpleNamespace(async_get_entry=lambda _entry_id: None))
     site = SimpleNamespace(entry_id="site", config=config)
     assert plan_runtime.site_import_cap_kw(hass, site) == pytest.approx(three_phase_kw(20 - margin, 400))  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("fuse", [0, -20, "20", True, math.nan, math.inf])
+def test_the_plans_import_cap_fails_closed_on_an_unusable_fuse(fuse: object) -> None:
+    from custom_components.spotnav.battery.plan_shadow import import_cap_kw
+
+    assert import_cap_kw(fuse, 1.0, 400.0, None) == 0.0  # type: ignore[arg-type]
+    assert import_cap_kw(fuse, 1.0, 400.0, 5.0) == 0.0  # type: ignore[arg-type]
+    assert import_cap_kw(None, 1.0, 400.0, None) is None
+    hass = SimpleNamespace(config_entries=SimpleNamespace(async_get_entry=lambda _entry_id: None))
+    from custom_components.spotnav.battery import plan_runtime
+
+    site = SimpleNamespace(entry_id="site", config={CONF_MAIN_FUSE_A: fuse})
+    assert plan_runtime.site_import_cap_kw(hass, site) == 0.0  # type: ignore[arg-type]

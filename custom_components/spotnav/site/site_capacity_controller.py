@@ -5340,7 +5340,7 @@ class SiteCapacityController:
 
     def _main_fuse_kw(self) -> float | None:
         """The main fuse's capacity (kW, three phases on the site's network, `site_fuse_kw`); `None` where it is not
-        set."""
+        set, 0 kW where it is stored but unusable."""
         return site_fuse_kw(self.config)
 
     def _heat_meter_setting(self) -> str | None:
@@ -5455,7 +5455,7 @@ class SiteCapacityController:
 
     def _import_ceiling_w(self) -> float:
         """The most the import target's budget lets the chargers draw (W): the main fuse as three-phase power on the
-        site's network (`site_fuse_kw`); unbounded without a fuse."""
+        site's network (`site_fuse_kw`); unbounded without a fuse, 0 W for one that is stored but unusable."""
         fuse_kw = site_fuse_kw(self.config)
         return float("inf") if fuse_kw is None else fuse_kw * 1000.0
 
