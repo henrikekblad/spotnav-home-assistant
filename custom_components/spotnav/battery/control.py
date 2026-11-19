@@ -44,7 +44,9 @@ The order on every path:
   `PER_PHASE_GAIN_KW` more in all than the balanced cap (`_charge_limits`); the slot is then capped at their sum.
   Anything else is the balanced charge under the balanced cap, as before: the targets not there, not verified, a
   reading per phase missing, the plant's own import limit guarding the fuse, a balanced house. A running charge
-  per phase that the plant does not follow withdraws the capability (`gate.per_phase_failed`).
+  per phase that the plant does not follow withdraws the capability (`gate.per_phase_failed`). Where the
+  verification's `charge` could only be tried per phase (the balanced cap leaves no room: `_async_verify`,
+  `verify.phase_charge_step`), a grid charge runs only per phase (`gate.charge_by_phases`, `_control_slot`).
 * **The export limit** (`export_curtail.py`): a second executor on the brand's export control
   (`commands.EXPORT_CONTROLS`): `curtail_export` while the sell price now is below zero (`sell_source`, by default
   the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the battery or the grid meter
@@ -132,7 +134,7 @@ from .plan_model import (
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
-from .verify import TEST_CHARGE_KW, Sample, Timing, Verification
+from .verify import TEST_CHARGE_KW, Sample, Timing, Verification, phase_charge_step
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -1065,6 +1067,11 @@ class BatteryControl:
             for name, count in used.items()
         }
 
+    def _phase_charge_possible(self) -> bool:
+        """Whether the verification's `charge` may be tried per phase: the brand's targets per phase and everything
+        they need are there (`_phase_missing`), and the capability has not failed on this firmware."""
+        return self._phase_missing() is None and gate.per_phase(self.report()) != "failed"
+
     def _per_phase_due(self, report: dict[str, Any] | None) -> bool:
         """Whether a run should try the mode `per_phase`: everything it needs is there, it is still undecided on
         this firmware, and the routine has runs left and has not failed."""
@@ -1218,15 +1225,30 @@ class BatteryControl:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
             cap = self._grid_charge_cap_kw(now, self.options())
             if cap is not None and cap < gate.MIN_RATE_KW:
-                # No grid charge fits under the HA-down cap now: tried again at a later run.
-                verification.not_judgeable(now, "grid_charge_cap")
+                if self._phase_charge_possible():
+                    # An unbalanced house leaves the balanced charge no room: a charge on the phase with the most
+                    # room instead, within that phase's own HA-down cap (`verify.phase_charge_step`), after a
+                    # discharge on it has shown its sign and mapping unless `per_phase` has on this firmware.
+                    step = phase_charge_step(
+                        self._phase_caps_kw(now), stored_voltage_between_phases_v(self.site.config)
+                    )
+                    verification.charge_per_phase(
+                        now, sample, step, mapped=gate.per_phase(self.report()) == "verified"
+                    )
+                else:
+                    # No grid charge fits under the HA-down cap now: tried again at a later run.
+                    verification.not_judgeable(now, "grid_charge_cap")
                 action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
-            rate = rate if cap is None else min(rate, cap)
-        # The routine's own modes never take the phases' caps: `charge` is the balanced one, and the probe of
-        # `per_phase` is a discharge on one phase (`Verification.probe`), which needs none. The reads are the
-        # control's as it is now (the mode `per_phase` has just made it the phased one).
+                probe = verification.probe()
+            rate = rate if cap is None or probe is not None else min(rate, cap)
+        # The probe of `per_phase` is a discharge on one phase (`Verification.probe`), which needs no cap; `charge`
+        # tried per phase is a charge on one phase, under the phases' HA-down caps and the executor's live room per
+        # phase as any charge per phase. The reads are the control's as it is now (a phased mode has just made it
+        # the phased one).
+        charging = probe is not None and any(value > 0 for value in probe)
         inputs = replace(
-            inputs, action=action, rate_kw=rate, slot_end=None, phase_caps_kw=None, phase_probe_kw=probe,
+            inputs, action=action, rate_kw=rate, slot_end=None,
+            phase_caps_kw=self._phase_caps_kw(now) if charging else None, phase_probe_kw=probe,
             reads=self._reads(executor.control),
         )
         result = await self._async_step(executor, inputs, allowed=True)
@@ -1554,10 +1576,14 @@ class BatteryControl:
         return any((read := reads.get(name)) is None or not read.found for name in control.hold_charges_without)
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
+        report = self.report()
+        allowed = gate.allowed_actions(report, options, export_needs_charge=self._export_needs_charge())
+        cap, caps = self._charge_limits(now, options)
+        if caps is None and gate.charge_by_phases(report):
+            # The charge was shown only per phase: the balanced one is never run on that.
+            allowed = allowed - {ACTION_GRID_CHARGE}
         slot, why = gate.restricted(
-            self._merged_slot(now),
-            gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge()),
-            self._charge_limits(now, options)[0], self._export_cap_kw(), self._fixed_charge_kw(),
+            self._merged_slot(now), allowed, cap, self._export_cap_kw(), self._fixed_charge_kw(),
             hold_charges=self._hold_charges(),
         )
         if why != self._restricted:
@@ -2213,7 +2239,10 @@ class BatteryControl:
 
     def _withdraw_per_phase(self, result: StepResult, now: datetime) -> None:
         """A running charge per phase that the plant did not follow (`executor._judge_phases` handed it back): the
-        capability is withdrawn for this firmware, so the next grid charge is the balanced one."""
+        capability is withdrawn for this firmware, so the next grid charge is the balanced one. Not while the
+        verification (or a hardware test) runs: its own modes record what a runaway on their targets showed."""
+        if self.verification is not None:
+            return
         judged = next((event for event in result.events
                        if event["kind"] == "monitor" and str(event["reason"]) in ("phase_over", "phase_no_effect")), None)
         report = None if judged is None else self.report()

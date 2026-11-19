@@ -15,6 +15,7 @@ from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL, SIGENE
 from custom_components.spotnav.battery.executor import (
     RoleRead,
     HEADROOM_MARGIN_A,
+    PHASE_RAISE_SETTLE_S,
     RATE_UP_DWELL_S,
     REARM_S,
     ExecInputs,
@@ -471,6 +472,48 @@ def test_the_probe_writes_a_discharge_on_one_phase_as_it_is_and_a_charge_only_wi
     # A charge in a probe has no cap here: nothing; a larger discharge is bounded.
     look = site.inputs(now, "grid_charge", 0.0, phase_caps_kw=None, phase_probe_kw=(2.0, -5.0, 0.0))
     assert phase_charge_kw(look, None) == ((0.0, -1.0, 0.0), None)
+
+
+def test_a_charge_in_the_probe_is_whole_amps_within_its_room_down_at_once_up_after_the_dwell_and_runs_away() -> None:
+    """The verification's `charge` tried per phase on the owner's house (L2 full): every fuse rule of a charge per
+    phase acts on it as it does on the plan's."""
+    executor, site = _site()
+    zero, discharge, charge = (0.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.95, 0.0, 0.0)
+    now, results = _run(executor, site, T0, 4, "grid_charge", 0.95, phase_probe_kw=zero)
+    assert executor.state.phase == "active" and executor.state.phase_kw == zero
+    # The discharge that shows the phase first, then the charge: through 0, so its room is read without the
+    # discharge that eased the phase; whole amps, never above L1's own cap.
+    now, results = _run(executor, site, now, 2, "grid_charge", 0.95, phase_probe_kw=discharge)
+    assert written(results) == [("phase_l1_target", 1.0)]
+    now, results = _run(executor, site, now, 3, "grid_charge", 0.95, phase_probe_kw=charge)
+    assert written(results) == [("phase_l1_target", 0.0), ("phase_l1_target", -0.92)]
+    # L1's house rises just after the raise: within `PHASE_RAISE_SETTLE_S` the plant's own power may not show the
+    # charge yet, so the room is not trusted; after it, the charge goes down to the whole amps the room leaves.
+    executor.state = replace(executor.state, phase_raised_at=now)
+    site.house_a[0] = 14.5
+    _later, results = _run(executor, site, now, 1, "grid_charge", 0.95, phase_probe_kw=charge)
+    assert written(results) == []
+    now, results = _run(executor, site, now + timedelta(seconds=PHASE_RAISE_SETTLE_S), 2, "grid_charge", 0.95,
+                        phase_probe_kw=charge)
+    assert written(results) == [("phase_l1_target", -0.69)]
+    assert max(site.phase_a()) <= FUSE_A - HEADROOM_MARGIN_A + 0.05
+    # The room back: up again only after the dwell.
+    site.house_a[0] = 2.0
+    now, results = _run(executor, site, now, 2, "grid_charge", 0.95, phase_probe_kw=charge)
+    assert written(results) == [], "up only after the dwell"
+    now, results = _run(executor, site, now + timedelta(seconds=RATE_UP_DWELL_S), 2, "grid_charge", 0.95,
+                        phase_probe_kw=charge)
+    assert written(results) == [("phase_l1_target", -0.92)]
+    # The verification's own next step lowers it at once, settle or not.
+    executor.state = replace(executor.state, phase_raised_at=now)
+    _later, results = _run(executor, site, now, 1, "grid_charge", 0.95, phase_probe_kw=zero)
+    assert written(results) == [("phase_l1_target", 0.0)]
+    _now, results = _run(executor, site, _later, 3, "grid_charge", 0.95, phase_probe_kw=charge)
+    # A plant that takes more than the probe's target on a phase is the runaway, as for any charge per phase.
+    site.stray_kw = (0.6, 0.0, 0.0)
+    now, results = _run(executor, site, _now, 6, "grid_charge", 0.95, phase_probe_kw=charge)
+    assert events(results, "hand_back")[0]["reason"] == "not_obeyed:grid_charge:phase_over"
+    assert site.targets() == (0.0, 0.0, 0.0)
 
 
 # --- targets left standing, the writes a day, and the recipe's other forms ---------------------------------------

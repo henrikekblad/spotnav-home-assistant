@@ -37,7 +37,8 @@ for normal) passes; `ignored`, `partial` and an abort that shows the plant does 
 fail; anything else (`not_judgeable:*`, an abort for the moment's circumstances: the fuse, a stale reading, a stop)
 is pending and tried again at a later suitable moment (`modes_to_run`, `suitable`), at most `MAX_ATTEMPTS` runs.
 **The report decides which actions are allowed** (`allowed_actions`): hold and normal must pass for any control; a
-grid charge only if `charge` passed, a discharge for the house only if `discharge_house` passed, a discharge to the
+grid charge only if `charge` passed (where it could be tried only as a charge on one phase, a charge per phase
+only, once `per_phase` is verified too: `charge_by_phases`), a discharge for the house only if `discharge_house` passed, a discharge to the
 grid only in the Max profit mode on top of that (and `charge` passed too where the discharge writes a signed
 power target: the house step, the plant's own mode, says nothing about its sign). The export limit needs no routine of its own: it starts
 on its live check (the executor's monitor hands it back and blocks it when the export does not stop).
@@ -328,22 +329,36 @@ def allowed_actions(
         return frozenset()
     modes = _modes(report)
     passed = {name for name, row in modes.items() if isinstance(row, Mapping) and mode_verdict(row.get("outcome")) == "pass"}
+    # `charge` shown only per phase (`verify.py`) proves a charge per phase, once the capability is verified too;
+    # it says nothing of the sign of the brand's own balanced target.
+    by_phases = charge_by_phases(report)
     allowed = {ACTION_HOLD}
-    if "charge" in passed:
+    if "charge" in passed and (not by_phases or per_phase(report) == "verified"):
         allowed.add(ACTION_GRID_CHARGE)
     if "discharge_house" in passed:
         allowed.add(ACTION_DISCHARGE_HOUSE)
-        if options.allow_sell and (not export_needs_charge or "charge" in passed):
+        if options.allow_sell and (not export_needs_charge or ("charge" in passed and not by_phases)):
             allowed.add(ACTION_EXPORT_DISCHARGE)
     return frozenset(allowed)
+
+
+def charge_by_phases(report: Mapping[str, Any] | None) -> bool:
+    """Whether the mode `charge` was tried as a charge on one phase (`verify.VIA_PER_PHASE`: the balanced charge had
+    no room): a grid charge then runs only per phase."""
+    row = _modes(report).get("charge")
+    return isinstance(row, Mapping) and row.get("via") == "per_phase"
 
 
 def per_phase(report: Mapping[str, Any] | None) -> str:
     """The capability "a target per phase acts on that phase, on the meter's phase of that name" on this firmware:
     `verified`, `failed` or `pending` (not tried, or not judgeable yet). A grid charge runs per phase only on
-    `verified`; anything else is the balanced charge."""
+    `verified`; anything else is the balanced charge. `charge` tried per phase that failed fails it too."""
     row = _modes(report).get(MODE_PER_PHASE)
     verdict = mode_verdict(row.get("outcome")) if isinstance(row, Mapping) else "pending"
+    if charge_by_phases(report) and mode_verdict((_modes(report).get("charge") or {}).get("outcome")) == "fail":
+        # `charge` tried per phase found the targets not followed, of the wrong sign or on another of the meter's
+        # phases: that is this capability's answer too.
+        verdict = "fail"
     return {"pass": "verified", "fail": "failed"}.get(verdict, "pending")
 
 
