@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav kennt diese Integration nicht. Wähle stattdessen Manuell.",
       "charger_not_controllable": "SpotNav kann diese Ladestation nicht starten oder stoppen. Sie lässt sich nur auslesen.",
       "no_price_areas": "Die Liste der Preiszonen konnte nicht gelesen werden. Versuche es in einer Minute erneut.",
-      "no_pending_entry": "Es wartete nichts darauf, gespeichert zu werden."
+      "no_pending_entry": "Es wartete nichts darauf, gespeichert zu werden.",
+      "unknown_price_area": "Dieses Preisgebiet ist unbekannt. Wähle ein anderes.",
+      "invalid_price_fees": "Die Gebühren des Preiseintrags sind ungültig."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Die Sicherheitsreserve muss kleiner als die Hauptsicherung sein, sonst bleibt kein Strom für die Ladestationen.",

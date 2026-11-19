@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav ne connaît pas cette intégration. Choisissez plutôt Manuel.",
       "charger_not_controllable": "SpotNav ne peut pas démarrer ni arrêter cette borne. Elle peut seulement être lue.",
       "no_price_areas": "La liste des zones de prix n'a pas pu être lue. Réessayez dans une minute.",
-      "no_pending_entry": "Rien n'attendait d'être enregistré."
+      "no_pending_entry": "Rien n'attendait d'être enregistré.",
+      "unknown_price_area": "Cette zone de prix est inconnue. Choisissez-en une autre.",
+      "invalid_price_fees": "Les frais de l'entrée de prix ne sont pas valides."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "La marge de sécurité doit être inférieure au fusible principal, sinon il ne reste aucun courant pour les bornes.",

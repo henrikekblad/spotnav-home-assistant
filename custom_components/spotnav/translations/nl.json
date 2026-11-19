@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav kent deze integratie niet. Kies in plaats daarvan Handmatig.",
       "charger_not_controllable": "SpotNav kan deze laadpaal niet starten of stoppen. Hij kan alleen worden uitgelezen.",
       "no_price_areas": "De lijst met prijsgebieden kon niet worden gelezen. Probeer het over een minuut opnieuw.",
-      "no_pending_entry": "Er wachtte niets om opgeslagen te worden."
+      "no_pending_entry": "Er wachtte niets om opgeslagen te worden.",
+      "unknown_price_area": "Dat prijsgebied is onbekend. Kies een ander.",
+      "invalid_price_fees": "De kosten van de prijsinvoer zijn ongeldig."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "De veiligheidsmarge moet lager zijn dan de hoofdzekering, anders blijft er geen stroom over voor de laadpalen.",

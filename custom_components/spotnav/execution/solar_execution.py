@@ -85,6 +85,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections import deque
 from datetime import datetime, timedelta
@@ -2046,7 +2047,7 @@ def _parse_aware(value: Any) -> datetime | None:
 
 def _number(value: Any) -> float | None:
     """A finite JSON number as a float, else `None`."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         return None
     return float(value)
 

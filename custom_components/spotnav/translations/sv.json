@@ -294,7 +294,9 @@
       "charger_not_recognised": "SpotNav känner inte igen den här integrationen. Välj Manuell i stället.",
       "charger_not_controllable": "SpotNav kan inte starta eller stoppa den här laddaren. Den kan bara läsas.",
       "no_price_areas": "Listan över elområden kunde inte läsas. Försök igen om en minut.",
-      "no_pending_entry": "Inget väntade på att sparas."
+      "no_pending_entry": "Inget väntade på att sparas.",
+      "unknown_price_area": "Prisområdet är okänt. Välj ett annat.",
+      "invalid_price_fees": "Prisposten har ogiltiga avgifter."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Säkerhetsmarginalen måste vara lägre än huvudsäkringen, annars blir ingen ström kvar till laddarna.",
