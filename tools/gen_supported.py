@@ -866,8 +866,8 @@ OVERVIEW: tuple[Overview, ...] = (
         keys=("ferroamp",),
         adapter="ferroamp",
         note="Control sends the integration's charge, discharge and auto requests (whole-system power, no timeout "
-        "documented, no read-back but the last request). ACE balances the phases inside the hub; SpotNav does not "
-        "count on it. MQTT is enabled by Ferroamp's support. Pools batteries for grid services with Ntricity.",
+        "documented; a request counts once the hub has acked it). The charge cap counts it on one phase: how the hub "
+        "spreads it is not documented, and SpotNav does not count on ACE. MQTT is enabled by Ferroamp's support. Pools batteries for grid services with Ntricity.",
     ),
     Overview(
         "Homevolt (Tibber)",
