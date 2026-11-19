@@ -1203,8 +1203,8 @@ def heat_pumps_section() -> list[str]:
         "heat card (your own start, any user). SpotNav also plans boosts before the household's hot water peaks, in "
         "shadow first: they are written only with **Styr värmen** on, after a week of shadow that hit the peaks "
         "(see [Heat pumps](heat-pumps.md#hot-water)). Setpoints are not written. On a relay or SG Ready path whose "
-        "block also stops hot water, SpotNav never starts a block during the pump's own run, ends one it sees a run "
-        "under, and, after two weeks of shadow, keeps blocks out of the two hours before each peak (see "
+        "block also stops hot water, SpotNav never starts a block during the pump's own run, ends one that caught a "
+        "run as it began, and, after two weeks of shadow, keeps blocks out of the two hours before each peak (see "
         "[Blocks and the hot water](heat-pumps.md#blocks-and-the-hot-water)).",
         "- Cloud routes are rate limited. They get at most two planned hot water actions a day (before the morning and the evening showers), never a loop; a local route is bounded only by wear.",
         "",
