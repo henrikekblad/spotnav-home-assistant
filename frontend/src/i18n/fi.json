@@ -1259,7 +1259,6 @@
   "house.estimate.capacity_learned": "koko (opittu käytöstä)",
   "house.estimate.rated_learned": "nimellisteho (suurin toistaiseksi nähty)",
   "house.today": "Akku on tuottanut tänään {amount}",
-  "house.todayHint": "Mitä akku antoi takaisin silloisella sähkön hinnalla, miinus latauksen hinta.",
   "house.todayCost": "Sähkö {amount}",
   "house.todaySold": "myyty aurinkosähkö {amount}",
   "house.now": "Nyt",

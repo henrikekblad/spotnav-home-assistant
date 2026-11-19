@@ -205,11 +205,6 @@ export function savingTotalLine(language: Language, answer: HouseAnswer): string
   return [head, ...parts.map((part) => translate(language, `house.saving.part.${part}`, { amount: bareAmount(language, saving[part]!) }))].join(" · ");
 }
 
-/** Under the headline: what it counts. No maker's app is named as showing the same: a maker's app may count the
- * battery's cash flow hour by hour (a charge as a cost when it happens), which this does not. */
-export function todayHint(language: Language, _answer: HouseAnswer): string {
-  return translate(language, "house.todayHint");
-}
 
 /** Under the headline: what the electricity bought cost, and the sun sold when it came to at least half a unit
  * ("Elkostnad 63 kr · sålt solel 4 kr"). */
@@ -1042,8 +1037,8 @@ function flowOnHours(hours: readonly HouseHour[], history: HouseHistory | null):
   return hours.map((hour) => byStart.get(hour.startMs) ?? null);
 }
 
-/** Price and battery: a day's prices with the battery's level and plan, under a line with the battery app's measure and
- * the cost. A day only: a month's or a year's kr bars were the Earnings tab's figures, and the prices are hourly. */
+/** Price and battery: a day's prices with the battery's level and plan, under a line with the cost.
+ * A day only: a month's or a year's kr bars were the Earnings tab's figures, and the prices are hourly. */
 function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElement, today: string): void {
   const { doc, language } = input;
   const choice = dayOnly(input.ui.choice ?? { period: "day", date: null }, today);
@@ -1052,9 +1047,6 @@ function pricePanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLEle
   const history = loaded !== null && loaded.kind === "ready" ? loaded.answer : null;
   const isToday = choice.period === "day" && choice.date === null;
   const sub: string[] = [];
-  if (answer.battery !== null) {
-    sub.push(todayHint(language, answer));
-  }
   const cost = history?.cost ?? null;
   if (isToday && answer.today !== null) {
     sub.push(todayDetail(language, answer) ?? "");

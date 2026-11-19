@@ -1259,7 +1259,6 @@
   "house.estimate.capacity_learned": "størrelsen (lært af brug)",
   "house.estimate.rated_learned": "nominel effekt (den højeste set hidtil)",
   "house.today": "Batteriet har tjent {amount} i dag",
-  "house.todayHint": "Det batteriet gav tilbage, til elprisen dengang, minus hvad opladningen kostede.",
   "house.todayCost": "Udgift til el {amount}",
   "house.todaySold": "solgt solstrøm {amount}",
   "house.now": "Nu",

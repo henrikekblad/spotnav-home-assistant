@@ -1259,7 +1259,6 @@
   "house.estimate.capacity_learned": "el tamaño (aprendido del uso)",
   "house.estimate.rated_learned": "la potencia nominal (la más alta vista hasta ahora)",
   "house.today": "La batería ha ganado {amount} hoy",
-  "house.todayHint": "Lo que la batería devolvió, al precio de ese momento, menos lo que costó cargarla.",
   "house.todayCost": "Electricidad {amount}",
   "house.todaySold": "solar vendida {amount}",
   "house.now": "Ahora",

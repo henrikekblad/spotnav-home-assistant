@@ -457,7 +457,7 @@ describe("the period tabs' content", () => {
     const card = render(answer, { tab: "price" }, { history: { kind: "ready", answer: today } }, "sv");
     expect(card.querySelector(".spotnav-house-surface .spotnav-house-price-buy")).not.toBeNull();
     expect(card.querySelector("[data-line='earned']")).toBeNull();
-    expect(card.querySelector("[data-line='earned-sub']")?.textContent).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade. · Elkostnad 38 kr");
+    expect(card.querySelector("[data-line='earned-sub']")?.textContent).toBe("Elkostnad 38 kr");
     expect(card.querySelector(".spotnav-house-earned-strip")).toBeNull();
     expect(card.querySelector(".spotnav-house-earned-box")).toBeNull();
     // A tapped hour still says what the battery earned in it.

@@ -12,7 +12,7 @@ import { houseChartHeight, renderHouseChart } from "../src/house-chart";
 import { blockHeights, columnWidths, flowHeight, flowLabels, MIN_BAND, MIN_NODE, PILL_PAD, renderFlow } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { amount, heatLine, hourFigures, houseBody, houseSources, learningLines, withPrices, type Loadable, savingTotalLine, todayDetail, todayHint, todayLine, type HouseState, type HouseUi } from "../src/house-view";
+import { amount, heatLine, hourFigures, houseBody, houseSources, learningLines, withPrices, type Loadable, savingTotalLine, todayDetail, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { decodeHouseHistory, type HouseHistory } from "../src/house-history";
 import { apiFailure, FakeHass } from "./helpers";
 
@@ -357,23 +357,11 @@ describe("the battery app's views, calm", () => {
     const priced = houseBody({ doc: document, language: "sv", state: { kind: "ready", answer: answer() }, ui: { selected: null, tab: "price" }, handlers: { onSelect: vi.fn() }, width: 340, nowMs: NOW, idPrefix: "p", tabs });
     // No heading with the battery's earnings: the Earnings tab says them.
     expect(priced.querySelector("[data-line='earned']")).toBeNull();
-    expect(priced.querySelector("[data-line='earned-sub']")?.textContent).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade. · Elkostnad 38 kr");
+    expect(priced.querySelector("[data-line='earned-sub']")?.textContent).toBe("Elkostnad 38 kr");
     expect(card.querySelector("[data-line='earned']")).toBeNull();
     // The level is the schematic's in Now, the mode under it.
     expect(now.querySelector(".spotnav-house-sub")?.textContent).toBe("Läge Balanserad · inga livevärden än");
     expect(now.querySelector(".spotnav-now-words[data-role='battery']")?.textContent).toBe("Batteri48 %19,5 kWh");
-  });
-
-  it("explain the headline's measure plainly for a battery whose app is not verified to match", () => {
-    const value = answer();
-    for (const brand of ["huawei", null]) {
-      const other = { ...value, battery: { ...value.battery!, brand } };
-      expect(todayHint("sv", other)).toBe("Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade.");
-      const tabs = { live: null, history: { kind: "ready" as const, answer: dayHistory() }, day: null, today: "2026-11-13" };
-      const card = houseBody({ doc: document, language: "en", state: { kind: "ready", answer: other }, ui: { selected: null, tab: "price" }, handlers: { onSelect: vi.fn() }, width: 340, nowMs: NOW, idPrefix: "p", tabs });
-      expect(card.querySelector("[data-line='earned-sub']")?.textContent).toMatch(/^What the battery gave back, at the price then, less what charging it cost\./);
-    }
-    expect(todayHint("en", value)).toBe("What the battery gave back, at the price then, less what charging it cost.");
   });
 
   it("draw the energy in Energy chart and the price with the battery in Price and battery, no toggle in either", () => {
@@ -671,7 +659,7 @@ describe("a past day's answer", () => {
 
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.inForce", "house.compare.none", "house.compare.spotnav", "house.compare.own", "house.todayHint", "house.todayCost"] as const) {
+      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.inForce", "house.compare.none", "house.compare.spotnav", "house.compare.own", "house.todayCost"] as const) {
         expect(translate(language, key, { day: "d", days: "2", amount: "", mode: "" })).not.toBe(key);
       }
     }

@@ -1259,7 +1259,6 @@
   "house.estimate.capacity_learned": "storleken (inlärd från användning)",
   "house.estimate.rated_learned": "märkeffekten (den högsta hittills sedda)",
   "house.today": "Batteriet har tjänat {amount} i dag",
-  "house.todayHint": "Det batteriet gav tillbaka, till elpriset då, minus vad laddningen kostade.",
   "house.todayCost": "Elkostnad {amount}",
   "house.todaySold": "sålt solel {amount}",
   "house.now": "Nu",
