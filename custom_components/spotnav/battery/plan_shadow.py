@@ -61,7 +61,7 @@ from ..planning.demand_charge import hour_start
 from ..planning.planner import FiscalChoice
 from .export_curtail import curtail_slots, curtails, would_save
 from .facts import BatteryFacts
-from .hindsight import CellTemperature, Facit, measured_slot
+from .hindsight import IDLE_KW, CellTemperature, Facit, measured_slot
 from .plan import action_power, buy_prices, run_slot, sell_prices
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
@@ -102,8 +102,6 @@ MAX_GAP_S: Final = 60.0
 MIN_COVERED_SHARE: Final = 0.5
 #: The forecast log's kind for the plan's SoC (`site/forecast_log.py`): the SoC planned at each hour's end.
 KIND_BATTERY: Final = "battery"
-#: Battery power (kW) below which a quarter hour's battery counts as idle (`actual_action`).
-IDLE_KW: Final = 0.2
 
 # Why a plan was made.
 TRIGGER_START: Final = "start"

@@ -102,6 +102,8 @@ from .monitor import (
     DISCHARGE_MARGIN_PCT,
     FAIL_FRACTION,
     FLOOR_KW,
+    READING_GAP_S,
+    READING_MAX_AGE_S,
     Capability,
     Command,
     deliverable_kw,
@@ -112,14 +114,11 @@ from .plan_model import ACTION_DISCHARGE_HOUSE, ACTION_GRID_CHARGE, ACTION_HOLD,
 #: How long a mode settles after its writes are taken before readings count (s), as the monitor's grace.
 SETTLE_S: Final = 300.0
 READINGS: Final = 3
-READING_GAP_S: Final = 60.0
-#: A reading older than this is not judged (s).
-READING_MAX_AGE_S: Final = 120.0
 #: The charge power tried (kW), at most the battery's own rating.
 TEST_CHARGE_KW: Final = 2.0
 #: A mode whose writes are not taken within this long is aborted (s).
 COMMAND_TIMEOUT_S: Final = 300.0
-#: Reports kept, one per firmware string.
+#: Reports kept, one per firmware string (the control imports it for its own, one per firmware key).
 MAX_REPORTS: Final = 10
 #: Hold outcomes after which the next hold variant is tried: the plant took the writes and went on as if nothing had
 #: been written (the variant's limit does not act on this firmware). Anything else (a partial effect, a plant that
