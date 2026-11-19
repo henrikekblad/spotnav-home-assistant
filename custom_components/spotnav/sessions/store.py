@@ -181,7 +181,12 @@ class SessionStore:
         self._closed_changed()
         if record_behind:
             self._schedule_record()
-        if small_behind or record_behind:
+        if any(session is not in_small.get(charger_id) for charger_id, session in self._open.items()):
+            # An open session read from the big store alone (written by a release before 2.4.3, or one run in
+            # between): the big store's `open` is written empty from now on, so the small store holds it at once,
+            # before any big write could leave it nowhere on disk.
+            await self._open_store.async_save(self._open_document())
+        elif small_behind or record_behind:
             self._open_store.async_delay_save(self._open_document, SAVE_DELAY_S)
 
     # ---- reads

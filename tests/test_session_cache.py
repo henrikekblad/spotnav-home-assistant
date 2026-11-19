@@ -333,6 +333,9 @@ async def test_a_record_from_before_the_small_store_resumes_its_open_session_fro
         await store.async_load()
 
     assert store.open_raw(CHARGER) == opened
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: opened.as_dict()}, "closing": {}}, (
+        "held by the small store at once"
+    )
     # The first minute after the update writes the small store only; the big one is left as it was.
     later = replace(opened, energy_kwh=opened.energy_kwh + 0.5)
     store.set_open(later, charger_id=CHARGER)
@@ -342,6 +345,28 @@ async def test_a_record_from_before_the_small_store_resumes_its_open_session_fro
         await hass.async_block_till_done()
     assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: later.as_dict()}, "closing": {}}
     assert hass_storage["spotnav_sessions"]["data"] == todays_document(sessions, opened, {})
+
+
+async def test_an_upgrade_from_before_the_small_store_then_a_big_write_and_a_crash_keeps_the_open_session(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    """Straight from a release before 2.4.3: the open session is on disk only in the big store. A big write (its `open`
+    now empty) lands before the session's next sample, and Home Assistant dies: the session still resumes."""
+    sessions = sorted(history(30), key=lambda item: item.start)
+    opened = replace(sessions[-1], id="open", start=END + timedelta(hours=1), end=None)
+    hass_storage["spotnav_sessions"] = {"version": 1, "data": todays_document(sessions, opened, {})}
+
+    store = SessionStore(hass)
+    with freeze_time(END):
+        await store.async_load()
+    store._record_dirty = True  # noqa: SLF001 - a change of the finished sessions or the markers
+    await store._async_write_record()  # noqa: SLF001
+    assert hass_storage["spotnav_sessions"]["data"]["open"] == {}
+
+    after_crash = SessionStore(hass)
+    with freeze_time(END):
+        await after_crash.async_load()
+    assert after_crash.open_raw(CHARGER) == opened
 
 
 async def test_the_small_store_wins_and_a_session_it_holds_that_ended_is_dropped(
