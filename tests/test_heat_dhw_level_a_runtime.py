@@ -58,7 +58,7 @@ def _open_a_gate(hot_water: Any, today: date) -> None:
         day = today - timedelta(days=index)
         hot_water.days[day.isoformat()] = {
             "peaks": [], "picks": {}, "live": [],
-            "review": {"date": day.isoformat(), "mode": "shadow", "hits": 2, "peaks": 2, "saved": 0.0, "misses": 0},
+            "review": {"date": day.isoformat(), "mode": "shadow", "hits": 2, "peaks": 2, "saved": 0.0, "misses": 0, "a_mode": "shadow"},
         }
 
 
@@ -330,3 +330,12 @@ async def test_a_stale_tank_reading_counts_as_no_tank_sensor(hass: HomeAssistant
     assert (hot_water.tank_c() is not None) is fresh
     _kept, cap = hot_water.level_a_rules(now, controller.heat_shadow.config(), [now.astimezone(hot_water.zone).date()])
     assert cap == (None if fresh else 4)
+
+
+async def test_only_reviews_made_with_level_as_figures_count_toward_its_gate(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Review NIT: an install upgraded with weeks of reviews from before level A does not open it at once."""
+    _site_, _controller, _relay, hot_water, now = await _villa(hass, freezer, monkeypatch)
+    _open_a_gate(hot_water, now.astimezone(hot_water.zone).date())
+    for record in hot_water.days.values():
+        record["review"].pop("a_mode")
+    assert hot_water.a_gate_reviews() == [] and not hot_water.a_gate_state()["open"]

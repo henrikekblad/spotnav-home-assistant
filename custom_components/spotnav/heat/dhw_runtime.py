@@ -340,7 +340,8 @@ class HotWater:
         out = []
         for key in sorted(self.days):
             review = self.days[key].get("review")
-            if isinstance(review, dict) and (self.a_since is None or key > self.a_since):
+            # Only a review made with level A's figures counts: one kept before them would open it unseen.
+            if isinstance(review, dict) and "a_mode" in review and (self.a_since is None or key > self.a_since):
                 out.append(review)
         # While stricter after a back-off, no day counts toward the gate.
         return [] if self.a_strict() else out
