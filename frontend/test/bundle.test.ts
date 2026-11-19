@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { translate } from "../src/i18n";
 import { APP_STORE_URL } from "../src/setup-checklist";
 import { PRIVACY_URL } from "../src/send-debug";
+import { PLAN_DOCS_URL } from "../src/settings-popover";
 import { API_VERSION } from "../src/types";
 
 const ASSET = resolve(__dirname, "../../custom_components/spotnav/www/spotnav-card.js");
@@ -157,6 +158,8 @@ describe("the asset's only absolute URLs", () => {
       // The Zonneplan integration's page, opened in a new tab by its notice when HACS is not there.
       "https://github.com/fsaris/home-assistant-zonneplan-one",
       "https://github.com/henrikekblad/spotnav-home-assistant",
+      // The battery plan's page on the wear and the margin, linked under the battery's mode (a new tab).
+      PLAN_DOCS_URL,
       // The SpotNav app on Google Play, opened in a new tab by "Get started" (where to get the app).
       "https://play.google.com/store/apps/details?id=se.sensnology.spotnav",
       // The privacy policy, linked from "Send debug info" (a new tab): what a sent report holds and how long it is kept.

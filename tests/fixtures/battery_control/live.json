@@ -87,6 +87,12 @@
     "L3": 0.16
    },
    "charging_kw": null
+  },
+  "plan_costs": {
+   "wear_minor_per_kwh": 15.0,
+   "balanced_margin_minor_per_kwh": 100.0,
+   "major_unit": "kr",
+   "minor_unit": "öre"
   }
  }
 }

@@ -908,6 +908,13 @@ again at once); 400 `spotnav_invalid_value` (another mode, an unknown key, no ch
 `battery_control_*` options, alone or beside a mode, with nothing written; 400 `spotnav_no_site`. A refusal has
 `"status": null`. An app shows the switch read-only (`status.options.battery_control_enabled`, `status.state`).
 
+`status.plan_costs` (additive under version 1) names the battery plan's two fixed figures, read-only, in the
+site's price area money: `{"wear_minor_per_kwh": 15.0, "balanced_margin_minor_per_kwh": 100.0, "major_unit": "kr",
+"minor_unit": "öre"}`: the wear counted per kWh each way, and what a kWh sold must earn at least, net, before
+Balanced sells it. Both are in the minor unit (`minor_unit`; `major_unit` is the unit above it, 100 minor to one major
+where the area's money has that). The whole block is `null` while the site has no price area. A client that does not
+find the key shows no line.
+
 **`get_site_settings_view`** answers the settings' site block as an administrator reads it, with one difference
 the webhook's dashboard also has: `site.active_control.writable` is `false`. `writable` is `true` for what the
 webhook's own writes change (`update_site_settings`, `choose_price_source`, `update_grid_tariff`); the price's

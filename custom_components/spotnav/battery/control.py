@@ -131,6 +131,9 @@ from .plan_model import (
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
+    DEFAULT_CYCLE_COST,
+    sell_margin_minor_per_kwh,
+    wear_minor_per_kwh,
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
@@ -2463,7 +2466,29 @@ class BatteryControl:
             "trial": None if self.trial is None else self.trial.as_dict(),
             "grid_charge_cap": self._cap_status(dt_util.now(), options),
             "per_phase": self._per_phase_block(dt_util.now(), options),
+            "plan_costs": self._plan_costs(),
         }
+
+    def _plan_costs(self) -> dict[str, Any] | None:
+        """The plan's two fixed figures in the site's currency (read-only for the card and the app): the wear per kWh
+        each way and Balanced's selling margin per kWh, in the minor unit; `None` while no price area is known."""
+        try:
+            from .plan_runtime import site_price_source_of  # noqa: PLC0415 - it imports this module
+
+            source = site_price_source_of(self.hass, self.site)
+            area = None if source is None else source.area
+            if area is None or not area.major_unit or not area.minor_unit:
+                return None
+            wear = wear_minor_per_kwh(area.currency)
+            return {
+                "wear_minor_per_kwh": DEFAULT_CYCLE_COST if wear is None else wear,
+                "balanced_margin_minor_per_kwh": sell_margin_minor_per_kwh(area.currency),
+                "major_unit": area.major_unit,
+                "minor_unit": area.minor_unit,
+            }
+        except Exception:  # noqa: BLE001 - the status must never fail on it
+            self._look_failed("plan_costs")
+            return None
 
     def _per_phase_block(self, now: datetime, options: gate.Options) -> dict[str, Any] | None:
         try:

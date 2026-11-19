@@ -61,6 +61,7 @@
         "L3": 0.16
       },
       "charging_kw": null
-    }
+    },
+    "plan_costs": null
   }
 }
