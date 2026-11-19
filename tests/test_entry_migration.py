@@ -34,7 +34,7 @@ async def test_a_site_of_minor_version_1_gets_its_own_webhook_id_once(hass: Home
         hass, entry_id="mig_charger", charge_control="switch.mig_charger", current_limit=None,
         webhook_id="charger-secret", title="Garage",
     )
-    site = make_site_entry(hass, entry_id="mig_site", charger_entry_ids=["mig_charger"])
+    site = make_site_entry(hass, entry_id="mig_site", charger_entry_ids=["mig_charger"], legacy=True)
     price = MockConfigEntry(domain=DOMAIN, entry_id="mig_price", data={CONF_ENTRY_TYPE: ENTRY_TYPE_PRICE})
     price.add_to_hass(hass)
     assert site.minor_version == 1 and CONF_WEBHOOK_ID not in site.data
@@ -61,15 +61,15 @@ async def test_a_site_of_minor_version_1_gets_its_own_webhook_id_once(hass: Home
 
 
 async def test_two_sites_get_two_ids(hass: HomeAssistant) -> None:
-    first = make_site_entry(hass, entry_id="mig_one", charger_entry_ids=[])
-    second = make_site_entry(hass, entry_id="mig_two", charger_entry_ids=[])
+    first = make_site_entry(hass, entry_id="mig_one", charger_entry_ids=[], legacy=True)
+    second = make_site_entry(hass, entry_id="mig_two", charger_entry_ids=[], legacy=True)
     assert await async_migrate_entry(hass, first) and await async_migrate_entry(hass, second)
     assert first.data[CONF_WEBHOOK_ID] != second.data[CONF_WEBHOOK_ID]
 
 
 async def test_a_site_that_already_has_an_id_keeps_it(hass: HomeAssistant) -> None:
     """Upgraded, downgraded to a release that knows minor 1, and upgraded again: the id the phone holds stays."""
-    site = make_site_entry(hass, entry_id="mig_kept", charger_entry_ids=[], extra_data={CONF_WEBHOOK_ID: "kept"})
+    site = make_site_entry(hass, entry_id="mig_kept", charger_entry_ids=[], extra_data={CONF_WEBHOOK_ID: "kept"}, legacy=True)
     assert await async_migrate_entry(hass, site)
     assert site.data[CONF_WEBHOOK_ID] == "kept" and site.minor_version == 2
 
@@ -89,7 +89,7 @@ async def test_a_release_that_knows_minor_1_loads_a_migrated_entry(hass: HomeAss
     rule, with the handler's minor lowered and the hook taken away)."""
     import custom_components.spotnav as integration
 
-    site = make_site_entry(hass, entry_id="mig_down", charger_entry_ids=[])
+    site = make_site_entry(hass, entry_id="mig_down", charger_entry_ids=[], legacy=True)
     assert await async_migrate_entry(hass, site)
     data = dict(site.data)
     monkeypatch.setattr(SpotNavChargingConfigFlow, "MINOR_VERSION", 1)

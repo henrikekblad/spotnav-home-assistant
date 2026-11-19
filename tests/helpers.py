@@ -6,6 +6,7 @@ shared device/entity fixtures for tests that need a specific device shape.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from datetime import timedelta
 from typing import Any
 
@@ -307,6 +308,7 @@ def make_site_entry(
     solar_forecast_entries: list[str] | None = None,
     title: str = "Site",
     extra_data: dict | None = None,
+    legacy: bool = False,
 ) -> MockConfigEntry:
     """A site config entry, direct measurement mode by default with `sensor.<entry_id>_l1..l3`.
 
@@ -350,10 +352,16 @@ def make_site_entry(
     if solar_forecast_entries is not None:
         # Only written when named; otherwise no forecast sources are configured.
         data[CONF_SOLAR_FORECAST_ENTRIES] = solar_forecast_entries
+    if not legacy:
+        # Every site holds its own webhook id since SpotNav 3.0 (config entry minor version 2); a stable one per entry,
+        # which names nothing about it. `legacy` builds a site as a release before 3.0 stored it (minor 1, no id).
+        data[CONF_WEBHOOK_ID] = "site-" + hashlib.sha256(entry_id.encode()).hexdigest()[:40]
     if extra_data:
         # Keys a test sets directly (sign options, optional sources): stored exactly as given.
         data.update(extra_data)
-    entry = MockConfigEntry(domain=DOMAIN, entry_id=entry_id, title=title, data=data)
+    entry = MockConfigEntry(
+        domain=DOMAIN, entry_id=entry_id, title=title, data=data, version=1, minor_version=1 if legacy else 2
+    )
     entry.add_to_hass(hass)
     return entry
 

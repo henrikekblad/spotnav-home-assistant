@@ -781,5 +781,16 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "update_heat_zones_not_permitted.json",
             "update_heat_not_permitted.json",
             "update_heat_success.json",
+            # The home's webhook and get_site_access (`tests/test_site_entry_webhook.py`).
+            "get_site.json",
+            "get_site_no_charger.json",
+            "get_site_access_no_site.json",
+            "get_site_access_rate_limited.json",
+            "get_site_access_success.json",
+            "site_webhook_charger_not_in_site.json",
+            "site_webhook_charger_required.json",
+            "site_webhook_get_site_settings_view.json",
+            "site_webhook_price_not_permitted.json",
+            "site_webhook_update_site_settings.json",
         ]
     )
