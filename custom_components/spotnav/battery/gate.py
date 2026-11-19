@@ -23,7 +23,8 @@ The site's options (`Options`, kept in the site entry's data beside its other se
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
   import limit acts under Remote EMS. Until then, and whenever that limit reads more than keeps the worst phase
   under the fuse (`import_limit_max_kw`: the plant limits the **total** import, not each phase), a grid
-  charge is capped so that it, the chargers' last currents and the house's peak keep every phase under the fuse
+  charge is capped so that it, the chargers' last currents (the shell adds a hot-water boost SpotNav or the button
+  started and a heat raise held, `BatteryControl._heat_standing_a`) and the house's peak keep every phase under the fuse
   while Home Assistant is down (`grid_charge_cap_kw`; Sigenergy has no dead-man: a command stays until something
   writes it). The house's peak is each phase's own, learned from the site's meter (`site/phase_peaks.py`, the days
   before it from the recorder's history), once a week of it is kept, with a further margin that falls to

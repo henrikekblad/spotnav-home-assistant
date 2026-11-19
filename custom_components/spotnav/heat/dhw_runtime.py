@@ -883,6 +883,21 @@ class HotWater:
         entry = self._pulse_entry(route, now)
         return None if entry is None else entry.source
 
+    def standing_boost_kw(self, now: datetime | None = None) -> float:
+        """The boost SpotNav or the button started that may run now (kW, its learned power; 0 for none): a write
+        under way, a read-back boost not ended (`Ledger.owner`) or a pulse run (`pulse_owner`). The battery's
+        HA-down cap takes it off each phase: it stands if Home Assistant stops. A household's own boost is in the
+        learned house peak."""
+        now = dt_util.utcnow() if now is None else now
+        route = self.route()
+        if route is None:
+            return 0.0
+        if self._pending is not None and not self._pending.done():
+            return self.boost_kw
+        if route.kind == "pulse":
+            return self.boost_kw if self.pulse_owner(now) is not None else 0.0
+        return self.boost_kw if self.ledger.owner(route.entity_id, now) in (SOURCE_PLAN, SOURCE_BUTTON) else 0.0
+
     def _backstop(self, now: datetime, config: HeatConfig) -> None:
         """A boost not verified to end by itself that SpotNav or the button started and that still reads on once
         its run should be over (`run_len` and `BACKSTOP`): one stop write, so the pump is never left forcing hot

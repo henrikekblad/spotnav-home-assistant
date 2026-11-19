@@ -162,6 +162,9 @@ START_RETRY_MAX_S: Final = 600.0
 #: How long after a hand-back the plant's changes still count as SpotNav's own (s): the outside-control watch
 #: (`acting`) must not take a sensor that shows the hand-back late for someone else's change.
 ACTING_GRACE_S: Final = 300.0
+#: What a heat raise held drives the compressor above anything the learned house peak saw (kW, one phase): taken
+#: off each phase's HA-down cap while the raise stands (`_heat_standing_a`).
+HEAT_RAISE_KW: Final = 1.0
 #: The longest test action (min).
 TRIAL_MAX_MIN: Final = 120
 #: Looks in a row that may fail while SpotNav holds the plant before it hands back on the fewest reads.
@@ -993,7 +996,7 @@ class BatteryControl:
         spec = None if control is None else control.phase_control
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
+            cars_a=self._cars_allowed_a() + self._heat_standing_a(), house_peak_kw=self._house_peak_kw(now),
             house_phase_peaks_a=self._phase_peaks(now) or None,
             # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
             silence_fallback_s=None if spec is None else spec.silence_fallback_s,
@@ -1614,7 +1617,7 @@ class BatteryControl:
         import_limit_kw = self._import_limit_kw(control) if guards else None
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
+            cars_a=self._cars_allowed_a() + self._heat_standing_a(), house_peak_kw=self._house_peak_kw(now),
             plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
         )
@@ -1873,6 +1876,28 @@ class BatteryControl:
             self._look_failed("cars_allowed")
             return math.inf
         return total
+
+    def _heat_standing_a(self) -> float:
+        """What SpotNav itself adds to the house and leaves standing if Home Assistant stops (A, on each phase): a
+        hot-water boost SpotNav or the button started that may run (`HotWater.standing_boost_kw`, its learned power,
+        all on one phase as its worst case) and a raise held (`HEAT_RAISE_KW`). The learned peak holds them only
+        as far as the window saw them; after some weeks of live days they are counted twice, the safe side.
+        Infinite (no grid charge) when it cannot be read."""
+        try:
+            kw = 0.0
+            shadow = getattr(self.site, "heat_shadow", None)
+            hot_water = None if shadow is None else getattr(shadow, "hot_water", None)
+            if hot_water is not None:
+                kw += hot_water.standing_boost_kw()
+            heat = getattr(self.site, "heat_control", None)
+            if heat is not None and heat.raised:
+                kw += HEAT_RAISE_KW
+        except Exception:  # noqa: BLE001 - unknown: no grid charge on the HA-down rule
+            self._look_failed("heat_standing")
+            return math.inf
+        if kw <= 0:
+            return 0.0
+        return kw * 1000.0 / phase_volts(stored_voltage_between_phases_v(self.site.config))
 
     def _plant_phases(self, control: BrandControl | None) -> int:
         """The phases the plant spreads a grid charge over: its Output Type when it shows one, else the brand's."""
