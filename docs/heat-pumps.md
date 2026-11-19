@@ -150,8 +150,11 @@ again after checking the wiring.
   after a restart.
 * Never at **−15 °C or colder** outdoors.
 * **Released at once** when a counted room (its offset counted) falls below the comfort band, when the plan or the
-  outdoor reading is missing or old (and nothing starts again until they have been good for 10 minutes), or when SG
-  Ready's second contact is on by someone else.
+  outdoor reading is missing or old (and nothing starts again until they have been good for 10 minutes), when SG
+  Ready's second contact is on by someone else, or, on the relay and SG Ready paths, when a hot-water boost is on
+  (the hot-water entity in the settings, or the pump's own boost such as NIBE's temporary lux): a block can stop hot
+  water too, so a boost you started is never cut off and no lowering starts while it runs. A curve offset does not
+  touch hot water and goes on beside it.
 * At most 6 switchings a day (both SG Ready contacts together).
 * On the relay path pre-heating stays planning only: one relay can lower the curve, not raise it. SG Ready with both
   contacts can raise as well (below).

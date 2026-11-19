@@ -336,6 +336,32 @@ def move_waits(moves: list[tuple[datetime, int]], direction: int, now: datetime)
     return False
 
 
+#: A hot-water boost entity's states that are no boost (a select's "off", one that does not read).
+_NO_BOOST: Final = frozenset({"", "off", "unknown", "unavailable", "none"})
+
+
+def blocks_hot_water(config: HeatConfig) -> bool:
+    """Whether the settings' path lowers by blocking the compressor (a relay, SG Ready, the SG Ready API), which may
+    stop a hot-water run too; a curve offset does not touch hot water."""
+    return config.control_path in (PATH_RELAY, PATH_SG_READY, PATH_SG_READY_API)
+
+
+def boost_on(entity_id: str, state: Any) -> bool:
+    """Whether a hot-water boost entity says a boost runs: a switch on, a select at anything but off (NIBE's
+    temporary lux: 3 h, 6 h, 12 h, one time), a number above 0 (an hours timer); a button never does."""
+    if not isinstance(state, str) or state.strip().lower() in _NO_BOOST:
+        return False
+    domain = entity_id.split(".", 1)[0]
+    if domain in ("switch", "input_boolean"):
+        return state == "on"
+    if domain in ("select", "input_select"):
+        return True
+    if domain in ("number", "input_number"):
+        value = number_of(state)
+        return value is not None and value > 0.0
+    return False
+
+
 def detected_paths(pump: Any) -> list[dict[str, Any]]:
     """The control paths a pump's own entities offer (`facts.HeatPumpFacts`), the one that both lowers and blocks
     first: `[{path, control_entity, control_entity_b}]`. An entity still disabled in its integration counts (the
@@ -388,6 +414,8 @@ __all__ = [
     "Depth",
     "Snapshot",
     "activation_switch",
+    "blocks_hot_water",
+    "boost_on",
     "contact_key",
     "depth_of",
     "detected_paths",

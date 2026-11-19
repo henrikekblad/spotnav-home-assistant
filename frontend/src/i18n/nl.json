@@ -1483,6 +1483,7 @@
   "heat.control.room_cold": "Stuurt: een kamer zit onder de band, geen verlaging.",
   "heat.control.stale": "Stuurt: wacht op verse waarden, geen verlaging.",
   "heat.control.sg_ready_b": "Stuurt: het tweede SG Ready-contact staat aan, geen verlaging.",
+  "heat.control.hot_water": "Stuurt: extra warm water staat aan, geen verlaging.",
   "heat.control.waiting": "Wacht.",
   "heat.control.wait.automation": "Wacht: zet de automatisering '{name}' uit zodat SpotNav de verwarming kan sturen.",
   "heat.control.wait.other_controller": "Wacht: een andere verwarmingssturing stuurt de warmtepomp.",

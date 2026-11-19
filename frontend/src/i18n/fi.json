@@ -1483,6 +1483,7 @@
   "heat.control.room_cold": "Ohjaa: huone on alueen alapuolella, ei laskua.",
   "heat.control.stale": "Ohjaa: odottaa tuoreita lukemia, ei laskua.",
   "heat.control.sg_ready_b": "Ohjaa: SG Readyn toinen kosketin on päällä, ei laskua.",
+  "heat.control.hot_water": "Ohjaa: lisälämmin vesi on päällä, ei laskua.",
   "heat.control.waiting": "Odottaa.",
   "heat.control.wait.automation": "Odottaa: poista automaatio '{name}' käytöstä, jotta SpotNav voi ohjata lämmitystä.",
   "heat.control.wait.other_controller": "Odottaa: toinen lämmönohjaus ohjaa lämpöpumppua.",

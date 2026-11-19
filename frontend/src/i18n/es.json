@@ -1483,6 +1483,7 @@
   "heat.control.room_cold": "Controla: una habitación está por debajo de la banda, sin bajar.",
   "heat.control.stale": "Controla: espera lecturas recientes, sin bajar.",
   "heat.control.sg_ready_b": "Controla: el segundo contacto SG Ready está activo, sin bajar.",
+  "heat.control.hot_water": "Controla: agua caliente extra activada, sin bajar.",
   "heat.control.waiting": "Esperando.",
   "heat.control.wait.automation": "Esperando: desactiva la automatización '{name}' para que SpotNav pueda controlar la calefacción.",
   "heat.control.wait.other_controller": "Esperando: otro control de calefacción gobierna la bomba de calor.",

@@ -1483,6 +1483,7 @@
   "heat.control.room_cold": "Controlling: a room is below the band, no lowering.",
   "heat.control.stale": "Controlling: waiting for fresh readings, no lowering.",
   "heat.control.sg_ready_b": "Controlling: SG Ready's second contact is on, no lowering.",
+  "heat.control.hot_water": "Controlling: extra hot water is on, no lowering.",
   "heat.control.waiting": "Waiting.",
   "heat.control.wait.automation": "Waiting: turn off the automation '{name}' so SpotNav can control the heating.",
   "heat.control.wait.other_controller": "Waiting: another heat controller steers the heat pump.",

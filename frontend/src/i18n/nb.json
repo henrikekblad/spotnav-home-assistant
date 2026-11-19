@@ -1483,6 +1483,7 @@
   "heat.control.room_cold": "Styrer: et rom ligger under båndet, ingen senking.",
   "heat.control.stale": "Styrer: venter på ferske verdier, ingen senking.",
   "heat.control.sg_ready_b": "Styrer: SG Readys andre kontakt er på, ingen senking.",
+  "heat.control.hot_water": "Styrer: ekstra varmtvann er på, ingen senking.",
   "heat.control.waiting": "Venter.",
   "heat.control.wait.automation": "Venter: slå av automasjonen '{name}' så SpotNav kan styre varmen.",
   "heat.control.wait.other_controller": "Venter: en annen varmestyring styrer varmepumpen.",

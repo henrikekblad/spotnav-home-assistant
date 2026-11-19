@@ -17,7 +17,8 @@ planned lowered run: `planned_run_end`):
   when the plan stops lowering once `MIN_LOWER` has passed.
 * A safety reason ends a lowering at once, also before `MIN_LOWER`, and starts none: outdoors at or below
   `NO_LOWER_AT_C` (`too_cold`), a counted room below the comfort band (`room_cold`), data that is not good
-  (`stale`: no fresh plan, no outdoor reading), SG Ready's second contact on (`sg_ready_b`). After data that was not
+  (`stale`: no fresh plan, no outdoor reading), SG Ready's second contact on (`sg_ready_b`), a hot-water boost
+  someone started on a path that blocks the compressor (`hot_water`: a block may stop hot water too). After data that was not
   good, a lowering starts only once it has been good for `GOOD_FOR` (`settling`).
 * Pre-heat is planning only on the relay path: one contact can lower, not raise.
 
@@ -80,6 +81,8 @@ SAFETY_ROOM_COLD: Final = "room_cold"
 SAFETY_STALE: Final = "stale"
 SAFETY_SG_READY_B: Final = "sg_ready_b"
 SAFETY_SETTLING: Final = "settling"
+#: A hot-water boost someone started is on, on a path that lowers by blocking the compressor: never cut off.
+SAFETY_HOT_WATER: Final = "hot_water"
 
 BASELINE: Final = timedelta(minutes=5)
 EFFECT_GRACE: Final = timedelta(minutes=20)

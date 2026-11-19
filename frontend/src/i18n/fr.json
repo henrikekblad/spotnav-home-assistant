@@ -1483,6 +1483,7 @@
   "heat.control.room_cold": "Pilote : une pièce est sous la plage, pas d'abaissement.",
   "heat.control.stale": "Pilote : attend des valeurs récentes, pas d'abaissement.",
   "heat.control.sg_ready_b": "Pilote : le second contact SG Ready est actif, pas d'abaissement.",
+  "heat.control.hot_water": "Pilote : eau chaude supplémentaire en cours, pas d'abaissement.",
   "heat.control.waiting": "En attente.",
   "heat.control.wait.automation": "En attente : désactivez l'automatisation '{name}' pour que SpotNav puisse piloter le chauffage.",
   "heat.control.wait.other_controller": "En attente : un autre pilotage du chauffage commande la pompe à chaleur.",

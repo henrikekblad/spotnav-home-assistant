@@ -1483,6 +1483,7 @@
   "heat.control.room_cold": "Steuert: ein Raum liegt unter dem Band, keine Absenkung.",
   "heat.control.stale": "Steuert: wartet auf frische Werte, keine Absenkung.",
   "heat.control.sg_ready_b": "Steuert: der zweite SG-Ready-Kontakt ist an, keine Absenkung.",
+  "heat.control.hot_water": "Steuert: Extra-Warmwasser läuft, keine Absenkung.",
   "heat.control.waiting": "Wartet.",
   "heat.control.wait.automation": "Wartet: schalte die Automatisierung '{name}' aus, damit SpotNav die Heizung steuern kann.",
   "heat.control.wait.other_controller": "Wartet: eine andere Heizungssteuerung steuert die Wärmepumpe.",

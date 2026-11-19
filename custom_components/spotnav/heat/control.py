@@ -49,7 +49,8 @@ SpotNav did not make), never raises:
    the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`; a sensor that
    has not reported for `runtime.STALE_AFTER` does not read), outdoors at or below -15 °C (the lowest of the chosen
    sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)
-   below the band, SG Ready's second contact on or unreadable.
+   below the band, SG Ready's second contact on or unreadable, a hot-water boost on where the path blocks the
+   compressor (`paths.blocks_hot_water`: a block may stop hot water too, and a boost someone started is never cut off).
 
 7. **SG Ready's raise** (contact B, where SG Ready has both contacts): after the lowering's look,
    `relay_control.decide_raise` on the plan's raise hours (the cheap hour before a lowered run, the warm-up before the
@@ -108,6 +109,7 @@ from .relay_control import (
     BASELINE,
     PHASE_WAIT,
     RAISE_ASSUMED_STATE,
+    SAFETY_HOT_WATER,
     SAFETY_ROOM_COLD,
     SAFETY_SETTLING,
     SAFETY_SG_READY_B,
@@ -1094,6 +1096,9 @@ class HeatControl:
             return SAFETY_STALE
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
+        if paths.blocks_hot_water(config) and self._boost_on(config):
+            # A block may stop hot water too: a boost someone started is never cut off, and no block starts on it.
+            return SAFETY_HOT_WATER
         b = raise_entity(config)
         if b is not None:
             # B closed by SpotNav's own raise is no safety reason: the interlock opens it before A closes.
@@ -1103,6 +1108,20 @@ class HeatControl:
         if now - self._good_since < GOOD_FOR:
             return SAFETY_SETTLING
         return None
+
+    def _boost_on(self, config: HeatConfig) -> bool:
+        """Whether a hot-water boost runs: the settings' hot-water entity, or the pump's own boost (its adapter's
+        `hot_water_boost` entities), reads on (`paths.boost_on`)."""
+        from .detect import read_heat_pumps  # noqa: PLC0415 - read only when it matters
+
+        entities = [config.hot_water_entity] if config.hot_water_entity else []
+        for pump in read_heat_pumps(self.hass):
+            entities.extend(item.entity_id for item in pump.capabilities if item.kind == "hot_water_boost")
+        for entity_id in entities:
+            state = self.hass.states.get(entity_id)
+            if state is not None and paths.boost_on(entity_id, state.state):
+                return True
+        return False
 
     async def async_sample(self, now: datetime) -> Sample:
         """The check's readings now: the meter's power and what the pump does by it, the calculated supply."""

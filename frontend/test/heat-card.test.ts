@@ -799,6 +799,13 @@ describe("the control paths through the pump's own settings", () => {
     expect(value.control!.offset_home).toBeNull();
   });
 
+  it("says a hot-water boost keeps the block away", () => {
+    const value = answer("controlled.json");
+    const running: HeatAnswer = { ...value, control: { ...value.control!, state: "running", lowered: false, raised: false, reason: "hot_water" } };
+    expect(controlLine("sv", running)).toBe("Styr: extra varmvatten är på, ingen sänkning.");
+    expect(controlLine("en", running)).toBe("Controlling: extra hot water is on, no lowering.");
+  });
+
   it("words the waits for the pump's own setting, not for a relay", () => {
     const value = answer("sg_api_pump.json");
     const waiting = (reason: string, state = "waiting"): HeatAnswer => ({ ...value, control: { ...value.control!, enabled: true, state, reason } });

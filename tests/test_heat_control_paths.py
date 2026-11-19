@@ -412,6 +412,40 @@ async def test_openings_of_the_mode_that_keep_failing_turn_the_switch_off(hass: 
     assert pump.value(MODE) == "1.0" and not control.held and pump.written(API) == ["on", "off"]
 
 
+def test_what_reads_as_a_hot_water_boost() -> None:
+    assert paths.boost_on("switch.lux", "on") and not paths.boost_on("switch.lux", "off")
+    assert paths.boost_on("select.temporary_lux_48132", "3 hours") and not paths.boost_on("select.temporary_lux_48132", "off")
+    assert paths.boost_on("number.extra_hot_water_1006", "2") and not paths.boost_on("number.extra_hot_water_1006", "0")
+    assert not paths.boost_on("number.x", "unknown") and not paths.boost_on("button.boost", "2026-11-18T10:00:00+00:00")
+
+
+async def test_a_hot_water_boost_someone_started_is_never_cut_off_by_a_block(hass: HomeAssistant, freezer) -> None:
+    hass.states.async_set("switch.varmvatten_lux", "off")
+    _site_, control, pump, now = await _running(
+        hass, freezer, {**_sg_api(hass), "hot_water_entity": "switch.varmvatten_lux"}, {0: "lower", 1: "lower"}
+    )
+    hass.states.async_set("switch.varmvatten_lux", "on")
+    await _look(control, now)
+    # No block starts on it.
+    assert pump.calls == [] and control.safety == "hot_water" and control.status()["reason"] == "hot_water"
+    hass.states.async_set("switch.varmvatten_lux", "off")
+    await _look(control, now + 15 * MIN)
+    assert pump.calls == [(API, "on"), (MODE, 0.0)] and control.held
+    # Started during the block: the block ends at once, so the boost runs.
+    hass.states.async_set("switch.varmvatten_lux", "on")
+    await _look(control, now + 20 * MIN)
+    assert pump.written(MODE) == [0.0, 1.0] and not control.held
+
+
+async def test_a_curve_offset_goes_on_beside_a_hot_water_boost(hass: HomeAssistant, freezer) -> None:
+    hass.states.async_set("switch.varmvatten_lux", "on")
+    _site_, control, pump, now = await _running(
+        hass, freezer, {**_nibe(hass, "-1"), "hot_water_entity": "switch.varmvatten_lux"}, {0: "lower", 1: "lower"}
+    )
+    await _look(control, now)
+    assert pump.calls == [(NIBE, -3.0)] and control.safety is None
+
+
 # ------------------------------------------------------------------------------------------------ CTC's volatile offset
 
 

@@ -1023,7 +1023,7 @@ const CONTROL_WAITS = [
   "automation", "other_controller", "pump_price_control", "relay_unavailable", "relay_closed", "no_relay", "no_signal",
   "check_failed", "foreign_change", "no_read_back",
 ];
-const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b"];
+const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b", "hot_water"];
 /** The waits whose words name the relay: the other paths have their own (`heat.control.path.wait.*`). */
 const PATH_WAITS = ["relay_unavailable", "relay_closed", "no_relay", "no_signal", "check_failed", "foreign_change", "no_read_back"];
 const STEERED_PATHS = ["relay", "sg_ready", "sg_ready_api", "offset"];
