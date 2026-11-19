@@ -223,6 +223,7 @@ async def test_the_zones_periods_are_read_in_one_go_and_a_broken_period_is_left_
     import homeassistant.components.recorder as recorder
     import homeassistant.components.recorder.statistics as stats
 
+    hass.config.components.add("recorder")
     monkeypatch.setattr(recorder, "get_instance", lambda _hass: _Recorder())
     monkeypatch.setattr(stats, "statistics_during_period", statistics)
     read = await async_zone_periods(hass, sources, HOUR, HOUR + timedelta(hours=2), cap_kw=13.8)

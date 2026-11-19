@@ -507,6 +507,8 @@ async def _history(hass: HomeAssistant, entity_ids: tuple[str, ...], start: date
     """The sensors' readings in `[start, end]` with the one in force at `start`, from the recorder (its executor)."""
     if not entity_ids:
         return {}
+    if "recorder" not in hass.config.components:
+        return {}
     from homeassistant.components.recorder import get_instance, history  # noqa: PLC0415 - only when loaded
 
     def read() -> dict[str, list[Any]]:
@@ -582,6 +584,8 @@ async def async_temperature_means(
 ) -> dict[str, dict[datetime, float]]:
     """The temperature sensors' statistics means (°C) per period start in `[start, end)`, in the recorder's executor."""
     if not entity_ids or end <= start:
+        return {}
+    if "recorder" not in hass.config.components:
         return {}
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
     from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415

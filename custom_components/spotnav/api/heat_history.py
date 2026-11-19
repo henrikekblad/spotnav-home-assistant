@@ -154,6 +154,8 @@ async def _read_means(
     executor."""
     if not temperature_ids and not power_ids or end <= start:
         return {}
+    if "recorder" not in hass.config.components:
+        return {}
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
     from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
 

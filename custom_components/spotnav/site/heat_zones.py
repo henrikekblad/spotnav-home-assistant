@@ -297,6 +297,8 @@ async def async_zone_periods(
     period) is a broken statistic, not energy: it is left out (`site/house_loads.py`, hours that cannot be)."""
     if not zones.sources or end <= start:
         return {}
+    if "recorder" not in hass.config.components:
+        return {}
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
     from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
 
