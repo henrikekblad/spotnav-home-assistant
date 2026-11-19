@@ -415,9 +415,11 @@ async def test_a_write_that_never_answers_is_given_up_on_as_not_taken_and_the_lo
         async with asyncio.timeout(5):
             await control.async_look(now + timedelta(seconds=10 * index))
     assert not control._lock.locked()
-    assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit:service_failed")
+    # Its own reason: the block clears by itself (`executor.CALL_TIMEOUT_BLOCK_S`), no reset needed.
+    assert control.executor.state.blocked == "call_timeout:discharge_limit"
     failed = [row for row in control.log if row["kind"] == "service_failed"]
     assert failed and "no answer" in failed[0]["error"]
+    assert any(row["kind"] == "not_taken" and row["why"] == "call_timeout" for row in control.log)
     assert len(plant.calls) == 1
     assert control._failed_looks == 0, "a write given up on is a write not taken, not a failed look"
 
@@ -1577,7 +1579,7 @@ async def test_back_to_shadow_only_hands_the_plant_back_and_a_write_that_is_no_r
     # The last guard: a write that is not a hand-back is refused when the caller's gate does not allow it.
     op = control_module.Op("discharge_limit", "number", DISCHARGE, 0.0)
     plant.calls.clear()
-    assert await control._async_write(op, control.executor, allowed=False) is False
+    assert await control._async_write(op, control.executor, allowed=False) == "refused"
     assert plant.calls == [] and control.log[-1]["kind"] == "refused"
 
 

@@ -47,6 +47,8 @@ class FakeBattery:
     read_only: bool = False
     #: Roles whose service call raises.
     raises: set[str] = field(default_factory=set)
+    #: Roles whose service call is given up on (no answer within the shell's timeout); the write does not land.
+    times_out: set[str] = field(default_factory=set)
     #: Roles the integration does not have.
     missing: set[str] = field(default_factory=set)
     #: Roles whose writes the integration drops silently (no error, no change).
@@ -82,7 +84,7 @@ class FakeBattery:
     def apply(self, op: Op) -> bool:
         """Make one write; `False` when the call raised."""
         self.writes.append(op)
-        if op.role in self.raises:
+        if op.role in self.raises or op.role in self.times_out:
             return False
         if self.read_only or op.role in self.drops:
             return True
@@ -182,6 +184,7 @@ def run(
         result = executor.step(inputs(battery, now, action, rate_kw, failed=failed, **overrides))
         results.append(result)
         failed = tuple(op.role for op in result.ops if not battery.apply(op))
+        overrides["timed_out"] = tuple(role for role in failed if role in battery.times_out)
         state = executor.state
         battery.action = state.action if state.phase == "active" else None
         battery.rate_kw = state.rate_kw

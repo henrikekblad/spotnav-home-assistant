@@ -292,6 +292,9 @@ MANAGEMENT_GRACE_S: Final = 60.0
 #: A block for a real management change (the app, the plant's own optimiser) clears by itself this long after the
 #: hand-back (s): the start rule still refuses a plant that is not free, so nothing is fought.
 MANAGEMENT_BLOCK_S: Final = 6 * 3600.0
+#: A block for a write whose service call the shell gave up on (`call_timeout`: a slow integration, no finding about
+#: the plant) clears by itself this long after the hand-back (s).
+CALL_TIMEOUT_BLOCK_S: Final = 900.0
 #: Writes a day outside restores and watchdog renewals (flash wear is unknown for most brands). A renewal is bounded
 #: by its timer: `WATCHDOG_RENEW_S` per role (SolarEdge renews two roles: 192 a day).
 DAILY_WRITE_CAP: Final = 96
@@ -313,12 +316,13 @@ _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
 #: Hand-back reasons that block the control until it is reset (the cap until the next day; `_SELF_CLEARING` after
 #: `MANAGEMENT_BLOCK_S`).
 _BLOCKING_PREFIXES: Final = (
-    "write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed", "not_obeyed",
+    "write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed", "not_obeyed", "call_timeout",
 )
 #: Blocks that clear by themselves `MANAGEMENT_BLOCK_S` after the hand-back: a management change, and an idle hold
 #: that charged (the plant may take it another day; a block until reset would stop control for good).
 _SELF_CLEARING: Final = (
     "management_changed", f"not_obeyed:{ACTION_HOLD}:charging", f"not_obeyed:{ACTION_GRID_CHARGE}:over",
+    "call_timeout",
 )
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
@@ -387,6 +391,8 @@ class ExecInputs:
     stopping: str | None = None
     #: Roles whose last write raised (the shell's service call failed).
     failed: tuple[str, ...] = ()
+    #: Those of `failed` whose service call was given up on (no answer in time): a slow integration, not a refusal.
+    timed_out: tuple[str, ...] = ()
     #: Writes the site's other control instance made today (battery and export limit share `DAILY_WRITE_CAP`).
     other_writes_today: int = 0
     #: SpotNav's other control instance on this plant runs it now (the battery control's Remote EMS): the modes it
@@ -1113,7 +1119,9 @@ class Executor:
         if (
             state.phase == "blocked" and (state.blocked or "").startswith(_SELF_CLEARING)
             and not state.holds_snapshot and state.released_at is not None
-            and (now - state.released_at).total_seconds() >= MANAGEMENT_BLOCK_S
+            and (now - state.released_at).total_seconds() >= (
+                CALL_TIMEOUT_BLOCK_S if (state.blocked or "").startswith("call_timeout") else MANAGEMENT_BLOCK_S
+            )
         ):
             self.state = replace(state, phase="idle", blocked=None, reason=None, given_up=())
             events.append(_event(now, "unblocked", state.blocked or ""))
@@ -1168,7 +1176,8 @@ class Executor:
                     self.ledger.release(entity_id)
                 self.state = replace(self.state, pending=None if self.state.pending == role_name else self.state.pending,
                                      in_flight=_without(self.state.in_flight, role_name))
-                events += self._not_taken(now, role_name, "service_failed")
+                why = "call_timeout" if role_name in inputs.timed_out else "service_failed"
+                events += self._not_taken(now, role_name, why)
         for role in self.control.roles:
             entity_id = self.state.entities.get(role.name)
             if entity_id is None or self.ledger.claim(entity_id) is None:
@@ -1410,7 +1419,10 @@ class Executor:
                 at = now + timedelta(seconds=RESTORE_RETRY_S[attempts - 1])
                 self.state = replace(state, retries=state.retries | {role: (attempts, at)})
         elif state.phase == "active":
-            events += self._begin_restore(now, f"write_not_taken:{role}:{why}")
+            # A call given up on is its own reason: its block clears by itself (`CALL_TIMEOUT_BLOCK_S`) and a
+            # verification counts it as the moment's (`gate.FAILING_ABORTS` does not name it).
+            reason = f"call_timeout:{role}" if why == "call_timeout" else f"write_not_taken:{role}:{why}"
+            events += self._begin_restore(now, reason)
         return events
 
     # --- leaving ---

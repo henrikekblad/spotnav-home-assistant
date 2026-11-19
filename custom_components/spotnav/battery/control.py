@@ -221,8 +221,8 @@ def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]
     return reads
 
 
-async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> bool:
-    """One write as a service call; `False` when it raised (the executor counts it as not taken)."""
+async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> str | None:
+    """One write as a service call; why it was not taken (`_failure`), `None` when it was."""
     role = executor.control.role(op.role)
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
@@ -232,14 +232,20 @@ async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_
         await _async_service(hass, domain, service, data)
     except Exception as err:  # noqa: BLE001 - any error (a Modbus library's too) is a write not taken
         _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, _error_text(err))
-        return False
-    return True
+        return _failure(err)
+    return None
 
 
 async def _async_service(hass: HomeAssistant, domain: str, service: str, data: dict[str, Any]) -> None:
     """One write's service call, given up on after `CALL_TIMEOUT_S` (`TimeoutError`, a write not taken)."""
     async with asyncio.timeout(CALL_TIMEOUT_S):
         await hass.services.async_call(domain, service, data, blocking=True)
+
+
+def _failure(err: Exception) -> str:
+    """Why a write's call was not taken: `call_timeout` when it was given up on (a slow integration, which the
+    executor and a verification take as the moment's), else `service_failed`."""
+    return "call_timeout" if isinstance(err, TimeoutError) else "service_failed"
 
 
 def _error_text(err: Exception) -> str:
@@ -268,6 +274,7 @@ async def async_hand_back_stored(
         executor = Executor(control, Ledger.from_dict(part.get("ledger")), Monitor.from_dict(part.get("monitor")), state)
         executor.restart(dt_util.now())
         failed: tuple[str, ...] = ()
+        timed_out: tuple[str, ...] = ()
         while executor.state.phase == "restoring" and loop.time() < deadline:
             if key == "battery":
                 facts = read_battery_facts(hass, config, None)
@@ -277,10 +284,11 @@ async def async_hand_back_stored(
                 reads = {**stored_reads(hass, executor), **reads}
             result = executor.step(ExecInputs(
                 now=dt_util.now(), facts=facts, reads=reads, measurement_ok=False, stopping="removed", failed=failed,
+                timed_out=timed_out,
             ))
-            failed = tuple([
-                op.role for op in result.ops if op.restore and not await _async_call(hass, op, executor, WATCHDOG_S)
-            ])
+            whys = {op.role: await _async_call(hass, op, executor, WATCHDOG_S) for op in result.ops if op.restore}
+            failed = tuple(role for role, why in whys.items() if why is not None)
+            timed_out = tuple(role for role, why in whys.items() if why == "call_timeout")
             if executor.state.phase != "restoring":
                 break
             await asyncio.sleep(0 if result.ops else HAND_BACK_LOOK_S)
@@ -338,6 +346,7 @@ class BatteryControl:
         #: The export limit's executor (`commands.EXPORT_CONTROLS`), `None` when the site has none.
         self.export_executor: Executor | None = None
         self._export_failed: tuple[str, ...] = ()
+        self._export_timed_out: tuple[str, ...] = ()
         self.facts = BatteryFacts()
         self.log: deque[dict[str, Any]] = deque(maxlen=LOG_MAX)
         #: The verification reports by firmware key (`gate.merge_report`).
@@ -364,6 +373,7 @@ class BatteryControl:
         self._would_do: tuple[Any, ...] | None = None
         self._restricted: str | None = None
         self._failed: tuple[str, ...] = ()
+        self._timed_out: tuple[str, ...] = ()
         self._stored: dict[str, Any] = {}
         #: What was stored last (`_async_save` writes only a change).
         self._saved: dict[str, Any] | None = None
@@ -1101,11 +1111,7 @@ class BatteryControl:
         self._log(result.events)
         if result.persist_first:
             await self._async_save()
-        failed: list[str] = []
-        for op in result.ops:
-            if not await self._async_write(op, executor, allowed=allowed):
-                failed.append(op.role)
-        self._export_failed = tuple(failed)
+        self._export_failed, self._export_timed_out = await self._async_writes(result, executor, allowed=allowed)
         await self._async_save()
         return result
 
@@ -1981,6 +1987,7 @@ class BatteryControl:
             volts_between_phases=stored_voltage_between_phases_v(self.site.config),
             stopping=stopping,
             failed=self._export_failed,
+            timed_out=self._export_timed_out,
             other_writes_today=0 if battery is None or battery.state.day != now.date().isoformat()
             else battery.state.writes_today,
             grid_import_kw=self._grid_import_kw(),
@@ -2083,6 +2090,7 @@ class BatteryControl:
             house_deficit_kw=house_deficit_kw,
             stopping=stopping,
             failed=self._failed,
+            timed_out=self._timed_out,
             other_writes_today=self._export_writes_today(now),
             takeover=options.ai_takeover_ack,
         )
@@ -2138,7 +2146,7 @@ class BatteryControl:
             takeover = False
         return ExecInputs(
             now=now, facts=facts, reads=reads, battery_age_s=age_s, measurement_ok=False, stopping=stopping,
-            failed=self._failed, takeover=takeover,
+            failed=self._failed, timed_out=self._timed_out, takeover=takeover,
         )
 
     def _export_hand_back_inputs(self, now: datetime, executor: Executor, stopping: str | None) -> ExecInputs:
@@ -2154,7 +2162,7 @@ class BatteryControl:
             facts, reads = BatteryFacts(brand=executor.state.brand), {}
         reads = {**stored_reads(self.hass, executor), **reads}
         return ExecInputs(now=now, facts=facts, reads=reads, measurement_ok=False, stopping=stopping,
-                          failed=self._export_failed)
+                          failed=self._export_failed, timed_out=self._export_timed_out)
 
     def _export_writes_today(self, now: datetime) -> int:
         executor = self.export_executor
@@ -2185,7 +2193,7 @@ class BatteryControl:
     async def _async_step(self, executor: Executor, inputs: ExecInputs, *, allowed: bool) -> StepResult:
         inputs, allowed = self._gated(inputs, allowed)
         result = executor.step(inputs)
-        self._failed = ()
+        self._failed = self._timed_out = ()
         self._log(result.events)
         if any(event["kind"] == "enter" for event in result.events) and taken_over(inputs.facts, executor.control):
             # Taken over from the plant's own optimiser: turning control off reminds the person to set it again.
@@ -2194,11 +2202,7 @@ class BatteryControl:
         if result.persist_first:
             # The snapshot is on disk before the first write, so a crash in between still restores it.
             await self._async_save()
-        failed: list[str] = []
-        for op in result.ops:
-            if not await self._async_write(op, executor, allowed=allowed):
-                failed.append(op.role)
-        self._failed = tuple(failed)
+        self._failed, self._timed_out = await self._async_writes(result, executor, allowed=allowed)
         await self._async_save()
         return result
 
@@ -2228,13 +2232,29 @@ class BatteryControl:
                 return
             await asyncio.sleep(0 if result.ops else HAND_BACK_LOOK_S)
 
-    async def _async_write(self, op: Op, executor: Executor, *, allowed: bool) -> bool:
-        """One write; `False` when it was refused or the service call raised (the executor counts it as not taken).
-        A write that is not a restore is refused unless the caller's gate allows it: a hand-back never is."""
+    async def _async_writes(
+        self, result: StepResult, executor: Executor, *, allowed: bool
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """A step's writes in order: the roles not taken (the next look's `failed`), and those of them whose call was
+        given up on (its `timed_out`)."""
+        failed: list[str] = []
+        timed_out: list[str] = []
+        for op in result.ops:
+            why = await self._async_write(op, executor, allowed=allowed)
+            if why is not None:
+                failed.append(op.role)
+                if why == "call_timeout":
+                    timed_out.append(op.role)
+        return tuple(failed), tuple(timed_out)
+
+    async def _async_write(self, op: Op, executor: Executor, *, allowed: bool) -> str | None:
+        """One write; why it was not taken (refused, or the service call raised or was given up on: the executor
+        counts it as not taken), `None` when it was. A write that is not a restore is refused unless the caller's
+        gate allows it: a hand-back never is."""
         if not op.restore and not allowed:
             _LOGGER.warning("SpotNav battery control: a write of %s was refused by the gate", op.role)
             self._log([{"at": dt_util.now().isoformat(), "kind": "refused", "reason": op.role}])
-            return False
+            return "refused"
         role = executor.control.role(op.role)
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
@@ -2248,8 +2268,8 @@ class BatteryControl:
             _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, _error_text(err))
             self._log([{"at": dt_util.now().isoformat(), "kind": "service_failed", "reason": op.role,
                         "error": _error_text(err)}])
-            return False
-        return True
+            return _failure(err)
+        return None
 
     # ---- storage and what it shows
 
