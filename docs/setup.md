@@ -426,9 +426,17 @@ The card is described in [The card](card.md).
 3. Check that the codes match and choose **Approve**. **Deny** refuses the request.
 
 A pairing request expires after five minutes; start again on the phone. No Home Assistant password
-or access token is ever stored on the phone. Approving hands over the chargers of this instance,
-each with its own private webhook secret. Treat webhook ids as secrets. See
-[Apps and API](api.md).
+or access token is ever stored on the phone. Approving hands over the homes and chargers of this instance,
+each with its own private webhook secret, so a home without a charger can use the app too. A charger added to the
+home later shows up in the app by itself. Treat webhook ids as secrets. See
+[Connect the app](api.md#connect-the-app).
+
+**Disconnect all phones.** In a card's **Settings**, **Support**, an administrator can disconnect every paired
+phone at once: every phone then has to be paired again. Charging and heating go on as before.
+
+**A charger without a home.** When the installation has no home (site) yet, the charger's **Settings** offer
+**Make a home of this**. It asks for the main fuse and, once you confirm, makes a home around the charger, so the
+house, battery and heat pages can follow. The meter for load balancing is chosen later in the home's settings.
 
 ## Change these choices later
 

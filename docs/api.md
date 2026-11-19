@@ -4,7 +4,7 @@ For developers of apps and Home Assistant clients, and anyone who wants to see w
 
 Everything the card and the SpotNav app do goes through two transports that share one set of
 contracts: authenticated **WebSocket commands** (for the card and other Home Assistant clients)
-and a per-charger **webhook** (for clients that cannot open a WebSocket, such as the app). All
+and a per-home and per-charger **webhook** (for clients that cannot open a WebSocket, such as the app). All
 contracts are version 1; each response carries `api_version`. A request for another version is
 refused with `spotnav_unsupported_api_version`.
 
@@ -23,29 +23,131 @@ fixtures under `tests/fixtures/` are the shapes, written by the backend and read
 electricity price. The house and the heat documents share it (the heat documents' `major`/`minor` of the 3.0
 previews are gone). Sums are in the minor unit unless a key says otherwise.
 
-## Pairing
+## Connect the app
 
-The app never holds a Home Assistant password or token. It pairs through one fixed, public
-webhook, `POST /api/webhook/spotnav_pairing`, that grants nothing by itself:
+The app never holds a Home Assistant password or token. It holds webhook ids: long random secrets, one per home
+(site) and one per charger, each an internet-reachable door to that home or charger only.
+
+**Since 3.0 the home's webhook is the app's single door.** It answers the home's own actions and every charger
+action for any charger of that home, named by `charger_id`; a charger added to the home later shows up in
+`get_site` with no new pairing. The charger webhooks stay as they were, for apps before 3.0.
+
+How a phone gets the ids:
+
+* **Pairing** (below): an administrator approves the phone in Home Assistant; the phone gets every home and every
+  charger of the instance.
+* **`get_site_access`** on a charger's webhook: a phone paired before 3.0, which holds charger webhooks only, asks
+  each once and moves to the home's webhook. The charger's webhook already answers its home's house, heat and
+  battery actions, so handing over the home's door grants nothing new. A charger only ever yields its own home.
+
+How to take them back: **Disconnect all phones** (the cards' Settings, Support; administrators only) gives every
+charger and home a new webhook id. Every old id stops answering at once, every phone's notifications are cleared and
+every phone has to be paired again. Charging and heating go on; nothing is reloaded. Removing a charger or home entry
+also ends its id.
+
+Both kinds of webhook id are `secrets.token_urlsafe(32)` (256 bits), registered with Home Assistant's webhook
+component (POST only, reachable from outside like any webhook), never logged, never in an entity, redacted in
+diagnostics. An unknown id gets Home Assistant's empty HTTP 200, which the app reads as "pair again". A home's id is
+added to every existing home by config entry minor version 2 on the first start of 3.0; a downgrade to 2.5 keeps
+the entry loadable (Home Assistant refuses only a higher major version) and the home's door is then closed until
+3.0 runs again.
+
+### Pairing
+
+One fixed, public webhook, `POST /api/webhook/spotnav_pairing`, that grants nothing by itself:
 
 1. `{"version": 1, "action": "request", "code": "123456", "device": "Pixel"}` records a pending
    request and shows an approval item in Home Assistant with the device name and the code.
    The code must be six digits; the answer is `{"ok": true, "request_id": "..."}`.
 2. The person compares the code and chooses **Approve** or **Deny** in Home Assistant.
 3. `{"version": 1, "action": "poll", "request_id": "..."}` answers `pending`, `denied`,
-   `expired` or `approved`. `approved` carries `url` (the instance address) and `chargers`,
-   a list of `{id, name, webhook}`. It is delivered once.
+   `expired` or `approved`. `approved` carries `url` (the instance address), `chargers` and, since 3.0, `sites`:
 
-Requests live in memory for five minutes, at most eight at a time, and codes and ids are never logged.
-The chargers' webhook ids are the credentials handed over; each one is scoped to its own charger.
-The approved handshake is the only way a webhook id leaves Home Assistant: no entity carries one in
-its state or attributes. (The *App connection* and *App pairing* sensors of releases up to 1.17.0 did;
-they are removed on upgrade, together with their recorded history.) Treat webhook ids as secrets.
+```json
+{"status": "approved", "url": "https://ha.example.com",
+ "chargers": [{"id": "<charger entry id>", "name": "Garage", "webhook": "<secret>", "site_id": "<site entry id>"}],
+ "sites": [{"id": "<site entry id>", "name": "Home", "webhook": "<secret>",
+            "chargers": [{"id": "<charger entry id>", "name": "Garage"}]}]}
+```
+
+`sites` lists every home, with and without chargers, in creation order; each home's `chargers` are its chargers in
+the home's order, addressed on its webhook by their `id`. A charger's `site_id` names its home and is absent for a
+charger in none. An app before 3.0 reads `chargers` by `id`, `name` and `webhook` only and passes both additions
+by. Example: `tests/fixtures/pairing/approved_v1_sites.json`.
+
+Requests live in memory for five minutes, at most five at a time, one per address per ten seconds, and codes and ids
+are never logged. An approval can be fetched again for a minute; Disconnect all phones drops every pending request
+and approval. The approved handshake is the only way a charger's webhook id leaves Home Assistant, and it and
+`get_site_access` the only ways a home's does: no entity carries one in its state or attributes. (The *App
+connection* and *App pairing* sensors of releases up to 1.17.0 did; they are removed on upgrade, together with their
+recorded history.) Treat webhook ids as secrets.
+
+### The home's webhook
+
+`POST /api/webhook/<home webhook id>` with `{"version": 1, "action": ..., ...}`, the same envelope, HTTP statuses
+and refusals as the charger webhook below. It answers:
+
+* **The home's own actions**, bound to this home (a `site_id` in the body is never read), for a home with or without
+  a charger: `get_site` (below); the actions of [the site over the webhook](#the-site-over-the-webhook) (`get_house`,
+  `get_house_now`, `get_house_history`, `get_house_loads`, `get_heat`, `get_heat_history`,
+  `get_site_settings_view`, `battery_control`, `update_heat`, `heat_boost`), each answering exactly what a charger's
+  webhook of the same home answers; `update_site_settings` (as on a charger's webhook, for the home itself; load
+  balancing is `spotnav_not_permitted_over_webhook`, 403); `get_power_month` and `suggest_import_target` (as on a
+  charger's webhook).
+* **Every charger action** of the charger webhook (`dashboard`, `start`, `stop`, `settings`, `sessions`,
+  `push_register`, …) with `"charger_id": "<charger entry id>"` in the body: the same answer the charger's own
+  webhook gives. A `charger_id` beside a home action is checked the same way.
+
+| Refusal | HTTP | When |
+| ------- | ---- | ---- |
+| `spotnav_charger_required` | 400 | A charger action without `charger_id`. |
+| `spotnav_unknown_charger` | 404 | `charger_id` names no SpotNav charger. |
+| `spotnav_charger_not_in_site` | 403 | `charger_id` names a charger of another home, of none, or a home. |
+| `spotnav_charger_unloaded` | 503 | The charger is this home's, but not loaded. |
+| `spotnav_not_permitted_over_webhook` | 403 | `choose_price_source`, `answer_price_duplicate` or `update_grid_tariff` without `charger_id`: the price and the grid tariff are read-only on the home's door in the beta (`get_site_settings_view` says `writable: false` on `price_settings.price_source` and `.grid_tariff`). The control opt-ins, as on a charger's webhook. |
+
+Each refusal is `{"ok": false, "error": <code>, "action": <action>}`. There is no `push_register` for the home
+itself: notifications are a charger's (with a `charger_id`). Examples: `tests/fixtures/webhook/site_webhook_*.json`.
+
+**`get_site`** (`api_version` optional, `1`), read on open and now and then, not on the live loop:
+
+```json
+{"ok": true, "action": "get_site", "api_version": 1, "site_id": "<site entry id>", "name": "Home", "loaded": true,
+ "capabilities": {"get_house": true, "get_heat": true, "battery_control": true, "get_site_settings_view": true,
+                  "update_site_settings": true, "get_power_month": true, "suggest_import_target": true},
+ "chargers": [{"id": "<charger entry id>", "name": "Garage"}]}
+```
+
+The capabilities are true while the home is loaded (the flag list is open: a later key is added, never renamed).
+Examples: `get_site.json`, `get_site_no_charger.json`.
+
+**`get_site_access`** on a **charger's** webhook (`api_version` optional, `1`) answers the charger's home in the
+shape of one element of the pairing's `sites`: `{"ok": true, "action": "get_site_access", "api_version": 1,
+"site": {"id", "name", "webhook", "chargers": [{"id", "name"}]}}`. A charger in no home, or whose home is not
+loaded, is HTTP 400 `spotnav_no_site` (keep using the charger's webhook); more than six asks per charger a minute is
+HTTP 429 `spotnav_rate_limited` with `retry_after_s` and `Retry-After`. Over the home's webhook with a `charger_id`
+it answers the same. Examples: `get_site_access_success.json`, `get_site_access_no_site.json`,
+`get_site_access_rate_limited.json`.
+
+### For administrators
+
+* `spotnav/disconnect_phones {"api_version": 1}`: Disconnect all phones (above). Answers
+  `{"api_version": 1, "ok", "error", "chargers", "sites"}`, the counts of webhook ids replaced; anyone but an
+  administrator gets `ok: false`, `error: "spotnav_not_admin"` and nothing changes.
+* `spotnav/make_home {"api_version": 1, "charger_id", "main_fuse_a"}`: "Make a home of this", the card's one action
+  in the Settings of a charger whose installation has no home. The card says what it does and asks for the main fuse
+  first; the home is made around that charger through the config flow with the fuse given, the default safety margin
+  and voltage, load balancing off, the charger's own phases (else three), no meter yet (chosen later in the home's
+  settings) and Home Assistant's own name for the home. Answers `{"api_version": 1, "ok", "error", "site_id"}`;
+  refusals: `spotnav_not_admin`, `spotnav_unknown_charger`, `spotnav_site_not_charger`, `spotnav_home_exists` (the
+  installation has a home: add the charger to it there) and `spotnav_invalid_value` (a fuse that is not a number
+  above 1 A and at most 1000 A).
 
 ## Charger webhook
 
 `POST /api/webhook/<webhook id>` with a JSON body `{"version": 1, "action": ..., ...}`. The
-webhook is bound to its own charger. A `charger_id` in the body is ignored. Success is
+webhook is bound to its own charger. A `charger_id` in the body is ignored. (Every action here is also answered by
+[the home's webhook](#the-homes-webhook) with a `charger_id`.) Success is
 `{"ok": true, "action": ...}`; errors are `{"ok": false, "error": ...}` with HTTP 400 (bad
 request), 409 (refused by the automatic-execution boundary, with a stable code), 429 (per-vehicle rate
 limit, or the plan preview's, with `Retry-After`) or 502 (the charger command failed). A `start` or an immediate `stop` the
