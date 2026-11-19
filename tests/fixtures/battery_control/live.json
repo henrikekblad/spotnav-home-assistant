@@ -7,7 +7,6 @@
    "battery_control_enabled": false,
    "battery_control_shadow_only": true,
    "battery_control_ai_takeover_ack": false,
-   "battery_control_allow_sell": false,
    "battery_control_import_limit_acts": false,
    "battery_mode": "balanced"
   },

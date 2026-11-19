@@ -124,7 +124,7 @@ async def test_the_battery_mode_is_written_validated_and_the_legacy_sell_option_
     assert gate.CONF_MODE not in site.data
     result = await ask({"battery_mode": "max_profit"}, 4)
     assert result["ok"] and result["status"]["options"]["battery_mode"] == "max_profit"
-    assert result["status"]["options"]["battery_control_allow_sell"] is True, "derived, for one release"
+    assert "battery_control_allow_sell" not in result["status"]["options"], "the legacy option is not sent"
     assert site.data[gate.CONF_MODE] == "max_profit" and site_controller_for(hass, site.entry_id) is controller
     result = await ask({"battery_mode": "self_consumption"}, 5)
     assert result["status"]["options"]["battery_mode"] == "self_consumption"

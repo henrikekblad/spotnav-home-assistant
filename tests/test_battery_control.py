@@ -1678,12 +1678,25 @@ async def test_a_stored_allow_sell_becomes_the_max_profit_mode_once_and_a_chosen
     control = BatteryControl(hass, controller, plan_source=_hold)
     await control.async_start()
     assert site.data[gate.CONF_MODE] == "max_profit" and control.options().mode == "max_profit"
+    assert gate.CONF_ALLOW_SELL not in site.data, "the legacy option is removed once migrated"
     await control.async_update_options({gate.CONF_MODE: "balanced"})
     again = BatteryControl(hass, controller, plan_source=_hold)
     await again.async_start()
     assert site.data[gate.CONF_MODE] == "balanced", "migrated once; the legacy option is never read again"
     assert again.options().mode == "balanced" and not again.options().allow_sell
     assert "battery_mode" in control.status()["options"]
+    assert gate.CONF_ALLOW_SELL not in control.status()["options"]
+
+
+async def test_a_stored_allow_sell_with_a_chosen_mode_is_removed_and_the_mode_kept(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
+    _options(hass, site, allow_sell=True)
+    _mode(hass, site, "balanced")
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    assert site.data[gate.CONF_MODE] == "balanced" and gate.CONF_ALLOW_SELL not in site.data
 
 
 async def test_only_max_profit_lets_control_run_the_selling_action(

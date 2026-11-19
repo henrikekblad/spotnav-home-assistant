@@ -8,7 +8,7 @@ actions it allows, the routine's progress, what the person still has to do (`nee
 `battery_control_enabled` (the switch), `battery_control_ai_takeover_ack` (the explanation was read: Sigenergy's AI mode taken over, or a plant's own
 strategy that cannot be read overridden),
 `battery_mode` (`self_consumption`, `balanced` or `max_profit`: the only one that may sell; the status's `options`
-carry it, and the legacy `battery_control_allow_sell`, derived from it, for one release); the owner's `battery_control_shadow_only` and `battery_control_import_limit_acts` too.
+carry it); the owner's `battery_control_shadow_only` and `battery_control_import_limit_acts` too.
 Written to the site entry without a reload; turning off hands the plant back before the answer. Refusals are stable
 codes in `error`: `spotnav_no_site`, `spotnav_not_admin`, `spotnav_invalid_value`.
 

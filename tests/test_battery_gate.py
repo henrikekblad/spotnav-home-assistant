@@ -401,7 +401,7 @@ def test_the_mode_decides_selling_and_a_stored_legacy_sell_option_is_only_the_mi
     assert g.legacy_mode({g.CONF_ALLOW_SELL: True}) == "max_profit"
     assert g.legacy_mode({g.CONF_ALLOW_SELL: False}) is None and g.legacy_mode({}) is None
     assert g.legacy_mode({g.CONF_ALLOW_SELL: True, g.CONF_MODE: "balanced"}) is None, "a chosen mode wins"
-    assert g.Options.from_config({g.CONF_ALLOW_SELL: True}).mode == "max_profit"
+    assert g.Options.from_config({g.CONF_ALLOW_SELL: True}).mode == "balanced", "migrated at load, not read here"
     assert g.Options.from_config({g.CONF_ALLOW_SELL: True, g.CONF_MODE: "balanced"}).mode == "balanced"
     assert g.valid_change("battery_mode", "max_profit") and not g.valid_change("battery_mode", "x")
     assert not g.valid_change(g.CONF_ALLOW_SELL, True)

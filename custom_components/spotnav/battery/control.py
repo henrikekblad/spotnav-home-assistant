@@ -598,12 +598,16 @@ class BatteryControl:
         )
 
     def _migrate_mode(self) -> None:
-        """Once: a site that allowed selling and never chose a mode gets Max profit stored (the legacy option is read
-        for this one release only)."""
+        """Once, at load: a site that allowed selling (`battery_control_allow_sell`, an early 3.0 build's option) and
+        never chose a mode gets Max profit stored, and the legacy option is removed from the entry."""
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
-        mode = None if entry is None else gate.legacy_mode(entry.data)
-        if entry is not None and mode is not None:
-            self.hass.config_entries.async_update_entry(entry, data={**entry.data, gate.CONF_MODE: mode})
+        if entry is None or gate.CONF_ALLOW_SELL not in entry.data:
+            return
+        data = {key: value for key, value in entry.data.items() if key != gate.CONF_ALLOW_SELL}
+        mode = gate.legacy_mode(entry.data)
+        if mode is not None:
+            data[gate.CONF_MODE] = mode
+        self.hass.config_entries.async_update_entry(entry, data=data)
 
     def _integration_version(self, domain: str | None) -> str | None:
         if not domain:
