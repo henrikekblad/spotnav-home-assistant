@@ -68,7 +68,9 @@ cap), discharges to the house and is handed back; the heating's control path is 
 Each step is read back and shown as it runs. Any step that fails, or a write that does not read back, ends the test
 and hands everything back at once. It takes at most ten minutes, costs at most a few kronor of grid energy, and is
 only ever started by you: at most once a day per site, and once more after a SpotNav update or a new plant firmware.
-It needs the battery's (or the heating's) control switched on and its checklist done. The result goes into the debug
+It needs the battery's (or the heating's) control switched on and its checklist done. A part that is not ready is
+skipped: the result is then **partial** (or **skipped** when nothing ran), and such a test does not use up the day, so
+you can run it again once the part is ready. The result goes into the debug
 info (`hardware_test`); with the beta box ticked it is sent by itself, otherwise the dialog offers **Send**.
 
 ### What the debug bundle holds

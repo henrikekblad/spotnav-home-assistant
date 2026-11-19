@@ -828,6 +828,8 @@
   "test.send": "Envoyer",
   "test.running": "Le test est en cours…",
   "test.result.passed": "Le test a réussi.",
+  "test.result.partial": "Tout n'a pas pu être testé : ce qui a tourné a réussi. Le test pourra être relancé dès que le reste sera prêt.",
+  "test.result.skipped": "Rien n'a pu être testé pour l'instant. Le test pourra être relancé dès que tout sera prêt.",
   "test.result.failed": "Le test a trouvé un problème.",
   "test.sent": "Envoyé. Référence : {ref}",
   "test.error": "Le test n'a pas pu démarrer.",

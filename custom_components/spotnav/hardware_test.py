@@ -18,7 +18,8 @@ The parts run side by side (separate devices; the battery's modes alone take abo
 executor's own re-arm after each hand-back). Any step that does not pass (a mode ignored or partial, a write not
 taken or not read back) ends the test: that part hands back by its own engine and the other part is ended at once,
 handing back what it engaged. The deadline does the same. The result
-(`passed` or `failed`, the steps, each engine's own report) is kept per site, shown by the card step by step,
+(`passed` when every part ran, `partial` when a part was skipped, `skipped` when none ran, `failed` when a step
+failed; a partial or skipped test leaves the day's slot, `NOT_COUNTED`), the steps, each engine's own report) is kept per site, shown by the card step by step,
 carried in the debug bundle as `hardware_test` (the relay flags `result` `failed`) and, while beta is on, sent by
 itself as a `beta_test` report; otherwise the card offers "Skicka" (`async_send_test`).
 
@@ -156,9 +157,23 @@ def heat_steps(test: Mapping[str, Any] | None, running: bool) -> list[dict[str, 
     return steps
 
 
+def _part_skipped(step: Mapping[str, Any]) -> bool:
+    """A whole part not run (its one `skipped` row, named after the part), not a step skipped inside a part."""
+    return step.get("status") == "skipped" and step.get("step") is not None and step.get("step") == step.get("part")
+
+
 def result_of(steps: list[dict[str, Any]]) -> str:
-    """`failed` when any step failed (the relay flags these), else `passed`."""
-    return "failed" if any(step["status"] == "failed" for step in steps) else "passed"
+    """`failed` when any step failed (the relay flags these); else `skipped` when no part ran, `partial` when a part
+    was skipped, `passed` when every part ran."""
+    if any(step.get("status") == "failed" for step in steps):
+        return "failed"
+    if not steps or all(_part_skipped(step) for step in steps):
+        return "skipped"
+    return "partial" if any(_part_skipped(step) for step in steps) else "passed"
+
+
+#: Results that leave the day's slot (a part did not run: it may be run again once ready).
+NOT_COUNTED: Final = frozenset({"partial", "skipped"})
 
 
 class HardwareTest:
@@ -185,6 +200,9 @@ class HardwareTest:
         raw = raw if isinstance(raw, dict) else {}
         self.last = raw.get("last") if isinstance(raw.get("last"), dict) else None
         self.record = raw.get("record") if isinstance(raw.get("record"), dict) else None
+        if self.record is not None and isinstance(self.record.get("steps"), list):
+            # A test kept from before the partial/skipped results is judged again by its steps.
+            self.record["result"] = result_of([step for step in self.record["steps"] if isinstance(step, dict)])
         self.sent_ref = raw.get("sent_ref") if isinstance(raw.get("sent_ref"), str) else None
 
     def _save(self) -> None:
@@ -226,13 +244,21 @@ class HardwareTest:
         """Why a test cannot start now (`running`, `once_a_day`, `nothing_to_test`), and when it may."""
         if self.running:
             return "running", None
-        blocked, next_at = allowance(self.last, now, version, self._firmware_key())
+        blocked, next_at = allowance(self._counted_last(), now, version, self._firmware_key())
         if blocked is not None:
             return blocked, next_at
         parts = self._parts(now)
         if not parts or all(why is not None for why in parts.values()):
             return "nothing_to_test", None
         return None, None
+
+    def _counted_last(self) -> dict[str, Any] | None:
+        """The last test's start, unless that test (finished) had a part not run: it leaves the day's slot."""
+        record = self.record
+        if (self.last is not None and record is not None and record.get("result") in NOT_COUNTED
+                and record.get("started_at") == self.last.get("at")):
+            return None
+        return self.last
 
     @property
     def running(self) -> bool:

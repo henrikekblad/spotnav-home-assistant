@@ -828,6 +828,8 @@
   "test.send": "Send",
   "test.running": "Testen kører…",
   "test.result.passed": "Testen gik godt.",
+  "test.result.partial": "Ikke alt kunne testes: det, der blev kørt, gik godt. Testen kan køres igen, når resten er klar.",
+  "test.result.skipped": "Intet kunne testes nu. Testen kan køres igen, når det er klar.",
   "test.result.failed": "Testen fandt et problem.",
   "test.sent": "Sendt. Reference: {ref}",
   "test.error": "Testen kunne ikke starte.",

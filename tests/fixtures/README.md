@@ -53,4 +53,5 @@ names keep their placeholders (`{make} {nickname_or_model} …`). `tests/car_cat
 
 `beta/*` are `spotnav/beta`'s answers, written by `tests/test_beta.py` against fake engines: `off_idle.json` beta
 off with a test that may run, `on_running.json` a beta period with a hardware test running, `on_done_failed.json` a
-finished test whose charge step failed (sent by itself, `sent_ref`), `ended.json` the period ended by itself (no site).
+finished test whose charge step failed (sent by itself, `sent_ref`), `on_done_partial.json` a finished test whose battery was skipped (outside control) while the heat
+path passed (the day's slot left), `ended.json` the period ended by itself (no site).

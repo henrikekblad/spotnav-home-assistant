@@ -828,6 +828,8 @@
   "test.send": "Senden",
   "test.running": "Der Test läuft…",
   "test.result.passed": "Der Test war erfolgreich.",
+  "test.result.partial": "Nicht alles konnte getestet werden: Was lief, war erfolgreich. Der Test kann erneut laufen, sobald der Rest bereit ist.",
+  "test.result.skipped": "Jetzt konnte nichts getestet werden. Der Test kann erneut laufen, sobald alles bereit ist.",
   "test.result.failed": "Der Test hat ein Problem gefunden.",
   "test.sent": "Gesendet. Referenz: {ref}",
   "test.error": "Der Test konnte nicht starten.",

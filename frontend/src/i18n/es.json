@@ -828,6 +828,8 @@
   "test.send": "Enviar",
   "test.running": "La prueba está en curso…",
   "test.result.passed": "La prueba salió bien.",
+  "test.result.partial": "No se pudo probar todo: lo que se ejecutó salió bien. La prueba puede repetirse cuando lo demás esté listo.",
+  "test.result.skipped": "No se pudo probar nada ahora. La prueba puede repetirse cuando todo esté listo.",
   "test.result.failed": "La prueba encontró un problema.",
   "test.sent": "Enviado. Referencia: {ref}",
   "test.error": "No se pudo iniciar la prueba.",

@@ -828,6 +828,8 @@
   "test.send": "Verzenden",
   "test.running": "De test loopt…",
   "test.result.passed": "De test is geslaagd.",
+  "test.result.partial": "Niet alles kon worden getest: wat liep, is geslaagd. De test kan opnieuw draaien zodra de rest klaar is.",
+  "test.result.skipped": "Er kon nu niets worden getest. De test kan opnieuw draaien zodra alles klaar is.",
   "test.result.failed": "De test heeft een probleem gevonden.",
   "test.sent": "Verzonden. Referentie: {ref}",
   "test.error": "De test kon niet starten.",

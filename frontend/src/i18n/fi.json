@@ -828,6 +828,8 @@
   "test.send": "Lähetä",
   "test.running": "Testi on käynnissä…",
   "test.result.passed": "Testi meni läpi.",
+  "test.result.partial": "Kaikkea ei voitu testata: ajetut osat menivät läpi. Testin voi ajaa uudelleen, kun loput ovat valmiina.",
+  "test.result.skipped": "Mitään ei voitu testata nyt. Testin voi ajaa uudelleen, kun kaikki on valmiina.",
   "test.result.failed": "Testi löysi ongelman.",
   "test.sent": "Lähetetty. Viite: {ref}",
   "test.error": "Testiä ei voitu käynnistää.",

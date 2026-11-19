@@ -25,7 +25,7 @@ export type TestState = {
   nextAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  result: "passed" | "failed" | null;
+  result: "passed" | "partial" | "skipped" | "failed" | null;
   steps: TestStep[];
   sentRef: string | null;
 };
@@ -47,7 +47,7 @@ const BETA_KEYS = ["on", "started_at", "ends_at", "ended", "email"];
 const TEST_KEYS = ["state", "blocked", "next_at", "started_at", "finished_at", "result", "steps", "sent_ref"];
 const STEP_KEYS = ["part", "step", "status", "reason"];
 const TEST_STATES = ["idle", "running", "done"];
-const RESULTS = ["passed", "failed"];
+const RESULTS = ["passed", "partial", "skipped", "failed"];
 
 function record(value: unknown, keys: readonly string[]): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -161,6 +161,13 @@ const STEP_LABELS: Record<string, TranslationKey> = {
   "heat:engage": "test.step.heat.engage",
   "heat:release": "test.step.heat.release",
   "heat:heat": "test.step.heat",
+};
+
+const RESULT_LABELS: Record<NonNullable<TestState["result"]>, TranslationKey> = {
+  passed: "test.result.passed",
+  partial: "test.result.partial",
+  skipped: "test.result.skipped",
+  failed: "test.result.failed",
 };
 
 const STATUS_LABELS: Record<string, TranslationKey> = {
@@ -394,7 +401,7 @@ export function betaBox(input: BetaBoxInput): HTMLElement {
     if (running) {
       lines.push(say("test.running"));
     } else if (test.result !== null) {
-      lines.push(say(test.result === "failed" ? "test.result.failed" : "test.result.passed"));
+      lines.push(say(RESULT_LABELS[test.result]));
     }
     if (test.sentRef !== null) {
       lines.push(say("test.sent", { ref: test.sentRef }));

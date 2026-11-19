@@ -828,6 +828,8 @@
   "test.send": "Skicka",
   "test.running": "Testet pågår…",
   "test.result.passed": "Testet gick bra.",
+  "test.result.partial": "Allt kunde inte testas: det som kördes gick bra. Testet kan köras igen när resten är redo.",
+  "test.result.skipped": "Inget kunde testas nu. Testet kan köras igen när det är redo.",
   "test.result.failed": "Testet hittade ett problem.",
   "test.sent": "Skickat. Referens: {ref}",
   "test.error": "Testet kunde inte starta.",
