@@ -1,3 +1,10 @@
+---
+title: The battery plan
+description: How SpotNav plans a home battery in shadow, its three modes and the nightly review.
+order: 31
+section: House and battery
+---
+
 # The battery plan (shadow)
 
 SpotNav 3.0 plans your home battery for the next day or two and compares that plan with what the battery really does. **It
@@ -15,7 +22,8 @@ only watches.** Nothing in this page writes to a battery or an inverter: the pla
 | The "charging from the grid" signal, the chargers and load balancing | These act, as before, and never write to the battery |
 
 SpotNav's own battery control can run this plan on the battery, but it is off by default and still in testing: even
-switched on it only logs what it would do in this release ([Home batteries](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)).
+switched on it only logs what it would do, unless the installation is a [beta tester](beta-testing.md) and the brand's
+check has passed ([Home batteries](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)).
 
 ## What the plan needs
 
@@ -71,8 +79,11 @@ on price. Every mode keeps the battery's own lowest level.
   it cycles less, and it sells stored energy to the grid only when the price is clearly above what that energy cost to store.
 * **Max profit**: every action, with the true wear cost, including selling to the grid where that pays.
 
-There is no setting for the mode yet: **Balanced is the mode in force**. The other two are planned beside it on the same
-figures (a mode is skipped when the solve would take longer than 5 seconds), so you can see what each would have saved before any of them is ever used.
+Choose the mode under **Mode** in the settings' **Home battery** section; **Balanced** is the default. All three are
+planned side by side on the same figures (a mode is skipped when the solve would take longer than 5 seconds), so you can
+see what each would have saved. While SpotNav does not control the battery, the choice only moves which row is marked as
+chosen in the comparison. With [battery control](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)
+on, it decides what the battery does, and only **Max profit** sells from the battery to the grid.
 
 ### The wear cost
 

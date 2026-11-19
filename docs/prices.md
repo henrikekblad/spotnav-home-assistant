@@ -1,3 +1,10 @@
+---
+title: Prices
+description: Where the spot prices come from, what you pay on top, and how SpotNav uses them.
+order: 61
+section: Settings
+---
+
 # Prices
 
 Where SpotNav's prices come from, what is added to them, and how the integration uses them. The

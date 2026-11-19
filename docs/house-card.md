@@ -1,4 +1,11 @@
-# The house card (preview)
+---
+title: "The house card"
+description: "The whole house on one card: live flows, the energy history, earnings and the battery plan."
+order: 20
+section: House and battery
+---
+
+# The house card
 
 A second card in the same bundle as the charging card, about the whole house: its load, the sun and the home battery.
 Its header is the charging card's: the SpotNav mark, "House" and a muted status after it. Until battery control is on
@@ -10,6 +17,8 @@ optimiser runs it (Sigenergy's AI mode, for one) it says "· Own control". Once 
 measures, "· Charging from the sun", "· Discharging" or "· Idle". The mode is in the Now tab, under its picture.
 The card itself never writes to anything. The charging card stays about the car; the house card is where a home without a charger starts.
 
+![The house card's Now tab: the live flows between the sun, the grid, the battery, the house, the car and the heat](images/house-card-now.png)
+
 ## Add it
 
 Add a manual card to a dashboard:
@@ -20,7 +29,7 @@ site: <the site's entry id>
 ```
 
 Use `charger: <a charger's entry id>` instead and the card finds that charger's site (`site` wins if both are given).
-The card is also in the card picker as "SpotNav house (preview)", set to the first charger's site, else the first site.
+The card is also in the card picker as "SpotNav house", set to the first charger's site, else the first site.
 It reads one read-only answer from SpotNav every five minutes, and, while its Now tab is shown, the live flows every 30
 seconds.
 
@@ -43,10 +52,10 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
   electricity price, one row that adds one.
 * **The site**: main fuse, import target and the meters.
 * **Solar**: the solar forecast sources, as on the charging card.
-* **Home battery**, when SpotNav finds one: the battery control switch, what is missing, the check and allowing sales
+* **Home battery**, when SpotNav finds one: the mode, the battery control switch, what is missing and the check
   ([home batteries](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)).
 * **Heating**, always: one line "Nothing found" until a heat pump, a heat meter or a thermostat is found; tap it to add a
-  water heater on a relay. Otherwise the [heat settings](heat-pumps.md) in full: on the relay path the **Styr värmen**
+  water heater on a relay. Otherwise the [heat settings](heat-pumps.md) in full: on the relay path the **Control the heat**
   switch with its line ([SpotNav's own heat control](heat-pumps.md#spotnavs-own-heat-control-relay-off-by-default)),
   the sensors with each indoor sensor's offset, the control path, hot water, the zones and the cooler night.
 * **Support**: download the debug info.

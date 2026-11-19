@@ -1,3 +1,10 @@
+---
+title: "Which car is plugged in?"
+description: "How SpotNav tells several cars at one charger apart, and when it asks."
+order: 13
+section: Charging
+---
+
 # Which car is plugged in?
 
 When two or more cars share a charger, SpotNav has to know which one was plugged in. It plans from that car's

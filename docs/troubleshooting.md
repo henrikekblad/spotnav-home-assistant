@@ -1,3 +1,10 @@
+---
+title: Troubleshooting
+description: Diagnostics, the debug info for a bug report, and fixes for common problems.
+order: 80
+section: Help
+---
+
 # Diagnostics and troubleshooting
 
 For when something does not work as expected: how to get diagnostics and the debug info for a bug report, and fixes for the common problems.
@@ -34,7 +41,7 @@ the browser's user agent. With it go your message,
 the e-mail address if you gave one, the SpotNav and Home Assistant versions, and an anonymous id for the
 installation (a salted hash of Home Assistant's instance id, never the id itself), which lets the server limit how
 many reports one installation sends a day. Nothing is sent until you press **Send**; SpotNav never sends a report
-by itself, unless you ticked [Beta tester](#beta-testing). The report is kept for 30 days and read only by the developer, and the e-mail address is used only to
+by itself, unless you ticked [Beta tester](beta-testing.md). The report is kept for 30 days and read only by the developer, and the e-mail address is used only to
 answer you; see the [privacy policy](https://spotnav.sensnology.se/privacy).
 
 If sending fails (too many reports today, no connection, or the server is unavailable), the dialog says why.
@@ -42,36 +49,7 @@ Download the debug info instead and email it as above.
 
 ### Beta testing
 
-An administrator can make the installation a **beta tester**: **Settings, Support, Beta tester** (Betatestare),
-off by default. Its **Read more** says the same as this section.
-
-**What it unlocks.** Control that otherwise waits until SpotNav has learned your home (for example the hot-water
-gate's days of learning) may start at once; a home battery brand not yet tested on a plant leaves "shadow only" so
-its check can run (see [Home battery](home-battery.md)); and you can run the hardware test (below). Control a beta
-period started stays on after the period ends.
-
-**What it never skips.** The fuse limits (with the house's learned peak per phase, or a cautious default until it is
-learned), the daily write limits, the brand's own check that every write reads back, your acknowledgements (such as
-taking over Sigenergy's AI mode), turning on the control entities only with your confirm, the heating's safety rules,
-and a hot-water boost you started.
-
-**What is sent.** While the box is ticked, the same redacted file **Send debug info** sends (above), marked as a
-beta report, once a night at a time of its own for each installation, for **14 days**. Then the box unticks itself
-and Support says "The beta period has ended – nothing is sent any more"; there is no alert. Untick it at any time
-and nothing more is sent. A report that fails is skipped, not sent again later. You may give an e-mail address
-(optional): it is used only to tell you about a problem seen in your reports, or a fix for it. Beta reports and the
-address are kept for **90 days**, then deleted; see the [privacy policy](https://spotnav.sensnology.se/privacy).
-
-**The hardware test.** In the same dialog, **Run hardware test** (Kör hårdvarutest) tests the plant the way SpotNav
-controls it, then hands everything back: the home battery holds, takes a small charge from the grid (under the fuse
-cap), discharges to the house and is handed back; the heating's control path is engaged for a minute and released.
-Each step is read back and shown as it runs. Any step that fails, or a write that does not read back, ends the test
-and hands everything back at once. It takes at most ten minutes, costs at most a few kronor of grid energy, and is
-only ever started by you: at most once a day per site, and once more after a SpotNav update or a new plant firmware.
-It needs the battery's (or the heating's) control switched on and its checklist done. A part that is not ready is
-skipped: the result is then **partial** (or **skipped** when nothing ran), and such a test does not use up the day, so
-you can run it again once the part is ready. The result goes into the debug
-info (`hardware_test`); with the beta box ticked it is sent by itself, otherwise the dialog offers **Send**.
+The beta tester mode and the hardware test have their own page: [Beta testing](beta-testing.md).
 
 ### What the debug bundle holds
 

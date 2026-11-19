@@ -1,3 +1,10 @@
+---
+title: Forecasts
+description: The house load forecast, the solar forecast correction, SpotNav's own solar forecast and departures from a calendar.
+order: 51
+section: Solar and forecasts
+---
+
 # Forecasts, the calendar and the switched load
 
 What SpotNav 3.0 does today beside charging cars. Each part below says whether it **acts** or is only **shadow**

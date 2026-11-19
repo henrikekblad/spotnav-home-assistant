@@ -1,8 +1,15 @@
-# Set up SpotNav
+---
+title: Setup in detail
+description: Every setup dialog for chargers and sites, the manual path, special chargers, and what to do when detection finds nothing.
+order: 90
+section: Advanced
+---
 
-This page walks through the whole setup in Home Assistant, dialog by dialog. It assumes you
-installed SpotNav from **Settings → Marketplace** (Home Assistant 2026.11 and newer) or from HACS (older versions,
-then restart Home Assistant); see the [README](../README.md). SpotNav
+# Setup in detail
+
+This page walks through the whole setup in Home Assistant, dialog by dialog. For the short version, see
+[Get started](get-started.md). It assumes you installed SpotNav from **Settings → Marketplace** (Home Assistant
+2026.11 and newer) or from HACS (older versions, then restart Home Assistant). SpotNav
 itself needs no account; the prices come from a source you add in Home Assistant (below).
 
 There are four steps, and only the first is required:
@@ -35,6 +42,12 @@ SpotNav fills in only what Home Assistant already knows:
   a question. With no country, an unlisted country or a location far from every area, nothing is
   made: choose the area in the card, which makes it then. Great Britain is left empty too: choose
   your region in the card, where **Find my region** looks it up from your postcode (see below).
+- **Amps**: the charger's own maximum when it states one, otherwise 16, and never above the site's
+  main fuse minus its safety margin.
+
+The card says so: "Suggested from your location and charger – check
+Settings." Check the values in **Settings** and change any that are wrong. Nothing you have saved is ever overwritten, and a
+value you clear is not filled in again.
 
 ### Where the prices come from
 
@@ -72,12 +85,6 @@ there. SpotNav is not affiliated with Octopus Energy.
 **Not on Intelligent Octopus Go.** Octopus does not allow a third party to control the charging of a
 car on Intelligent Octopus Go; its customers must opt out of other apps' smart charging. Do not use
 SpotNav to control charging on that tariff. More in [supported price areas](supported.md#supported-price-areas).
-- **Amps**: the charger's own maximum when it states one, otherwise 16, and never above the site's
-  main fuse minus its safety margin.
-
-The card says so: "Suggested from your location and charger – check
-Settings." Check the values in **Settings** and change any that are wrong. Nothing you have saved is ever overwritten, and a
-value you clear is not filled in again.
 
 ## 1. Add a charger
 
@@ -417,6 +424,11 @@ charger: <charger config entry id>
 ```
 
 The card is described in [The card](card.md).
+
+The same bundle has two more cards, for a site: **SpotNav house** (`type: custom:spotnav-house-card`, see
+[The house card](house-card.md)) and **SpotNav heating** (`type: custom:spotnav-heat-card`, see
+[Heat pumps](heat-pumps.md#the-heat-card)). Each takes `site: <the site's entry id>`, or `charger:` to use that
+charger's site.
 
 ## 4. Pair the app (optional)
 

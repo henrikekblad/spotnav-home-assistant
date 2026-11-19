@@ -1,0 +1,67 @@
+---
+title: Beta testing
+description: The beta tester mode and the hardware test. What they unlock, what they never skip, and what is sent.
+order: 81
+section: Help
+---
+
+# Beta testing
+
+An administrator can make the installation a **beta tester**: **Settings → Support → Beta tester**. It is off by
+default. Its **Read more** says the same as this page.
+
+![Settings, Support: the Beta tester box with Read more, and Run hardware test](images/settings-beta.png)
+
+## What it unlocks
+
+- Control that otherwise waits until SpotNav has learned your home can start at once. An example is the hot-water
+  gate's week of shadow ([Hot water](hot-water.md)).
+- A home battery brand not yet tested on a real plant leaves "shadow only", so its check can run
+  ([Home batteries](home-battery.md)). Control still starts only after that check has passed.
+- Control that a beta period started stays on after the period ends.
+
+## What it never skips
+
+- The fuse limits, with the house's learned peak per phase, or a cautious default until that is learned.
+- The daily write limits.
+- The brand's own check that every write reads back.
+- Your acknowledgements, such as taking over Sigenergy's AI mode.
+- Turning on a brand's control entities only after your confirm.
+- The heating's safety rules.
+- A hot-water boost you started.
+
+## What is sent
+
+While the box is ticked, SpotNav sends the same redacted file that **Send debug info** sends
+([Troubleshooting](troubleshooting.md#send-debug-info)), marked as a beta report.
+
+- Once a night, at a time of its own for each installation, for **14 days**.
+- Then the box unticks itself and Support says "The beta period has ended – nothing is sent any more". There is no
+  alert.
+- Untick it at any time and nothing more is sent.
+- A report that fails is skipped, not sent again later.
+- You may give an e-mail address. It is optional and used only to tell you about a problem seen in your reports, or
+  a fix for it.
+- Beta reports and the address are kept for **90 days**, then deleted.
+
+See [Privacy](privacy.md) and the [privacy policy](https://spotnav.sensnology.se/privacy).
+
+## The hardware test
+
+In the same dialog, **Run hardware test** tests your plant the way SpotNav controls it, then hands everything back.
+Any administrator can run it, beta tester or not.
+
+- The home battery holds, takes a small charge from the grid (under the fuse cap), discharges to the house and is
+  handed back.
+- The heating's control path is engaged for a minute and released.
+- Each step is read back and shown as it runs.
+- Any step that fails, or a write that does not read back, ends the test and hands everything back at once.
+
+It takes at most ten minutes and costs at most a few kronor of grid energy. Only you start it: at most once a day
+per site, and once more after a SpotNav update or a new plant firmware.
+
+It needs the battery's (or the heating's) control switched on and its checklist done. A part that is not ready is
+skipped. The result is then **partial**, or **skipped** when nothing ran, and such a test does not use up the day.
+
+The result goes into the debug info (`hardware_test`). With the beta box ticked it is sent by itself. Otherwise the
+dialog offers **Send**.

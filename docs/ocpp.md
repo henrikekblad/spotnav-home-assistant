@@ -1,3 +1,10 @@
+---
+title: OCPP chargers
+description: How SpotNav drives a charger through the OCPP integration.
+order: 93
+section: Advanced
+---
+
 # OCPP chargers
 
 SpotNav works with chargers through the Home Assistant OCPP integration (0.12 and later), and

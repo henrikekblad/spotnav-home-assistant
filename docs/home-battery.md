@@ -1,3 +1,10 @@
+---
+title: Home batteries
+description: SpotNav's battery control (opt-in, in testing), the grid-charge signal for other planners, and export at negative prices.
+order: 30
+section: House and battery
+---
+
 # Home batteries
 
 For anyone with a home battery and a planner such as Predbat or EMHASS: how SpotNav signals a grid charge, why it does
@@ -31,7 +38,7 @@ whether the brand's recipe has been tested on a real plant: for a tested recipe 
 starts once it passed; no recipe is marked tested yet (Sigenergy will be once its on-site tests are rerun), so for
 every brand it only logs what it would do (the line under the switch says "Test: SpotNav controls nothing
 yet and only logs what it would do"), unless the installation is a
-[beta tester](troubleshooting.md#beta-testing), when the check runs for them too. Either way control runs only once
+[beta tester](beta-testing.md), when the check runs for them too. Either way control runs only once
 the brand's check passed, and every fuse rule below applies (beta or not). The switch is in the
 settings popover's **Home battery** section, shown when SpotNav finds a battery: from the house card's gear, the heat
 card's gear or the charging card's **Settings** (administrators only). The section also has:
@@ -42,8 +49,12 @@ card's gear or the charging card's **Settings** (administrators only). The secti
   takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy), each in plain words;
 * the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
   passed, failed or not judged yet) with what SpotNav may then do;
-* the reminder to turn AI mode on again after a takeover ended, and **Allow selling from the battery** (off by
-  default).
+* the reminder to turn AI mode on again after a takeover ended;
+* **Mode**: **Self-consumption**, **Balanced** (the default) or **Max profit**
+  ([the three modes](battery-plan.md#the-three-modes)). Only **Max profit** lets control sell from the battery to the
+  grid.
+
+![The Home battery section of the settings: the mode, Battery control, its checklist and the check's steps](images/settings-home-battery.png)
 
 **Sigenergy** (the Sigenergy Local Modbus integration) is the first brand. Before control can run:
 

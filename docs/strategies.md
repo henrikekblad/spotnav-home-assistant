@@ -1,3 +1,10 @@
+---
+title: "Charging strategies"
+description: "Cheapest, Solar and Hybrid: how SpotNav plans a charge with each."
+order: 11
+section: Charging
+---
+
 # Charging strategies
 
 For everyone who charges with SpotNav: what the cheapest, solar and hybrid strategies do and how to choose between them.
