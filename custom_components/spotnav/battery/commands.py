@@ -900,6 +900,9 @@ _VIC_GRID = Role(
     "grid_setpoint", "number", _key("system_ac_power_set_point", "number"), scale=1000.0, step=10.0, tolerance=1.0
 )
 _VIC_MODE = Role("ess_mode", "select", _key("system_ess_mode", "select"))
+#: The two Hub4 flags are written off for a charge per phase and never handed back: outside external control the GX
+#: sets them itself, by Victron's documentation; no plant has shown it yet, so the first field report checks it
+#: (`docs/home-battery.md`).
 _VIC_NO_CHARGE = Role("disable_charge", "switch", _key("vebus_hub4_disable_charge", "switch"), restored=False)
 _VIC_NO_FEED_IN = Role("disable_feed_in", "switch", _key("vebus_hub4_disable_feed_in", "switch"), restored=False)
 _VIC_EXTERNAL: Final = "external_control"  # Hub4Mode 3
