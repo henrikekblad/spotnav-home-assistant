@@ -1174,7 +1174,7 @@
         },
         "battery_mode": {
           "name": "Akun tila",
-          "description": "Mihin akkua käytetään. Vain Suurin voitto saa myydä verkkoon."
+          "description": "Mihin akkua käytetään. Tasapainoinen myy verkkoon vain, kun se on erittäin kannattavaa, Suurin voitto aina kun se kannattaa."
         },
         "battery_control_import_limit_acts": {
           "name": "Tuontiraja toimii",

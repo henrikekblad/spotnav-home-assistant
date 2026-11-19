@@ -276,7 +276,7 @@ describe("the popover from the house card", () => {
     const row = battery.querySelector("[data-row='battery_mode']")!;
     expect(row.textContent).toBe("LägeBalanserad");
     expect(battery.querySelector("[data-help='battery_mode']")!.textContent).toBe(
-      "Laddar också från nätet när det är billigt och används när det är dyrt. Säljer inte.",
+      "Laddar också från nätet när det är billigt och används när det är dyrt. Säljer bara när det är mycket lönsamt.",
     );
     expect(battery.querySelector("[data-battery-mode-shadow]")!.textContent).toBe(
       "Medan SpotNav inte styr batteriet flyttar valet bara vilken rad som är markerad som vald i jämförelsen.",
@@ -287,7 +287,7 @@ describe("the popover from the house card", () => {
       [...form.querySelectorAll<HTMLInputElement>("input[type='radio']")].map((radio) => [radio.value, radio.checked]),
     ).toEqual([["self_consumption", false], ["balanced", true], ["max_profit", false]]);
     expect(form.textContent).toContain("Batteriet laddas av solen och täcker huset. Ingen handel med nätet.");
-    expect(form.textContent).toContain("Som Balanserad, men får också sälja till nätet när det lönar sig, med slitaget inräknat.");
+    expect(form.textContent).toContain("Som Balanserad, men säljer till nätet så fort det lönar sig, med slitaget inräknat.");
     form.querySelector<HTMLInputElement>("input[value='max_profit']")!.click();
     form.requestSubmit();
     await vi.advanceTimersByTimeAsync(0);

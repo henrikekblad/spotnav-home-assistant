@@ -1174,7 +1174,7 @@
         },
         "battery_mode": {
           "name": "Mode de la batterie",
-          "description": "À quoi sert la batterie. Seul Profit maximal peut vendre au réseau."
+          "description": "À quoi sert la batterie. Équilibré ne vend au réseau que quand c’est très rentable, Profit maximal dès que c’est rentable."
         },
         "battery_control_import_limit_acts": {
           "name": "La limite d'import agit",

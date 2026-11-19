@@ -1174,7 +1174,7 @@
         },
         "battery_mode": {
           "name": "Batteritilstand",
-          "description": "Hvad batteriet bruges til. Kun Maks. gevinst må sælge til nettet."
+          "description": "Hvad batteriet bruges til. Balanceret sælger kun til nettet, når det er meget rentabelt, Maks. gevinst, så snart det kan betale sig."
         },
         "battery_control_import_limit_acts": {
           "name": "Importgrænsen virker",

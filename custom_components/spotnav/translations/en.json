@@ -1174,7 +1174,7 @@
         },
         "battery_mode": {
           "name": "Battery mode",
-          "description": "What the battery is for. Only Max profit may sell to the grid."
+          "description": "What the battery is for. Balanced sells to the grid only when it is highly profitable, Max profit whenever it pays."
         },
         "battery_control_import_limit_acts": {
           "name": "Import limit acts",

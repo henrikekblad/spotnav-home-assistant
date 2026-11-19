@@ -1174,7 +1174,7 @@
         },
         "battery_mode": {
           "name": "Batterijmodus",
-          "description": "Waar de batterij voor dient. Alleen Maximale winst mag aan het net leveren."
+          "description": "Waar de batterij voor dient. Gebalanceerd levert alleen aan het net als dat zeer winstgevend is, Maximale winst zodra het loont."
         },
         "battery_control_import_limit_acts": {
           "name": "Importlimiet werkt",
