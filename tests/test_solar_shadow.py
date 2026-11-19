@@ -303,3 +303,24 @@ async def test_the_snapshot_states_the_latitude_in_whole_degrees_only_and_never_
     assert "longitude" not in snapshot and "13.0" not in str(snapshot)
     hass.config.latitude = None  # type: ignore[assignment]
     assert shadow.snapshot()["latitude"] is None
+
+
+async def test_a_weather_entity_that_never_answers_gives_no_cloud_cover(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    from homeassistant.core import ServiceCall, SupportsResponse
+
+    _entry, controller = await _site(hass, freezer)
+    monkeypatch.setattr(shell, "READ_TIMEOUT_S", 0.05)
+    hass.states.async_set("weather.forecast_home", "cloudy")
+
+    async def hangs(call: ServiceCall) -> dict[str, Any]:
+        # The test's clock is frozen: the hung call moves it on, so the read's timeout is due.
+        freezer.tick(timedelta(seconds=1))
+        await asyncio.Event().wait()
+        return {}
+
+    hass.services.async_register("weather", "get_forecasts", hangs, supports_response=SupportsResponse.ONLY)
+    assert await controller.solar_shadow._async_clouds() == {}  # noqa: SLF001

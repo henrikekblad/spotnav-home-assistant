@@ -25,6 +25,7 @@ def _verify(
         timing=Timing.quick() if quick else None, stop_on_fail=quick,
     )
     failed: tuple[str, ...] = ()
+    timed_out: tuple[str, ...] = ()
     capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
     for _ in range(looks):
         power = battery.power_kw(battery.action, battery.rate_kw)
@@ -33,9 +34,10 @@ def _verify(
         current = verification.current
         result = executor.step(inputs(
             battery, now, action, rate, failed=failed, house_deficit_kw=house_kw,
-            headroom_a=headroom(None if current is None else current.mode),
+            headroom_a=headroom(None if current is None else current.mode), timed_out=timed_out,
         ))
         failed = tuple(op.role for op in result.ops if not battery.apply(op))
+        timed_out = tuple(role for role in failed if role in battery.times_out)
         state = executor.state
         battery.action = state.action if state.phase == "active" else None
         battery.rate_kw = state.rate_kw
@@ -86,6 +88,18 @@ def test_a_write_the_integration_drops_aborts_the_routine_and_hands_back() -> No
     assert outcomes["hold"].startswith("aborted:write_not_taken")
     assert outcomes["charge"] == outcomes["discharge_house"] == outcomes["normal"] == "skipped"
     assert battery.states == SIGENERGY_STATES
+
+
+def test_a_call_given_up_on_is_the_moment_s_not_a_failed_mode() -> None:
+    # A slow integration during the charge step: tried again at a later run, never grid charging off for good.
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), times_out={"remote_ems"})
+    executor = Executor(SIGENERGY_CONTROL)
+    verification = _verify(executor, battery, modes=("charge",))
+    outcome = _outcomes(verification)["charge"]
+    assert outcome.startswith("aborted:call_timeout")
+    assert mode_verdict(outcome) == "pending"
+    # Handed back; a charge limit never set holds the rating, as after any charge.
+    assert battery.states == SIGENERGY_STATES | {"charge_limit": "10"}
 
 
 def test_a_mode_the_battery_cannot_show_now_is_not_judgeable() -> None:

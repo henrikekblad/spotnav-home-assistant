@@ -73,6 +73,7 @@ def test_the_report_key_names_the_firmware_and_the_integration_version() -> None
     [
         ("obeyed", "pass"), ("restored", "pass"), ("ignored", "fail"), ("partial", "fail"),
         ("aborted:write_not_taken:discharge_limit:no_read_back", "fail"), ("aborted:command_timeout", "fail"),
+        ("aborted:call_timeout:remote_ems", "pending"),
         ("aborted:changed_outside_spotnav:remote_ems", "fail"),
         ("not_judgeable:battery_not_discharging", "pending"), ("aborted:fuse_headroom", "pending"),
         ("aborted:unload", "pending"), ("aborted:stale_data", "pending"), ("skipped", "pending"), (None, "pending"),

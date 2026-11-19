@@ -105,6 +105,13 @@ LOG_SIZE: Final = 48
 BACKSTOP: Final = timedelta(minutes=15)
 #: Looks in a row over the fuse before SpotNav's own running boost is shed.
 SHED_LOOKS: Final = 2
+#: How long one write's service call may take before it is given up on as a write not taken (s): Home Assistant has
+#: no timeout of its own, and a hung pump integration must not hold a stop task, so a later shed or backstop runs.
+#: Long enough for a cloud route.
+CALL_TIMEOUT_S: Final = 30.0
+#: A pulse switch SpotNav wrote within `PULSE_WATCH` that reads on for longer than `PULSE_LEFT_ON` is opened.
+PULSE_LEFT_ON: Final = timedelta(minutes=1)
+PULSE_WATCH: Final = timedelta(hours=2)
 
 
 def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date, key: str = "live") -> float:
@@ -134,6 +141,12 @@ def beta_gate_open(hass: HomeAssistant, site: Any) -> bool:
 
 async def _pause(seconds: float) -> None:
     await asyncio.sleep(seconds)
+
+
+async def _async_service(hass: HomeAssistant, domain: str, service: str, data: dict[str, Any]) -> None:
+    """One write's blocking service call, given up on after `CALL_TIMEOUT_S` (`TimeoutError`, a write not taken)."""
+    async with asyncio.timeout(CALL_TIMEOUT_S):
+        await hass.services.async_call(domain, service, data, blocking=True)
 
 
 def _run_of(raw: Any) -> HotWaterRun | None:
@@ -270,7 +283,7 @@ class HotWater:
             if not any(entry.entity_id == route.entity_id for entry in self.ledger.entries):
                 return
             _LOGGER.info("SpotNav hot water: %s was left on after a pulse; turning it off", route.entity_id)
-            await self.hass.services.async_call(route.domain, "turn_off", {"entity_id": route.entity_id}, blocking=True)
+            await _async_service(self.hass, route.domain, "turn_off", {"entity_id": route.entity_id})
         except Exception:  # noqa: BLE001 - tried again at the next start
             _LOGGER.debug("SpotNav hot water: the pulse switch could not be opened", exc_info=True)
 
@@ -761,6 +774,8 @@ class HotWater:
         config = self.shadow.config()
         self._observe(now, config)
         if self._side is None or self._side.done():
+            self._pulse_left_on(now, config)
+        if self._side is None or self._side.done():
             # A stop (the backstop, a shed) is its own task: a start's read-back never holds it back.
             self._backstop(now, config)
             self._shed_check(now, config)
@@ -889,11 +904,30 @@ class HotWater:
 
         self._side = self.hass.async_create_background_task(stop(), f"spotnav hot water backstop {self.shadow.site.entry_id}")
 
+    def _pulse_left_on(self, now: datetime, config: HeatConfig) -> None:
+        """A pulse switch SpotNav wrote within `PULSE_WATCH` that reads on for longer than `PULSE_LEFT_ON` (a turn-on
+        that landed after it was given up on, an off that failed): opened, at each look until it reads off, so the
+        pump's hot-water input is never held (`async_start` does the same at the start)."""
+        route = self.route(config)
+        if route is None or route.kind != "pulse" or route.domain not in ("switch", "input_boolean"):
+            return
+        state = self.hass.states.get(route.entity_id)
+        if state is None or state.state != "on" or now - state.last_changed < PULSE_LEFT_ON:
+            return
+        last = next((entry for entry in reversed(self.ledger.entries) if entry.entity_id == route.entity_id), None)
+        if last is None or now - last.at > PULSE_WATCH:
+            return
+        _LOGGER.info("SpotNav hot water: %s still on after a pulse; turning it off", route.entity_id)
+        call = (route.domain, "turn_off", {"entity_id": route.entity_id})
+        self._side = self.hass.async_create_background_task(
+            self._async_call_quietly(call), f"spotnav hot water pulse off {self.shadow.site.entry_id}"
+        )
+
     async def _async_call_quietly(self, call: tuple[str, str, dict[str, Any]]) -> bool:
         """One service call, its failure logged (the next look tries again where it still applies)."""
         try:
-            await self.hass.services.async_call(call[0], call[1], call[2], blocking=True)
-        except Exception:  # noqa: BLE001 - logged
+            await _async_service(self.hass, call[0], call[1], call[2])
+        except Exception:  # noqa: BLE001 - logged (a call given up on too)
             _LOGGER.info("SpotNav hot water: the stop through %s failed", call[2].get("entity_id"), exc_info=True)
             return False
         return True
@@ -1180,9 +1214,22 @@ class HotWater:
             self.ledger.update(entry, read_back=False)
             return False
         domain, service, data = call
+        pulse = route.kind == "pulse" and domain in ("switch", "input_boolean")
         try:
-            await self.hass.services.async_call(domain, service, data, blocking=True)
-            if route.kind == "pulse" and domain in ("switch", "input_boolean"):
+            try:
+                await _async_service(self.hass, domain, service, data)
+            except TimeoutError:
+                if route.kind == "pulse":
+                    # Given up on, the switch may still close late: a pulse never stays on (`_pulse_left_on` opens
+                    # it at a later look should this fail too). A pulse is read back by its run, not here.
+                    if pulse:
+                        await self.hass.services.async_call(domain, "turn_off", data, blocking=False)
+                    raise
+                # Given up on, the write may still land: it is read back as one that answered, so a boost it
+                # started is SpotNav's and the backstop and the fuse shed still stop it.
+                _LOGGER.info("SpotNav hot water: starting the boost through %s did not answer in time; reading it back",
+                             route.entity_id)
+            if pulse:
                 try:
                     await _pause(PULSE.total_seconds())
                 finally:
@@ -1249,8 +1296,8 @@ class HotWater:
             if call is None:
                 return "spotnav_not_supported", state
             try:
-                await self.hass.services.async_call(call[0], call[1], call[2], blocking=True)
-            except Exception:  # noqa: BLE001 - the answer says so
+                await _async_service(self.hass, call[0], call[1], call[2])
+            except Exception:  # noqa: BLE001 - the answer says so (a call given up on too)
                 _LOGGER.info("SpotNav hot water: stopping the boost failed", exc_info=True)
                 return "spotnav_write_failed", self.boost(now)
             return None, self.boost(now)

@@ -97,6 +97,9 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 TICK_S: Final = 300.0
+#: How long a weather read may take before it counts as not read (s): Home Assistant has no timeout of its own,
+#: and a hung integration must not hold the refresh.
+READ_TIMEOUT_S: Final = 20.0
 #: The local hours whose first refresh fetches the forecast.
 FETCH_HOURS: Final = (0, 6, 13, 18)
 NIGHTLY_HOUR: Final = 1
@@ -315,13 +318,14 @@ class SiteSolarShadow:
         if entity_id is None:
             return {}
         try:
-            response = await self.hass.services.async_call(
-                "weather",
-                "get_forecasts",
-                {"entity_id": entity_id, "type": "hourly"},
-                blocking=True,
-                return_response=True,
-            )
+            async with asyncio.timeout(READ_TIMEOUT_S):
+                response = await self.hass.services.async_call(
+                    "weather",
+                    "get_forecasts",
+                    {"entity_id": entity_id, "type": "hourly"},
+                    blocking=True,
+                    return_response=True,
+                )
         except Exception:  # noqa: BLE001 - no hourly forecast: no fallback
             _LOGGER.debug("SpotNav solar shadow: no hourly forecast from %s", entity_id, exc_info=True)
             return {}

@@ -24,6 +24,7 @@ from custom_components.spotnav.battery.commands import (
 )
 from custom_components.spotnav.battery.executor import (
     BLOCKED_RESTORE_S,
+    CALL_TIMEOUT_BLOCK_S,
     DAILY_WRITE_CAP,
     HEADROOM_MARGIN_A,
     MANAGEMENT_BLOCK_S,
@@ -229,6 +230,20 @@ def test_a_service_call_that_raises_counts_as_not_taken() -> None:
     assert executor.state.blocked.startswith("write_not_taken:remote_ems")
     # The hand-back put the discharge limit it had written back.
     assert battery.states["discharge_limit"] == "23.04"
+
+
+def test_a_call_given_up_on_hands_back_and_blocks_only_for_a_while() -> None:
+    executor, battery = _sigenergy(times_out={"remote_ems"})
+    now, results = run(executor, battery, T0, 6, "hold")
+    assert events(results, "not_taken")[0]["why"] == "call_timeout"
+    assert executor.state.phase == "blocked" and executor.state.blocked.startswith("call_timeout:remote_ems")
+    assert battery.states["discharge_limit"] == "23.04", "handed back as for any write not taken"
+    # A slow integration is no finding about the plant: the block clears by itself, then control runs again.
+    battery.times_out = set()
+    now, results = run(executor, battery, now, int(CALL_TIMEOUT_BLOCK_S / TICK.total_seconds()) // 2, "hold")
+    assert written(results) == [] and executor.state.phase == "blocked"
+    now, results = run(executor, battery, now, int(CALL_TIMEOUT_BLOCK_S / TICK.total_seconds()) // 2 + 12, "hold")
+    assert events(results, "unblocked") and executor.state.phase == "active"
 
 
 def test_a_change_by_someone_else_is_given_up_and_never_written_back_over() -> None:

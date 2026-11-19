@@ -242,6 +242,36 @@ async def test_without_a_weather_entity_or_an_hourly_forecast_it_runs_without_th
     assert 1 <= len(calls) <= 7
 
 
+async def test_a_weather_and_a_calendar_that_never_answer_end_the_refresh_as_not_read(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    monkeypatch.setattr(house_forecast_module, "READ_TIMEOUT_S", 0.05)
+    hass.states.async_set("weather.forecast_home", "cloudy", {"temperature": 4.0, "temperature_unit": "°C"})
+    er.async_get(hass).async_get_or_create("calendar", "holiday", "se_holidays", suggested_object_id="sverige")
+    calls: list[str] = []
+
+    async def hangs(call: ServiceCall) -> dict[str, Any]:
+        # The test's clock is frozen: the hung call moves it on, so the read's timeout is due.
+        calls.append(call.service)
+        freezer.tick(timedelta(seconds=1))
+        await asyncio.Event().wait()
+        return {}
+
+    hass.services.async_register("weather", "get_forecasts", hangs, supports_response=SupportsResponse.ONLY)
+    hass.services.async_register("calendar", "get_events", hangs, supports_response=SupportsResponse.ONLY)
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    await run(hass, freezer, 65, 1500.0)
+    await hass.async_block_till_done()
+    forecast = controller.house_forecast
+    assert {"get_forecasts", "get_events"} <= set(calls)
+    assert not forecast._running  # noqa: SLF001 - the refresh ended
+    block = forecast.diagnostics()
+    assert block["weather"] == WEATHER_NO_FORECAST and block["retry_at"] is not None
+
+
 async def test_the_log_survives_a_restart(hass: HomeAssistant, freezer) -> None:
     weather(hass, 4.0)
     entry = await pilot_site(hass, freezer)
