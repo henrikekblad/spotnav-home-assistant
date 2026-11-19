@@ -37,13 +37,13 @@ import asyncio
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 import logging
-import math
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
+from ..core.parse import is_number
 from .. import time_zones
 from ..const import CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
 from ..debug_day import DayStore
@@ -121,10 +121,6 @@ def store_key(entry_id: str) -> str:
 # ------------------------------------------------------------------------------------------------ pure helpers
 
 
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
-
-
 def quarter_power(slots_kwh: Mapping[datetime, float]) -> dict[datetime, float]:
     """Five-minute energy rows (kWh by UTC slot start) as the mean power (kW) of each quarter hour they fall in; a
     quarter with only some of its rows (the one running) is the mean of those."""
@@ -158,7 +154,7 @@ def hourly_cloud(response: Any, entity_id: str) -> dict[datetime, float]:
             continue
         moment = dt_util.parse_datetime(str(entry.get("datetime") or ""))
         cover = entry.get("cloud_coverage")
-        if moment is None or moment.tzinfo is None or not _number(cover):
+        if moment is None or moment.tzinfo is None or not is_number(cover):
             continue
         hour = moment.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
         clouds.setdefault(hour, min(100.0, max(0.0, float(cover))))
@@ -183,7 +179,7 @@ def array_kwp(entry_settings: Sequence[Mapping[str, Any] | None]) -> float | Non
     total = 0.0
     for settings in entry_settings:
         value = None if settings is None else settings.get("modules_power")
-        if not _number(value) or value <= 0:
+        if not is_number(value) or value <= 0:
             return None
         total += float(value) / 1000.0
     return total

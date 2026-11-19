@@ -31,6 +31,7 @@ from datetime import date, datetime, timedelta, timezone
 import math
 from typing import Any, Final
 
+from ..core.parse import aware_utc
 from .. import time_zones
 from .open_meteo import Weather
 from .sun_geometry import Plane, hour_key, key_start
@@ -53,16 +54,6 @@ def _int(value: Any, low: int, high: int) -> int | None:
         return None
     number = round(value)
     return number if low <= number <= high else None
-
-
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
 
 
 def encode(values: Mapping[int, int], first: int) -> str:
@@ -238,7 +229,7 @@ class SolarHistory:
     def restore(self, raw: Any) -> None:
         if not isinstance(raw, Mapping):
             return
-        start = _instant(raw.get("first"))
+        start = aware_utc(raw.get("first"))
         if start is None:
             return
         first = hour_key(start)
@@ -437,7 +428,7 @@ class IssueLog:
         for row in raw.get("forecasts") or []:
             if not isinstance(row, list) or len(row) != 5 or not all(isinstance(v, str) for v in row):
                 continue
-            start = _instant(row[3])
+            start = aware_utc(row[3])
             if start is None or not _iso_day(row[2]):
                 continue
             first = hour_key(start)

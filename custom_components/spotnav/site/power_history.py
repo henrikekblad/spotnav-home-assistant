@@ -26,10 +26,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
-import math
+from datetime import date, datetime
 from typing import Any, Final
 
+from ..core.parse import aware_utc, is_number
 from .. import time_zones
 from ..planning.auto_settings import DemandComponent
 from ..planning.demand_charge import component_month, free_levels_by_hour, HourMean
@@ -135,20 +135,6 @@ def month_record(
 # ------------------------------------------------------------------------------------------------------- storage
 
 
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
-
-
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
-
-
 def _kw(value: float | None) -> float | None:
     return None if value is None else round(value, 3)
 
@@ -174,17 +160,17 @@ def _day_from_row(raw: Any) -> DaySummary | None:
     imported, free = (raw[6], raw[7]) if len(raw) == 8 else (0, None)
     if isinstance(imported, bool) or imported not in (0, 1):
         return None
-    if free is not None and (not _number(free) or free < 0):
+    if free is not None and (not is_number(free) or free < 0):
         return None
     try:
         day = date.fromisoformat(raw[0]) if isinstance(raw[0], str) else None
     except ValueError:
         return None
-    start = _instant(raw[2])
+    start = aware_utc(raw[2])
     peak, house, held, paused = raw[1], raw[3], raw[4], raw[5]
-    if day is None or start is None or not _number(peak) or peak < 0:
+    if day is None or start is None or not is_number(peak) or peak < 0:
         return None
-    if house is not None and (not _number(house) or house < 0):
+    if house is not None and (not is_number(house) or house < 0):
         return None
     if any(isinstance(flag, bool) or flag not in (0, 1) for flag in (held, paused)):
         return None
@@ -230,11 +216,11 @@ def _record_from(raw: Any) -> MonthRecord | None:
     for starts in counted_raw:
         if not isinstance(starts, list):
             return record
-        instants = [_instant(item) for item in starts]
+        instants = [aware_utc(item) for item in starts]
         if any(instant is None for instant in instants):
             return record
         counted.append(tuple(instant for instant in instants if instant is not None))
-    if any(bar is not None and (not _number(bar) or bar < 0) for bar in bars_raw):
+    if any(bar is not None and (not is_number(bar) or bar < 0) for bar in bars_raw):
         return record
     bars = tuple(None if bar is None else float(bar) for bar in bars_raw)
     return MonthRecord(days=record.days, components=components, counted=tuple(counted), bars=bars)

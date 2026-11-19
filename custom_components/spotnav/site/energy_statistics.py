@@ -14,16 +14,13 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import math
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 
+from ..core.parse import is_number
+
 _LOGGER = logging.getLogger(__name__)
-
-
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
 def energy_statistic_ids(prefs: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -104,11 +101,11 @@ def summed(rows_by_id: Mapping[str, Sequence[Mapping[str, Any]]], ids: Sequence[
         values: dict[datetime, float] = {}
         for row in rows_by_id.get(statistic_id) or []:
             start, change = row.get("start"), row.get("change")
-            if not _number(change):
+            if not is_number(change):
                 continue
             if isinstance(start, datetime):
                 moment = start.astimezone(timezone.utc)
-            elif _number(start):
+            elif is_number(start):
                 moment = datetime.fromtimestamp(float(start), timezone.utc)
             else:
                 continue
@@ -122,7 +119,7 @@ def _row_start(row: Mapping[str, Any]) -> datetime | None:
     start = row.get("start")
     if isinstance(start, datetime):
         return start.astimezone(timezone.utc)
-    if _number(start):
+    if is_number(start):
         return datetime.fromtimestamp(float(start), timezone.utc)
     return None
 
@@ -140,7 +137,7 @@ def soc_at_hour_ends(
     for start in starts:
         start = start.astimezone(timezone.utc)  # noqa: PLW2901
         for value in (short.get(start + timedelta(minutes=55)), hourly.get(start)):
-            if _number(value) and 0 <= value <= 100:
+            if is_number(value) and 0 <= value <= 100:
                 out[start] = float(value)
                 break
     return out

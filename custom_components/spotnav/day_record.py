@@ -40,6 +40,7 @@ from typing import Any, Final
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .core.parse import aware_instant
 from . import time_zones
 from .const import CONF_CHARGER_ENTRY_IDS, CONF_MAIN_FUSE_A
 from .site.import_target import stored_import_target_kw
@@ -298,8 +299,8 @@ def charger_part(hass: HomeAssistant, entry_ids: Iterable[str], start: datetime,
             continue
         sessions = []
         for session in day_log.sessions():
-            plugged = _instant(session.get("plugged_in_at"))
-            unplugged = _instant(session.get("unplugged_at"))
+            plugged = aware_instant(session.get("plugged_in_at"))
+            unplugged = aware_instant(session.get("unplugged_at"))
             if (unplugged is not None and unplugged < start) or (plugged is not None and plugged >= end):
                 continue
             sessions.append(
@@ -318,16 +319,6 @@ def charger_part(hass: HomeAssistant, entry_ids: Iterable[str], start: datetime,
         entry = hass.config_entries.async_get_entry(entry_id)
         out.append({"entry_id": entry_id, "title": None if entry is None else entry.title, "sessions": sessions})
     return out
-
-
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment
 
 
 def settings_part(hass: HomeAssistant, entry: ConfigEntry, controller: Any, source: Any) -> dict[str, Any]:

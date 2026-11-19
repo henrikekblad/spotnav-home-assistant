@@ -29,6 +29,7 @@ from datetime import date, datetime, timedelta
 import math
 from typing import Any, Final
 
+from ..core.parse import is_number
 from .. import time_zones
 from .load_forecast import day_type
 
@@ -55,10 +56,6 @@ STATUS_LEARNING: Final = "learning"
 #: The pool a cell's figures came from.
 POOL_CELL: Final = "cell"
 POOL_WIDE: Final = "wide"
-
-
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
 def quantile(values: list[float], q: float) -> float:
@@ -141,7 +138,7 @@ def _misses(
     first = today - timedelta(days=WINDOW_DAYS)
     out: list[_Miss] = []
     for start, forecast, actual in pairs:
-        if not (_number(forecast) and _number(actual)):
+        if not (is_number(forecast) and is_number(actual)):
             continue
         local = start.astimezone(zone)
         if not first <= local.date() < today:

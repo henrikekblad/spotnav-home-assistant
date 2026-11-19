@@ -11,10 +11,10 @@ boundary's pause stored). `migrate_from_keys` reads the stored dict only. 3.0 no
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime
 import math
 from typing import Any
 
+from .parse import aware_instant
 from .ownership import ORIGIN_OWNER
 from .session import (
     CarEnded,
@@ -65,17 +65,6 @@ def legacy_intent(pause: Any, legacy_person_stopped: bool) -> tuple[ManualPause 
     return None, None
 
 
-def _instant(value: Any) -> datetime | None:
-    """A stored instant with its time zone, else `None` (storage is untrusted)."""
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo is not None else None
-
-
 def _number(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
@@ -103,7 +92,7 @@ def stored_car_ended_wait(raw: Any) -> CarEndedWait | None:
 
 def car_ended_from_keys(saved: Mapping[str, Any]) -> CarEnded | None:
     """The car-ended record today's `car_ended_*` keys hold (`None`: nothing ended)."""
-    at = _instant(saved.get("car_ended_at"))
+    at = aware_instant(saved.get("car_ended_at"))
     if at is None:
         return None
     soc = saved.get("car_ended_soc")
@@ -120,7 +109,7 @@ def migrate_from_keys(saved: Mapping[str, Any], pause: Any = None) -> ChargeSess
     """The session today's keys in `saved` describe, with the person intent from the boundary's `pause` (or a
     `person_stopped` an older release stored). Whether the charger charges by itself, the connection and what is
     transient are seen again after a restart, not read here."""
-    top_off = _instant(saved.get("top_off_until")) is not None and bool(saved.get("plan"))
+    top_off = aware_instant(saved.get("top_off_until")) is not None and bool(saved.get("plan"))
     origin = saved.get("charge_origin")
     owner = legacy_owner(origin=origin if isinstance(origin, str) else None, top_off=top_off)
     balancing = saved.get("balancing_pause")

@@ -35,13 +35,13 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 import logging
-import math
 import re
 from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
+from ..core.parse import is_number
 from .energy_statistics import async_energy_prefs, summed
 from .load_forecast import WINDOW_DAYS, LoadForecast, forecast_house_load
 
@@ -219,15 +219,11 @@ def needs_setting(found_without: HeatMeter) -> bool:
     return found_without.status != STATUS_FOUND
 
 
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
-
-
 def _row_start(row: Mapping[str, Any]) -> datetime | None:
     start = row.get("start")
     if isinstance(start, datetime):
         return start.astimezone(timezone.utc)
-    if _number(start):
+    if is_number(start):
         # The recorder's own rows carry seconds; the WebSocket's carry milliseconds.
         seconds = float(start) / 1000.0 if float(start) > 1e11 else float(start)
         return datetime.fromtimestamp(seconds, timezone.utc)
@@ -249,7 +245,7 @@ def period_kwh(rows: Sequence[Mapping[str, Any]], kind: str, hours: float) -> di
     out: dict[datetime, float] = {}
     for row in rows:
         start, mean = _row_start(row), row.get("mean")
-        if start is None or not _number(mean) or mean > MAX_KW:
+        if start is None or not is_number(mean) or mean > MAX_KW:
             continue
         out[start] = max(0.0, float(mean)) * hours
     return out

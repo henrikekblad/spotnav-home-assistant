@@ -31,9 +31,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-import math
 from typing import Any, Final
 
+from ..core.parse import aware_utc, is_number
 from .. import time_zones
 
 KIND_HOUSE: Final = "house_kw"
@@ -90,20 +90,6 @@ def next_day_hours(by_hour: Mapping[datetime, float], now: datetime, tz: str) ->
         return {}
     tomorrow = local.date() + timedelta(days=1)
     return {start: kw for start, kw in by_hour.items() if start.astimezone(zone).date() == tomorrow}
-
-
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
-
-
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
 
 
 @dataclass(slots=True)
@@ -182,7 +168,7 @@ class DayReview:
             day = date.fromisoformat(raw["date"])
         except ValueError:
             return None
-        reviewed_at = _instant(raw.get("reviewed_at"))
+        reviewed_at = aware_utc(raw.get("reviewed_at"))
         whole = _score_from(raw.get("all"))
         if reviewed_at is None or whole is None:
             return None
@@ -196,7 +182,7 @@ def _score_from(raw: Any) -> Score | None:
     numbers = [raw.get(key) for key in ("mae", "under_share", "big_under_share")]
     if isinstance(hours, bool) or not isinstance(hours, int) or hours <= 0:
         return None
-    if not all(_number(value) and value >= 0 for value in numbers):
+    if not all(is_number(value) and value >= 0 for value in numbers):
         return None
     return Score(hours, float(numbers[0]), float(numbers[1]), float(numbers[2]))  # type: ignore[arg-type]
 
@@ -230,7 +216,7 @@ class ForecastLog:
         made_at = made_at.astimezone(timezone.utc)
         logged = 0
         for start, value in by_hour.items():
-            if value is None or not _number(value) or start <= made_at or start in log.hours:
+            if value is None or not is_number(value) or start <= made_at or start in log.hours:
                 continue
             log.hours[start] = LoggedHour(float(value), made_at)
             logged += 1
@@ -242,7 +228,7 @@ class ForecastLog:
         """The outcome of the hour starting at `start`; whether it was added (a logged hour without one yet)."""
         log = self.kinds.get(kind)
         hour = None if log is None else log.hours.get(start)
-        if hour is None or hour.actual is not None or value is None or not _number(value):
+        if hour is None or hour.actual is not None or value is None or not is_number(value):
             return False
         hour.actual = float(value)
         return True
@@ -395,10 +381,10 @@ class ForecastLog:
 def _hour_from_row(raw: Any) -> tuple[datetime, LoggedHour] | None:
     if not isinstance(raw, list) or len(raw) != 4:
         return None
-    start, made_at = _instant(raw[0]), _instant(raw[2])
+    start, made_at = aware_utc(raw[0]), aware_utc(raw[2])
     forecast, actual = raw[1], raw[3]
-    if start is None or made_at is None or not _number(forecast):
+    if start is None or made_at is None or not is_number(forecast):
         return None
-    if actual is not None and not _number(actual):
+    if actual is not None and not is_number(actual):
         return None
     return start, LoggedHour(float(forecast), made_at, None if actual is None else float(actual))

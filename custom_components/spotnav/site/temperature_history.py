@@ -34,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 import math
 from typing import Any, Final
 
+from ..core.parse import aware_utc
 from ..planning.demand_charge import HourMean
 from .forecast_log import next_day_hours
 
@@ -81,16 +82,6 @@ def _tenths(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         return None
     return round(value * 10)
-
-
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
 
 
 def _source_at(markers: list[tuple[int, str]], key: int) -> str | None:
@@ -266,7 +257,7 @@ class TemperatureHistory:
         """Take what the store kept; a malformed value or marker is dropped, old hours are pruned."""
         if not isinstance(raw, dict) or raw.get("format") != FORMAT:
             return
-        first = _instant(raw.get("first"))
+        first = aware_utc(raw.get("first"))
         if first is not None:
             base = _key(first)
             for name in ("measured", "day_ahead", "last"):
@@ -312,7 +303,7 @@ def _markers(raw: Any) -> list[tuple[int, str]]:
     for row in raw if isinstance(raw, list) else []:
         if not isinstance(row, list) or len(row) != 2 or not isinstance(row[1], str) or not row[1]:
             continue
-        start = _instant(row[0])
+        start = aware_utc(row[0])
         if start is None or (markers and _key(start) <= markers[-1][0]):
             continue
         markers.append((_key(start), row[1]))

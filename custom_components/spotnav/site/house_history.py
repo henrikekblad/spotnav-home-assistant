@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 import math
 from typing import Any, Final
 
+from ..core.parse import aware_utc
 from ..planning.demand_charge import HourMean
 from .load_forecast import WINDOW_DAYS
 
@@ -60,16 +61,6 @@ def _temperature(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         return None
     return float(value)
-
-
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
 
 
 @dataclass(slots=True)
@@ -228,22 +219,22 @@ class HouseHistory:
         for row in raw.get("hours") or []:
             if not isinstance(row, list) or len(row) != 3:
                 continue
-            start = _instant(row[0])
+            start = aware_utc(row[0])
             if start is None or not _usable(row[1]):
                 continue
             rows[start] = (float(row[1]), _temperature(row[2]))
         self.rows = dict(sorted(rows.items())[-MAX_ROWS:])
-        self.migrated_at = _instant(raw.get("migrated_at"))
+        self.migrated_at = aware_utc(raw.get("migrated_at"))
         gross: dict[datetime, tuple[float, bool]] = {}
         for row in raw.get("gross") or []:
             if not isinstance(row, list) or len(row) != 3 or row[2] not in (0, 1) or isinstance(row[2], bool):
                 continue
-            start = _instant(row[0])
+            start = aware_utc(row[0])
             if start is None or not _usable(row[1]):
                 continue
             gross[start] = (float(row[1]), row[2] == 1)
         self.gross = dict(sorted(gross.items())[-MAX_ROWS:])
-        self.gross_migrated_at = _instant(raw.get("gross_migrated_at"))
+        self.gross_migrated_at = aware_utc(raw.get("gross_migrated_at"))
 
     def diagnostics(self) -> dict[str, Any]:
         """How much is kept (not the rows: the forecast's own window is in its block)."""

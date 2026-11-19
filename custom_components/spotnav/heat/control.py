@@ -95,6 +95,7 @@ from homeassistant.helpers.event import async_call_later, async_track_state_chan
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from ..core.parse import aware_instant
 from .. import time_zones
 from ..const import CONF_HEAT_OFFSET_HOME, DOMAIN
 from . import optin, paths
@@ -223,16 +224,6 @@ def raise_entity(config: HeatConfig) -> str | None:
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.heat_control.{entry_id}"
-
-
-def _instant(text: Any) -> datetime | None:
-    if not isinstance(text, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    return moment if moment.tzinfo is not None else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,11 +385,11 @@ class HeatControl:
             return
         self.relay = raw.get("relay") if isinstance(raw.get("relay"), str) else None
         self.held = raw.get("held") is True and self.relay is not None
-        self.held_since = _instant(raw.get("held_since"))
-        self.last_end = _instant(raw.get("last_end"))
+        self.held_since = aware_instant(raw.get("held_since"))
+        self.last_end = aware_instant(raw.get("last_end"))
         for item in raw.get("lowerings") or []:
-            if isinstance(item, list) and len(item) == 2 and (start := _instant(item[0])) is not None:
-                self.lowerings.append([start, _instant(item[1])])
+            if isinstance(item, list) and len(item) == 2 and (start := aware_instant(item[0])) is not None:
+                self.lowerings.append([start, aware_instant(item[1])])
         writes = raw.get("writes")
         if isinstance(writes, dict):
             self.writes = {day: count for day, count in writes.items() if isinstance(count, int)}
@@ -406,7 +397,7 @@ class HeatControl:
         if isinstance(checks, dict):
             self.checks = {key: value for key, value in checks.items() if isinstance(value, dict)}
         self.check = Check.from_dict(raw.get("check"))
-        self.paused_until = _instant(raw.get("paused_until"))
+        self.paused_until = aware_instant(raw.get("paused_until"))
         self.paused_reason = raw.get("paused_reason") if isinstance(raw.get("paused_reason"), str) else None
         if self.held:
             # Home Assistant stopped while SpotNav held the relay: it is opened at the first look, a new lowering
@@ -415,13 +406,13 @@ class HeatControl:
             _LOGGER.info("SpotNav heat control: the relay %s was held at the last stop; opening it", self.relay)
         self.raise_entity = raw.get("raise_entity") if isinstance(raw.get("raise_entity"), str) else None
         self.raised = raw.get("raised") is True and self.raise_entity is not None
-        self.raised_since = _instant(raw.get("raised_since"))
-        self.raise_last_end = _instant(raw.get("raise_last_end"))
+        self.raised_since = aware_instant(raw.get("raised_since"))
+        self.raise_last_end = aware_instant(raw.get("raise_last_end"))
         for item in raw.get("raisings") or []:
-            if isinstance(item, list) and len(item) == 2 and (start := _instant(item[0])) is not None:
-                self.raisings.append([start, _instant(item[1])])
+            if isinstance(item, list) and len(item) == 2 and (start := aware_instant(item[0])) is not None:
+                self.raisings.append([start, aware_instant(item[1])])
         self.raise_check = RaiseCheck.from_dict(raw.get("raise_check"))
-        self.raise_paused_until = _instant(raw.get("raise_paused_until"))
+        self.raise_paused_until = aware_instant(raw.get("raise_paused_until"))
         self.raise_paused_reason = raw.get("raise_paused_reason") if isinstance(raw.get("raise_paused_reason"), str) else None
         if self.raised:
             # B held at the last stop: opened at the first look, before A may close.
@@ -440,7 +431,7 @@ class HeatControl:
             if isinstance(counts, dict):
                 setattr(self, name, {day: count for day, count in counts.items() if isinstance(count, int)})
         for item in raw.get("offset_moves") or []:
-            if isinstance(item, list) and len(item) == 2 and (at := _instant(item[0])) is not None and item[1] in (-1, 1):
+            if isinstance(item, list) and len(item) == 2 and (at := aware_instant(item[0])) is not None and item[1] in (-1, 1):
                 self.offset_moves.append((at, item[1]))
 
     def _data(self) -> dict[str, Any]:

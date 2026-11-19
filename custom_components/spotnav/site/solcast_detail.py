@@ -25,11 +25,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta, timezone
 import logging
-import math
 from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
+
+from ..core.parse import aware_utc, is_number
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -52,20 +53,6 @@ _HOUR: Final = timedelta(hours=1)
 Detail = dict[str, dict[datetime, float]]
 
 
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
-
-
-def _start(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment.astimezone(_UTC)
-
-
 def rows_by_hour(rows: Any) -> Detail:
     """One attribute's rows as kWh per UTC hour for each quantile. A slot's kWh is its kW times its length (the
     smallest gap between starts, an hour for a lone row); slots shorter than an hour are summed into the hour they
@@ -73,7 +60,7 @@ def rows_by_hour(rows: Any) -> Detail:
     negative values count as zero."""
     parsed: list[tuple[datetime, Mapping[str, Any]]] = []
     for row in rows if isinstance(rows, list) else []:
-        start = _start(row.get("period_start")) if isinstance(row, Mapping) else None
+        start = aware_utc(row.get("period_start")) if isinstance(row, Mapping) else None
         if start is not None:
             parsed.append((start, row))
     parsed.sort(key=lambda item: item[0])
@@ -90,7 +77,7 @@ def rows_by_hour(rows: Any) -> Detail:
         hour = start.replace(minute=0, second=0, microsecond=0)
         for quantile, field in FIELDS.items():
             value = row.get(field)
-            if _number(value):
+            if is_number(value):
                 detail[quantile][hour] = detail[quantile].get(hour, 0.0) + max(0.0, float(value)) * hours
     return detail
 
