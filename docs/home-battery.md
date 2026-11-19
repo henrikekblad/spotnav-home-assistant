@@ -186,7 +186,9 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
 
 The cap answers one question: how much may the battery draw from the grid so that no phase passes the main fuse if
 Home Assistant stops and the command stays? It is the fuse, less a margin, less what the chargers may draw, less the
-house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn.
+house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn. While
+Home Assistant runs, the charge is also kept under the phase with the least room now, counted the same way: on a
+plant not known to balance its charge, all of it on that one phase.
 
 * **The first week: a cautious rule.** With fewer than seven days learned, the house is taken to draw the house
   forecast's high figure for the hour, at least 4 kW, all of it on one phase (17 A). On a 20 A fuse that leaves no

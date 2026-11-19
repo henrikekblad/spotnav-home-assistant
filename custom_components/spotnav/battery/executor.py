@@ -299,6 +299,9 @@ class ExecInputs:
     measurement_ok: bool = True
     #: The least headroom on any phase now (A), `None` when unknown.
     headroom_a: float | None = None
+    #: The phases the plant spreads a balanced grid charge over (`BrandControl.grid_charge_phases`, or the plant's
+    #: Output Type): the live clamp counts the least headroom on that many phases, as the HA-down cap does.
+    charge_phases: int = 3
     volts_between_phases: float = 400.0
     #: The site's grid import now (kW, + import), `None` when unknown.
     grid_import_kw: float | None = None
@@ -586,7 +589,8 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
 
     What the battery already takes from the grid is counted back (it is in the measured import): at most its own
     charge, the rate commanded and the site's import, and nothing when the import is unknown, so the figure is never
-    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse. With "car first" and a car held, the
+    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse, on as many phases as the plant spreads
+    the charge over (`ExecInputs.charge_phases`: a charge not known to be balanced may land on the tightest one). With "car first" and a car held, the
     battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
     it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
@@ -596,7 +600,8 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
     if inputs.grid_import_kw is not None and battery is not None:
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
         measured = max(min(battery, inputs.grid_import_kw), 0.0)
-    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases)
+    phases = min(max(inputs.charge_phases, 1), 3)
+    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
     if inputs.car_first and inputs.car_held:
         cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap

@@ -397,6 +397,22 @@ def test_a_balanced_charge_keeps_the_fuse_when_home_assistant_stops_even_all_on_
     assert plant.states["working_mode"] == "EMS BattCtrl", "nothing takes it back by itself"
 
 
+def test_the_live_clamp_takes_the_charge_as_all_on_the_tightest_phase() -> None:
+    """While Home Assistant runs, the charge is held under the least headroom counted on one phase, as the HA-down
+    cap counts it: never three times that, as a balanced plant would be allowed."""
+    room_a = FUSE_A - HEADROOM_MARGIN_A - 12.0
+    first: dict[int, float] = {}
+    for phases in (SOLINTEG_CONTROL.grid_charge_phases, 3):
+        executor, plant = _plant()
+        plant.house_a = [12.0, 2.0, 2.0]
+        _now, results = _run(executor, plant, T0, 12, "grid_charge", 6.0, charge_phases=phases)
+        first[phases] = -next(value for role, value in written(results) if role == "battery_target") * 1000 / VOLTS
+        if phases == 1:
+            assert max(plant.phase_a()) <= FUSE_A - HEADROOM_MARGIN_A + 1e-6 and executor.state.phase == "active"
+    assert first[1] == pytest.approx(room_a, abs=0.5), "the one phase's room, used"
+    assert first[3] > FUSE_A - 12.0, "counted as three phases, the first command alone would open the fuse"
+
+
 def test_per_phase_writes_the_targets_then_the_scheduling_mode_then_the_working_mode() -> None:
     assert SOLINTEG_CONTROL.phased is False and PHASED.phased is True and PHASED.with_phases(False) is SOLINTEG_CONTROL
     assert SOLINTEG_PHASES.target_kind == "plant" and SOLINTEG_PHASES.charge_sign == -1.0

@@ -1872,6 +1872,7 @@ class BatteryControl:
             battery_age_s=age_s,
             measurement_ok=result.state not in UNHEALTHY_STATES and result.state != "not_configured",
             headroom_a=min(headrooms) if headrooms else None,
+            charge_phases=self._plant_phases(control),
             volts_between_phases=stored_voltage_between_phases_v(config),
             grid_import_kw=grid_import_kw,
             # The fast shedding order (`gate.battery_yields`): the battery's grid charge before the car, the car
