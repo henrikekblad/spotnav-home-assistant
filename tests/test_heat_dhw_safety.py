@@ -74,3 +74,50 @@ async def test_b1_no_planned_boost_while_the_pump_makes_hot_water(hass: HomeAssi
     hot_water.tick(at)
     await settle(hass)
     assert writes.calls == []
+
+
+# ---- B2: the safety reasons are computed at the start, on every path
+
+
+OUTDOOR = "sensor.ute"
+ROOM = "sensor.vardagsrum"
+
+
+@pytest.mark.parametrize(
+    ("outdoor", "room", "reason"),
+    [("-18.0", "21.0", "too_cold"), ("4.0", "19.0", "room_cold"), ("4.0", "unavailable", "stale")],
+)
+async def test_b2_a_safety_reason_holds_a_boost_without_a_steered_contact(
+    hass: HomeAssistant, freezer, monkeypatch, outdoor: str, room: str, reason: str
+) -> None:
+    """A cloud pump with no relay: the heat control never runs, so its cached safety stays empty; the boost's own
+    check still finds the reason."""
+    hass.states.async_set(OUTDOOR, outdoor, {"unit_of_measurement": "°C", "device_class": "temperature"})
+    hass.states.async_set(ROOM, room, {"unit_of_measurement": "°C", "device_class": "temperature"})
+    controller, hot_water, at = await _live(
+        hass, freezer, monkeypatch, _pump(MYUPLINK, CLOUD), outdoor_sensor=OUTDOOR, indoor_sensors=[ROOM]
+    )
+    hass.states.async_set(CLOUD, "off")
+    writes = Writes(hass)
+    assert controller.heat_shadow.control.safety is None
+    assert controller.heat_shadow.control.safety_now(controller.heat_shadow.config(), at) == reason
+    hot_water.tick(at)
+    await settle(hass)
+    assert writes.calls == []
+    # Good readings: it starts.
+    hass.states.async_set(OUTDOOR, "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    hass.states.async_set(ROOM, "21.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    hot_water.tick(at + timedelta(minutes=1))
+    await settle(hass)
+    assert writes.calls == [("switch", "turn_on", {"entity_id": CLOUD})]
+
+
+async def test_b2_an_old_cached_reason_does_not_hold_a_boost(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    hass.states.async_set(OUTDOOR, "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(MYUPLINK, CLOUD), outdoor_sensor=OUTDOOR)
+    hass.states.async_set(CLOUD, "off")
+    controller.heat_shadow.control.safety = "too_cold"
+    writes = Writes(hass)
+    hot_water.tick(at)
+    await settle(hass)
+    assert writes.calls == [("switch", "turn_on", {"entity_id": CLOUD})]

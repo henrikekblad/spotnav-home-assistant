@@ -1113,6 +1113,23 @@ class HeatControl:
         values = [value for value in readings if value is not None]
         return min(values) if values else None
 
+    def safety_now(self, config: HeatConfig, now: datetime) -> str | None:
+        """The reasons the house needs the compressor now, from the readings alone, on every path and whether or
+        not this control runs: `stale` (no outdoor reading, or chosen rooms none of which reads), `too_cold`
+        (outdoors at or below the cold limit), `room_cold` (the coldest counted room below the band); `None`. Touches
+        no state: the hot water's planned boost asks it at its start (`heat/dhw_runtime.py`)."""
+        if self.outdoor_now(config) is None:
+            return SAFETY_STALE
+        coldest_out = self.coldest_outdoor(config, now)
+        if coldest_out is not None and coldest_out <= NO_LOWER_AT_C:
+            return SAFETY_TOO_COLD
+        coldest = self.shadow.coldest_now(config)
+        if coldest is None and config.indoor_sensors:
+            return SAFETY_STALE
+        if coldest is not None and coldest < config.target_c - BAND_C:
+            return SAFETY_ROOM_COLD
+        return None
+
     def _safety(self, config: HeatConfig, now: datetime) -> str | None:
         """The safety reason now (see `relay_control`), `settling` while good data is younger than `GOOD_FOR`."""
         outdoor = self.outdoor_now(config)

@@ -92,7 +92,11 @@ def _pump(adapter: Any, entity_id: str, *, price_control: str = "off", priority:
 
 async def _site(hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch, pump: Any = None, **heat: Any) -> tuple[Any, Any]:
     site = await pilot_site(hass, freezer)
-    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {"zones": [], **heat}})
+    # An outdoor reading: without one the house's safety reads stale and no planned boost starts.
+    hass.states.async_set("sensor.ute_dhw", "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    hass.config_entries.async_update_entry(
+        site, data={**site.data, CONF_HEAT: {"zones": [], "outdoor_sensor": "sensor.ute_dhw", **heat}}
+    )
     controller = site_controller_for(hass, site.entry_id)
     assert controller is not None
     monkeypatch.setattr(dhw_runtime.HotWater, "_pump", lambda _self: pump)
@@ -306,12 +310,12 @@ async def test_live_behind_the_opt_in_and_the_gate(hass: HomeAssistant, freezer,
     _open_gate(hot_water, today)
     config = controller.heat_shadow.config()
     assert hot_water.mode(config, hot_water.route(config), hot_water._pump()) == "live"  # noqa: SLF001
-    # The heat control's safety reason holds it back.
-    controller.heat_shadow.control.safety = "too_cold"
+    # A safety reason holds it back: too cold outdoors.
+    hass.states.async_set("sensor.ute_dhw", "-20.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
     hot_water.tick(now)
     await settle(hass)
     assert writes.calls == []
-    controller.heat_shadow.control.safety = None
+    hass.states.async_set("sensor.ute_dhw", "4.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
     hot_water.tick(now)
     await settle(hass)
     assert writes.calls == [("switch", "turn_on", {"entity_id": "switch.f730_temporary_lux_50004"})]

@@ -365,7 +365,7 @@ class HotWater:
             for index in range(4)
         }
         control = self.shadow.control
-        if control is not None and getattr(control, "safety", None) in UNSAFE:
+        if control is not None and control.safety_now(config, now) in UNSAFE:
             start = quarter_of(now)
             unsafe.update(start + QUARTER * index for index in range(4))
         budget = BUDGETS.get(route.kind, BUDGETS[ROUTE_ONE_SHOT])
@@ -618,8 +618,10 @@ class HotWater:
         return out
 
     def _live_blocker(self, now: datetime, route: Route) -> str | None:
+        # The safety reasons as they are now, on every path: never the heat control's last look, which runs only
+        # while it steers a contact.
         control = self.shadow.control
-        safety = None if control is None else getattr(control, "safety", None)
+        safety = "stale" if control is None else control.safety_now(self.shadow.config(), now)
         if safety in UNSAFE:
             return str(safety)
         if not self._meter_fresh(now) and self._pump() is None:
