@@ -149,11 +149,12 @@ it answers the same. Examples: `get_site_access_success.json`, `get_site_access_
 * `spotnav/make_home {"api_version": 1, "charger_id", "main_fuse_a"}`: "Make a home of this", the card's one action
   in the Settings of a charger whose installation has no home. The card says what it does and asks for the main fuse
   first; the home is made around that charger through the config flow with the fuse given, the default safety margin
-  and voltage, load balancing off, the charger's own phases (else three), no meter yet (chosen later in the home's
-  settings) and Home Assistant's own name for the home. Answers `{"api_version": 1, "ok", "error", "site_id"}`;
+  and the network's voltage between phases as the site flow suggests it (230 V in Norway, else 400 V), load balancing
+  off, the charger's own phases (else three), no meter yet (chosen later in the home's settings), and the site flow's
+  default name and unique id. Two presses at once make one home. Answers `{"api_version": 1, "ok", "error", "site_id"}`;
   refusals: `spotnav_not_admin`, `spotnav_unknown_charger`, `spotnav_site_not_charger`, `spotnav_home_exists` (the
   installation has a home: add the charger to it there) and `spotnav_invalid_value` (a fuse that is not a number
-  above 1 A and at most 1000 A).
+  from 6 A to 1000 A).
 
 ## Charger webhook
 

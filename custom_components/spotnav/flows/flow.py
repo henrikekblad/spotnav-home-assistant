@@ -277,7 +277,11 @@ class SpotNavChargingConfigFlow(
             entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE for entry in self._async_current_entries()
         ):
             return self.async_abort(reason="already_configured")
-        return self.async_create_entry(title=str(home.get("title") or "Home"), data=home["data"])
+        title = str(home.get("title") or default_site_name(self.hass))
+        # Identified as the site flow identifies a site: by the name it was created under.
+        await self.async_set_unique_id(f"site:{slugify(title)}")
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=title, data=home["data"])
 
     async def async_step_pair_deny(
         self, user_input: dict[str, Any] | None = None

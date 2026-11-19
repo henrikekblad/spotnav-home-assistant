@@ -16,8 +16,8 @@ import { MAKE_HOME_API_VERSION, PHONES_API_VERSION } from "./types";
 import { shell, type EditorHandlers } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
-/** A home's main fuse, as the backend accepts it: more than the safety margin (1 A), at most 1000 A. */
-export const MAIN_FUSE_MIN_A = 2;
+/** A home's main fuse, as the backend accepts it: from 6 A (below any household's fuse: a typo) to 1000 A. */
+export const MAIN_FUSE_MIN_A = 6;
 export const MAIN_FUSE_MAX_A = 1000;
 
 export type DisconnectAnswer =

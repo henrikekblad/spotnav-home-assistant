@@ -21,10 +21,17 @@ from custom_components.spotnav.const import (
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
     CONF_PHASE_WIRING,
+    CONF_VOLTAGE_BETWEEN_PHASES_V,
     CONF_WEBHOOK_ID,
+    CONF_YIELD_STEPPING_ENABLED,
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
+
+from homeassistant.util import slugify
+
+from custom_components.spotnav.api.make_home import async_make_home
+from custom_components.spotnav.flows.site_form import default_site_name
 
 from .helpers import answers_of
 from .test_webhook_parity import post
@@ -57,7 +64,6 @@ def _sites(hass: HomeAssistant) -> list[Any]:
 
 
 async def test_a_home_is_made_around_the_charger_with_the_fuse_asked(hass: HomeAssistant, hass_client_no_auth) -> None:
-    hass.config.location_name = "Villa"
     charger, _ = await setup_charger_and_site(hass, site=False)
     hass.config_entries.async_update_entry(charger, data={**charger.data, CONF_CHARGER_PHASES: 1})
 
@@ -67,7 +73,12 @@ async def test_a_home_is_made_around_the_charger_with_the_fuse_asked(hass: HomeA
     await hass.async_block_till_done()
     (home,) = _sites(hass)
     assert answer["result"]["site_id"] == home.entry_id
-    assert home.title == "Villa" and home.state is ConfigEntryState.LOADED
+    # Named, identified and wired as the site flow would: its translated default name, its unique id, the network's
+    # default voltage between phases and load balancing's stepping off.
+    assert home.title == default_site_name(hass) and home.state is ConfigEntryState.LOADED
+    assert home.unique_id == f"site:{slugify(home.title)}"
+    assert home.data[CONF_VOLTAGE_BETWEEN_PHASES_V] == 400
+    assert home.data[CONF_YIELD_STEPPING_ENABLED] is False
     assert home.data[CONF_MAIN_FUSE_A] == 20.0 and home.data[CONF_ACTIVE_CONTROL_ENABLED] is False
     assert home.data[CONF_CHARGER_ENTRY_IDS] == ["entry_a"]
     assert home.data[CONF_PHASE_WIRING] == {"entry_a": {"phases": 1, "phase": None}}
@@ -101,6 +112,8 @@ async def test_nothing_is_made_without_an_administrator_a_charger_or_a_usable_fu
         ({"charger_id": "entry_a"}, "spotnav_invalid_value"),
         ({"charger_id": "entry_a", "main_fuse_a": 0}, "spotnav_invalid_value"),
         ({"charger_id": "entry_a", "main_fuse_a": 1.0}, "spotnav_invalid_value"),
+        # "2" typed for "25": below any household's main fuse.
+        ({"charger_id": "entry_a", "main_fuse_a": 5.9}, "spotnav_invalid_value"),
         ({"charger_id": "entry_a", "main_fuse_a": 5000}, "spotnav_invalid_value"),
         ({"charger_id": "entry_a", "main_fuse_a": True}, "spotnav_invalid_value"),
         ({"charger_id": "entry_a", "main_fuse_a": "25"}, "spotnav_invalid_value"),
@@ -118,4 +131,26 @@ async def test_a_charger_of_an_install_that_has_a_home_is_refused(hass: HomeAssi
     await setup_charger_and_site(hass, "entry_b", site=False)
     answer = await _make(hass, charger_id="entry_b", main_fuse_a=25)
     assert answer["result"]["error"] == "spotnav_home_exists"
+    assert len(_sites(hass)) == 1
+
+
+async def test_a_norwegian_home_takes_the_it_networks_voltage(hass: HomeAssistant) -> None:
+    hass.config.country = "NO"
+    await setup_charger_and_site(hass, site=False)
+    answer = await _make(hass, charger_id="entry_a", main_fuse_a=6)
+    assert answer["result"]["ok"] is True
+    (home,) = _sites(hass)
+    assert home.data[CONF_VOLTAGE_BETWEEN_PHASES_V] == 230
+
+
+async def test_two_presses_at_once_make_one_home(hass: HomeAssistant) -> None:
+    import asyncio
+
+    await setup_charger_and_site(hass, site=False)
+    first, second = await asyncio.gather(
+        async_make_home(hass, "entry_a", 25), async_make_home(hass, "entry_a", 25)
+    )
+    await hass.async_block_till_done()
+    assert sorted([first["ok"], second["ok"]]) == [False, True]
+    assert {first["error"], second["error"]} == {None, "spotnav_home_exists"}
     assert len(_sites(hass)) == 1

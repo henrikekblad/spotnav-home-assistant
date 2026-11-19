@@ -197,7 +197,7 @@ describe("Make a home of this", () => {
     confirm?.click();
     await settle();
     expect(openDialog(element)?.querySelector("[role='alert']")?.textContent).toBe(
-      translate("en", "makeHome.error.range", { min: "2", max: "1,000" }),
+      translate("en", "makeHome.error.range", { min: "6", max: "1,000" }),
     );
     expect(makes()).toEqual([]);
 
