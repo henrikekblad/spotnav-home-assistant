@@ -1765,7 +1765,12 @@ class AutoPlannerController:
             return None
         vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
         controller = self._executor.controller
-        session = self._learning_session(controller, controller.plan, self._now())
+        plan = controller.plan
+        now = self._now()
+        # The same day the limit was kept under (`_check_car_limit`: the open window's start), so a window that
+        # runs past midnight finds it for a charger that reports no plug-in.
+        at = next((start for start, end in plan.windows if start <= now < end), now) if plan is not None else now
+        session = self._learning_session(controller, plan, at)
         low_kw, high_kw = self._power_bounds(settings, wiring, vehicle_id)
         return self._learned.session_limit_kw(subject_for(vehicle_id), wiring, session, low_kw, high_kw)
 

@@ -253,3 +253,28 @@ async def test_a_limit_that_misses_the_departure_is_reported(hass: HomeAssistant
         assert snapshot.expected_soc_percent is not None and snapshot.expected_soc_percent < 80
         events = hass.states.get(entity_id(hass, charger.entry_id, "charger_events", platform="event"))
         assert events is not None and events.attributes.get("event_type") == "plan_at_risk"
+
+
+async def test_a_limit_kept_before_midnight_is_found_after_it_without_a_plug_in_time(
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A charger that reports no plug-in keeps a limit under the day its window started: a window from 23:00 to 02:00
+    still finds it after midnight."""
+    from types import SimpleNamespace
+
+    serve(transport, rising=True)
+    with freeze_time(NOW):
+        charger, device_id, _ = await charger_and_car(hass, soc_percent="70", amps=20, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        controller = controller_of(hass, charger.entry_id)
+        start = datetime(2026, 9, 22, 23, 0, tzinfo=timezone.utc)
+        night = SimpleNamespace(windows=[(start, start + timedelta(hours=3))], departure=None)
+        preview._learned.set_limit(subject_for(device_id), WIRING, "day:2026-09-22", TAKEN_KW, 10)  # noqa: SLF001
+        settings = preview._effective(preview._store.settings(charger.entry_id))  # noqa: SLF001
+        with monkeypatch.context() as patch:
+            patch.setattr(controller, "plan", night)
+            patch.setattr(type(controller), "plugged_in_at", property(lambda _self: None))
+            patch.setattr(type(controller), "plugged_in_for_count", property(lambda _self: None))
+            patch.setattr(preview, "_now", lambda: start + timedelta(minutes=90))
+            limit = preview._session_limit_kw(settings)  # noqa: SLF001
+        assert limit == pytest.approx(TAKEN_KW)
