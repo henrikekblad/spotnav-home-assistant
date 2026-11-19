@@ -12,10 +12,11 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED
 from custom_components.spotnav.setup_checklist import capture_site_setup
 from custom_components.spotnav.site.phase_peaks import Learned
 
-from .world import setup_charger, setup_site, setup_site_with_charger
+from .world import set_derived_site_entities, setup_charger, setup_site, setup_site_with_charger
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -55,6 +56,30 @@ async def test_the_view_of_a_site_without_a_charger_offers_adding_one(hass: Home
     assert not {"vehicle", "car_level", "phone", "phase_switching", "site"} & set(ids)
     # A home without a charger pairs with the app too (SpotNav 3.0): "Get the app", until the app has been used.
     assert {"id": "app", "dismissible": True} in view["setup"]["items"]
+
+
+async def test_the_view_says_whether_the_site_can_measure_an_import_target_and_has_a_battery(
+    hass: HomeAssistant, hass_ws_client: Any
+) -> None:
+    """A direct site without the meter's total grid power cannot measure an import target (the popover hides the row
+    while none is set); a derived site can. Without a battery the battery status says so (an app hides its card)."""
+    await setup_site(hass, entry_id="site_direct", title="Direct")
+    await setup_site(
+        hass,
+        entry_id="site_derived",
+        title="Derived",
+        measurement_mode=MEASUREMENT_MODE_DERIVED,
+        derived_entities=set_derived_site_entities(hass, "site_derived", 0.0),
+    )
+    client = await hass_ws_client(hass)
+    direct = (await _ask(client, {"type": "spotnav/get_site_settings_view", "api_version": 1, "site_id": "site_direct"}))
+    assert direct["result"]["import_target"] == {"available": False, "reason": "needs_total_grid_power"}
+    derived = (
+        await _ask(client, {"type": "spotnav/get_site_settings_view", "api_version": 1, "site_id": "site_derived"})
+    )
+    assert derived["result"]["import_target"] == {"available": True, "reason": None}
+    battery = (await _ask(client, {"type": "spotnav/battery_control", "api_version": 1, "site_id": "site_direct"}))
+    assert battery["result"]["status"]["battery_found"] is False
 
 
 async def test_the_view_by_a_charger_is_its_sites(hass: HomeAssistant, hass_ws_client: Any) -> None:

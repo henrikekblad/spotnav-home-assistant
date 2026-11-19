@@ -843,7 +843,9 @@ pie's statistics could not be read).
 `get_house_history`, `get_house_loads`), `get_heat` (with it `get_heat_history`, `update_heat`), `battery_control`
 and `get_site_settings_view`. A 2.x Home Assistant has none of the keys and answers the actions `Unsupported action`.
 What a site has to show is in the answers themselves: `get_house_now`'s `has` (`sun`, `battery`, `car`, `heat`),
-`get_site_settings_view`'s `battery.found`, and in `get_heat` a `meter`, a `pump`, `zones` or indoor sensors.
+`get_site_settings_view`'s `battery.found` (and `battery_control`'s `status.battery_found`), and in `get_heat` a
+`meter`, a `pump`, `zones` or indoor sensors. The capabilities say only that the action is answered: `get_heat` and
+`battery_control` are `true` on a site with no heating or no battery too.
 
 **`get_house_now` is made to be polled.** It reads what the site already holds in memory (the grid power, the
 chargers' draw, the battery's facts, the power sensors' states); the one recorder read behind it, the day's energy
@@ -915,8 +917,17 @@ Balanced sells it. Both are in the minor unit (`minor_unit`; `major_unit` is the
 where the area's money has that). The whole block is `null` while the site has no price area. A client that does not
 find the key shows no line.
 
+`status.battery_found` (additive under version 1) is `true` where the site's battery facts name a battery (the same
+as `get_site_settings_view`'s `battery.found`). Without one the status is still answered in full (Mode, plan costs,
+the switch off), so a client hides its battery card on `false`, and keeps the place where a battery is added. A Home
+Assistant before the key leaves it out: read it as `true`.
+
 **`get_site_settings_view`** answers the settings' site block as an administrator reads it, with one difference
-the webhook's dashboard also has: `site.active_control.writable` is `false`. `writable` is `true` for what the
+the webhook's dashboard also has: `site.active_control.writable` is `false`. `import_target` (additive under
+version 1) is `{"available", "reason"}`: `available` is `false`, with `reason` `needs_total_grid_power`, on a site
+that cannot measure an import target (a direct site without the meter's total grid power), the same rule as the
+dashboard's `grid_tariff.demand`. A client hides the import target row then, unless a target is set (so it can be
+cleared). A Home Assistant before the key leaves it out: read it as available. `writable` is `true` for what the
 webhook's own writes change (`update_site_settings`, `choose_price_source`, `update_grid_tariff`); the price's
 fees (`price_settings.fees`) are shown but have no webhook write.
 
@@ -957,7 +968,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. With `site_id` in place of `charger_id` (a site with or without chargers), the site's alone: only the scope `site`, `charger_id` and `control` `null`, `vehicles` empty; an unknown id is `spotnav_unknown_site`, an unloaded site `spotnav_no_site`. |
 | `spotnav/list_sites` | The loaded sites: `{"api_version": 1, "sites": [{"site_id", "name", "charger_ids"}]}`, by name. |
-| `spotnav/get_site_settings_view` | The settings popover's site block, by `site_id` or a `charger_id` in the site: `{"api_version": 1, "site_id", "name", "charger_ids", "writable", "price": {"entry_id", "title", "area_id", "area_name"} or null, "battery": {"found"}, "setup": {"items": [...]}, "price_settings", "site"}`. `price_settings` (`null` exactly where `price` is) is the popover's price section: `market` (the area's facts), `fiscal`, `fees` (the price's stored row, `{area_id, vat, tax, transfer}`), `provider`, `price_source` and `grid_tariff` as the dashboard states them, read for the site. `site` is the site's own `site` block (solar priority, forecast sources, load balancing), `null` while the site is not running. `setup` has the site's own Get started rows in the dashboard's shape: `charger` (no charger; dismissible), `price` (no electricity price applies), `grid_power_sign`, `grid_current_sign`, `solar_forecast`, `demand_grid_power`, `battery` (a battery found, control off; dismissible), `heat` (a heat pump found, no heat settings; dismissible). Refusals `spotnav_unknown_site`, `spotnav_no_site` and the charger lookup's. |
+| `spotnav/get_site_settings_view` | The settings popover's site block, by `site_id` or a `charger_id` in the site: `{"api_version": 1, "site_id", "name", "charger_ids", "writable", "price": {"entry_id", "title", "area_id", "area_name"} or null, "battery": {"found"}, "import_target": {"available", "reason"}, "setup": {"items": [...]}, "price_settings", "site"}`. `import_target.available` is `false` (`reason` `needs_total_grid_power`) where the site cannot measure an import target. `price_settings` (`null` exactly where `price` is) is the popover's price section: `market` (the area's facts), `fiscal`, `fees` (the price's stored row, `{area_id, vat, tax, transfer}`), `provider`, `price_source` and `grid_tariff` as the dashboard states them, read for the site. `site` is the site's own `site` block (solar priority, forecast sources, load balancing), `null` while the site is not running. `setup` has the site's own Get started rows in the dashboard's shape: `charger` (no charger; dismissible), `price` (no electricity price applies), `grid_power_sign`, `grid_current_sign`, `solar_forecast`, `demand_grid_power`, `battery` (a battery found, control off; dismissible), `heat` (a heat pump found, no heat settings; dismissible). Refusals `spotnav_unknown_site`, `spotnav_no_site` and the charger lookup's. |
 | `spotnav/battery_control` | The site's battery control status, after writing `changes` when given (see [home batteries](home-battery.md)); by `site_id`, or by `charger_id` for that charger's site. `"clear_outside_control": true` (administrators only, not over the webhook) ends an outside-control verdict found by the battery's own settings or behaviour, logged as cleared by a person; one from an integration or a planner, or none, is `spotnav_not_clearable`. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |

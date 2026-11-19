@@ -5,6 +5,7 @@
   "ok": true,
   "status": {
     "allowed_actions": [],
+    "battery_found": false,
     "device_id": null,
     "enable_entities": null,
     "grid_charge_cap": {

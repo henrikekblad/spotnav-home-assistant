@@ -43,6 +43,8 @@ export interface SiteView {
   writable: boolean;
   price: { entry_id: string; title: string | null; area_id: string; area_name: string | null } | null;
   battery: { found: boolean };
+  /** Whether the site can measure an import target (no: a direct site without the meter's total grid power). */
+  import_target: { available: boolean; reason: string | null };
   setup: { items: SiteSetupItem[] };
   /** The price section's model, `null` exactly where `price` is (no electricity price applies to the site). */
   price_settings: SitePriceSettings | null;
@@ -82,6 +84,8 @@ export interface BatteryOptions {
 }
 
 export interface BatteryStatus {
+  /** Whether the site's battery facts name a battery (`true` from a Home Assistant before the key). */
+  battery_found: boolean;
   options: BatteryOptions;
   state: string;
   line: string;
@@ -203,6 +207,7 @@ const SITE_VIEW = O({
   writable: "boolean",
   price: N(O({ entry_id: "string", title: N("string"), area_id: "string", area_name: N("string") })),
   battery: O({ found: "boolean" }),
+  import_target: O({ available: "boolean", reason: N("string") }),
   setup: O({ items: A("any") }),
   price_settings: N(
     O({
@@ -287,6 +292,7 @@ const PER_PHASE = O({
 });
 
 const STATUS: Spec = O({
+  battery_found: "boolean",
   options: OPTIONS,
   state: "string",
   line: "string",
@@ -325,7 +331,12 @@ export function decodeSiteList(raw: unknown): Decoded<{ api_version: number; sit
 }
 
 export function decodeSiteView(raw: unknown): Decoded<SiteView> {
-  const decoded = versioned<SiteView>(raw, SITE_VIEW_API_VERSION, SITE_VIEW);
+  // `import_target` came later: a Home Assistant before it is read as one that can measure it (the row shows).
+  const grown =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw) && !("import_target" in raw)
+      ? { ...(raw as Record<string, unknown>), import_target: { available: true, reason: null } }
+      : raw;
+  const decoded = versioned<SiteView>(grown, SITE_VIEW_API_VERSION, SITE_VIEW);
   if (!decoded.ok) {
     return decoded;
   }
@@ -373,7 +384,7 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 }
 
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
- * `status.per_phase`, `status.plan_costs` and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
+ * `status.per_phase`, `status.plan_costs`, `status.battery_found` (`true`) and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
 function withLaterBlocks(raw: unknown): unknown {
   const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
   if (typeof status !== "object" || status === null || Array.isArray(status)) {
@@ -389,6 +400,7 @@ function withLaterBlocks(raw: unknown): unknown {
       ...(plainCap ? { grid_charge_cap: { import_limit: null, ...(cap as Record<string, unknown>) } } : {}),
       per_phase: block["per_phase"] ?? null,
       plan_costs: block["plan_costs"] ?? null,
+      battery_found: block["battery_found"] ?? true,
     },
   };
 }

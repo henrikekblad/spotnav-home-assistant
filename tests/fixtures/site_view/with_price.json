@@ -13,6 +13,10 @@
   "battery": {
     "found": false
   },
+  "import_target": {
+    "available": true,
+    "reason": null
+  },
   "setup": {
     "items": [
       {
