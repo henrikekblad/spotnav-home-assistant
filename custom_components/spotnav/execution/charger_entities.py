@@ -15,6 +15,7 @@ from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CoreState, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from ..const import CONF_CHARGE_CONTROL
 from .charger_profiles import (
     entity_matches_keys,
     OwnModeRule,
@@ -29,6 +30,7 @@ from .charger_profiles import (
 DISABLED_LABEL: Final = "enabled"
 CONFLICT_OWN_MODE: Final = "own_mode"
 CONFLICT_DISABLED: Final = "disabled"
+_AMPERE_UNITS: Final = ("a", "amp", "amps", "ampere", "amperes", "ma")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +54,45 @@ class FixableConflict:
     label: str
     state: str
     value: str | None
+
+
+def charger_device_id(hass: HomeAssistant, charger_entry_id: str) -> str | None:
+    """The Home Assistant device backing a charger's charge-control entity, if resolvable; used only
+    to scope discovery to that charger's device (see vehicles/discovery.py).
+    """
+    charger_entry = hass.config_entries.async_get_entry(charger_entry_id)
+    if charger_entry is None:
+        return None
+    charge_control = charger_entry.data.get(CONF_CHARGE_CONTROL)
+    if not charge_control:
+        return None
+    registry = er.async_get(hass)
+    entity_entry = registry.async_get(charge_control)
+    return entity_entry.device_id if entity_entry else None
+
+
+def unit_is_amps(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
+    """Whether a number or sensor measures amperes (A or mA). An entity with no state yet (disabled,
+    not loaded) is taken from its registry unit, and with neither is not assumed to.
+    """
+    state = hass.states.get(entry.entity_id)
+    unit = state.attributes.get("unit_of_measurement") if state is not None else None
+    unit = unit or entry.unit_of_measurement
+    return bool(unit) and str(unit).strip().lower() in _AMPERE_UNITS
+
+
+def is_current_sensor(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
+    """A current sensor by unit, or by device class when it has not loaded (disabled by default), or,
+    for the few integrations that state neither (alfen_modbus, legacy go-e), by its key alone.
+    """
+    if unit_is_amps(hass, entry):
+        return True
+    device_class = entry.device_class or entry.original_device_class
+    if device_class == "current":
+        return True
+    state = hass.states.get(entry.entity_id)
+    stated = state.attributes.get("unit_of_measurement") if state is not None else None
+    return not (stated or entry.unit_of_measurement or device_class)
 
 
 def state_text(hass: HomeAssistant, entity_id: str) -> str | None:

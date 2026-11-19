@@ -27,9 +27,11 @@ from ..execution.chargers.registry import external_balancer
 from ..execution.chargers.zaptec import single_charger_installation
 from ..execution.charger_entities import (
     EntityMatcher,
+    is_current_sensor,
     option_for,
     own_mode_conflicts,
     OwnModeConflict,
+    unit_is_amps,
 )
 from ..execution.other_controllers import other_controllers, OtherController
 from ..execution.charger_profiles import (
@@ -55,7 +57,6 @@ from ..execution.charger_profiles import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_AMPERE_UNITS: Final = ("a", "amp", "amps", "ampere", "amperes", "ma")
 _POWER_UNITS: Final = ("kw", "w")
 _PHASE_LIMIT: Final = 3
 
@@ -135,16 +136,6 @@ def _device_platform(hass: HomeAssistant, device: dr.DeviceEntry, entries: list[
         if entry.platform in PROFILES:
             return entry.platform
     return None
-
-
-def _unit_is_amps(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
-    """Whether a number or sensor measures amperes (A or mA). An entity with no state yet (disabled,
-    not loaded) is taken from its registry unit, and with neither is not assumed to.
-    """
-    state = hass.states.get(entry.entity_id)
-    unit = state.attributes.get("unit_of_measurement") if state is not None else None
-    unit = unit or entry.unit_of_measurement
-    return bool(unit) and str(unit).strip().lower() in _AMPERE_UNITS
 
 
 def _unit_is_power(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
@@ -292,7 +283,7 @@ def _detect_current(
     if entry is None:
         found.notes.append("no_current_number")
         return
-    if not _unit_is_amps(hass, entry):
+    if not unit_is_amps(hass, entry):
         found.notes.append("current_unit_not_amps")
         return
     balancer = external_balancer(hass) if profile.policy.installation_wide else None
@@ -441,27 +432,13 @@ def _detect_measured_current(hass: HomeAssistant, found: DetectedCharger, matche
         for entry in matcher.find("sensor", (key,))[:1]
     ]
     # Measurements of another quantity that happen to share a key are refused by unit.
-    usable = [entry for entry in entries if _is_current_sensor(hass, entry)]
+    usable = [entry for entry in entries if is_current_sensor(hass, entry)]
     for entry in usable[:_PHASE_LIMIT]:
         found.current_entities.append(entry.entity_id)
         if entry.disabled_by is not None:
             found.disabled_useful.append(entry.entity_id)
     if not usable:
         found.notes.append("no_measured_current")
-
-
-def _is_current_sensor(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:
-    """A current sensor by unit, or by device class when it has not loaded (disabled by default), or,
-    for the few integrations that state neither (alfen_modbus, legacy go-e), by its key alone.
-    """
-    if _unit_is_amps(hass, entry):
-        return True
-    device_class = entry.device_class or entry.original_device_class
-    if device_class == "current":
-        return True
-    state = hass.states.get(entry.entity_id)
-    stated = state.attributes.get("unit_of_measurement") if state is not None else None
-    return not (stated or entry.unit_of_measurement or device_class)
 
 
 def lifetime_energy_register(hass: HomeAssistant, device_id: str | None) -> str | None:
