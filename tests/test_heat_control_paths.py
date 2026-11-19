@@ -18,6 +18,8 @@ from custom_components.spotnav.heat.adapters import ADAPTERS
 from custom_components.spotnav.heat.config import HeatConfig, apply_changes, read_config
 from custom_components.spotnav.heat.control import HeatControl, lower_entity, raise_entity, store_key
 from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts
+from custom_components.spotnav.heat.relay_effect import Effect
+from custom_components.spotnav.heat.runtime import lowering_states
 from custom_components.spotnav.heat.shadow_rule import BandHour
 from custom_components.spotnav.runtime import site_controller_for
 
@@ -687,6 +689,38 @@ async def test_a_write_that_is_not_read_back_puts_the_value_found_back_and_pause
     await _look(control, now + 2 * MIN)
     assert control.paused_reason == "no_read_back" and not control.held
     assert pump.calls == [(NIBE, -3.0), (NIBE, -1.0)]
+
+
+# ------------------------------------------------------------------------------------------------ the heat shadow
+
+
+def test_the_controls_lowerings_read_as_a_relays_states() -> None:
+    at = datetime.fromisoformat("2026-11-18T10:00:00+00:00")
+    lowerings = [[at - 30 * H, at - 29 * H], [at - H, at], [at + H, None]]
+    states = lowering_states(lowerings, at - 2 * H, at + 2 * H)
+    assert states == [(at - 2 * H, False), (at - H, True), (at, False), (at + H, True)]
+    # A lowering that covers the start reads closed from it.
+    assert lowering_states([[at - H, None]], at, at + H) == [(at, False), (at, True)]
+
+
+async def test_the_heat_shadow_sees_spotnavs_own_lowerings_on_the_pumps_own_settings(hass: HomeAssistant, freezer) -> None:
+    site, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {0: "lower", 1: "lower"})
+    await _look(control, now)
+    assert control.held and pump.value(NIBE) == "-3.0"
+    shadow = control.shadow
+    shadow.tick(now + MIN)
+    assert (shadow.relay_id, shadow.steered) == (None, NIBE_A)
+    past, ahead = shadow.relay_intervals(now + MIN)
+    assert past == [(now, now + MIN)] and ahead and ahead[0][0] == now + MIN
+    # The house forecast, and so the joint plan, the battery and the cars, see the lowering and its rebound.
+    shadow.heat_kw = lambda: (lambda _hour: 1.2)  # type: ignore[method-assign]
+    shadow.effect = Effect(0.5, 1.0, 0)
+    shadow._delta_key = None  # noqa: SLF001 - the effect changed under the test
+    delta = shadow.forecast_delta(now + MIN)
+    assert delta[now] < 0 and any(kw > 0 for kw in delta.values())
+    # The card's relay block stays a relay's: nothing is shown as a relay here.
+    answer = (await read(hass, api_version=1, site_id=site.entry_id))["result"]
+    assert answer["relay"] is None and shadow.diagnostics()["steered"] == NIBE_A
 
 
 # ------------------------------------------------------------------------------------------------ the opt-in

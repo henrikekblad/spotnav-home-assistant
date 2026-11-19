@@ -219,7 +219,8 @@ Everything in the section above holds for them as well: off by default behind **
 control starts, the same plan and rules (45 minutes to 3 hours, 6 hours a day, never at −15 °C, released when a room
 gets cold), every write read back, and someone else's change wins: a value you or another automation set is left as
 it is and SpotNav pauses until the next day. "Closed" in that section is the lowering as SpotNav wrote it, "open" the
-pump's normal state.
+pump's normal state. SpotNav's own lowerings on these paths count in the house forecast (the heat taken away and
+its rebound after), and so in the battery's and the cars' plans and the day's review, as a relay's closings do.
 
 | Path | Pump and integration | What SpotNav writes | Writes a day | Handed back by |
 | --- | --- | --- | --- | --- |
