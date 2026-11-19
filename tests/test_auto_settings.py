@@ -15,6 +15,7 @@ from datetime import datetime, time, timedelta, timezone
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.spotnav.api.settings import replacement_mutator
 from custom_components.spotnav.planning.auto_settings import (
     DEFAULT_DEPARTURE,
     DEFAULT_MAX_PERIODS,
@@ -25,6 +26,7 @@ from custom_components.spotnav.planning.auto_settings import (
     AutoSettingsError,
     AutoSettingsStore,
     FiscalOverride,
+    PauseIntent,
     StoredProposal,
     TargetSocIntent,
     async_setup_auto_settings,
@@ -271,6 +273,20 @@ def test_a_stored_target_is_read_by_shape(raw: Any, code: str) -> None:
     assert refused.value.code == code
 
 
+def test_stored_nested_records_stay_exact() -> None:
+    """Only the settings record reads past a later release's key (and keeps it). A nested record carries values a later
+    release may mean something else by beside a new key, and it would not be written back: it is refused as before."""
+    pause = AutoSettings().pause
+    with pytest.raises(AutoSettingsError) as refused:
+        PauseIntent.from_stored({**pause.as_dict(), "later": True})
+    assert refused.value.code == "unknown_field"
+    raw = AutoSettings(area_id="SE4", amps=10).as_dict()
+    raw["target"] = {**raw["target"], "later": True}
+    with pytest.raises(AutoSettingsError) as refused:
+        AutoSettings.from_stored(raw)
+    assert refused.value.code == "unknown_field"
+
+
 def stored_settings(**changes: Any) -> dict[str, Any]:
     """A complete schema-1 settings record, with these changes applied."""
     document = AutoSettings().validated().as_dict()
@@ -311,14 +327,13 @@ def test_a_stored_settings_record_is_never_coerced(changes: dict, code: str) -> 
     ("drop", "add", "code"),
     [
         ("amps", None, "missing_field"),
-        (None, {"amperage": 10}, "unknown_field"),
         ("target", None, "missing_field"),
     ],
 )
-def test_a_stored_settings_record_needs_every_field_and_no_others(
+def test_a_stored_settings_record_needs_every_field(
     drop: str | None, add: dict | None, code: str
 ) -> None:
-    """The shape is what `as_dict` writes: a misspelled or absent key is not this release."""
+    """The shape is what `as_dict` writes: an absent key is not this release."""
     raw = stored_settings()
     if drop is not None:
         del raw[drop]
@@ -327,6 +342,22 @@ def test_a_stored_settings_record_needs_every_field_and_no_others(
     with pytest.raises(AutoSettingsError) as refused:
         AutoSettings.from_stored(raw)
     assert refused.value.code == code
+
+
+def test_a_record_with_any_later_release_field_still_loads_and_keeps_it() -> None:
+    """Whatever a later release adds to the record is read past and written back as it was, through a save, a
+    change and a full replacement; a field of this release's own is never written over by one."""
+    raw = AutoSettings(revision=2, area_id="SE4", amps=10).as_dict()
+    raw["battery_first"] = {"enabled": True, "kw": 3.5}
+    raw["later_flag"] = True
+    settings = AutoSettings.from_stored(raw)
+    assert settings == AutoSettings(revision=2, area_id="SE4", amps=10)
+    saved = replace(settings, amps=16, revision=3).validated().as_dict()
+    assert saved["battery_first"] == {"enabled": True, "kw": 3.5} and saved["later_flag"] is True
+    assert saved["amps"] == 16
+    assert AutoSettings.from_stored(saved).as_dict() == saved
+    replaced = replacement_mutator(AutoSettings(area_id="SE4", amps=13))(settings).as_dict()
+    assert replaced["later_flag"] is True and replaced["amps"] == 13
 
 
 def test_a_record_with_a_departure_calendar_loads_and_keeps_it() -> None:
@@ -366,13 +397,12 @@ def test_a_complete_stored_record_round_trips_exactly() -> None:
 
 
 @pytest.mark.parametrize("retired", ["consumption_kwh_per_10km", "allow_estimated_fallback"])
-def test_a_stored_record_with_a_retired_field_is_refused(retired: str) -> None:
-    """The record is exactly what `as_dict` writes: a field this release dropped is not this release."""
-    stored = AutoSettings(area_id="SE4", amps=16).validated().as_dict()
+def test_a_stored_record_with_a_field_this_release_does_not_read_plays_no_part(retired: str) -> None:
+    """A field this release does not read (a retired one, or a later release's) changes nothing it plans with."""
+    settings = AutoSettings(area_id="SE4", amps=16).validated()
+    stored = settings.as_dict()
     stored[retired] = 2.0
-    with pytest.raises(AutoSettingsError) as refused:
-        AutoSettings.from_stored(stored)
-    assert refused.value.code == "unknown_field"
+    assert AutoSettings.from_stored(stored) == settings
 
 
 # ----------------------------------------------------- a stored proposal, read strictly
@@ -608,9 +638,10 @@ async def test_the_warnings_name_a_code_and_never_a_value(
     hass: HomeAssistant, flaky: FlakyStore, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A log line about stored data must be useful without quoting what was stored."""
-    # A complete record with two extra keys: the shape is what is refused, so this is the
-    # unknown-field warning, and neither the names nor the value may be quoted back.
+    # A record missing a field and carrying a secret: the shape is what is refused, so this is the
+    # missing-field warning, and neither the names nor the value may be quoted back.
     bogus = AutoSettings().validated().as_dict() | {"amperage": 10, "secret": "s3cr3t"}
+    del bogus["amps"]
     flaky.payload = stored_document(**{"entry-a": record(bogus)})
     store = AutoSettingsStore(hass, store=flaky)
 
@@ -618,7 +649,7 @@ async def test_the_warnings_name_a_code_and_never_a_value(
         await store.async_load()
 
     text = caplog.text
-    assert "unknown_field" in text
+    assert "missing_field" in text
     assert "s3cr3t" not in text
     assert "amperage" not in text, "a warning must not quote the shape it refused"
 

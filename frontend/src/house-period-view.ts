@@ -248,8 +248,9 @@ export function barChart(input: BarChartInput): HTMLElement {
   });
   const chosen = Math.max(0, bars.findIndex((bar) => bar.key === selected));
   buttons.forEach((button, at) => (button.tabIndex = at === chosen ? 0 : -1));
-  plot.addEventListener("mouseleave", () => show(bars.find((bar) => bar.key === selected) ?? null));
-  scrubBars(plot, buttons, (index) => show(bars[index] ?? null), choose);
+  const showChosen = (): void => show(bars.find((bar) => bar.key === selected) ?? null);
+  plot.addEventListener("mouseleave", showChosen);
+  scrubBars(plot, buttons, (index) => show(bars[index] ?? null), choose, showChosen);
   const axis = element(doc, "div", P.axis);
   axis.setAttribute("aria-hidden", "true");
   for (const bar of bars) {

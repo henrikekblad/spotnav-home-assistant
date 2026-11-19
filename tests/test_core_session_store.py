@@ -80,11 +80,9 @@ def test_the_stored_record_round_trips_without_what_a_restart_clears() -> None:
         {"version": 3},
         {"version": None},
         {"version": True},
-        {"pending": []},  # a transient field is not part of the record
         {"owner": "nobody"},
         {"manual": {"action": "stop"}},
         {"car_ended": {"at": "yesterday", "soc": None, "vehicle": None, "wait": None}},
-        {"car_ended_at": None},  # a field of version 1 in a record of version 2
     ],
 )
 def test_a_stored_record_of_another_version_or_shape_is_refused(change: dict[str, Any]) -> None:
@@ -93,6 +91,35 @@ def test_a_stored_record_of_another_version_or_shape_is_refused(change: dict[str
         ChargeSession.from_store(record)
     with pytest.raises(SessionError):
         ChargeSession.from_store("not a record")
+    missing = ChargeSession(owner="plan").to_store()
+    del missing["owner"]
+    with pytest.raises(SessionError):
+        ChargeSession.from_store(missing)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"pending": []},  # a transient field is not part of the record
+        {"car_ended_at": None},  # a field of version 1 in a record of version 2
+        {"battery_hold": {"until": "2026-11-19T10:00:00+00:00"}},  # a later release's field (3.0 keeps version 2)
+    ],
+)
+def test_a_stored_record_reads_past_a_field_it_does_not_store(change: dict[str, Any]) -> None:
+    """Going back from a later release of the same record version still reads who owns the charge."""
+    session = ChargeSession(owner="plan")
+    assert ChargeSession.from_store({**session.to_store(), **change}) == session.stored()
+
+
+def test_a_stored_car_ended_record_reads_past_a_later_releases_field() -> None:
+    at = datetime(2026, 11, 19, 8, 0, tzinfo=timezone.utc)
+    session = ChargeSession(
+        owner="plan", car_ended=CarEnded(at=at, soc=80.0, vehicle="v", wait=CarEndedWait(90.0, 80.0, False))
+    )
+    record = session.to_store()
+    record["car_ended"] = {**record["car_ended"], "source": "car"}
+    record["car_ended"]["wait"] = {**record["car_ended"]["wait"], "kind": "level"}
+    assert ChargeSession.from_store(record) == session.stored()
 
 
 # ---------------------------------------------------------------------------------------------- in the controller

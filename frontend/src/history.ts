@@ -458,7 +458,8 @@ function dayChart(
     bars.push(bar);
     plot.append(bar);
   });
-  plot.addEventListener("mouseleave", () => show(days.find((day) => day.period === ui.day) ?? null));
+  const showChosen = (): void => show(days.find((day) => day.period === ui.day) ?? null);
+  plot.addEventListener("mouseleave", showChosen);
   scrubBars(
     plot,
     bars,
@@ -470,6 +471,7 @@ function dayChart(
         show(day);
       }
     },
+    showChosen,
   );
   const axis = element(doc, "div", C.historyAxis);
   axis.setAttribute("aria-hidden", "true");

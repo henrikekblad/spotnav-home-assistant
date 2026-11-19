@@ -13,14 +13,16 @@ and says so with `cost_basis: "stored"` until `history_import.migrate_legacy` ca
 session's cost is never lost. Only such a record is ever written with a stored cost; a session recorded since
 always has its intervals.
 
-Stored JSON is untrusted: `from_dict` reads exactly the shape `as_dict` writes and answers `None` for
-anything else, so one bad record never takes the others down.
+Stored JSON is untrusted: `from_dict` checks every field `as_dict` writes and answers `None` for a record
+whose fields are missing or not of their kind, so one bad record never takes the others down. A field it does
+not know is a later release's (3.0 added `plugged_in_at`): read past, and kept as it was (`later_release`), so
+going back to this release from a later one loses no session, and going forward again loses nothing of it.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, tzinfo
 from typing import Any, Final
 
@@ -153,6 +155,9 @@ class ChargeSession:
     #: while it reads connected): what SpotNav's saving on the car is measured from (`site/spotnav_saving.py`).
     #: `None` in a record from before it, an imported one and where the charger cannot say.
     plugged_in_at: datetime | None = None
+    #: The fields a later release stored that this one does not know, as they were read (`from_dict`): not used
+    #: here, written back by `as_dict` so a save in this release does not lose them. Not part of equality.
+    later_release: tuple[tuple[str, Any], ...] = field(default=(), compare=False, repr=False)
 
     @property
     def cost_basis(self) -> str:
@@ -218,8 +223,10 @@ class ChargeSession:
         return self.reference_cost_minor - self.cost_minor
 
     def as_dict(self) -> dict[str, Any]:
-        """The stored shape."""
+        """The stored shape, with what a later release stored beside it (`later_release`) as it was read."""
         record: dict[str, Any] = {
+            # First, so a field of this release's own is never written over.
+            **dict(self.later_release),
             "id": self.id,
             "charger_id": self.charger_id,
             "start": self.start.isoformat(),
@@ -260,12 +267,16 @@ class ChargeSession:
 
     @classmethod
     def from_dict(cls, raw: Any) -> ChargeSession | None:
-        """A stored record, or `None` when it is not exactly this shape."""
+        """A stored record, or `None` when a field it needs is missing or not of its kind. A field this release
+        does not know (a later release's) is read past and kept (`later_release`); so is a way of deciding the
+        vehicle it does not know, which reads here as nothing decided it."""
         if not isinstance(raw, dict) or not _FIELDS <= set(raw):
             return None
-        extra = set(raw) - _FIELDS - _OPTIONAL_FIELDS - _PRE_INTERVAL_FIELDS
-        if extra:
-            return None
+        later = [
+            (key, value)
+            for key, value in raw.items()
+            if key not in _FIELDS and key not in _OPTIONAL_FIELDS and key not in _PRE_INTERVAL_FIELDS
+        ]
         source = raw.get("source")
         area_id = raw.get("area_id")
         decided_by = raw.get("vehicle_decided_by")
@@ -275,10 +286,13 @@ class ChargeSession:
             (raw.get("plugged_in_at") is not None and plugged is None)
             or (source is not None and source not in IMPORT_SOURCES)
             or (area_id is not None and not isinstance(area_id, str))
-            or (decided_by is not None and decided_by not in VEHICLE_DECIDED_BY)
+            or (decided_by is not None and not isinstance(decided_by, str))
             or (start_soc is not None and _number(start_soc) is None)
         ):
             return None
+        if decided_by is not None and decided_by not in VEHICLE_DECIDED_BY:
+            later.append(("vehicle_decided_by", decided_by))
+            decided_by = None
         # The cost the record was written with: only a record that has no intervals has one.
         if "legacy_cost_minor" in raw or "legacy_priced_kwh" in raw:
             kind = "legacy_"
@@ -358,6 +372,7 @@ class ChargeSession:
             start_soc_percent=None if start_soc is None else _number(start_soc),
             register_entity=_text(raw.get("register_entity")),
             plugged_in_at=plugged,
+            later_release=tuple(later),
         )
 
     def public(self, zone: tzinfo | None = None) -> dict[str, Any]:

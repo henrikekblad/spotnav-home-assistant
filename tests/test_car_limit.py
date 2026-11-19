@@ -159,10 +159,13 @@ async def test_the_learned_limit_is_planned_with_at_the_next_plug_in(hass: HomeA
 
 
 class _HoldingSite:
-    """A site whose load balancing holds the charger at 16 A."""
+    """A site whose load balancing holds the charger at `limit_a`."""
+
+    def __init__(self, limit_a: float) -> None:
+        self._limit_a = limit_a
 
     def load_balancing_limit(self, _charger_entry_id: str) -> tuple[float | None, str | None]:
-        return 16.0, None
+        return self._limit_a, None
 
     def import_target_plan_kw(self, _charger_entry_id: str) -> float | None:
         return None
@@ -174,25 +177,44 @@ class _HoldingSite:
         return False
 
 
+@pytest.mark.parametrize(
+    ("limit_a", "taken_kw"),
+    [
+        (16.0, TAKEN_KW),  # held at 16 A, the car takes all of it
+        (6.0, power_kw(6, 3) * 0.85),  # held at 6 A, the car takes about 5.1 A of it: below the 90 % a limit needs
+    ],
+)
 async def test_a_balancing_hold_is_not_taken_as_the_cars_limit(
-    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch, limit_a: float, taken_kw: float
 ) -> None:
     serve(transport, rising=True)
     _record_starts_and_stops(hass)
-    monkeypatch.setattr(auto_controller_module, "site_controller_for_charger", lambda _hass, _entry_id: _HoldingSite())
+    monkeypatch.setattr(
+        auto_controller_module, "site_controller_for_charger", lambda _hass, _entry_id: _HoldingSite(limit_a)
+    )
     with freeze_time(NOW) as frozen:
         charger, device_id, _ = await charger_and_car(hass, soc_percent="70", amps=20, phases=3)
         preview = preview_for(hass, charger.entry_id)
         replans = _record_limit_replans(preview)
-        # Held at 16 A, the car takes all of it.
-        await _charge(hass, frozen, 20, 1000.0, TAKEN_KW)
+        await _charge(hass, frozen, 20, 1000.0, taken_kw)
         assert not replans
-        assert preview.plan_watch_facts()["car_limit"]["session_kw"] is None
-        measure = preview.plan_watch_facts()["car_limit"]["last_measure"]
-        assert measure is not None and not measure["limited"]
-        assert measure["offered_kw"] == pytest.approx(TAKEN_KW, abs=1e-3), "offered what the hold allows"
+        # A held current is never measured: nothing for this plug-in, nothing kept for the next.
+        assert preview.plan_watch_facts()["car_limit"] == {"session_kw": None, "last_measure": None}
         learned = preview._learned.power(subject_for(device_id), WIRING, 1.0, PLANNED_KW)  # noqa: SLF001
-        assert learned.kw is None, "and no clean minute either"
+        assert learned.kw is None and not learned.trusted, "and no clean minute either"
+
+
+async def test_a_plan_at_the_chargers_least_current_measures_no_limit(hass: HomeAssistant, transport: Any) -> None:
+    """At a 6 A pilot a car may take about 5.3 A: the charger's floor, not a limit of the car's."""
+    serve(transport, rising=True)
+    _record_starts_and_stops(hass)
+    with freeze_time(NOW) as frozen:
+        charger, device_id, _ = await charger_and_car(hass, soc_percent="70", amps=6, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        replans = _record_limit_replans(preview)
+        await _charge(hass, frozen, 20, 1000.0, power_kw(6, 3) * 0.85)
+        assert not replans
+        assert preview.plan_watch_facts()["car_limit"] == {"session_kw": None, "last_measure": None}
 
 
 async def test_the_taper_near_full_is_not_taken_as_the_cars_limit(hass: HomeAssistant, transport: Any) -> None:
@@ -234,3 +256,50 @@ async def test_a_limit_that_misses_the_departure_is_reported(hass: HomeAssistant
         assert snapshot.expected_soc_percent is not None and snapshot.expected_soc_percent < 80
         events = hass.states.get(entity_id(hass, charger.entry_id, "charger_events", platform="event"))
         assert events is not None and events.attributes.get("event_type") == "plan_at_risk"
+
+
+async def test_a_limit_kept_before_midnight_is_found_after_it_without_a_plug_in_time(
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A charger that reports no plug-in keeps a limit under the day its window started: a window from 23:00 to 02:00
+    still finds it after midnight."""
+    from types import SimpleNamespace
+
+    serve(transport, rising=True)
+    with freeze_time(NOW):
+        charger, device_id, _ = await charger_and_car(hass, soc_percent="70", amps=20, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        controller = controller_of(hass, charger.entry_id)
+        start = datetime(2026, 9, 22, 23, 0, tzinfo=timezone.utc)
+        night = SimpleNamespace(windows=[(start, start + timedelta(hours=3))], departure=None)
+        preview._learned.set_limit(subject_for(device_id), WIRING, "day:2026-09-22", TAKEN_KW, 10)  # noqa: SLF001
+        settings = preview._effective(preview._store.settings(charger.entry_id))  # noqa: SLF001
+        with monkeypatch.context() as patch:
+            patch.setattr(controller, "plan", night)
+            patch.setattr(type(controller), "plugged_in_at", property(lambda _self: None))
+            patch.setattr(type(controller), "plugged_in_for_count", property(lambda _self: None))
+            patch.setattr(preview, "_now", lambda: start + timedelta(minutes=90))
+            limit = preview._session_limit_kw(settings)  # noqa: SLF001
+        assert limit == pytest.approx(TAKEN_KW)
+
+
+async def test_the_replan_for_a_car_limit_is_a_task_of_the_chargers_entry(
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bound to the config entry, so an unload waits for it instead of leaving it running."""
+    from homeassistant.config_entries import ConfigEntry
+
+    serve(transport, rising=True)
+    _record_starts_and_stops(hass)
+    tasks: list[tuple[str, str | None]] = []
+    original = ConfigEntry.async_create_task
+
+    def recording(self: ConfigEntry, hass_: HomeAssistant, target: Any, name: str | None = None, **kwargs: Any) -> Any:
+        tasks.append((self.entry_id, name))
+        return original(self, hass_, target, name, **kwargs)
+
+    monkeypatch.setattr(ConfigEntry, "async_create_task", recording)
+    with freeze_time(NOW) as frozen:
+        charger, _device_id, _ = await charger_and_car(hass, soc_percent="70", amps=20, phases=3)
+        await _charge(hass, frozen, 12, 1000.0, TAKEN_KW)
+    assert (charger.entry_id, "car limit replan") in tasks

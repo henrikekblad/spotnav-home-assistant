@@ -257,7 +257,8 @@ export function periodBars(
     buttons.push(button);
     plot.append(button);
   }
-  plot.addEventListener("mouseleave", () => show(bars.find((bar) => bar.key === ui.selected) ?? null));
+  const showChosen = (): void => show(bars.find((bar) => bar.key === ui.selected) ?? null);
+  plot.addEventListener("mouseleave", showChosen);
   scrubBars(
     plot,
     buttons,
@@ -269,6 +270,7 @@ export function periodBars(
         show(bar);
       }
     },
+    showChosen,
   );
   const axis = element(doc, "div", C.historyAxis);
   axis.setAttribute("aria-hidden", "true");

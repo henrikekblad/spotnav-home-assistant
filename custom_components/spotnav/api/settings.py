@@ -609,7 +609,8 @@ def replacement_mutator(
             kept["if_not_ready"] = current.if_not_ready
         if keep_auto_periods and current.max_periods is None and replacement.max_periods == MAX_PERIODS:
             kept["max_periods"] = None
-        updated = replace(replacement, pause=current.pause, **kept)
+        # What a later release stored is no client's to change: it stays as it was read (`AutoSettings`).
+        updated = replace(replacement, pause=current.pause, _later_release=current._later_release, **kept)
         if is_guest(current) and updated.target.vehicle_id is None:
             # A client that does not know the guest car sees no vehicle, and writes none: the guest stays.
             updated = replace(updated, target=current.target)

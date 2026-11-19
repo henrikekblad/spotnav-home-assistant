@@ -124,13 +124,22 @@ class NotificationSettings:
 
     @classmethod
     def from_stored(cls, raw: Any) -> NotificationSettings:
-        """A stored record. One written before `vehicle_identify` existed has it turned on."""
+        """A stored record. One written before `vehicle_identify` existed has it turned on.
+
+        A later release's record (3.0) is read with what this release knows of it: a field it does not know is
+        read past, and so is an event it does not know (or a later event list's marker), never the whole record:
+        going back to this release keeps the charger's settings. A known field of the wrong kind is still refused.
+        """
         if not isinstance(raw, dict):
             raise NotificationSettingsError("notifications must be an object")
-        record = dict(raw)
-        marker = record.pop(_STORED_EVENT_SET_KEY, None)
-        if marker is not None and marker != _STORED_EVENT_SET:
+        record = {key: value for key, value in raw.items() if key in NOTIFICATION_KEYS | OPTIONAL_NOTIFICATION_KEYS}
+        marker = raw.get(_STORED_EVENT_SET_KEY)
+        later = isinstance(marker, int) and not isinstance(marker, bool) and marker > _STORED_EVENT_SET
+        if marker is not None and marker != _STORED_EVENT_SET and not later:
             raise NotificationSettingsError("stored notifications name an event list this release does not know")
+        events = record.get("events")
+        if isinstance(events, list) and all(isinstance(event, str) for event in events):
+            record["events"] = [event for event in events if event in NOTIFICATION_EVENTS]
         read = cls.from_dict(record)
         if marker is None and EVENT_VEHICLE_IDENTIFY not in read.events:
             read = cls(targets=read.targets, events=(*read.events, EVENT_VEHICLE_IDENTIFY), url=read.url).validated()
