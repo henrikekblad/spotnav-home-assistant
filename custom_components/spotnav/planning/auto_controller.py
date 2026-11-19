@@ -2013,6 +2013,8 @@ class AutoPlannerController:
                 _LOGGER.debug("Watching the car's own limit failed", exc_info=True)
                 limit = None
             # A car limit plans with the power it takes: before a behind-plan replan, which would plan with the same.
+            # It may stand in for an end-of-window replan of the same look: that one replans too, so all it gives up
+            # is its log line (`PlanWatch.tell`), which the car limit's own line replaces.
             decision = limit or decision
         if self._energy_sampler is not None and not guest:
             # Nothing is learned of a guest car (`vehicles/guest.py`).
