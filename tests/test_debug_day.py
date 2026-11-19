@@ -379,3 +379,72 @@ async def test_a_full_sunny_day_stays_under_the_size_aimed_for(
     assert _table(bundle["sites"][0]["history_24h"]["chargers"]["entry_a"])[-1]["solar_reason"] == "surplus_follows"
     assert all(len(charger["sessions"]) == SESSIONS_KEPT for charger in bundle["chargers"])
     assert size < 1_500_000, size
+
+
+# ---------------------------------------------------------------------------------------------- off-loop stores
+
+
+async def test_an_off_loop_store_writes_once_per_delay_and_at_close(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """A change a minute for two hours writes at the delay, not each minute; the snapshot is taken on the loop, and
+    a close writes the change still waiting."""
+    from custom_components.spotnav.debug_day import DayStore
+
+    rows: list[str] = []
+    writes: list[int] = []
+    original = Store.async_save
+
+    async def save(self: Store, data: Any) -> None:
+        if self.key == "spotnav.test_off_loop":
+            writes.append(len(data["rows"]))
+        await original(self, data)
+
+    store = DayStore(hass, "spotnav.test_off_loop", lambda: {"rows": list(rows)}, save_delay_s=1800.0, off_loop=True)
+    assert store._store._serialize_in_event_loop is False  # noqa: SLF001
+    await store.async_load()
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Store, "async_save", save)
+        start = dt_util.utcnow()
+        for minute in range(1, 61):  # a change a minute for an hour
+            rows.append(f"row {minute}")
+            store.changed()
+        async_fire_time_changed(hass, start + timedelta(minutes=29))
+        await hass.async_block_till_done()
+        assert writes == [], "nothing is written before the delay"
+        async_fire_time_changed(hass, start + timedelta(minutes=31))
+        await hass.async_block_till_done()
+        assert writes == [60], "one write holds all the changes"
+        rows.append("after")
+        store.changed()
+        async_fire_time_changed(hass, start + timedelta(minutes=29))
+        await hass.async_block_till_done()
+        assert writes == [60]
+        rows.append("last")
+        store.changed()
+        await store.async_close()
+    assert writes == [60, 62], "a close writes what waits"
+    assert hass_storage["spotnav.test_off_loop"]["data"]["rows"][-1] == "last"
+
+
+async def test_an_off_loop_store_writes_a_waiting_change_at_homeassistants_final_write(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE
+
+    from custom_components.spotnav.debug_day import DayStore
+
+    store = DayStore(hass, "spotnav.test_final", lambda: {"rows": ["a"]}, save_delay_s=1800.0, off_loop=True)
+    await store.async_load()
+    store.changed()
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_FINAL_WRITE)
+    await hass.async_block_till_done()
+    assert hass_storage["spotnav.test_final"]["data"] == {"rows": ["a"]}
+    await store.async_close()
+
+
+def test_the_big_tables_are_written_rarely_and_off_the_loop(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.site.site_history import SAVE_DELAY_S as HISTORY_DELAY, SiteHistory
+
+    history = SiteHistory(hass, "site1")
+    assert history._store._off_loop and history._store._save_delay_s == HISTORY_DELAY >= 1800  # noqa: SLF001

@@ -29,7 +29,9 @@ import logging
 import math
 from typing import Any, Final
 
-from homeassistant.core import callback, HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE
+from homeassistant.core import callback, Event, HomeAssistant
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -81,7 +83,11 @@ LOG_STORE_KEY: Final = f"{DOMAIN}.debug_day.log"
 class DayStore:
     """A debounced `Store` (module docstring). `data` returns what to write; the owner calls `changed` after each
     change and `async_load` once before anything is written. `save_delay_s` shortens the wait for a keeper that
-    needs it (the site's hour tracker, `site/demand_tracker.py`)."""
+    needs it (the site's hour tracker, `site/demand_tracker.py`).
+
+    `off_loop` is for a large table: its own timer takes the snapshot (`data` must then return a fresh structure, not
+    live containers) on the loop, and the JSON and the file write run in the executor (`Store` with
+    `serialize_in_event_loop=False`). Home Assistant's final write at its stop writes one still waiting."""
 
     def __init__(
         self,
@@ -90,9 +96,13 @@ class DayStore:
         data: Callable[[], dict[str, Any]],
         *,
         save_delay_s: float = SAVE_DELAY_S,
+        off_loop: bool = False,
     ) -> None:
         self._hass = hass
-        self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, key)
+        self._off_loop = off_loop
+        self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, key, serialize_in_event_loop=not off_loop)
+        self._timer_cancel: Callable[[], None] | None = None
+        self._final_cancel: Callable[[], None] | None = None
         self._data = data
         # How long a change waits for its write (`SAVE_DELAY_S` unless the keeper needs it sooner).
         self._save_delay_s = save_delay_s
@@ -125,7 +135,14 @@ class DayStore:
             return
         self._save_waits = True
         try:
-            self._store.async_delay_save(self._to_save, self._save_delay_s)
+            if self._off_loop:
+                self._timer_cancel = async_call_later(self._hass, self._save_delay_s, self._timer_fired)
+                if self._final_cancel is None:
+                    self._final_cancel = self._hass.bus.async_listen_once(
+                        EVENT_HOMEASSISTANT_FINAL_WRITE, self._final_write
+                    )
+            else:
+                self._store.async_delay_save(self._to_save, self._save_delay_s)
         except Exception:  # noqa: BLE001 - a diagnostic store must never disturb a decision
             # No traceback: this also runs for a logged warning, and must not log one of its own.
             self._save_waits = False
@@ -136,10 +153,33 @@ class DayStore:
         self._dirty = False
         return self._data()
 
+    @callback
+    def _timer_fired(self, _now: datetime) -> None:
+        self._timer_cancel = None
+        if self._closed or not self._dirty:
+            self._save_waits = False
+            return
+        snapshot = self._to_save()
+        self._hass.async_create_background_task(self._async_write(snapshot), "spotnav day store write")
+
+    async def _async_write(self, snapshot: dict[str, Any]) -> None:
+        try:
+            await self._store.async_save(snapshot)
+        except Exception:  # noqa: BLE001 - kept for the next write
+            self._dirty = True
+            _LOGGER.debug("SpotNav debug day: %s could not be written", self._store.key, exc_info=True)
+
+    async def _final_write(self, _event: Event) -> None:
+        self._final_cancel = None
+        await self.async_flush()
+
     async def async_flush(self) -> None:
         """Write a change still waiting (an unload, Home Assistant's stop). Never raises."""
         if not self._loaded or not self._dirty:
             return
+        if self._timer_cancel is not None:
+            self._timer_cancel()
+            self._timer_cancel = None
         try:
             await self._store.async_save(self._to_save())
         except Exception:  # noqa: BLE001 - kept for the next write
@@ -150,6 +190,12 @@ class DayStore:
         """An unload: write what waits, then schedule nothing more."""
         await self.async_flush()
         self._closed = True
+        if self._timer_cancel is not None:
+            self._timer_cancel()
+            self._timer_cancel = None
+        if self._final_cancel is not None:
+            self._final_cancel()
+            self._final_cancel = None
 
     @staticmethod
     async def async_remove(hass: HomeAssistant, key: str) -> None:
