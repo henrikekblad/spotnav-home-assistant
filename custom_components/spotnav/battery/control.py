@@ -1199,11 +1199,14 @@ class BatteryControl:
             if cap is not None and cap < gate.MIN_RATE_KW:
                 if self._phase_charge_possible():
                     # An unbalanced house leaves the balanced charge no room: a charge on the phase with the most
-                    # room instead, within that phase's own HA-down cap (`verify.phase_charge_step`).
+                    # room instead, within that phase's own HA-down cap (`verify.phase_charge_step`), after a
+                    # discharge on it has shown its sign and mapping unless `per_phase` has on this firmware.
                     step = phase_charge_step(
                         self._phase_caps_kw(now), stored_voltage_between_phases_v(self.site.config)
                     )
-                    verification.charge_per_phase(now, sample, step)
+                    verification.charge_per_phase(
+                        now, sample, step, mapped=gate.per_phase(self.report()) == "verified"
+                    )
                 else:
                     # No grid charge fits under the HA-down cap now: tried again at a later run.
                     verification.not_judgeable(now, "grid_charge_cap")
@@ -2210,7 +2213,10 @@ class BatteryControl:
 
     def _withdraw_per_phase(self, result: StepResult, now: datetime) -> None:
         """A running charge per phase that the plant did not follow (`executor._judge_phases` handed it back): the
-        capability is withdrawn for this firmware, so the next grid charge is the balanced one."""
+        capability is withdrawn for this firmware, so the next grid charge is the balanced one. Not while the
+        verification (or a hardware test) runs: its own modes record what a runaway on their targets showed."""
+        if self.verification is not None:
+            return
         judged = next((event for event in result.events
                        if event["kind"] == "monitor" and str(event["reason"]) in ("phase_over", "phase_no_effect")), None)
         report = None if judged is None else self.report()
