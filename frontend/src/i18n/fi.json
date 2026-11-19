@@ -1586,6 +1586,7 @@
   "battery.need.noBatteryControl": "SpotNav ei vielä osaa ohjata tämän merkin akkuja.",
   "battery.need.firmwareUnknown": "Ota akun laiteohjelmistoanturi käyttöön Home Assistantissa.",
   "battery.need.controlNotFound": "Akun ohjausta {role} ei löydy Home Assistantista.",
+  "battery.need.needsHacs": "Akun ohjaus vaatii HACS-integraation (mletenay/home-assistant-goodwe-inverter); Home Assistantin sisäänrakennetusta GoodWe-integraatiosta se puuttuu.",
   "battery.need.controlDisabled": "Ota akun ohjaus {role} käyttöön Home Assistantissa (se on oletuksena pois käytöstä).",
   "battery.need.outsideControl": "Jokin muu ohjaa akkua nyt, joten SpotNav ei ohjaa mitään.",
   "battery.need.aiTakeoverAck": "Hyväksy, että SpotNav ottaa ohjauksen akun AI-tilalta.",

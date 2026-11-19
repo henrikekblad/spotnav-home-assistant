@@ -66,6 +66,8 @@ describe("the battery's words", () => {
     expect(batteryNeed("sv", "control_disabled:remote_ems")).toBe(
       "Aktivera batteriets styrning Remote EMS i Home Assistant (den är avstängd från början).",
     );
+    expect(batteryNeed("en", "needs_hacs_integration")).toContain("HACS integration");
+    expect(batteryNeed("sv", "needs_hacs_integration")).toContain("HACS-integrationen");
     expect(batteryNeed("en", "ai_takeover_ack")).toBe("Accept that SpotNav takes over from the battery's AI mode.");
     expect(["obeyed", "restored", "ignored", "aborted:no_effect", "aborted:fuse", "not_judgeable:nearly_full"].map(outcomeVerdict)).toEqual([
       "passed", "passed", "failed", "failed", "pending", "pending",

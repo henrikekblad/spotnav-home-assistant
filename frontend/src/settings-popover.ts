@@ -337,6 +337,8 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.firmwareUnknown");
     case "control_not_found":
       return translate(language, "battery.need.controlNotFound", { role: roleName(param ?? "") });
+    case "needs_hacs_integration":
+      return translate(language, "battery.need.needsHacs");
     case "control_disabled":
       return translate(language, "battery.need.controlDisabled", { role: roleName(param ?? "") });
     case "outside_control":

@@ -1586,6 +1586,7 @@
   "battery.need.noBatteryControl": "SpotNav kann Speicher dieser Marke noch nicht steuern.",
   "battery.need.firmwareUnknown": "Aktiviere den Firmware-Sensor des Speichers in Home Assistant.",
   "battery.need.controlNotFound": "Die Steuerung {role} des Speichers fehlt in Home Assistant.",
+  "battery.need.needsHacs": "Die Steuerung des Speichers braucht die HACS-Integration (mletenay/home-assistant-goodwe-inverter); der eingebauten GoodWe-Integration von Home Assistant fehlt sie.",
   "battery.need.controlDisabled": "Aktiviere die Steuerung {role} des Speichers in Home Assistant (standardmäßig deaktiviert).",
   "battery.need.outsideControl": "Gerade steuert etwas anderes den Speicher, daher steuert SpotNav nichts.",
   "battery.need.aiTakeoverAck": "Bestätige, dass SpotNav den KI-Modus des Speichers ablöst.",

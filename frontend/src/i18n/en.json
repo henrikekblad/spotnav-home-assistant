@@ -1586,6 +1586,7 @@
   "battery.need.noBatteryControl": "SpotNav cannot run this brand of battery yet.",
   "battery.need.firmwareUnknown": "Enable the battery's firmware sensor in Home Assistant.",
   "battery.need.controlNotFound": "The battery's control {role} is not found in Home Assistant.",
+  "battery.need.needsHacs": "This battery's control needs the HACS integration (mletenay/home-assistant-goodwe-inverter); Home Assistant's built-in GoodWe integration lacks it.",
   "battery.need.controlDisabled": "Enable the battery's control {role} in Home Assistant (it is disabled by default).",
   "battery.need.outsideControl": "Something else runs the battery now, so SpotNav controls nothing.",
   "battery.need.aiTakeoverAck": "Accept that SpotNav takes over from the battery's AI mode.",
