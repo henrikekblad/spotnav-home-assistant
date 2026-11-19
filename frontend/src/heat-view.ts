@@ -9,6 +9,8 @@
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, kwhText, kwText, pad2, type FormatContext } from "./format";
 import {
+  heatFound,
+  heatSteers,
   isRelayPath,
   roomName,
   type HeatAheadHour,
@@ -378,7 +380,7 @@ function arc(from: number, to: number): string {
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${DIAL.r} ${DIAL.r} 0 ${b - a > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 }
 
-function dial(doc: Document, language: Language, answer: HeatAnswer, target: number, ui: HeatUi, handlers: HeatHandlers, height: number | null = null): HTMLElement {
+function dial(doc: Document, language: Language, answer: HeatAnswer, target: number, ui: HeatUi, handlers: HeatHandlers, height: number | null = null, readOnly = false): HTMLElement {
   const wrap = element(doc, "div", X.dialWrap);
   const step = (delta: number, label: TranslationKey, text: string, disabled: boolean): HTMLButtonElement => {
     const button = element(doc, "button", X.dialStep, text);
@@ -422,10 +424,15 @@ function dial(doc: Document, language: Language, answer: HeatAnswer, target: num
   });
   sub.dataset["line"] = "band";
   picture.append(figure, sub);
+  // Read-only (SpotNav cannot steer this heating): the target is shown, with nothing to press.
   wrap.append(
-    step(-TARGET_STEP, "heat.dial.lower", "−", target - TARGET_STEP < TARGET_MIN - 1e-9),
-    picture,
-    step(TARGET_STEP, "heat.dial.raise", "+", target + TARGET_STEP > TARGET_MAX + 1e-9),
+    ...(readOnly
+      ? [picture]
+      : [
+          step(-TARGET_STEP, "heat.dial.lower", "−", target - TARGET_STEP < TARGET_MIN - 1e-9),
+          picture,
+          step(TARGET_STEP, "heat.dial.raise", "+", target + TARGET_STEP > TARGET_MAX + 1e-9),
+        ]),
   );
   const block = element(doc, "div");
   block.append(wrap);
@@ -1134,11 +1141,23 @@ export function planChoice(ui: HeatUi): PeriodChoice {
 function nowPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElement): void {
   const { doc, language } = input;
   const target = input.ui.pendingTarget ?? answer.comfort.target_c;
-  panel.append(dial(doc, language, answer, target, input.ui, input.handlers, input.ui.fill ?? null));
+  // On heating SpotNav can only read, the target is shown read-only and Home/Away is left out: neither could act.
+  const readOnly = !heatSteers(answer.config);
+  panel.append(dial(doc, language, answer, target, input.ui, input.handlers, input.ui.fill ?? null, readOnly));
   const measured = element(doc, "p", X.measured, measuredLine(language, answer));
   measured.dataset["line"] = "measured";
-  panel.append(measured, ...modes(doc, language, answer, input.handlers));
-  if (answer.shadow && !boxed(input)) {
+  panel.append(measured, ...(readOnly ? [] : modes(doc, language, answer, input.handlers)));
+  if (readOnly) {
+    // One line on where a control path is chosen; the gear is an administrator's.
+    const line = element(
+      doc,
+      "p",
+      `${X.shadow} ${C.muted}`,
+      translate(language, answer.writable ? "heat.readOnly.admin" : "heat.readOnly"),
+    );
+    line.dataset["line"] = "readOnly";
+    panel.append(line);
+  } else if (answer.shadow && !boxed(input)) {
     // While nothing is controlled, what the dial and home or away are for: what SpotNav follows once it controls.
     const line = element(doc, "p", `${X.shadow} ${C.muted}`, translate(language, "heat.shadow"));
     line.dataset["line"] = "shadow";
@@ -1267,6 +1286,15 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
   const answer = state.answer;
   const idPrefix = input.idPrefix ?? "spotnav-heat";
   card.append(...header(doc, language, answer, input.handlers, input.ui.testOpen === true, input.idPrefix));
+  if (!heatFound(answer)) {
+    // Nothing heat-related on the site: no dial or tabs to act on, one line on where heating is added.
+    card.dataset["empty"] = "true";
+    const line = element(doc, "p", C.muted, translate(language, answer.writable ? "heat.empty.admin" : "heat.empty"));
+    line.setAttribute("role", "status");
+    line.dataset["line"] = "empty";
+    card.append(line);
+    return card;
+  }
   const locked = input.ui.locked ?? null;
   const tab: HeatTab = locked ?? input.ui.tab ?? "now";
   card.dataset["tab"] = tab;
@@ -1295,7 +1323,6 @@ const CONTROL_WAITS = [
 const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b", "hot_water", "hot_water_low"];
 /** The waits whose words name the relay: the other paths have their own (`heat.control.path.wait.*`). */
 const PATH_WAITS = ["relay_unavailable", "relay_closed", "no_relay", "no_signal", "check_failed", "foreign_change", "no_read_back"];
-const STEERED_PATHS = ["relay", "sg_ready", "sg_ready_api", "offset"];
 
 /**
  * The line under "Styr värmen": off, checking the pump answers the relay, controlling (lowered until when, or the
@@ -1377,7 +1404,8 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     );
   };
   // "Styr värmen": on the paths SpotNav can steer, with one line on what it does or waits for.
-  if (STEERED_PATHS.includes(config.control_path) || config.control_enabled) {
+  const steers = heatSteers(config);
+  if (steers) {
     row(
       "steer",
       translate(language, "heat.settings.steer"),
@@ -1416,7 +1444,8 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
   // Each row's help is in its own editor, so the section is a short list; only a row that cannot be opened keeps it.
   row("indoor", translate(language, "heat.settings.indoor"), indoorValue);
   // Each chosen sensor's room aim against the house, as the zones' offsets: a cooler upstairs, a sensor that reads warm.
-  for (const sensor of sensors) {
+  // The offsets, night and away only act through SpotNav's steering: without a path it can steer they are left out.
+  for (const sensor of steers ? sensors : []) {
     const offset = config.indoor_offsets.find((item) => item.entity_id === sensor)?.offset_c ?? 0;
     row(`sensor:${sensor}`, roomName(nameOf(names, sensor, sensor)), signedDegrees(language, offset));
   }
@@ -1449,7 +1478,7 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     translate(language, "heat.settings.zones"),
     config.zones.length === 0 ? translate(language, "heat.settings.zonesNone") : String(config.zones.length),
   );
-  for (const zone of config.zones) {
+  for (const zone of steers ? config.zones : []) {
     const shown = answer.zones.find((item) => item.entity_id === zone.entity_id);
     const kind = shown?.kind ?? answer.choices?.zones.find((item) => item.entity_id === zone.entity_id)?.kind ?? "floor";
     // An air-to-air heat pump says so under its row; a floor thermostat's own name says what it is.
@@ -1459,6 +1488,9 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
       signedDegrees(language, zone.offset_c),
       kind === "air" ? translate(language, "heat.settings.airHelp") : undefined,
     );
+  }
+  if (!steers) {
+    return section;
   }
   const night = config.night;
   row(

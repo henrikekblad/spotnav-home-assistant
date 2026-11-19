@@ -55,7 +55,7 @@ import { entityEditorBody, modeLabel } from "./entity-editor";
 import { formatFixed, formatNumber, type FormatContext } from "./format";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { heatEditor, writeHeat, type HeatWriteOptions } from "./heat-editors";
-import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
+import { decodeHeat, heatFound, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
 import { daysLeft, numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -473,19 +473,7 @@ export class SiteSections {
 
   /** Whether anything heat-related was found: a heat pump, a meter, climate zones, or settings already made. */
   heatFound(): boolean {
-    const answer = this.heat;
-    if (answer === null) {
-      return false;
-    }
-    return (
-      answer.pump !== null ||
-      answer.meter?.entity_id != null ||
-      answer.zones.length > 0 ||
-      (answer.choices?.zones.length ?? 0) > 0 ||
-      answer.config.control_path !== "none" ||
-      answer.config.indoor_sensors.length > 0 ||
-      answer.config.heat_meter_entity !== null
-    );
+    return this.heat !== null && heatFound(this.heat);
   }
 
   // ---- battery

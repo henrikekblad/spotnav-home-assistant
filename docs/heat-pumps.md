@@ -53,7 +53,11 @@ The heat card (`type: custom:spotnav-heat-card`, with `site:` or `charger:`) has
 says after the card's name what the heating does now: **Heating 2.1 kW**, **Hot water 2.9 kW** or **Resting** from the
 heat pump's own facts or its meter, and **Lowered until 06:00** or **Raised until 15:00** while SpotNav's own control holds
 the heat down or up. Before SpotNav controls anything, **Test** stands first (tap it for what that means). The **i**
-opens the details, the gear (administrators) the settings.
+opens the details, the gear (administrators) the settings. On a site where nothing heat-related is found, the card
+shows only the header and one line, **No heating found – Settings → Heating**. Where SpotNav can only read the
+heating (no control path it steers yet), the dial shows the wanted temperature without + and −, **Home** and **Away**
+are left out, and one line points at **Settings → Heating → Control**; the setback, night and offset settings are left
+out until there is a path SpotNav steers.
 
 ![The heat card's Now tab: the dial, Home or Away and the next twelve hours](images/heat-card-now.png)
 

@@ -10,7 +10,7 @@ import { HEAT_CARD_ELEMENT, instantToLocal, localToInstant, parseHeatConfig, Spo
 import { decodeHeat, decodeHeatWrite, type HeatAnswer } from "../src/heat-model";
 import { heatEditor } from "../src/heat-editors";
 import { controlLine, heatBody, heatSettingsSection, measuredLine, noteLines, pumpLine, relayLine, reviewLines, todayLine, wouldLine, type HeatState } from "../src/heat-view";
-import { registerTranslation } from "../src/i18n";
+import { registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard, HEAT_PICKER_ENTRY } from "../src/index";
 
@@ -256,9 +256,50 @@ describe("the front", () => {
     expect(todayLine("en", answer("network_pump.json"))).toBeNull();
   });
 
+  it("shows a heat pump SpotNav can only read with the target read-only, no Home/Away and one line on the control path", () => {
+    const pump = answer("network_pump.json");
+    expect(pump.config.control_path).toBe("none");
+    const card = body(pump, "en");
+    expect(card.querySelector("[data-step]")).toBeNull();
+    expect(card.querySelector("svg [class]")).not.toBeNull();
+    expect(card.querySelector("button[data-mode]")).toBeNull();
+    expect(card.querySelector("[data-line='shadow']")).toBeNull();
+    // A household member cannot open the settings: the line says only what SpotNav does.
+    expect(card.querySelector("[data-line='readOnly']")!.textContent).toBe(translate("en", "heat.readOnly"));
+    const admin = body({ ...pump, writable: true }, "en");
+    expect(admin.querySelector("[data-line='readOnly']")!.textContent).toBe(translate("en", "heat.readOnly.admin"));
+  });
+
+  it("keeps the dial's steps and Home/Away where SpotNav steers, and on a steerable path before control is on", () => {
+    const villa = answer();
+    expect(body(villa).querySelectorAll("[data-step]")).toHaveLength(2);
+    const offset = answer("sg_api_pump.json");
+    expect(offset.config.control_enabled).toBe(false);
+    const card = body(offset);
+    expect(card.querySelectorAll("button[data-mode]")).toHaveLength(2);
+    expect(card.querySelector("[data-line='readOnly']")).toBeNull();
+  });
+
+  it("shows one line in place of the body on a site with no heating", () => {
+    const empty = answer("network_pump.json");
+    empty.pump = null;
+    empty.meter = null;
+    empty.zones = [];
+    empty.choices = null;
+    empty.config = { ...empty.config, control_path: "none", indoor_sensors: [], heat_meter_entity: null };
+    const member = body(empty, "en");
+    expect(member.dataset["empty"]).toBe("true");
+    expect(member.querySelector("[data-line='empty']")!.textContent).toBe(translate("en", "heat.empty"));
+    expect(member.querySelector("[role='tablist']")).toBeNull();
+    expect(member.querySelector("[data-step], button[data-mode]")).toBeNull();
+    const admin = body({ ...empty, writable: true }, "en");
+    expect(admin.querySelector("[data-line='empty']")!.textContent).toBe(translate("en", "heat.empty.admin"));
+  });
+
   it("shows away, the notes, and no settings button for a household member", () => {
     const pump = answer("network_pump.json");
-    const card = body(pump);
+    // Home/Away is shown where SpotNav can steer: the same pump on a path it steers.
+    const card = body({ ...pump, config: { ...pump.config, control_path: "offset" } });
     expect(card.querySelector("button[data-mode='away']")!.getAttribute("aria-pressed")).toBe("true");
     expect(card.querySelector("[data-line='away']")!.textContent).toBe("Borta till fre 20 nov. 16:00Ändra");
     expect(card.querySelector("button[data-action='settings']")).toBeNull();
@@ -687,6 +728,25 @@ describe("SpotNav controlling the heat", () => {
     const pump = answer("network_pump.json");
     const section = heatSettingsSection(document, "sv", pump, () => undefined);
     expect(section.querySelector("[data-row='steer']")).toBeNull();
+  });
+
+  it("leaves out the night, away and offset rows on a path SpotNav cannot steer, and keeps the path row", () => {
+    const pump = answer("network_pump.json");
+    const villa = answer();
+    const readOnly = { ...pump, config: { ...villa.config, control_path: "none", control_enabled: false } };
+    const rows = [...heatSettingsSection(document, "sv", readOnly, () => undefined).querySelectorAll<HTMLElement>("[data-row]")].map(
+      (row) => row.dataset["row"]!,
+    );
+    expect(rows).toContain("path");
+    expect(rows).toContain("indoor");
+    expect(rows).toContain("zones");
+    expect(rows.filter((row) => ["night", "awayDelta"].includes(row) || row.startsWith("sensor:") || row.startsWith("zone:"))).toEqual([]);
+    // On a steerable path, control still off, they stay: they feed the plan shown as Test.
+    const steerable = { ...readOnly, config: { ...readOnly.config, control_path: "offset" } };
+    const kept = [...heatSettingsSection(document, "sv", steerable, () => undefined).querySelectorAll<HTMLElement>("[data-row]")].map(
+      (row) => row.dataset["row"]!,
+    );
+    expect(kept).toEqual(expect.arrayContaining(["night", "awayDelta", "sensor:sensor.inomhus_kok_temperatur"]));
   });
 });
 
