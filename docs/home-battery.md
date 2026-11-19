@@ -73,33 +73,45 @@ administrators can confirm, and never over the webhook. The entities per brand:
 **GoodWe and Tesla Powerwall: mapped, never run on a device.** Both are switched on by the same switch and checked by
 the same routine as the others, and both are untested.
 
-* *GoodWe* needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core's `goodwe` has no eco charge mode and
-  no eco power or SoC numbers, and the checklist then says "needs the HACS integration". A grid charge is the eco charge
-  mode at a share of the battery's rated power (an estimate from the battery's present current limit and voltage, so
-  a charge that takes more from the grid than it was given for a minute is handed back and not tried again for six
-  hours); a
-  discharge for the house is the general mode; a hold sets the depth of discharge so the cut-off is the level now (not
-  confirmed on a device: the library does not say what the inverter does at that point, so a hold whose battery
-  charges from the grid for a minute is handed back and not tried again for six hours). Hand-back puts the mode, the
-  eco values and the depth back as found. Nothing stops a command when Home Assistant stops, so a grid charge is capped
-  for that case. Some firmwares ignore the eco level ceiling (the HACS integration's issues 466 and 486), so a charge
-  ends with the plan's slot and is judged by the battery's power, not by the level.
-* *Tesla Powerwall* (`tesla_fleet` or `teslemetry`, Tesla's cloud) is **slow**: only the plan's own actions, no hold for
-  a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no change
-  of action within 15 minutes. A hold turns grid charging off and sets the backup reserve two points under the level now (rounded down, so a
-  level the cloud reports late never puts the reserve above the battery, where it would charge from the grid; a hold
-  that charges from the grid anyway is handed back and not tried again for six hours); a grid charge allows grid
-  charging and sets the reserve to what the Powerwalls reach in 30 minutes at 5 kW each, raised again every 30
-  minutes: Tesla has no dead-man, so if Home Assistant or the cloud stops, at most that much is charged from the grid
-  and the reserve stays there until it is set back (see "restore by hand" below), never at 100 %. The charge power is the Powerwall's own (about 1.7 kW each in reports, not
-  measured here), so SpotNav uses the plant's maximum (5 kW per Powerwall) on one phase for the fuse cap and does not
-  start a charge that does not fit. It does not start one at all while the battery's size is not read (the size
-  sensor is disabled by default; the switch's dialog offers it): without it two Powerwalls would be checked as one.
-  It runs only while the operation mode is self-powered; Time-Based Control and Backup are left alone. The grid charging
-  switch exists only on a site with solar; without it a reserve above the level charges from the grid
-  whatever SpotNav does, so there a hold runs only where the Powerwall's charge would fit under the fuse cap as a grid
-  charge must. Nothing stops a command when Home Assistant stops, and the cloud may take
-  minutes to show a change.
+* *GoodWe* needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core's `goodwe` has no eco charge mode
+  and no eco power or SoC numbers, and the checklist then says "needs the HACS integration". A grid charge is the eco
+  charge mode at a share of the battery's rated power (an estimate from the battery's present current limit and
+  voltage, so a charge that takes more from the grid than it was given for a minute is handed back and not tried again
+  for six hours); a discharge for the house is the general mode; a hold sets the depth of discharge so the cut-off is
+  the level now (not confirmed on a device: the library does not say what the inverter does at that point, so a hold
+  whose battery charges from the grid for a minute is handed back and not tried again for six hours). While SpotNav
+  holds, the plan still counts the depth of discharge you set, not SpotNav's. Hand-back puts the mode, the eco values
+  and the depth back as found. Nothing stops a command when Home Assistant stops, so a grid charge is capped for that
+  case. Some firmwares ignore the eco level ceiling (the HACS integration's issues 466 and 486), so a charge ends with
+  the plan's slot and is judged by the battery's power, not by the level.
+* *Tesla Powerwall* (`tesla_fleet` or `teslemetry`, Tesla's cloud) is **slow**: only the plan's own actions, no hold
+  for a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no
+  change of action within 15 minutes. It runs only while the operation mode is self-powered; Time-Based Control and
+  Backup are left alone.
+  * A **hold** turns grid charging off and sets the backup reserve two points under the level now, rounded down, so a
+    level the cloud reports late never puts the reserve above the battery, where it would charge from the grid. A hold
+    that charges from the grid anyway is handed back and not tried again for six hours. While SpotNav holds, the plan
+    still counts the reserve you set, not SpotNav's.
+  * A **grid charge** allows grid charging and sets the reserve to what the Powerwalls reach in 30 minutes at 5 kW
+    each, raised again every 30 minutes. Tesla has **no dead-man**: if Home Assistant or the cloud stops, at most that
+    much is charged from the grid and the reserve stays there until it is set back (see below), never at 100 %.
+  * The charge power is the Powerwall's own (about 1.7 kW each in reports, not measured here), so SpotNav counts 5 kW
+    per Powerwall on one phase for the fuse cap and does not start a charge that does not fit. It does not start one
+    at all while the battery's size is not read (the size sensor is disabled by default; the switch's dialog offers
+    it): without it two Powerwalls would be checked as one.
+  * The grid charging switch exists only on a site with solar. Without it a reserve above the level charges from the
+    grid whatever SpotNav does, so there a hold runs only where the Powerwall's charge would fit under the fuse cap.
+  * The cloud may take minutes to show a change, and Home Assistant shows SpotNav's write at once. For 15 minutes after
+    a hand-back SpotNav watches that the reserve and the switch stay as it set them back; one that shows SpotNav's
+    value again is written again twice, and then the switch's line says the control is blocked until the reserve is
+    set back. A hand-back the cloud refuses outright is tried again every hour.
+
+**If GoodWe or Tesla Powerwall control goes wrong, restore by hand** (note the values before you turn control on):
+
+* GoodWe: set the operation mode back to General (or your own mode), the depth of discharge (on grid) to your value
+  and the eco mode power and SoC to what they were; then turn SpotNav's switch off.
+* Tesla Powerwall, in the Tesla app or Home Assistant: set the backup reserve back to your value and grid charging
+  (the "allow charging from grid" switch, on a site with solar) back as it was; then turn SpotNav's switch off.
 
 **Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see
