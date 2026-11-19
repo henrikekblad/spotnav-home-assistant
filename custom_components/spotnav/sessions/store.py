@@ -22,9 +22,8 @@ A record from before the small store existed has none: its open sessions are rea
 
 What is stored is energy and raw spot prices per interval, never a cost. `closed` and `open_session`
 answer sessions with the cost made from the person's *current* fiscal settings (the resolver the
-installation sets, `set_fiscal_resolver`); `open_raw` is the recorder's own, stored object. A 2.x record that
-only has the cost it was written with shows it (`cost_basis: "stored"`) until `history_import.migrate_legacy`
-re-derives its intervals or drops that cost; it is never written again.
+installation sets, `set_fiscal_resolver`); `open_raw` is the recorder's own, stored object. A record that
+only has the cost it was written with keeps it (`cost_basis: "stored"`).
 """
 
 from __future__ import annotations

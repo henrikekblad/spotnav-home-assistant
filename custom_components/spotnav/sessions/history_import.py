@@ -25,8 +25,7 @@ area's provider keeps), the nightly try is skipped, without reading two years of
 could reach one again (another provider for the area). Nothing here blocks setup or raises.
 
 `migrate_legacy` is the other half of the storage change: a record that only has a stored cost gets its
-intervals re-derived from the day files the repository holds, when it holds them all; otherwise its stored cost
-is dropped (3.0 stores no cost).
+intervals re-derived from the day files the repository holds, when it holds them all.
 """
 
 from __future__ import annotations
@@ -493,33 +492,15 @@ async def migrate_legacy(hass: HomeAssistant, store: SessionStore, charger_id: s
 
     The record's energy is spread evenly over its start to end (as a live sample span is) and split over
     the day files' intervals. Done only when every day it touched is held and the energy that falls in
-    published intervals matches what the record had priced. A record that cannot be re-derived loses its
-    stored cost (no cost known, as a session with no priced hour), so every record is in this release's
-    shape afterwards. Returns how many records got their intervals. Nothing is fetched.
+    published intervals matches what the record had priced; otherwise the record keeps its stored cost
+    (`cost_basis: "stored"`). Returns how many records were migrated. Nothing is fetched.
     """
     legacy = [item for item in store.closed_raw(charger_id) if item.cost_basis == "stored"]
     if not legacy:
         return 0
-    migrated = await _rederived(hass, charger_id, legacy)
-    rederived = len(migrated)
-    for item in legacy:
-        if item.id not in migrated:
-            migrated[item.id] = replace(item, cost_minor=None, reference_cost_minor=None, priced_kwh=0.0)
-    store.replace_closed(
-        charger_id,
-        [migrated.get(item.id, item) for item in store.closed_raw(charger_id)],
-        dt_util.utcnow(),
-    )
-    return rederived
-
-
-async def _rederived(
-    hass: HomeAssistant, charger_id: str, legacy: list[ChargeSession]
-) -> dict[str, ChargeSession]:
-    """The legacy records whose intervals the day files held now re-derive, by id (`migrate_legacy`)."""
     market = price_market(hass, charger_id)
     if market is None:
-        return {}
+        return 0
     await market.repository.async_restore()
     zone = market.zone or local_zone(hass)
     migrated: dict[str, ChargeSession] = {}
@@ -544,4 +525,11 @@ async def _rederived(
                     item, intervals=slices, area_id=market.area_id, cost_minor=None,
                     reference_cost_minor=None, priced_kwh=0.0,
                 )
-    return migrated
+    if not migrated:
+        return 0
+    store.replace_closed(
+        charger_id,
+        [migrated.get(item.id, item) for item in store.closed_raw(charger_id)],
+        dt_util.utcnow(),
+    )
+    return len(migrated)

@@ -594,7 +594,7 @@ async def test_the_diagnostics_say_what_was_imported_and_priced(hass: HomeAssist
 
 # ---- the records from before intervals
 
-async def test_an_old_record_gets_its_intervals_when_the_day_files_are_held_and_loses_its_stored_cost_when_not(
+async def test_an_old_record_gets_its_intervals_when_the_day_files_are_held_and_keeps_its_cost_when_not(
     hass: HomeAssistant, store: SessionStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     held = Repository(held={D1: document(D1, [0.2] * 24)})
@@ -613,23 +613,8 @@ async def test_an_old_record_gets_its_intervals_when_the_day_files_are_held_and_
     by_start = {item.start: item for item in store.closed(CHARGER)}
     assert by_start[at(D1, 5)].cost_basis == "current_settings"
     assert by_start[at(D1, 5)].cost_minor == pytest.approx(10.0 * 0.2 * 10.0 * 100.0)
-    for start in (at(D2, 5), at(D1, 9)):
-        assert by_start[start].cost_basis == "current_settings" and by_start[start].cost_minor is None
-        assert by_start[start].energy_kwh > 0, "the session itself is kept"
-    assert await migrate_legacy(hass, store, CHARGER) == 0, "once: nothing is left to migrate"
-
-
-async def test_with_no_price_market_an_old_record_loses_its_stored_cost(
-    hass: HomeAssistant, store: SessionStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(
-        "custom_components.spotnav.sessions.history_import.price_market", lambda hass_, charger: None
-    )
-    store.close(session(at(D1, 5), hours=2.0, energy=10.0, cost_minor=1999.0, charger_id=CHARGER), TODAY)
-
-    assert await migrate_legacy(hass, store, CHARGER) == 0
-    (item,) = store.closed(CHARGER)
-    assert item.cost_basis == "current_settings" and item.cost_minor is None
+    assert by_start[at(D2, 5)].cost_basis == "stored" and by_start[at(D2, 5)].cost_minor == 777.0
+    assert by_start[at(D1, 9)].cost_basis == "stored" and by_start[at(D1, 9)].cost_minor == 123.0
 
 
 # ---- wired into a charger entry

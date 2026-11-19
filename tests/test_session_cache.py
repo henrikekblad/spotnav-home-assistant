@@ -293,8 +293,7 @@ def todays_document(sessions: list[ChargeSession], opened: ChargeSession | None,
 async def test_a_record_of_todays_format_loads_and_is_written_back_unchanged(
     hass: HomeAssistant, hass_storage: dict
 ) -> None:
-    # A record with a stored cost is read once and written without it (`test_session_cost_basis`): not one of these.
-    sessions = sorted((item for item in history() if item.cost_basis != "stored"), key=lambda item: item.start)
+    sessions = sorted(history(), key=lambda item: item.start)
     template = sessions[-1]
     opened = replace(template, id="open", start=END + timedelta(hours=1), end=None, last_register_kwh=12.5,
                      last_sample_at=END + timedelta(hours=2), register_entity="sensor.charger_energy")
