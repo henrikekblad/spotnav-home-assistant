@@ -118,8 +118,11 @@ def test_goodwe_maps_each_action() -> None:
 
 
 def test_tesla_maps_each_action() -> None:
-    assert TESLA_CONTROL.wanted("hold", 0.0, soc_pct=42.7)["reserve"] == 42.0, "never rounded up"
-    assert TESLA_CONTROL.wanted("hold", 0.0, soc_pct=42.7)["grid_charging"] == "<snapshot>"
+    # Rounded down and kept two points under a SoC the cloud may report a minute late; never under 0.
+    assert TESLA_CONTROL.wanted("hold", 0.0, soc_pct=42.7)["reserve"] == 40.0, "never at or above the SoC"
+    assert TESLA_CONTROL.wanted("hold", 0.0, soc_pct=1.5)["reserve"] == 0.0
+    # Grid charging off while holding.
+    assert TESLA_CONTROL.wanted("hold", 0.0, soc_pct=42.7)["grid_charging"] is False
     charge = TESLA_CONTROL.wanted("grid_charge", 3.0)
     assert charge == {"reserve": 100.0, "grid_charging": True}
     assert TESLA_CONTROL.wanted("discharge_house", 0.0) == {"reserve": "<snapshot>", "grid_charging": "<snapshot>"}
@@ -208,7 +211,7 @@ def test_core_goodwe_without_the_eco_numbers_says_it_needs_the_hacs_integration(
 def test_a_tesla_hold_and_grid_charge_and_the_hand_back_order() -> None:
     executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
     now, results = run(executor, battery, T0, 8, "hold")
-    assert written(results) == [("reserve", 42.0)]
+    assert written(results) == [("reserve", 40.0)]
     now += timedelta(hours=1)
     _now, results = run(executor, battery, now, 12, "self_consume")
     assert written(results) == [("reserve", 20.0)]
@@ -218,6 +221,17 @@ def test_a_tesla_hold_and_grid_charge_and_the_hand_back_order() -> None:
     _now, results = run(executor, battery, now, 12, "self_consume")
     assert written(results) == [("reserve", 20.0), ("grid_charging", "off")]
     assert battery.states == TESLA_STATES | {"reserve": "20", "grid_charging": "off"}
+
+
+def test_a_tesla_hold_turns_grid_charging_off_and_hands_it_back_as_found() -> None:
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    battery.states["grid_charging"] = "on"
+    now, results = run(executor, battery, T0, 8, "hold")
+    assert written(results) == [("grid_charging", False), ("reserve", 40.0)]
+    now += timedelta(hours=1)
+    _now, results = run(executor, battery, now, 12, "self_consume")
+    assert written(results) == [("reserve", 20.0), ("grid_charging", "on")]
+    assert battery.states == TESLA_STATES | {"grid_charging": "on"}
 
 
 def test_a_switch_found_on_is_handed_back_on() -> None:
@@ -267,7 +281,7 @@ def test_a_slow_recipe_waits_longer_to_rearm_and_its_read_back_longer() -> None:
     _now, results = run(executor, battery, now + timedelta(seconds=REARM_S + 10), 3, "hold")
     assert written(results) == [], "quiet: still rearming after the fast recipes' wait"
     _now, results = run(executor, battery, now + timedelta(seconds=TESLA_CONTROL.rearm_s + 10), 6, "hold")
-    assert written(results) == [("reserve", 42.0)]
+    assert written(results) == [("reserve", 40.0)]
     # The ledger waits for the cloud: the claim's deadline is the recipe's.
     executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
     run(executor, battery, T0, 1, "hold")

@@ -83,7 +83,9 @@ the same routine as the others, and both are untested.
   ends with the plan's slot and is judged by the battery's power, not by the level.
 * *Tesla Powerwall* (`tesla_fleet` or `teslemetry`, Tesla's cloud) is **slow**: only the plan's own actions, no hold for
   a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no change
-  of action within 15 minutes. A hold sets the backup reserve to the level now (rounded down); a grid charge sets the
+  of action within 15 minutes. A hold turns grid charging off and sets the backup reserve two points under the level now (rounded down, so a
+  level the cloud reports late never puts the reserve above the battery, where it would charge from the grid); a grid
+  charge sets the
   reserve to 100 % and allows grid charging. The charge power is the Powerwall's own (about 1.7 kW each in reports, not
   measured here), so SpotNav uses the plant's maximum (5 kW per Powerwall) on one phase for the fuse cap and does not
   start a charge that does not fit. It does not start one at all while the battery's size is not read (the size

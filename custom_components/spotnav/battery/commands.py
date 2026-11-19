@@ -130,8 +130,9 @@ The entity keys, options and services below were checked against each integratio
   (**inverted**: on = grid charging allowed; it exists only on a site with battery and solar, so it is optional here)
   and the mode select `default_real_mode` (autonomous, backup, self_consumption), which is only read: the control runs
   in `self_consumption` as found and never writes it (`autonomous` is Time-Based Control, the person's optimiser; `backup`
-  pins the reserve). A hold is the reserve at floor(SoC now), never rounded up (a reserve above the SoC charges from the
-  grid). A grid charge is the reserve at 100 % with grid charging allowed; **its power is not controllable** (about
+  pins the reserve). A hold turns grid charging off (where the switch exists; restored on the hand-back) and sets the
+  reserve to floor(SoC now) less 2 points (`soc_floor_margin_pct`), never above the SoC: a reserve above the SoC
+  charges from the grid, and the cloud's SoC may be a minute old while the battery discharges. A grid charge is the reserve at 100 % with grid charging allowed; **its power is not controllable** (about
   1.7 kW per Powerwall in field reports, not measured here), so the gate and the executor use the plant's own
   maximum as the rate (`BrandControl.fixed_charge`, `fixed_rate_kw`: the larger of what is read or learnt and 5 kW per
   13.5 kWh) and **refuse** the charge when it does not fit under the fuse cap, instead of lowering it. Slow means: planned actions only
@@ -399,6 +400,10 @@ class BrandControl:
     #: Roles that exist only in a custom integration: not found, the status says `needs_hacs_integration` (GoodWe's
     #: eco power and SoC numbers are the HACS fork's, not core's).
     hacs_roles: tuple[str, ...] = ()
+    #: Percentage points a floor set to the SoC now (`SOC_FLOOR`, `SOC_DEPTH`) is kept below it: a SoC read late (a
+    #: cloud's, up to a minute old, while the battery discharges) must not put the floor above the real level, where
+    #: the plant charges from the grid to reach it.
+    soc_floor_margin_pct: float = 0.0
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -481,7 +486,7 @@ class BrandControl:
             else:
                 wants = self.states[action](rate_kw, watchdog_s)
             for want in wants:
-                wanted[want.role] = _resolve(want.value, soc_pct, rated_kw)
+                wanted[want.role] = _resolve(want.value, soc_pct, rated_kw, self.soc_floor_margin_pct)
         for name in absent:
             wanted.pop(name, None)
         return wanted
@@ -514,12 +519,14 @@ def pct_of_rated(kw: float) -> str:
     return f"{_PCT_PREFIX}{kw!r}>"
 
 
-def _resolve(value: Native, soc_pct: float | None, rated_kw: float | None) -> Native:
-    """A value that depends on the plant, filled in; itself when the reading it needs is missing."""
+def _resolve(value: Native, soc_pct: float | None, rated_kw: float | None, margin_pct: float = 0.0) -> Native:
+    """A value that depends on the plant, filled in; itself when the reading it needs is missing. A floor at the SoC
+    is rounded down and kept `margin_pct` below it (never above the SoC)."""
     if value == SOC_FLOOR or value == SOC_DEPTH:
         if soc_pct is None or not math.isfinite(soc_pct):
             return value
-        floor = max(float(math.floor(min(soc_pct, 100.0) + 1e-9)), 1.0 if value == SOC_DEPTH else 0.0)
+        level = float(math.floor(min(soc_pct, 100.0) + 1e-9)) - max(math.ceil(margin_pct - 1e-9), 0)
+        floor = max(level, 1.0 if value == SOC_DEPTH else 0.0)
         return floor if value == SOC_FLOOR else 100.0 - floor
     if isinstance(value, str) and value.startswith(_PCT_PREFIX):
         if rated_kw is None or not math.isfinite(rated_kw) or rated_kw <= 0:
@@ -921,8 +928,10 @@ TESLA_CONTROL: Final = BrandControl(
     adapter=TESLA,
     roles=(_TS_RESERVE, _TS_GRID),
     states={
-        # Never rounded up: a reserve above the SoC charges from the grid.
-        ACTION_HOLD: lambda _rate, _w: (Want("reserve", SOC_FLOOR),),
+        # Grid charging off first (restored on the hand-back), then the reserve under the level now: a reserve above
+        # the SoC charges from the grid, so it is rounded down and kept `soc_floor_margin_pct` below a SoC that the
+        # cloud reports up to a minute late.
+        ACTION_HOLD: lambda _rate, _w: (Want("grid_charging", False), Want("reserve", SOC_FLOOR)),
         ACTION_GRID_CHARGE: lambda _rate, _w: (Want("grid_charging", True), Want("reserve", 100.0)),
         # Self-consumption as found already covers the house.
         ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
@@ -939,6 +948,7 @@ TESLA_CONTROL: Final = BrandControl(
     fixed_charge=True,
     fixed_charge_kw=5.0,
     write_caps={"setting": TESLA_WRITES_PER_DAY},
+    soc_floor_margin_pct=2.0,
     note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
     " reports): a charge that does not fit under the fuse is refused, not lowered.",
 )
