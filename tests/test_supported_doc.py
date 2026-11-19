@@ -35,10 +35,11 @@ def test_every_listed_integration_has_a_display_name() -> None:
 def test_page_has_one_section_per_category() -> None:
     text = _generator().render()
     for heading in (
-        "# Supported EV chargers, meters, batteries and cars",
+        "# Supported EV chargers, meters, batteries, heat pumps and cars",
         "## Supported EV chargers",
         "## Supported grid meters",
         "## Supported house batteries",
+        "## Supported heat pumps",
         "## Supported vehicles",
         "## Supported solar forecast",
     ):
