@@ -25,6 +25,7 @@ from .api.dashboard import async_setup_dashboard_api
 from .entry_migration import async_migrate_entry  # noqa: F401 - Home Assistant's hook, found by name
 from .api.blueprints import async_setup_blueprints_api
 from .api.site_view import async_setup_site_view_api
+from .api.phones import async_setup_phones_api
 from .api.beta import async_setup_beta_api
 from .api.debug import async_setup_debug_api
 from .beta import Beta
@@ -245,6 +246,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_beta_api(hass)
     async_setup_blueprints_api(hass)
     async_setup_site_view_api(hass)
+    async_setup_phones_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
     async_register_pairing(hass)
