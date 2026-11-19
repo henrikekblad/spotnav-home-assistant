@@ -684,6 +684,28 @@ def test_fuse_s2_a_change_into_a_hold_passes_the_holds_start_rule() -> None:
     assert events(results, "change")[0]["reason"] == "hold"
 
 
+def test_a_change_from_a_grid_charge_into_a_hold_is_not_held_to_the_start_rule() -> None:
+    """Ending a charge only frees room: a fuse-limited night charge (the clamp keeps the headroom near 2 A) that
+    turns into a hold stays a hold, also when the headroom reads below the start margin at the slot change."""
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 4.0)
+    assert executor.state.phase == "active" and executor.state.action == "grid_charge"
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=1.7, power_kw=3.0)
+    assert events(results, "hand_back") == []
+    assert events(results, "change")[0]["reason"] == "hold"
+    assert executor.state.action == "hold"
+
+
+def test_a_change_from_a_sale_into_a_hold_is_not_held_to_the_start_rule() -> None:
+    """A sale's own output is no cover of the house: ending it into a hold takes nothing off a phase."""
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "export_discharge", 5.0)
+    assert executor.state.action == "export_discharge"
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=12.0, power_kw=-5.0)
+    assert events(results, "hand_back") == []
+    assert events(results, "change")[0]["reason"] == "hold"
+
+
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
