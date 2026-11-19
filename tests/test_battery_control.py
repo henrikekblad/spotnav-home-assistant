@@ -77,6 +77,8 @@ class Plant:
         self.hass = hass
         self.read_only = False
         self.raises = False
+        #: The integration never answers (a Modbus or cloud call that hangs): the call waits until cancelled.
+        self.hangs = False
         self.calls: list[tuple[str, str, dict[str, Any]]] = []
         self.stored_at_first_call: Any = None
         for domain, service in (("number", "set_value"), ("select", "select_option"), ("switch", "turn_on"),
@@ -92,6 +94,8 @@ class Plant:
             if not self.calls:
                 self.stored_at_first_call = self.storage.get(store_key(self.entry_id), {}).get("data")
             self.calls.append((domain, service, dict(call.data)))
+            if self.hangs:
+                await asyncio.Event().wait()
             if isinstance(self.raises, Exception):
                 raise self.raises
             if self.raises:
@@ -397,6 +401,55 @@ async def test_a_write_that_raises_is_not_taken_and_handed_back(
     assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit:service_failed")
     assert any(row["kind"] == "service_failed" for row in control.log)
     assert len(plant.calls) == 1
+
+
+async def test_a_write_that_never_answers_is_given_up_on_as_not_taken_and_the_look_ends(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
+    plant.hangs = True
+    control = await _started(hass, site, controller, plan_source=_hold)
+    now = dt_util.now()
+    for index in range(4):
+        async with asyncio.timeout(5):
+            await control.async_look(now + timedelta(seconds=10 * index))
+    assert not control._lock.locked()
+    assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit:service_failed")
+    failed = [row for row in control.log if row["kind"] == "service_failed"]
+    assert failed and "no answer" in failed[0]["error"]
+    assert len(plant.calls) == 1
+    assert control._failed_looks == 0, "a write given up on is a write not taken, not a failed look"
+
+
+async def test_a_plant_that_stops_answering_while_held_is_handed_back_once_it_answers_again(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 3.0, None))
+    now = await _looks(control, dt_util.now(), 6)
+    assert control.executor.state.phase == "active" and hass.states.get(CHARGE).state == "3"
+    plant.hangs = True
+    calls = len(plant.calls)
+    # A plan change needs writes the plant never answers: each look still ends and frees the lock.
+    control._plan_source = _hold
+    for _ in range(4):
+        async with asyncio.timeout(5):
+            now = await _looks(control, now, 1)
+        assert not control._lock.locked()
+    assert len(plant.calls) > calls
+    assert any(row["kind"] == "service_failed" for row in control.log)
+    # A stop is not held by the hung writes; with the deadline short it leaves the rest stored.
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    async with asyncio.timeout(5):
+        await control.async_update_options({gate.CONF_ENABLED: False})
+    assert control.executor.state.holds_snapshot
+    plant.hangs = False
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 30.0)
+    await _looks(control, now, 6)
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(CHARGE).state == "20.6"
+    assert not control.executor.state.holds_snapshot
 
 
 class ModbusIOException(Exception):
@@ -1315,6 +1368,22 @@ async def test_removing_the_site_hands_a_stored_snapshot_back_before_the_store_g
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
     assert hass.states.get(EXPORT).state == "11.5"
     assert key not in hass_storage
+
+
+async def test_removing_the_site_is_not_held_by_a_plant_that_never_answers(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await _looks(control, dt_util.now(), 6)
+    assert hass.states.get(DISCHARGE).state == "0"
+    key = store_key(site.entry_id)
+    plant.hangs = True
+    monkeypatch.setattr(control_module, "CALL_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.2)
+    async with asyncio.timeout(5):
+        await BatteryControl.async_remove_stored(hass, site.entry_id, dict(site.data))
+    assert hass_storage[key]["data"]["state"]["snapshot"], "kept while the plant could not be handed back"
 
 
 async def test_after_a_restart_the_restore_runs_before_the_first_look(

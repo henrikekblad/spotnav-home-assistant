@@ -162,6 +162,10 @@ ACTING_GRACE_S: Final = 300.0
 TRIAL_MAX_MIN: Final = 120
 #: Looks in a row that may fail while SpotNav holds the plant before it hands back on the fewest reads.
 FAILED_LOOKS_HAND_BACK: Final = 3
+#: How long one write's service call may take before it is given up on as a write not taken (s): Home Assistant
+#: has no timeout of its own, and an integration that never answers must not hold a look, the lock or a hand-back.
+#: As long as a charger command's (`execution.chargers.base.DEFAULT_CALL_TIMEOUT_S`), so a slow cloud still answers.
+CALL_TIMEOUT_S: Final = 30.0
 #: The service each role's method writes with (a service role names its own, `Role.services`).
 _METHOD_SERVICES: Final = {
     "number": ("set_value",), "select": ("select_option",), "switch": ("turn_on", "turn_off"), "button": ("press",),
@@ -225,11 +229,24 @@ async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_
         services=role.services, watchdog_s=watchdog_s, device_field=role.device_field, duration=role.duration,
     )
     try:
-        await hass.services.async_call(domain, service, data, blocking=True)
+        await _async_service(hass, domain, service, data)
     except Exception as err:  # noqa: BLE001 - any error (a Modbus library's too) is a write not taken
-        _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, err)
+        _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, _error_text(err))
         return False
     return True
+
+
+async def _async_service(hass: HomeAssistant, domain: str, service: str, data: dict[str, Any]) -> None:
+    """One write's service call, given up on after `CALL_TIMEOUT_S` (`TimeoutError`, a write not taken)."""
+    async with asyncio.timeout(CALL_TIMEOUT_S):
+        await hass.services.async_call(domain, service, data, blocking=True)
+
+
+def _error_text(err: Exception) -> str:
+    """A failed write's error as logged; a call given up on says so (its `TimeoutError` has no text)."""
+    if isinstance(err, TimeoutError):
+        return f"no answer within {CALL_TIMEOUT_S:.0f} s"
+    return str(err)
 
 
 async def async_hand_back_stored(
@@ -2225,12 +2242,12 @@ class BatteryControl:
             duration=role.duration,
         )
         try:
-            await self.hass.services.async_call(domain, service, data, blocking=True)
-        except Exception as err:  # noqa: BLE001 - any error (a Modbus library's too) is a write not taken; the state
-            # must still be stored and a stop or unload must still hand back.
-            _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, err)
+            await _async_service(self.hass, domain, service, data)
+        except Exception as err:  # noqa: BLE001 - any error (a Modbus library's too, a call given up on) is a write
+            # not taken; the state must still be stored and a stop or unload must still hand back.
+            _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, _error_text(err))
             self._log([{"at": dt_util.now().isoformat(), "kind": "service_failed", "reason": op.role,
-                        "error": str(err)}])
+                        "error": _error_text(err)}])
             return False
         return True
 
