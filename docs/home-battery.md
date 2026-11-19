@@ -157,7 +157,9 @@ also stores a sun surplus, as it does normally). Other protocol changes worth kn
 (Remote EMS dispatch enable, not used by SpotNav) and V2.9 added V2G (0x08) to the Remote EMS control modes.
 
 **The check decides what SpotNav may do.** Hold and the hand-back must pass for any control; grid charging only if the
-charge step passed, covering the house only if that step passed. A failed step leaves control off, with one line
+charge step passed, covering the house only if that step passed. Selling from the battery needs the house step;
+on a battery whose one power target both charges and discharges by its sign (SolaX, Solinteg) it needs the charge
+step too, since only that step shows which sign charges. A failed step leaves control off, with one line
 saying what did not work (for example "the battery did not stop discharging when held"); turning the switch off and
 on again runs the check again. The result is kept per firmware and integration version: after a firmware update
 (or a new version of the integration) SpotNav hands the battery back and checks again at the next suitable evening.

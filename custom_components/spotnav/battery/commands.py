@@ -455,6 +455,26 @@ class BrandControl:
     def supports(self, action: str) -> bool:
         return action == ACTION_SELF_CONSUME or action in self.states
 
+    def export_signed_by_charge(self) -> bool:
+        """Whether a discharge to the grid writes its rate to a number the grid charge also writes its rate to, with
+        the other sign (a signed power target). The verification's house step writes no rate on any brand (the
+        plant's own mode), so only the charge step shows which sign discharges: a wrong sign would charge from the
+        grid at the full rate. `gate.allowed_actions` then needs `charge` passed for an export."""
+        charge, export = self.states.get(ACTION_GRID_CHARGE), self.states.get(ACTION_EXPORT_DISCHARGE)
+        if charge is None or export is None:
+            return False
+
+        def rated(build: Callable[[float, int], tuple[Want, ...]]) -> dict[str, float]:
+            one = {want.role: want.value for want in build(1.0, WATCHDOG_S)}
+            two = {want.role: want.value for want in build(2.0, WATCHDOG_S)}
+            return {
+                name: float(value) for name, value in one.items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and value != two.get(name)
+            }
+
+        charged = rated(charge)
+        return any(name in charged and value * charged[name] < 0 for name, value in rated(export).items())
+
     def wanted(
         self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S, phases: Phases | None = None
     ) -> dict[str, Native]:

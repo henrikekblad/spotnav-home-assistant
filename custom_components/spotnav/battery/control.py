@@ -619,7 +619,12 @@ class BatteryControl:
         options = options or self.options()
         if self.state(options) != "on":
             return frozenset()
-        return gate.allowed_actions(self.report(), options)
+        return gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge())
+
+    def _export_needs_charge(self) -> bool:
+        """Whether this brand's discharge to the grid needs the charge step passed (`gate.allowed_actions`)."""
+        control = control_for(self.facts.brand)
+        return control is not None and control.export_signed_by_charge()
 
     def _require(self, ok: bool, what: str) -> None:
         if not ok:
@@ -1357,8 +1362,9 @@ class BatteryControl:
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         slot, why = gate.restricted(
-            self._merged_slot(now), gate.allowed_actions(self.report(), options), self._charge_limits(now, options)[0],
-            self._export_cap_kw(),
+            self._merged_slot(now),
+            gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge()),
+            self._charge_limits(now, options)[0], self._export_cap_kw(),
         )
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.

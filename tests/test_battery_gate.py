@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from custom_components.spotnav.battery.commands import control_for
 from custom_components.spotnav.battery.gate import (
     CONF_ENABLED,
     CONF_SHADOW_ONLY,
@@ -93,6 +94,19 @@ def test_a_pass_needs_hold_and_the_hand_back_and_the_report_decides_the_actions(
     assert report_status(failed) == "failed" and allowed_actions(failed, Options()) == frozenset()
     assert failed_mode(failed) == "hold" and not needs_run(failed)
     assert report_status(None) == "none" and allowed_actions(None, Options()) == frozenset()
+
+
+def test_a_discharge_to_the_grid_on_a_signed_target_needs_the_charge_step_too() -> None:
+    """The house step is the plant's own mode: it shows nothing of the sign a discharge to the grid writes."""
+    sell = Options(mode="max_profit")
+    no_charge = _report(hold="obeyed", charge="ignored", discharge_house="obeyed", normal="restored")
+    assert "export_discharge" in allowed_actions(no_charge, sell)
+    assert allowed_actions(no_charge, sell, export_needs_charge=True) == {"hold", "discharge_house"}
+    both = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
+    assert "export_discharge" in allowed_actions(both, sell, export_needs_charge=True)
+    signed = {brand for brand in ("sigenergy", "solaredge", "huawei", "solax", "solinteg")
+              if (control := control_for(brand)) is not None and control.export_signed_by_charge()}
+    assert signed == {"solax", "solinteg"}, "one signed power target for both directions"
 
 
 def test_a_mode_that_could_not_be_judged_is_tried_again_and_a_decided_one_is_kept() -> None:
