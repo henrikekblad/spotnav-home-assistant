@@ -57,6 +57,7 @@ from .price_source import async_webhook_answer_price_duplicate, async_webhook_ch
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle, webhook_update_guest
 from .sessions import async_request_savings, SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
+from .site_access import ACTION as SITE_ACCESS_ACTION, webhook_get_site_access
 from .site_webhook import SITE_ACTIONS
 from .settings import (
     async_update_settings,
@@ -645,6 +646,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "get_power_month": webhook_get_power_month,
     "suggest_import_target": webhook_suggest_import_target,
     "dismiss_setup_item": webhook_dismiss_setup_item,
+    SITE_ACCESS_ACTION: webhook_get_site_access,
     **CAMERA_ACTIONS,
     **SITE_ACTIONS,
 }

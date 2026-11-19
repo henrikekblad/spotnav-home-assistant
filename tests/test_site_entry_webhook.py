@@ -77,6 +77,7 @@ async def test_a_charger_action_names_its_charger_and_answers_as_the_chargers_ow
         {"action": "dashboard", "api_version": 1},
         {"action": "sessions"},
         {"action": "price_days"},
+        {"action": "get_site_access"},
     ):
         status, by_charger = await post(client, HOOK, request)
         status_site, by_site = await post(client, _hook(site), {**request, "charger_id": "entry_a"})
@@ -101,7 +102,7 @@ async def test_a_charger_of_another_site_is_refused(hass: HomeAssistant, freezer
         ("no_such_entry", 404, "spotnav_unknown_charger"),
         (17, 404, "spotnav_unknown_charger"),
     ):
-        for action in ("dashboard", "start", "get_house", "get_site"):
+        for action in ("dashboard", "start", "get_house", "get_site", "get_site_access"):
             answer = await post(client, _hook(site), {"action": action, "api_version": 1, "charger_id": charger_id})
             assert answer == (status, {"ok": False, "error": code, "action": action}), (charger_id, action)
     status, body = await post(client, _hook(site), {"action": "dashboard", "charger_id": "entry_b"})
@@ -230,3 +231,71 @@ async def test_unloading_the_site_unregisters_its_webhook(hass: HomeAssistant, f
     response = await client.post(f"/api/webhook/{secret}", json={"version": 1, "action": "get_site"})
     # Home Assistant's answer for an id it does not know: an empty 200, as for a charger's.
     assert response.status == 200 and await response.text() == ""
+
+
+async def test_a_charger_hands_over_its_own_site_and_never_another(
+    hass: HomeAssistant, freezer, hass_client_no_auth
+) -> None:
+    """An app paired before 3.0 holds charger webhooks only: each one yields its own site's door, no new pairing."""
+    site = await _site(hass, freezer)
+    _charger_b, site_b = await setup_charger_and_site(hass, "entry_b", title="Cabin")
+    await setup_charger_and_site(hass, "entry_c", site=False)
+    client = await hass_client_no_auth()
+
+    status, body = await post(client, HOOK, {"action": "get_site_access"})
+    assert status == 200
+    assert body == {
+        "ok": True,
+        "action": "get_site_access",
+        "api_version": 1,
+        "site": {
+            "id": site.entry_id,
+            "name": site.title,
+            "webhook": _hook(site),
+            "chargers": [{"id": "entry_a", "name": "entry_a"}],
+        },
+    }
+    assert _hook(site_b) not in str(body)
+    _pinned(
+        "get_site_access_success.json",
+        _pin(body, {_hook(site): "<site_webhook>", site.entry_id: "<site_id>", "entry_a": "<charger_id>"}),
+    )
+    # The door it hands over answers.
+    status, door = await post(client, body["site"]["webhook"], {"action": "get_site"})
+    assert status == 200 and door["site_id"] == site.entry_id
+
+    status, other = await post(client, "webhook-entry_b", {"action": "get_site_access"})
+    assert status == 200 and other["site"]["id"] == site_b.entry_id and other["site"]["webhook"] == _hook(site_b)
+    assert _hook(site) not in str(other)
+
+    status, body = await post(client, "webhook-entry_c", {"action": "get_site_access"})
+    assert (status, body) == (400, {"ok": False, "error": "spotnav_no_site", "action": "get_site_access"})
+    _pinned("get_site_access_no_site.json", body)
+    status, body = await post(client, HOOK, {"action": "get_site_access", "api_version": 2})
+    assert (status, body["error"]) == (400, "spotnav_unsupported_api_version")
+
+    # A site that is not loaded has no door yet.
+    assert await hass.config_entries.async_unload(site_b.entry_id)
+    await hass.async_block_till_done()
+    status, body = await post(client, "webhook-entry_b", {"action": "get_site_access"})
+    assert (status, body["error"]) == (400, "spotnav_no_site")
+
+
+async def test_asking_for_the_site_is_rate_limited_per_charger(hass: HomeAssistant, freezer, hass_client_no_auth) -> None:
+    from custom_components.spotnav.api.site_access import ACCESS_LIMIT, ACCESS_WINDOW_S
+
+    await _site(hass, freezer)
+    await setup_charger_and_site(hass, "entry_b", title="Cabin")
+    client = await hass_client_no_auth()
+    for _ in range(ACCESS_LIMIT):
+        status, _body = await post(client, HOOK, {"action": "get_site_access"})
+        assert status == 200
+    response = await client.post(f"/api/webhook/{HOOK}", json={"version": 1, "action": "get_site_access"})
+    body = await response.json()
+    assert response.status == 429 and body["error"] == "spotnav_rate_limited" and body["action"] == "get_site_access"
+    assert 1 <= body["retry_after_s"] <= ACCESS_WINDOW_S and response.headers["Retry-After"] == str(body["retry_after_s"])
+    assert "webhook" not in body
+    _pinned("get_site_access_rate_limited.json", {**body, "retry_after_s": 60})
+    # Another charger has its own count.
+    status, _body = await post(client, "webhook-entry_b", {"action": "get_site_access"})
+    assert status == 200

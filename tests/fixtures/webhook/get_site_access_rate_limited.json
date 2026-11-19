@@ -1,0 +1,6 @@
+{
+  "action": "get_site_access",
+  "error": "spotnav_rate_limited",
+  "ok": false,
+  "retry_after_s": 60
+}
