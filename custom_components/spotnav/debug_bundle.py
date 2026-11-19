@@ -71,6 +71,11 @@ the session before each event (`pre`) on every record, its counts (`events`, `qu
 `last_failure`) and its tally per event kind (`coverage`, whose comparison counts stay zero); no disagreements or
 drift any more.
 
+Since 3.0 the bundle carries `beta` (additive, no new version): the beta tester mode's state (`beta.bundle_block`:
+whether it is on, its period, whether an e-mail address was given, never the address) and `hardware_test`: the
+installation's last finished hardware test (`hardware_test.py`: `result` `passed` or `failed`, the steps, each
+engine's own report), `null` before the first.
+
 Since 2.5 a site section also carries `detection` (additive, no new version): the grid-meter candidates the site editor
 would offer now, as the editor reads them from the in-memory registries (id, integration, mode, the entities with their
 `disabled` state, `signed_current`, `power_inverted`, `estimated`, `nominal_voltage`, the warnings and the total grid power),
@@ -135,7 +140,9 @@ from .const import (
 )
 from .day_record import bundle_days
 from .debug_day import history_block
+from .beta import bundle_block
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
+from .hardware_test import latest_record
 from .site.detected_hass import async_detected
 from .execution.other_controllers import CONTROLLERS
 from .planning.hybrid_forecast import async_forecast_capable_domains
@@ -600,6 +607,10 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
             {"entry_id": entry.entry_id, "title": entry.title, "diagnostics": _entry_diagnostics(hass, entry)}
             for entry in prices
         ],
+        # The beta tester mode (never the e-mail address) and the installation's last hardware test, whose
+        # `result` the relay reads (`failed` is flagged).
+        "beta": _beta_block(hass),
+        "hardware_test": latest_record(hass),
         "log": {
             "note": (
                 "The last SpotNav log records at INFO and above since the start; DEBUG ones only if DEBUG was "
@@ -615,6 +626,11 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
     # containers are copied here, on the loop, so nothing the loop goes on changing is read by the executor. The
     # redaction (every string scrubbed, the larger part of the work) then runs there, on the bundle's own copy.
     return await hass.async_add_executor_job(redact_bundle, detached(bundle), scrubber)
+
+
+def _beta_block(hass: HomeAssistant) -> dict[str, Any] | None:
+    beta = domain_data(hass).beta
+    return None if beta is None else bundle_block(beta.state)
 
 
 def detached(value: Any) -> Any:
