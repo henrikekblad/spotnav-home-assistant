@@ -97,6 +97,22 @@ BACKSTOP: Final = timedelta(minutes=15)
 SHED_LOOKS: Final = 2
 
 
+def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date) -> float:
+    """The share of the house profile's weight (`site/load_forecast.py`: `WINDOW_DAYS`, halved every
+    `HALF_LIFE_DAYS`) that lies on days with a live boost: the profile already holds that much of the boosts and of
+    the reheats they moved, so the forecast's change is scaled by what is left."""
+    from ..site.load_forecast import HALF_LIFE_DAYS, WINDOW_DAYS  # noqa: PLC0415 - the site imports this module
+
+    total = live = 0.0
+    for age in range(1, WINDOW_DAYS + 1):
+        weight = 0.5 ** (age / HALF_LIFE_DAYS)
+        total += weight
+        record = days.get((today - timedelta(days=age)).isoformat())
+        if record is not None and record.get("live"):
+            live += weight
+    return 0.0 if total <= 0 else live / total
+
+
 def beta_gate_open(hass: HomeAssistant, site: Any) -> bool:
     """Whether the site's beta testing skips the learning gate (`dhw_review.GATES`).
 
@@ -725,7 +741,7 @@ class HotWater:
         plans count on (`HeatShadow.forecast_delta`): each boost that will be written (live) adds its power over its
         run, and the pump's own reheat it replaces is taken out at its expected time. Nothing in shadow: there the
         pump runs as it always has. Kept per 5 minutes."""
-        filled_count = sum(len(record.get("filled") or []) for record in self.days.values())
+        filled_count = sum(len(record.get("filled") or []) + len(record.get("live") or []) for record in self.days.values())
         key = (int(now.timestamp() // 300), tuple(pick.start for pick in self.picks), self.shed_day, self.ended_day, filled_count)
         if key == self._delta_key:
             return self._delta
@@ -740,13 +756,20 @@ class HotWater:
 
                 run_h = max(self.run_len.total_seconds() / 3600.0, 0.25)
                 filled = {key for record in self.days.values() for key in record.get("filled") or []}
+                live = {key for record in self.days.values() for key in record.get("live") or []}
+                # The profile learns the live boosts from the meter: what it holds of them already is not added again.
+                scale = 1.0 - learned_live_share(self.days, now.astimezone(self.zone).date())
                 for pick in self.picks:
-                    if pick.end <= now or pick.peak <= now or pick.peak.isoformat() in filled:
+                    key = pick.peak.isoformat()
+                    if pick.end <= now or pick.peak <= now or key in filled:
+                        continue
+                    if key not in live and now >= pick.start + START_LATE:
+                        # Its start passed without a write (the fuse, a safety reason): the pump reheats as always.
                         continue
                     for hour, share in hour_shares(max(pick.start, now), pick.end):
-                        out[hour] = out.get(hour, 0.0) + self.boost_kw * share
+                        out[hour] = out.get(hour, 0.0) + self.boost_kw * share * scale
                     for hour, share in hour_shares(pick.own_at, pick.own_at + self.run_len):
-                        out[hour] = out.get(hour, 0.0) - pick.kwh / run_h * share
+                        out[hour] = out.get(hour, 0.0) - pick.kwh / run_h * share * scale
         self._delta_key, self._delta = key, out
         return out
 

@@ -464,3 +464,36 @@ async def test_s6_the_gate_stays_open_through_live_weeks_and_closes_on_misses(ha
     assert state["open"] is False and state["backed_off"] == later.astimezone(hot_water.zone).date().isoformat()
     assert hot_water.opened is None
     assert isinstance(date.fromisoformat(hot_water.gate_since), date)
+
+
+# ---- S8: the learned house profile already holds the live boosts: the change fades as it learns them
+
+
+async def test_s8_the_forecast_change_fades_with_the_live_days_learned(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.heat.dhw_runtime import learned_live_share
+
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hot_water.picks = [_live_pick(hot_water, at, timedelta(hours=2))]
+    hot_water.boost_kw = 3.0
+    hot_water.run_len = timedelta(minutes=30)
+    start = hot_water.picks[0].start
+    full = hot_water.forecast_delta(at)[start]
+    assert full == pytest.approx(1.5)
+    today = at.astimezone(hot_water.zone).date()
+    for index in range(1, 15):
+        day = (today - timedelta(days=index)).isoformat()
+        hot_water.days.setdefault(day, {"peaks": [], "picks": {}, "live": [], "filled": [], "review": None})["live"] = ["x"]
+    share = learned_live_share(hot_water.days, today)
+    assert 0.4 < share < 0.6
+    hot_water._delta_key = None  # noqa: SLF001
+    assert hot_water.forecast_delta(at)[start] == pytest.approx(full * (1 - share))
+
+
+async def test_s8_a_skipped_pick_leaves_the_forecast(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    pick = _live_pick(hot_water, at, timedelta(0))
+    hot_water.picks = [pick]
+    assert hot_water.forecast_delta(pick.start + timedelta(minutes=5))
+    # Its start window passed without a write (the fuse, a safety reason): no longer counted.
+    hot_water._delta_key = None  # noqa: SLF001
+    assert hot_water.forecast_delta(pick.start + timedelta(minutes=11)) == {}
