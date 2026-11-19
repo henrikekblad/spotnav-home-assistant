@@ -2393,11 +2393,17 @@ class BatteryControl:
                 "ledger": executor.ledger.as_dict(),
                 "monitor": executor.monitor.as_dict(),
             }
+        elif not self._started:
+            # The start has not made the executor yet (it failed and waits to retry, or was cut short): what the
+            # store holds stays for the next start, or a snapshot not handed back would be written away.
+            data |= {name: self._stored[name] for name in ("state", "ledger", "monitor") if name in self._stored}
         export = self.export_executor
         if export is not None:
             data["export"] = {
                 "state": export.state.as_dict(), "ledger": export.ledger.as_dict(), "monitor": export.monitor.as_dict(),
             }
+        elif not self._started and "export" in self._stored:
+            data["export"] = self._stored["export"]
         return data
 
     def _needs(self) -> list[str]:

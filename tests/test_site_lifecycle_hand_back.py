@@ -332,3 +332,66 @@ async def test_a_battery_control_shut_down_before_its_store_was_read_writes_noth
     await control.async_shutdown()
     await control.async_save()
     assert hass_storage[key] == snapshot
+
+
+_HELD = {"phase": "active", "brand": "sigenergy", "action": "grid_charge",
+         "snapshot": {"mode": "x"}, "entities": {"mode": "select.not_loaded_yet"}}
+_EXPORT_HELD = {"phase": "active", "brand": "sigenergy", "action": "curtail_export",
+                "snapshot": {"export_limit": "10"}, "entities": {"export_limit": "number.not_loaded_yet"}}
+
+
+def _held_store(key: str) -> dict[str, Any]:
+    return {"version": 1, "minor_version": 1, "key": key,
+            "data": {"state": dict(_HELD), "export": {"state": dict(_EXPORT_HELD)}}}
+
+
+async def test_a_shutdown_while_the_battery_restarts_keeps_the_export_limit_s_snapshot(
+    hass: HomeAssistant, hass_storage: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start has made the battery's executor but not yet the export limit's (it waits for the plant or hands
+    the battery back): a shutdown then keeps the export limit's stored snapshot for the next start."""
+    _charger, site = await setup_charger_and_site(hass)
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    key = store_key(site.entry_id)
+    hass_storage[key] = _held_store(key)
+    control = BatteryControl(hass, controller)
+
+    async def not_reachable(self: BatteryControl, reason: str) -> None:  # the plant cannot be written yet
+        return None
+
+    monkeypatch.setattr(BatteryControl, "_async_until_handed_back", not_reachable)
+    control.async_launch(None)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert control._loaded and control.executor is not None and control.export_executor is None  # noqa: SLF001
+    await control.async_shutdown()
+    data = hass_storage[key]["data"]
+    assert data["export"]["state"]["snapshot"] == {"export_limit": "10"}
+    assert data["state"]["snapshot"] == {"mode": "x"}
+
+
+async def test_a_shutdown_after_a_failed_start_keeps_the_battery_s_snapshot(
+    hass: HomeAssistant, hass_storage: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start raised after it read the store and waits to retry: a shutdown then keeps the battery's and the
+    export limit's stored snapshots for the next start."""
+    _charger, site = await setup_charger_and_site(hass)
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    key = store_key(site.entry_id)
+    hass_storage[key] = _held_store(key)
+    control = BatteryControl(hass, controller)
+
+    def unreadable(self: BatteryControl) -> Any:
+        raise RuntimeError("facts not readable")
+
+    monkeypatch.setattr(BatteryControl, "_read_facts", unreadable)
+    control.async_launch(None)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert control._loaded and control.executor is None  # noqa: SLF001
+    await control.async_shutdown()
+    data = hass_storage[key]["data"]
+    assert data["state"]["snapshot"] == {"mode": "x"}
+    assert data["export"]["state"]["snapshot"] == {"export_limit": "10"}
