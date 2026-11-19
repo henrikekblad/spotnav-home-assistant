@@ -973,16 +973,20 @@ def _platforms_for(entry: ConfigEntry) -> list[str]:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a SpotNav entry.
 
-    A site shuts down here first, before its platforms: Home Assistant awaits this in full (an `async_on_unload`
-    task only about ten seconds), so its hardware test, home battery and heat path are handed back and its stores
-    saved before a reload sets it up again or a removal forgets its stores. Everything else stops through
-    `async_on_unload`. An unload is not an instruction to stop charging.
+    A site shuts down here, after its platforms: Home Assistant awaits this in full (an `async_on_unload` task only
+    about ten seconds), so its hardware test, home battery and heat path are handed back and its stores saved before
+    a reload sets it up again or a removal forgets its stores. Its platforms go first: one that fails to unload
+    leaves the entry FAILED_UNLOAD, which cannot be reloaded, and the site then keeps running (load balancing, the
+    chargers' start cap) rather than stand shut down until Home Assistant restarts. Inside the shutdown the site's
+    own timers still stop before anything is handed back. Everything else stops through `async_on_unload`. An
+    unload is not an instruction to stop charging.
     """
-    if entry_kind(entry) == ENTRY_TYPE_SITE and (site := site_data(hass, entry.entry_id)) is not None:
+    unloaded = await hass.config_entries.async_unload_platforms(entry, _platforms_for(entry))
+    if unloaded and entry_kind(entry) == ENTRY_TYPE_SITE and (site := site_data(hass, entry.entry_id)) is not None:
         # No member charger's sun reads the controller once it is going.
         async_unbind_solar_execution(hass, site.controller)
         await site.controller.async_shutdown()
-    return await hass.config_entries.async_unload_platforms(entry, _platforms_for(entry))
+    return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

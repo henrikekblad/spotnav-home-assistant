@@ -126,19 +126,19 @@ async def test_a_reload_during_a_long_hand_back_waits_for_it_and_the_old_copy_wr
     site, recorder = await _site(hass, monkeypatch)
     reload = hass.async_create_task(hass.config_entries.async_reload(site.entry_id))
     await recorder.handing_back.wait()
-    # Long past what Home Assistant would wait for an unload task: the new copy has not started, the platforms are up.
+    # Long past what Home Assistant would wait for an unload task: the new copy has not started.
     for _ in range(20):
         await asyncio.sleep(0)
     assert not reload.done()
     assert len(recorder.copies) == 1
-    assert (-1, "platforms unloaded") not in recorder.events
     recorder.release.set()
     assert await reload
     await hass.async_block_till_done()
 
     assert site.state is ConfigEntryState.LOADED
     assert len(recorder.copies) == 2, "a new copy runs"
-    # Exactly one hand-back sequence, all of it before the platforms go and before the new copy starts.
+    # Exactly one hand-back sequence, after the platforms went (a failed platform unload leaves the site running)
+    # and before the new copy starts.
     assert _of(recorder, 0) == [
         "battery start", "heat start", "battery write", "battery write", "battery save", "battery handed back",
         "heat write", "heat handed back",
@@ -146,7 +146,8 @@ async def test_a_reload_during_a_long_hand_back_waits_for_it_and_the_old_copy_wr
     first_new = next(i for i, (copy, _what) in enumerate(recorder.events) if copy == 1)
     last_old = max(i for i, (copy, _what) in enumerate(recorder.events) if copy == 0)
     platforms = recorder.events.index((-1, "platforms unloaded"))
-    assert last_old < platforms < first_new
+    first_old_write = recorder.events.index((0, "battery write"))
+    assert platforms < first_old_write and last_old < first_new
     assert not hass.data.get(SHUTDOWNS_KEY)
 
 
@@ -180,6 +181,32 @@ async def test_home_assistant_s_stop_leaves_the_chargers_capped(
     assert charger._start_cap is not None  # noqa: SLF001
     assert await hass.config_entries.async_unload(site.entry_id)
     assert charger._start_cap is None  # noqa: SLF001
+
+
+# The platforms that failed to unload (faked here) keep their timers.
+@pytest.mark.parametrize("expected_lingering_timers", [True])
+async def test_a_failed_platform_unload_leaves_the_site_running(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Home Assistant sets an entry whose platforms did not unload to FAILED_UNLOAD, which cannot be reloaded: the
+    site is then not shut down, so its load balancing and the chargers' start cap stay until Home Assistant
+    restarts."""
+    site, recorder = await _site(hass, monkeypatch)
+    controller = recorder.copies[0]
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None
+
+    async def fails(entry: Any, platforms: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(hass.config_entries, "async_unload_platforms", fails)
+    assert not await hass.config_entries.async_unload(site.entry_id)
+    assert site.state is ConfigEntryState.FAILED_UNLOAD
+    assert controller._shutdown_task is None and not controller._closed  # noqa: SLF001
+    assert "battery write" not in _of(recorder, 0)
+    assert charger._start_cap is not None  # noqa: SLF001
+    recorder.release.set()
+    await controller.async_shutdown()
 
 
 async def test_the_old_copy_never_saves_over_the_new_copy_s_snapshot(
