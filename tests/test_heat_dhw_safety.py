@@ -20,12 +20,25 @@ CTC = "number.ctc_extra_hot_water_1006"
 CLOUD = "switch.f730_temporary_lux_50004"
 
 
+def _fuse(monkeypatch: pytest.MonkeyPatch, hot_water: Any, state: str, measured: dict, estimated: dict | None = None) -> None:
+    from types import SimpleNamespace
+
+    phases = ("l1", "l2", "l3")
+    result = SimpleNamespace(
+        state=state,
+        measured_margin_a={phase: measured.get(phase) for phase in phases},
+        estimated_headroom_if_battery_yields_a={phase: (estimated or {}).get(phase) for phase in phases},
+    )
+    monkeypatch.setattr(hot_water, "_site_result", lambda: result)
+
+
 async def _live(hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch, pump: Any, **heat: Any) -> tuple[Any, Any, datetime]:
     """A site steering its hot water live, a pick due now, the meter fresh and room on the fuse."""
     site, controller = await _site(hass, freezer, monkeypatch, pump, control_enabled=True, **heat)
     hot_water = controller.heat_shadow.hot_water
     monkeypatch.setattr(hot_water, "_meter_fresh", lambda _now: True)
-    monkeypatch.setattr(hot_water, "_margins", lambda: {"l1": 20.0, "l2": 20.0, "l3": 20.0})
+    monkeypatch.setattr(hot_water, "_meter_found", lambda: True)
+    _fuse(monkeypatch, hot_water, "observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0})
     now = controller.demand.now()
     _open_gate(hot_water, now.astimezone(hot_water.zone).date())
     pick = _live_pick(hot_water, now, timedelta(0))
@@ -145,6 +158,7 @@ async def test_s7_ownership_survives_a_restart_and_a_counting_timer(hass: HomeAs
     again = dhw_runtime.HotWater(hass, controller.heat_shadow)
     again.restore(json.loads(json.dumps(hot_water.stored())))
     monkeypatch.setattr(again, "_meter_fresh", lambda _now: True)
+    monkeypatch.setattr(again, "_meter_found", lambda: True)
     assert again.picks == hot_water.picks
     controller.heat_shadow.hot_water = again
     freezer.tick(timedelta(minutes=5))
@@ -194,3 +208,76 @@ async def test_s1_a_pulse_ends_a_held_block_until_the_run_is_over(hass: HomeAssi
     monkeypatch.setattr(hot_water, "making_now", lambda: False)
     hot_water.tick(now + 40 * MIN)
     assert hot_water.pulse_owner(now + 40 * MIN) is None
+
+
+# ---- S2: the live fuse check fails closed, counts what a battery would yield, and keeps the import target
+
+
+async def _fuse_site(hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any, datetime, Writes]:
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    return controller, hot_water, at, Writes(hass)
+
+
+@pytest.mark.parametrize(
+    ("state", "measured", "estimated", "starts"),
+    [
+        ("observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0}, None, True),
+        # Unknown phases: fail closed.
+        ("observing", {"l1": 20.0, "l2": None, "l3": 20.0}, None, False),
+        ("observing", {}, None, False),
+        # A stale meter: the cars are in their failsafe; no boost either.
+        ("stale_measurements", {"l1": 20.0, "l2": 20.0, "l3": 20.0}, None, False),
+        # The battery holds the grid at the fuse: it would yield, so the boost fits.
+        ("observing", {"l1": 0.5, "l2": 0.5, "l3": 0.5}, {"l1": 18.0, "l2": 18.0, "l3": 18.0}, True),
+        ("observing", {"l1": 0.5, "l2": 0.5, "l3": 0.5}, {"l1": 18.0, "l2": 5.0, "l3": 18.0}, False),
+    ],
+)
+async def test_s2_the_fuse_check_fails_closed_and_counts_the_battery(
+    hass: HomeAssistant, freezer, monkeypatch, state: str, measured: dict, estimated: dict | None, starts: bool
+) -> None:
+    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
+    _fuse(monkeypatch, hot_water, state, measured, estimated)
+    hot_water.tick(at)
+    await settle(hass)
+    assert bool(writes.calls) is starts
+
+
+async def test_s2_a_stale_meter_holds_a_boost(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
+    _fuse(monkeypatch, hot_water, "observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0})
+    monkeypatch.setattr(hot_water, "_meter_fresh", lambda _now: False)
+    monkeypatch.setattr(hot_water, "_meter_found", lambda: True)
+    hot_water.tick(at)
+    await settle(hass)
+    assert writes.calls == []
+
+
+async def test_s2_the_import_target_holds_a_boost(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
+    _fuse(monkeypatch, hot_water, "observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0})
+    site = controller
+    monkeypatch.setattr(site, "_import_target_kw", lambda: 6.0)
+    monkeypatch.setattr(site, "effective_import_target_kw", lambda set_kw: set_kw)
+    monkeypatch.setattr(hot_water, "_grid_kw", lambda: 3.5)
+    hot_water.tick(at)
+    await settle(hass)
+    assert writes.calls == []
+    monkeypatch.setattr(hot_water, "_grid_kw", lambda: 1.0)
+    hot_water.tick(at + timedelta(minutes=1))
+    await settle(hass)
+    assert len(writes.calls) == 1
+
+
+async def test_s2_shed_counts_what_the_battery_would_yield(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
+    _fuse(monkeypatch, hot_water, "observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0})
+    hot_water.tick(at)
+    await settle(hass)
+    assert len(writes.calls) == 1
+    # The battery charges up to the fuse: measured over, but it would yield.
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -1.0, "l2": 2.0, "l3": 2.0}, {"l1": 10.0, "l2": 12.0, "l3": 12.0})
+    for minute in (1, 2, 3):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert len(writes.calls) == 1

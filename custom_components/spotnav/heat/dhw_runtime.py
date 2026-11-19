@@ -671,21 +671,87 @@ class HotWater:
         safety = "stale" if control is None else control.safety_now(self.shadow.config(), now)
         if safety in UNSAFE:
             return str(safety)
-        if not self._meter_fresh(now) and self._pump() is None:
+        if not self._data_fresh(now):
+            # No meter or pump state read within `DATA_FRESH`: the pump runs as normal.
             return "no_data"
         budget = BUDGETS.get(route.kind, BUDGETS[ROUTE_ONE_SHOT])
         if self.ledger.used_on(now.astimezone(self.zone).date(), self.zone, SOURCE_PLAN) >= budget:
             return "budget"
         if self.shed_day == now.astimezone(self.zone).date().isoformat():
             return "shed"
-        if fits_fuse(self._margins(), self.boost_kw) is False:
-            # A car started since the boost was placed, or the house draws more: no room on the fuse now.
-            return "fuse"
+        return self._fuse_blocker()
+
+    def _fuse_blocker(self) -> str | None:
+        """Why the boost does not fit the site now, `None` when it does. Fails closed: the site's measurements must
+        be healthy and every phase known (a battery holding the grid counts as what it would yield); without phase
+        sensors, the site's total import against its cap; and the import target's level for the running hour."""
+        state = self._site_state()
+        if state == "observing":
+            margins = self._margins()
+            if not margins or any(value is None for value in margins.values()):
+                return "no_phase_data"
+            if not fits_fuse(margins, self.boost_kw):
+                # A car started since the boost was placed, or the house draws more: no room on the fuse now.
+                return "fuse"
+        elif state == "not_configured":
+            from ..battery.plan_runtime import site_import_cap_kw  # noqa: PLC0415 - it imports the site
+
+            cap = site_import_cap_kw(self.hass, self.shadow.site)
+            grid = self._grid_kw()
+            if cap is None or grid is None:
+                return "no_fuse_data"
+            if grid + self.boost_kw > cap:
+                return "fuse"
+        else:
+            return "measurements"
+        site = self.shadow.site
+        set_kw = site._import_target_kw()  # noqa: SLF001 - the site's own read of its stored target
+        if set_kw is not None:
+            from ..site.import_target import held_level_kw  # noqa: PLC0415
+
+            level = site.effective_import_target_kw(set_kw)
+            grid = self._grid_kw()
+            if level is None or grid is None:
+                return "import_target"
+            if grid + self.boost_kw > held_level_kw(level):
+                return "import_target"
         return None
 
+    def _site_result(self) -> Any:
+        """The site's last capacity result (`site/site_capacity.SiteCapacityResult`)."""
+        return getattr(self.shadow.site, "result", None)
+
+    def _site_state(self) -> str | None:
+        return getattr(self._site_result(), "state", None)
+
     def _margins(self) -> dict[str, float | None]:
-        result = getattr(self.shadow.site, "result", None)
-        return dict(getattr(result, "measured_margin_a", None) or {})
+        """Each phase's room now (A): what a battery holding the grid would yield where that is known, else the
+        measured margin."""
+        result = self._site_result()
+        measured = dict(getattr(result, "measured_margin_a", None) or {})
+        estimated = dict(getattr(result, "estimated_headroom_if_battery_yields_a", None) or {})
+        return {phase: estimated.get(phase) if estimated.get(phase) is not None else value for phase, value in measured.items()}
+
+    def _grid_kw(self) -> float | None:
+        from ..execution.solar_execution import site_net_grid_w  # noqa: PLC0415 - it imports the site
+
+        try:
+            watts = site_net_grid_w(self.shadow.site)
+        except Exception:  # noqa: BLE001 - not known: the checks fail closed
+            return None
+        return None if watts is None else watts / 1000.0
+
+    def _meter_found(self) -> bool:
+        meter = self.shadow.site.house_forecast.heat.meter
+        return bool(meter.found and meter.entity_id is not None)
+
+    def _data_fresh(self, now: datetime) -> bool:
+        """The pump's hot water can be told now: the heat pump meter reported within `DATA_FRESH`, or, without a
+        meter, the pump's own state reads."""
+        if self._meter_found():
+            return self._meter_fresh(now)
+        pump = self._pump()
+        return pump is not None and pump.priority is not None
 
     async def _async_live_start(self, now: datetime, route: Route, pick: Pick) -> None:
         try:

@@ -297,6 +297,9 @@ async def test_live_behind_the_opt_in_and_the_gate(hass: HomeAssistant, freezer,
     writes = Writes(hass, seen=False)
     hot_water = controller.heat_shadow.hot_water
     monkeypatch.setattr(hot_water, "_meter_fresh", lambda _now: True)
+    monkeypatch.setattr(hot_water, "_meter_found", lambda: True)
+    # Room on the fuse (its checks are `tests/test_heat_dhw_safety.py`).
+    monkeypatch.setattr(hot_water, "_fuse_blocker", lambda: None)
     now = controller.demand.now()
     today = now.astimezone(hot_water.zone).date()
     from custom_components.spotnav.heat.dhw_plan import Pick
@@ -335,6 +338,9 @@ async def test_a_live_boost_read_back_is_kept_and_a_local_one_tried_again(hass: 
     writes = Writes(hass, seen=False)
     hot_water = controller.heat_shadow.hot_water
     monkeypatch.setattr(hot_water, "_meter_fresh", lambda _now: True)
+    monkeypatch.setattr(hot_water, "_meter_found", lambda: True)
+    # Room on the fuse (its checks are `tests/test_heat_dhw_safety.py`).
+    monkeypatch.setattr(hot_water, "_fuse_blocker", lambda: None)
     now = controller.demand.now()
     today = now.astimezone(hot_water.zone).date()
     _open_gate(hot_water, today)
@@ -415,6 +421,7 @@ async def test_a_car_that_starts_after_the_boost_was_placed(hass: HomeAssistant,
     writes = Writes(hass)
     hot_water = controller.heat_shadow.hot_water
     monkeypatch.setattr(hot_water, "_meter_fresh", lambda _now: True)
+    monkeypatch.setattr(hot_water, "_meter_found", lambda: True)
     now = controller.demand.now()
     _open_gate(hot_water, now.astimezone(hot_water.zone).date())
     pick = _live_pick(hot_water, now, timedelta(0))
@@ -422,6 +429,7 @@ async def test_a_car_that_starts_after_the_boost_was_placed(hass: HomeAssistant,
     hot_water.boost_kw = 3.0
     margins = {"l1": 20.0, "l2": 6.0, "l3": 18.0}
     monkeypatch.setattr(hot_water, "_margins", lambda: margins)
+    monkeypatch.setattr(hot_water, "_site_state", lambda: "observing")
     at = max(now, pick.start)
     # 3 kW on one phase is 13 A: the car left 6 A on L2.
     hot_water.tick(at)
