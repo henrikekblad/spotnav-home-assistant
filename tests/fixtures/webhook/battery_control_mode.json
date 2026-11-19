@@ -51,11 +51,16 @@
       "battery_mode": "max_profit"
     },
     "per_phase": null,
+    "plan_costs": {
+      "balanced_margin_minor_per_kwh": 100.0,
+      "major_unit": "kr",
+      "minor_unit": "\u00f6re",
+      "wear_minor_per_kwh": 15.0
+    },
     "report": null,
     "state": "off",
     "trial": null,
     "verification": null,
-    "waiting_for": null,
-    "plan_costs": null
+    "waiting_for": null
   }
 }
