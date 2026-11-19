@@ -191,3 +191,34 @@ def test_an_email_address_in_free_text_is_scrubbed() -> None:
     from custom_components.spotnav.debug_bundle import Scrubber
 
     assert Scrubber().text("Account henrik.e+ev@example.se logged in") == "Account <email> logged in"
+
+
+async def test_a_person_s_report_carries_no_kind(hass: HomeAssistant, aioclient_mock) -> None:
+    await setup_charger_and_site(hass)
+    aioclient_mock.post(URL, status=201, json={"ref": "SN-ABCD"})
+
+    result = await support_report.async_send_report(hass, "It stopped", None)
+
+    assert result.ref == "SN-ABCD"
+    assert "kind" not in _sent_body(aioclient_mock)
+
+
+@pytest.mark.parametrize("kind", ["beta_daily", "beta_test"])
+async def test_a_beta_report_names_its_kind_with_an_empty_message(
+    hass: HomeAssistant, aioclient_mock, kind: str
+) -> None:
+    await setup_charger_and_site(hass)
+    aioclient_mock.post(URL, status=201, json={"ref": "SN-BETA"})
+
+    result = await support_report.async_send_report(hass, "", "me@example.com", kind=kind)
+
+    assert result.ref == "SN-BETA"
+    body = _sent_body(aioclient_mock)
+    assert body["kind"] == kind
+    assert body["message"] == ""
+
+
+async def test_an_unknown_kind_is_never_sent(hass: HomeAssistant, aioclient_mock) -> None:
+    with pytest.raises(ValueError):
+        await support_report.async_send_report(hass, "", None, kind="")
+    assert aioclient_mock.call_count == 0
