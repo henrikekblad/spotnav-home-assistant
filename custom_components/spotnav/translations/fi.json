@@ -9,7 +9,7 @@
           "pair_deny": "Hylkää"
         },
         "title": "Puhelin haluaa muodostaa yhteyden",
-        "description": "Laite, joka kutsuu itseään nimellä **{device}**, pyytää yhteyttä ja näyttää koodin **{code}**. Hyväksy vain, jos sama koodi näkyy sen näytöllä. Hyväksyminen luovuttaa tämän Home Assistantin laturit; koodi on vain vertailua varten."
+        "description": "Laite, joka kutsuu itseään nimellä **{device}**, pyytää yhteyttä ja näyttää koodin **{code}**. Hyväksy vain, jos sama koodi näkyy sen näytöllä. Hyväksyminen luovuttaa tämän Home Assistantin laturit ja kodit; koodi on vain vertailua varten."
       },
       "pair_approve": {
         "title": "Hyväksy"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Tämä laturi tai kohde on jo määritetty.",
-      "pairing_approved": "Hyväksytty. Puhelimella on nyt tämän Home Assistantin laturit.",
+      "pairing_approved": "Hyväksytty. Puhelimella on nyt tämän Home Assistantin laturit ja kodit.",
       "pairing_denied": "Hylätty. Puhelimelle ilmoitettiin, eikä mitään luovutettu.",
       "pairing_request_expired": "Pariliitospyyntö on vanhentunut. Aloita uudelleen puhelimessa.",
       "no_supported_charger": "Tuettua laturia ei löytynyt. Määritä ensin laturin oma integraatio tai valitse Manuaalinen.",

@@ -9,7 +9,7 @@
           "pair_deny": "Weigeren"
         },
         "title": "Een telefoon wil verbinden",
-        "description": "Een apparaat dat zichzelf **{device}** noemt vraagt om te verbinden en toont de code **{code}**. Keur alleen goed als dezelfde code op het scherm staat. Goedkeuren geeft de laadpalen van deze instantie vrij; de code is alleen om te vergelijken."
+        "description": "Een apparaat dat zichzelf **{device}** noemt vraagt om te verbinden en toont de code **{code}**. Keur alleen goed als dezelfde code op het scherm staat. Goedkeuren geeft de laadpalen en woningen van deze instantie vrij; de code is alleen om te vergelijken."
       },
       "pair_approve": {
         "title": "Goedkeuren"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Deze laadpaal of locatie is al ingesteld.",
-      "pairing_approved": "Goedgekeurd. De telefoon heeft nu de laadpalen van deze instantie.",
+      "pairing_approved": "Goedgekeurd. De telefoon heeft nu de laadpalen en woningen van deze instantie.",
       "pairing_denied": "Geweigerd. De telefoon is op de hoogte gebracht en er is niets vrijgegeven.",
       "pairing_request_expired": "Dat koppelverzoek is verlopen. Begin opnieuw op de telefoon.",
       "no_supported_charger": "Er is geen ondersteunde laadpaal gevonden. Stel eerst de eigen integratie van de laadpaal in, of kies Handmatig.",

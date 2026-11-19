@@ -9,7 +9,7 @@
           "pair_deny": "Ablehnen"
         },
         "title": "Ein Telefon möchte sich verbinden",
-        "description": "Ein Gerät, das sich **{device}** nennt, möchte sich verbinden und zeigt den Code **{code}**. Lass es nur zu, wenn derselbe Code auf seinem Bildschirm steht. Beim Zulassen werden die Ladestationen dieser Instanz übergeben; der Code dient nur zum Vergleichen."
+        "description": "Ein Gerät, das sich **{device}** nennt, möchte sich verbinden und zeigt den Code **{code}**. Lass es nur zu, wenn derselbe Code auf seinem Bildschirm steht. Beim Zulassen werden die Ladestationen und Zuhause dieser Instanz übergeben; der Code dient nur zum Vergleichen."
       },
       "pair_approve": {
         "title": "Zulassen"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Diese Ladestation oder dieser Standort ist bereits eingerichtet.",
-      "pairing_approved": "Zugelassen. Das Telefon verwaltet jetzt die Ladestationen dieser Instanz.",
+      "pairing_approved": "Zugelassen. Das Telefon verwaltet jetzt die Ladestationen und Zuhause dieser Instanz.",
       "pairing_denied": "Abgelehnt. Das Telefon wurde informiert, und nichts wurde übergeben.",
       "pairing_request_expired": "Diese Kopplungsanfrage ist abgelaufen. Starte sie auf dem Telefon neu.",
       "no_supported_charger": "Es wurde keine unterstützte Ladestation gefunden. Richte zuerst die eigene Integration der Ladestation ein oder wähle Manuell.",

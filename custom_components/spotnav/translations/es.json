@@ -9,7 +9,7 @@
           "pair_deny": "Rechazar"
         },
         "title": "Un teléfono quiere conectarse",
-        "description": "Un dispositivo que se identifica como **{device}** pide conectarse y muestra el código **{code}**. Apruébalo solo si el mismo código aparece en su pantalla. Al aprobarlo se entregan los cargadores de esta instancia; el código solo sirve para compararlo."
+        "description": "Un dispositivo que se identifica como **{device}** pide conectarse y muestra el código **{code}**. Apruébalo solo si el mismo código aparece en su pantalla. Al aprobarlo se entregan los cargadores y hogares de esta instancia; el código solo sirve para compararlo."
       },
       "pair_approve": {
         "title": "Aprobar"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Este cargador o instalación ya está configurado.",
-      "pairing_approved": "Aprobado. El teléfono tiene ahora los cargadores de esta instancia.",
+      "pairing_approved": "Aprobado. El teléfono tiene ahora los cargadores y hogares de esta instancia.",
       "pairing_denied": "Rechazado. Se ha avisado al teléfono y no se ha entregado nada.",
       "pairing_request_expired": "Esa solicitud de emparejamiento ha caducado. Vuelve a empezar en el teléfono.",
       "no_supported_charger": "No se ha encontrado ningún cargador compatible. Configura primero la integración propia del cargador o elige Manual.",

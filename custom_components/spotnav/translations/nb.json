@@ -9,7 +9,7 @@
           "pair_deny": "Avvis"
         },
         "title": "En telefon vil koble til",
-        "description": "En enhet som kaller seg **{device}**, ber om å koble til og viser koden **{code}**. Godkjenn bare hvis den samme koden står på skjermen dens. Ved godkjenning får den denne instansens ladere; koden er bare til sammenligning."
+        "description": "En enhet som kaller seg **{device}**, ber om å koble til og viser koden **{code}**. Godkjenn bare hvis den samme koden står på skjermen dens. Ved godkjenning får den denne instansens ladere og hjem; koden er bare til sammenligning."
       },
       "pair_approve": {
         "title": "Godkjenn"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Denne laderen eller dette anlegget er allerede satt opp.",
-      "pairing_approved": "Godkjent. Telefonen har nå denne instansens ladere.",
+      "pairing_approved": "Godkjent. Telefonen har nå denne instansens ladere og hjem.",
       "pairing_denied": "Avvist. Telefonen har fått beskjed, og ingenting ble overlatt.",
       "pairing_request_expired": "Forespørselen om sammenkobling er utløpt. Start på nytt på telefonen.",
       "no_supported_charger": "Fant ingen støttet lader. Sett opp laderens egen integrasjon først, eller velg Manuell.",

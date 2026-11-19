@@ -7,6 +7,9 @@ sensitive reaches a log, and no path creates a config entry.
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
 from unittest.mock import patch
 
 from homeassistant.core import HomeAssistant
@@ -20,7 +23,7 @@ from custom_components.spotnav.api.pairing import (
 )
 from custom_components.spotnav.vehicles.charger_inventory import charger_pairing_payload
 
-from .helpers import make_entry
+from .helpers import make_entry, make_site_entry
 from custom_components.spotnav.runtime import domain_data
 
 EXTERNAL_URL = "https://ha.example.com"
@@ -452,3 +455,72 @@ async def test_an_approval_is_not_spent_while_the_instance_has_no_address(
     answer = await _poll(client, request_id)
     assert answer["status"] == "approved"
     assert answer["url"]
+
+
+# --- SpotNav 3.0: every site and its webhook ----------------------------------
+
+PAIRING_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "pairing" / "approved_v1_sites.json"
+
+
+async def test_an_approval_hands_over_every_site_with_its_webhook_and_chargers(
+    hass: HomeAssistant, hass_client_no_auth, caplog
+) -> None:
+    """A site with a charger and a home without one, each with its own webhook; each charger names its site. An app
+    before 3.0 reads `chargers` by `id`, `name` and `webhook` only, so both additions pass it by."""
+    await _loaded(hass)
+    caplog.set_level("DEBUG")
+    with_charger = make_site_entry(hass, entry_id="site_garage", charger_entry_ids=["entry_charger_a"], title="Home")
+    alone = make_site_entry(hass, entry_id="site_cabin", charger_entry_ids=[], title="Cabin")
+    for site in (with_charger, alone):
+        assert await hass.config_entries.async_setup(site.entry_id)
+    await hass.async_block_till_done()
+    client = await hass_client_no_auth()
+    request_id = await _request(client)
+    assert _register(hass).approve(request_id) is True
+
+    answer = await _poll(client, request_id)
+
+    assert answer["status"] == "approved"
+    assert answer["chargers"] == [
+        {"id": "entry_charger_a", "name": "Garage", "webhook": WEBHOOK_ID, "site_id": "site_garage"}
+    ]
+    assert answer["sites"] == [
+        {
+            "id": "site_garage",
+            "name": "Home",
+            "webhook": with_charger.data["webhook_id"],
+            "chargers": [{"id": "entry_charger_a", "name": "Garage"}],
+        },
+        {"id": "site_cabin", "name": "Cabin", "webhook": alone.data["webhook_id"], "chargers": []},
+    ]
+    pinned = json.loads(
+        json.dumps(answer)
+        .replace(with_charger.data["webhook_id"], "<site_garage_webhook>")
+        .replace(alone.data["webhook_id"], "<site_cabin_webhook>")
+    )
+    if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
+        PAIRING_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+        PAIRING_FIXTURE.write_text(json.dumps(pinned, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    assert json.loads(PAIRING_FIXTURE.read_text(encoding="utf-8")) == pinned
+    # Nothing logged the sites' secrets (Home Assistant's own webhook component logs the path of each call, so this
+    # is read before the calls below).
+    logged = "\n".join(
+        caplog.handler.format(record)
+        for record in caplog.records
+        if not record.name.startswith("pytest_homeassistant_custom_component")
+    )
+    for site in (with_charger, alone):
+        assert site.data["webhook_id"] not in logged
+    # Each site's webhook answers.
+    for site in (with_charger, alone):
+        response = await client.post(f"/api/webhook/{site.data['webhook_id']}", json={"version": 1, "action": "get_site"})
+        assert response.status == 200 and (await response.json())["site_id"] == site.entry_id
+
+
+async def test_an_instance_without_sites_hands_over_an_empty_list(hass: HomeAssistant, hass_client_no_auth) -> None:
+    await _loaded(hass)
+    client = await hass_client_no_auth()
+    request_id = await _request(client)
+    assert _register(hass).approve(request_id) is True
+    answer = await _poll(client, request_id)
+    assert answer["sites"] == [] and "site_id" not in answer["chargers"][0]

@@ -9,7 +9,7 @@
           "pair_deny": "Refuser"
         },
         "title": "Un téléphone veut se connecter",
-        "description": "Un appareil se présentant comme **{device}** demande à se connecter et affiche le code **{code}**. N'approuvez que si le même code est affiché sur son écran. Approuver lui donne accès aux bornes de cette instance ; le code sert uniquement à la comparaison."
+        "description": "Un appareil se présentant comme **{device}** demande à se connecter et affiche le code **{code}**. N'approuvez que si le même code est affiché sur son écran. Approuver lui donne accès aux bornes et aux maisons de cette instance ; le code sert uniquement à la comparaison."
       },
       "pair_approve": {
         "title": "Approuver"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Cette borne ou ce site est déjà configuré.",
-      "pairing_approved": "Approuvé. Le téléphone a maintenant accès aux bornes de cette instance.",
+      "pairing_approved": "Approuvé. Le téléphone a maintenant accès aux bornes et aux maisons de cette instance.",
       "pairing_denied": "Refusé. Le téléphone en a été informé et rien n'a été transmis.",
       "pairing_request_expired": "Cette demande d'appairage a expiré. Recommencez sur le téléphone.",
       "no_supported_charger": "Aucune borne prise en charge n'a été trouvée. Configurez d'abord l'intégration propre à la borne, ou choisissez Manuel.",

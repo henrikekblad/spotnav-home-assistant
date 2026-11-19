@@ -9,7 +9,7 @@
           "pair_deny": "Neka"
         },
         "title": "En telefon vill ansluta",
-        "description": "En enhet som kallar sig **{device}** vill ansluta och visar koden **{code}**. Godkänn bara om samma kod står på dess skärm. Ett godkännande lämnar över den här instansens laddare; koden är bara till för att jämföra."
+        "description": "En enhet som kallar sig **{device}** vill ansluta och visar koden **{code}**. Godkänn bara om samma kod står på dess skärm. Ett godkännande lämnar över den här instansens laddare och hem; koden är bara till för att jämföra."
       },
       "pair_approve": {
         "title": "Godkänn"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Den här laddaren eller siten är redan konfigurerad.",
-      "pairing_approved": "Godkänt. Telefonen har nu den här instansens laddare.",
+      "pairing_approved": "Godkänt. Telefonen har nu den här instansens laddare och hem.",
       "pairing_denied": "Avslaget. Telefonen fick besked och inget lämnades över.",
       "pairing_request_expired": "Den parkopplingen har gått ut. Börja om i telefonen.",
       "no_supported_charger": "Ingen laddare som stöds hittades. Ställ först in laddarens egen integration, eller välj Manuell.",

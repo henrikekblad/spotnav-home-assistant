@@ -9,7 +9,7 @@
           "pair_deny": "Deny"
         },
         "title": "A phone wants to connect",
-        "description": "A device calling itself **{device}** is asking to connect, and shows the code **{code}**. Approve only if the same code is on its screen. Approving hands over this instance's chargers; the code is only for comparing."
+        "description": "A device calling itself **{device}** is asking to connect, and shows the code **{code}**. Approve only if the same code is on its screen. Approving hands over this instance's chargers and homes; the code is only for comparing."
       },
       "pair_approve": {
         "title": "Approve"
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "This charger or site is already set up.",
-      "pairing_approved": "Approved. The phone now holds this instance's chargers.",
+      "pairing_approved": "Approved. The phone now holds this instance's chargers and homes.",
       "pairing_denied": "Denied. The phone was told, and nothing was handed over.",
       "pairing_request_expired": "That pairing request has expired. Start again on the phone.",
       "no_supported_charger": "No supported charger was found. Set up the charger's own integration first, or choose Manual.",
