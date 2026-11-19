@@ -224,12 +224,17 @@ def _register(session: Session, kwh: float) -> None:
 async def test_autos_plan_states_the_need_with_a_register_and_whole_quarters_without(session: Session) -> None:
     serve(session.transport, flat=True)
     await session.set_auto(requested_kwh=30.5, amps=16, phases=3, departure=time(20, 0))
+    await session.hass.async_block_till_done()
     whole = session.preview.snapshot().proposal
     assert whole.ends_at_need is False
     assert whole.delivered_kwh == pytest.approx(12 * PER_SLOT_KWH)
 
     _register(session, 100.0)
-    counted = (await session.preview.async_recalculate()).proposal
+    await session.preview.async_recalculate()
+    # Taking the register in replans on its own, and a calculation an attempt behind it is dropped: let that one
+    # settle and read the plan that stands.
+    await session.hass.async_block_till_done()
+    counted = session.preview.snapshot().proposal
 
     assert counted.ends_at_need is True
     assert counted.delivered_kwh == pytest.approx(30.5)
