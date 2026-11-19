@@ -2027,5 +2027,17 @@
   "heat.water.blockingBackedOff": "Estot pidetään kauempana käyttövedestä liian monen myöhäisen lämmityksen jälkeen",
   "heat.water.blockingReview": "Estot eilen: {hours} h lyhennetty käyttöveden vuoksi · {risks} myöhäistä lämmitystä ennen huippua",
   "heat.water.blockingReviewWould": "Estot eilen: {hours} h olisi lyhennetty käyttöveden vuoksi · {risks} myöhäistä lämmitystä ennen huippua",
-  "heat.boost.noHeadroom": "Pääsulake on nyt täysin kuormitettu; sammuta jotain ja yritä uudelleen"
+  "heat.boost.noHeadroom": "Pääsulake on nyt täysin kuormitettu; sammuta jotain ja yritä uudelleen",
+  "phones.disconnect.open": "Katkaise kaikkien puhelinten yhteys",
+  "phones.disconnect.text": "Jokainen SpotNaviin pariliitetty puhelin menettää yhteyden heti, ja se on pariliitettävä uudelleen. Lataus ja lämmitys jatkuvat ennallaan.",
+  "phones.disconnect.confirm": "Katkaise",
+  "phones.error.notAdmin": "Vain järjestelmänvalvoja voi tehdä tämän.",
+  "phones.error.generic": "Se ei onnistunut. Mitään ei muutettu.",
+  "makeHome.open": "Tee tästä koti",
+  "makeHome.text": "SpotNav tekee kodin tämän laturin ympärille: talon, kotiakun ja lämmityksen sivut sekä kuormanhallinnan pääsulakkeen alapuolella, kun kodin asetuksista on valittu mittari. Nyt tarvitaan vain pääsulake.",
+  "makeHome.fuse": "Pääsulake",
+  "makeHome.confirm": "Tee koti",
+  "makeHome.error.exists": "Tällä asennuksella on jo koti. Lisää laturi siihen kodin asetuksista.",
+  "makeHome.error.fuse": "Pääsulaketta ei hyväksytty. Anna sulakkeen koko ampeereina.",
+  "makeHome.error.range": "Pääsulake on välillä {min}–{max} A."
 }

@@ -44,6 +44,7 @@ import {
   getSettings,
   identifyVehicle,
   listChargers,
+  listSites,
   performAction,
   previewPlan,
   setVehicleSoc,
@@ -86,6 +87,8 @@ import {
 import { decodeBlueprintUse, type BlueprintUse } from "./automations";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { sendDebugReport, sendFailureText, type SendOutcome } from "./send-debug";
+import { runDisconnectPhones, runMakeHome } from "./phones";
+import { decodeSiteList } from "./site-model";
 import type { BetaRequest } from "./beta";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
@@ -1739,6 +1742,54 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /**
+   * The Settings popover of a charger without a site was opened: ask whether the installation has a home at all, and
+   * offer "Make a home of this" when it has none. Any failure offers nothing.
+   */
+  private async loadHomeOffered(): Promise<void> {
+    const hass = this.hassObject;
+    const view = this.view;
+    if (!this.connected || hass === null || view === null || !this.isAdmin || this.siteFacts() !== null) {
+      return;
+    }
+    let raw: unknown;
+    try {
+      raw = await listSites(hass);
+    } catch {
+      return;
+    }
+    const decoded = decodeSiteList(raw);
+    if (decoded.ok && this.view === view) {
+      view.setHomeOffered(decoded.value.sites.length === 0);
+    }
+  }
+
+  /** "Make a home of this", confirmed with the main fuse: the home is made, then the card reads its charger again. */
+  private async makeHome(mainFuseA: number): Promise<string | null> {
+    const hass = this.hassObject;
+    const language = this.languageOrFallback;
+    const charger = this.config?.charger ?? "";
+    if (!this.connected || hass === null || !this.isAdmin || charger === "") {
+      return translate(language, "phones.error.notAdmin");
+    }
+    const failure = await runMakeHome(hass, language, charger, mainFuseA);
+    if (failure === null) {
+      this.view?.setHomeOffered(false);
+      void this.refresh({ force: true });
+    }
+    return failure;
+  }
+
+  /** "Disconnect all phones", confirmed in its dialog. */
+  private async disconnectPhones(): Promise<string | null> {
+    const hass = this.hassObject;
+    const language = this.languageOrFallback;
+    if (!this.connected || hass === null || !this.isAdmin) {
+      return translate(language, "phones.error.notAdmin");
+    }
+    return await runDisconnectPhones(hass, language);
+  }
+
+  /**
    * The Settings popover was opened: ask which card the integration serves, and say in Support when the
    * card running here is another (an old module kept by the browser or the Companion app). Any failure,
    * an integration without the command included, says nothing.
@@ -3016,6 +3067,7 @@ export class SpotnavCard extends HTMLElement {
           }
           void this.loadEntityConfig();
           void this.loadCardInfo();
+          void this.loadHomeOffered();
         },
         onOpenEntityEditor: (scope) => {
           this.openEntityEditor(scope);
@@ -3024,6 +3076,8 @@ export class SpotnavCard extends HTMLElement {
           void this.downloadDebug();
         },
         onSendDebug: (message, email) => this.sendDebug(message, email),
+        onDisconnectPhones: () => this.disconnectPhones(),
+        onMakeHome: (mainFuseA) => this.makeHome(mainFuseA),
         onBeta: (request) => this.beta(request),
         onLoadBlueprintUse: () => this.loadBlueprintUse(),
         onSaveEntities: (scope, draft) => {

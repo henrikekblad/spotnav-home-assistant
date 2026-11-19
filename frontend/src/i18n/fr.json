@@ -2027,5 +2027,17 @@
   "heat.water.blockingBackedOff": "Blocages tenus plus loin de l'eau chaude après trop de réchauffes tardives",
   "heat.water.blockingReview": "Blocages hier : {hours} h raccourcies pour l'eau chaude · {risks} réchauffes tardives avant un pic",
   "heat.water.blockingReviewWould": "Blocages hier : {hours} h auraient été raccourcies pour l'eau chaude · {risks} réchauffes tardives avant un pic",
-  "heat.boost.noHeadroom": "Le disjoncteur principal est à pleine charge ; éteignez un appareil et réessayez"
+  "heat.boost.noHeadroom": "Le disjoncteur principal est à pleine charge ; éteignez un appareil et réessayez",
+  "phones.disconnect.open": "Déconnecter tous les téléphones",
+  "phones.disconnect.text": "Chaque téléphone appairé avec SpotNav perd aussitôt sa connexion et doit être appairé à nouveau. La recharge et le chauffage continuent comme avant.",
+  "phones.disconnect.confirm": "Déconnecter",
+  "phones.error.notAdmin": "Seul un administrateur peut faire cela.",
+  "phones.error.generic": "Cela n'a pas fonctionné. Rien n'a été modifié.",
+  "makeHome.open": "Faire une maison de ceci",
+  "makeHome.text": "SpotNav crée une maison autour de cette borne : les pages de la maison, de la batterie domestique et du chauffage, et l'équilibrage de charge sous le fusible principal dès qu'un compteur est choisi dans les réglages de la maison. Seul le fusible principal est demandé maintenant.",
+  "makeHome.fuse": "Fusible principal",
+  "makeHome.confirm": "Créer la maison",
+  "makeHome.error.exists": "Cette installation a déjà une maison. Ajoutez-y la borne dans les réglages de la maison.",
+  "makeHome.error.fuse": "Ce fusible principal n'a pas été accepté. Indiquez son calibre en ampères.",
+  "makeHome.error.range": "Le fusible principal est entre {min} et {max} A."
 }

@@ -132,6 +132,7 @@ import {
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
 import { sendDebugEditor, type SendDebug } from "./send-debug";
+import { disconnectPhonesEditor, makeHomeEditor } from "./phones";
 import { betaEditor, betaSummary, readBeta, type BetaAnswer, type BetaCall } from "./beta";
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
@@ -313,6 +314,14 @@ export interface CardViewInput {
   onSendDebug?: SendDebug;
   /** The beta box and the hardware test in Support (`beta.ts`), administrators only. */
   onBeta?: BetaCall;
+  /** "Disconnect all phones" in Support, confirmed in its dialog (administrators only): `null` when done, else the sentence. */
+  onDisconnectPhones?: () => Promise<string | null>;
+  /**
+   * "Make a home of this" in the site section of a charger whose installation has no home (administrators only),
+   * confirmed in its dialog with the main fuse: `null` when made, else the sentence. Offered once the card has said
+   * the installation has no home (`setHomeOffered`).
+   */
+  onMakeHome?: (mainFuseA: number) => Promise<string | null>;
   /** How many automations use each of SpotNav's blueprints (`automations.ts`), `null` when it could not be read. */
   onLoadBlueprintUse?: () => Promise<BlueprintUse | null>;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
@@ -443,6 +452,8 @@ export interface CardView {
   setEntityHass(hass: unknown): void;
   closeEntityEditor(): void;
   setOverviewNotice(failure: FailureSentence | null): void;
+  /** Whether "Make a home of this" is offered: the charger has no site and the installation has no home. */
+  setHomeOffered(offered: boolean): void;
   /** One of same-area electricity prices was chosen: the price section says once that the other can be removed. */
   showPriceRemovableNote(): void;
   /** The debug download is being prepared: the button says so and cannot be pressed again. */
@@ -2885,6 +2896,18 @@ export function createCardView(input: CardViewInput): CardView {
       send.textContent = translate(model.language, "sendDebug.open");
       send.addEventListener("click", () => openSendDebug());
       actions.append(send);
+      const disconnect = input.onDisconnectPhones;
+      if (disconnect !== undefined) {
+        const phones = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "phones.disconnect.open")) as HTMLButtonElement;
+        phones.type = "button";
+        phones.dataset["disconnectPhones"] = "open";
+        phones.addEventListener("click", () =>
+          openValueEditor(translate(model.language, "phones.disconnect.open"), (handlers) =>
+            disconnectPhonesEditor(doc, model.language, disconnect, handlers),
+          ),
+        );
+        actions.append(phones);
+      }
     }
     section.append(actions);
     return section;
@@ -4162,6 +4185,30 @@ export function createCardView(input: CardViewInput): CardView {
 
   }
 
+  let homeOffered = false;
+  let makeHomeSlot: HTMLElement | null = null;
+
+  /** "Make a home of this": one button under "This charger has no site", for an administrator, once offered. */
+  function paintMakeHome(): void {
+    if (makeHomeSlot === null) {
+      return;
+    }
+    makeHomeSlot.replaceChildren();
+    const make = input.onMakeHome;
+    if (!homeOffered || !input.isAdmin || make === undefined || model.site !== null) {
+      return;
+    }
+    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "makeHome.open"));
+    (button as HTMLButtonElement).type = "button";
+    button.dataset["makeHome"] = "open";
+    button.addEventListener("click", () =>
+      openValueEditor(translate(model.language, "makeHome.open"), (handlers) =>
+        makeHomeEditor(doc, model.language, idPrefix, make, handlers),
+      ),
+    );
+    makeHomeSlot.append(button);
+  }
+
   /**
    * The site card: headed by the site's name alone ("Site" only when it has none), marked as applying to
    * every charger on it, with the configured entities in words and the load-balancing switch.
@@ -4174,8 +4221,13 @@ export function createCardView(input: CardViewInput): CardView {
     if (site === null) {
       siteSection.append(sectionHeading(doc, "site", translate(model.language, "settings.heading.site")));
       siteSection.append(element(doc, "p", C.muted, translate(model.language, "site.none")));
+      makeHomeSlot = element(doc, "div");
+      makeHomeSlot.dataset["slot"] = "make-home";
+      siteSection.append(makeHomeSlot);
+      paintMakeHome();
       return siteSection;
     }
+    makeHomeSlot = null;
     siteSection.append(sectionHeading(doc, "site", translate(model.language, "settings.heading.site"), site.name));
     // With one charger the site is that charger's: nothing to say about which chargers it applies to.
     if (site.chargerCount > 1) {
@@ -5196,6 +5248,10 @@ export function createCardView(input: CardViewInput): CardView {
     setOverviewNotice(failure: FailureSentence | null): void {
       overviewNotice = failure;
       paintOverviewNotice();
+    },
+    setHomeOffered(offered: boolean): void {
+      homeOffered = offered;
+      paintMakeHome();
     },
     showPriceRemovableNote(): void {
       const section = overviewBodyNode?.querySelector<HTMLElement>("[data-section='market']");

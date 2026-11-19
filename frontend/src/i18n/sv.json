@@ -2027,5 +2027,17 @@
   "heat.water.blockingBackedOff": "Blockeringarna hålls längre från varmvattnet efter för många sena uppvärmningar",
   "heat.water.blockingReview": "Blockeringar i går: {hours} h förkortade för varmvattnet · {risks} sena uppvärmningar före en topp",
   "heat.water.blockingReviewWould": "Blockeringar i går: {hours} h skulle ha förkortats för varmvattnet · {risks} sena uppvärmningar före en topp",
-  "heat.boost.noHeadroom": "Säkringen är fullt belastad just nu; stäng av något och försök igen"
+  "heat.boost.noHeadroom": "Säkringen är fullt belastad just nu; stäng av något och försök igen",
+  "phones.disconnect.open": "Koppla bort alla telefoner",
+  "phones.disconnect.text": "Alla telefoner som är parkopplade med SpotNav tappar anslutningen direkt och måste parkopplas igen. Laddning och värme fortsätter som förut.",
+  "phones.disconnect.confirm": "Koppla bort",
+  "phones.error.notAdmin": "Bara en administratör kan göra det här.",
+  "phones.error.generic": "Det gick inte. Inget ändrades.",
+  "makeHome.open": "Gör ett hem av det här",
+  "makeHome.text": "SpotNav gör ett hem runt den här laddaren: sidorna för huset, hembatteriet och värmen, och lastbalansering under huvudsäkringen när en mätare har valts i hemmets inställningar. Nu behövs bara huvudsäkringen.",
+  "makeHome.fuse": "Huvudsäkring",
+  "makeHome.confirm": "Gör hemmet",
+  "makeHome.error.exists": "Den här installationen har redan ett hem. Lägg till laddaren i det i hemmets inställningar.",
+  "makeHome.error.fuse": "Den huvudsäkringen godtogs inte. Ange säkringens storlek i ampere.",
+  "makeHome.error.range": "Huvudsäkringen är mellan {min} och {max} A."
 }

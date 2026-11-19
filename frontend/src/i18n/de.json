@@ -2027,5 +2027,17 @@
   "heat.water.blockingBackedOff": "Sperren halten nach zu vielem spätem Nachheizen mehr Abstand zum Warmwasser",
   "heat.water.blockingReview": "Sperren gestern: {hours} h fürs Warmwasser verkürzt · {risks}-mal spät nachgeheizt vor einer Spitze",
   "heat.water.blockingReviewWould": "Sperren gestern: {hours} h wären fürs Warmwasser verkürzt worden · {risks}-mal spät nachgeheizt vor einer Spitze",
-  "heat.boost.noHeadroom": "Die Hauptsicherung ist gerade voll belastet; etwas ausschalten und erneut versuchen"
+  "heat.boost.noHeadroom": "Die Hauptsicherung ist gerade voll belastet; etwas ausschalten und erneut versuchen",
+  "phones.disconnect.open": "Alle Telefone trennen",
+  "phones.disconnect.text": "Jedes mit SpotNav gekoppelte Telefon verliert sofort die Verbindung und muss neu gekoppelt werden. Laden und Heizen laufen weiter wie bisher.",
+  "phones.disconnect.confirm": "Trennen",
+  "phones.error.notAdmin": "Das kann nur ein Administrator.",
+  "phones.error.generic": "Das hat nicht geklappt. Nichts wurde geändert.",
+  "makeHome.open": "Ein Zuhause daraus machen",
+  "makeHome.text": "SpotNav legt um diese Ladestation ein Zuhause an: die Seiten für Haus, Heimspeicher und Heizung, und Lastmanagement unter der Hauptsicherung, sobald in den Einstellungen des Zuhauses ein Zähler gewählt ist. Jetzt wird nur die Hauptsicherung gebraucht.",
+  "makeHome.fuse": "Hauptsicherung",
+  "makeHome.confirm": "Zuhause anlegen",
+  "makeHome.error.exists": "Diese Installation hat schon ein Zuhause. Füge die Ladestation in dessen Einstellungen hinzu.",
+  "makeHome.error.fuse": "Diese Hauptsicherung wurde nicht angenommen. Gib ihre Größe in Ampere an.",
+  "makeHome.error.range": "Die Hauptsicherung liegt zwischen {min} und {max} A."
 }

@@ -2027,5 +2027,17 @@
   "heat.water.blockingBackedOff": "Blokkeringen blijven verder weg van het warme water na te vaak laat opwarmen",
   "heat.water.blockingReview": "Blokkeringen gisteren: {hours} u ingekort voor het warme water · {risks} keer laat opgewarmd vóór een piek",
   "heat.water.blockingReviewWould": "Blokkeringen gisteren: {hours} u zouden zijn ingekort voor het warme water · {risks} keer laat opgewarmd vóór een piek",
-  "heat.boost.noHeadroom": "De hoofdzekering is nu volledig belast; zet iets uit en probeer het opnieuw"
+  "heat.boost.noHeadroom": "De hoofdzekering is nu volledig belast; zet iets uit en probeer het opnieuw",
+  "phones.disconnect.open": "Alle telefoons ontkoppelen",
+  "phones.disconnect.text": "Elke telefoon die met SpotNav gekoppeld is, verliest meteen de verbinding en moet opnieuw gekoppeld worden. Laden en verwarmen gaan door zoals voorheen.",
+  "phones.disconnect.confirm": "Ontkoppelen",
+  "phones.error.notAdmin": "Alleen een beheerder kan dit doen.",
+  "phones.error.generic": "Dat lukte niet. Er is niets veranderd.",
+  "makeHome.open": "Maak hier een woning van",
+  "makeHome.text": "SpotNav maakt een woning rond deze laadpaal: de pagina's voor het huis, de thuisbatterij en de verwarming, en load balancing onder de hoofdzekering zodra in de instellingen van de woning een meter is gekozen. Nu is alleen de hoofdzekering nodig.",
+  "makeHome.fuse": "Hoofdzekering",
+  "makeHome.confirm": "Woning maken",
+  "makeHome.error.exists": "Deze installatie heeft al een woning. Voeg de laadpaal daaraan toe in de instellingen van de woning.",
+  "makeHome.error.fuse": "Die hoofdzekering werd niet geaccepteerd. Vul de waarde van de zekering in ampère in.",
+  "makeHome.error.range": "De hoofdzekering ligt tussen {min} en {max} A."
 }

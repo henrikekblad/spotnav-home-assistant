@@ -8,6 +8,8 @@ import {
   API_VERSION,
   BETA_API_VERSION,
   BLUEPRINTS_API_VERSION,
+  MAKE_HOME_API_VERSION,
+  PHONES_API_VERSION,
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
   MARKET_API_VERSION,
@@ -394,6 +396,27 @@ export async function betaCommand(
     ...target,
     action: request.action,
     ...(request.changes === undefined ? {} : { changes: request.changes }),
+  });
+}
+
+/**
+ * "Disconnect all phones" (administrators only): every charger and home gets a new webhook id, so every paired phone
+ * must pair again. `unknown` until `decodeDisconnectAnswer()` decodes it.
+ */
+export async function disconnectPhones(hass: HomeAssistantLike): Promise<unknown> {
+  return await call<unknown>(hass, { type: "spotnav/disconnect_phones", api_version: PHONES_API_VERSION });
+}
+
+/**
+ * "Make a home of this" (administrators only): a home around this charger, with the main fuse the person gave.
+ * `unknown` until `decodeMakeHomeAnswer()` decodes it.
+ */
+export async function makeHome(hass: HomeAssistantLike, chargerId: string, mainFuseA: number): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/make_home",
+    api_version: MAKE_HOME_API_VERSION,
+    charger_id: chargerId,
+    main_fuse_a: mainFuseA,
   });
 }
 

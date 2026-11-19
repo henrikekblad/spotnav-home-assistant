@@ -105,6 +105,9 @@ export const DEBUG_API_VERSION = 1;
 export const BETA_API_VERSION = 1;
 /** `spotnav/get_blueprints` (`api/blueprints.py`). */
 export const BLUEPRINTS_API_VERSION = 1;
+/** `spotnav/disconnect_phones` ("Disconnect all phones") and `spotnav/make_home` ("Make a home of this"). */
+export const PHONES_API_VERSION = 1;
+export const MAKE_HOME_API_VERSION = 1;
 
 export const SETTINGS_DRIVER_TARGET_SOC = "target_soc";
 

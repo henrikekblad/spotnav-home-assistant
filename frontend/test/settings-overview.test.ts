@@ -275,6 +275,7 @@ describe("Download debug info", () => {
       translate("en", "settings.about.open"),
       translate("en", "debug.download"),
       translate("en", "sendDebug.open"),
+      translate("en", "phones.disconnect.open"),
     ]);
 
     // A reader who is not an administrator is shown only what they may change: Display, and no Support.

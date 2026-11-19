@@ -2027,5 +2027,17 @@
   "heat.water.blockingBackedOff": "Blocks kept further from the hot water after too many late reheats",
   "heat.water.blockingReview": "Blocks yesterday: {hours} h shortened for the hot water · {risks} late reheats before a peak",
   "heat.water.blockingReviewWould": "Blocks yesterday: {hours} h would have been shortened for the hot water · {risks} late reheats before a peak",
-  "heat.boost.noHeadroom": "The main fuse is fully loaded right now; turn something off and try again"
+  "heat.boost.noHeadroom": "The main fuse is fully loaded right now; turn something off and try again",
+  "phones.disconnect.open": "Disconnect all phones",
+  "phones.disconnect.text": "Every phone paired with SpotNav loses its connection at once and has to be paired again. Charging and heating go on as before.",
+  "phones.disconnect.confirm": "Disconnect",
+  "phones.error.notAdmin": "Only an administrator can do this.",
+  "phones.error.generic": "That did not work. Nothing was changed.",
+  "makeHome.open": "Make a home of this",
+  "makeHome.text": "SpotNav makes a home around this charger: the house, home battery and heating pages, and load balancing under the main fuse once a meter is chosen in the home's settings. Only the main fuse is needed now.",
+  "makeHome.fuse": "Main fuse",
+  "makeHome.confirm": "Make the home",
+  "makeHome.error.exists": "This installation has a home already. Add the charger to it in the home's settings.",
+  "makeHome.error.fuse": "That main fuse was not accepted. Enter the fuse's rating in amperes.",
+  "makeHome.error.range": "The main fuse is between {min} and {max} A."
 }
