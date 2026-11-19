@@ -159,12 +159,6 @@ def poa_points(hs: HourSun, ghi: float | None, beam_share: float | None, tilt: f
     return out
 
 
-def clear_poa(hs: HourSun, tilt: float, paz: float) -> float:
-    """The hour's mean clear-sky plane-of-array irradiance (W/m2)."""
-    values = poa_points(hs, None, None, tilt, paz)
-    return sum(values) / len(values)
-
-
 def array_kw(
     hs: HourSun,
     planes: Sequence[Plane],

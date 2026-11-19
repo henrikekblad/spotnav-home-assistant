@@ -65,9 +65,6 @@ DERIVED_OPTIONAL_SUBKEYS: tuple[tuple[str, str], ...] = (
     ("current", "current"),
 )
 
-#: The site's sign options, as fields of the details form.
-DETECTED_CHOICE_PREFIX = "detected:"
-
 
 def site_detected_schema(
     hass, candidates: list[MeterCandidate], *, default_choice: str, offer_enable: bool

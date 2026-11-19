@@ -182,13 +182,6 @@ class LoadForecast:
             if hour.kw is not None and hour.source not in (SOURCE_FLAT, SOURCE_NONE)
         }
 
-    def kw_at(self, moment: datetime) -> float | None:
-        """The figure for the hour `moment` falls in, `None` outside the horizon or when nothing is known."""
-        for hour in self.hours:
-            if hour.start <= moment < hour.start + timedelta(hours=1):
-                return hour.kw
-        return None
-
     def as_dict(self) -> dict[str, Any]:
         return {
             "made_at": self.made_at.isoformat(),

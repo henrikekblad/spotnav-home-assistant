@@ -109,14 +109,6 @@ class ErrorBand:
             return max(0.0, value * spread.low), max(0.0, value * spread.high)
         return max(0.0, value + spread.low), max(0.0, value + spread.high)
 
-    def low_high(self, by_hour: Mapping[datetime, float]) -> tuple[dict[datetime, float], dict[datetime, float]]:
-        """The low and high figure of every hour of a forecast (`{hour start: value}`)."""
-        low: dict[datetime, float] = {}
-        high: dict[datetime, float] = {}
-        for start, value in by_hour.items():
-            low[start], high[start] = self.bounds(value, start)
-        return low, high
-
     def as_dict(self) -> dict[str, Any]:
         def name(key: tuple[str | None, int]) -> str:
             return f"{key[1]:02d}" if key[0] is None else f"{key[0]}/{key[1]:02d}"

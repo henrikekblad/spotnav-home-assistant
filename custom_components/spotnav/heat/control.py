@@ -1298,9 +1298,6 @@ class HeatControl:
             return SAFETY_SETTLING
         return None
 
-    def _boost_on(self, config: HeatConfig) -> bool:
-        return self._boost_source(config) is not None
-
     def _boost_source(self, config: HeatConfig) -> str | None:
         """Whose hot-water boost runs, `None` when none does: the settings' hot-water entity or the pump's own boost
         (its adapter's `hot_water_boost` entities) reading on (`paths.boost_on`). `plan` when SpotNav's planned boost

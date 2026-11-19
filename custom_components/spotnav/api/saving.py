@@ -41,8 +41,6 @@ _LOGGER = logging.getLogger(__name__)
 _CACHE: Final = f"{DOMAIN}_session_savings"
 #: A closed session's figure is kept once its last hour is this far behind (the statistics have it).
 SETTLED_AFTER: Final = timedelta(hours=2)
-#: The sessions read around the days asked for, so a plug-in's sessions are all there.
-PLUG_IN_REACH: Final = timedelta(days=2)
 
 
 def site_sessions(hass: HomeAssistant, controller: Any) -> list[ChargeSession]:

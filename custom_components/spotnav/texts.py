@@ -90,7 +90,3 @@ def table(language: str, namespace: str) -> Mapping[str, str]:
     catalog = _loaded()
     return catalog.get(language, catalog[FALLBACK])[namespace]
 
-
-def hass_table(hass: Any, namespace: str) -> Mapping[str, str]:
-    """`table` in Home Assistant's configured language."""
-    return table(language_of(getattr(hass.config, "language", None)), namespace)

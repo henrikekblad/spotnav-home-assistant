@@ -200,10 +200,6 @@ async def suggestion_answer(hass: HomeAssistant, site: ConfigEntry) -> dict[str,
     return answer
 
 
-def forget_suggestion(hass: HomeAssistant, site_id: str) -> None:
-    """Drop one site's kept answer (its chargers or sources changed)."""
-    hass.data.get(_CACHE_KEY, {}).pop(site_id, None)
-
 
 @websocket_api.websocket_command(
     {

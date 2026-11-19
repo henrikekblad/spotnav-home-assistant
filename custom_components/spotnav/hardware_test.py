@@ -57,7 +57,6 @@ POLL_S: Final = 2.0
 #: The battery's steps (its verification modes) and the heat path's.
 BATTERY_STEPS: Final = (("hold", "hold"), ("charge", "charge"), ("discharge", "discharge_house"),
                         ("hand_back", "normal"))
-HEAT_STEPS: Final = ("engage", "release")
 #: Refusals that mean the part is not there to test (no step shown), rather than not testable now.
 ABSENT: Final = frozenset({"no_battery_control", "not_enabled", "no_relay"})
 #: Abort reasons that are the plant or its integration not doing as told (read back missing, write refused).

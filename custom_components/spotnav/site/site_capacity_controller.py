@@ -388,9 +388,6 @@ TARGET_ROW_ACTIONS = {ACTION_UNHELD: "exempt"}
 #: (`regulator._decide_phase`'s `held_still`); no yield step, probe or resume raises it either.
 REASON_HELD_STILL_NO_RAISE = "held_still_no_raise"
 #: Where a release of the import target came from (`async_release_import_target`'s `source`, in the change log).
-RELEASE_SOURCE_PHONE = "phone"
-RELEASE_SOURCE_CARD = "card"
-RELEASE_SOURCE_APP = "app"
 RELEASE_SOURCE_PLAN = "plan"
 #: Why a release ended (`_release_end`, in the change log).
 RELEASE_END_DEPARTURE_PASSED = "departure_passed"

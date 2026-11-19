@@ -288,9 +288,6 @@ ERR_NOT_WRITABLE: Final = "not_writable"
 ERR_CONTROL_PATH_UNKNOWN: Final = "control_path_unknown"
 ERR_UNKNOWN_FIELD: Final = "unknown_field"
 ERR_UNKNOWN_VEHICLE: Final = "unknown_vehicle"
-# Re-exported so a caller never has to import `entity_conflicts` just to compare a code.
-ERR_CHARGE_CONTROL_IN_USE: Final = "charge_control_in_use"
-ERR_CURRENT_LIMIT_IN_USE: Final = "current_limit_in_use"
 ERR_DUPLICATE_CHARGER: Final = DUPLICATE_CHARGER_ERROR
 #: `control.conflicts` kind for another entry that is the same physical charger.
 CONFLICT_DUPLICATE: Final = "duplicate_charger"
