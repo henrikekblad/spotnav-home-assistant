@@ -16,7 +16,8 @@ lowering (or the raise) as SpotNav wrote it and "open" the pump's normal state:
   (a stop that cannot wait for it, `OPEN_TRIES` openings that failed, a contact let go), the switch SpotNav turned on
   is turned off all the same: it ends the block or the raise by itself (`_async_fallback_off`).
 * *A stored offset* (NIBE): the value found is kept before the lowering is written (`snapshots`) and written back
-  at every exit, at Home Assistant's stop and, where that did not take, at the next start. A value that is no
+  at every exit, at Home Assistant's stop and, where that did not take, at the next start. A closing waits for the
+  plan's write spacing (`paths.move_waits`, kept in `offset_moves`); an opening never does. A value that is no
   longer the one SpotNav wrote is someone else's: nothing is written back.
 * *A volatile offset* (CTC): written again every `paths.RENEW` while held (the watchdog; its own day count,
   `renewals`); a renewal that has failed for `paths.EXPIRY` ends the lowering and pauses control for the day. Handed
@@ -262,6 +263,8 @@ class HeatControl:
         #: Per local day: the volatile offset's renewals, and the activation switch's turnings on.
         self.renewals: dict[str, int] = {}
         self.activations: dict[str, int] = {}
+        #: A stored offset's writes of the last `paths.REVERSAL_SPACING`: `(when, direction)`, for the write spacing.
+        self.offset_moves: list[tuple[datetime, int]] = []
         # Seen.
         #: A stored offset's value as last read while SpotNav held nothing on it, since this start: a change between
         #: two such readings is the household's own (`_track_home`).
@@ -412,6 +415,9 @@ class HeatControl:
             counts = raw.get(name)
             if isinstance(counts, dict):
                 setattr(self, name, {day: count for day, count in counts.items() if isinstance(count, int)})
+        for item in raw.get("offset_moves") or []:
+            if isinstance(item, list) and len(item) == 2 and (at := _instant(item[0])) is not None and item[1] in (-1, 1):
+                self.offset_moves.append((at, item[1]))
 
     def _data(self) -> dict[str, Any]:
         return {
@@ -437,6 +443,7 @@ class HeatControl:
             "activation": None if self.activation is None else dict(self.activation),
             "renewals": self.renewals,
             "activations": self.activations,
+            "offset_moves": [[at.isoformat(), direction] for at, direction in self.offset_moves],
         }
 
     def _save(self) -> None:
@@ -1019,6 +1026,7 @@ class HeatControl:
         day = self._day(now)
         self.writes[day] = self.writes.get(day, 0) + 1
         self._log(now, "offset_home_restore", entity=entity_id, value=line["home"])
+        self.offset_moves.append((now, 1 if line["home"] > line["value"] else -1))
         try:
             await self._async_set_number(entity_id, line["home"])
         except Exception as err:  # noqa: BLE001 - the line stays; the person may try again
@@ -1321,6 +1329,10 @@ class HeatControl:
                 return
         if not closed and self._retry_open_at is not None and now < self._retry_open_at:
             return
+        if closed and self._spaced(relay, closed, now):
+            # A stored offset moved within the write spacing: the closing waits for a later look.
+            self._log_wait(now, "close_waits_for_spacing", why)
+            return
         if closed and (blocked := self._prepare_close(relay, now)) is not None:
             # An offset that does not read, or has no room left to move: nothing is written.
             self._log_wait(now, "close_not_possible", blocked)
@@ -1343,10 +1355,12 @@ class HeatControl:
                 self._save()
                 return
         self._waits.pop("close_waits_for_b", None)
+        self._waits.pop("close_waits_for_spacing", None)
         if closed:
             self._own_reopen_at = None
             self._a_close_unseen_at = now
         self._log(now, "close" if closed else "open", why=why)
+        self._moved(relay, closed, now)
         self._save()
         try:
             await self._async_call(relay, closed)
@@ -1356,6 +1370,21 @@ class HeatControl:
             return
         if self._read(relay) == closed:
             self._confirm(self.pending, now)
+
+    def _is_stored_offset(self, key: str) -> bool:
+        return paths.parse(key)[1] == paths.KIND_OFFSET and not self._volatile(key)
+
+    def _spaced(self, key: str, closed: bool, now: datetime) -> bool:
+        """Whether a closing of a stored offset waits for the plan's write spacing (`paths.move_waits`). An opening
+        never waits: a hand-back (a room gone cold, any safety reason or exit) goes at once."""
+        if not closed or not self._is_stored_offset(key):
+            return False
+        return paths.move_waits(self.offset_moves, paths.move_direction(paths.parse(key)[2], closed), now)
+
+    def _moved(self, key: str, closed: bool, now: datetime) -> None:
+        """Keep a stored offset's write for the spacing (before it goes out: a write that fails may still take)."""
+        if self._is_stored_offset(key):
+            self.offset_moves.append((now, paths.move_direction(paths.parse(key)[2], closed)))
 
     def _own_late(self, now: datetime) -> bool:
         """Whether a closed reading now is SpotNav's own closing read late (see `OWN_WINDOW`), not opened yet."""
@@ -1682,6 +1711,9 @@ class HeatControl:
             return
         if not closed and self._b_retry_open_at is not None and now < self._b_retry_open_at:
             return
+        if closed and self._spaced(b, closed, now):
+            self._log_wait(now, "raise_waits_for_spacing", why)
+            return
         if closed and (blocked := self._prepare_close(b, now)) is not None:
             self._log_wait(now, "raise_not_possible", blocked)
             return
@@ -1702,10 +1734,12 @@ class HeatControl:
                 self._save()
                 return
         self._waits.pop("raise_waits_for_a", None)
+        self._waits.pop("raise_waits_for_spacing", None)
         if closed:
             self._b_own_reopen_at = None
             self._b_close_unseen_at = now
         self._log(now, "raise" if closed else "raise_end", why=why)
+        self._moved(b, closed, now)
         self._save()
         try:
             await self._async_call(b, closed)
@@ -1856,6 +1890,7 @@ class HeatControl:
         self.writes = {day: count for day, count in self.writes.items() if day >= first}
         self.raisings = [item for item in self.raisings if item[1] is None or item[1] >= oldest]  # type: ignore[operator]
         self.renewals = {day: count for day, count in self.renewals.items() if day >= first}
+        self.offset_moves = [(at, direction) for at, direction in self.offset_moves if now - at < paths.REVERSAL_SPACING]
         self.activations = {day: count for day, count in self.activations.items() if day >= first}
 
     # ---- what is shown

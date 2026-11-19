@@ -584,6 +584,40 @@ async def test_a_lowering_changed_by_hand_meanwhile_is_not_undone_at_the_next_st
     assert pump.calls == [(NIBE, -3.0)] and pump.value(NIBE) == "1" and not fresh.held
 
 
+def test_a_stored_offsets_moves_keep_the_plans_spacing() -> None:
+    at = datetime.fromisoformat("2026-11-18T10:00:00+00:00")
+    down, up = -1, 1
+    assert paths.move_direction("lower", True) == down and paths.move_direction("raise", False) == down
+    assert paths.move_direction("lower", False) == up and paths.move_direction("raise", True) == up
+    # At most one move per 15 minutes, and none back the other way within 45.
+    assert paths.move_waits([(at, down)], down, at + 14 * MIN) and not paths.move_waits([(at, down)], down, at + 15 * MIN)
+    assert paths.move_waits([(at, down)], up, at + 44 * MIN) and not paths.move_waits([(at, down)], up, at + 45 * MIN)
+    assert not paths.move_waits([], up, at)
+
+
+async def test_a_lowering_after_a_raise_on_a_stored_offset_waits_for_the_spacing(hass: HomeAssistant, freezer) -> None:
+    _site_, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {0: "preheat", 1: "lower", 2: "lower"})
+    await _look(control, now)
+    assert pump.calls == [(NIBE, 0.0)] and control.raised
+    # The raise ends into the lowering: back to the value found at once, the lowering a quarter later.
+    await _look(control, now + H, {0: "lower", 1: "lower"})
+    await _look(control, now + H + 30 * SEC, {0: "lower", 1: "lower"})
+    await _look(control, now + H + 14 * MIN, {0: "lower", 1: "lower"})
+    assert pump.calls == [(NIBE, 0.0), (NIBE, -1.0)] and not control.held
+    assert "close_waits_for_spacing" in [entry["what"] for entry in control.log]
+    await _look(control, now + H + 15 * MIN, {0: "lower", 1: "lower"})
+    assert pump.calls == [(NIBE, 0.0), (NIBE, -1.0), (NIBE, -3.0)] and control.held
+
+
+async def test_a_room_gone_cold_puts_a_stored_offset_back_at_once(hass: HomeAssistant, freezer) -> None:
+    _site_, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {0: "lower", 1: "lower"})
+    await _look(control, now)
+    hass.states.async_set(ROOM, "20.0", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    await _look(control, now + 2 * MIN)
+    # Within the spacing, and a reversal: the hand-back is never held back.
+    assert pump.calls == [(NIBE, -3.0), (NIBE, -1.0)] and not control.held and control.safety == "room_cold"
+
+
 def _homes(hass: HomeAssistant, site: Any) -> Any:
     entry = hass.config_entries.async_get_entry(site.entry_id)
     return entry.data.get(CONF_HEAT_OFFSET_HOME)

@@ -275,7 +275,12 @@ house out of the band. Below −5 °C outdoors the lowering is 1 step, and a rai
 degrees of supply temperature, where a degree of room is 2 to 3 °C: −3 °C is about one NIBE step, shallower on
 purpose since the path is new, and still twice what the check needs to see on the calculated supply.
 
-**NIBE (stored).** The offset is a stored setting, so a lowering would stay if nobody put it back. SpotNav keeps the
+**NIBE (stored).** A stored setting is written sparingly: a new move (a lowering or a raise) waits until 15 minutes
+after the last write and 45 minutes after the last write the other way, so a raise that ends into a lowering puts
+the value back at once and lowers it a quarter of an hour later. Putting the value back never waits: the end of a
+lowering, a room gone cold or any other way out goes at once.
+
+The offset is a stored setting, so a lowering would stay if nobody put it back. SpotNav keeps the
 value it found before it writes, and writes it back when the lowering ends, when control is turned off, paused or
 blocked, when SpotNav is unloaded and when Home Assistant stops. If Home Assistant went down without that (a crash, a
 power cut), the value is put back at the next start, before anything else. If the offset is no longer the value

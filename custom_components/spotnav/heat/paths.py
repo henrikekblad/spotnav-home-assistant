@@ -96,6 +96,12 @@ MODE_FORCED: Final = 3
 #: What a volatile offset is set to in order to let it go (ctc_bms: nothing is written, the controller forgets).
 RELEASE: Final = 0.0
 
+#: A stored offset's write spacing (the plan's section 8.4): a new move at most once per `MOVE_SPACING`, and none
+#: in the other direction within `REVERSAL_SPACING` of the last move. Only a move away from the value found waits: a
+#: hand-back (the lowering's end, a room gone cold, any exit) goes at once.
+MOVE_SPACING: Final = timedelta(minutes=15)
+REVERSAL_SPACING: Final = timedelta(minutes=45)
+
 #: Outdoors below this a lowering is one step only (the plan's section 5).
 COLD_BELOW_C: Final = -5.0
 #: SpotNav never moves an offset further than this from the value found (the owner's ±3, in the entity's unit).
@@ -316,6 +322,20 @@ def offset_target(
     return target
 
 
+def move_direction(role: str, closed: bool) -> int:
+    """Which way a write moves an offset: down (-1) for A's closing and B's opening, up (+1) for the others."""
+    return -1 if (role == ROLE_LOWER) == closed else 1
+
+
+def move_waits(moves: list[tuple[datetime, int]], direction: int, now: datetime) -> bool:
+    """Whether a new move of a stored offset in `direction` waits for the write spacing (`MOVE_SPACING`,
+    `REVERSAL_SPACING`), given the moves written so far `(when, direction)`."""
+    for at, moved in moves:
+        if now - at < MOVE_SPACING or (moved != direction and now - at < REVERSAL_SPACING):
+            return True
+    return False
+
+
 def detected_paths(pump: Any) -> list[dict[str, Any]]:
     """The control paths a pump's own entities offer (`facts.HeatPumpFacts`), the one that both lowers and blocks
     first: `[{path, control_entity, control_entity_b}]`. An entity still disabled in its integration counts (the
@@ -354,6 +374,8 @@ __all__ = [
     "MODE_FORCED",
     "MODE_NORMAL",
     "MODE_RAISE",
+    "MOVE_SPACING",
+    "REVERSAL_SPACING",
     "OFFSET_BRANDS",
     "OFFSET_WRITES_DAY",
     "RELEASE",
@@ -375,6 +397,8 @@ __all__ = [
     "mode_closed",
     "mode_of",
     "mode_to_write",
+    "move_direction",
+    "move_waits",
     "number_of",
     "offset_closed",
     "offset_target",
