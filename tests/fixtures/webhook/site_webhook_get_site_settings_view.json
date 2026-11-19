@@ -1,0 +1,207 @@
+{
+  "action": "get_site_settings_view",
+  "api_version": 1,
+  "battery": {
+    "found": false
+  },
+  "charger_ids": [
+    "entry_a"
+  ],
+  "name": "Site",
+  "ok": true,
+  "price": {
+    "area_id": "SE4",
+    "area_name": "Malm\u00f6",
+    "entry_id": "price_a",
+    "title": "Electricity price SE4"
+  },
+  "price_settings": {
+    "fees": {
+      "area_id": "SE4",
+      "tax": {
+        "enabled": true,
+        "value": null
+      },
+      "transfer": {
+        "enabled": true,
+        "value": null
+      },
+      "vat": {
+        "enabled": true,
+        "value": null
+      }
+    },
+    "fiscal": {
+      "tax": {
+        "effective_value": 36.0,
+        "explicit_value": null,
+        "policy": "suggested",
+        "suggested_value": 36.0,
+        "unit": "\u00f6re/kWh",
+        "value_source": "suggested"
+      },
+      "transfer": {
+        "effective_value": 30.0,
+        "explicit_value": null,
+        "policy": "suggested",
+        "suggested_value": 30.0,
+        "unit": "\u00f6re/kWh",
+        "value_source": "suggested"
+      },
+      "vat": {
+        "effective_value": 25.0,
+        "explicit_value": null,
+        "policy": "suggested",
+        "suggested_value": 25.0,
+        "unit": "%",
+        "value_source": "suggested"
+      }
+    },
+    "grid_tariff": {
+      "demand": {
+        "available": true,
+        "components": [
+          {
+            "price_per_kw": {
+              "summer": 23.0,
+              "winter": 45.0
+            },
+            "top_n": 1,
+            "window": {
+              "days": "all",
+              "from_hour": 6,
+              "from_month": 1,
+              "to_hour": 23,
+              "to_month": 12
+            }
+          },
+          {
+            "price_per_kw": {
+              "summer": 8.0,
+              "winter": 12.0
+            },
+            "top_n": 1,
+            "window": {
+              "days": "all",
+              "from_hour": 23,
+              "from_month": 1,
+              "to_hour": 6,
+              "to_month": 12
+            }
+          }
+        ],
+        "effective_target_kw": 6.0,
+        "hour": null,
+        "import_target_kw": 6.0,
+        "per_component": [
+          {
+            "bar_kw": 3.967,
+            "days_counted": 1,
+            "free_kw": 3.967,
+            "peaks": [
+              {
+                "date": "2026-09-22",
+                "kw": 3.967,
+                "start": "2026-09-22T06:00:00+00:00"
+              }
+            ],
+            "price_per_kw": 23.0
+          },
+          {
+            "bar_kw": null,
+            "days_counted": 0,
+            "free_kw": null,
+            "peaks": [],
+            "price_per_kw": 8.0
+          }
+        ],
+        "price_unit": "kr/kW",
+        "reason": null
+      },
+      "entry_id": "price_a",
+      "high_load_window": null,
+      "sell_adjustment": {
+        "effective_value": null,
+        "explicit_value": null,
+        "policy": "off",
+        "unit": "\u00f6re/kWh"
+      },
+      "sells": false,
+      "supplier_markup": {
+        "effective_value": null,
+        "explicit_value": null,
+        "policy": "off",
+        "unit": "\u00f6re/kWh"
+      },
+      "transfer_high": {
+        "effective_value": null,
+        "explicit_value": null,
+        "policy": "off",
+        "unit": "\u00f6re/kWh"
+      },
+      "transfer_percent": {
+        "effective_value": null,
+        "explicit_value": null,
+        "policy": "off",
+        "unit": "%"
+      },
+      "writable": false,
+      "write_revision": 0
+    },
+    "market": {
+      "area_id": "SE4",
+      "area_name": "Malm\u00f6",
+      "countries": [
+        "SE"
+      ],
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "\u00f6re",
+      "timezone": "Europe/Stockholm"
+    },
+    "price_source": {
+      "charger_count": 1,
+      "choices": [],
+      "duplicate": null,
+      "entry_id": "price_a",
+      "title": "Electricity price SE4",
+      "writable": false
+    },
+    "provider": {
+      "key": null,
+      "name": null,
+      "notice": {
+        "code": "add_nordpool",
+        "params": {}
+      },
+      "url": null
+    }
+  },
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "solar_forecast"
+      }
+    ]
+  },
+  "site": {
+    "active_control": {
+      "available": false,
+      "direction_hint": null,
+      "enabled": false,
+      "reason": "site_measurement_configured_missing",
+      "writable": false
+    },
+    "charger_count": 1,
+    "name": "Site",
+    "solar_forecast": {
+      "choices": [],
+      "selected": []
+    },
+    "solar_priority": "car_first",
+    "writable": true
+  },
+  "site_id": "site_entry_a",
+  "writable": true
+}

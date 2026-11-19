@@ -1,0 +1,5 @@
+{
+  "action": "get_site_access",
+  "error": "spotnav_site_unloaded",
+  "ok": false
+}

@@ -1,0 +1,18 @@
+{
+  "action": "get_site",
+  "api_version": 1,
+  "capabilities": {
+    "battery_control": true,
+    "get_heat": true,
+    "get_house": true,
+    "get_power_month": true,
+    "get_site_settings_view": true,
+    "suggest_import_target": true,
+    "update_site_settings": true
+  },
+  "chargers": [],
+  "loaded": true,
+  "name": "Villa",
+  "ok": true,
+  "site_id": "<site_id>"
+}

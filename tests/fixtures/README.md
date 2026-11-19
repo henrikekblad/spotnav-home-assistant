@@ -33,6 +33,16 @@ Friday (a household member's answer, with the notes).
 (`tests/test_webhook_site_parity.py`); the richer shapes of the same documents are the directories above. The heat
 documents' `money` has the house documents' keys (`currency`, `major_unit`, `minor_unit`).
 
+`pairing/approved_v1_sites.json` is the pairing poll's approved answer for an instance with a home that has a
+charger and a home without one (`tests/test_pairing_handshake.py`): `chargers` with each charger's `site_id`, and
+`sites` with each home's webhook and chargers (the homes' secrets as placeholders).
+
+`webhook/get_site*.json` and `webhook/site_webhook_*.json` are the home's webhook (`api/site_entry_webhook.py`) on the
+pilot's site and on a home without a charger: `get_site`, its view of the site settings (the price read-only), a
+site-bound `update_site_settings`, and the refusals for a missing `charger_id`, a charger of another home, a price
+write and a home that is not loaded (`site_webhook_site_unloaded.json`, 503). `webhook/get_site_access_*.json` are a charger webhook's `get_site_access`: its home's door, no home, a home not loaded
+(503) and the rate limit (`tests/test_site_entry_webhook.py`). Ids are placeholders (`<site_id>`, `<charger_id>`, `<site_webhook>`).
+
 `target_suggestion/pilot.json` is `spotnav/suggest_import_target`'s answer for the pilot's site from a month of fake
 statistics (`tests/test_target_suggestion_api.py`); `webhook/suggest_import_target_success.json` the webhook's.
 

@@ -9,7 +9,7 @@
           "pair_deny": "Neka"
         },
         "title": "En telefon vill ansluta",
-        "description": "En enhet som kallar sig **{device}** vill ansluta och visar koden **{code}**. Godkänn bara om samma kod står på dess skärm. Ett godkännande lämnar över den här instansens laddare; koden är bara till för att jämföra."
+        "description": "En enhet som kallar sig **{device}** vill ansluta och visar koden **{code}**. Godkänn bara om samma kod står på dess skärm. Ett godkännande lämnar över den här instansens laddare och hem; koden är bara till för att jämföra."
       },
       "pair_approve": {
         "title": "Godkänn"
@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Vad vill du lägga till?",
-        "description": "En laddare kopplar en fysisk laddpunkt till SpotNav. En site är valfri: den lastbalanserar alla laddare på samma elanslutning under huvudsäkringen. Ett elpris ger andra automationer SpotNavs priser med dina avgifter.",
+        "description": "Ditt hem: husets mätare, hembatteri, värme och lastbalansering under huvudsäkringen, med eller utan laddare. En laddare kopplar en fysisk laddpunkt till SpotNav; i ett hem delar den huvudsäkringen med huset. Ett elpris ger andra automationer SpotNavs priser med dina avgifter.",
         "data": {
           "entry_type": "Vad som ska läggas till"
         }
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Den här laddaren eller siten är redan konfigurerad.",
-      "pairing_approved": "Godkänt. Telefonen har nu den här instansens laddare.",
+      "pairing_approved": "Godkänt. Telefonen har nu den här instansens laddare och hem.",
       "pairing_denied": "Avslaget. Telefonen fick besked och inget lämnades över.",
       "pairing_request_expired": "Den parkopplingen har gått ut. Börja om i telefonen.",
       "no_supported_charger": "Ingen laddare som stöds hittades. Ställ först in laddarens egen integration, eller välj Manuell.",
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "En laddare",
-        "site": "En site (lastbalansering)",
+        "site": "Ditt hem (hus, batteri, värme, lastbalansering)",
         "resolve_vehicle": "Lös upp ett upptäckt fordon",
         "price": "Ett elpris"
       }

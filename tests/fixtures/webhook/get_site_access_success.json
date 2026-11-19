@@ -1,0 +1,16 @@
+{
+  "action": "get_site_access",
+  "api_version": 1,
+  "ok": true,
+  "site": {
+    "chargers": [
+      {
+        "id": "<charger_id>",
+        "name": "<charger_id>"
+      }
+    ],
+    "id": "<site_id>",
+    "name": "Site",
+    "webhook": "<site_webhook>"
+  }
+}

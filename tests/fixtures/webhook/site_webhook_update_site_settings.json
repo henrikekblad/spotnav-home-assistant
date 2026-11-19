@@ -1,0 +1,24 @@
+{
+  "action": "update_site_settings",
+  "api_version": 1,
+  "error": null,
+  "ok": true,
+  "restore": null,
+  "site": {
+    "active_control": {
+      "available": false,
+      "direction_hint": null,
+      "enabled": false,
+      "reason": "site_measurement_configured_missing",
+      "writable": false
+    },
+    "charger_count": 1,
+    "name": "Site",
+    "solar_forecast": {
+      "choices": [],
+      "selected": []
+    },
+    "solar_priority": "battery_first",
+    "writable": true
+  }
+}

@@ -484,6 +484,8 @@ async def test_options_flow_roundtrip_preserves_a_manual_attributes_site_source(
             CONF_MAX_AGE_S: DEFAULT_MAX_AGE_S,
             CONF_SITE_CURRENT_SOURCE: stored,
             CONF_BATTERY_AGGREGATE_POWER_ENTITY: "",
+            # The site webhook's secret, which every site holds since SpotNav 3.0.
+            "webhook_id": "site-secret",
             # What the create path writes for active control's damping, so this
             # entry is exactly the shape a real site has (this test compares the
             # whole data dict before and after an options round-trip).

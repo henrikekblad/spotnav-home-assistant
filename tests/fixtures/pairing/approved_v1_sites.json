@@ -1,0 +1,31 @@
+{
+  "chargers": [
+    {
+      "id": "entry_charger_a",
+      "name": "Garage",
+      "site_id": "site_garage",
+      "webhook": "9c41e07b2fd85a3e6b1d4c70a2e59f18"
+    }
+  ],
+  "sites": [
+    {
+      "chargers": [
+        {
+          "id": "entry_charger_a",
+          "name": "Garage"
+        }
+      ],
+      "id": "site_garage",
+      "name": "Home",
+      "webhook": "<site_garage_webhook>"
+    },
+    {
+      "chargers": [],
+      "id": "site_cabin",
+      "name": "Cabin",
+      "webhook": "<site_cabin_webhook>"
+    }
+  ],
+  "status": "approved",
+  "url": "https://ha.example.com"
+}

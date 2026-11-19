@@ -562,6 +562,8 @@ async def test_options_flow_roundtrip_preserves_a_manually_entered_charger_sourc
         phase_wiring={charger.entry_id: {"phases": 3, "phase": None, CONF_MEASURED_CURRENT_SOURCE: stored}},
         direct_entities={},
         battery_aggregate_power_entity="",
+        # The site webhook's secret, which every site holds since SpotNav 3.0.
+        extra_data={"webhook_id": "site-secret"},
     )
     data_before = dict(entry.data)
     async_mock_service(hass, "switch", "turn_on")
@@ -694,6 +696,8 @@ async def test_options_flow_roundtrip_leaves_other_chargers_and_the_site_source_
         direct_entities={},
         site_current_source=site_source,
         battery_aggregate_power_entity="",
+        # The site webhook's secret, which every site holds since SpotNav 3.0.
+        extra_data={"webhook_id": "site-secret"},
     )
     data_before = dict(entry.data)
     async_mock_service(hass, "switch", "turn_on")

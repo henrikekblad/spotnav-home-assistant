@@ -27,15 +27,16 @@ browser and for every charger.
 * `phone`: no phone is chosen for this charger's notifications, and the paired SpotNav app does not take them
   either (no push registration). Shown also with no phone at all: the notification settings say how to get one,
   through either app. Dismissible.
-* `app`: the SpotNav app has never been used with this installation (no charger's webhook has had a request
-  from it, and no charger holds its push registration). Dismissible.
+* `app`: the SpotNav app has never been used with this installation (no charger's or site's webhook has had a
+  request from it, and no charger holds its push registration). Dismissible.
 
 A site's own rows (`capture_site_setup`, the shared settings popover's "Get started", with or without a charger):
 `charger` (the site has no charger; dismissible: a home with a battery or heat alone does not need one), `price`
 (no electricity price applies to the site; not dismissible), the grid sign rows, `solar_forecast` and
 `demand_grid_power` as above, `battery` (a battery is found but SpotNav's battery control is off; dismissible) and
-`heat` (a heat pump is found but no heat settings are made; dismissible). The charger rows and `app` are not
-among them, and the dashboard's charger rows stay as they are.
+`heat` (a heat pump is found but no heat settings are made; dismissible) and, for a site without a charger, `app`
+as above (SpotNav 3.0: the app pairs with a home too; a site with a charger gets it through the charger's rows). The
+other charger rows are not among them, and the dashboard's charger rows stay as they are.
 
 Prices are not a charger row: the price provider notice (`pricing/providers/notices.py`) already asks for what an
 area without a source of its own needs.
@@ -102,6 +103,7 @@ SITE_SETUP_ITEMS: Final = (
     SETUP_DEMAND_GRID_POWER,
     SETUP_BATTERY,
     SETUP_HEAT,
+    SETUP_APP,
 )
 #: The rows a person may answer "Not needed" to.
 DISMISSIBLE_ITEMS: Final = frozenset(
@@ -299,6 +301,8 @@ def capture_site_setup(hass: HomeAssistant, site: ConfigEntry) -> tuple[SetupIte
         and read_heat_pumps(hass)
     ):
         left.append(SETUP_HEAT)
+    if not data.get(CONF_CHARGER_ENTRY_IDS) and not app_used(hass):
+        left.append(SETUP_APP)
     writes = {row.id: row for row in signs}
     return tuple(
         SetupItem(

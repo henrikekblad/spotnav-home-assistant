@@ -58,6 +58,8 @@ async def test_every_documented_action_has_a_handler() -> None:
         "battery_control",
         "update_heat",
         "heat_boost",
+        # SpotNav 3.0: the charger's home's webhook (`api/site_access.py`).
+        "get_site_access",
     }
 
 

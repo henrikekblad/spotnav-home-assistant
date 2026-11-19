@@ -28,7 +28,7 @@ from homeassistant.core import HomeAssistant
 
 from ..const import DOMAIN
 from ..runtime import domain_data
-from ..vehicles.charger_inventory import charger_pairing_payload, webhook_base_url
+from ..vehicles.charger_inventory import charger_pairing_payload, site_pairing_payload, webhook_base_url
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -288,6 +288,8 @@ def _async_poll(hass: HomeAssistant, payload: dict[str, Any]) -> web.Response:
                 "status": "approved",
                 "url": base_url,
                 "chargers": charger_pairing_payload(hass),
+                # SpotNav 3.0: every site, with and without chargers, and its webhook (an app before 3.0 ignores it).
+                "sites": site_pairing_payload(hass),
             }
         )
     return web.json_response({"status": "expired"})

@@ -19,6 +19,7 @@ from typing import Any, Final
 
 from aiohttp import web
 from homeassistant.components import webhook
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_WEBHOOK_ID, DOMAIN, GUEST_VEHICLE_ID
@@ -56,6 +57,7 @@ from .price_source import async_webhook_answer_price_duplicate, async_webhook_ch
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle, webhook_update_guest
 from .sessions import async_request_savings, SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
+from .site_access import ACTION as SITE_ACCESS_ACTION, webhook_get_site_access
 from .site_webhook import SITE_ACTIONS
 from .settings import (
     async_update_settings,
@@ -644,71 +646,120 @@ ACTIONS: Final[dict[str, Handler]] = {
     "get_power_month": webhook_get_power_month,
     "suggest_import_target": webhook_suggest_import_target,
     "dismiss_setup_item": webhook_dismiss_setup_item,
+    SITE_ACCESS_ACTION: webhook_get_site_access,
     **CAMERA_ACTIONS,
     **SITE_ACTIONS,
 }
 
 
 
+#: What a carrier makes of one action: the call that answers it, or `None` for an action it does not answer.
+type Call = Callable[[], Awaitable[Outcome]]
+type Resolver = Callable[[str, dict[str, Any]], Call | None]
+
+
+async def async_answer_webhook(hass: HomeAssistant, request: web.Request, resolve: Resolver) -> web.Response:
+    """One webhook request, for every carrier (the charger webhook, the site webhook): the envelope (`version: 1`, a
+    JSON object, a known `action`), the app's first use noted, and every refusal mapped to its HTTP status and stable
+    code. `resolve(action, payload)` is the carrier's binding."""
+    try:
+        payload: dict[str, Any] = await request.json()
+        if not isinstance(payload, dict):
+            # A list, string or number is a bad request with a stable code, not a failure.
+            return web.json_response({"ok": False, "error": "payload_not_object"}, status=400)
+        if payload.get("version") != 1:
+            raise ValueError("Unsupported payload version")
+        action = payload.get("action")
+        call = resolve(action, payload) if isinstance(action, str) else None
+        if call is None:
+            raise ValueError("Unsupported action")
+        # Only the SpotNav app speaks to this webhook: once it has, "Pair the app" is done for good.
+        await async_note_app_used(hass)
+        outcome = await call()
+        if isinstance(outcome, web.Response):
+            return outcome
+        return web.json_response({"ok": True, "action": action, **(outcome or {})})
+    except (VehicleRefreshLimited, VehicleChargeLimitLimited) as limited:
+        # Well-formed and the vehicle exists, but cannot be asked yet: 429 with Retry-After.
+        retry_after_s = math.ceil(limited.retry_after_s)
+        _LOGGER.debug("Refused a per-vehicle request: retry in %d s", retry_after_s)
+        return web.json_response(
+            {"ok": False, "error": str(limited), "retry_after_s": retry_after_s},
+            status=429,
+            headers={"Retry-After": str(retry_after_s)},
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        _log_rejected(error)
+        return web.json_response({"ok": False, "error": str(error)}, status=400)
+    except AutoControlError as refusal:
+        # The boundary's own answer to a pause/resume: not admissible (nothing moved), or
+        # committed with a failed follow-up. The stable code is the content.
+        _LOGGER.debug("Refused a SpotNav webhook action: %s", refusal.code)
+        return web.json_response({"ok": False, "error": refusal.code}, status=409)
+    except ChargingExecutionError as failure:
+        # The charger could not be brought to it (a stop its control did not take): the stable code.
+        _LOGGER.warning("SpotNav charger command failed: %s", failure.code)
+        return web.json_response({"ok": False, "error": failure.code}, status=502)
+    except Exception:
+        _LOGGER.exception("SpotNav charger command failed")
+        return web.json_response({"ok": False, "error": "Charger command failed"}, status=502)
+
+
+def charger_call(hass: HomeAssistant, entry: ChargerConfigEntry, action: str, payload: dict[str, Any]) -> Call | None:
+    """The charger webhook's binding of one action to its charger (`ACTIONS`), `None` for one it does not answer."""
+    handler = ACTIONS.get(action)
+    if handler is None:
+        return None
+    return lambda: handler(hass, entry, payload)
+
+
 def _handler_for(entry: ChargerConfigEntry) -> Callable[..., Awaitable[web.Response]]:
     async def async_handle_webhook(
         hass: HomeAssistant, _webhook_id: str, request: web.Request
     ) -> web.Response:
-        try:
-            payload: dict[str, Any] = await request.json()
-            if not isinstance(payload, dict):
-                # A list, string or number is a bad request with a stable code, not a failure.
-                return web.json_response({"ok": False, "error": "payload_not_object"}, status=400)
-            if payload.get("version") != 1:
-                raise ValueError("Unsupported payload version")
-            action = payload.get("action")
-            handler = ACTIONS.get(action) if isinstance(action, str) else None
-            if handler is None:
-                raise ValueError("Unsupported action")
-            # Only the SpotNav app speaks to this webhook: once it has, "Pair the app" is done for good.
-            await async_note_app_used(hass)
-            outcome = await handler(hass, entry, payload)
-            if isinstance(outcome, web.Response):
-                return outcome
-            return web.json_response({"ok": True, "action": action, **(outcome or {})})
-        except (VehicleRefreshLimited, VehicleChargeLimitLimited) as limited:
-            # Well-formed and the vehicle exists, but cannot be asked yet: 429 with Retry-After.
-            retry_after_s = math.ceil(limited.retry_after_s)
-            _LOGGER.debug("Refused a per-vehicle request: retry in %d s", retry_after_s)
-            return web.json_response(
-                {"ok": False, "error": str(limited), "retry_after_s": retry_after_s},
-                status=429,
-                headers={"Retry-After": str(retry_after_s)},
-            )
-        except (KeyError, TypeError, ValueError) as error:
-            _log_rejected(error)
-            return web.json_response({"ok": False, "error": str(error)}, status=400)
-        except AutoControlError as refusal:
-            # The boundary's own answer to a pause/resume: not admissible (nothing moved), or
-            # committed with a failed follow-up. The stable code is the content.
-            _LOGGER.debug("Refused a SpotNav webhook action: %s", refusal.code)
-            return web.json_response({"ok": False, "error": refusal.code}, status=409)
-        except ChargingExecutionError as failure:
-            # The charger could not be brought to it (a stop its control did not take): the stable code.
-            _LOGGER.warning("SpotNav charger command failed: %s", failure.code)
-            return web.json_response({"ok": False, "error": failure.code}, status=502)
-        except Exception:
-            _LOGGER.exception("SpotNav charger command failed")
-            return web.json_response({"ok": False, "error": "Charger command failed"}, status=502)
+        return await async_answer_webhook(
+            hass, request, lambda action, payload: charger_call(hass, entry, action, payload)
+        )
 
     return async_handle_webhook
 
 
+def async_register_entry_webhook(
+    hass: HomeAssistant, entry: ConfigEntry, name: str, handler: Callable[..., Awaitable[web.Response]]
+) -> None:
+    """Register an entry's webhook under the id its data holds now, record it (`SpotNavData.webhook_ids`), and
+    unregister the id recorded then when the entry unloads or fails to set up (`api/phones.py` may have moved it to a
+    new id in between, also while the setup was still running)."""
+    webhook_id = entry.data[CONF_WEBHOOK_ID]
+    webhook.async_register(hass, DOMAIN, name, webhook_id, handler, local_only=False, allowed_methods=("POST",))
+    domain_data(hass).webhook_ids[entry.entry_id] = webhook_id
+
+    def _unregister() -> None:
+        registered = domain_data(hass).webhook_ids.pop(entry.entry_id, None)
+        if registered is not None:
+            webhook.async_unregister(hass, registered)
+
+    entry.async_on_unload(_unregister)
+
+
+def async_move_charger_webhook(hass: HomeAssistant, entry: ChargerConfigEntry) -> None:
+    """The charger's id in its data was replaced (`api/phones.py`): where a webhook is registered for it now (loaded,
+    or set up far enough), answer at the new id only. Where none is, the setup registers the id the data holds."""
+    registered = domain_data(hass).webhook_ids.get(entry.entry_id)
+    new = entry.data[CONF_WEBHOOK_ID]
+    if registered is None or registered == new:
+        return
+    webhook.async_unregister(hass, registered)
+    webhook.async_register(
+        hass, DOMAIN, CHARGER_WEBHOOK_NAME, new, _handler_for(entry), local_only=False, allowed_methods=("POST",)
+    )
+    domain_data(hass).webhook_ids[entry.entry_id] = new
+
+
+#: The name Home Assistant lists the charger webhook by.
+CHARGER_WEBHOOK_NAME: Final = "SpotNav charging control"
+
+
 def async_register_charger_webhook(hass: HomeAssistant, entry: ChargerConfigEntry) -> None:
     """Register this charger's webhook, and unregister it when the entry unloads or fails to set up."""
-    webhook_id = entry.data[CONF_WEBHOOK_ID]
-    webhook.async_register(
-        hass,
-        DOMAIN,
-        "SpotNav charging control",
-        webhook_id,
-        _handler_for(entry),
-        local_only=False,
-        allowed_methods=("POST",),
-    )
-    entry.async_on_unload(lambda: webhook.async_unregister(hass, webhook_id))
+    async_register_entry_webhook(hass, entry, CHARGER_WEBHOOK_NAME, _handler_for(entry))

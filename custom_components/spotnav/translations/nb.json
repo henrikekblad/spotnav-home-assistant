@@ -9,7 +9,7 @@
           "pair_deny": "Avvis"
         },
         "title": "En telefon vil koble til",
-        "description": "En enhet som kaller seg **{device}**, ber om å koble til og viser koden **{code}**. Godkjenn bare hvis den samme koden står på skjermen dens. Ved godkjenning får den denne instansens ladere; koden er bare til sammenligning."
+        "description": "En enhet som kaller seg **{device}**, ber om å koble til og viser koden **{code}**. Godkjenn bare hvis den samme koden står på skjermen dens. Ved godkjenning får den denne instansens ladere og hjem; koden er bare til sammenligning."
       },
       "pair_approve": {
         "title": "Godkjenn"
@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Hva vil du legge til?",
-        "description": "En lader kobler ett fysisk ladepunkt til SpotNav. Et anlegg er valgfritt: det balanserer lasten for alle ladere på én elektrisk tilkobling under hovedsikringen. En strømpris gir andre automasjoner SpotNavs priser med dine avgifter.",
+        "description": "Hjemmet ditt: husets måler, hjemmebatteri, varme og lastbalansering under hovedsikringen, med eller uten lader. En lader kobler ett fysisk ladepunkt til SpotNav; i et hjem deler den hovedsikringen med huset. En strømpris gir andre automasjoner SpotNavs priser med dine avgifter.",
         "data": {
           "entry_type": "Hva som skal legges til"
         }
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Denne laderen eller dette anlegget er allerede satt opp.",
-      "pairing_approved": "Godkjent. Telefonen har nå denne instansens ladere.",
+      "pairing_approved": "Godkjent. Telefonen har nå denne instansens ladere og hjem.",
       "pairing_denied": "Avvist. Telefonen har fått beskjed, og ingenting ble overlatt.",
       "pairing_request_expired": "Forespørselen om sammenkobling er utløpt. Start på nytt på telefonen.",
       "no_supported_charger": "Fant ingen støttet lader. Sett opp laderens egen integrasjon først, eller velg Manuell.",
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "En lader",
-        "site": "Et anlegg (lastbalansering)",
+        "site": "Hjemmet ditt (hus, batteri, varme, lastbalansering)",
         "resolve_vehicle": "Avklar et oppdaget kjøretøy",
         "price": "En strømpris"
       }

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import secrets
 from typing import Any
 
 import voluptuous as vol
@@ -23,6 +22,7 @@ from homeassistant.util import slugify
 
 from ..api.entity_fields import duplicate_placeholders, validate_charger_entities
 from ..api.pairing import PairingRegister
+from ..entry_migration import new_webhook_id
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_CHARGE_CONTROL,
@@ -56,6 +56,7 @@ from ..const import (
     CONF_SITE_CURRENT_SOURCE,
     CONF_WEBHOOK_ID,
     CONF_YIELD_STEPPING_ENABLED,
+    CONFIG_ENTRY_MINOR_VERSION,
     CONFIG_ENTRY_VERSION,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     CURRENT_CONTROL_EASEE,
@@ -173,6 +174,7 @@ class SpotNavChargingConfigFlow(
     """Configure SpotNav charging control."""
 
     VERSION = CONFIG_ENTRY_VERSION
+    MINOR_VERSION = CONFIG_ENTRY_MINOR_VERSION
 
     def __init__(self) -> None:
         self._mode = MODE_OCPP
@@ -266,6 +268,21 @@ class SpotNavChargingConfigFlow(
             return self.async_abort(reason="pairing_request_expired")
         return self.async_abort(reason="pairing_approved")
 
+    async def async_step_make_home(self, home: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """A home made from the card's "Make a home of this" (`api/make_home.py`), after the person confirmed it there
+        and gave the main fuse: created as it was prepared. Only that command starts this step (its source is not one
+        Home Assistant's own frontend can start); it shows nothing."""
+        prepared = isinstance(home, dict) and isinstance(home.get("data"), dict)
+        if not prepared or any(
+            entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE for entry in self._async_current_entries()
+        ):
+            return self.async_abort(reason="already_configured")
+        title = str(home.get("title") or default_site_name(self.hass))
+        # Identified as the site flow identifies a site: by the name it was created under.
+        await self.async_set_unique_id(f"site:{slugify(title)}")
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=title, data=home["data"])
+
     async def async_step_pair_deny(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -280,8 +297,8 @@ class SpotNavChargingConfigFlow(
         return self.async_abort(reason="pairing_denied")
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Choose what to add: a charger, a site capacity/load-balancing group, an electricity price for
-        other automations, or a resolution for a vehicle detection could not decide about.
+        """Choose what to add: the home (a site: the house, battery, heat and load balancing), a charger, an
+        electricity price for other automations, or a resolution for a vehicle detection could not decide about.
         """
         # A first charger's flow can run before the integration's setup has read SpotNav's texts.
         await async_load_texts(self.hass)
@@ -298,12 +315,14 @@ class SpotNavChargingConfigFlow(
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_ENTRY_TYPE, default=ENTRY_TYPE_CHARGER
+                        CONF_ENTRY_TYPE, default=ENTRY_TYPE_SITE
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
+                            # The home first (SpotNav 3.0): the house, battery, heat and load balancing, with or
+                            # without a charger.
                             options=[
-                                ENTRY_TYPE_CHARGER,
                                 ENTRY_TYPE_SITE,
+                                ENTRY_TYPE_CHARGER,
                                 ENTRY_TYPE_PRICE,
                                 # Only offered when detection has something it refuses to guess.
                                 *(
@@ -881,7 +900,7 @@ class SpotNavChargingConfigFlow(
                 else None
             ),
             CONF_CHARGER_CURRENT_ENTITIES: list(detected.current_entities),
-            CONF_WEBHOOK_ID: secrets.token_urlsafe(32),
+            CONF_WEBHOOK_ID: new_webhook_id(),
         }
         if chose_none:
             data[CONF_ENERGY_REGISTER_NONE] = True
@@ -956,7 +975,7 @@ class SpotNavChargingConfigFlow(
             CONF_CURRENT_LIMIT: user_input.get(CONF_CURRENT_LIMIT, ""),
             CONF_CURRENT_CONTROL: user_input.get(CONF_CURRENT_CONTROL) or "",
             CONF_ENERGY_REGISTER_ENTITY: user_input.get(CONF_ENERGY_REGISTER_ENTITY) or "",
-            CONF_WEBHOOK_ID: secrets.token_urlsafe(32),
+            CONF_WEBHOOK_ID: new_webhook_id(),
         }
         if user_input.get(CONF_POWER_ENTITY):
             data[CONF_POWER_ENTITY] = user_input[CONF_POWER_ENTITY]
@@ -1416,6 +1435,8 @@ class SpotNavChargingConfigFlow(
             CONF_DIRECT_ENTITIES: direct_entities,
             CONF_DERIVED_ENTITIES: derived_entities,
             CONF_SITE_CURRENT_SOURCE: self._site_current_source,
+            # The site webhook's secret (`api/site_entry_webhook.py`), as a charger's.
+            CONF_WEBHOOK_ID: new_webhook_id(),
             **parse_site_flags(pending.details, pending.mode),
             CONF_MAX_AGE_S: DEFAULT_MAX_AGE_S,
             # Yield-verified stepping: off by default and set from the options flow.

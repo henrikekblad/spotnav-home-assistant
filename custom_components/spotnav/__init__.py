@@ -22,8 +22,11 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .api.dashboard import async_setup_dashboard_api
+from .entry_migration import async_migrate_entry  # noqa: F401 - Home Assistant's hook, found by name
 from .api.blueprints import async_setup_blueprints_api
 from .api.site_view import async_setup_site_view_api
+from .api.phones import async_setup_phones_api
+from .api.make_home import async_setup_make_home_api
 from .api.beta import async_setup_beta_api
 from .api.debug import async_setup_debug_api
 from .beta import Beta
@@ -59,6 +62,7 @@ from .api.price_source import async_setup_price_source_api
 from .api.site_price import async_setup_site_price_api
 from .api.site_settings import async_setup_site_settings_api
 from .api.webhook import async_register_charger_webhook
+from .api.site_entry_webhook import async_drop_site_webhook, async_ensure_site_webhook, async_register_site_webhooks
 from .card_asset import async_setup_card_asset
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
@@ -243,9 +247,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_beta_api(hass)
     async_setup_blueprints_api(hass)
     async_setup_site_view_api(hass)
+    async_setup_phones_api(hass)
+    async_setup_make_home_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
     async_register_pairing(hass)
+    async_register_site_webhooks(hass)
     # SpotNav's automation blueprints, copied to blueprints/automation/spotnav/ when they differ and were not edited
     # (`blueprint_install.py`).
     hass.async_create_background_task(async_install_blueprints(hass), "spotnav blueprints")
@@ -848,7 +855,10 @@ async def _async_setup_auto_preview(
 
 
 async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -> bool:
-    """Set up a site capacity (dynamic load balancing) entry. Registers no webhook."""
+    """Set up a site (a home: load balancing, house, battery, heat) entry, and its webhook."""
+    # Registered whatever the load state (a new or just migrated site here; every known one at the integration's
+    # setup) and kept across unloads: a site not loaded answers `spotnav_site_unloaded`, never "gone".
+    async_ensure_site_webhook(hass, entry)
     if hass.state is not CoreState.running:
         # At boot every entry is known once Home Assistant has started: then drop members a former
         # version left behind when their charger was deleted, and reload if any were.
@@ -949,6 +959,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         async_drop_pointers(hass, entry.entry_id)
         async_price_sources_changed(hass, entry.entry_id)
         return
+    if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+        # Its door closes for good, before anything here awaits: the id answers nothing any more.
+        async_drop_site_webhook(hass, entry.entry_id)
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.

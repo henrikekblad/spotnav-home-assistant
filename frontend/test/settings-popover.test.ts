@@ -133,6 +133,8 @@ describe("the popover from the house card", () => {
           }
           case "spotnav/get_entity_config":
             return { api_version: 1, ok: false, error: "spotnav_unknown_site", field_errors: [], config: null };
+          case "spotnav/disconnect_phones":
+            return { api_version: 1, ok: true, error: null, chargers: 0, sites: 1 };
           case "spotnav/beta":
             return JSON.parse(
               readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "beta", "on_done_failed.json"), "utf-8"),
@@ -184,6 +186,27 @@ describe("the popover from the house card", () => {
     expect(messages.find((message) => message["type"] === "spotnav/dismiss_setup_item")).toEqual({
       type: "spotnav/dismiss_setup_item", item: "charger",
     });
+  });
+
+  it("offers Disconnect all phones in Support, and disconnects only on the confirming press", async () => {
+    const { root, messages } = await mount();
+    const popover = await open(root);
+    const support = popover.querySelector<HTMLElement>("[data-section='support']")!;
+    support.querySelector<HTMLButtonElement>("[data-disconnect-phones='open']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    const form = root.querySelector<HTMLFormElement>("[data-value-editor='disconnect-phones']")!;
+    expect(form.textContent).toContain(translate("sv", "phones.disconnect.text"));
+    expect(messages.some((message) => message["type"] === "spotnav/disconnect_phones")).toBe(false);
+    root.querySelector<HTMLButtonElement>(`button[type='submit'][form='${form.id}']`)!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["type"] === "spotnav/disconnect_phones")).toEqual([
+      { type: "spotnav/disconnect_phones", api_version: 1 },
+    ]);
+  });
+
+  it("offers Disconnect all phones to no household member", async () => {
+    const { root } = await mount({ admin: false });
+    expect(root.querySelector("[data-disconnect-phones='open']")).toBeNull();
   });
 
   it("lists the beta tester row in Support by the site, and opens its box", async () => {

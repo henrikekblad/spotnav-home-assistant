@@ -78,6 +78,12 @@ CONF_OCPP_CONNECTOR_ID = "ocpp_connector_id"
 CONF_OCPP_TARGET_UNRESOLVED = "ocpp_target_unresolved"
 
 CONFIG_ENTRY_VERSION = 1
+#: Minor 2 (SpotNav 3.0): every site entry holds its own webhook id (`CONF_WEBHOOK_ID`, the site webhook,
+#: `api/site_entry_webhook.py`). A minor bump: Home Assistant refuses only a higher major version, so a downgrade to a
+#: release that knows minor 1 loads the entry and ignores the extra key.
+CONFIG_ENTRY_MINOR_VERSION = 2
+#: The webhook secret's randomness (`secrets.token_urlsafe`): 32 bytes, 256 bits, for chargers and sites alike.
+WEBHOOK_ID_BYTES = 32
 # The one `CONF_CURRENT_CONTROL` value that changes behaviour: set the current through the OCPP
 # `configure` service (`ChangeConfiguration` on `AssignedCurrent`), with no charging profile.
 # Chosen explicitly per charger, never inferred; absent means record the request, never apply it.

@@ -2027,5 +2027,18 @@
   "heat.water.blockingBackedOff": "Bloqueos más alejados del agua caliente tras demasiados recalentamientos tardíos",
   "heat.water.blockingReview": "Bloqueos ayer: {hours} h acortadas por el agua caliente · {risks} recalentamientos tardíos antes de un pico",
   "heat.water.blockingReviewWould": "Bloqueos ayer: {hours} h se habrían acortado por el agua caliente · {risks} recalentamientos tardíos antes de un pico",
-  "heat.boost.noHeadroom": "El fusible principal está a plena carga ahora; apaga algo e inténtalo de nuevo"
+  "heat.boost.noHeadroom": "El fusible principal está a plena carga ahora; apaga algo e inténtalo de nuevo",
+  "phones.disconnect.open": "Desconectar todos los teléfonos",
+  "phones.disconnect.text": "Todos los teléfonos vinculados con SpotNav pierden la conexión de inmediato y hay que vincularlos de nuevo. La carga y la calefacción siguen como antes.",
+  "phones.disconnect.confirm": "Desconectar",
+  "phones.error.notAdmin": "Solo un administrador puede hacer esto.",
+  "phones.error.generic": "No ha funcionado. No se ha cambiado nada.",
+  "makeHome.open": "Crear un hogar con esto",
+  "makeHome.text": "SpotNav crea un hogar alrededor de este cargador: las páginas de la casa, la batería doméstica y la calefacción, y el equilibrado de carga por debajo del fusible general cuando se elija un contador en los ajustes del hogar. Ahora solo hace falta el fusible general.",
+  "makeHome.fuse": "Fusible general",
+  "makeHome.confirm": "Crear el hogar",
+  "makeHome.error.exists": "Esta instalación ya tiene un hogar. Añade el cargador en los ajustes del hogar.",
+  "makeHome.error.fuse": "No se ha aceptado ese fusible general. Indica su calibre en amperios.",
+  "makeHome.error.range": "El fusible general está entre {min} y {max} A.",
+  "phones.disconnect.notificationsLeft": "Todos los teléfonos están desconectados, pero no se han podido desactivar las notificaciones de {count} cargadores. Pulsa Desconectar de nuevo para reintentarlo."
 }

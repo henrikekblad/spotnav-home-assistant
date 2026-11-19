@@ -112,15 +112,15 @@ async def test_site_diagnostics_includes_the_regulator_decision_per_charger(
     assert "basis" in decision
 
 
-async def test_site_diagnostics_config_has_no_secrets_to_redact_but_stays_safe(
+async def test_site_diagnostics_redact_the_sites_webhook_id(
     hass: HomeAssistant,
 ) -> None:
-    """A site entry holds no webhook of its own -- diagnostics for it must
-    still work (no KeyError/crash) and never expose one it doesn't have.
-    """
+    """A site entry holds its own webhook id (SpotNav 3.0, the site webhook): redacted as a charger's."""
     entry = make_site_entry(hass, entry_id="site_diag_nosecret", charger_entry_ids=[])
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+    secret = entry.data["webhook_id"]
 
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
-    assert "webhook_id" not in diagnostics["config"]
+    assert diagnostics["config"]["webhook_id"] == "**REDACTED**"
+    assert secret not in str(diagnostics)

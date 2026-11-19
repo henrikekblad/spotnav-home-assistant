@@ -38,6 +38,7 @@ import {
 import { clientBlock, decodeCardInfo, servedHashFromBundle } from "./card-identity";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug";
+import { disconnectPhonesEditor, runDisconnectPhones } from "./phones";
 import { betaEditor, betaSummary, readBeta, type BetaAnswer, type BetaCall } from "./beta";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
 import {
@@ -1771,6 +1772,11 @@ export class SettingsPopover {
       send.dataset["debug"] = "send";
       send.addEventListener("click", () => this.openSendDebug());
       actions.append(send);
+      const phones = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "phones.disconnect.open")) as HTMLButtonElement;
+      phones.type = "button";
+      phones.dataset["disconnectPhones"] = "open";
+      phones.addEventListener("click", () => this.openDisconnectPhones());
+      actions.append(phones);
     }
     section.append(actions);
     const siteId = this.state.kind === "ready" ? this.state.view.site_id : null;
@@ -1829,6 +1835,19 @@ export class SettingsPopover {
     if (value !== null) {
       value.textContent = betaSummary(this.language, answer);
     }
+  }
+
+  /** "Disconnect all phones" in the popover's dialog: one line, then the confirming button. Administrators only. */
+  private openDisconnectPhones(): void {
+    this.openEditor(translate(this.language, "phones.disconnect.open"), (handlers) =>
+      disconnectPhonesEditor(this.input.doc, this.language, async () => {
+        const hass = this.input.hass();
+        if (hass === null || !this.isAdmin()) {
+          return translate(this.language, "phones.error.notAdmin");
+        }
+        return await runDisconnectPhones(hass, this.language);
+      }, handlers),
+    );
   }
 
   /** "Send debug info" in the popover's dialog; the command is the installation's, so it needs no charger. */

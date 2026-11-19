@@ -9,7 +9,7 @@
           "pair_deny": "Hylkää"
         },
         "title": "Puhelin haluaa muodostaa yhteyden",
-        "description": "Laite, joka kutsuu itseään nimellä **{device}**, pyytää yhteyttä ja näyttää koodin **{code}**. Hyväksy vain, jos sama koodi näkyy sen näytöllä. Hyväksyminen luovuttaa tämän Home Assistantin laturit; koodi on vain vertailua varten."
+        "description": "Laite, joka kutsuu itseään nimellä **{device}**, pyytää yhteyttä ja näyttää koodin **{code}**. Hyväksy vain, jos sama koodi näkyy sen näytöllä. Hyväksyminen luovuttaa tämän Home Assistantin laturit ja kodit; koodi on vain vertailua varten."
       },
       "pair_approve": {
         "title": "Hyväksy"
@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Mitä haluat lisätä?",
-        "description": "Laturi liittää yhden fyysisen latauspisteen SpotNaviin. Kohde on valinnainen: se hallitsee kaikkien saman sähköliittymän laturien kuormaa pääsulakkeen alapuolella. Sähkön hinta antaa muille automaatioille SpotNavin hinnat maksuineen.",
+        "description": "Kotisi: talon mittari, kotiakku, lämmitys ja kuormanhallinta pääsulakkeen alapuolella, laturin kanssa tai ilman. Laturi liittää yhden fyysisen latauspisteen SpotNaviin; kodissa se jakaa pääsulakkeen talon kanssa. Sähkön hinta antaa muille automaatioille SpotNavin hinnat maksuineen.",
         "data": {
           "entry_type": "Lisättävä"
         }
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Tämä laturi tai kohde on jo määritetty.",
-      "pairing_approved": "Hyväksytty. Puhelimella on nyt tämän Home Assistantin laturit.",
+      "pairing_approved": "Hyväksytty. Puhelimella on nyt tämän Home Assistantin laturit ja kodit.",
       "pairing_denied": "Hylätty. Puhelimelle ilmoitettiin, eikä mitään luovutettu.",
       "pairing_request_expired": "Pariliitospyyntö on vanhentunut. Aloita uudelleen puhelimessa.",
       "no_supported_charger": "Tuettua laturia ei löytynyt. Määritä ensin laturin oma integraatio tai valitse Manuaalinen.",
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "Latauslaite",
-        "site": "Kohde (kuormanhallinta)",
+        "site": "Kotisi (talo, akku, lämmitys, kuormanhallinta)",
         "resolve_vehicle": "Ratkaise tunnistettu ajoneuvo",
         "price": "Sähkön hinta"
       }

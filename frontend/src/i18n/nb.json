@@ -2027,5 +2027,18 @@
   "heat.water.blockingBackedOff": "Blokkeringene holdes lenger unna varmtvannet etter for mange sene oppvarminger",
   "heat.water.blockingReview": "Blokkeringer i går: {hours} t forkortet for varmtvannet · {risks} sene oppvarminger før en topp",
   "heat.water.blockingReviewWould": "Blokkeringer i går: {hours} t ville blitt forkortet for varmtvannet · {risks} sene oppvarminger før en topp",
-  "heat.boost.noHeadroom": "Hovedsikringen er fullt belastet nå; slå av noe og prøv igjen"
+  "heat.boost.noHeadroom": "Hovedsikringen er fullt belastet nå; slå av noe og prøv igjen",
+  "phones.disconnect.open": "Koble fra alle telefoner",
+  "phones.disconnect.text": "Alle telefoner som er paret med SpotNav, mister tilkoblingen med en gang og må pares på nytt. Lading og varme fortsetter som før.",
+  "phones.disconnect.confirm": "Koble fra",
+  "phones.error.notAdmin": "Bare en administrator kan gjøre dette.",
+  "phones.error.generic": "Det gikk ikke. Ingenting ble endret.",
+  "makeHome.open": "Lag et hjem av dette",
+  "makeHome.text": "SpotNav lager et hjem rundt denne laderen: sidene for huset, hjemmebatteriet og varmen, og lastbalansering under hovedsikringen når en måler er valgt i hjemmets innstillinger. Nå trengs bare hovedsikringen.",
+  "makeHome.fuse": "Hovedsikring",
+  "makeHome.confirm": "Lag hjemmet",
+  "makeHome.error.exists": "Denne installasjonen har allerede et hjem. Legg til laderen i det i hjemmets innstillinger.",
+  "makeHome.error.fuse": "Den hovedsikringen ble ikke godtatt. Oppgi sikringens størrelse i ampere.",
+  "makeHome.error.range": "Hovedsikringen er mellom {min} og {max} A.",
+  "phones.disconnect.notificationsLeft": "Alle telefoner er koblet fra, men varslene for {count} ladere kunne ikke slås av. Trykk Koble fra igjen for å prøve på nytt."
 }

@@ -9,7 +9,7 @@
           "pair_deny": "Ablehnen"
         },
         "title": "Ein Telefon möchte sich verbinden",
-        "description": "Ein Gerät, das sich **{device}** nennt, möchte sich verbinden und zeigt den Code **{code}**. Lass es nur zu, wenn derselbe Code auf seinem Bildschirm steht. Beim Zulassen werden die Ladestationen dieser Instanz übergeben; der Code dient nur zum Vergleichen."
+        "description": "Ein Gerät, das sich **{device}** nennt, möchte sich verbinden und zeigt den Code **{code}**. Lass es nur zu, wenn derselbe Code auf seinem Bildschirm steht. Beim Zulassen werden die Ladestationen und Zuhause dieser Instanz übergeben; der Code dient nur zum Vergleichen."
       },
       "pair_approve": {
         "title": "Zulassen"
@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Was möchtest du hinzufügen?",
-        "description": "Eine Ladestation verbindet einen physischen Ladepunkt mit SpotNav. Ein Standort ist optional: Er verteilt die Last aller Ladestationen an einem Netzanschluss unter der Hauptsicherung. Ein Strompreis gibt anderen Automationen SpotNavs Preise mit deinen Abgaben.",
+        "description": "Dein Zuhause: der Zähler des Hauses, ein Heimspeicher, die Heizung und das Lastmanagement unter der Hauptsicherung, mit oder ohne Ladestation. Eine Ladestation verbindet einen physischen Ladepunkt mit SpotNav; in einem Zuhause teilt sie sich die Hauptsicherung mit dem Haus. Ein Strompreis gibt anderen Automationen SpotNavs Preise mit deinen Abgaben.",
         "data": {
           "entry_type": "Was hinzufügen"
         }
@@ -281,7 +281,7 @@
     },
     "abort": {
       "already_configured": "Diese Ladestation oder dieser Standort ist bereits eingerichtet.",
-      "pairing_approved": "Zugelassen. Das Telefon verwaltet jetzt die Ladestationen dieser Instanz.",
+      "pairing_approved": "Zugelassen. Das Telefon verwaltet jetzt die Ladestationen und Zuhause dieser Instanz.",
       "pairing_denied": "Abgelehnt. Das Telefon wurde informiert, und nichts wurde übergeben.",
       "pairing_request_expired": "Diese Kopplungsanfrage ist abgelaufen. Starte sie auf dem Telefon neu.",
       "no_supported_charger": "Es wurde keine unterstützte Ladestation gefunden. Richte zuerst die eigene Integration der Ladestation ein oder wähle Manuell.",
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "Eine Ladestation",
-        "site": "Einen Standort (Lastmanagement)",
+        "site": "Dein Zuhause (Haus, Batterie, Heizung, Lastmanagement)",
         "resolve_vehicle": "Ein erkanntes Fahrzeug klären",
         "price": "Einen Strompreis"
       }

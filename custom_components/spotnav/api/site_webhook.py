@@ -35,6 +35,9 @@ value refused, 409 for `spotnav_conflict`, 403 as above.
 charger in no site, or in one that is not loaded, is `spotnav_no_site`. The dashboard's `charger.capabilities` says
 what a charger's webhook answers: `get_house`, `get_heat`, `battery_control`, `get_site_settings_view`
 (`api/dashboard.py`).
+
+The handlers take the site itself (`site_handlers`); `SITE_ACTIONS` binds them to the charger webhook's charger's
+site, and the site webhook (`api/site_entry_webhook.py`) to its own site.
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Final
 
 from aiohttp import web
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 from ..heat.history import HEAT_HISTORY_API_VERSION
@@ -73,10 +76,12 @@ from .heat import (
 from .house import async_house_answer
 from .house_loads import async_loads_answer
 from .house_now import async_house_now
-from .power_month import PowerMonthRefusal, _site_of_charger
-from .site_view import SITE_VIEW_API_VERSION, resolve_site, site_settings_view
+from .power_month import PowerMonthRefusal
+from .site_view import SITE_VIEW_API_VERSION, site_settings_view
 
 type _Handler = Callable[[HomeAssistant, ConfigEntry, dict[str, Any]], Awaitable[web.Response]]
+#: A site action bound to a site: `(hass, site, payload)`, `site` `None` for a charger in no site.
+type SiteHandler = Callable[[HomeAssistant, ConfigEntry | None, dict[str, Any]], Awaitable[web.Response]]
 type _Read = Callable[[HomeAssistant, ConfigEntry, dict[str, Any]], Awaitable[dict[str, Any]]]
 
 #: HTTP status of a write's refusal by its stable code; any other refusal is a bad request.
@@ -93,15 +98,17 @@ def _speaks(payload: dict[str, Any], version: int) -> bool:
     return type(asked) is int and asked == version
 
 
-def _read(action: str, version: int, read: _Read) -> _Handler:
+def _read(action: str, version: int, read: _Read) -> SiteHandler:
     """A read twinning a WebSocket command: `read(hass, site, payload)` is the command's own answer for the
-    charger's site, a `PowerMonthRefusal` its refusal."""
+    site, a `PowerMonthRefusal` its refusal."""
 
-    async def handler(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+    async def handler(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
         if not _speaks(payload, version):
             return _refused(action, ERROR_UNSUPPORTED_VERSION)
+        if site is None:
+            return _refused(action, ERROR_NO_SITE)
         try:
-            answer = await read(hass, _site_of_charger(hass, entry), payload)
+            answer = await read(hass, site, payload)
         except PowerMonthRefusal as refusal:
             return _refused(action, refusal.code)
         return web.json_response({"ok": True, "action": action, **answer})
@@ -131,35 +138,38 @@ async def _heat_history(hass: HomeAssistant, site: ConfigEntry, payload: dict[st
     return await heat_history.history_answer(hass, site, payload.get("period"), payload.get("date"))
 
 
-async def _site_settings_view(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+def site_settings_view_handler(*, price_writable: bool) -> SiteHandler:
     """`get_site_settings_view`: what the webhook's own writes can change is writable (as its dashboard says:
-    `update_site_settings`, `choose_price_source`, `update_grid_tariff`), load balancing is not."""
-    action = "get_site_settings_view"
-    if not _speaks(payload, SITE_VIEW_API_VERSION):
-        return _refused(action, ERROR_UNSUPPORTED_VERSION)
-    site, code = resolve_site(hass, {"charger_id": entry.entry_id})
-    if site is None:
-        return _refused(action, code or ERROR_NO_SITE)
-    view = site_settings_view(
-        hass,
-        site,
-        writable=True,
-        forecast_domains=await async_forecast_capable_domains(hass),
-        active_control_writable=False,
-    )
-    return web.json_response({"ok": True, "action": action, **view})
+    `update_site_settings`, and `choose_price_source` and `update_grid_tariff` where `price_writable`), load
+    balancing is not."""
+
+    async def handler(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
+        action = "get_site_settings_view"
+        if not _speaks(payload, SITE_VIEW_API_VERSION):
+            return _refused(action, ERROR_UNSUPPORTED_VERSION)
+        if site is None or site.state is not ConfigEntryState.LOADED:
+            return _refused(action, ERROR_NO_SITE)
+        view = site_settings_view(
+            hass,
+            site,
+            writable=True,
+            forecast_domains=await async_forecast_capable_domains(hass),
+            active_control_writable=False,
+            price_writable=price_writable,
+        )
+        return web.json_response({"ok": True, "action": action, **view})
+
+    return handler
 
 
-async def _update_heat(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+async def _update_heat(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
     """`update_heat`: the dial, home/away, the cooler night and the zones' offsets, through the command's own judge
     and compare-and-set."""
     action = "update_heat"
     if not _speaks(payload, HEAT_API_VERSION):
         return _refused(action, ERROR_UNSUPPORTED_VERSION)
-    try:
-        site = _site_of_charger(hass, entry)
-    except PowerMonthRefusal as refusal:
-        return _refused(action, refusal.code)
+    if site is None:
+        return _refused(action, ERROR_NO_SITE)
     try:
         write_heat(hass, site, payload.get("changes"), payload.get("expected"), admin=False, over_webhook=True)
     except HeatWriteRefusal as refusal:
@@ -170,42 +180,55 @@ async def _update_heat(hass: HomeAssistant, entry: ConfigEntry, payload: dict[st
     return web.json_response({**write_envelope(site), "action": action})
 
 
-async def _heat_boost(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+async def _heat_boost(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
     """`heat_boost`: the Boost button, as `spotnav/heat_boost` (a household control, like the dial)."""
     action = "heat_boost"
     if not _speaks(payload, HEAT_API_VERSION):
         return _refused(action, ERROR_UNSUPPORTED_VERSION)
-    try:
-        site = _site_of_charger(hass, entry)
-    except PowerMonthRefusal as refusal:
-        return _refused(action, refusal.code)
+    if site is None:
+        return _refused(action, ERROR_NO_SITE)
     answer = await heat_boost_answer(hass, site, payload.get("boost_action"))
     status = 200 if answer["ok"] else {ERROR_INVALID_VALUE: 400, "spotnav_rate_limited": 429}.get(answer["error"], 409)
     return web.json_response({**answer, "action": action}, status=status)
 
 
-async def _battery_control(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+async def _battery_control(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
     """`battery_control`: the status, after writing the battery mode when `changes` names it."""
     action = "battery_control"
     if not _speaks(payload, BATTERY_CONTROL_API_VERSION):
         return _refused(action, ERROR_UNSUPPORTED_VERSION)
-    answer = await async_battery_control_answer(
-        hass, site_of_charger(hass, entry.entry_id), payload.get("changes"), admin=False, over_webhook=True
-    )
+    answer = await async_battery_control_answer(hass, site, payload.get("changes"), admin=False, over_webhook=True)
     status = 200 if answer["ok"] else _WRITE_STATUS.get(answer["error"], 400)
     return web.json_response({**answer, "action": action}, status=status)
 
 
+def site_handlers(*, price_writable: bool) -> dict[str, SiteHandler]:
+    """The site actions bound to a site, for either carrier: the charger webhook (its charger's site) and the site
+    webhook (`api/site_entry_webhook.py`, its own site, where the price is read-only: `price_writable` false)."""
+    return {
+        "get_house": _read("get_house", HOUSE_API_VERSION, _house),
+        "get_house_now": _read("get_house_now", HOUSE_NOW_API_VERSION, _house_now),
+        "get_house_history": _read("get_house_history", HOUSE_HISTORY_API_VERSION, _house_history),
+        "get_house_loads": _read("get_house_loads", HOUSE_LOADS_API_VERSION, async_loads_answer),
+        "get_heat": _read("get_heat", HEAT_API_VERSION, _heat),
+        "get_heat_history": _read("get_heat_history", HEAT_HISTORY_API_VERSION, _heat_history),
+        "get_site_settings_view": site_settings_view_handler(price_writable=price_writable),
+        "battery_control": _battery_control,
+        "update_heat": _update_heat,
+        "heat_boost": _heat_boost,
+    }
+
+
+def _of_charger(handler: SiteHandler) -> _Handler:
+    """A site action on the charger webhook: bound to the site that lists the webhook's charger (loaded or not)."""
+
+    async def bound(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+        return await handler(hass, site_of_charger(hass, entry.entry_id), payload)
+
+    return bound
+
+
 #: The site actions of the charger webhook (`api/webhook.py:ACTIONS` takes them in).
 SITE_ACTIONS: Final[dict[str, _Handler]] = {
-    "get_house": _read("get_house", HOUSE_API_VERSION, _house),
-    "get_house_now": _read("get_house_now", HOUSE_NOW_API_VERSION, _house_now),
-    "get_house_history": _read("get_house_history", HOUSE_HISTORY_API_VERSION, _house_history),
-    "get_house_loads": _read("get_house_loads", HOUSE_LOADS_API_VERSION, async_loads_answer),
-    "get_heat": _read("get_heat", HEAT_API_VERSION, _heat),
-    "get_heat_history": _read("get_heat_history", HEAT_HISTORY_API_VERSION, _heat_history),
-    "get_site_settings_view": _site_settings_view,
-    "battery_control": _battery_control,
-    "update_heat": _update_heat,
-    "heat_boost": _heat_boost,
+    action: _of_charger(handler) for action, handler in site_handlers(price_writable=True).items()
 }

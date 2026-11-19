@@ -18,6 +18,10 @@
       {
         "id": "charger",
         "dismissible": true
+      },
+      {
+        "id": "app",
+        "dismissible": true
       }
     ]
   },
