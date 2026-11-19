@@ -36,6 +36,7 @@ sum could fall; the installation's ledger then lifts it above every revision ans
 
 from __future__ import annotations
 
+import logging
 import hashlib
 import json
 from dataclasses import dataclass, replace
@@ -68,6 +69,8 @@ from ..planning.auto_settings import (
 )
 from ..runtime import domain_data
 from .relay_contract import AreaEntry
+
+_LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..planning.planner import FiscalChoice
@@ -194,10 +197,12 @@ def fees_from_data(area_id: str, data: Any) -> AreaAutoSettings:
         try:
             fees[component] = FiscalOverride.from_stored(data.get(component), component)
         except Exception:  # noqa: BLE001 - a stored fee that cannot be read adds nothing
+            _LOGGER.debug("fees_from_data: ignored failure (a stored fee that cannot be read adds nothing)", exc_info=True)
             fees[component] = FiscalOverride()
     try:
         tariff: GridTariff | None = GridTariff.from_data(data)
     except Exception:  # noqa: BLE001 - a stored tariff that cannot be read adds nothing
+        _LOGGER.debug("fees_from_data: ignored failure (a stored tariff that cannot be read adds nothing)", exc_info=True)
         tariff = None
     return AreaAutoSettings(area_id=area_id, **fees, grid_tariff=None if tariff is None or tariff.empty else tariff)
 

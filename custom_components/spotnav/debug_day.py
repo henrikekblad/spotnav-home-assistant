@@ -454,6 +454,7 @@ class ChargerDay:
         try:
             return reader()
         except Exception:  # noqa: BLE001
+            _LOGGER.debug("safe: ignored failure", exc_info=True)
             return None
 
     def ensure_session(self, plugged_in_at: datetime | None) -> None:
