@@ -1045,7 +1045,7 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "Cloud (200 calls a day)",
         "Not yet",
         "Setpoint, on/off and powerful mode",
-        "The call limit rules out anything but one planned action a day.",
+        "The call limit leaves room for a few planned actions a day (a morning and an evening run), never a loop.",
     ),
     (
         "Mitsubishi Ecodan",
@@ -1193,7 +1193,7 @@ def heat_pumps_section() -> list[str]:
         "- **Hot water on command** is what the integration can do, as the sources describe it. SpotNav lists these "
         "controls and does not write any of them yet. *Boost* is a run that ends by itself, *setpoint* is a stored "
         "setting, and *block* holds the pump back. *Unverified* means no source we read says.",
-        "- Cloud routes are rate limited. They get at most one planned hot water action a day, never a loop.",
+        "- Cloud routes are rate limited. They get at most two planned hot water actions a day (before the morning and the evening showers), never a loop; a local route is bounded only by wear.",
         "",
         *table(HEAT_PUMP_HEADER, [row for row in HEAT_PUMPS]),
         "",

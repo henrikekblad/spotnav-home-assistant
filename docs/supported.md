@@ -238,7 +238,7 @@ What SpotNav reads of a heat pump is in [Heat pumps](heat-pumps.md). This table 
 - **SpotNav controls** is the heating: *relay* and *SG Ready* switch a contact you wired, *SG Ready API* writes the pump's own SG Ready mode, *offset* writes the heating curve offset, *Not yet* means SpotNav reads at most. A stored offset is written rarely, in whole steps, and put back when the control ends.
 - **The NIBE S, the CTC and every stored-offset path are untested in the field.** None of them has run on a real heat pump yet; they are read from the integrations' sources and the makers' manuals.
 - **Hot water on command** is what the integration can do, as the sources describe it. SpotNav lists these controls and does not write any of them yet. *Boost* is a run that ends by itself, *setpoint* is a stored setting, and *block* holds the pump back. *Unverified* means no source we read says.
-- Cloud routes are rate limited. They get at most one planned hot water action a day, never a loop.
+- Cloud routes are rate limited. They get at most two planned hot water actions a day (before the morning and the evening showers), never a loop; a local route is bounded only by wear.
 
 | Brand | Integration | Local or cloud | SpotNav controls | Hot water on command | Notes |
 | --- | --- | --- | --- | --- | --- |
@@ -249,7 +249,7 @@ What SpotNav reads of a heat pump is in [Heat pumps](heat-pumps.md). This table 
 | Panasonic Aquarea | HeishaMon with `kamaradclimber/heishamon-homeassistant`, HACS | Local (MQTT, needs the HeishaMon board) | Read; relay or SG Ready contact; an offset number if you pick one, untested | Boost: force hot water (switch); hot water setpoint 40-75 | Whether HeishaMon's commands survive a power cut is unverified. |
 | Panasonic Aquarea | `cjaliaga/home-assistant-aquarea`, HACS | Cloud | Not yet | Setpoint and on/off (unverified) |  |
 | Daikin Altherma 4 | `joklee/ha_daikin_altherma4_modbus`, HACS | Local (Modbus TCP) | Not yet | Boost: DHW booster and single heat-up switches with setpoints 30-85; reheat setpoint; mode select | Whether the values are stored is unverified. The README advises refreshing state regularly. |
-| Daikin Altherma | `jwillemsen/daikin_onecta`, HACS | Cloud (200 calls a day) | Not yet | Setpoint, on/off and powerful mode | The call limit rules out anything but one planned action a day. |
+| Daikin Altherma | `jwillemsen/daikin_onecta`, HACS | Cloud (200 calls a day) | Not yet | Setpoint, on/off and powerful mode | The call limit leaves room for a few planned actions a day (a morning and an evening run), never a loop. |
 | Mitsubishi Ecodan | `gekkekoe/esphome-ecodan-hp`, ESPHome | Local (CN105 and an ESP) | Not yet | Boost: forced hot water; block or allow hot water and heating (server control) | Whether the values are stored is unverified. |
 | Mitsubishi Ecodan | `melcloud`, Home Assistant core | Cloud (throttled) | Not yet | Setpoint and mode (auto, force hot water) |  |
 | Thermia Genesis | `CJNE/thermiagenesis`, HACS | Local (Modbus TCP) | Not yet | Setpoint: start and stop temperatures as numbers (disabled by default). No boost entity seen | A field tester is needed to check the registers. |
