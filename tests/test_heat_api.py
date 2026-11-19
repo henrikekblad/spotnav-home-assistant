@@ -16,6 +16,7 @@ from custom_components.spotnav.api.heat import websocket_get_heat, websocket_upd
 from custom_components.spotnav.const import CONF_HEAT, CONF_HEAT_METER_ENTITY
 from custom_components.spotnav.diagnostics import _site_diagnostics
 from custom_components.spotnav.heat.view import HEAT_KEYS
+from .helpers import answers_of
 
 from .test_demand_site import pilot_site
 
@@ -37,8 +38,7 @@ class _Connection:
 async def update(hass: HomeAssistant, admin: bool = True, **request: Any) -> dict[str, Any]:
     connection = _Connection(admin)
     websocket_update_heat(hass, connection, {"id": 1, "type": "spotnav/update_heat", **request})  # type: ignore[arg-type]
-    await hass.async_block_till_done()
-    (answer,) = connection.answers
+    (answer,) = await answers_of(hass, connection)
     return answer
 
 
@@ -125,8 +125,7 @@ async def test_field_errors_and_refusals(hass: HomeAssistant, freezer) -> None:
 async def read(hass: HomeAssistant, admin: bool = True, **request: Any) -> dict[str, Any]:
     connection = _Connection(admin)
     websocket_get_heat(hass, connection, {"id": 1, "type": "spotnav/get_heat", **request})  # type: ignore[arg-type]
-    await hass.async_block_till_done()
-    (answer,) = connection.answers
+    (answer,) = await answers_of(hass, connection)
     return answer
 
 

@@ -5,7 +5,9 @@ shared device/entity fixtures for tests that need a specific device shape.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -494,3 +496,17 @@ def as_app_sees(settings: dict) -> dict:
     if "max_periods" in seen and seen["max_periods"] is None:
         seen["max_periods"] = MAX_PERIODS
     return seen
+
+
+async def answers_of(hass: HomeAssistant, connection: Any) -> list[Any]:
+    """The answers a fake websocket connection was sent, once there is one.
+
+    A command written with `websocket_api.async_response` runs as a background task, which `async_block_till_done` does
+    not wait for: on a busy machine the answer comes after it. Wait for the answer itself, never a fixed time (a command
+    that never answers ends in the test's own timeout)."""
+    while not connection.answers:
+        await hass.async_block_till_done()
+        if not connection.answers:
+            await asyncio.sleep(0)  # not a timer: a frozen clock never reaches one
+    await hass.async_block_till_done()
+    return connection.answers

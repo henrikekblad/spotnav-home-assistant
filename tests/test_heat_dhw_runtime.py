@@ -4,7 +4,6 @@ the opt-in and the gate."""
 
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -22,6 +21,7 @@ from custom_components.spotnav.heat.dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN
 from custom_components.spotnav.heat.dhw_peaks import Peak
 from custom_components.spotnav.heat.meter_split import HotWaterRun
 from custom_components.spotnav.runtime import site_controller_for
+from .helpers import answers_of
 
 from .test_demand_site import pilot_site
 from .test_heat_api import _Connection, read
@@ -49,12 +49,7 @@ async def press(hass: HomeAssistant, action: Any, **request: Any) -> dict[str, A
     connection = _Connection(admin=False)
     websocket_heat_boost(hass, connection, {"id": 1, "type": "spotnav/heat_boost", "api_version": 1, "action": action, **request})  # type: ignore[arg-type]
     # The command runs as a background task: wait for its answer.
-    for _ in range(100):
-        await hass.async_block_till_done()
-        if connection.answers:
-            break
-        await asyncio.sleep(0)
-    (answer,) = connection.answers
+    (answer,) = await answers_of(hass, connection)
     await settle(hass)
     return answer
 
