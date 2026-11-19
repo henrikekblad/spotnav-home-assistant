@@ -67,6 +67,28 @@ administrators can confirm, and never over the webhook. The entities per brand:
   control mode and AC charge policy.
 * Huawei: forcible charge/discharge write, maximum charging and discharging power.
 * SolaX: remote control autorepeat duration, active power, power control and trigger.
+* GoodWe (the HACS integration): operation mode, eco mode power, eco mode SoC and the depth of discharge.
+* Tesla Powerwall: backup reserve and the grid charging switch.
+
+**GoodWe and Tesla Powerwall: mapped, never run on a device.** Both are switched on by the same switch and checked by
+the same routine as the others, and both are untested.
+
+* *GoodWe* needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core's `goodwe` has no eco charge mode and
+  no eco power or SoC numbers, and the checklist then says "needs the HACS integration". A grid charge is the eco charge
+  mode at a share of the battery's rated power (an estimate from the battery's present current limit and voltage); a
+  discharge for the house is the general mode; a hold sets the depth of discharge so the cut-off is the level now (not
+  confirmed on a device: the library does not say what the inverter does at that point). Hand-back puts the mode, the
+  eco values and the depth back as found. Nothing stops a command when Home Assistant stops, so a grid charge is capped
+  for that case. Some firmwares ignore the eco level ceiling (the HACS integration's issues 466 and 486), so a charge
+  ends with the plan's slot and is judged by the battery's power, not by the level.
+* *Tesla Powerwall* (`tesla_fleet` or `teslemetry`, Tesla's cloud) is **slow**: only the plan's own actions, no hold for
+  a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no change
+  of action within 15 minutes. A hold sets the backup reserve to the level now (rounded down); a grid charge sets the
+  reserve to 100 % and allows grid charging. The charge power is the Powerwall's own (about 1.7 kW each in reports, not
+  measured here), so SpotNav uses the plant's maximum for the fuse cap and does not start a charge that does not fit.
+  It runs only while the operation mode is self-powered; Time-Based Control and Backup are left alone. The grid charging
+  switch exists only on a site with solar. Nothing stops a command when Home Assistant stops, and the cloud may take
+  minutes to show a change.
 
 **Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see
