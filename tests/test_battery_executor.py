@@ -635,6 +635,38 @@ def test_a_hold_starts_only_when_the_headroom_carries_the_whole_discharge_on_one
     assert written(results) == [] and events(results, "not_started")[0]["reason"] == "headroom_too_small"
 
 
+def test_fuse_s1_a_sale_starts_only_when_the_cover_it_may_take_off_one_phase_fits() -> None:
+    """The battery covers 12 A on L1 (2.8 kW) with 4 A left: a 3 kW sale spread evenly gives 4.3 A back a phase,
+    so L1 would lose 7.7 A. Not started; with the room for it, or nothing covered, it starts."""
+    executor, battery = _sigenergy()
+    _now, results = run(executor, battery, T0, 3, "export_discharge", 3.0, headroom_a=4.0, power_kw=-2.76)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "headroom_too_small"
+    executor, battery = _sigenergy()
+    _now, results = run(executor, battery, T0, 3, "export_discharge", 3.0, headroom_a=12.0, power_kw=-2.76)
+    assert events(results, "enter")
+    executor, battery = _sigenergy()
+    _now, results = run(executor, battery, T0, 3, "export_discharge", 3.0, headroom_a=4.0, power_kw=0.0)
+    assert events(results, "enter")
+
+
+def test_fuse_s1_a_change_into_a_sale_passes_its_start_rule() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "discharge_house", 3.0, house_deficit_kw=3.0)
+    assert executor.state.action == "discharge_house"
+    _now, results = run(executor, battery, now, 6, "export_discharge", 3.0, headroom_a=4.0, power_kw=-2.76)
+    assert events(results, "change") == []
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+
+
+def test_fuse_s1_a_sale_is_handed_back_when_a_phase_nears_the_fuse() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "export_discharge", 3.0)
+    assert executor.state.phase == "active"
+    _now, results = run(executor, battery, now, 6, "export_discharge", 3.0, headroom_a=RESTORE_HEADROOM_A - 0.5)
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+    assert executor.state.phase in ("idle", "restoring")
+
+
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
@@ -1009,8 +1041,8 @@ def test_every_hand_back_path_ends_idle_or_blocked_with_no_retry_left(brand, act
     control = control_for(brand)
     states = {"sigenergy": SIGENERGY_STATES, "solaredge": SOLAREDGE_STATES, "huawei": HUAWEI_STATES,
               "solax": SOLAX_STATES}[brand]
-    if "headroom_a" in overrides and action not in ("hold", "grid_charge"):
-        overrides = {"stopping": "stop"}  # the fuse hands back only an action that adds import
+    if "headroom_a" in overrides and action not in ("hold", "grid_charge", "export_discharge"):
+        overrides = {"stopping": "stop"}  # the fuse hands back only an action that adds import or stops covering it
     executor, battery = Executor(control), FakeBattery(control, dict(states))
     now, _ = run(executor, battery, T0, 8, action, 3.0)
     assert executor.state.phase == "active"
