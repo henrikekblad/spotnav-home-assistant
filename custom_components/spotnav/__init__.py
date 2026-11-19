@@ -79,6 +79,7 @@ from .const import (
 )
 from .energy_register import async_store_detected_register, async_watch_for_register, charger_power_counted
 from .entity_renames import async_setup_entity_renames
+from .day_export import remove_archive
 from .debug_day import ChargerDay
 from .log_buffer import attach_log_buffer
 from .execution.charger_handback import async_hand_back_charger
@@ -967,6 +968,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
+        await hass.async_add_executor_job(remove_archive, hass.config.config_dir, entry.entry_id)
         await SitePhasePeaks.async_remove_stored(hass, entry.entry_id)
         await SiteDemand.async_remove_stored(hass, entry.entry_id)
         await SiteHouseForecast.async_remove_stored(hass, entry.entry_id)

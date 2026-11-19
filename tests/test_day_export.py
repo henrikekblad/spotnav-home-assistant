@@ -189,6 +189,33 @@ async def test_the_same_day_is_overwritten_and_no_temporary_file_is_left(
     assert response["missing"]["quarters"] == "none_recorded"
 
 
+async def test_a_write_drops_the_day_files_older_than_the_bound(hass: HomeAssistant, freezer, tmp_path: Path) -> None:
+    site, _controller = await _world(hass, freezer, tmp_path)
+    folder = tmp_path / "spotnav_archive" / site.entry_id
+    folder.mkdir(parents=True)
+    oldest_kept = DAY - timedelta(days=day_export.ARCHIVE_KEPT_DAYS)
+    for name in ((oldest_kept - timedelta(days=1)).isoformat(), oldest_kept.isoformat(), "notes"):
+        (folder / f"{name}.json").write_text("{}", encoding="utf-8")
+
+    await _export(hass, {"date": DAY.isoformat()})
+
+    assert sorted(os.listdir(folder)) == sorted(
+        ["2026-09-22.json", "notes.json", f"{oldest_kept.isoformat()}.json"]
+    )
+
+
+async def test_removing_the_site_removes_its_archive(hass: HomeAssistant, freezer, tmp_path: Path) -> None:
+    site, _controller = await _world(hass, freezer, tmp_path)
+    await _export(hass, {"date": DAY.isoformat()})
+    folder = tmp_path / "spotnav_archive" / site.entry_id
+    assert folder.is_dir()
+
+    assert await hass.config_entries.async_remove(site.entry_id)
+    await hass.async_block_till_done()
+
+    assert not folder.exists()
+
+
 async def test_a_day_no_longer_kept_exports_what_is_left_and_says_what_is_missing(
     hass: HomeAssistant, freezer, tmp_path: Path
 ) -> None:
