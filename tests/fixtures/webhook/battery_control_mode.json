@@ -55,6 +55,7 @@
     "state": "off",
     "trial": null,
     "verification": null,
-    "waiting_for": null
+    "waiting_for": null,
+    "plan_costs": null
   }
 }

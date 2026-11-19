@@ -308,3 +308,20 @@ async def test_the_view_states_the_price_settings_and_pins_the_fixture(hass: Hom
     if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
         path.write_text(json.dumps(view, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     assert view == json.loads(path.read_text(encoding="utf-8"))
+
+
+async def test_the_battery_status_names_the_plans_two_fixed_costs_in_the_areas_money(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    await _home(hass, False)
+    client = await admin(hass, hass_ws_client)
+    ask = {"type": "spotnav/battery_control", "api_version": 1, "site_id": "site_home"}
+    assert (await ws_call(client, ask))["result"]["status"]["plan_costs"] is None, "no price, no money to name"
+    await add_price(hass, entry_id="price_a")
+    costs = (await ws_call(client, ask))["result"]["status"]["plan_costs"]
+    assert costs == {
+        "wear_minor_per_kwh": 15.0,
+        "balanced_margin_minor_per_kwh": 100.0,
+        "major_unit": "kr",
+        "minor_unit": "öre",
+    }
