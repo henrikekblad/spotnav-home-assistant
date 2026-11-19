@@ -268,6 +268,17 @@ class SpotNavChargingConfigFlow(
             return self.async_abort(reason="pairing_request_expired")
         return self.async_abort(reason="pairing_approved")
 
+    async def async_step_make_home(self, home: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """A home made from the card's "Make a home of this" (`api/make_home.py`), after the person confirmed it there
+        and gave the main fuse: created as it was prepared. Only that command starts this step (its source is not one
+        Home Assistant's own frontend can start); it shows nothing."""
+        prepared = isinstance(home, dict) and isinstance(home.get("data"), dict)
+        if not prepared or any(
+            entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE for entry in self._async_current_entries()
+        ):
+            return self.async_abort(reason="already_configured")
+        return self.async_create_entry(title=str(home.get("title") or "Home"), data=home["data"])
+
     async def async_step_pair_deny(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
