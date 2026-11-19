@@ -15,9 +15,9 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
   what the battery is for. Only Max profit lets the plan discharge the battery to the grid (`export_discharge`),
-  capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`). It replaces
-  `battery_control_allow_sell`, which is read for one release only, as the source of a one-time migration
-  (`legacy_mode`) and is no longer written.
+  capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`). It replaced
+  `battery_control_allow_sell`, which an early 3.0 build stored: read once at load, as the source of a one-time
+  migration (`legacy_mode`, `BatteryControl._migrate_mode`), then removed from the entry; never written or sent.
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
   import limit acts under Remote EMS. Until then, and whenever that limit reads more than keeps the worst phase
   under the fuse (`import_limit_max_kw`: the plant limits the **total** import, not each phase), a grid
@@ -73,7 +73,7 @@ from .shadow import parse_aware_datetime
 CONF_ENABLED: Final = "battery_control_enabled"
 CONF_SHADOW_ONLY: Final = "battery_control_shadow_only"
 CONF_AI_TAKEOVER_ACK: Final = "battery_control_ai_takeover_ack"
-#: The legacy option (read for one release as the migration's source, never written).
+#: The legacy option (read once at load as the migration's source, then removed; never written).
 CONF_ALLOW_SELL: Final = "battery_control_allow_sell"
 #: The site's battery mode (the plan's `plan_runtime.MODE_KEY`).
 CONF_MODE: Final = "battery_mode"
@@ -188,11 +188,10 @@ class Options:
         return self.enabled and not self.shadow_only
 
     def as_dict(self) -> dict[str, bool | str]:
-        """The payload's options. `battery_control_allow_sell` stays for one release, derived from the mode (the
-        payload only grows); the card reads `battery_mode`."""
+        """The payload's options."""
         return {
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
-            CONF_ALLOW_SELL: self.allow_sell, CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_MODE: self.mode,
+            CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_MODE: self.mode,
         }
 
 
@@ -202,10 +201,8 @@ def shadow_default(*, field_tested: bool, beta: bool) -> bool:
 
 
 def _mode(config: Mapping[str, Any]) -> str:
-    """The stored mode; a site that never chose one follows its legacy sell option; anything unknown is Balanced."""
+    """The stored mode; none stored, or anything unknown, is Balanced (a legacy sell option is migrated at load)."""
     value = config.get(CONF_MODE)
-    if value is None:
-        return legacy_mode(config) or DEFAULT_MODE
     return value if isinstance(value, str) and value in MODES else DEFAULT_MODE
 
 

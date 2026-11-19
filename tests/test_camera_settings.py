@@ -32,7 +32,7 @@ CAMERA = {"camera_entity_id": "camera.norr", "ai_task_entity_id": "ai_task.ollam
 
 
 def body(**changes: Any) -> dict[str, Any]:
-    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10, phases=3))
+    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10))
     return {key: value for key, value in encoded.items() if key != "revision"} | changes
 
 
@@ -74,7 +74,7 @@ def test_the_wire_refuses_a_camera_that_is_not_one(value: Any) -> None:
 
 
 def test_a_replacement_that_leaves_it_out_keeps_it_and_null_takes_it_away() -> None:
-    current = replace(AutoSettings(area_id="SE4", amps=10, phases=3), identify_camera=CameraSettings.from_wire(CAMERA))
+    current = replace(AutoSettings(area_id="SE4", amps=10), identify_camera=CameraSettings.from_wire(CAMERA))
     sent = body(amps=16)
     sent.pop("identify_camera")
     kept = replacement_mutator(decode_settings(sent), keep_identify_camera=True)(current).validated()

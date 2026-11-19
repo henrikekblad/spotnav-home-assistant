@@ -260,7 +260,7 @@ async def test_the_plan_in_shadow_kept_reviewed_and_shown(hass: HomeAssistant, f
     shown = answer["hot_water"]
     assert shown["mode"] == "shadow" and shown["level"] == "B"
     assert shown["planned"][0]["start"] == pick.start.isoformat() and shown["planned"][0]["live"] is False
-    assert answer["band"]["hot_water_pick"] == pick.start.isoformat()
+    assert "hot_water_pick" not in answer["band"]
     # The pump's own reload at 06:20 the next morning; the day is reviewed three hours after it ends.
     run_start = pick.peak + timedelta(minutes=20)
     hot_water.runs[run_start.isoformat()] = HotWaterRun(run_start, run_start + timedelta(minutes=30), 1.4)

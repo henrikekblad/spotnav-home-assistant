@@ -53,7 +53,6 @@
   "api_version": 1,
   "band": {
     "date": "2026-11-16",
-    "hot_water_pick": "2026-11-17T02:30:00+00:00",
     "hours": [
       {
         "action": "night",

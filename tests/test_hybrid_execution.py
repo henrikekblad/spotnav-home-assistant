@@ -134,7 +134,7 @@ async def test_hybrid_with_no_forecast_plans_the_same_slots_as_cheapest(hass: Ho
         _day_document(date(2026, 9, 28), [0.10] * 96),
         _day_document(date(2026, 9, 29), [0.10] * 96),
     )
-    settings = AutoSettings(area_id="SE4", amps=10, phases=3, departure_enabled=False)
+    settings = AutoSettings(area_id="SE4", amps=10, departure_enabled=False)
     fiscal = FiscalChoice()
 
     def plan_for(requested_kwh: float) -> Any:
@@ -176,7 +176,7 @@ async def test_a_configured_forecast_lowers_grid_kwh_below_the_full_need(
         _day_document(date(2026, 9, 29), [0.10] * 96),
     )
     settings = AutoSettings(
-        area_id="SE4", amps=10, phases=3, departure_enabled=True, departure=time(20, 0),
+        area_id="SE4", amps=10, departure_enabled=True, departure=time(20, 0),
     )
 
     sunny_hour = datetime(2026, 9, 28, 11, 0, tzinfo=UTC)

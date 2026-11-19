@@ -883,7 +883,7 @@ async def test_a_record_with_an_unknown_pause_field_is_refused(
     hass: HomeAssistant, flaky: FlakyStore
 ) -> None:
     """The stored shape is exact: a misspelled pause field is not a pause."""
-    settings = AutoSettings(amps=10, area_id=SE4, phases=1).validated()
+    settings = AutoSettings(amps=10, area_id=SE4).validated()
     record = settings.as_dict()
     record["pause"] = {"choice": PAUSE_UNTIL_TOMORROW, "expires_at": None, "resume_at": None}
     flaky.payload = {

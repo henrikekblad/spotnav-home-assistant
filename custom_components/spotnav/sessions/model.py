@@ -9,7 +9,9 @@ could not be known stays absent: `cost_minor` is `None` for a session none of wh
 published price, never zero.
 
 A record written before that (it carries only `cost_minor`) is kept as it was, under `legacy_*` names,
-and says so with `cost_basis: "stored"` until `history_import.migrate_legacy` can re-derive its intervals.
+and says so with `cost_basis: "stored"` until `history_import.migrate_legacy` can re-derive its intervals: a past
+session's cost is never lost. Only such a record is ever written with a stored cost; a session recorded since
+always has its intervals.
 
 Stored JSON is untrusted: `from_dict` reads exactly the shape `as_dict` writes and answers `None` for
 anything else, so one bad record never takes the others down.

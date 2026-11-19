@@ -18,7 +18,7 @@ from custom_components.spotnav.core import session as session_module
 from custom_components.spotnav.core.session import CarEnded, ChargeSession, STORED_VERSION
 from custom_components.spotnav.execution.controller import SESSION_STORE_KEY
 
-from .helpers import install_schedule
+from .helpers import install_schedule, with_ownership_view
 from .pause_world import pause_world, SWITCH, two_windows, World
 from .relay import FakeScheduler
 from .test_car_ended_waits_for_level import _estimate, Car, TARGET
@@ -34,7 +34,7 @@ def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> b
 
 async def _stored(world: World) -> dict[str, Any]:
     await world.hass.async_block_till_done()
-    return await world.controller._store.async_load()  # noqa: SLF001
+    return with_ownership_view(await world.controller._store.async_load())  # noqa: SLF001
 
 
 def _record(world: World) -> dict[str, Any]:
@@ -233,18 +233,19 @@ async def test_the_connection_is_the_sessions_while_the_core_drives(
 
 @pytest.mark.core_failure_expected  # the record it cannot read is a failure, told
 @pytest.mark.usefixtures("both_restarts")
-async def test_an_older_build_reads_the_keys_when_it_cannot_read_the_record(
+async def test_a_build_that_cannot_read_the_record_finds_no_keys_and_reads_nothing_ended(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A build that knows only version 1 of the session's record refuses version 2 and reads today's keys, which are
-    written beside it, derived from the session: the record comes back whole, and is written again."""
+    """A build that knows only version 1 of the session's record refuses version 2. 3.0 writes no ownership keys beside
+    the record any more, so there is nothing to fall back on: it reads no car-ended record (the plan's open window then
+    decides afresh), and writes its record again."""
     world = await _plan_ended(hass, timers, _estimate())
-    record = _agrees(world, True)
+    assert _agrees(world, True)["car_ended_at"] is not None
     assert (await _stored(world))[SESSION_STORE_KEY]["version"] == 2
 
     monkeypatch.setattr(session_module, "READ_VERSIONS", (1,))
     restarted = await world.restart()
-    assert _agrees(restarted, True) == record
+    assert _agrees(restarted, True)["car_ended_at"] is None
     await restarted.shutdown()
 
 

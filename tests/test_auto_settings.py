@@ -41,7 +41,7 @@ def store(hass: HomeAssistant) -> AutoSettingsStore:
 def test_a_missing_record_has_the_visible_defaults(store: AutoSettingsStore) -> None:
     settings = store.settings("entry-a")
     assert settings.area_id is None
-    assert settings.phases is None and settings.amps is None
+    assert settings.amps is None
     assert settings.requested_kwh == DEFAULT_REQUESTED_KWH
     assert settings.max_periods == DEFAULT_MAX_PERIODS
     assert settings.departure == DEFAULT_DEPARTURE and settings.departure_enabled is True
@@ -59,7 +59,7 @@ async def test_round_trip_and_revision_bump(hass: HomeAssistant) -> None:
     updated = await store.async_update(
         "entry-a",
         mutate=lambda settings: replace(
-            settings, area_id="SE4", phases=1, amps=10
+            settings, area_id="SE4", amps=10
         ),
     )
     assert updated.revision == 1 and updated.area_id == "SE4"
@@ -99,8 +99,8 @@ async def test_two_chargers_editing_at_once_lose_nothing(hass: HomeAssistant) ->
     store = AutoSettingsStore(hass)
     await store.async_load()
     await asyncio.gather(
-        store.async_update("entry-a", mutate=lambda s: replace(s, area_id="SE4", phases=1, amps=6)),
-        store.async_update("entry-b", mutate=lambda s: replace(s, area_id="FI", phases=3, amps=16)),
+        store.async_update("entry-a", mutate=lambda s: replace(s, area_id="SE4", amps=6)),
+        store.async_update("entry-b", mutate=lambda s: replace(s, area_id="FI", amps=16)),
     )
     assert store.settings("entry-a").area_id == "SE4"
     assert store.settings("entry-b").area_id == "FI"
@@ -150,7 +150,6 @@ def test_fiscal_states_stay_distinct_in_storage(store: AutoSettingsStore) -> Non
     [
         ({"driver": "weekly"}, "invalid_driver"),
         ({"area_id": ""}, "invalid_area"),
-        ({"phases": 2}, "invalid_phases"),
         ({"amps": 0}, "invalid_amps"),
         ({"amps": -16}, "invalid_amps"),
         ({"amps": True}, "invalid_amps"),
@@ -283,7 +282,6 @@ def stored_settings(**changes: Any) -> dict[str, Any]:
     ("changes", "code"),
     [
         ({"area_id": 4}, "invalid_area"),
-        ({"phases": "1"}, "invalid_phases"),
         ({"amps": "10"}, "invalid_amps"),
         ({"amps": True}, "invalid_amps"),
         ({"requested_kwh": "20"}, "invalid_energy"),
@@ -349,7 +347,6 @@ def test_a_complete_stored_record_round_trips_exactly() -> None:
         overrides=(
             AreaAutoSettings(area_id="SE4", tax=FiscalOverride(True, 36.0), vat=FiscalOverride(True, None)),
         ),
-        phases=3,
         amps=16,
         requested_kwh=32.0,
         max_periods=2,
@@ -371,7 +368,7 @@ def test_a_complete_stored_record_round_trips_exactly() -> None:
 @pytest.mark.parametrize("retired", ["consumption_kwh_per_10km", "allow_estimated_fallback"])
 def test_a_stored_record_with_a_retired_field_is_refused(retired: str) -> None:
     """The record is exactly what `as_dict` writes: a field this release dropped is not this release."""
-    stored = AutoSettings(area_id="SE4", phases=3, amps=16).validated().as_dict()
+    stored = AutoSettings(area_id="SE4", amps=16).validated().as_dict()
     stored[retired] = 2.0
     with pytest.raises(AutoSettingsError) as refused:
         AutoSettings.from_stored(stored)
@@ -549,7 +546,7 @@ async def test_one_bad_charger_record_does_not_stop_the_others(
     hass: HomeAssistant, flaky: FlakyStore
 ) -> None:
     """Each record is read on its own: one malformed charger keeps only its own defaults."""
-    good = AutoSettings(amps=10, area_id="SE4", phases=1).validated().as_dict()
+    good = AutoSettings(amps=10, area_id="SE4").validated().as_dict()
     flaky.payload = stored_document(
         **{
             "entry-good": record(good),
@@ -572,6 +569,39 @@ async def test_one_bad_charger_record_does_not_stop_the_others(
     # The proposal was the malformed half, so the *settings* still loaded and the summary
     # was dropped rather than guessed at.
     assert store.proposal("entry-bad-proposal") is None
+
+
+async def test_a_stored_phases_is_read_once_for_its_migration_and_never_written_again(
+    hass: HomeAssistant, flaky: FlakyStore
+) -> None:
+    """A release before 1.5 stored `phases` in the settings: read at load for the migration alone, kept on disk until
+    it ran (another charger's write does not drop it), then written as `null`. Every record keeps the key, as a 2.x
+    release's reader requires it after a downgrade; a record without it (none written yet) loads too."""
+    good = AutoSettings(amps=10, area_id="SE4").validated().as_dict()
+    assert "phases" not in good
+    flaky.payload = stored_document(
+        **{
+            "entry-a": record(good | {"phases": 1}),
+            "entry-b": record(good | {"phases": None}),
+            "entry-c": record(good),
+            "entry-d": record(good | {"phases": 2}),
+        }
+    )
+    store = AutoSettingsStore(hass, store=flaky)
+    await store.async_load()
+    assert store.entry_ids() == ("entry-a", "entry-b", "entry-c", "entry-d")
+    assert [store.legacy_phases(entry) for entry in store.entry_ids()] == [1, None, None, None]
+    assert store.settings("entry-a").amps == 10 and not hasattr(store.settings("entry-a"), "phases")
+
+    await store.async_update("entry-b", mutate=lambda settings: replace(settings, amps=12))
+    written = flaky.payload["chargers"]
+    assert written["entry-a"]["settings"]["phases"] == 1, "kept until its migration takes it"
+    assert all(written[entry]["settings"]["phases"] is None for entry in ("entry-b", "entry-c", "entry-d"))
+
+    assert await store.async_clear_legacy_phases("entry-a") is True
+    assert store.legacy_phases("entry-a") is None
+    assert flaky.payload["chargers"]["entry-a"]["settings"]["phases"] is None
+    assert await store.async_clear_legacy_phases("entry-a") is False
 
 
 async def test_the_warnings_name_a_code_and_never_a_value(
@@ -727,7 +757,7 @@ async def test_clearing_a_proposal_is_one_atomic_write(hass: HomeAssistant) -> N
     store = AutoSettingsStore(hass)
     await store.async_load()
     await store.async_update(
-        "entry-a", mutate=lambda s: replace(s, area_id="SE4", phases=1, amps=10)
+        "entry-a", mutate=lambda s: replace(s, area_id="SE4", amps=10)
     )
     stamp = datetime(2026, 9, 22, 6, 0, tzinfo=timezone.utc)
     stored = StoredProposal(

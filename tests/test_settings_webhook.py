@@ -110,7 +110,7 @@ async def test_the_dashboard_settings_equal_the_websocket_read_value(
     store = domain_data(hass).auto_store
     assert store is not None
     await store.async_update(
-        entry.entry_id, mutate=lambda settings: replace(settings, area_id=SE4, amps=16, phases=3)
+        entry.entry_id, mutate=lambda settings: replace(settings, area_id=SE4, amps=16)
     )
     client = await hass_client_no_auth()
     socket = await hass_ws_client(hass)
@@ -346,8 +346,8 @@ async def test_two_webhooks_mutate_only_their_own_records(
     assert (first_status, second_status) == (200, 200)
     assert first_answer["ok"] is True and second_answer["ok"] is True
     mine, theirs = stored(hass, first.entry_id), stored(hass, second.entry_id)
-    assert mine.revision == 1 and mine.amps == 16 and mine.phases is None
-    assert theirs.revision == 1 and theirs.phases is None and theirs.amps == other.amps
+    assert mine.revision == 1 and mine.amps == 16
+    assert theirs.revision == 1 and theirs.amps == other.amps
     assert [_canonical(first_answer["settings"]), _canonical(second_answer["settings"])] == [
         _canonical(as_app_sees(encode_settings(mine))),
         _canonical(as_app_sees(encode_settings(theirs))),
@@ -560,7 +560,7 @@ async def _auto_charging(hass: HomeAssistant, entry_id: str = "entry_a") -> None
     assert store is not None
     await store.async_update(
         entry_id,
-        mutate=lambda settings: replace(settings, area_id=SE4, amps=16, phases=3),
+        mutate=lambda settings: replace(settings, area_id=SE4, amps=16),
     )
     hass.states.async_set("switch.charger_a", "on")
     await hass.async_block_till_done()

@@ -49,7 +49,7 @@ MON, TUE, WED, THU, FRI, SAT, SUN = range(1, 8)
 
 
 def body(**changes: Any) -> dict[str, Any]:
-    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10, phases=3))
+    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10))
     return {key: value for key, value in encoded.items() if key != "revision"} | changes
 
 
@@ -57,7 +57,7 @@ def body(**changes: Any) -> dict[str, Any]:
 
 
 def test_the_set_is_stored_only_when_a_weekday_is_left_out() -> None:
-    every = AutoSettings(area_id="SE4", amps=10, phases=3)
+    every = AutoSettings(area_id="SE4", amps=10)
     assert every.departure_weekdays == ALL_WEEKDAYS and "departure_weekdays" not in every.as_dict()
     assert AutoSettings.from_stored(every.as_dict()) == every.validated()
 
@@ -96,7 +96,7 @@ def test_anything_else_is_refused_as_an_invalid_departure(value: Any) -> None:
 
 
 def test_a_replacement_without_the_weekdays_keeps_the_stored_ones() -> None:
-    current = replace(AutoSettings(area_id="SE4", amps=10, phases=3), departure_weekdays=(1, 2))
+    current = replace(AutoSettings(area_id="SE4", amps=10), departure_weekdays=(1, 2))
     legacy = body()
     del legacy["departure_weekdays"]
     kept = replacement_mutator(decode_settings(legacy), keep_departure_weekdays=True)(current)

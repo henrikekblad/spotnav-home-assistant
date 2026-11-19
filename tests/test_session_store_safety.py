@@ -281,7 +281,7 @@ async def test_a_clean_stop_writes_the_big_store_current(hass: HomeAssistant, ha
 
     data = hass_storage[BIG]["data"]
     assert [row["energy_kwh"] for row in data["sessions"][entry.entry_id]] == [pytest.approx(6.0)]
-    assert data["open"][entry.entry_id]["id"] == "next"
+    assert data["open"] == {}, "the open session is the small store's alone"
     small = hass_storage[SMALL]["data"]
     assert small["open"][entry.entry_id]["id"] == "next"
     assert [row["energy_kwh"] for row in small["closing"][entry.entry_id]] == [pytest.approx(6.0)]

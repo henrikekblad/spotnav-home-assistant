@@ -539,7 +539,7 @@ def test_the_villa() -> None:
     hot = [hour["start"] for hour in answer["band"]["hours"] if hour["hot_water"]]
     # The measured runs at 05 and 07, the planned boosts at 03 and 14 (tomorrow's is not today's).
     assert hot == [(MIDNIGHT + timedelta(hours=h)).isoformat() for h in (3, 5, 7, 14)]
-    assert answer["band"]["hot_water_pick"] == _at(3.5, 1)
+    assert "hot_water_pick" not in answer["band"], "the first planned boost is `hot_water.planned`'s"
     assert answer["hot_water"]["gate"]["days"] == 5
     today = answer["today"]
     assert today["hot_water_kwh"] > 1.5 and today["cost"] > 0 and today["money"]["minor_unit"] == "öre"

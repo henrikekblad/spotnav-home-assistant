@@ -326,7 +326,7 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
     if (beta := getattr(domain_data(hass), "beta", None)) is not None:
         await beta.async_stop()
     if (sessions := getattr(domain_data(hass), "session_store", None)) is not None:
-        # Both session stores current at a clean stop: an older version, installed again, reads only the big one.
+        # Both session stores current at a clean stop.
         await sessions.async_flush()
 
 

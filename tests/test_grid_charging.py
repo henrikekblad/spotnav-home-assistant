@@ -20,6 +20,7 @@ from custom_components.spotnav.execution.grid_charge import grid_charge
 from custom_components.spotnav.planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from custom_components.spotnav.runtime import domain_data
 
+from .helpers import with_ownership_view
 from .world import controller_of, entity_id, setup_site_with_charger
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -151,7 +152,7 @@ async def test_origin_survives_a_restart(hass: HomeAssistant) -> None:
     await _start(hass, controller, cause="solar")
     await _charge(hass, controller)
     assert controller.charge_origin == "solar"
-    saved = await controller._store.async_load()  # noqa: SLF001
+    saved = with_ownership_view(await controller._store.async_load())  # noqa: SLF001
     assert saved["charge_origin"] == "solar", "saved with the start, in both modes"
     await controller._initialize_locked()  # noqa: SLF001
     assert controller.charge_origin == "solar"

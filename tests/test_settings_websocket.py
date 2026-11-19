@@ -93,7 +93,7 @@ async def test_a_later_read_returns_the_exact_stored_record(
     assert store is not None
     committed = await store.async_update(
         entry.entry_id,
-        mutate=lambda settings: replace(settings, area_id="SE4", amps=16, phases=3),
+        mutate=lambda settings: replace(settings, area_id="SE4", amps=16),
     )
     client = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
 

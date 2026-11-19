@@ -46,7 +46,7 @@ CAPACITY = 77.0
 
 
 def body(**changes: Any) -> dict[str, Any]:
-    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10, phases=3))
+    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10))
     return {key: value for key, value in encoded.items() if key != "revision"} | changes
 
 
@@ -89,7 +89,7 @@ def test_anything_but_a_boolean_is_refused_on_the_wire(value: Any) -> None:
 
 
 def test_a_replacement_without_the_choice_keeps_it_unless_it_moves_the_amount() -> None:
-    current = replace(AutoSettings(area_id="SE4", amps=10, phases=3, requested_kwh=20.0), fill_to_limit=True)
+    current = replace(AutoSettings(area_id="SE4", amps=10, requested_kwh=20.0), fill_to_limit=True)
     legacy = body(requested_kwh=20.0, amps=16)
     del legacy["fill_to_limit"]
     kept = replacement_mutator(decode_settings(legacy), keep_fill_to_limit=True)(current)

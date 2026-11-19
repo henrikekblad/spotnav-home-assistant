@@ -134,3 +134,34 @@ async def test_the_stored_document_round_trips_old_and_new_records(hass: HomeAss
     old, new = reloaded.closed_raw(CHARGER)
     assert old.cost_basis == "stored" and old.cost_minor == 480.0
     assert new.cost_basis == "current_settings" and len(new.intervals) == 1
+
+
+async def test_an_underivable_legacy_record_survives_load_save_and_load_with_its_cost(
+    hass: HomeAssistant, hass_storage: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 2.x record from before intervals whose day files are gone keeps its stored cost: read, tried by
+    `migrate_legacy` (nothing to re-derive it from), written back in its legacy shape unchanged, and read again."""
+    from custom_components.spotnav.sessions import history_import
+
+    raw = legacy_record()
+    for key in ("priced_kwh", "cost_minor", "reference_cost_minor"):
+        raw[f"legacy_{key}"] = raw.pop(key)
+    hass_storage["spotnav_sessions"] = {"version": 1, "data": {"sessions": {CHARGER: [raw]}, "open": {}, "imports": {}}}
+    monkeypatch.setattr(history_import, "price_market", lambda hass_, charger: None)
+
+    first = SessionStore(hass)
+    await first.async_load()
+    assert await history_import.migrate_legacy(hass, first, CHARGER) == 0
+    first.replace_closed(CHARGER, list(first.closed_raw(CHARGER)), NOW)  # a save of the whole record
+    await first.async_flush()
+    assert hass_storage["spotnav_sessions"]["data"]["sessions"][CHARGER] == [raw], "written back unchanged"
+
+    again = SessionStore(hass)
+    await again.async_load()
+    (old,) = again.closed_raw(CHARGER)
+    assert old.cost_basis == "stored" and (old.cost_minor, old.reference_cost_minor, old.priced_kwh) == (480.0, 520.0, 10.0)
+
+
+def test_a_new_session_is_never_written_with_a_stored_cost() -> None:
+    written = intervals_session(8, 4.0).as_dict()
+    assert written["intervals"] and not any(key.startswith("legacy_") or key == "cost_minor" for key in written)

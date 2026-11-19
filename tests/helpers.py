@@ -510,3 +510,35 @@ async def answers_of(hass: HomeAssistant, connection: Any) -> list[Any]:
             await asyncio.sleep(0)  # not a timer: a frozen clock never reaches one
     await hass.async_block_till_done()
     return connection.answers
+
+
+def with_ownership_view(stored: dict | None) -> dict:
+    """A charger's stored record with the ownership a 2.x release wrote as keys beside the core's record
+    (`controller.OWNERSHIP_KEYS`) filled in from that record, so a test reads `charge_origin`, `balancing_pause`, `hold`
+    and `car_ended_*` as before. 3.0 writes none of those keys: their absence on disk is asserted here. The record is
+    read as a dict (not `ChargeSession.from_store`, which some tests count)."""
+    from custom_components.spotnav.execution.controller import (
+        _CORE_OWNER_ORIGIN,
+        OWNERSHIP_KEYS,
+        SESSION_STORE_KEY,
+    )
+
+    stored = dict(stored or {})
+    written = sorted(key for key in OWNERSHIP_KEYS if key in stored)
+    assert not written, f"3.0 writes no ownership keys: {written}"
+    session = stored.get(SESSION_STORE_KEY)
+    session = session if isinstance(session, dict) else {}
+    origin, plan_charge = _CORE_OWNER_ORIGIN.get(session.get("owner") or "", (None, False))
+    paused = _CORE_OWNER_ORIGIN.get(session.get("paused_origin") or "", (None, False))
+    ended = session.get("car_ended") or {}
+    view = {
+        "charge_origin": origin,
+        "plan_charge": plan_charge,
+        "balancing_pause": {"origin": paused[0], "plan_charge": paused[1]} if session.get("balancing_paused") else None,
+        "hold": {"held": session.get("held") is True, "overridden": session.get("overridden") is True},
+        "car_ended_at": ended.get("at"),
+        "car_ended_soc": ended.get("soc"),
+        "car_ended_vehicle": ended.get("vehicle"),
+        "car_ended_wait": ended.get("wait"),
+    }
+    return {**stored, **view}

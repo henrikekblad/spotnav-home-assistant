@@ -38,8 +38,8 @@ record a charger keeps across restarts (`to_store`/`from_store`) leaves out what
 
 Version 2 keeps the whole car-ended record (`car_ended`) where version 1 kept only its instant (`car_ended_at`). A
 version 1 record is still read (`from_dict`, `from_store`): its car-ended record has that instant and nothing else
-known (no level, no car, no wait). Only version 2 is written; a build that knows only version 1 refuses it and reads
-today's keys instead, which are still written.
+known (no level, no car, no wait). Only version 2 is written (read by every release from 2.1 on); a build that knows
+only version 1 refuses it and reads the ownership keys instead, which 3.0 no longer writes, so it reads nobody's charge.
 """
 
 from __future__ import annotations

@@ -1,11 +1,11 @@
 """A charge session read from a charger's record as the logic before the core kept it, once.
 
 Pure: no Home Assistant imports. A charger that never stored the core's own record (`charge_session`), one whose record
-could not be read, or one an earlier build said was older than today's keys, is migrated once from today's ownership
-keys (`plan_charge`, `charge_origin`, `top_off_until`, `balancing_pause`, `hold`, `car_ended_*`) and the person intent
-the execution boundary keeps (`PauseIntent`, or `person_stopped`, which a release before the boundary's pause stored).
-`migrate_from_keys` reads the stored dict only. The controller still writes those keys, derived from the session, for
-one release more, so a rollback reads a correct state; this reader stays until no release line needs it.
+could not be read, or one an earlier build said was older than its ownership keys, is migrated once from the ownership
+keys a 2.x release kept (`plan_charge`, `charge_origin`, `top_off_until`, `balancing_pause`, `hold`, `car_ended_*`) and
+the person intent the execution boundary keeps (`PauseIntent`, or `person_stopped`, which a release before the
+boundary's pause stored). `migrate_from_keys` reads the stored dict only. 3.0 no longer writes those keys (only
+`top_off_until`, the top-off's own deadline, is still saved); this reader stays while a 2.x record can be upgraded.
 """
 
 from __future__ import annotations

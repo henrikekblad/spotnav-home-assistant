@@ -6,16 +6,16 @@ a restart can resume it (`recorder.SessionRecorder`). Readers (the sensors, the 
 WebSocket command) read memory; nothing here awaits.
 
 The open sessions change about once a minute while a car charges, so they have a small store of their own
-(`OPEN_STORAGE_KEY`). The big one (`STORAGE_KEY`: the finished sessions, the import markers and, as when it was
-the only one, the open sessions as they stood) is written only when a session ends, an import ran or a charger
-went, and turned into JSON in the executor.
+(`OPEN_STORAGE_KEY`). The big one (`STORAGE_KEY`: the finished sessions and the import markers; its `open` stays
+empty) is written only when a session ends, an import ran or a charger went, and turned into JSON in the executor.
+Releases from 2.4.3 on read both; an earlier one, run again, reads only the big one and so resumes no open session.
 
 Nothing may be lost between the two. A session that ends is kept in the small store's `closing` list for
 `CLOSING_KEEP` after its end, whatever became of the big store's writes (a failed write is only logged by Home
 Assistant, and one made while it stops lands only at its final write, so a write's return proves nothing). On
 load, a `closing` session the big store lacks is taken into the finished ones; one it has is let go. For each
-charger the open session is the more recent of the two stores' (its last sample, else its start): an older version
-run in between writes only the big one. An open session is dropped when it is among the charger's finished
+charger the open session is the more recent of the two stores' (its last sample, else its start): a version before
+2.4.3 run in between writes only the big one. An open session is dropped when it is among the charger's finished
 sessions or began before the newest of them ended; a crash before the small store was written after the close
 leaves it open there and among no finished ones, so it resumes.
 A record from before the small store existed has none: its open sessions are read from the big one.
@@ -181,7 +181,12 @@ class SessionStore:
         self._closed_changed()
         if record_behind:
             self._schedule_record()
-        if small_behind or record_behind:
+        if any(session is not in_small.get(charger_id) for charger_id, session in self._open.items()):
+            # An open session read from the big store alone (written by a release before 2.4.3, or one run in
+            # between): the big store's `open` is written empty from now on, so the small store holds it at once,
+            # before any big write could leave it nowhere on disk.
+            await self._open_store.async_save(self._open_document())
+        elif small_behind or record_behind:
             self._open_store.async_delay_save(self._open_document, SAVE_DELAY_S)
 
     # ---- reads
@@ -335,10 +340,9 @@ class SessionStore:
         self._notify(charger_id)
 
     async def async_flush(self) -> None:
-        """Write both stores now, the big one first. Home Assistant's stop calls it, so the big store is current after
-        a clean stop (an older version reads only it). While Home Assistant stops, `Store` keeps both for its final
-        write; the small one keeps its `closing` list either way."""
-        self._record_dirty = True
+        """Write both stores now: the big one first, when it has changes no write has taken yet. Home Assistant's
+        stop calls it. While Home Assistant stops, `Store` keeps both for its final write; the small one keeps its
+        `closing` list either way."""
         await self._async_write_record()
         await self._open_store.async_save(self._open_document())
 
@@ -374,13 +378,12 @@ class SessionStore:
         """The big store's document (built at once; `_snapshot` defers the rows to the executor)."""
         return _rows(*self._snapshot())
 
-    def _snapshot(self) -> tuple[dict[str, list[ChargeSession]], dict[str, Any], dict[str, Any]]:
+    def _snapshot(self) -> tuple[dict[str, list[ChargeSession]], dict[str, Any]]:
         """What the big store's document is made of, taken on the loop and the writer's own: the lists of finished
-        sessions copied (a finished session never changes; a migration replaces the object), the open sessions
-        already as rows and the import markers copied whole."""
+        sessions copied (a finished session never changes; a migration replaces the object) and the import markers
+        copied whole."""
         return (
             {charger_id: list(items) for charger_id, items in self._closed.items() if items},
-            self._open_document()["open"],
             copy.deepcopy(self._imports),
         )
 
@@ -470,13 +473,12 @@ class SessionStore:
             listener()
 
 
-def _rows(
-    closed: dict[str, list[ChargeSession]], opened: dict[str, Any], imports: dict[str, Any]
-) -> dict[str, Any]:
-    """The big store's document, in the shape it always had. Pure: the store calls it in the executor."""
+def _rows(closed: dict[str, list[ChargeSession]], imports: dict[str, Any]) -> dict[str, Any]:
+    """The big store's document, in the shape it always had (its `open` empty: the small store keeps the open
+    sessions). Pure: the store calls it in the executor."""
     return {
         "sessions": {charger_id: [item.as_dict() for item in items] for charger_id, items in closed.items()},
-        "open": opened,
+        "open": {},
         "imports": imports,
     }
 

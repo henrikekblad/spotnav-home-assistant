@@ -65,14 +65,14 @@ async def test_a_first_read_is_defaults_at_revision_zero(store: AutoSettingsStor
     await store.async_load()
     settings = store.settings("entry_a")
     assert settings.revision == 0
-    assert settings.area_id is None and settings.phases is None and settings.amps is None
+    assert settings.area_id is None and settings.amps is None
     assert set(encode_settings(settings)) == SETTINGS_KEYS | {"revision", "fiscal_included"}
 
 
 async def test_a_full_replacement_increments_once_and_survives_a_reload(hass: HomeAssistant):
     store = AutoSettingsStore(hass)
     await store.async_load()
-    replacement = replacement_for(store.settings("entry_a"), area_id="SE4", amps=16, phases=3)
+    replacement = replacement_for(store.settings("entry_a"), area_id="SE4", amps=16)
 
     committed = await store.async_update(
         "entry_a",
@@ -81,11 +81,7 @@ async def test_a_full_replacement_increments_once_and_survives_a_reload(hass: Ho
     )
     assert committed.revision == 1
     # The phases in the body are accepted and ignored: nothing of it is stored.
-    assert (committed.area_id, committed.amps, committed.phases) == (
-        "SE4",
-        16,
-        None,
-    )
+    assert (committed.area_id, committed.amps) == ("SE4", 16)
 
     reopened = AutoSettingsStore(hass)
     await reopened.async_load()

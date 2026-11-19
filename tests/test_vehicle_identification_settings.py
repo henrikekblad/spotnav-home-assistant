@@ -39,7 +39,7 @@ NEW_KEYS = ("vehicle_ids", "identify_mode")
 
 
 def body(**changes: Any) -> dict[str, Any]:
-    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10, phases=3))
+    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10))
     return {key: value for key, value in encoded.items() if key != "revision"} | changes
 
 
@@ -126,7 +126,7 @@ def test_the_wire_refuses_by_name(changes: dict[str, Any], code: str) -> None:
 
 def test_a_replacement_that_leaves_them_out_keeps_them() -> None:
     current = replace(
-        AutoSettings(area_id="SE4", amps=10, phases=3), vehicle_ids=("car-a", "car-b"), identify_mode="ask"
+        AutoSettings(area_id="SE4", amps=10), vehicle_ids=("car-a", "car-b"), identify_mode="ask"
     ).validated()
     kept = replacement_mutator(decode_settings(legacy_body(amps=16)), keep_identification=True)(current).validated()
     assert kept.amps == 16

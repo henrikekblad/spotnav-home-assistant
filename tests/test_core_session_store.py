@@ -22,7 +22,12 @@ from custom_components.spotnav.core.session import (
     STORED_VERSION,
     TRANSIENT_FIELDS,
 )
-from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_SAVE_DELAY_S, SESSION_STORE_KEY
+from custom_components.spotnav.execution.controller import (
+    OWNERSHIP_KEYS,
+    SESSION_ORDER_KEY,
+    SESSION_SAVE_DELAY_S,
+    SESSION_STORE_KEY,
+)
 from custom_components.spotnav.planning.auto_settings import (
     MANUAL_SCOPE_NEXT_PLUG_IN,
     MANUAL_SCOPE_PLUG_IN,
@@ -30,6 +35,7 @@ from custom_components.spotnav.planning.auto_settings import (
     MANUAL_STOP,
 )
 
+from .helpers import with_ownership_view
 from .pause_world import ENTRY, later_window, pause_world, SWITCH, two_windows, World
 from .relay import FakeScheduler
 
@@ -128,14 +134,20 @@ def reads(monkeypatch: pytest.MonkeyPatch) -> list[ChargeSession]:
 
 
 async def _stored(world: World) -> dict[str, Any]:
-    return await world.controller._store.async_load()  # noqa: SLF001
+    return with_ownership_view(await world.controller._store.async_load())  # noqa: SLF001
+
+
+async def _disk(world: World) -> dict[str, Any]:
+    """The record on disk as it is, also one a test wrote in a 2.x release's shape."""
+    return dict(await world.controller._store.async_load())  # noqa: SLF001
 
 
 async def _rewrite(world: World, change: Any) -> None:
-    """Change the charger's stored record by hand, as an older release or a damaged file left it: no debounced save
-    of the running controller overwrites it on the way down."""
+    """Change the charger's stored record by hand, as an older release or a damaged file left it (a 2.x release wrote
+    the ownership keys beside the core's record): no debounced save of the running controller overwrites it on the way
+    down."""
     world.controller._cancel_session_save()  # noqa: SLF001
-    record = dict(await _stored(world))
+    record = await _stored(world)
     change(record)
     await world.controller._store.async_save(record)  # noqa: SLF001
 
@@ -166,7 +178,7 @@ async def test_todays_keys_are_migrated_once_into_the_cores_record(
     world = await pause_world(hass, timers, plan=two_windows())
     await world.executor.async_manual_stop()
     await _rewrite(world, lambda record: record.pop(SESSION_STORE_KEY, None))
-    assert SESSION_STORE_KEY not in await _stored(world)
+    assert SESSION_STORE_KEY not in await _disk(world)
     before = len(saves)
 
     restarted = await world.restart()
@@ -177,8 +189,8 @@ async def test_todays_keys_are_migrated_once_into_the_cores_record(
     stored = (await _stored(restarted))[SESSION_STORE_KEY]
     assert stored["version"] == STORED_VERSION
     assert (stored["manual"], stored["owner"]) == ({"action": "stop", "scope": "plug_in"}, "none")
-    for key in ("plan", "charge_origin", "plan_charge", "hold"):
-        assert key in await _stored(restarted), "today's keys are still written"
+    disk = await _disk(restarted)
+    assert "plan" in disk and not set(OWNERSHIP_KEYS) & set(disk), "written in this release's shape, without the keys"
     assert _but_the_plug(restarted.controller.session_runner.session) == _but_the_plug(
         ChargeSession.from_store(stored)
     )
@@ -402,39 +414,14 @@ async def test_a_decision_made_while_the_shutdown_waits_for_the_lock_is_saved(
 # ---------------------------------------------------------------------------------------------- one writer (step 8)
 
 
-def _keys_of(session: dict[str, Any]) -> dict[str, Any]:
-    """Today's ownership keys as derived from a stored record of the core's (`_store_record` when it drives)."""
-    from custom_components.spotnav.execution.controller import _CORE_OWNER_ORIGIN
-
-    origin, plan_charge = _CORE_OWNER_ORIGIN.get(session["owner"], (None, False))
-    ended = session["car_ended"] or {}
-    paused = _CORE_OWNER_ORIGIN.get(session["paused_origin"] or "", (None, False))
-    return {
-        "charge_origin": origin,
-        "plan_charge": plan_charge,
-        "car_ended_at": ended.get("at"),
-        "car_ended_soc": ended.get("soc"),
-        "car_ended_vehicle": ended.get("vehicle"),
-        "car_ended_wait": ended.get("wait"),
-        "balancing_pause": {"origin": paused[0], "plan_charge": paused[1]} if session["balancing_paused"] else None,
-        "hold": {"held": session["held"], "overridden": session["overridden"]},
-    }
-
-
-def _written_keys(record: dict[str, Any]) -> dict[str, Any]:
-    from custom_components.spotnav.execution.controller import OWNERSHIP_KEYS
-
-    return {key: record.get(key) for key in OWNERSHIP_KEYS}
-
-
 @pytest.mark.usefixtures("drives")
-async def test_every_record_written_keeps_todays_keys_derived_from_its_session_and_no_order_marks(
+async def test_every_record_written_carries_no_ownership_keys_and_no_order_marks(
     hass: HomeAssistant, timers: FakeScheduler, saves: list
 ) -> None:
-    """One writer: every save writes the core's record and today's keys together, the keys derived from the record,
-    also the saves inside a start's or a stop's feed before its result is decided (the owner the command makes, in
-    both). No order marks are written, so an earlier build reads the record as the newer (its restore takes a
-    record with no marks for the newer), and an older build or the option off reads the same owner from the keys."""
+    """One writer: every save writes the core's record, also the saves inside a start's or a stop's feed before its
+    result is decided (the owner the command makes). Neither the ownership keys a 2.x release wrote beside it nor order
+    marks are written: a 2.x release from 2.1 on, run again, reads the record as the newer (its restore takes a record
+    with no marks for the newer)."""
     world = await pause_world(hass, timers, plan=two_windows())
     assert world.controller.charge_origin == "plan_window"
     await world.executor.async_manual_stop()
@@ -452,7 +439,7 @@ async def test_every_record_written_keeps_todays_keys_derived_from_its_session_a
     assert {"plan", "person", "solar", "charge_now", "none"} <= owners, owners
     for record in written:
         assert SESSION_ORDER_KEY not in record
-        assert _written_keys(record) == _keys_of(record[SESSION_STORE_KEY]), record
+        assert not set(OWNERSHIP_KEYS) & set(record), record
 
 
 @pytest.mark.usefixtures("drives")
@@ -461,8 +448,8 @@ async def test_a_restart_right_after_a_starts_save_and_before_its_result_reads_t
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, cause: str | None
 ) -> None:
     """The start's own save (`_start_locked`, inside its feed) is the last one on disk when Home Assistant dies before
-    the feed's end decides the result: the record alone is read back, and it names the start's owner, as today's keys
-    do (the order marks that once let the keys win here are gone). The sun's start and a Charge-now start; a person's
+    the feed's end decides the result: the record alone is read back, and it names the start's owner (the order marks
+    that once let the keys win here are gone). The sun's start and a Charge-now start; a person's
     Start keeps its intent in the settings store as well, which this test cannot take back to that instant."""
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     controller = world.controller
@@ -480,7 +467,7 @@ async def test_a_restart_right_after_a_starts_save_and_before_its_result_reads_t
     (record,) = on_disk
     expected = "solar" if cause == "solar" else "charge_now"
     assert record[SESSION_STORE_KEY]["owner"] == expected, "the start's own save, before its result"
-    assert _written_keys(record) == _keys_of(record[SESSION_STORE_KEY])
+    assert not set(OWNERSHIP_KEYS) & set(record)
 
     # The process dies there: what is on disk is that save alone.
     controller._cancel_session_save()  # noqa: SLF001
@@ -528,7 +515,7 @@ async def test_a_crash_between_a_persons_starts_save_and_its_pause_leaves_the_ch
     await hass.async_block_till_done()
     (record,) = on_disk
     assert (record[SESSION_STORE_KEY]["owner"], record[SESSION_STORE_KEY]["manual"]) == ("person", None)
-    assert record["plan"] is not None and record["charge_origin"] == "manual"
+    assert record["plan"] is not None and with_ownership_view(record)["charge_origin"] == "manual"
 
     # The process dies there: neither the pause nor any later save reached the disk.
     controller._cancel_session_save()  # noqa: SLF001
@@ -578,9 +565,9 @@ async def test_a_storm_of_reports_that_change_nothing_writes_nothing(
 async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_keys_written_after_it(
     hass: HomeAssistant, timers: FakeScheduler, marks: str
 ) -> None:
-    """On disk the record says nobody owns the charge and today's keys say the sun does. A record of this build (no
-    order marks) or one an earlier build saved after its keys is the truth: today's owner is cleared, and the keys are
-    written again to follow it. An earlier build's record whose marks say the keys were written after it is migrated
+    """On disk the record says nobody owns the charge and a 2.x release's keys say the sun does. A record with no order
+    marks or one an earlier build saved after its keys is the truth: the owner is cleared, and the record is written
+    again without the keys. An earlier build's record whose marks say the keys were written after it is migrated
     from the keys once, as that build read it (the sun's charge is spared), and written again without marks."""
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
 
@@ -595,7 +582,7 @@ async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_k
     await hass.async_block_till_done()
     await _rewrite(world, change)
     world.controller._session_saved = ChargeSession.from_store(  # noqa: SLF001 - the old controller saves nothing more
-        (await _stored(world))[SESSION_STORE_KEY]
+        (await _disk(world))[SESSION_STORE_KEY]
     )
     world.controller.session_runner.session = world.controller._session_saved  # noqa: SLF001
     restarted = await world.restart()
@@ -611,7 +598,7 @@ async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_k
 
 
 def _as_the_previous_logic_left_it(record: dict[str, Any]) -> None:
-    """A charger an earlier release ran with the previous logic: today's keys alone, no record of the core's."""
+    """A charger an earlier release ran with the previous logic: the ownership keys alone, no record of the core's."""
     record.pop(SESSION_STORE_KEY, None)
     record.pop(SESSION_ORDER_KEY, None)
 
@@ -674,4 +661,36 @@ async def test_an_update_during_a_solar_charge_hands_it_to_the_core(
     again = await restarted.restart()
     assert reads and reads[-1].owner == "solar", "read from the core's own record now"
     assert again.controller.charge_origin == "solar" and len(world.stops) == stops
+    await again.shutdown()
+
+
+# ---------------------------------------------------------------------------------------------- 2.x records
+
+
+@pytest.mark.usefixtures("both_restarts")
+async def test_a_2x_record_loads_in_the_3_0_shape_and_a_downgrade_then_upgrade_still_loads(
+    hass: HomeAssistant, timers: FakeScheduler, reads: list
+) -> None:
+    """A record as 2.1 to 2.5 wrote it (the core's record, version 2, with the ownership keys beside it, derived from
+    it) is read from the record and written again at once without the keys. A downgrade to such a release reads the
+    record as it is (same version) and writes the keys again; the upgrade after it reads the record once more."""
+    world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
+    assert await world.controller.async_start(cause="solar")
+    await hass.async_block_till_done()
+    await _rewrite(world, lambda record: None)  # the 2.x shape: the keys beside the record
+    disk = await _disk(world)
+    assert disk["charge_origin"] == "solar" and disk[SESSION_STORE_KEY]["version"] == STORED_VERSION
+
+    upgraded = await world.restart()
+    assert reads and reads[-1].owner == "solar", "read from the record, not migrated from the keys"
+    assert upgraded.controller.charge_origin == "solar"
+    disk = await _disk(upgraded)
+    assert not set(OWNERSHIP_KEYS) & set(disk), "written at once in this release's shape"
+    assert disk[SESSION_STORE_KEY]["owner"] == "solar" and disk[SESSION_STORE_KEY]["version"] == STORED_VERSION
+
+    # The downgrade: 2.x reads the same record version and writes the keys beside it again.
+    await _rewrite(upgraded, lambda record: None)
+    again = await upgraded.restart()
+    assert again.controller.charge_origin == "solar" and again.controller.charging
+    assert not set(OWNERSHIP_KEYS) & set(await _disk(again))
     await again.shutdown()

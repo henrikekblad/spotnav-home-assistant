@@ -24,7 +24,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from custom_components.spotnav.const import CONF_CHARGE_CONTROL
 from custom_components.spotnav.execution.controller import ChargingController
 
-from .helpers import install_schedule
+from .helpers import install_schedule, with_ownership_view
 from .test_replug import _obedient_switch
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -242,7 +242,7 @@ async def test_the_off_report_forgets_the_origin_and_saves_it(hass: HomeAssistan
     hass.states.async_set(SWITCH, "off")
     await hass.async_block_till_done()
 
-    saved = await controller._store.async_load()  # noqa: SLF001 - what a restart reads
+    saved = with_ownership_view(await controller._store.async_load())  # noqa: SLF001 - what a restart reads
     assert saved["charge_origin"] is None and saved["plan_charge"] is False
 
 

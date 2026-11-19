@@ -292,7 +292,6 @@ const ANSWER = O({
         raised_min: N("number"),
       }),
     ),
-    hot_water_pick: N("string"),
   }),
   indoor_day: N(INDOOR_DAY),
   notes: A(O({ code: "string", params: "any" })),
@@ -557,7 +556,7 @@ export interface HeatAnswer {
     would: { action: string; target_c: number; until: string | null; reason: string } | null;
     guard: string | null;
   };
-  band: { date: string; hours: HeatBandHour[]; hot_water_pick: string | null };
+  band: { date: string; hours: HeatBandHour[] };
   /** The day's measured indoor curve up to now (`heat-day-chart.ts`); `null` without indoor sensors. */
   indoor_day: IndoorDay | null;
   notes: { code: string; params: Record<string, unknown> }[];

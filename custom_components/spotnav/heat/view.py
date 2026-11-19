@@ -16,7 +16,7 @@
              money} | null,
      status: {pump_state, pump_state_source, kw, would: {action, target_c, until, reason} | null, guard},
      band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car, relay_min, relay_expected,
-                           executed_min, raised_min}], hot_water_pick} | null,
+                           executed_min, raised_min}]} | null,
      indoor_day: the day's measured indoor curve up to now (`heat/indoor_day.py`, 15-minute steps, `setpoint` null:
                  the band's `target_c` is the setpoint) | null,
      notes: [{code, params}],
@@ -53,8 +53,8 @@ cap, the pump's periodic increase, or moved where the plan chose again around a 
 steered by has them out, else what it would do), its own mode and gate, and whether a
 tank sensor reads (`tank`: the tank rule then stands in for the day's cap), and whether its stricter rules hold
 after a back-off (`strict`). The review's `cold_risks` are the peaks a
-block held the pump's run into, `blocks_cut` the hours level A took out that day, `a_mode` level A's mode that day. The band's `hot_water_pick` is the first planned
-boost ahead (an alias kept one release), and an hour with a planned boost is marked `hot_water` as a measured run's.
+block held the pump's run into, `blocks_cut` the hours level A took out that day, `a_mode` level A's mode that day. An hour of the band with a planned boost is marked
+`hot_water` as a measured run's.
 
 `ahead` is the plan from the running hour on, `AHEAD_HOURS` of them at most (the card's strip under the dial): the
 band's own hours to midnight, then tomorrow's as the same rule plans them once every hour of tomorrow has its price
@@ -358,15 +358,11 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
     split = None if meter is None else meter.split
     runs = () if split is None else split.runs
     run_hours = {run.start.replace(minute=0) for run in runs}
-    # The planned boosts (`hot_water.planned`): the first ahead is the band's `hot_water_pick` (kept one release as
-    # the alias it was), each marks its hour.
-    hot_water_pick: datetime | None = None
+    # The planned boosts (`hot_water.planned`): each marks its hour.
     planned_hours: set[datetime] = set()
     for item in (inputs.hot_water or {}).get("planned") or ():
         start = datetime.fromisoformat(item["start"])
         planned_hours.add(start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0))
-        if hot_water_pick is None and start >= current:
-            hot_water_pick = start
 
     band_block = {
         "date": now.astimezone(zone_info).date().isoformat(),
@@ -383,7 +379,6 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
             }
             for hour in band_hours
         ],
-        "hot_water_pick": None if hot_water_pick is None else hot_water_pick.isoformat(),
     }
 
     ahead = [

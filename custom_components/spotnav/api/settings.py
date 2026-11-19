@@ -164,13 +164,12 @@ NON_ADMIN_FIELDS: Final = frozenset(
     }
 )
 
-#: Fields no body states, so never compared for that rule: the revision and the pause, and the phases an older
-#: release stored (accepted and ignored, see below).
-_UNSTATED_FIELDS: Final = frozenset({"revision", "pause", "phases"})
+#: Fields no body states, so never compared for that rule: the revision and the pause.
+_UNSTATED_FIELDS: Final = frozenset({"revision", "pause"})
 
-#: `phases` joins them since the phases a charge uses stopped being a setting (the charger's wiring and the
-#: vehicle's onboard charger decide them): an older client still sends it, a newer one may leave it out,
-#: and either way it is ignored. A response carries the effective value in it, for the older clients.
+#: `phases` is optional since the phases a charge uses stopped being a setting (the charger's wiring and the
+#: vehicle's onboard charger decide them): a client may echo it back or leave it out, and either way it is ignored.
+#: A response carries the effective value in it, which the card and the app show.
 #: The keys a replacement body must carry; the rest of `SETTINGS_KEYS` may be left out.
 REQUIRED_SETTINGS_KEYS: Final = SETTINGS_KEYS - OPTIONAL_SETTINGS_KEYS
 
@@ -407,8 +406,8 @@ def encode_settings(
 ) -> dict[str, Any]:
     """The public value: every user-owned planning input, and the record's revision.
 
-    `phases` is the effective phases a charge uses (`planning/phases.py`), which is what the key carries
-    for an older client; the stored field is only an older release's leftover and is never read.
+    `phases` is the effective phases a charge uses (`planning/phases.py`), which is what the key carries;
+    it is no setting.
     `included` is the read-only `fiscal_included` (see the module docstring), `available` the notify
     services `notifications.available` lists.
     """

@@ -187,20 +187,20 @@ PLAN_WATCH_INTERVAL = timedelta(seconds=30)
 #: The car's plug sensor standing in is found again every this many plan watches (five minutes).
 CAR_PLUG_REFRESH_TICKS: Final = 10
 STORE_VERSION = 1
-#: The store key of the core's own session record (`ChargeSession.to_store`), the truth a restart reads; today's keys
-#: are still written beside it, derived from it, for one release more.
+#: The store key of the core's own session record (`ChargeSession.to_store`), the truth a restart reads.
 SESSION_STORE_KEY = "charge_session"
-#: A change of the core's session that no save of today's keys carried is saved by the first decision at least this
+#: A change of the core's session that no other save carried is saved by the first decision at least this
 #: long after it (or at shutdown), once: never at every report. No timer of its own: a restart's timers are not moved.
 #: A change of the owner or the person intent is not debounced: it is saved at once (`_persist_session`).
 SESSION_SAVE_DELAY_S = 30.0
-#: The store key an earlier build wrote beside its record: which was newer, the record or today's keys, as two marks on
-#: one counter (`session`, `keys`). No longer written: the record and today's keys, derived from it, are written
-#: together by one writer, so neither can be the newer. Read once only, as a migration: an earlier build's marks
-#: saying its keys were written after its record make the restart read today's keys, as that build would have.
+#: The store key an earlier build wrote beside its record: which was newer, the record or the ownership keys, as two
+#: marks on one counter (`session`, `keys`). No longer written. Read once only, as a migration: an earlier build's
+#: marks saying its keys were written after its record make the restart read the keys, as that build would have.
 SESSION_ORDER_KEY = "charge_session_order"
-#: Today's ownership keys: derived from the core's session at every save (`_store_record`), so the release before reads
-#: the same after a rollback; read back only to migrate into the core's record (`core.migration.migrate_from_keys`).
+#: The ownership keys a 2.x release kept beside the core's record (derived from it, for a rollback to the release before
+#: the core). No longer written: read once, to migrate into the core's record (`core.migration.migrate_from_keys`), and a
+#: record that still carries any of them is saved again at once without them (`_restore_locked`). `top_off_until` is
+#: not one of them: the top-off's deadline is the controller's own state, saved and read as before.
 OWNERSHIP_KEYS = (
     "plan_charge",
     "charge_origin",
@@ -650,8 +650,13 @@ def _record_view(record: EndedRecord | None) -> CarEndedRecord:
     )
 
 
+def _carries_ownership_keys(saved: Any) -> bool:
+    """Whether a stored record still carries any of the ownership keys a 2.x release wrote (`OWNERSHIP_KEYS`)."""
+    return isinstance(saved, dict) and any(key in saved for key in OWNERSHIP_KEYS)
+
+
 def _earlier_keys_newer(marks: Any) -> bool:
-    """Whether an earlier build's order marks (`SESSION_ORDER_KEY`) say today's keys were written after its record."""
+    """Whether an earlier build's order marks (`SESSION_ORDER_KEY`) say the ownership keys were written after its record."""
     if not isinstance(marks, dict):
         return False
     session, keys = marks.get("session"), marks.get("keys")
@@ -1092,7 +1097,7 @@ class ChargingController:
         self._core_connection_manual: Any = ...
         self._core_hold_verdict: frozenset[tuple[str, str]] | None = None
         # The core's session as last saved (`SESSION_STORE_KEY`), and the debounced save of a change (`_persist_session`).
-        # One writer: every save (`_async_save`) writes the record and today's keys, derived from it, together.
+        # One writer: every save (`_async_save`) writes the record with the rest of the charger's state.
         self._session_saved: ChargeSession | None = None
         self._session_dirty_since: datetime | None = None
         # A Repairs issue when the core's decisions keep failing while it drives (`SessionRunner.failed`).
@@ -1116,7 +1121,7 @@ class ChargingController:
 
     @property
     def _core_owner(self) -> tuple[str | None, bool]:
-        """The session's owner as the two owner fields today's keys and readers name (`_CORE_OWNER_ORIGIN`: nobody's
+        """The session's owner as the two owner fields readers name (`_CORE_OWNER_ORIGIN`: nobody's
         and the charger's own are `(None, False)`); a start or a stop of ours that went out in the feed still open
         reads as the owner it makes (`core.ownership.owner_as_sent`)."""
         return _CORE_OWNER_ORIGIN.get(owner_as_sent(self._runner.session, self._command_unfed), (None, False))
@@ -1228,8 +1233,9 @@ class ChargingController:
         # ownership half restored.
         await self._runner.coverage.async_load(await self._integration_version())
         saved = await self._store.async_load()
-        # The core's own record is the truth. Today's keys are read only to migrate (`migrate_from_keys`): no record,
-        # one it cannot read, or an earlier build's saying the keys were written after it (`_stored_session`).
+        # The core's own record is the truth. The ownership keys a 2.x release kept are read only to migrate
+        # (`migrate_from_keys`): no record, one it cannot read, or an earlier build's saying the keys were written after
+        # it (`_stored_session`).
         stored, migrate = self._stored_session(saved)
         # What the charger carried before SpotNav first wrote it: still to be read for a new charger, unknown for one
         # whose record is older than this reading (SpotNav may have written to it already).
@@ -1318,10 +1324,9 @@ class ChargingController:
         self._session_saved = stored
         self._saved_memory = self._memory_signature()
         self._saved_handback = self._handback_facts()
-        if migrate or (stored is not None and self._keys_differ(saved)):
-            # Migrated from today's keys once (the core's own record is written now, beside them), or today's keys on
-            # disk say otherwise than the record (an earlier build saved its record after them): written again, derived
-            # from it, so a rollback reads the same.
+        if migrate or _carries_ownership_keys(saved):
+            # Migrated from the ownership keys once (the core's own record is written now), or a 2.x record that still
+            # carries them beside its own: written again at once in this release's shape, without them.
             await self._async_save_quietly()
         # Armed for the controller's whole life, not only while a plan is: a manual Start has no
         # plan, and a scheduled one is observed from acceptance.
@@ -1847,7 +1852,7 @@ class ChargingController:
             self._new_phase_plug_in()
             # A safety stop's hold, the hold of a charge that began by itself outside a window with a person's override
             # of it, and a balancing pause belong to the plug-in they were made in: the core ended them where this
-            # feed began, and today's keys derived from them are saved soon.
+            # feed began, and the core's record that keeps them is saved soon.
             self._save_memory_soon()
         self._tell_connection_observer(previous, connected)
         if previous is None:
@@ -2275,7 +2280,7 @@ class ChargingController:
                     wait_estimated=False if wait_for is None else wait_for["estimated"],
                 ),
             )
-            # Saved once decided: today's `car_ended_*` keys are derived from the core's record.
+            # Saved once decided: the core's record keeps the car's end.
             await self._async_save_quietly()
             _LOGGER.info(
                 "SpotNav charger %s: the car stopped taking the plan's charge by itself (%s%s)",
@@ -4442,7 +4447,7 @@ class ChargingController:
                     outcome = self._core_stop_outcome(True)
                 finally:
                     self._runner.end(token, pause, outcome=outcome)
-                # Saved soon once decided: the core's session, and today's `balancing_pause` key derived from it.
+                # Saved soon once decided: the core's session keeps the balancing pause.
                 self._save_memory_soon()
                 # Looked at again later: a charge this paused in an open window is either held back for the
                 # regulator's resume or started again by its window. Never after a safety stop, which the core
@@ -5580,11 +5585,11 @@ class ChargingController:
                 await self._async_save_quietly()
 
     async def _async_save(self) -> None:
-        """The one writer of the charger's record: the core's session (`SESSION_STORE_KEY`) and today's keys, both as
-        they are now, so the keys, derived from the session, never say otherwise than it. Prepared at once (nothing
-        awaits before the write), so it may run off the operation lock: a save that begins later writes later. A
-        session that cannot be stored now drops the record: today's keys are written, and a restart migrates from them
-        rather than read a record older than them."""
+        """The one writer of the charger's record: the core's session (`SESSION_STORE_KEY`) with the rest of the
+        charger's state, as they are now. Prepared at once (nothing awaits before the write), so it may run off the
+        operation lock: a save that begins later writes later. A session that cannot be stored now drops the record
+        rather than keep one older than the rest: a restart then reads no owner (nobody's charge, or the charger's own
+        when it charges), so SpotNav undoes nothing it cannot show was its own."""
         signature = self._memory_signature()
         record = self._store_record()
         session = self._session_record()
@@ -5600,41 +5605,24 @@ class ChargingController:
 
     async def _async_save_changed(self) -> None:
         """Save (`_async_save`, never raising) when the core's session differs from the one saved last: an owner's or
-        the person intent's change, a debounced change, a shutdown, Home Assistant's stop. Today's keys go with it,
-        derived from it. Never behind the operation lock, so it delays no decision."""
+        the person intent's change, a debounced change, a shutdown, Home Assistant's stop. Never behind the operation
+        lock, so it delays no decision."""
         session = self._session_record()
         if session is not None and session[0] == self._session_saved:
             return
         await self._async_save_quietly()
 
     def _store_record(self) -> dict[str, Any]:
-        """Today's keys, as saved."""
+        """The charger's state beside the core's session, as saved."""
         record: dict[str, Any] = {
             "plan": asdict(self.plan) if self.plan else None,
             "requested_current_a": self._requested_current_a,
-            "plan_charge": self._is_plan_charge,
-            "charge_origin": self._owner_origin,
             "plugged_in_at": None if self._plugged_in_at is None else self._plugged_in_at.isoformat(),
             # Written only by the target-stop path. A window ending normally and an explicit cancel
             # record nothing here (`async_stop` does not touch this key).
             "target_stop": self._target_stop,
             # The deadline of a top-off that runs past the last window, else `None`.
             "top_off_until": None if self._top_off_until is None else self._top_off_until.isoformat(),
-            # When the car last ended a person's charge by itself, in this plug-in.
-            "car_ended_at": None if self._car_ended.at is None else self._car_ended.at.isoformat(),
-            "car_ended_soc": self._car_ended.soc,
-            "car_ended_vehicle": self._car_ended.vehicle,
-            # What the plan waits for after the car ended its charge short of the target (`_car_ended_awaits_level`).
-            "car_ended_wait": self._car_ended.wait,
-            # A charge load balancing paused, and what it was, so its regulator resumes it after a restart.
-            "balancing_pause": None
-            if not self._balancing.paused
-            else {
-                "origin": None if self._balancing.charge is None else self._balancing.charge[0],
-                "plan_charge": bool(self._balancing.charge is not None and self._balancing.charge[1]),
-            },
-            # The hold's plug-in session: held, and a person's override of it.
-            "hold": {"held": self._hold_state.held, "overridden": self._hold_state.overridden},
             # What the start/stop path remembers (an Easee pause of ours).
             "adapter_memory": self.adapter.memory(),
             "solar_credit_backoff": {
@@ -5659,16 +5647,10 @@ class ChargingController:
 
     # ------------------------------------------------------------------ the core's stored session
 
-    def _keys_differ(self, saved: dict[str, Any] | None) -> bool:
-        """Whether today's ownership keys on disk (`saved`) say otherwise than the ones derived now (`_store_record`)."""
-        derived = self._store_record()
-        return any((saved or {}).get(key) != derived.get(key) for key in OWNERSHIP_KEYS)
-
     def _session_record(self, session: ChargeSession | None = None) -> tuple[ChargeSession, dict[str, Any]] | None:
         """The core's session (`session`, else the runner's) as a restart reads it back, and as stored. A start or a
-        stop of ours that went out in the feed still open is saved as the owner it makes (`core.ownership.owner_as_sent`),
-        as today's keys are: its result is decided at that feed's end, and a restart before then reads the charge as
-        the command made it. `None` when the session could not be stored."""
+        stop of ours that went out in the feed still open is saved as the owner it makes (`core.ownership.owner_as_sent`):
+        its result is decided at that feed's end, and a restart before then reads the charge as the command made it. `None` when the session could not be stored."""
         try:
             current = self._runner.session if session is None else session
             stored = current.stored()
@@ -5681,16 +5663,16 @@ class ChargingController:
             return None
 
     def _stored_session(self, saved: dict[str, Any] | None) -> tuple[ChargeSession | None, bool]:
-        """The core's session as stored (`None`: none, or none it can read), and whether today's keys are to be migrated
-        into its record (one is missing, of a version it does not know, or an earlier build's whose order marks say
-        today's keys were written after it)."""
+        """The core's session as stored (`None`: none, or none it can read), and whether the ownership keys are to be
+        migrated into its record (one is missing, of a version it does not know, or an earlier build's whose order marks
+        say the keys were written after it). A record with no keys migrates to nobody's charge."""
         raw = saved.get(SESSION_STORE_KEY) if saved else None
         if raw is None:
             return None, bool(saved)
         version = raw.get("version") if isinstance(raw, dict) else None
         if isinstance(version, int) and version > STORED_VERSION:
-            # Written by a later release (this one was rolled back to): its record is not ours to read, and today's
-            # keys, which every release still writes, are. Expected, so no failure.
+            # Written by a later release (this one was rolled back to): its record is not ours to read; whatever
+            # ownership keys the record carries are, as at a migration. Expected, so no failure.
             _LOGGER.debug(
                 "SpotNav charger %s: the stored session is version %s, from a later release; read from the keys",
                 self.entry_id,
@@ -5698,20 +5680,20 @@ class ChargingController:
             )
             return None, True
         if _earlier_keys_newer(saved.get(SESSION_ORDER_KEY)):
-            # An earlier build read today's keys over such a record; so does this one, once, and writes its own. The
+            # An earlier build read the keys over such a record; so does this one, once, and writes its own. The
             # person intent comes from the settings store then, as at every migration (that build took the record's);
             # they differ only after a crash between a person's Start's own save and the store's pause.
             return None, True
         try:
             return ChargeSession.from_store(raw), False
         except SessionError as err:
-            # Read from today's keys again, not silently (a warning once, a count, Repairs when failures repeat).
+            # Read from the ownership keys, if any, not silently (a warning once, a count, Repairs when failures repeat).
             self._runner.failed("stored_session", core_events.Restart.kind, err)
             return None, True
 
     def _car_ended_from_keys(self, saved: dict[str, Any] | None, stored: ChargeSession) -> ChargeSession:
-        """The first restart after an upgrade from a version 1 record, which kept only when the car ended: today's
-        `car_ended_*` keys, written beside it, hold the rest of that record (the level read then, the car, what the
+        """The first restart after an upgrade from a version 1 record, which kept only when the car ended: the
+        `car_ended_*` keys a 2.x release wrote beside it hold the rest of that record (the level read then, the car, what the
         plan waits for). Taken from them when they are of the same end (their instant within `CLOCK_TOLERANCE_S` of
         the record's); a record of another end keeps only its instant, and the keys are not read for it."""
         raw = saved.get(SESSION_STORE_KEY) if saved else None
@@ -5734,7 +5716,7 @@ class ChargingController:
             return
         if self._saved_memory is not None and self._car_ended_signature() != self._saved_memory[-1]:
             # The core's car-ended record changed (the car's end, a level read since, a plug-in, an unplug, a person's
-            # Start): today's `car_ended_*` keys are derived from it, saved soon with the rest.
+            # Start): saved soon with the rest.
             self._save_memory_soon()
         record = self._session_record(session)
         if record is None:
@@ -5907,7 +5889,7 @@ class ChargingController:
                         await self._async_save_quietly()
             finally:
                 self._core_end_event(token, facts, lambda: core_events.Rearm(past_last=False, **facts), outcome=outcome)
-            # Saved soon once decided: the stop's result held the plug-in, and today's `hold` key is derived from it.
+            # Saved soon once decided: the stop's result held the plug-in, which the core's session keeps.
             self._save_memory_soon()
         for index, (start, end) in enumerate(windows):
             if start > now:
@@ -6030,7 +6012,7 @@ class ChargingController:
                 car_level_full=False,
             ),
         )
-        # Saved once decided: today's `car_ended_wait` key is derived from the core's record.
+        # Saved once decided: the core's record keeps what the plan waits for.
         await self._async_save_quietly()
         if self.plan is not None and not self._control_on and self._open_window_end() is not None:
             await self._reschedule_locked()
