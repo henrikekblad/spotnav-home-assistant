@@ -123,8 +123,11 @@ def test_tesla_maps_each_action() -> None:
     assert TESLA_CONTROL.wanted("hold", 0.0, soc_pct=1.5)["reserve"] == 0.0
     # Grid charging off while holding.
     assert TESLA_CONTROL.wanted("hold", 0.0, soc_pct=42.7)["grid_charging"] is False
-    charge = TESLA_CONTROL.wanted("grid_charge", 3.0)
-    assert charge == {"reserve": 100.0, "grid_charging": True}
+    # A charge's reserve is one block ahead of the level: 30 minutes at 5 kW of 13.5 kWh is 18.5 points, rounded up.
+    charge = TESLA_CONTROL.wanted("grid_charge", 5.0, soc_pct=42.7, capacity_kwh=13.5)
+    assert charge == {"reserve": 61.0, "grid_charging": True}
+    assert TESLA_CONTROL.wanted("grid_charge", 5.0, soc_pct=95.0, capacity_kwh=13.5)["reserve"] == 100.0
+    assert TESLA_CONTROL.unresolved(TESLA_CONTROL.wanted("grid_charge", 5.0, soc_pct=42.7)) == "size_unknown"
     assert TESLA_CONTROL.wanted("discharge_house", 0.0) == {"reserve": "<snapshot>", "grid_charging": "<snapshot>"}
     assert TESLA_CONTROL.enter_order == ("grid_charging", "reserve") and TESLA_CONTROL.restore_order[0] == "reserve"
     # No site without solar: the optional switch is left out of every state.
@@ -217,7 +220,7 @@ def test_a_tesla_hold_and_grid_charge_and_the_hand_back_order() -> None:
     assert written(results) == [("reserve", 20.0)]
     now += timedelta(hours=1)
     now, results = run(executor, battery, now, 10, "grid_charge", 3.0, headroom_a=30.0)
-    assert written(results) == [("grid_charging", True), ("reserve", 100.0)]
+    assert written(results) == [("grid_charging", True), ("reserve", 61.0)]
     _now, results = run(executor, battery, now, 12, "self_consume")
     assert written(results) == [("reserve", 20.0), ("grid_charging", "off")]
     assert battery.states == TESLA_STATES | {"reserve": "20", "grid_charging": "off"}
@@ -238,7 +241,7 @@ def test_a_switch_found_on_is_handed_back_on() -> None:
     executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
     battery.states["grid_charging"] = "on"
     now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
-    assert written(results) == [("reserve", 100.0)]
+    assert written(results) == [("reserve", 61.0)]
     # Grid charging was allowed before: only the reserve was written, and nothing turns the switch off.
     _now, results = run(executor, battery, now, 12, "self_consume")
     assert written(results) == [("reserve", 20.0)] and battery.states["grid_charging"] == "on"
@@ -296,10 +299,28 @@ def test_the_gate_refuses_a_hold_that_may_charge_over_the_cap() -> None:
     assert restricted(slot, {"hold"}, 0.0, None, 5.0) == (slot, None)
 
 
+def test_a_tesla_grid_charge_runs_in_blocks_so_a_lost_home_assistant_leaves_one_block() -> None:
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0, power_kw=2.0)
+    assert written(results) == [("grid_charging", True), ("reserve", 61.0)]
+    # Within the block nothing is written again, though the level rises.
+    battery.soc_pct = 50.4
+    now, results = run(executor, battery, now, 6, "grid_charge", 3.0, headroom_a=30.0, power_kw=2.0)
+    assert written(results) == []
+    # A block later the ceiling is set one block ahead of the level then.
+    now = T0 + timedelta(seconds=TESLA_CONTROL.charge_block_s + 1)
+    now, results = run(executor, battery, now, 8, "grid_charge", 3.0, headroom_a=30.0, power_kw=2.0)
+    assert written(results) == [("reserve", 69.0)] and events(results, "block")
+    # The level did not move in the next block: nothing to write.
+    now += timedelta(seconds=TESLA_CONTROL.charge_block_s)
+    _now, results = run(executor, battery, now, 8, "grid_charge", 3.0, headroom_a=30.0, power_kw=2.0)
+    assert written(results) == []
+
+
 def test_a_tesla_site_without_solar_has_no_grid_charging_switch_and_still_charges_by_the_reserve() -> None:
     executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
-    assert written(results) == [("reserve", 100.0)]
+    assert written(results) == [("reserve", 61.0)]
     assert not events(results, "not_started")
 
 

@@ -132,7 +132,10 @@ The entity keys, options and services below were checked against each integratio
   in `self_consumption` as found and never writes it (`autonomous` is Time-Based Control, the person's optimiser; `backup`
   pins the reserve). A hold turns grid charging off (where the switch exists; restored on the hand-back) and sets the
   reserve to floor(SoC now) less 2 points (`soc_floor_margin_pct`), never above the SoC: a reserve above the SoC
-  charges from the grid, and the cloud's SoC may be a minute old while the battery discharges. A grid charge is the reserve at 100 % with grid charging allowed; **its power is not controllable** (about
+  charges from the grid, and the cloud's SoC may be a minute old while the battery discharges. A grid charge is the reserve one block ahead of the level with grid charging allowed (`soc_ceiling`,
+  `charge_block_s`: 30 minutes at the recipe's rate, renewed each block. There is no dead-man, so a Home Assistant or a
+  cloud that stops leaves at most one block's charge from the grid and the reserve there, never 100 %); **its power is
+  not controllable** (about
   1.7 kW per Powerwall in field reports, not measured here), so the gate and the executor use the plant's own
   maximum as the rate (`BrandControl.fixed_charge`, `fixed_rate_kw`: the larger of what is read or learnt and 5 kW per
   13.5 kWh) and **refuse** the charge when it does not fit under the fuse cap, instead of lowering it. Slow means: planned actions only
@@ -174,6 +177,8 @@ SNAPSHOT: Final = "<snapshot>"
 SOC_FLOOR: Final = "<soc_floor>"
 SOC_DEPTH: Final = "<soc_depth>"
 _PCT_PREFIX: Final = "<pct_of_rated:"
+#: A charge ceiling one block ahead of the SoC now (`soc_ceiling`, `BrandControl.charge_block_s`).
+_CEILING_PREFIX: Final = "<soc_ceiling:"
 
 #: How long a brand's own watchdog runs (s) and when SpotNav renews it: a command SpotNav stops renewing (HA died)
 #: falls back by itself within this.
@@ -414,6 +419,11 @@ class BrandControl:
     #: hold runs only while that rate fits under the fuse cap, as a fixed grid charge must (`gate.restricted`,
     #: `executor`'s start rule).
     hold_charges_without: tuple[str, ...] = ()
+    #: A grid charge whose power the plant sets (`fixed_charge`) and that stops by a SoC ceiling (`soc_ceiling`) is
+    #: commanded in blocks of this long (s): the ceiling is what the plant reaches in one block at the recipe's rate
+    #: (an upper figure, so it is reached no sooner), renewed every block from the SoC then. Without a dead-man a
+    #: Home Assistant (or a cloud) that stops leaves at most one block's charge from the grid, not a full battery.
+    charge_block_s: float | None = None
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -483,11 +493,13 @@ class BrandControl:
     def wanted(
         self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S, phases: Phases | None = None,
         *, soc_pct: float | None = None, rated_kw: float | None = None, absent: frozenset[str] = frozenset(),
+        capacity_kwh: float | None = None,
     ) -> dict[str, Native]:
         """Every restored role's wanted value for the action (`SNAPSHOT` where the action leaves it). `phases`: a
         grid charge per phase on a phased control (kW on L1, L2, L3, negative for a discharge), instead of the
-        brand's own charge at `rate_kw`. `soc_pct` and `rated_kw` fill in what depends on the plant (`SOC_FLOOR`,
-        `SOC_DEPTH`, `pct_of_rated`); `absent` are optional roles the plant does not have."""
+        brand's own charge at `rate_kw`. `soc_pct`, `rated_kw` and `capacity_kwh` fill in what depends on the plant
+        (`SOC_FLOOR`, `SOC_DEPTH`, `pct_of_rated`, `soc_ceiling`); `absent` are optional roles the plant does not
+        have."""
         wanted: dict[str, Native] = {role.name: SNAPSHOT for role in self.roles if role.restored}
         if action != ACTION_SELF_CONSUME:
             spec = self.phase_control
@@ -496,19 +508,23 @@ class BrandControl:
             else:
                 wants = self.states[action](rate_kw, watchdog_s)
             for want in wants:
-                wanted[want.role] = _resolve(want.value, soc_pct, rated_kw, self.soc_floor_margin_pct)
+                wanted[want.role] = _resolve(
+                    want.value, soc_pct, rated_kw, self.soc_floor_margin_pct, capacity_kwh, self.charge_block_s
+                )
         for name in absent:
             wanted.pop(name, None)
         return wanted
 
     def unresolved(self, wanted: Mapping[str, Native]) -> str | None:
-        """Why a wanted state cannot be written yet: `soc_unknown` or `rated_unknown` while a value that depends on
-        the plant's reading has none."""
+        """Why a wanted state cannot be written yet: `soc_unknown`, `rated_unknown` or `size_unknown` while a value
+        that depends on the plant's reading has none."""
         for value in wanted.values():
             if value in (SOC_FLOOR, SOC_DEPTH):
                 return "soc_unknown"
             if isinstance(value, str) and value.startswith(_PCT_PREFIX):
                 return "rated_unknown"
+            if isinstance(value, str) and value.startswith(_CEILING_PREFIX):
+                return "size_unknown"
         return None
 
     def optional_names(self) -> frozenset[str]:
@@ -529,9 +545,28 @@ def pct_of_rated(kw: float) -> str:
     return f"{_PCT_PREFIX}{kw!r}>"
 
 
-def _resolve(value: Native, soc_pct: float | None, rated_kw: float | None, margin_pct: float = 0.0) -> Native:
+def soc_ceiling(kw: float) -> str:
+    """A SoC ceiling (%) for a charge at `kw`: what the battery reaches in one block (`BrandControl.charge_block_s`)
+    at that rate from the SoC now, rounded up, at most 100; resolved by `BrandControl.wanted` with the SoC and the
+    battery's size."""
+    return f"{_CEILING_PREFIX}{kw!r}>"
+
+
+def _resolve(
+    value: Native, soc_pct: float | None, rated_kw: float | None, margin_pct: float = 0.0,
+    capacity_kwh: float | None = None, block_s: float | None = None,
+) -> Native:
     """A value that depends on the plant, filled in; itself when the reading it needs is missing. A floor at the SoC
-    is rounded down and kept `margin_pct` below it (never above the SoC)."""
+    is rounded down and kept `margin_pct` below it (never above the SoC); a ceiling is one block ahead of it."""
+    if isinstance(value, str) and value.startswith(_CEILING_PREFIX):
+        if (
+            soc_pct is None or not math.isfinite(soc_pct) or capacity_kwh is None or not math.isfinite(capacity_kwh)
+            or capacity_kwh <= 0 or block_s is None or block_s <= 0
+        ):
+            return value
+        kw = float(value[len(_CEILING_PREFIX):-1])
+        step = math.ceil(max(kw, 0.0) * block_s / 3600.0 / capacity_kwh * 100.0 - 1e-9)
+        return float(min(math.floor(min(max(soc_pct, 0.0), 100.0) + 1e-9) + max(step, 1), 100))
     if value == SOC_FLOOR or value == SOC_DEPTH:
         if soc_pct is None or not math.isfinite(soc_pct):
             return value
@@ -934,6 +969,9 @@ _TS_GRID = Role(
 )
 #: Tesla's cloud is slow and its energy settings may be limited to a few writes a day (unconfirmed): few writes.
 TESLA_WRITES_PER_DAY: Final = 24
+#: A Powerwall grid charge is commanded in blocks this long (s; `BrandControl.charge_block_s`): at 5 kW per 13.5 kWh
+#: one block is at most about 19 points of charge left standing if nothing comes back.
+TESLA_CHARGE_BLOCK_S: Final = 1800.0
 
 TESLA_CONTROL: Final = BrandControl(
     brand="tesla",
@@ -944,7 +982,9 @@ TESLA_CONTROL: Final = BrandControl(
         # the SoC charges from the grid, so it is rounded down and kept `soc_floor_margin_pct` below a SoC that the
         # cloud reports up to a minute late.
         ACTION_HOLD: lambda _rate, _w: (Want("grid_charging", False), Want("reserve", SOC_FLOOR)),
-        ACTION_GRID_CHARGE: lambda _rate, _w: (Want("grid_charging", True), Want("reserve", 100.0)),
+        # Grid charging allowed and the reserve one block ahead of the level (renewed each block): with Home Assistant
+        # or the cloud gone the Powerwall charges at most that block from the grid, not to 100 %.
+        ACTION_GRID_CHARGE: lambda rate, _w: (Want("grid_charging", True), Want("reserve", soc_ceiling(rate))),
         # Self-consumption as found already covers the house.
         ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
     },
@@ -963,6 +1003,7 @@ TESLA_CONTROL: Final = BrandControl(
     soc_floor_margin_pct=2.0,
     hold_grid_guard=True,
     hold_charges_without=("grid_charging",),
+    charge_block_s=TESLA_CHARGE_BLOCK_S,
     note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
     " reports): a charge that does not fit under the fuse is refused, not lowered.",
 )

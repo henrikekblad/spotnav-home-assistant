@@ -86,8 +86,10 @@ the same routine as the others, and both are untested.
   a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no change
   of action within 15 minutes. A hold turns grid charging off and sets the backup reserve two points under the level now (rounded down, so a
   level the cloud reports late never puts the reserve above the battery, where it would charge from the grid; a hold
-  that charges from the grid anyway is handed back and not tried again for six hours); a grid charge sets the
-  reserve to 100 % and allows grid charging. The charge power is the Powerwall's own (about 1.7 kW each in reports, not
+  that charges from the grid anyway is handed back and not tried again for six hours); a grid charge allows grid
+  charging and sets the reserve to what the Powerwalls reach in 30 minutes at 5 kW each, raised again every 30
+  minutes: Tesla has no dead-man, so if Home Assistant or the cloud stops, at most that much is charged from the grid
+  and the reserve stays there until it is set back (see "restore by hand" below), never at 100 %. The charge power is the Powerwall's own (about 1.7 kW each in reports, not
   measured here), so SpotNav uses the plant's maximum (5 kW per Powerwall) on one phase for the fuse cap and does not
   start a charge that does not fit. It does not start one at all while the battery's size is not read (the size
   sensor is disabled by default; the switch's dialog offers it): without it two Powerwalls would be checked as one.

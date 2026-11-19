@@ -103,6 +103,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   the control (`not_obeyed:grid_charge:phase_over`). One that takes nothing does so as any charge without effect. A change between the two kinds of charge while one
   runs hands back first (`per_phase_changed`). `ExecInputs.phase_probe_kw` is the verification's: targets written
   as given (a discharge on one phase), a charge among them still within its cap.
+* **A charge in blocks** (`BrandControl.charge_block_s`, a plant that sets its own charge power and stops at a SoC
+  ceiling: Tesla's reserve). The ceiling is one block ahead of the SoC at the recipe's rate (an upper figure) and is
+  renewed every block from the SoC then; with no dead-man, a Home Assistant or a cloud that stops leaves at most one
+  block's charge from the grid.
 * **Writes a day, per class** (`commands.WriteClass`, `BrandControl.write_cap`): a role is a `setting` (a limit, a
   mode, a switch: 96 a day, `ExecState.writes_today`, shared with the export limit's instance) or a `setpoint` made
   for continuous control (the targets per phase: the brand's own figure, `ExecState.setpoint_writes_today`).
@@ -845,11 +849,12 @@ class Executor:
         #: optional roles this plant lacks, as of the last look; not stored.
         self._soc_pct: float | None = None
         self._rated_kw: float | None = None
+        self._capacity_kwh: float | None = None
         self._absent: frozenset[str] = frozenset()
 
     def _sense(self, inputs: ExecInputs) -> None:
         facts = inputs.facts
-        self._soc_pct, self._rated_kw = facts.soc_pct, facts.max_charge_kw
+        self._soc_pct, self._rated_kw, self._capacity_kwh = facts.soc_pct, facts.max_charge_kw, facts.capacity_kwh
         optional = self.control.optional_names()
         self._absent = frozenset(
             name for name in optional if (read := inputs.reads.get(name)) is None or not read.found
@@ -1380,7 +1385,7 @@ class Executor:
     ) -> dict[str, Native]:
         wanted = self.control.wanted(
             action, rate_kw, self.watchdog_s, phases,
-            soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent,
+            soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent, capacity_kwh=self._capacity_kwh,
         )
         out = {
             name: (restore_values[name] if value == SNAPSHOT else value)
@@ -1517,7 +1522,8 @@ class Executor:
                 return f"{why}:{role.name}"
         self._sense(inputs)
         wanted = self.control.wanted(
-            action, 1.0, self.watchdog_s, soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent
+            action, 1.0, self.watchdog_s, soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent,
+            capacity_kwh=self._capacity_kwh,
         )
         unresolved = self.control.unresolved(wanted)
         if unresolved is not None:
@@ -1655,6 +1661,7 @@ class Executor:
                 )
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
+        events += self._renew_block(inputs)
         state = self.state
         if (
             self.control.watchdog_roles and state.watchdog_at is not None and state.pending is None
@@ -1663,6 +1670,25 @@ class Executor:
             self.state = replace(state, renew=self.control.watchdog_roles, watchdog_at=now)
             events.append(_event(now, "renew", ",".join(self.control.watchdog_roles)))
         return events
+
+    def _renew_block(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """A grid charge commanded in blocks (`BrandControl.charge_block_s`): once a block has run, its ceiling is
+        set one block ahead of the SoC now (written only where it changed). The block's start is `watchdog_at`."""
+        state = self.state
+        now = inputs.now
+        block = self.control.charge_block_s
+        if (
+            not block or state.action != ACTION_GRID_CHARGE or inputs.action != ACTION_GRID_CHARGE
+            or state.pending is not None or state.watchdog_at is None
+            or (now - state.watchdog_at).total_seconds() < block
+        ):
+            return []
+        target = self._wanted(ACTION_GRID_CHARGE, state.rate_kw, state.restore_values, state.phase_kw)
+        if self.control.unresolved(target) is not None:
+            return []
+        self.state = replace(state, target=target, watchdog_at=now)
+        changed = {name: value for name, value in target.items() if state.target.get(name) != value}
+        return [_event(now, "block", ACTION_GRID_CHARGE, **({"target": changed} if changed else {}))]
 
     def _retarget_phases(self, inputs: ExecInputs, rate: float, phases: Phases) -> list[dict[str, Any]]:
         """A running charge per phase: a phase whose room fell under its target goes down at once (every phase then
