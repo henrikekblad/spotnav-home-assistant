@@ -67,7 +67,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   `HOLD_CHARGE_S` did not take the hold: mode 4 is a charge at the charge limit, from the grid once the sun is short,
   so it is handed back and the control blocked (`not_obeyed:hold:charging`), judged on the battery's own power (no
   grid reading needed), and its verification fails that variant. The block clears by itself after
-  `MANAGEMENT_BLOCK_S`, as a management change's does. A hold that stores the sun has no such guard.
+  `MANAGEMENT_BLOCK_S`, as a management change's does. A hold that stores the sun has that guard only where its
+  recipe asks for it (`BrandControl.hold_grid_guard`: a hold that is a floor at the SoC, which the plant may reach
+  from the grid), judged on the lesser of the battery's charge and the site's import, so the sun it stores does not
+  count.
 * **Hold variants** (`BrandControl.hold_variants`): a brand may have more than one way to hold; the executor runs
   one (`ExecState.variant`, stored so a restart hands back with that variant's order) and changes it only while it
   holds nothing (`use_variant`). Every variant writes only the brand's roles, all of them in the snapshot, so the
@@ -1254,13 +1257,21 @@ class Executor:
         return None
 
     def _hold_charges(self, inputs: ExecInputs) -> bool:
-        """Whether a running idle hold's battery has charged for `HOLD_CHARGE_S` (kept in the state). Not while a peak
-        cover has the plant back in its own mode."""
+        """Whether a running idle hold's battery has charged for `HOLD_CHARGE_S` (kept in the state), or one under a
+        recipe's grid guard (`BrandControl.hold_grid_guard`) has charged from the grid that long: the lesser of its
+        charge and the site's import, so a sun it stores does not count. Not while a peak cover has the plant back in
+        its own mode."""
         state = self.state
         power = inputs.facts.power_kw
+        grid = inputs.grid_import_kw if inputs.measurement_ok else None
+        from_grid = (
+            self.control.hold_grid_guard and power is not None and grid is not None and math.isfinite(grid)
+            and min(power, grid) > HOLD_CHARGE_KW
+        )
         charging = (
-            not self._export and state.action == ACTION_HOLD and state.covered_at is None and self.control.hold_idle()
+            not self._export and state.action == ACTION_HOLD and state.covered_at is None
             and power is not None and math.isfinite(power) and power > HOLD_CHARGE_KW
+            and (self.control.hold_idle() or from_grid)
         )
         if not charging:
             if state.charging_since is not None:

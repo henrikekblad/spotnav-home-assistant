@@ -404,6 +404,11 @@ class BrandControl:
     #: cloud's, up to a minute old, while the battery discharges) must not put the floor above the real level, where
     #: the plant charges from the grid to reach it.
     soc_floor_margin_pct: float = 0.0
+    #: The hold is a floor at the SoC now (Tesla's reserve, GoodWe's depth of discharge), which the plant may reach
+    #: from the grid: a hold whose battery charges from the grid (the lesser of its charge and the site's import)
+    #: did not take, and is handed back as an idle hold that charges is (`executor.HOLD_CHARGE_S`). The sun may
+    #: still be stored.
+    hold_grid_guard: bool = False
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -908,6 +913,8 @@ GOODWE_CONTROL: Final = BrandControl(
     peak_first={ACTION_GRID_CHARGE: ("operation_mode",)},
     local_readback=True,
     hacs_roles=("eco_power", "eco_soc"),
+    # Unconfirmed whether the inverter charges from the grid to a cut-off at the SoC: a hold that does is handed back.
+    hold_grid_guard=True,
     note="Needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core has no eco charge mode or eco"
     " numbers. The eco SoC ceiling is ignored on some firmwares, so a charge is judged by the battery's power.",
 )
@@ -949,6 +956,7 @@ TESLA_CONTROL: Final = BrandControl(
     fixed_charge_kw=5.0,
     write_caps={"setting": TESLA_WRITES_PER_DAY},
     soc_floor_margin_pct=2.0,
+    hold_grid_guard=True,
     note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
     " reports): a charge that does not fit under the fuse is refused, not lowered.",
 )

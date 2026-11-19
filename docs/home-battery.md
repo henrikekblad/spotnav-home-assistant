@@ -77,15 +77,16 @@ the same routine as the others, and both are untested.
   no eco power or SoC numbers, and the checklist then says "needs the HACS integration". A grid charge is the eco charge
   mode at a share of the battery's rated power (an estimate from the battery's present current limit and voltage); a
   discharge for the house is the general mode; a hold sets the depth of discharge so the cut-off is the level now (not
-  confirmed on a device: the library does not say what the inverter does at that point). Hand-back puts the mode, the
+  confirmed on a device: the library does not say what the inverter does at that point, so a hold whose battery
+  charges from the grid for a minute is handed back and not tried again for six hours). Hand-back puts the mode, the
   eco values and the depth back as found. Nothing stops a command when Home Assistant stops, so a grid charge is capped
   for that case. Some firmwares ignore the eco level ceiling (the HACS integration's issues 466 and 486), so a charge
   ends with the plan's slot and is judged by the battery's power, not by the level.
 * *Tesla Powerwall* (`tesla_fleet` or `teslemetry`, Tesla's cloud) is **slow**: only the plan's own actions, no hold for
   a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no change
   of action within 15 minutes. A hold turns grid charging off and sets the backup reserve two points under the level now (rounded down, so a
-  level the cloud reports late never puts the reserve above the battery, where it would charge from the grid); a grid
-  charge sets the
+  level the cloud reports late never puts the reserve above the battery, where it would charge from the grid; a hold
+  that charges from the grid anyway is handed back and not tried again for six hours); a grid charge sets the
   reserve to 100 % and allows grid charging. The charge power is the Powerwall's own (about 1.7 kW each in reports, not
   measured here), so SpotNav uses the plant's maximum (5 kW per Powerwall) on one phase for the fuse cap and does not
   start a charge that does not fit. It does not start one at all while the battery's size is not read (the size

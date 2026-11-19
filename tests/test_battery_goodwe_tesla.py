@@ -244,6 +244,26 @@ def test_a_switch_found_on_is_handed_back_on() -> None:
     assert written(results) == [("reserve", 20.0)] and battery.states["grid_charging"] == "on"
 
 
+def test_a_hold_that_charges_from_the_grid_is_handed_back_on_both_brands() -> None:
+    for make in (_tesla, _goodwe):
+        executor, battery = make(capacity_kwh=13.5, rated_kw=None)
+        now, _ = run(executor, battery, T0, 8, "hold")
+        assert executor.state.phase == "active"
+        # The battery charges 3.3 kW while the site imports 5 kW: the hold is charging from the grid.
+        _now, results = run(executor, battery, now, 12, "hold", power_kw=3.3, grid_import_kw=5.0)
+        assert [e["reason"] for e in events(results, "hand_back")] == ["not_obeyed:hold:charging"], make
+        assert executor.state.blocked == "not_obeyed:hold:charging"
+
+
+def test_a_hold_that_stores_the_sun_is_kept() -> None:
+    for make in (_tesla, _goodwe):
+        executor, battery = make(capacity_kwh=13.5, rated_kw=None)
+        now, _ = run(executor, battery, T0, 8, "hold")
+        # The battery charges 3.3 kW from the sun while the site exports.
+        _now, results = run(executor, battery, now, 12, "hold", power_kw=3.3, grid_import_kw=-1.0)
+        assert not events(results, "hand_back") and executor.state.phase == "active"
+
+
 def test_a_tesla_site_without_solar_has_no_grid_charging_switch_and_still_charges_by_the_reserve() -> None:
     executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
