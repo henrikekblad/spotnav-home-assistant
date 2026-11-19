@@ -16,6 +16,7 @@ from custom_components.spotnav.heat.dhw_peaks import (
     draws_from_tank,
     learn_peaks,
     peak_instant,
+    standby_kwh,
 )
 
 ZONE = ZoneInfo("Europe/Stockholm")
@@ -32,12 +33,13 @@ def at(day: int, hh: int, mm: int) -> datetime:
     return datetime(2026, 11, 1, hh, mm, tzinfo=ZONE) + timedelta(days=day)
 
 
-def owner_nights(days: int = 21, jitter: bool = True) -> list[Run]:
-    """The owner's meter as seen: a morning shower run near 06:10, a second near 08:20 and a small 20:20 standby run."""
+def owner_nights(days: int = 21, jitter: bool = True, evening_kwh: float = 0.3) -> list[Run]:
+    """The owner's meter: a morning shower run near 06:10, a second near 08:20 and a 20:20 run, standby-sized by
+    default (well under half the median run)."""
     runs = []
     for day in range(days):
         shift = (day % 3 - 1) * 10 if jitter else 0
-        for hh, mm, kwh in ((6, 10, 0.85), (8, 20, 0.8), (20, 20, 0.5)):
+        for hh, mm, kwh in ((6, 10, 0.85), (8, 20, 0.8), (20, 20, evening_kwh)):
             start = at(day, hh, mm) + timedelta(minutes=shift)
             runs.append(Run(start, start + timedelta(minutes=20), kwh))
     return runs
@@ -75,6 +77,20 @@ def test_owner_mornings_learned_evening_default_kept() -> None:
     assert 0.8 <= morning.kwh <= 1.7
     # The evening default stays: nothing learned there.
     assert [peak for peak in peaks if not peak.learned] == [DEFAULT_PEAKS[1]]
+
+
+def test_the_standby_cutoff_follows_the_sites_own_runs() -> None:
+    runs = owner_nights(1, jitter=False)
+    # Half the median run (0.8 kWh), never under 0.2 kWh.
+    assert standby_kwh(runs) == 0.4
+    assert standby_kwh([Run(at(0, 6, 0), at(0, 6, 10), 0.1)]) == 0.2
+    assert standby_kwh([]) == 0.2
+    # The owner's 0.5 kWh evening run is use, not standby: the evening peak is learned.
+    peaks = learn_peaks(draws_from_runs(owner_nights(evening_kwh=0.5)), ZONE, days_seen=21)
+    assert [peak.ready_by for peak in peaks if peak.learned] == [time(5, 30), time(19, 45)]
+    # A pump whose runs are 2-3 kWh: a 0.8 kWh run is its standby.
+    big = [Run(at(day, 6, 0), at(day, 6, 40), 2.5) for day in range(10)] + [Run(at(0, 13, 0), at(0, 13, 15), 0.8)]
+    assert len(draws_from_runs(big)) == 10
 
 
 def test_two_peaks_far_apart_are_both_learned() -> None:
@@ -130,7 +146,7 @@ def test_tank_falls_are_draws_sized_by_the_reload() -> None:
 
 def test_state_runs_sized_by_the_boost_power() -> None:
     start = at(0, 6, 0)
-    draws = draws_from_state([(start, start + timedelta(minutes=30)), (start, start + timedelta(minutes=5))], 3.0)
+    draws = draws_from_state([(start, start + timedelta(minutes=30)), (start, start + timedelta(minutes=3))], 3.0)
     assert draws == [Draw(start - DRAW_LEAD, 1.5)]
 
 

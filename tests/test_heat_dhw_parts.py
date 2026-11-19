@@ -195,7 +195,9 @@ def test_review_hits_saving_and_what_the_pump_did() -> None:
     morning_run = Run(peaks[0].ready + timedelta(minutes=20), peaks[0].ready + timedelta(minutes=45), 1.0)
     standby_run = Run(peaks[1].ready + timedelta(hours=3), peaks[1].ready + timedelta(hours=3, minutes=10), 0.4)
     picks = [_pick(peaks[0], 2, 50.0)]
-    review = review_day(date(2026, 11, 20), ZONE, peaks, picks, [morning_run, standby_run], lambda _q: 150.0, mode="shadow")
+    review = review_day(
+        date(2026, 11, 20), ZONE, peaks, picks, [morning_run, standby_run], lambda _q: 150.0, mode="shadow", cutoff=0.5
+    )
     assert (review["hits"], review["peaks"], review["misses"]) == (1, 2, 0)
     assert review["per_peak"][0]["pump_run"] == morning_run.start.isoformat()
     assert review["per_peak"][1] == {"peak": "17:00", "hit": False, "pick": None, "pump_run": None, "miss": False}

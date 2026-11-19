@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, Final
 
-from .dhw_peaks import DRAW_LEAD, RunLike, standby
+from .dhw_peaks import DRAW_LEAD, STANDBY_FLOOR, RunLike, standby
 from .dhw_plan import LOSS_KWH_H, Pick, quarter_of
 
 HIT_WINDOW: Final = timedelta(minutes=45)
@@ -71,10 +71,12 @@ def review_day(
     *,
     mode: str,
     live_peaks: frozenset[datetime] = frozenset(),
+    cutoff: float = STANDBY_FLOOR,
 ) -> dict[str, Any]:
     """The day's review (see the module): `runs` are the pump's own runs (SpotNav's and the button's left out),
-    `price(quarter start)` the buy price, `live_peaks` the peaks a live boost filled."""
-    own = sorted((run for run in runs if not standby(run)), key=lambda run: run.start)
+    `price(quarter start)` the buy price, `live_peaks` the peaks a live boost filled, `cutoff` the site's standby
+    cutoff (`dhw_peaks.standby_kwh`)."""
+    own = sorted((run for run in runs if not standby(run, cutoff)), key=lambda run: run.start)
     per_peak = []
     hits = misses = 0
     would = actual = saved = moved = 0.0

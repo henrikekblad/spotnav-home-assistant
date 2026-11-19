@@ -8,7 +8,8 @@ the peaks stayed put. Nothing is written.
 
     python -I scripts/dhw_peaks_backtest.py stats.json [--tz Europe/Stockholm] [--warm-days N]
 
-`--warm-days` lowers the warm start (`WARM_DAYS`, 7) to see what the clustering finds on a short history.
+`--warm-days` and `--min-draws` lower the warm start (`WARM_DAYS`, 7) and a peak's least draws (`MIN_DRAWS`, 5) to
+see what the clustering finds on a short history.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ def main() -> None:
     parser.add_argument("stats")
     parser.add_argument("--tz", default="Europe/Stockholm")
     parser.add_argument("--warm-days", type=int, default=None)
+    parser.add_argument("--min-draws", type=int, default=None)
     args = parser.parse_args()
     zone = ZoneInfo(args.tz)
     rows = json.loads(Path(args.stats).read_text())
@@ -41,6 +43,8 @@ def main() -> None:
     }
     if args.warm_days is not None:
         dhw_peaks.WARM_DAYS = args.warm_days  # type: ignore[misc]
+    if args.min_draws is not None:
+        dhw_peaks.MIN_DRAWS = args.min_draws  # type: ignore[misc]
     days = sorted({moment.astimezone(zone).date() for moment in periods})
     runs: list[HotWaterRun] = []
     seen: list[str] = []
@@ -62,12 +66,15 @@ def main() -> None:
         previous = shown
         runs_text = ", ".join(
             f"{run.start.astimezone(zone):%H:%M} {round((run.end - run.start).total_seconds() / 60)}m {run.kwh:.2f}"
-            + (" (standby)" if dhw_peaks.standby(run) else "")
+            + (" (standby)" if dhw_peaks.standby(run, dhw_peaks.standby_kwh(recent)) else "")
             for run in today
         )
         print(f"{day}  runs: {runs_text or '-'}")
         print(f"            peaks (* learned): {'; '.join(shown)}")
-    print(f"days: {len(days)}, runs: {len(runs)}, draws: {len(dhw_peaks.draws_from_runs(runs))}, peak changes: {changes}")
+    print(
+        f"days: {len(days)}, runs: {len(runs)}, standby cutoff: {dhw_peaks.standby_kwh(runs):.2f} kWh, "
+        f"draws: {len(dhw_peaks.draws_from_runs(runs))}, peak changes: {changes}"
+    )
 
 
 if __name__ == "__main__":

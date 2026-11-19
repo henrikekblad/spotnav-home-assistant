@@ -6,7 +6,9 @@ A **draw** is hot water used: a moment and its size (kWh to reload it). Sources,
 * **The tank sensor**: a fall of at least `TANK_FALL_C` within `TANK_FALL_WITHIN` while the pump is not making hot
   water; the reload run that follows gives its size (`DEFAULT_KWH` without one).
 * **The meter's runs** (`meter_split.hot_water_runs`): the pump reloads shortly after a draw, so the draw is placed
-  `DRAW_LEAD` before the run's start. A run under `STANDBY_KWH` is the tank's standby loss, not a draw.
+  `DRAW_LEAD` before the run's start. A run under the site's own standby cutoff (`standby_kwh`: `STANDBY_SHARE` of
+  the median run's energy, at least `STANDBY_FLOOR`) is the tank's standby loss, not a draw: the cutoff follows the
+  tank and the pump, since a run's size is the household's own (0.4–1.0 kWh on the owner's NIBE, 2–3 kWh elsewhere).
 * **The pump's own state** (hot water as its priority) where nothing else reads: the runs' starts and lengths, sized
   by the boost power.
 
@@ -35,7 +37,9 @@ from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any, Final, Protocol
 
 DRAW_LEAD: Final = timedelta(minutes=20)
-STANDBY_KWH: Final = 0.6
+#: A run under this share of the site's median run energy is standby loss, never under `STANDBY_FLOOR` (kWh).
+STANDBY_SHARE: Final = 0.5
+STANDBY_FLOOR: Final = 0.2
 PEAK_DAYS: Final = 21
 MAX_PEAKS: Final = 3
 MIN_SHARE: Final = 0.20
@@ -138,8 +142,16 @@ def _signed(minute: float, centre: float) -> float:
     return diff - _DAY_MIN if diff > _DAY_MIN / 2 else diff
 
 
-def standby(run: RunLike) -> bool:
-    return run.kwh < STANDBY_KWH
+def standby_kwh(runs: Iterable[RunLike]) -> float:
+    """The site's standby cutoff (kWh): `STANDBY_SHARE` of the median run's energy, at least `STANDBY_FLOOR`."""
+    sizes = [run.kwh for run in runs if run.kwh > 0]
+    if not sizes:
+        return STANDBY_FLOOR
+    return max(STANDBY_FLOOR, STANDBY_SHARE * statistics.median(sizes))
+
+
+def standby(run: RunLike, cutoff: float = STANDBY_FLOOR) -> bool:
+    return run.kwh < cutoff
 
 
 def own_run(run: RunLike, own: Sequence[datetime]) -> bool:
@@ -147,9 +159,12 @@ def own_run(run: RunLike, own: Sequence[datetime]) -> bool:
     return any(start - timedelta(minutes=5) <= run.start <= start + OWN_AFTER for start in own)
 
 
-def draws_from_runs(runs: Iterable[RunLike], own: Sequence[datetime] = ()) -> list[Draw]:
-    """The draws the meter's runs show: each run that is no standby loss and not SpotNav's own, `DRAW_LEAD` early."""
-    return [Draw(run.start - DRAW_LEAD, run.kwh) for run in runs if not standby(run) and not own_run(run, own)]
+def draws_from_runs(runs: Iterable[RunLike], own: Sequence[datetime] = (), cutoff: float | None = None) -> list[Draw]:
+    """The draws the meter's runs show: each run that is no standby loss (`cutoff`, else the runs' own
+    `standby_kwh`) and not SpotNav's own, `DRAW_LEAD` early."""
+    runs = list(runs)
+    limit = standby_kwh(runs) if cutoff is None else cutoff
+    return [Draw(run.start - DRAW_LEAD, run.kwh) for run in runs if not standby(run, limit) and not own_run(run, own)]
 
 
 def draws_from_tank(
@@ -186,7 +201,7 @@ def draws_from_state(intervals: Sequence[tuple[datetime, datetime]], boost_kw: f
     out = []
     for start, end in intervals:
         kwh = boost_kw * (end - start).total_seconds() / 3600.0
-        if kwh >= STANDBY_KWH:
+        if kwh >= STANDBY_FLOOR:
             out.append(Draw(start - DRAW_LEAD, kwh))
     return out
 
@@ -315,4 +330,5 @@ __all__ = [
     "own_run",
     "peak_instant",
     "standby",
+    "standby_kwh",
 ]
