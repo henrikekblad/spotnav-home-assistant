@@ -1098,6 +1098,26 @@ async def test_the_import_limit_guards_a_charger_only_while_it_holds_now_countin
     assert control.import_limit_guards(without_charger=charger) is False
 
 
+async def test_a_standing_boost_or_raise_counts_where_the_import_limit_lifts_a_charger(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """What SpotNav itself leaves standing in the house if Home Assistant stops (a boost it started, a raise held)
+    counts against the plant's import limit as the chargers' last currents do, in the guard and in its status."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = await _started(hass, site, controller, plan_source=lambda _now: None)
+    await control._async_read_sources(dt_util.now())
+    charger = (controller.config.get("charger_entry_ids") or [])[0]
+    _options(hass, site, import_limit_acts=True)
+    _import_limit(hass, "4.4")
+    assert control.import_limit_guards(without_charger=charger) is True
+    status = control.status()["grid_charge_cap"]["import_limit"]
+    assert status["holds"] is True
+    monkeypatch.setattr(BatteryControl, "_heat_standing_a", lambda self: 30.0)
+    assert control.import_limit_guards(without_charger=charger) is False
+    standing = control.status()["grid_charge_cap"]["import_limit"]
+    assert standing["holds"] is False and (standing["max_kw"] or 0.0) < (status["max_kw"] or 0.0)
+
+
 async def test_no_grid_charge_where_the_cap_leaves_too_little(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

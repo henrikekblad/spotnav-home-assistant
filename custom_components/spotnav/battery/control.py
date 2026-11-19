@@ -1716,7 +1716,8 @@ class BatteryControl:
         that runs through the plant (`execution/chargers/sigenergy.py`): the person said it acts, it reads a value,
         the site's sources allow the rule, and that value keeps the worst phase under the fuse by the same fuse,
         margin and learned peaks as the battery's cap, with the **other** chargers' last currents (`without_charger`
-        is left out: its own lifted current must not undo the lift). Anything that cannot be read: `False`."""
+        is left out: its own lifted current must not undo the lift) and what SpotNav itself leaves standing in the
+        house (`_heat_standing_a`). Anything that cannot be read: `False`."""
         try:
             now = dt_util.now()
             options = self.options()
@@ -1729,7 +1730,8 @@ class BatteryControl:
             learned = peaks.learned(now.timestamp())  # raises: not guarded (never the cautious rule by default)
             return gate.import_limit_holds(
                 value, self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
-                margin_a=HEADROOM_MARGIN_A, cars_a=self._cars_allowed_a(without=without_charger),
+                margin_a=HEADROOM_MARGIN_A,
+                cars_a=self._cars_allowed_a(without=without_charger) + self._heat_standing_a(),
                 house_peak_kw=self._house_peak_kw(now), house_phase_peaks_a=learned.phase_peaks(),
             )
         except Exception:  # noqa: BLE001 - fail closed: the fuse cap stays
@@ -1752,7 +1754,8 @@ class BatteryControl:
             "house_phase_peaks_a": self._phase_peaks(now),
         }
         fuse_a, volts = self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config)
-        cars_a = self._cars_allowed_a()
+        # What SpotNav itself leaves standing in the house (a boost, a raise) counts as the chargers' currents do.
+        cars_a = self._cars_allowed_a() + self._heat_standing_a()
         refusal = self._import_limit_refusal()
         most = gate.import_limit_max_kw(fuse_a, volts, cars_a=cars_a, **rule)
         free = gate.import_limit_max_kw(fuse_a, volts, cars_a=0.0, **rule)
