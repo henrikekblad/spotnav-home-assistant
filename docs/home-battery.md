@@ -322,6 +322,23 @@ gets nothing on that phase.
 The check's per-phase step is the same as above, with the Multi's own power per phase read as its output power
 less its input power.
 
+**If Home Assistant never comes back, or something goes wrong, restore by hand** (in Home Assistant, or on the
+GX under Settings → ESS):
+
+* **ESS mode (Hub4)** back to the mode you had, *Optimized (with BatteryLife)* or *Optimized (without
+  BatteryLife)*. Left in external control the Multis stay in passthru: no charging, no covering the house.
+* **AC power setpoint** (the grid setpoint) back to your usual value. Left at the house plus a charge rate, the
+  GX keeps importing that much and the battery stays full from the grid, day after day.
+* **ESS max charge power** and **ESS max inverter power limit** back to what you had (-1 is no limit). A hold
+  leaves the inverter limit at 0, a discharge for the house the charge power at 0.
+* **Hub4 disable charge** and **Hub4 disable feed-in**: SpotNav turns both off for a charge per phase and does not
+  turn them back, because outside external control the GX sets them itself. If either stays off while you had
+  feed-in disabled on the GX, set it back.
+
+**What the first field report should say,** beside the fallback test above: whether both Hub4 flags read what the
+GX sets again within a minute of a hand-back (SpotNav counts on that, from Victron's documentation, not from a
+plant); the setpoints the GX writes outside external control; and the Venus OS version.
+
 **Sigen AI mode.** SpotNav can take the plant over from AI mode only after you have read this: *SpotNav takes over
 the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the
 Sigenergy app if you want it back* ("SpotNav tar över styrningen; när du stänger av hamnar batteriet i Maximal
