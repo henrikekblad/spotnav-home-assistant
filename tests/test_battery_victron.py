@@ -360,6 +360,17 @@ def test_a_target_follows_the_load_behind_it_and_a_load_that_falls_is_no_runaway
     assert executor.state.setpoint_writes_today >= 4 and executor.state.writes_today == 1
 
 
+def test_a_load_that_moves_on_one_phase_rewrites_that_phase_s_target_alone() -> None:
+    plant, executor = Plant(), _phased()
+    caps = _lifted()
+    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=caps)
+    counted = executor.state.setpoint_writes_today
+    # L3's output falls by 0.8 kW, the others wobble by less than the tracking step.
+    plant.out_kw = [plant.out_kw[0] + 0.2, plant.out_kw[1] - 0.2, plant.out_kw[2] - 0.8]
+    now, results = _run(executor, plant, now, int(PHASE_TRACK_S / 10) + 4, "grid_charge", 3.0, phase_caps_kw=caps)
+    assert _events(results, "rate") and executor.state.setpoint_writes_today == counted + 1
+
+
 def test_each_setpoint_is_written_again_well_inside_the_minute_and_renewals_are_not_counted() -> None:
     plant, executor = Plant(), _phased()
     caps = _lifted()

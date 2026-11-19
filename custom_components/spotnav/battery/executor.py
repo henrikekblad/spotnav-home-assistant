@@ -101,9 +101,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Targets that are the grid's** (`PhaseControl.target_kind` `grid`, with sensors at the target's point,
   `PhaseControl.grid_phases`; the shell reads them into `ExecInputs.phase_behind_kw` and `phase_point_kw`). Such a
   target is the power at the plant's grid-side point on that phase, so a charge per phase is written as the load
-  behind the point plus the charge (`PhaseControl.value`), and written again when that load moved by
-  `PHASE_TRACK_KW`, at most every `PHASE_TRACK_S` (a setpoint write each; between two the plant holds the point,
-  so a load that changes is the battery's, never the grid's). The room of a phase is then reckoned exactly
+  behind the point plus the charge (`PhaseControl.value`), and that phase's target written again when its load
+  moved by `PHASE_TRACK_KW`, at most every `PHASE_TRACK_S` (a setpoint write each; between two the plant holds the
+  point, so a load that changes is the battery's, never the grid's). The room of a phase is then reckoned exactly
   (`_phase_room_kw`: the headroom less `PHASE_GRID_MARGIN_A` less what the plant puts out on the phase now), since
   it may be the only bound: the HA-down cap of a recipe with its own dead-man is the fuse
   (`gate.grid_charge_phase_caps_kw`). The HA-down cap bounds the whole target, the load behind plus the charge
@@ -1799,9 +1799,13 @@ class Executor:
             return []
         if not change:
             # Only the load moved: the charge per phase stays as commanded (never above what the phase allows with
-            # the load as it is now), its targets move with the load.
+            # the load as it is now), and only the targets whose load moved follow it, so a busy house spends the
+            # day's setpoint writes on the phases that need them.
             phases = (min(old[0], phases[0]), min(old[1], phases[1]), min(old[2], phases[2]))
             rate = round(sum(max(value, 0.0) for value in phases), 3)
+            assert behind is not None and old_behind is not None
+            kept = [new if abs(new - was) > PHASE_TRACK_KW else was for new, was in zip(behind, old_behind, strict=True)]
+            behind = (kept[0], kept[1], kept[2])
         spec = self.control.phase_control
         names = () if spec is None else spec.names()
         # The falling phases are written first: no phase is raised while another still draws what it must give up.
