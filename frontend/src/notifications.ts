@@ -7,6 +7,7 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import { NOTIFICATION_EVENTS, type NotificationsChoice } from "./settings";
 import type { NotificationsRecord } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export interface NotificationsEditorHandlers {
   onSave: (choice: NotificationsChoice) => void;
@@ -28,17 +29,6 @@ const EVENT_KEYS: Record<(typeof NOTIFICATION_EVENTS)[number], TranslationKey> =
   plan_installed: "notifications.event.planInstalled",
   vehicle_identify: "notifications.event.vehicleIdentify",
 };
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
 
 /** A chosen service's name: its phone's, or the service itself when no phone answers to it now. */
 /** The phones a person can choose (the available ones, then any chosen one that is gone), as editor options. */

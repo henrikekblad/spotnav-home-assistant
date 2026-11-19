@@ -13,6 +13,7 @@ import type { HomeAssistantLike } from "./types";
 import { DEBUG_API_VERSION } from "./types";
 import { shell, type EditorHandlers } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** The privacy policy, which says what a sent report holds and how long it is kept. */
 export const PRIVACY_URL = "https://spotnav.sensnology.se/privacy";
@@ -119,17 +120,6 @@ export async function sendDebugReport(
     return { error: sendFailureText(language, null) };
   }
   return answer.ok ? { ref: answer.ref } : { error: sendFailureText(language, answer.code, answer.retryAfterS) };
-}
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 /**

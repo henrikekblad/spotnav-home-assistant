@@ -22,6 +22,7 @@ import { pluralForm, translate, type Language, type TranslationKey } from "./i18
 import { powerBody, type PowerHandlers, type PowerState, type PowerUi } from "./power-view";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { bad, record, textAt as text, textOrNullAt as textOrNull, numberAt as number, numberOrNullAt as numberOrNull, flagAt as flag } from "./decode-primitives";
+import { element } from "./dom";
 
 export interface SessionRecord {
   id: string;
@@ -322,22 +323,6 @@ function formatContext(
     majorUnit: source.major_unit,
     priceUnit,
   };
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  className?: string,
-  content?: string,
-): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
 }
 
 /** The wall clock as the backend wrote it (Home Assistant's own zone): `2026-09-22T14:05:00+02:00` -> `14:05`. */

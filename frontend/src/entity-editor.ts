@@ -52,22 +52,7 @@ import { measurementProblemText, meterUnavailableText, negativeCurrentText } fro
 import type { Vehicle } from "./validate";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
-
-function element<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  className?: string,
-  content?: string,
-): HTMLElementTagNameMap[K] {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (content !== undefined) {
-    node.textContent = content;
-  }
-  return node;
-}
+import { element } from "./dom";
 
 export function modeLabel(language: Language, mode: string): string {
   return translate(language, mode === MEASUREMENT_DERIVED ? "entity.mode.derived" : "entity.mode.direct");

@@ -5,6 +5,7 @@
 
 import { browserStore, type PreferenceStore } from "./chart-preference";
 import { scrubBars } from "./chart-scrub";
+import { element } from "./dom";
 import { dateLabel, formatFixed } from "./format";
 import { monthLabel } from "./history";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -106,17 +107,6 @@ export function writeDetailed(card: "house" | "heat", detailed: boolean, store: 
 }
 
 // ------------------------------------------------------------------------------------------------ parts
-
-export function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 

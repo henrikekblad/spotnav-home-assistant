@@ -20,6 +20,7 @@ import { statusLine, testStatus } from "./heat-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { daysLeft, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 const HOUR_MS = 3_600_000;
 /** The Energy flow tab's diagram at most (px) outside a box; its blocks' words still fit (`house-flow.ts`). */
@@ -110,17 +111,6 @@ export interface HouseRenderInput {
   tabs?: HouseTabsData;
   /** The energy flow's pill words measured as drawn (`house-flow.ts`); without it they are estimated. */
   measure?: PillMeasure;
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
 }
 
 // ------------------------------------------------------------------------------------------------ words

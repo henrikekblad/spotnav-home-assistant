@@ -6,19 +6,9 @@
 
 import { historyIcon } from "./period-history";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (text !== undefined) {
-    created.textContent = text;
-  }
-  return created;
-}
 
 /**
  * The product mark: a dark rounded square with the red-yellow-green bolt, readable on light and

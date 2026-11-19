@@ -28,6 +28,7 @@ import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { sectionHeading, settingRow } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export const TARGET_MIN = 16;
 export const TARGET_MAX = 25;
@@ -118,17 +119,6 @@ export interface HeatRenderInput {
   idPrefix?: string;
   /** What the shown tab needs besides the answer. */
   tabs?: HeatTabsData;
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
 }
 
 function svg<K extends keyof SVGElementTagNameMap>(doc: Document, tag: K, attributes: Record<string, string | number>): SVGElementTagNameMap[K] {

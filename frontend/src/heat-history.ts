@@ -12,9 +12,9 @@ import { clock, dateLabel, formatFixed, formatNumber, type FormatContext } from 
 import { fits, HEAT_HISTORY_API_VERSION, INDOOR_DAY, REVIEW, roomName, type HeatReview, type IndoorDay } from "./heat-model";
 import { bucketWords, isoDay, periodKind } from "./house-history";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
+import { element } from "./dom";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
-  element,
   figureRow,
   note,
   periodBars,

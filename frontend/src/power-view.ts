@@ -16,6 +16,7 @@ import { decodeDemandComponent, type DemandComponent } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { POWER_MONTH_API_VERSION } from "./types";
 import { bad, record, flag, list } from "./decode-primitives";
+import { element } from "./dom";
 
 export interface PowerDay {
   /** The local date, `YYYY-MM-DD`. */
@@ -169,22 +170,6 @@ export interface PowerHandlers {
 }
 
 // ------------------------------------------------------------------------------------------- rendering
-
-function element<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  className?: string,
-  content?: string,
-): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
 
 /** A power to one decimal: "5,9 kW". */
 export function kw(language: Language, value: number): string {

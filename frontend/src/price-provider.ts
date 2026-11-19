@@ -6,6 +6,7 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import type { PriceProvider } from "./validate";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** Home Assistant's own pages (frontend 20260826, Home Assistant 2026.9): add an integration, open one. */
 export function addIntegrationPath(domain: string): string {
@@ -154,17 +155,6 @@ export interface PriceProviderInput {
   openArea: () => void;
   /** Open the editor of the installation's ENTSO-E key ([keyEditor]). */
   openKeyEditor: () => void;
-}
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (text !== undefined) {
-    created.textContent = text;
-  }
-  return created;
 }
 
 /** The source line, then the notice (an administrator's: anyone else reads the sentence without its buttons). */

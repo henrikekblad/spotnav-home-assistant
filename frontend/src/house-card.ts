@@ -29,7 +29,7 @@ import { HOUSE_STYLES } from "./house-styles";
 import { PERIOD_STYLES } from "./period-history";
 import { readHiddenSeries, writeHiddenSeries } from "./house-series";
 import { houseBody, houseSources, localDate, type HouseState, type HouseTabsData, type HouseUi, type Loadable } from "./house-view";
-import { element as periodElement } from "./period-history";
+import { element as periodElement } from "./dom";
 import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language } from "./i18n";
 import { SettingsPopover, stubTarget } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";

@@ -20,6 +20,7 @@ import { barChart, kwhText, PERIOD_VIEW_CLASSES, type Bar, type BarPart } from "
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export const USE_CLASSES = {
   head: "spotnav-heat-use-head",
@@ -36,17 +37,6 @@ const KIND_WORDS: Record<Exclude<HeatPart["kind"], "zone">, TranslationKey> = {
   hot_water: "heat.use.part.hotWater",
   other: "heat.use.part.other",
 };
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
 
 /** A part's name: a zone's own, else the card's words for its kind. */
 export function partWord(language: Language, part: HeatPart): string {

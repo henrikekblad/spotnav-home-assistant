@@ -21,6 +21,7 @@ import type { BatteryFlow, HouseBucket, HouseHistory } from "./house-history";
 import { bucketWords } from "./house-history";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export const PERIOD_VIEW_CLASSES = {
   tiles: "spotnav-house-tiles",
@@ -41,17 +42,6 @@ export const PERIOD_VIEW_CLASSES = {
 } as const;
 
 const P = PERIOD_VIEW_CLASSES;
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
 
 export function kwhText(language: Language, value: number): string {
   return `${formatFixed(language, value, Math.abs(value) >= 100 ? 0 : 1)} kWh`;

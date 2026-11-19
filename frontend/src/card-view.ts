@@ -156,6 +156,7 @@ import { CHART_DENSITY, VISUAL_CLASSES as C } from "./visual-styles";
 import type { SiteTarget } from "./api";
 import { SiteSections } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
+import { element } from "./dom";
 
 /** What the camera's editors ask the card for. */
 export type CameraPictureRequest =
@@ -491,22 +492,6 @@ function navigateTo(doc: Document, path: string): void {
   }
   view.history.pushState(null, "", path);
   view.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (text !== undefined) {
-    created.textContent = text;
-  }
-  return created;
 }
 
 export function readoutDay(model: CardModel, mark: ChartMark): string {

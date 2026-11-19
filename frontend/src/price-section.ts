@@ -32,6 +32,7 @@ import type { Fiscal, GridTariffBlock, PriceProvider } from "./validate";
 import { sectionHeading, type ChoiceOption, type EditorHandlers, type NumberEditorInput } from "./value-editors";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** The writes the price section makes. */
 export type PriceWrite = Extract<ValueWrite, { kind: "gridTariff" | "priceSource" | "priceDuplicate" | "entsoeKey" }>;
@@ -90,22 +91,6 @@ export interface PriceSectionInput extends SectionHost {
   hasComponent(domain: string): boolean;
   navigate(path: string): void;
   openExternal(url: string): void;
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 /**

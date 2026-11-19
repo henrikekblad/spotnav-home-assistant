@@ -12,11 +12,11 @@ import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, type
 import { hasPerfect, onlyPartial, perfectHeadline, perfectNotes, perfectRows, perfectSaving, perfectTable, perfectTableNotes, perfectTemperature } from "./perfect-view";
 import { amount } from "./house-view";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
+import { element } from "./dom";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   axisShown,
-  element,
   figureRow,
   note,
   periodBars,

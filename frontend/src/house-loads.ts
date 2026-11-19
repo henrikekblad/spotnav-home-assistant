@@ -30,6 +30,7 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { bad, record, text, number, numberOrNull } from "./decode-primitives";
+import { element } from "./dom";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -407,17 +408,6 @@ export function pieModel(language: Language, answer: HouseLoads): PieModel {
 }
 
 // ------------------------------------------------------------------------------------------------ the view
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
 
 function svg<K extends keyof SVGElementTagNameMap>(doc: Document, name: K, attributes: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const created = doc.createElementNS(SVG_NS, name);

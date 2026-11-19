@@ -11,17 +11,7 @@ import type { ChoiceOption } from "./value-editors";
 /** A car the charger's car list can tick: every detected car (`vehicle_choices`). */
 export type CarChoice = { id: string; name: string | null };
 import { VISUAL_CLASSES as C } from "./visual-styles";
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
+import { element } from "./dom";
 
 const MODE_KEYS = {
   automatic: "identify.mode.automatic",

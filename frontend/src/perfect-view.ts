@@ -9,22 +9,12 @@ import { MODES, PERFECT_WAYS, type BatteryMode, type HouseAnswer, type PerfectFi
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { numberWord, pluralForm, translate, type Language } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 type Money = HouseAnswer["money"];
 
 /** A day's share needs the perfect plan to save at least this much (minor units: `hindsight.MIN_PERFECT_SAVING`). */
 const MIN_PERFECT_SAVING = 500;
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
 
 /** Whether there is a perfect plan to show: a whole day's, or only incomplete days (which say so). */
 export function hasPerfect(perfect: PerfectFigures | null | undefined): perfect is PerfectFigures {

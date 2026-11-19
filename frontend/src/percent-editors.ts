@@ -11,17 +11,7 @@ import { TARGET_PERCENT_MAX, TARGET_PERCENT_MIN } from "./settings";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
 import type { ChargeLimitRange } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
+import { element } from "./dom";
 
 function slider(
   doc: Document,
