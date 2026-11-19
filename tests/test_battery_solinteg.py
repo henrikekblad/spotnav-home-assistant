@@ -210,6 +210,9 @@ def test_every_role_is_found_by_the_plugins_key_and_no_other_plugins_entity() ->
     )
     for role in roles.values():
         assert any(role.match.matches(domain, f"hub_{key}") for domain, key in optin.ENABLE_KEYS["solinteg"])
+    # The balanced control needs only the working mode and the target: the per-phase scheduling mode is the phased
+    # control's, so a plant without it shows no missing control.
+    assert [role.name for role in SOLINTEG_CONTROL.roles] == ["working_mode", "battery_target"]
 
 
 def test_no_dead_man_is_counted_on_and_the_caps_are_the_cautious_ones() -> None:

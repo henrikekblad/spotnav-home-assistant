@@ -287,6 +287,9 @@ class PhaseControl:
     #: Other targets that act in the same state and must be 0 (a total beside the phases): owned, written to 0
     #: before anything else in every action, handed back as 0.
     zero: tuple[Role, ...] = ()
+    #: Other roles only the phased control writes (in `follow`: a scheduling mode), so a plant without them shows no
+    #: missing control for the balanced one.
+    modes: tuple[Role, ...] = ()
     #: Roles renewed to keep a brand's watchdog alive while the phased control runs (added to the control's own).
     watchdog_roles: tuple[str, ...] = ()
     #: Roles that must read one of these states for the targets to act, never written (`(role, states, reason)`).
@@ -320,8 +323,8 @@ class PhaseControl:
         return tuple(Want(role.name, 0.0) for role in (*self.zero, *self.targets))
 
     def owned(self) -> tuple[Role, ...]:
-        """Every role the phased control adds: the targets, the others kept at 0, and what must read so."""
-        return (*self.zero, *self.targets, *(role for role, _states, _why in self.requires))
+        """Every role the phased control adds: the targets, the others kept at 0, its modes, and what must read so."""
+        return (*self.zero, *self.targets, *self.modes, *(role for role, _states, _why in self.requires))
 
 
 @dataclass(frozen=True, slots=True)
@@ -859,6 +862,7 @@ SOLINTEG_PHASES: Final = PhaseControl(
         Want("battery_target", 0.0), Want("acctrl_mode", _SOL_EACH_PHASE), Want("working_mode", _SOL_ACCTRL),
     ),
     target_kind="plant",
+    modes=(_SOL_AC_MODE,),
     requires=((_SOL_UNBALANCED, frozenset({"on"}), "unbalanced_output_off"),),
     enter_order=(
         "phase_l1_target", "phase_l2_target", "phase_l3_target", "acctrl_mode", "working_mode", "battery_target",
@@ -870,7 +874,7 @@ SOLINTEG_PHASES: Final = PhaseControl(
 SOLINTEG_CONTROL: Final = BrandControl(
     brand="solinteg",
     adapter=SOLINTEG,
-    roles=(_SOL_MODE, _SOL_TARGET, _SOL_AC_MODE),
+    roles=(_SOL_MODE, _SOL_TARGET),
     states={
         ACTION_HOLD: SOLINTEG_HOLDS[0].build,
         ACTION_GRID_CHARGE: _sol(_SOL_BATTCTRL, -1.0),
