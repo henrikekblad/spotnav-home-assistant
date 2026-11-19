@@ -243,8 +243,11 @@ async def test_an_unplug_ends_the_wait(hass: HomeAssistant, transport: Any) -> N
     with freeze_time(NOW) as frozen:
         world = await _charged(hass, transport, frozen)
         assert (await world["preview"].async_recalculate()).reason == "waiting_for_vehicle_update"
+        await hass.async_block_till_done()  # what the first calculation set going is done before the unplug
         world["controller"].adapter.vehicle_connected = lambda: False
-        assert (await world["preview"].async_recalculate()).reason != "waiting_for_vehicle_update"
+        await world["preview"].async_recalculate()
+        await hass.async_block_till_done()
+        assert world["preview"].snapshot().reason != "waiting_for_vehicle_update"
 
 
 async def test_a_near_departure_plans_as_before(hass: HomeAssistant, transport: Any) -> None:
