@@ -193,3 +193,36 @@ async def test_a_path_that_leaves_hot_water_alone_has_no_level_a(hass: HomeAssis
     assert hot_water.level_a_rules(now, config, [now.date()]) is None
     answer_cuts = hot_water._blocking_view(now, config, None)  # noqa: SLF001
     assert answer_cuts is None
+
+
+async def test_a_planned_boost_drops_the_guard_only_once_written_or_filled(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Review S1: a pick that was skipped (the fuse) or never written (an ended day) keeps the two hours before its
+    peak free of blocks; only a boost read back, or a peak already filled, takes the guard away."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.heat.dhw_plan import Pick
+
+    _site_, controller, _relay, hot_water, now = await _villa(hass, freezer, monkeypatch)
+    config = controller.heat_shadow.config()
+    monkeypatch.setattr(hot_water, "route", lambda *_args: SimpleNamespace(verified=True))
+    monkeypatch.setattr(hot_water, "mode", lambda *_args: "live")
+    ready = _local(hot_water, now, 18, 1)
+    start = ready - 5 * H
+    hot_water.picks = [Pick(start, start + 30 * MIN, 0.8, 100.0, "cheap", ready, ready + 30 * MIN, 150.0, 50.0)]
+    tomorrow = ready.astimezone(hot_water.zone).date()
+
+    def guarded() -> bool:
+        kept, _cap = hot_water.level_a_rules(now, config, [tomorrow])
+        return kept.get(ready - H) == ("peak", ready)
+
+    # Planned (also frozen) but not written: the guard stays.
+    assert guarded()
+    hot_water.ended_day = tomorrow.isoformat()
+    assert guarded()
+    # Written and read back: the boost fills the peak.
+    hot_water._record(tomorrow.isoformat())["live"] = [ready.isoformat()]  # noqa: SLF001
+    assert not guarded()
+    # A boost already running when the pick came due fills it too.
+    hot_water._record(tomorrow.isoformat())["live"] = []  # noqa: SLF001
+    hot_water._record(tomorrow.isoformat())["filled"] = [ready.isoformat()]  # noqa: SLF001
+    assert not guarded()

@@ -359,13 +359,21 @@ class HotWater:
         if not self.a_applies(config):
             return None
         pump = self._pump()
-        boosted: set[datetime] = set()
-        route = self.route(config, pump)
-        if route is not None and route.verified and self.mode(config, route, pump) == MODE_LIVE:
-            boosted = {pick.peak for pick in self.picks}
         runs = list(self.runs.values())
-        found = guards(self.peaks, days, self.zone, runs, now, boosted)
+        found = guards(self.peaks, days, self.zone, runs, now, self.filled_peaks())
         return kept_hours(found, next_hygiene(runs, self.zone, now)), max_day_hours(self.tank_c(pump) is not None)
+
+    def filled_peaks(self) -> set[datetime]:
+        """The peaks a boost fills for certain: SpotNav's written and read back (`live`), or one already running when
+        the pick came due (`filled`). A pick only planned, skipped or never written fills nothing."""
+        out: set[datetime] = set()
+        for record in self.days.values():
+            for key in [*(record.get("live") or []), *(record.get("filled") or [])]:
+                try:
+                    out.add(datetime.fromisoformat(key))
+                except (TypeError, ValueError):
+                    continue
+        return out
 
     def set_cuts(self, cuts: Sequence[Cut], live: bool) -> None:
         self.cuts, self.cuts_live = list(cuts), live
