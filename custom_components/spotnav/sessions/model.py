@@ -268,8 +268,6 @@ class ChargeSession:
             for key, value in raw.items()
             if key not in _FIELDS and key not in _OPTIONAL_FIELDS and key not in _PRE_INTERVAL_FIELDS
         ]
-        if any(not isinstance(key, str) for key, _ in later):
-            return None
         source = raw.get("source")
         area_id = raw.get("area_id")
         decided_by = raw.get("vehicle_decided_by")

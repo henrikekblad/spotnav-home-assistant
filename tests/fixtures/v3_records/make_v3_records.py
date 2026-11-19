@@ -2,7 +2,7 @@
 import json
 import sys
 from dataclasses import replace
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from custom_components.spotnav.core.session import CarEnded, ChargeSession as CoreSession
 from custom_components.spotnav.planning.auto_settings import (

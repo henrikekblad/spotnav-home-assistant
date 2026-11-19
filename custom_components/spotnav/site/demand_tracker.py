@@ -419,6 +419,7 @@ class HourTracker:
         imported hour is complete when its start is in `complete` (or, from a development build, its row has a ninth
         element). Whether the month's document should be written again in today's form (such a row was read)."""
         migrate = False
+        self.later_release = {}
         if isinstance(month_data, dict):
             month = _month_from(month_data.get("month"))
             if month is not None:
