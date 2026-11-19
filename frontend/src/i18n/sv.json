@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Värme",
   "house.legend.forecast": "Prognos",
   "house.legend.sun": "Sol",
+  "house.legend.sunDay": "Sol · prickat = prognostjänsten",
   "house.legend.battery": "Batterinivå · streckat = plan",
   "house.legend.charge": "Laddar från nätet",
   "house.chart.label": "Huset, solen och batteriet: 12 timmar bakåt, 24 framåt",

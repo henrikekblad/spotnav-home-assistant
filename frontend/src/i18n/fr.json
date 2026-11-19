@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Chauffage",
   "house.legend.forecast": "Prévision",
   "house.legend.sun": "Soleil",
+  "house.legend.sunDay": "Soleil · points = service de prévision",
   "house.legend.battery": "Niveau de batterie · pointillé = plan",
   "house.legend.charge": "Charge sur le réseau",
   "house.chart.label": "Maison, soleil et batterie : 12 heures en arrière, 24 en avant",

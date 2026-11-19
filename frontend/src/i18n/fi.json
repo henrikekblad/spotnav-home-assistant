@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Lämpö",
   "house.legend.forecast": "Ennuste",
   "house.legend.sun": "Aurinko",
+  "house.legend.sunDay": "Aurinko · pisteviiva = ennustepalvelu",
   "house.legend.battery": "Akun taso · katkoviiva = suunnitelma",
   "house.legend.charge": "Lataa verkosta",
   "house.chart.label": "Talo, aurinko ja akku: 12 tuntia taakse, 24 eteen",

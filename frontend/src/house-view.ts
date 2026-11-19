@@ -451,7 +451,8 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
       item("forecast", "house.legend.forecast");
     }
     if (answer.sun !== null) {
-      item("sun", "house.legend.sun");
+      // The area is the measured sun, then SpotNav's corrected forecast; the dotted line ahead is the service's own.
+      item("sun", answer.hours.some((hour) => hour.sun_forecast_kwh !== null) ? "house.legend.sunDay" : "house.legend.sun");
     }
     if (answer.hours.some((hour) => hour.car_kw !== null && hour.car_kw > 0)) {
       item("car", "house.legend.car");

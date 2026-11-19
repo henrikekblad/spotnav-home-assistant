@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Wärme",
   "house.legend.forecast": "Prognose",
   "house.legend.sun": "Sonne",
+  "house.legend.sunDay": "Sonne · gepunktet = Prognosedienst",
   "house.legend.battery": "Batteriestand · gestrichelt = Plan",
   "house.legend.charge": "Lädt aus dem Netz",
   "house.chart.label": "Haus, Sonne und Batterie: 12 Stunden zurück, 24 voraus",

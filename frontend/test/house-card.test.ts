@@ -415,7 +415,7 @@ describe("the legend", () => {
   });
 
   it("keeps the grid charging and selling tints and their legend items to the price view", () => {
-    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast", "Sun", "Car"]);
+    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast", "Sun · dotted = forecast service", "Car"]);
     expect(legendOf(body(answer(), { view: "price" }))).toEqual([
       "Buy price",
       "Sell price",

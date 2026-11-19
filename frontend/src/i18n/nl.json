@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Warmte",
   "house.legend.forecast": "Prognose",
   "house.legend.sun": "Zon",
+  "house.legend.sunDay": "Zon · stippen = voorspellingsdienst",
   "house.legend.battery": "Batterijniveau · gestippeld = plan",
   "house.legend.charge": "Laadt uit het net",
   "house.chart.label": "Huis, zon en batterij: 12 uur terug, 24 vooruit",

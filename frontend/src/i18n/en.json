@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Heat",
   "house.legend.forecast": "Forecast",
   "house.legend.sun": "Sun",
+  "house.legend.sunDay": "Sun · dotted = forecast service",
   "house.legend.battery": "Battery level · dashed = plan",
   "house.legend.charge": "Charges from the grid",
   "house.chart.label": "The house, the sun and the battery: 12 hours back, 24 ahead",

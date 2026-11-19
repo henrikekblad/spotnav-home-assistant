@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Calefacción",
   "house.legend.forecast": "Previsión",
   "house.legend.sun": "Sol",
+  "house.legend.sunDay": "Sol · punteado = servicio de previsión",
   "house.legend.battery": "Nivel de batería · discontinuo = plan",
   "house.legend.charge": "Carga de la red",
   "house.chart.label": "Casa, sol y batería: 12 horas atrás, 24 adelante",

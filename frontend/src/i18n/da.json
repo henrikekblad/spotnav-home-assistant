@@ -1241,6 +1241,7 @@
   "house.legend.heat": "Varme",
   "house.legend.forecast": "Prognose",
   "house.legend.sun": "Sol",
+  "house.legend.sunDay": "Sol · prikket = prognosetjenesten",
   "house.legend.battery": "Batteriniveau · stiplet = plan",
   "house.legend.charge": "Lader fra nettet",
   "house.chart.label": "Huset, solen og batteriet: 12 timer tilbage, 24 frem",
