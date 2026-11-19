@@ -15,7 +15,7 @@ headroom: the joint load (`load_kw`: the house, the cars' plans, the battery's g
 placed plus `boost_kw` above `cap_kw`.
 
 **Worth it**: the best candidate must beat the pump's own run (the peak's kWh at the price where its reload is
-expected, `Peak.run_at`) by `min_gain`; else no boost, the pump does it itself. No price there: no pick.
+expected, `Peak.run_at`) by `min_gain` (0.10 SEK in the area's currency, `min_gain()`); else no boost, the pump does it itself. No price there: no pick.
 
 **Budget**: at most `budget` picks per local day (the route's planned actions, `BUDGETS`) less those used already.
 
@@ -38,8 +38,30 @@ MAX_LEAD: Final = timedelta(hours=8)
 AFTER_PREVIOUS: Final = timedelta(minutes=30)
 #: A ~270 l tank loses about 1 kWh a day.
 LOSS_KWH_H: Final = 0.04
-#: The least saving per run that makes a boost worth it (minor unit: 0.10 kr).
-MIN_GAIN: Final = 10.0
+#: The least saving per run that makes a boost worth it: 0.10 SEK, in each area currency's major unit (rounded at
+#: 2026 rates; every area currency has 100 minor units to the major one, `pricing/areas.json`). A currency not
+#: listed takes the euro's figure.
+MIN_GAIN_MAJOR: Final = {
+    "SEK": 0.10,
+    "NOK": 0.10,
+    "DKK": 0.07,
+    "EUR": 0.01,
+    "CHF": 0.01,
+    "GBP": 0.01,
+    "PLN": 0.04,
+    "CZK": 0.25,
+    "RON": 0.05,
+    "HUF": 3.5,
+}
+MINOR_PER_MAJOR: Final = 100.0
+#: The SEK figure in the minor unit (öre), the planner's default.
+MIN_GAIN: Final = MIN_GAIN_MAJOR["SEK"] * MINOR_PER_MAJOR
+
+
+def min_gain(currency: str | None) -> float:
+    """The least saving per run in the currency's minor unit (the unit the prices come in)."""
+    major = MIN_GAIN_MAJOR.get((currency or "").upper(), MIN_GAIN_MAJOR["EUR"])
+    return major * MINOR_PER_MAJOR
 FREEZE: Final = timedelta(minutes=60)
 MOVE_SPACING: Final = timedelta(hours=1)
 DEFAULT_RUN: Final = timedelta(minutes=30)
@@ -309,6 +331,7 @@ __all__ = [
     "ROUTE_PULSE",
     "ROUTE_VOLATILE",
     "hourly_to_quarters",
+    "min_gain",
     "plan",
     "quarter_of",
     "quarters_of",

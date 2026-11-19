@@ -148,3 +148,15 @@ def test_helpers() -> None:
     assert len(quarters_of([(hour, hour + timedelta(hours=1), 5.0)])) == 4
     assert hourly_to_quarters({hour: 2.0})[hour + 3 * QUARTER] == 2.0
     assert plan(inputs())[0].stored()["reason"] == REASON_CHEAP
+
+
+def test_the_least_gain_is_ten_ore_in_every_currency() -> None:
+    from custom_components.spotnav.heat.dhw_plan import min_gain
+
+    assert min_gain("SEK") == 10.0  # öre
+    assert min_gain("EUR") == 1.0  # cent: 0.01 €, not 10 cent
+    assert min_gain("eur") == 1.0 and min_gain(None) == 1.0 and min_gain("XYZ") == 1.0
+    # A 5 cent saving per run is worth it in euro, the same 5 öre is not in kronor.
+    buy = prices({4: 96.0})
+    assert plan(inputs(buy=buy, min_gain=min_gain("EUR")))
+    assert plan(inputs(buy=buy, min_gain=min_gain("SEK"))) == []
