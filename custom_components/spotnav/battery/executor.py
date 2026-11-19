@@ -10,7 +10,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Edge-triggered.** It writes only when the wanted state changes (a new action, a new rate past the hysteresis,
   a brand's watchdog to renew) and only the roles whose reading differs from it, one at a time in the brand's order
   (`commands.py`). Each write goes through the confirmed-write ledger (`ledger.py`): it counts only when the entity
-  reads it back within `READBACK_DEADLINE_S`; the next role is written only after that. A write that does not read
+  reads it back within `READBACK_DEADLINE_S` (a brand whose link stalls names a longer wait for the writes that
+  start or change a command, `BrandControl.readback_s`; a restore and a peak cover keep the 60 s, so a dropped one
+  is sent again soon, and a hand-back for the fuse never waits for a read-back either way); the next role is
+  written only after that. A write that does not read
   back (a read-only integration drops it silently, an entity went away) hands the battery back and blocks the
   control until it is reset: SpotNav never repeats a write the device did not take.
 * **The monitor judges the effect** (`monitor.py`): after its grace, three readings that show no effect hand the
@@ -43,8 +46,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   write is a billed cloud command.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
   grid (at most its charge, the commanded rate and the site's import) plus the least phase's headroom less
-  `HEADROOM_MARGIN_A`, counted on the phases the plant spreads its charge over (`ExecInputs.charge_phases`, else the
-  recipe's `grid_charge_phases`): a plant that charges on one phase gets that one phase's room, not three.
+  `HEADROOM_MARGIN_A`, counted on the phases the plant spreads its charge over (`ExecInputs.charge_phases`): a plant
+  that charges on one phase gets that one phase's room, not three.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
   charger held below what it asked makes the battery yield (`YIELD_STEP_KW` below its measured grid charge, one step
   per `RATE_UP_DWELL_S`, so the car's regulator has time to follow); with "battery first" the
@@ -113,6 +116,30 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   the control (`not_obeyed:grid_charge:phase_over`). One that takes nothing does so as any charge without effect. A change between the two kinds of charge while one
   runs hands back first (`per_phase_changed`). `ExecInputs.phase_probe_kw` is the verification's: targets written
   as given (a discharge on one phase), a charge among them still within its cap.
+* **Targets that are the grid's** (`PhaseControl.target_kind` `grid`, with sensors at the target's point,
+  `PhaseControl.grid_phases`; the shell reads them into `ExecInputs.phase_behind_kw` and `phase_point_kw`). Such a
+  target is the power at the plant's grid-side point on that phase, so a charge per phase is written as the load
+  behind the point plus the charge (`PhaseControl.value`), and that phase's target written again when its load
+  moved by `PHASE_TRACK_KW`, at most every `PHASE_TRACK_S` (a setpoint write each; between two the plant holds the
+  point, so a load that changes is the battery's, never the grid's). The room of a phase is then reckoned exactly
+  (`_phase_room_kw`: the headroom less `PHASE_GRID_MARGIN_A` less what the plant puts out on the phase now), since
+  it may be the only bound: the HA-down cap of a recipe with its own dead-man is the fuse
+  (`gate.grid_charge_phase_caps_kw`). The HA-down cap bounds the whole target, the load behind plus the charge
+  (`_target_caps`), as that is what stands if Home Assistant stops. A phase taking more than its target is judged at the point against the target
+  written; whether the battery takes its charge is judged on the plant's own power (the load behind the point less
+  the point's). Without the sensors' readings no charge per phase runs (`phase_load_unknown`).
+* **Targets the plant owns outside the charge** (`PhaseControl.park` false): they are not written in any other
+  action nor on a hand-back, and a role the running action no longer sets has its claim released
+  (`_release_unset`), so the plant's own writes to it are never read as someone else's change.
+* **A fast watchdog** (`BrandControl.watchdog_renew_s`): its roles are renewed on that interval while the action
+  sets them, a whole round in one look (each still read back), never ahead of a write the action owes. A renewal
+  writes the value the role holds and is not counted; one whose value changed meanwhile is a change, and is. A
+  watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX) is renewed as before: every role every
+  round, on time whatever is still owed, a role a look, never counted.
+* **An action run by the grid's power** (`BrandControl.house_states`): the brand's values are given the house's net
+  load now beside the rate (`house_net_kw`: the site's import less the battery's charge) and are written again only
+  when the rate changes; the monitor is told what the battery can still take or give of its rate once the house
+  moved (`_house_cap`). Without the house's load the action does not run (`house_unknown`).
 * **A charge in blocks** (`BrandControl.charge_block_s`, a plant that sets its own charge power and stops at a SoC
   ceiling: Tesla's reserve). The ceiling is one block ahead of the SoC at the recipe's rate (an upper figure) and is
   renewed every block from the SoC then; with no dead-man, a Home Assistant or a cloud that stops leaves at most one
@@ -121,7 +148,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   mode, a switch: 96 a day, `ExecState.writes_today`, shared with the export limit's instance) or a `setpoint` made
   for continuous control (the targets per phase: the brand's own figure, `ExecState.setpoint_writes_today`).
   Reaching the setpoints' cap is the runaway guard: a charge per phase is handed back (`setpoint_write_cap`, not
-  blocked) and none starts again that day, while every other action still runs. A grid charge of either kind also
+  blocked) and none starts again that day, while every other action still runs. The same holds for an action whose
+  own rate is a setpoint (`_rate_is_setpoint`: a battery power target), so a rate that must fall is never left
+  unwritten. A grid charge of either kind also
   leaves `CHARGE_WRITE_RESERVE` of the day's setting writes untouched (`charge_write_budget`), so a hold can still
   start after a day of charges that kept starting. Restores, the peak cover and watchdog renewals are never
   counted or held back.
@@ -164,6 +193,7 @@ from .commands import (
     Native,
     Phases,
     Role,
+    answered,
     fixed_rate_kw,
     reading,
 )
@@ -239,6 +269,16 @@ _AMP_SLACK: Final = 0.02
 #: A phase's room that falls is not acted on this long after a raise (s): what the plant takes on the phase is
 #: counted back from its own power, which shows the raise a reading or two late. The fuse's own hand-back still acts.
 PHASE_RAISE_SETTLE_S: Final = 10.0
+#: The headroom a charge per phase by `grid` targets is sized to leave on each phase (A): more than
+#: `HEADROOM_MARGIN_A`, since with the HA-down cap lifted (`gate.grid_charge_phase_caps_kw`) nothing else stands
+#: between the charge and the fuse; a load that starts on a phase then lowers that phase's charge at the next look
+#: instead of handing everything back (`RESTORE_HEADROOM_A`).
+PHASE_GRID_MARGIN_A: Final = 4.0
+#: A `grid` target per phase follows the load behind its point: written again when a target would move by more than
+#: this (kW), no sooner than this after the last change (s). Between two the plant holds the point's power, so a
+#: load that changes is taken by the battery, never by the grid.
+PHASE_TRACK_KW: Final = 0.3
+PHASE_TRACK_S: Final = 30.0
 #: The day's setting writes a grid charge leaves untouched, so a hold can still start after it.
 CHARGE_WRITE_RESERVE: Final = 12
 #: The most the verification's probe may discharge on one phase (kW).
@@ -311,7 +351,8 @@ def role_reads(control: BrandControl, entities: Sequence[EntityFact], battery: E
         if found is None:
             continue
         reads[role.name] = RoleRead(
-            entity_id=found.entity_id, state=found.state, found=True, enabled=not found.disabled, step=found.step,
+            entity_id=found.entity_id, state=answered(role, found.state, found.attributes), found=True,
+            enabled=not found.disabled, step=found.step,
             device_id=found.device_id,
         )
     return reads
@@ -330,6 +371,9 @@ class ExecInputs:
     measurement_ok: bool = True
     #: The least headroom on any phase now (A), `None` when unknown.
     headroom_a: float | None = None
+    #: The phases the plant spreads a balanced grid charge over (`BrandControl.grid_charge_phases`, or the plant's
+    #: Output Type): the live clamp counts the least headroom on that many phases, as the HA-down cap does.
+    charge_phases: int = 3
     volts_between_phases: float = 400.0
     #: The site's grid import now (kW, + import), `None` when unknown.
     grid_import_kw: float | None = None
@@ -366,10 +410,12 @@ class ExecInputs:
     #: The verification's probe: the charge to command on each phase as it is (kW, negative for a discharge), a
     #: charge among them still within its phase's cap and room.
     phase_probe_kw: Phases | None = None
-    #: The phases the plant spreads a balanced grid charge over (the shell's reading of its Output Type, else the
-    #: recipe's `BrandControl.grid_charge_phases`); `None`: the recipe's. The live clamp counts the charge on these
-    #: phases only (`grid_charge_cap_kw`).
-    charge_phases: int | None = None
+    #: For a recipe whose targets per phase are the grid's with sensors at their point
+    #: (`commands.PhaseControl.grid_phases`): the load behind each phase's point and the power at the point now (kW,
+    #: the point's + from the grid); `None` when not read. The plant's own power per phase (`plant_phase_kw`) is
+    #: then the first less the second.
+    phase_behind_kw: Phases | None = None
+    phase_point_kw: Phases | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -473,6 +519,12 @@ class ExecState:
     settle: dict[str, tuple[str, Native, Native, str]] = field(default_factory=dict)
     settle_until: datetime | None = None
     settle_misses: int = 0
+    #: The house's net load the running action's values were written for (`BrandControl.house_states`); the load
+    #: behind each phase's point in the targets written (a `grid` target per phase) and the one before the last
+    #: change. Not stored: a restart hands back.
+    house_kw: float | None = None
+    phase_behind_kw: Phases | None = None
+    phase_was_behind_kw: Phases | None = None
 
     @property
     def holds_snapshot(self) -> bool:
@@ -517,9 +569,17 @@ class ExecState:
             "phased": self.phased,
             "phase_kw": None if self.phase_kw is None else list(self.phase_kw),
             "setpoint_writes_today": self.setpoint_writes_today,
+        } | self._settle_dict()
+
+    def _settle_dict(self) -> dict[str, Any]:
+        """The values written and the watch after a hand-back (`BrandControl.settle_s`), stored only when there are
+        any: a recipe without the watch stores what it always did."""
+        if not (self.wrote or self.settle or self.settle_misses):
+            return {}
+        return {
             "wrote": dict(self.wrote),
             "settle": {name: list(row) for name, row in self.settle.items()},
-            "settle_until": iso(self.settle_until),
+            "settle_until": None if self.settle_until is None else self.settle_until.isoformat(),
             "settle_misses": self.settle_misses,
         }
 
@@ -638,21 +698,18 @@ class StepResult:
 # --- fuse ----------------------------------------------------------------------------------------------------------
 
 
-def _kw(amps: float, volts: float, phases: int = 3) -> float:
-    """Amps per phase over `phases` phases as kW (signed); `volts` is the voltage between phases."""
-    return amps * min(max(phases, 1), 3) * volts / math.sqrt(3.0) / 1000.0
+def _kw(amps: float, volts: float) -> float:
+    """Amps per phase over three phases as kW (signed)."""
+    return amps * math.sqrt(3.0) * volts / 1000.0
 
 
-def grid_charge_cap_kw(
-    inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True, phases: int = 3
-) -> float | None:
+def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True) -> float | None:
     """The most the battery may charge from the grid now (kW), `None` when the headroom is unknown.
 
-    The least phase's headroom (less `HEADROOM_MARGIN_A`) is counted on the `phases` the plant spreads its charge
-    over: a plant that charges on one phase gets a third of what a balanced three-phase one does, as the gate's
-    HA-down cap reckons it. What the battery already takes from the grid is counted back (it is in the measured
-    import): at most its own charge, the rate commanded and the site's import, and nothing when the import is
-    unknown, so the figure is never above the truth. With "car first" and a car held, the
+    What the battery already takes from the grid is counted back (it is in the measured import): at most its own
+    charge, the rate commanded and the site's import, and nothing when the import is unknown, so the figure is never
+    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse, on as many phases as the plant spreads
+    the charge over (`ExecInputs.charge_phases`: a charge not known to be balanced may land on the tightest one). With "car first" and a car held, the
     battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
     it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
@@ -662,10 +719,20 @@ def grid_charge_cap_kw(
     if inputs.grid_import_kw is not None and battery is not None:
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
         measured = max(min(battery, inputs.grid_import_kw), 0.0)
-    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases, phases)
+    phases = min(max(inputs.charge_phases, 1), 3)
+    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
     if inputs.car_first and inputs.car_held:
         cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap
+
+
+def house_net_kw(inputs: ExecInputs) -> float | None:
+    """The house's net load now (kW): the site's import less what the battery charges (negative: the sun gives
+    more than the house takes); `None` when either is unknown."""
+    grid, battery = inputs.grid_import_kw, inputs.facts.power_kw
+    if grid is None or battery is None or not math.isfinite(grid) or not math.isfinite(battery):
+        return None
+    return grid - battery
 
 
 def _finite3(values: Any) -> bool:
@@ -674,19 +741,50 @@ def _finite3(values: Any) -> bool:
     )
 
 
-def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None) -> Phases | None:
+def _target_caps(inputs: ExecInputs) -> Phases:
+    """For `grid` targets: the most each phase may charge by its HA-down cap (kW). The target that stands if Home
+    Assistant stops is the load behind the point plus the charge, and the grid's phase is then what is beside the
+    point plus that target, whatever the load behind does meanwhile: so the cap bounds the target, and the charge's
+    share of it is the cap less the load behind (a negative load, a source behind the point, is not counted as
+    room). 0 on every phase without the load behind."""
+    caps = inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+    behind = inputs.phase_behind_kw
+    if not _finite3(behind) or behind is None:
+        return (0.0, 0.0, 0.0)
+    out = [max(cap - max(load, 0.0), 0.0) for cap, load in zip(caps, behind, strict=True)]  # type: ignore[arg-type]
+    return (out[0], out[1], out[2])
+
+
+def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool = False) -> Phases | None:
     """The most each phase may charge now (kW): its HA-down cap (`ExecInputs.phase_caps_kw`, 0 without one) and its
     live room, what the plant already takes on that phase (at most what was commanded on it and what the plant's own
     power per phase shows, nothing when that is unknown, so never above the truth) plus the phase's headroom less
-    `HEADROOM_MARGIN_A`. `None` when a phase's headroom is unknown."""
+    `HEADROOM_MARGIN_A`. `None` when a phase's headroom is unknown.
+
+    `grid`: the targets are the grid's (`PhaseControl.target_kind`), where the phase's cap may be the fuse itself
+    (`gate.grid_charge_phase_caps_kw`), so the live room is reckoned exactly and is the one bound. A target of the
+    load behind the point plus a charge `c` puts the phase at its import now, plus what the plant puts out on it
+    now (which it then no longer does), plus `c`: the room is the headroom less `PHASE_GRID_MARGIN_A` less the
+    plant's own output now (signed: a plant that charges now has that back). No room without the plant's power per
+    phase. The HA-down cap bounds the whole target, which is what stands if Home Assistant stops
+    (`_target_caps`)."""
     if not _finite3(inputs.phase_headroom_a) or inputs.volts_between_phases <= 0:
         return None
     assert inputs.phase_headroom_a is not None
     volts = inputs.volts_between_phases / math.sqrt(3.0)
-    caps = inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+    caps = _target_caps(inputs) if grid else (
+        inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+    )
     plant = inputs.plant_phase_kw if _finite3(inputs.plant_phase_kw) else None
     room: list[float] = []
     for index in range(3):
+        if grid:
+            if plant is None:
+                room.append(0.0)
+                continue
+            exact = (inputs.phase_headroom_a[index] - PHASE_GRID_MARGIN_A) * volts / 1000.0 - plant[index]
+            room.append(max(min(caps[index], exact), 0.0))  # type: ignore[index]
+            continue
         own = 0.0
         if plant is not None and commanded is not None:
             own = max(min(commanded[index], -plant[index]), 0.0)
@@ -705,7 +803,7 @@ def _floored(values: Phases | list[float], step_kw: float = PHASE_STEP_KW) -> Ph
 
 
 def phase_charge_kw(
-    inputs: ExecInputs, commanded: Phases | None, *, yield_now: bool = True, live: bool = True
+    inputs: ExecInputs, commanded: Phases | None, *, yield_now: bool = True, live: bool = True, grid: bool = False
 ) -> tuple[Phases | None, str | None]:
     """The charge to command on L1, L2 and L3 now (kW), or why none can run.
 
@@ -715,11 +813,13 @@ def phase_charge_kw(
     alone, for what the charge would be with the house quiet. The verification's probe
     (`ExecInputs.phase_probe_kw`) is taken as it is: a charge on a phase still within that phase's room, a discharge
     at most `PHASE_PROBE_MAX_KW`."""
-    room = _phase_room_kw(inputs, commanded)
+    room = _phase_room_kw(inputs, commanded, grid=grid)
     if room is None:
         return None, "headroom_unknown"
     if not live:
-        caps = inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+        caps = _target_caps(inputs) if grid else (
+            inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+        )
         room = (max(caps[0], 0.0), max(caps[1], 0.0), max(caps[2], 0.0))  # type: ignore[index]
     probe = inputs.phase_probe_kw
     if probe is not None:
@@ -768,6 +868,12 @@ def hold_headroom_ok(inputs: ExecInputs) -> bool:
 def _fresh(inputs: ExecInputs) -> bool:
     age = inputs.battery_age_s
     return inputs.facts.power_kw is not None and age is not None and age <= BATTERY_MAX_AGE_S
+
+
+def _tolerance(role: Role, read: RoleRead) -> float | None:
+    """How near a read must be to a value to count as it: the role's own figure where it has one
+    (`Role.tolerance`), else the entity's step, else the role's."""
+    return role.tolerance if role.tolerance is not None else (read.step or role.step)
 
 
 def _rating(facts: BatteryFacts, kind: str | None) -> float | None:
@@ -834,7 +940,11 @@ def management_problem(
     facts: BatteryFacts, control: BrandControl, active: bool, *, takeover: bool = False
 ) -> str | None:
     """Why the battery is not SpotNav's to run now; `unknown` when a setting cannot be read. `takeover`: the person
-    acknowledged that SpotNav may take the plant over from its own optimiser (`taken_over`)."""
+    acknowledged that SpotNav may take the plant over from its own optimiser (`taken_over`), and for a plant whose
+    own strategy cannot be read (`BrandControl.strategy_unread`) that SpotNav overrides whatever strategy runs:
+    without it such a plant is never SpotNav's to run (`strategy_unread`)."""
+    if control.strategy_unread and not takeover:
+        return "strategy_unread"
     management = facts.management
     if management.state == "free":
         return None
@@ -1037,7 +1147,8 @@ class Executor:
             events += self._precheck(inputs)
             batch = self._progress(inputs)
             ops += batch
-            if not batch or not self._fuse_hand_back():
+            # A fuse hand-back writes all its roles in one look; so does a round of a fast watchdog's renewals.
+            if not batch or not (self._fuse_hand_back() or (self._fast_renewal() and self.state.renew)):
                 break
         events += [_event(now, "write", op.role, entity_id=op.entity_id, value=op.value, restore=op.restore)
                    for op in ops]
@@ -1080,9 +1191,12 @@ class Executor:
                 if self.state.pending == role.name:
                     self.state = replace(self.state, pending=None)
                 self.state = replace(self.state, in_flight=_without(self.state.in_flight, role.name))
-                if self.state.phase == "restoring" and event.intended != self.state.target.get(role.name):
+                if role.name not in self.state.target or (
+                    self.state.phase == "restoring" and event.intended != self.state.target.get(role.name)
+                ):
                     # A write made for the action, still awaited when the hand-back began: no restore to retry,
-                    # the role is judged afresh against its restore value.
+                    # the role is judged afresh against its restore value. Likewise one for a role the action no
+                    # longer sets.
                     events.append(_event(now, "not_taken", role.name, why="superseded", read=event.read))
                 else:
                     events += self._not_taken(now, role.name, "no_read_back", read=event.read)
@@ -1104,7 +1218,9 @@ class Executor:
                 rated_charge_kw=facts.max_charge_kw,
                 rated_discharge_kw=facts.max_discharge_kw,
                 soc_min_pct=facts.reserve_soc_pct or 0.0,
-                site_cap_kw=inputs.house_deficit_kw if self.state.action == ACTION_DISCHARGE_HOUSE else None,
+                site_cap_kw=(
+                    inputs.house_deficit_kw if self.state.action == ACTION_DISCHARGE_HOUSE else self._house_cap(inputs)
+                ),
             )
             grid = inputs.grid_import_kw if self.state.action == ACTION_HOLD and inputs.measurement_ok else None
             judged = self.monitor.observe(
@@ -1116,14 +1232,47 @@ class Executor:
                     events += self._begin_restore(now, f"no_effect:{self.state.action}")
         return events
 
-    def _phase_measured(self, inputs: ExecInputs) -> Phases | None:
-        """What a charge per phase is judged on, as power put out on each phase (kW): the plant's own power, or for a
-        recipe whose targets are the grid's the site meter's phase (its import negated)."""
+    def _grid_kind(self) -> bool:
+        """Whether the control's targets per phase are the grid's (`PhaseControl.target_kind`)."""
         spec = self.control.phase_control
-        if spec is not None and spec.target_kind == "grid":
-            grid = inputs.grid_phase_kw
-            return (-grid[0], -grid[1], -grid[2]) if _finite3(grid) and grid is not None else None
+        return spec is not None and spec.target_kind == "grid"
+
+    def _phase_measured(self, inputs: ExecInputs) -> Phases | None:
+        """What a phase taking more than its target is judged on, as power put out on each phase (kW): the plant's
+        own power, or for a recipe whose targets are the grid's the power at the target's point (negated: + from
+        the grid is a draw), the site meter's phase where the recipe has no sensor at the point."""
+        if self._grid_kind():
+            point = inputs.phase_point_kw if _finite3(inputs.phase_point_kw) else inputs.grid_phase_kw
+            return (-point[0], -point[1], -point[2]) if _finite3(point) and point is not None else None
         return inputs.plant_phase_kw if _finite3(inputs.plant_phase_kw) else None
+
+    def _phase_aims(self, phases: Phases, behind: Phases | None) -> Phases:
+        """What each phase may take where `_phase_measured` reads it (kW): its charge, or for a `grid` target the
+        power at the point, the load behind it plus the charge."""
+        if not self._grid_kind() or behind is None:
+            return phases
+        return (phases[0] + behind[0], phases[1] + behind[1], phases[2] + behind[2])
+
+    def _behind(self, inputs: ExecInputs) -> Phases | None:
+        """The load behind each phase's point now (kW), for a `grid` target; `None` for a plant target."""
+        if not self._grid_kind():
+            return None
+        behind = inputs.phase_behind_kw
+        assert behind is not None and _finite3(behind)  # `_aim` refuses a charge per phase without it
+        return (round(behind[0], 2), round(behind[1], 2), round(behind[2], 2))
+
+    def _house_cap(self, inputs: ExecInputs) -> float | None:
+        """For an action run by the grid's power (`BrandControl.house_states`): what the battery can take or give of
+        its rate now that the house moved since the values were written (the setpoint is not moved with it), for the
+        monitor; `None` for any other action or when the house is not known."""
+        state = self.state
+        if state.action not in self.control.house_states or state.house_kw is None or state.phase_kw is not None:
+            return None
+        now_kw = house_net_kw(inputs)
+        if now_kw is None:
+            return None
+        moved = now_kw - state.house_kw
+        return state.rate_kw - moved if state.action == ACTION_GRID_CHARGE else state.rate_kw + moved
 
     def _judge_phases(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """A running charge per phase against what each phase takes (`monitor.judge_phases`, `_phase_measured`).
@@ -1151,8 +1300,11 @@ class Executor:
         if (now - entered).total_seconds() >= PHASE_OVER_GRACE_S and (
             state.phase_over_at is None or (now - state.phase_over_at).total_seconds() >= PHASE_OVER_GAP_S
         ):
-            was = state.phase_was_kw if settling and state.phase_was_kw is not None else phases
-            most = (max(phases[0], was[0]), max(phases[1], was[1]), max(phases[2], was[2]))
+            aims = self._phase_aims(phases, state.phase_behind_kw)
+            was = aims
+            if settling and state.phase_was_kw is not None:
+                was = self._phase_aims(state.phase_was_kw, state.phase_was_behind_kw or state.phase_behind_kw)
+            most = (max(aims[0], was[0]), max(aims[1], was[1]), max(aims[2], was[2]))
             over = judge_phases(most, measured, tapering=True) == "over"
             count = state.phase_over + 1 if over else 0
             self.state = state = replace(state, phase_over=count, phase_over_at=now)
@@ -1170,6 +1322,13 @@ class Executor:
         if state.phase_judged_at is not None and (now - state.phase_judged_at).total_seconds() < PHASE_GAP_S:
             return []
         soc = inputs.facts.soc_pct
+        if self._grid_kind():
+            # Whether the battery takes its charge is the plant's own power (the load behind the point less the
+            # point's), not the point's: a point that only feeds its load reads its target without charging.
+            if not _finite3(inputs.plant_phase_kw):
+                return []
+            assert inputs.plant_phase_kw is not None
+            measured = inputs.plant_phase_kw
         verdict = judge_phases(phases, measured, tapering=soc is None or soc >= CHARGE_TAPER_SOC_PCT)
         if verdict in ("ok", "over"):
             # Over is the count above's.
@@ -1228,7 +1387,7 @@ class Executor:
             if expected is None:
                 break
             now_read = reading(role, read.state)
-            if same(expected, now_read, read.step or role.step) is not False:
+            if same(expected, now_read, _tolerance(role, read)) is not False:
                 break
             if claim is not None:
                 self.ledger.give_up(entity_id, now_read, inputs.now, state.target.get(name, expected))
@@ -1320,14 +1479,26 @@ class Executor:
     def _setpoints_spent(self) -> bool:
         return self.state.setpoint_writes_today >= self.control.write_cap("setpoint")
 
+    def _rate_is_setpoint(self, action: str | None) -> bool:
+        """Whether the brand's own command for the action carries its rate in a setpoint (a battery power target)."""
+        build = self.control.states.get(action or "")
+        return build is not None and any(
+            want.value != 0.0 and self.control.role(want.role).write_class == "setpoint"
+            for want in build(1.0, self.watchdog_s)
+        )
+
     def _charge_budget(self, inputs: ExecInputs) -> str | None:
-        """Why a grid charge may not run (on) for the day's writes: a charge per phase once the setpoints' cap is
-        reached (the runaway guard), and either kind once only `CHARGE_WRITE_RESERVE` of the settings' writes are
-        left (a hold must still be able to start)."""
-        if inputs.action != ACTION_GRID_CHARGE or self._export:
+        """Why an action may not run (on) for the day's writes: a charge per phase, or an action whose rate is a
+        setpoint, once the setpoints' cap is reached (the runaway guard), and a grid charge of either kind once only
+        `CHARGE_WRITE_RESERVE` of the settings' writes are left (a hold must still be able to start)."""
+        if self._export:
             return None
-        if self._per_phase(inputs) and inputs.phase_probe_kw is None and self._setpoints_spent():
+        if inputs.phase_probe_kw is None and self._setpoints_spent() and (
+            self._per_phase(inputs) or self._rate_is_setpoint(inputs.action)
+        ):
             return "setpoint_write_cap"
+        if inputs.action != ACTION_GRID_CHARGE:
+            return None
         if _writes_today(self.state, inputs) >= self._daily_cap - self._charge_reserve:
             return "charge_write_budget"
         return None
@@ -1406,8 +1577,9 @@ class Executor:
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
-            charging_since=None, over_since=None, priming=False, confirmed=(), phase_bad=(),
+            charging_since=None, over_since=None, priming=False, confirmed=(), phase_bad=(), house_kw=None,
         )
+        self._release_unset()
         return [_event(now, "hand_back", reason)]
 
     def _settle_retries(self, inputs: ExecInputs) -> None:
@@ -1550,10 +1722,11 @@ class Executor:
     # --- entering ---
 
     def _wanted(
-        self, action: str, rate_kw: float, restore_values: Mapping[str, Native], phases: Phases | None = None
+        self, action: str, rate_kw: float, restore_values: Mapping[str, Native], phases: Phases | None = None, *,
+        house_kw: float | None = None, behind: Phases | None = None,
     ) -> dict[str, Native]:
         wanted = self.control.wanted(
-            action, rate_kw, self.watchdog_s, phases,
+            action, rate_kw, self.watchdog_s, phases, house_kw=house_kw, behind_kw=behind,
             soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent, capacity_kwh=self._capacity_kwh,
         )
         out = {
@@ -1570,14 +1743,21 @@ class Executor:
         and why it cannot run."""
         state = self.state
         if not self._per_phase(inputs):
+            if inputs.action in self.control.house_states and house_net_kw(inputs) is None:
+                # The brand sets the grid's power: without the house's load now there is nothing to write.
+                return 0.0, None, "house_unknown"
             rate, why = self._rate(inputs, 0.0 if starting else state.rate_kw)
             return rate, None, why
+        if self._grid_kind() and not _finite3(inputs.phase_behind_kw):
+            return 0.0, None, "phase_load_unknown"
         changed = state.rate_changed_at
         yield_now = (
             starting or state.phase != "active" or changed is None
             or (inputs.now - changed).total_seconds() >= RATE_UP_DWELL_S
         )
-        phases, why = phase_charge_kw(inputs, None if starting else state.phase_kw, yield_now=yield_now)
+        phases, why = phase_charge_kw(
+            inputs, None if starting else state.phase_kw, yield_now=yield_now, grid=self._grid_kind()
+        )
         if phases is None:
             return 0.0, None, why
         return round(sum(max(value, 0.0) for value in phases), 3), phases, None
@@ -1592,7 +1772,7 @@ class Executor:
             fixed = fixed_rate_kw(self.control, facts)
             if fixed is None or not math.isfinite(fixed):
                 return 0.0, "size_unknown"
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False, phases=self._charge_phases(inputs))
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False)
             if cap is None:
                 return 0.0, "headroom_unknown"
             if fixed > cap + RATE_TOLERANCE_KW:
@@ -1607,7 +1787,7 @@ class Executor:
                 self.state.phase != "active" or changed is None
                 or (inputs.now - changed).total_seconds() >= RATE_UP_DWELL_S
             )
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now, phases=self._charge_phases(inputs))
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now)
             if cap is None:
                 return 0.0, "headroom_unknown"
             rate = min(rate, cap)
@@ -1634,13 +1814,9 @@ class Executor:
             return "headroom_unknown"
         power = inputs.facts.power_kw
         covered_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases if power is not None and power < 0 else 0.0
-        room = _kw(inputs.headroom_a - covered_a - HEADROOM_MARGIN_A, inputs.volts_between_phases, self._charge_phases(inputs))
+        phases = min(max(inputs.charge_phases, 1), 3)
+        room = _kw(inputs.headroom_a - covered_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
         return "fuse_headroom" if fixed > room + RATE_TOLERANCE_KW else None
-
-    def _charge_phases(self, inputs: ExecInputs) -> int:
-        """The phases a balanced grid charge is spread over: the shell's reading, else the recipe's."""
-        phases = inputs.charge_phases if inputs.charge_phases is not None else self.control.grid_charge_phases
-        return min(max(int(phases), 1), 3)
 
     def _blocker(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
@@ -1685,7 +1861,7 @@ class Executor:
         for role, value, why in self.control.watched:
             read = inputs.reads.get(role.name)
             if read is not None and read.found and read.enabled and same(
-                value, reading(role, read.state), read.step or role.step
+                value, reading(role, read.state), _tolerance(role, read)
             ) is False:
                 # Another control's target left standing would act under this one.
                 return f"{why}:{role.name}"
@@ -1738,13 +1914,15 @@ class Executor:
             restore_values[role.name] = value
         action = inputs.action
         assert action is not None
+        house, behind = self._grid_terms(inputs, action, phases)
         self.state = replace(
             self.state, priming=bool(self.state.unsure and self.control.prime), wrote={}, settle={},
             settle_until=None, settle_misses=0,
         )
         self.state = replace(
             self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
-            target=self._wanted(action, rate, restore_values, phases), snapshot=snapshot,
+            target=self._wanted(action, rate, restore_values, phases, house_kw=house, behind=behind),
+            snapshot=snapshot, house_kw=house, phase_behind_kw=behind, phase_was_behind_kw=None,
             restore_values=restore_values,
             entities=entities, device_id=device_id, snapshot_at=now, entered_at=now, rate_changed_at=now,
             watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None, written=(),
@@ -1754,6 +1932,33 @@ class Executor:
         self._watch(inputs, action, rate)
         detail: dict[str, Any] = {} if phases is None else {"phase_kw": list(phases)}
         return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot, **detail)]
+
+    def _grid_terms(
+        self, inputs: ExecInputs, action: str, phases: Phases | None
+    ) -> tuple[float | None, Phases | None]:
+        """What a brand that sets the grid's power is given beside the rate: the house's net load now for an action
+        of `BrandControl.house_states` (not for a charge per phase), and the load behind each phase's point for a
+        `grid` target per phase. `None` each for a brand that sets the battery's."""
+        if phases is not None:
+            return None, self._behind(inputs)
+        return (house_net_kw(inputs) if action in self.control.house_states else None), None
+
+    def _release_unset(self) -> None:
+        """A role the running action no longer sets (and no hand-back writes) is the plant's again: its claim is
+        released, also for a write still awaited, so the plant's own writes to it are never read as someone else's
+        change and nothing waits for its read-back. A brand whose roles are set in every action and handed back
+        (every one but a recipe with unparked targets per phase) has no such role."""
+        state = self.state
+        for name, entity_id in state.entities.items():
+            if name in state.target or name in state.given_up:
+                continue
+            if self.ledger.claim(entity_id) is not None:
+                self.ledger.release(entity_id)
+            if state.pending == name or name in state.in_flight:
+                self.state = state = replace(
+                    state, pending=None if state.pending == name else state.pending,
+                    in_flight=_without(state.in_flight, name),
+                )
 
     def _lead(self, previous: str | None) -> tuple[str, ...]:
         """The roles a change of action away from `previous` writes first: a grid charge's stop (its `peak_first`
@@ -1798,7 +2003,10 @@ class Executor:
             self.state = state = replace(state, priming=False, unsure=())
             self.state = state = replace(
                 state, sent=(),
-                target=self._wanted(state.action or action, state.rate_kw, state.restore_values, state.phase_kw),
+                target=self._wanted(
+                    state.action or action, state.rate_kw, state.restore_values, state.phase_kw,
+                    house_kw=state.house_kw, behind=state.phase_behind_kw,
+                ),
             )
             events.append(_event(now, "primed", state.action or action))
         if action != state.action and self.control.slow and state.rate_changed_at is not None and (
@@ -1807,14 +2015,18 @@ class Executor:
             # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
             return events
         if action != state.action:
+            house, behind = self._grid_terms(inputs, action, phases)
             self.state = replace(
-                state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values, phases),
+                state, action=action, rate_kw=rate,
+                target=self._wanted(action, rate, state.restore_values, phases, house_kw=house, behind=behind),
+                house_kw=house, phase_behind_kw=behind, phase_was_behind_kw=None,
                 sent=(), renew=(), rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
                 lead=self._lead(state.action), phase_kw=phases, phase_bad=(), phase_judged_at=None,
                 phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
                 # The runaway's grace counts from the charge's own start.
                 entered_at=now if phases is not None else state.entered_at,
             )
+            self._release_unset()
             self._watch(inputs, action, rate)
             detail: dict[str, Any] = {} if phases is None else {"phase_kw": list(phases)}
             return [_event(now, "change", action, rate_kw=rate, **detail)]
@@ -1827,20 +2039,37 @@ class Executor:
             down = rate < state.rate_kw - RATE_TOLERANCE_KW
             up = rate >= state.rate_kw + RATE_STEP_KW and since >= RATE_UP_DWELL_S
             if down or up:
+                house, _behind = self._grid_terms(inputs, action, None)
                 self.state = replace(
-                    state, rate_kw=rate, target=self._wanted(action, rate, state.restore_values), sent=(),
-                    rate_changed_at=now,
+                    state, rate_kw=rate, target=self._wanted(action, rate, state.restore_values, house_kw=house),
+                    sent=(), rate_changed_at=now, house_kw=house,
                 )
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
         events += self._renew_block(inputs)
         state = self.state
+        if not self._fast_renewal():
+            # A watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX): renewed as it always was, every
+            # role whatever is still owed, a round a look per role.
+            if (
+                self.control.watchdog_roles and state.watchdog_at is not None and state.pending is None
+                and (now - state.watchdog_at).total_seconds() >= WATCHDOG_RENEW_S
+            ):
+                self.state = replace(state, renew=self.control.watchdog_roles, watchdog_at=now)
+                events.append(_event(now, "renew", ",".join(self.control.watchdog_roles)))
+            return events
+        # A fast watchdog (`BrandControl.watchdog_renew_s`): only what the running action sets is renewed (a
+        # watchdog of the charge per phase has nothing to keep alive under a hold).
+        renewed = tuple(name for name in self.control.watchdog_roles if name in state.target)
         if (
-            self.control.watchdog_roles and state.watchdog_at is not None and state.pending is None
-            and (now - state.watchdog_at).total_seconds() >= WATCHDOG_RENEW_S
+            renewed and state.watchdog_at is not None and state.pending is None
+            and (now - state.watchdog_at).total_seconds() >= (self.control.watchdog_renew_s or WATCHDOG_RENEW_S)
+            # One round at a time, and never ahead of a write the action still owes: a round begun before the last
+            # one ended would never reach its last role.
+            and not state.renew and not state.in_flight and self._next_role(state, inputs) is None
         ):
-            self.state = replace(state, renew=self.control.watchdog_roles, watchdog_at=now)
-            events.append(_event(now, "renew", ",".join(self.control.watchdog_roles)))
+            self.state = replace(state, renew=renewed, watchdog_at=now)
+            events.append(_event(now, "renew", ",".join(renewed)))
         return events
 
     def _renew_block(self, inputs: ExecInputs) -> list[dict[str, Any]]:
@@ -1871,12 +2100,18 @@ class Executor:
         now = inputs.now
         old = state.phase_kw
         assert old is not None
+        since = (now - (state.rate_changed_at or now)).total_seconds()
+        behind, old_behind = self._behind(inputs), state.phase_behind_kw
+        # A `grid` target follows the load behind its point: written again once a target would move enough.
+        moved = (
+            behind is not None and old_behind is not None and since >= PHASE_TRACK_S
+            and any(abs(new - was) > PHASE_TRACK_KW for new, was in zip(behind, old_behind, strict=True))
+        )
         if inputs.phase_probe_kw is not None:
             change = any(abs(new - was) > 1e-9 for new, was in zip(phases, old, strict=True))
         else:
-            since = (now - (state.rate_changed_at or now)).total_seconds()
             gain = sum(phases) - sum(old)
-            ceiling, _why = phase_charge_kw(inputs, None, live=False)
+            ceiling, _why = phase_charge_kw(inputs, None, live=False, grid=self._grid_kind())
             full = ceiling is not None and all(
                 new >= most - PHASE_STEP_KW - 1e-9 for new, most in zip(phases, ceiling, strict=True)
             )
@@ -1887,8 +2122,17 @@ class Executor:
                 down = False
             up = since >= RATE_UP_DWELL_S and (gain >= RATE_STEP_KW or (full and gain > PHASE_TOLERANCE_KW))
             change = down or up
-        if not change:
+        if not change and not moved:
             return []
+        if not change:
+            # Only the load moved: the charge per phase stays as commanded (never above what the phase allows with
+            # the load as it is now), and only the targets whose load moved follow it, so a busy house spends the
+            # day's setpoint writes on the phases that need them.
+            phases = (min(old[0], phases[0]), min(old[1], phases[1]), min(old[2], phases[2]))
+            rate = round(sum(max(value, 0.0) for value in phases), 3)
+            assert behind is not None and old_behind is not None
+            kept = [new if abs(new - was) > PHASE_TRACK_KW else was for new, was in zip(behind, old_behind, strict=True)]
+            behind = (kept[0], kept[1], kept[2])
         spec = self.control.phase_control
         names = () if spec is None else spec.names()
         # The falling phases are written first: no phase is raised while another still draws what it must give up.
@@ -1897,12 +2141,14 @@ class Executor:
             # the next one's is written, so never two phases discharge at once.
             falling = tuple(name for name, new, was in zip(names, phases, old, strict=False) if abs(new) < abs(was))
         else:
-            falling = tuple(name for name, new, was in zip(names, phases, old, strict=False) if new < was)
+            aims, was_aims = self._phase_aims(phases, behind), self._phase_aims(old, old_behind)
+            falling = tuple(name for name, new, was in zip(names, aims, was_aims, strict=False) if new < was)
         rising = any(new > was for new, was in zip(phases, old, strict=True))
         self.state = replace(
             state, rate_kw=rate, phase_kw=phases, sent=(), rate_changed_at=now, phase_bad=(), phase_judged_at=None,
-            target=self._wanted(ACTION_GRID_CHARGE, rate, state.restore_values, phases), lead=falling,
+            target=self._wanted(ACTION_GRID_CHARGE, rate, state.restore_values, phases, behind=behind), lead=falling,
             phase_was_kw=old, phase_raised_at=now if rising else state.phase_raised_at,
+            phase_behind_kw=behind, phase_was_behind_kw=old_behind,
         )
         return [_event(now, "rate", ACTION_GRID_CHARGE, rate_kw=rate, was_kw=state.rate_kw, phase_kw=list(phases),
                        was_phase_kw=list(old))]
@@ -1997,7 +2243,7 @@ class Executor:
             # Never written and still as found (a never-set limit reads "unknown"): nothing to write back. A role
             # SpotNav wrote is restored by writing its snapshot and reading it back, whatever it reads now.
             return True
-        return bool(same(wanted, reading(role, state), None if read is None else (read.step or role.step)))
+        return bool(same(wanted, reading(role, state), None if read is None else _tolerance(role, read)))
 
     def _next_role(self, state: ExecState, inputs: ExecInputs) -> str | None:
         """The first role, in the brand's order, that does not read what it should (or must be renewed)."""
@@ -2040,7 +2286,11 @@ class Executor:
         sent = state.sent if name in state.sent else (*state.sent, name)
         # A restore and a watchdog renewal are not counted: the renewal is the brand's dead-man, on a fixed timer
         # (`WATCHDOG_RENEW_S`, at most a few roles), never a change of the wanted state.
-        renewing = name in state.renew
+        # On a fast watchdog a role in a renewal round whose value changed meanwhile is a change, and is counted;
+        # the brands on `WATCHDOG_RENEW_S` count no renewal, as before (their round is a few roles a quarter-hour).
+        renewing = name in state.renew and (
+            not self._fast_renewal() or self._satisfied(role, value, read, restoring=False)
+        )
         counted = 0 if restoring or renewing else 1
         setpoint = role.write_class == "setpoint"
         writes = state.writes_today + (0 if setpoint else counted)
@@ -2055,16 +2305,32 @@ class Executor:
         else:
             if entity_id is not None:
                 self.ledger.intend(
-                    entity_id, value, inputs.now, step=None if read is None else (read.step or role.step),
-                    deadline_s=self.control.readback_s or READBACK_DEADLINE_S,
+                    entity_id, value, inputs.now, step=None if read is None else _tolerance(role, read),
+                    deadline_s=self._readback_s(state, name),
                 )
-            if self._fuse_hand_back():
+            if self._fuse_hand_back() or (renewing and self._fast_renewal()):
                 self.state = replace(state, in_flight=(*state.in_flight, name), sent=sent, renew=renew,
                                      writes_today=writes, written=written, setpoint_writes_today=setpoints)
             else:
                 self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written,
                                      setpoint_writes_today=setpoints)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    def _readback_s(self, state: ExecState, name: str) -> float:
+        """How long this write may take to read back: the brand's longer wait (`BrandControl.readback_s`) only for a
+        write that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link
+        dropped is sent again soon (both are idempotent, and the house stands on the grid without the battery
+        meanwhile)."""
+        if self.control.readback_s is None or state.phase == "restoring" or self._covering(state, name):
+            return READBACK_DEADLINE_S
+        return self.control.readback_s
+
+    def _fast_renewal(self) -> bool:
+        """Whether the control's watchdog is renewed on the recipe's own short interval
+        (`BrandControl.watchdog_renew_s`): its round is then written in one look, each role read back after, as the
+        values are the ones the roles already hold. A round a look apart per role would leave no look without a
+        write, and nothing is judged while a write is awaited."""
+        return self.control.watchdog_renew_s is not None
 
     def _fuse_hand_back(self) -> bool:
         """A hand-back for the fuse: its roles are written at once, each read back afterwards."""

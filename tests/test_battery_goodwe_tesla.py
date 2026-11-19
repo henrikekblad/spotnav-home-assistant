@@ -28,7 +28,14 @@ from custom_components.spotnav.battery.executor import (
 from custom_components.spotnav.battery.facts import BatteryFacts, Management
 from custom_components.spotnav.battery.gate import restricted
 from custom_components.spotnav.battery.ledger import READBACK_DEADLINE_S
-from tests.battery_control_fakes import T0, TICK, FakeBattery, events, run, written
+from tests.battery_control_fakes import T0, TICK, FakeBattery, events, written
+from tests.battery_control_fakes import run as _run
+
+
+def run(executor, battery, start, looks, action, rate_kw=0.0, **overrides):  # type: ignore[no-untyped-def]
+    """The fakes' looks with the phases the shell gives these recipes (`grid_charge_phases`, both 1)."""
+    overrides.setdefault("charge_phases", executor.control.grid_charge_phases)
+    return _run(executor, battery, start, looks, action, rate_kw, **overrides)
 
 GOODWE_STATES = {"operation_mode": "general", "eco_power": "0", "eco_soc": "0", "depth_of_discharge": "80"}
 TESLA_STATES = {"reserve": "20", "grid_charging": "off"}

@@ -8,7 +8,7 @@ executor's hold also turns Remote EMS on in Maximum Self Consumption, which firm
 limit), so it was removed: at the moment the part would hold, it asks `executor.preview` for the action `hold`, and
 logs exactly the writes, refusals and hand-back the executor would make. A future opt-in turns the part's decision
 into the executor's action (`requested_action`) instead of writing anything itself. A brand without an executor
-control (Victron, GoodWe, Enphase) can no longer be held, even in shadow.
+control (GoodWe, Enphase) can no longer be held, even in shadow.
 
 The rules follow `plans/research_integrations/battery_control_2026-10-03.md` §3.2 and Predbat's field lessons
 (`predbat_lowhanging_2026-11-13.md` item 2):

@@ -37,6 +37,8 @@ class EntityFact:
     unit: str | None = None
     #: A number entity's step (its `step` attribute), `None` when it names none.
     step: float | None = None
+    #: The state's attributes, for a control role whose device answers in them (`commands.answered`).
+    attributes: Mapping[str, Any] = field(default_factory=dict, compare=False)
 
     @property
     def domain(self) -> str:

@@ -750,8 +750,11 @@ OVERVIEW: tuple[Overview, ...] = (
         keys=("solax_modbus/solinteg",),
         adapter="solinteg",
         control="Not mapped. The integration has an EMS mode with a battery power target",
-        note="Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes. "
-        "Has its own site import limit; whether it acts under EMS control is unknown. One Modbus TCP client at a time.",
+        note="Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes, so "
+        "SpotNav caps a grid charge for the case that Home Assistant stops, counted as all on one phase. Has its own "
+        "site import limit; whether it acts under EMS control is unknown, so SpotNav does not count on it. Charging "
+        "per phase is mapped but cannot run: the integration reads no power per phase of the inverter. One Modbus TCP "
+        "client at a time, and the dongle stops answering for some seconds about once a minute.",
     ),
     Overview(
         "Sungrow (SH hybrids)",
@@ -786,7 +789,9 @@ OVERVIEW: tuple[Overview, ...] = (
         keys=("victron_gx", "victron_mqtt", "victron"),
         adapter="victron",
         control="Not mapped. ESS mode, grid setpoint and minimum SoC exist locally",
-        note="The limits are settings stored on the GX, and repeated writes wear its flash.",
+        note="Control is for `victron_gx` and `victron_mqtt` (a Multi or Quattro with ESS); the Modbus integration "
+        "is read only. The Multi's own one-minute fall-back is not counted on until a plant has shown it. The limits "
+        "are settings stored on the GX, written rarely.",
     ),
     Overview(
         "Enphase",
@@ -872,9 +877,10 @@ OVERVIEW: tuple[Overview, ...] = (
         "Ferroamp (EnergyHub)",
         "`ferroamp`, HACS (henricm/ha-ferroamp)",
         keys=("ferroamp",),
-        control="Not mapped. The integration has charge, discharge and auto services",
-        note="The EnergyHub balances load by itself and may fight active control. MQTT is enabled by Ferroamp's "
-        "support. Pools batteries for grid services with Ntricity.",
+        adapter="ferroamp",
+        note="Control sends the integration's charge, discharge and auto requests (whole-system power, no timeout "
+        "documented; a request counts once the hub has acked it). The charge cap counts it on one phase: how the hub "
+        "spreads it is not documented, and SpotNav does not count on ACE. MQTT is enabled by Ferroamp's support. Pools batteries for grid services with Ntricity.",
     ),
     Overview(
         "Homevolt (Tibber)",

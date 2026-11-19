@@ -326,6 +326,8 @@ def test_goodwe_states_the_depth_of_discharge() -> None:
 PLAN_REASON = {
     "sigenergy": None, "huawei": None, "solaredge": None, "victron": None, "victron_modbus": None,
     "solax": "no_capacity", "goodwe": "no_capacity", "enphase": "no_rated_power", "tesla": "no_rated_power",
+    # Ferroamp's hub states the system's size, not its power (the ESOs' ratings are per device).
+    "ferroamp": "no_rated_power",
     # The other `solax_modbus` plugins: Sofar and Growatt state no size (learnt), Solinteg states all the plan needs.
     "sofar": "no_capacity", "growatt": "no_capacity", "solinteg": None,
 }

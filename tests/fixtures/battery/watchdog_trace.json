@@ -1,0 +1,1836 @@
+{
+ "huawei": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_power": "5000",
+       "discharge_power": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "kind": "renew",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:16:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "kind": "renew",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:3000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "sensor.huawei_forcible",
+      "charge:3000",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:32:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:3000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "kind": "rate",
+      "rate_kw": 2.0,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "charge:2000"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "sensor.huawei_forcible",
+      "charge:2000",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "charge:2000",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "sensor.huawei_forcible",
+      "stop",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number.huawei_discharge_power",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:40+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_power"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:50:40+01:00",
+      "kind": "renew",
+      "reason": "forcible"
+     },
+     {
+      "at": "2026-11-14T02:50:40+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "write",
+      "reason": "forcible",
+      "restore": false,
+      "value": "stop"
+     }
+    ],
+    "ops": [
+     [
+      "forcible",
+      "sensor.huawei_forcible",
+      "stop",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:50:50+01:00",
+      "entity_id": "sensor.huawei_forcible",
+      "kind": "confirmed",
+      "read": "stop",
+      "reason": "forcible"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:51:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:51:40+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "write",
+      "reason": "discharge_power",
+      "restore": true,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_power",
+      "number.huawei_discharge_power",
+      5000.0,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:51:50+01:00",
+      "entity_id": "number.huawei_discharge_power",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "discharge_power"
+     },
+     {
+      "at": "2026-11-14T02:51:50+01:00",
+      "kind": "handed_back",
+      "reason": "plan_self_consume"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "huawei",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:34:20+01:00",
+   "rate_kw": 0.0,
+   "reason": "plan_self_consume",
+   "released_at": "2026-11-14T02:51:50+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [],
+   "variant": null,
+   "watchdog_at": "2026-11-14T02:50:40+01:00",
+   "writes_today": 4,
+   "written": []
+  }
+ },
+ "solaredge": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "5000",
+       "command_mode": "Maximize Self Consumption",
+       "command_timeout": "3600",
+       "discharge_limit": "5000"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "write",
+      "reason": "command_timeout",
+      "restore": false,
+      "value": 1800.0
+     }
+    ],
+    "ops": [
+     [
+      "command_timeout",
+      "number.solaredge_command_timeout",
+      1800.0,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "confirmed",
+      "read": "1800",
+      "reason": "command_timeout"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solaredge_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.solaredge_charge_limit",
+      3000.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solaredge_charge_limit",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "write",
+      "reason": "command_mode",
+      "restore": false,
+      "value": "Charge from Solar Power and Grid"
+     }
+    ],
+    "ops": [
+     [
+      "command_mode",
+      "select.solaredge_command_mode",
+      "Charge from Solar Power and Grid",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "confirmed",
+      "read": "Charge from Solar Power and Grid",
+      "reason": "command_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "kind": "renew",
+      "reason": "command_timeout,command_mode"
+     },
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "write",
+      "reason": "command_timeout",
+      "restore": false,
+      "value": 1800.0
+     }
+    ],
+    "ops": [
+     [
+      "command_timeout",
+      "number.solaredge_command_timeout",
+      1800.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:16:30+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "confirmed",
+      "read": "1800",
+      "reason": "command_timeout"
+     },
+     {
+      "at": "2026-11-14T02:16:30+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "write",
+      "reason": "command_mode",
+      "restore": false,
+      "value": "Charge from Solar Power and Grid"
+     }
+    ],
+    "ops": [
+     [
+      "command_mode",
+      "select.solaredge_command_mode",
+      "Charge from Solar Power and Grid",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:16:40+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "confirmed",
+      "read": "Charge from Solar Power and Grid",
+      "reason": "command_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "kind": "renew",
+      "reason": "command_timeout,command_mode"
+     },
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "write",
+      "reason": "command_timeout",
+      "restore": false,
+      "value": 1800.0
+     }
+    ],
+    "ops": [
+     [
+      "command_timeout",
+      "number.solaredge_command_timeout",
+      1800.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:32:30+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "confirmed",
+      "read": "1800",
+      "reason": "command_timeout"
+     },
+     {
+      "at": "2026-11-14T02:32:30+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "write",
+      "reason": "command_mode",
+      "restore": false,
+      "value": "Charge from Solar Power and Grid"
+     }
+    ],
+    "ops": [
+     [
+      "command_mode",
+      "select.solaredge_command_mode",
+      "Charge from Solar Power and Grid",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:32:40+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "confirmed",
+      "read": "Charge from Solar Power and Grid",
+      "reason": "command_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "kind": "rate",
+      "rate_kw": 2.0,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "entity_id": "number.solaredge_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 2000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.solaredge_charge_limit",
+      2000.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "number.solaredge_charge_limit",
+      "kind": "confirmed",
+      "read": "2000",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "write",
+      "reason": "command_mode",
+      "restore": false,
+      "value": "Charge from Solar Power"
+     }
+    ],
+    "ops": [
+     [
+      "command_mode",
+      "select.solaredge_command_mode",
+      "Charge from Solar Power",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "confirmed",
+      "read": "Charge from Solar Power",
+      "reason": "command_mode"
+     },
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "number.solaredge_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 5000.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.solaredge_charge_limit",
+      5000.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:40+01:00",
+      "entity_id": "number.solaredge_charge_limit",
+      "kind": "confirmed",
+      "read": "5000",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:50:40+01:00",
+      "kind": "renew",
+      "reason": "command_timeout,command_mode"
+     },
+     {
+      "at": "2026-11-14T02:50:40+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "write",
+      "reason": "command_mode",
+      "restore": false,
+      "value": "Charge from Solar Power"
+     }
+    ],
+    "ops": [
+     [
+      "command_mode",
+      "select.solaredge_command_mode",
+      "Charge from Solar Power",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:50:50+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "confirmed",
+      "read": "Charge from Solar Power",
+      "reason": "command_mode"
+     },
+     {
+      "at": "2026-11-14T02:50:50+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "write",
+      "reason": "command_timeout",
+      "restore": false,
+      "value": 1800.0
+     }
+    ],
+    "ops": [
+     [
+      "command_timeout",
+      "number.solaredge_command_timeout",
+      1800.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:51:00+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "confirmed",
+      "read": "1800",
+      "reason": "command_timeout"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:51:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:51:40+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "write",
+      "reason": "command_mode",
+      "restore": true,
+      "value": "Maximize Self Consumption"
+     }
+    ],
+    "ops": [
+     [
+      "command_mode",
+      "select.solaredge_command_mode",
+      "Maximize Self Consumption",
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:51:50+01:00",
+      "entity_id": "select.solaredge_command_mode",
+      "kind": "confirmed",
+      "read": "Maximize Self Consumption",
+      "reason": "command_mode"
+     },
+     {
+      "at": "2026-11-14T02:51:50+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "write",
+      "reason": "command_timeout",
+      "restore": true,
+      "value": 3600.0
+     }
+    ],
+    "ops": [
+     [
+      "command_timeout",
+      "number.solaredge_command_timeout",
+      3600.0,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:52:00+01:00",
+      "entity_id": "number.solaredge_command_timeout",
+      "kind": "confirmed",
+      "read": "3600",
+      "reason": "command_timeout"
+     },
+     {
+      "at": "2026-11-14T02:52:00+01:00",
+      "kind": "handed_back",
+      "reason": "plan_self_consume"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "solaredge",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:34:20+01:00",
+   "rate_kw": 0.0,
+   "reason": "plan_self_consume",
+   "released_at": "2026-11-14T02:52:00+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [],
+   "variant": null,
+   "watchdog_at": "2026-11-14T02:50:40+01:00",
+   "writes_today": 6,
+   "written": []
+  }
+ },
+ "solax": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "active_power": "0",
+       "autorepeat": "0",
+       "power_control": "Disabled"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.solax_autorepeat",
+      "kind": "write",
+      "reason": "autorepeat",
+      "restore": false,
+      "value": 1800.0
+     }
+    ],
+    "ops": [
+     [
+      "autorepeat",
+      "number.solax_autorepeat",
+      1800.0,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_autorepeat",
+      "kind": "confirmed",
+      "read": "1800",
+      "reason": "autorepeat"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.solax_active_power",
+      "kind": "write",
+      "reason": "active_power",
+      "restore": false,
+      "value": 3000.0
+     }
+    ],
+    "ops": [
+     [
+      "active_power",
+      "number.solax_active_power",
+      3000.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.solax_active_power",
+      "kind": "confirmed",
+      "read": "3000",
+      "reason": "active_power"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.solax_power_control",
+      "kind": "write",
+      "reason": "power_control",
+      "restore": false,
+      "value": "Enabled Battery Control"
+     }
+    ],
+    "ops": [
+     [
+      "power_control",
+      "select.solax_power_control",
+      "Enabled Battery Control",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.solax_power_control",
+      "kind": "confirmed",
+      "read": "Enabled Battery Control",
+      "reason": "power_control"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "button.solax_trigger",
+      "kind": "write",
+      "reason": "trigger",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "trigger",
+      "button.solax_trigger",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "kind": "renew",
+      "reason": "trigger"
+     },
+     {
+      "at": "2026-11-14T02:16:20+01:00",
+      "entity_id": "button.solax_trigger",
+      "kind": "write",
+      "reason": "trigger",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "trigger",
+      "button.solax_trigger",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "kind": "renew",
+      "reason": "trigger"
+     },
+     {
+      "at": "2026-11-14T02:32:20+01:00",
+      "entity_id": "button.solax_trigger",
+      "kind": "write",
+      "reason": "trigger",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "trigger",
+      "button.solax_trigger",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "kind": "rate",
+      "rate_kw": 2.0,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:33:20+01:00",
+      "entity_id": "number.solax_active_power",
+      "kind": "write",
+      "reason": "active_power",
+      "restore": false,
+      "value": 2000.0
+     }
+    ],
+    "ops": [
+     [
+      "active_power",
+      "number.solax_active_power",
+      2000.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "number.solax_active_power",
+      "kind": "confirmed",
+      "read": "2000",
+      "reason": "active_power"
+     },
+     {
+      "at": "2026-11-14T02:33:30+01:00",
+      "entity_id": "button.solax_trigger",
+      "kind": "write",
+      "reason": "trigger",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "trigger",
+      "button.solax_trigger",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:34:20+01:00",
+      "entity_id": "select.solax_power_control",
+      "kind": "write",
+      "reason": "power_control",
+      "restore": false,
+      "value": "Enabled No Discharge"
+     }
+    ],
+    "ops": [
+     [
+      "power_control",
+      "select.solax_power_control",
+      "Enabled No Discharge",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "select.solax_power_control",
+      "kind": "confirmed",
+      "read": "Enabled No Discharge",
+      "reason": "power_control"
+     },
+     {
+      "at": "2026-11-14T02:34:30+01:00",
+      "entity_id": "number.solax_active_power",
+      "kind": "write",
+      "reason": "active_power",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "active_power",
+      "number.solax_active_power",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:34:40+01:00",
+      "entity_id": "number.solax_active_power",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "active_power"
+     },
+     {
+      "at": "2026-11-14T02:34:40+01:00",
+      "entity_id": "button.solax_trigger",
+      "kind": "write",
+      "reason": "trigger",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "trigger",
+      "button.solax_trigger",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:50:40+01:00",
+      "kind": "renew",
+      "reason": "trigger"
+     },
+     {
+      "at": "2026-11-14T02:50:40+01:00",
+      "entity_id": "button.solax_trigger",
+      "kind": "write",
+      "reason": "trigger",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "trigger",
+      "button.solax_trigger",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:51:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:51:40+01:00",
+      "entity_id": "select.solax_power_control",
+      "kind": "write",
+      "reason": "power_control",
+      "restore": true,
+      "value": "Disabled"
+     }
+    ],
+    "ops": [
+     [
+      "power_control",
+      "select.solax_power_control",
+      "Disabled",
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:51:50+01:00",
+      "entity_id": "select.solax_power_control",
+      "kind": "confirmed",
+      "read": "Disabled",
+      "reason": "power_control"
+     },
+     {
+      "at": "2026-11-14T02:51:50+01:00",
+      "entity_id": "button.solax_trigger",
+      "kind": "write",
+      "reason": "trigger",
+      "restore": true,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "trigger",
+      "button.solax_trigger",
+      true,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:52:00+01:00",
+      "entity_id": "number.solax_autorepeat",
+      "kind": "write",
+      "reason": "autorepeat",
+      "restore": true,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "autorepeat",
+      "number.solax_autorepeat",
+      0.0,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:52:10+01:00",
+      "entity_id": "number.solax_autorepeat",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "autorepeat"
+     },
+     {
+      "at": "2026-11-14T02:52:10+01:00",
+      "kind": "handed_back",
+      "reason": "plan_self_consume"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "solax",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:34:20+01:00",
+   "rate_kw": 0.0,
+   "reason": "plan_self_consume",
+   "released_at": "2026-11-14T02:52:10+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [],
+   "variant": null,
+   "watchdog_at": "2026-11-14T02:50:40+01:00",
+   "writes_today": 9,
+   "written": []
+  }
+ }
+}
