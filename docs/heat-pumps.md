@@ -303,8 +303,9 @@ standing is never the start of a deeper one.
 
 **CTC (volatile).** CTC's controller forgets the override five minutes after the last write, and CTC Heat Pump (BMS)
 rewrites a held override every minute by itself while Home Assistant runs. SpotNav also writes its value again every
-2 minutes as its own watchdog (these renewals cost no write cycles and are counted apart, at most 1000 a day), and
-ends the lowering for the day if its renewals have failed for 5 minutes. It hands back by setting the override to 0,
+2 minutes, so the hold never rests on the integration's rewrite alone (these renewals cost no write cycles and are
+counted apart, at most 1000 a day), and ends the lowering for the day if its renewals have failed for 5 minutes.
+They are no dead-man: while Home Assistant runs, the integration keeps the hold even if SpotNav stops. It hands back by setting the override to 0,
 which the integration takes as "release": nothing more is written and the pump is back on its own curve within five
 minutes. So if Home Assistant or the link to the pump stops, the lowering ends by itself within five minutes; while
 Home Assistant runs, it is SpotNav's rules that end it. An override that someone else holds is left alone.

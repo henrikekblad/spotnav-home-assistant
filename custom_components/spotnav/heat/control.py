@@ -19,9 +19,9 @@ lowering (or the raise) as SpotNav wrote it and "open" the pump's normal state:
   at every exit, at Home Assistant's stop and, where that did not take, at the next start. A closing waits for the
   plan's write spacing (`paths.move_waits`, kept in `offset_moves`); an opening never does. A value that is no
   longer the one SpotNav wrote is someone else's: nothing is written back.
-* *A volatile offset* (CTC): written again every `paths.RENEW` while held (the watchdog; its own day count,
-  `renewals`); a renewal that has failed for `paths.EXPIRY` ends the lowering and pauses control for the day. Handed
-  back by writing the release; unknown reads as released.
+* *A volatile offset* (CTC): written again every `paths.RENEW` while held (a renewal, no dead-man: see `paths`; its
+  own day count, `renewals`); a renewal that has failed for `paths.EXPIRY` ends the lowering and pauses control for
+  the day. Handed back by writing the release; unknown reads as released.
 
 **Each look** (`LOOK_S`, at once after a heat settings write, and within `CONTACT_DEBOUNCE_S` of a contact's change
 SpotNav did not make), never raises:
@@ -1312,7 +1312,7 @@ class HeatControl:
             self.activation, self._deactivate_at = None, None
 
     async def _async_renew(self, now: datetime) -> None:
-        """The watchdog of a volatile offset: the value SpotNav holds is written again every `paths.RENEW`, well
+        """The renewal of a volatile offset: the value SpotNav holds is written again every `paths.RENEW`, well
         inside the controller's five minutes. A renewal that has failed for `paths.EXPIRY` (the controller has
         forgotten the value by then), or a day's `paths.RENEWALS_DAY` reached, ends the lowering as a write not
         taken (released, control paused for the day)."""

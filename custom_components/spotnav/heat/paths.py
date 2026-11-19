@@ -33,9 +33,10 @@ switch. On the paths here both contacts are one entity read two ways, named by a
     write. The entity reads `unknown` while nothing is held (read as open) and takes 0 as "release": the integration
     then stops writing and the controller returns to its own curve within those five minutes. The integration also
     rewrites a held value every minute by itself while Home Assistant runs. SpotNav writes the value again every
-    `RENEW` as its own watchdog (`CLASS_SETPOINT`, free of write cycles by CTC's manual) and hands back by writing
-    the release. What ends an override without SpotNav is Home Assistant or the link stopping: the dead-man is the
-    controller's. `ctc_ecozenith` (beolink/HA-CTC-Local-Easyconf 0.30.0) has no curve adjustment among its `ctl_`
+    `RENEW` (`CLASS_SETPOINT`, free of write cycles by CTC's manual) so the hold does not rest on the integration's
+    own rewrite alone, and hands back by writing the release. This renewal is no dead-man: while Home Assistant runs,
+    the integration keeps the hold even if SpotNav hangs. What ends an override without SpotNav is Home Assistant or
+    the link stopping: the dead-man is the controller's. `ctc_ecozenith` (beolink/HA-CTC-Local-Easyconf 0.30.0) has no curve adjustment among its `ctl_`
     keys, so it has no offset path.
 
 **The depth** (`Depth`, in the entity's own unit; no setting). The plan lets the house move half a degree around its
