@@ -1,9 +1,11 @@
 """`get_site_access` on the charger webhook (SpotNav 3.0): the charger's site, with the site webhook's secret.
 
 An app paired before 3.0 holds charger webhooks only. 3.0 asks each of them once, on start, and moves to the site
-webhook (`api/site_entry_webhook.py`) without a new pairing. The charger webhook already answers that site's house,
-heat and battery actions, so its holder is already trusted for the site: handing over the site's own door grants
-nothing new. A charger only ever yields its own site.
+webhook (`api/site_entry_webhook.py`) without a new pairing. This grants the home's webhook, which reaches every
+charger of that home, also ones added later, besides the house, heat and battery actions the charger webhook already
+answers. That is consistent with how a phone is trusted: an administrator approved it for the whole instance at
+pairing, and its webhook ids only ever came from that approval. Revoke with "Disconnect all phones". A charger only
+ever yields its own site.
 
 Request: `{version: 1, action: "get_site_access", api_version?: 1}`. Answers:
 
@@ -15,7 +17,7 @@ Request: `{version: 1, action: "get_site_access", api_version?: 1}`. Answers:
 * 429 `spotnav_rate_limited` with `retry_after_s` and `Retry-After`: more than `ACCESS_LIMIT` asks per charger in
   `ACCESS_WINDOW_S` (the app asks once per start).
 
-The secret is never logged. "Disconnect all phones" (`api/phones.py`) replaces it, so an id handed over here stops
+SpotNav never logs the secret. "Disconnect all phones" (`api/phones.py`) replaces it, so an id handed over here stops
 answering with every other.
 """
 

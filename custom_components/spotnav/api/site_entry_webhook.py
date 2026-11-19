@@ -21,7 +21,8 @@ Assistant's empty 200 that the app reads as "pair again". Only a removed entry o
 
 The price and the grid tariff are read-only here in the beta: `choose_price_source`, `answer_price_duplicate` and
 `update_grid_tariff` without a `charger_id` are `spotnav_not_permitted_over_webhook` (403) and `get_site_settings_view`
-says `can_act` false on its price blocks. The control opt-ins stay refused as on the charger webhook. There is no
+says `writable` false on its price blocks. With a `charger_id` they are that charger's own actions, answered as on
+its webhook (parity with the charger webhook). The control opt-ins stay refused as on the charger webhook. There is no
 `push_register` for the site itself: notifications are a charger's (with a `charger_id`, as on its webhook).
 
 `get_site` (`api_version` 1, optional in the body):

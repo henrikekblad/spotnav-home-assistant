@@ -37,8 +37,10 @@ How a phone gets the ids:
 * **Pairing** (below): an administrator approves the phone in Home Assistant; the phone gets every home and every
   charger of the instance.
 * **`get_site_access`** on a charger's webhook: a phone paired before 3.0, which holds charger webhooks only, asks
-  each once and moves to the home's webhook. The charger's webhook already answers its home's house, heat and
-  battery actions, so handing over the home's door grants nothing new. A charger only ever yields its own home.
+  each once and moves to the home's webhook. This grants the home's webhook, which reaches every charger of that
+  home, also ones added later. That is consistent with an approved phone getting the instance: an administrator
+  approved the phone for every charger, and a later charger belongs to the same installation. Revoke with
+  Disconnect all phones. A charger only ever yields its own home.
 
 How to take them back: **Disconnect all phones** (the cards' Settings, Support; administrators only) gives every
 charger and home a new webhook id. Every old id stops answering at once, every phone's notifications are cleared and
@@ -47,8 +49,9 @@ is reloaded. Removing a charger or home entry
 also ends its id.
 
 Both kinds of webhook id are `secrets.token_urlsafe(32)` (256 bits), registered with Home Assistant's webhook
-component (POST only, reachable from outside like any webhook), never logged, never in an entity, redacted in
-diagnostics. An unknown id gets Home Assistant's empty HTTP 200, which the app reads as "pair again": only a removed
+component (POST only, reachable from outside like any webhook), never logged by SpotNav (Home Assistant's own
+webhook component logs the id of a call at debug level), never in an entity, redacted in diagnostics and the debug
+bundle. An unknown id gets Home Assistant's empty HTTP 200, which the app reads as "pair again": only a removed
 entry or a replaced id (Disconnect all phones) does that. A home's webhook is registered whatever the home's load
 state, so a home that is starting, reloading or failed to set up answers HTTP 503 `spotnav_site_unloaded` (try
 again later), never "gone". A home's id is
@@ -80,7 +83,7 @@ charger in none. An app before 3.0 reads `chargers` by `id`, `name` and `webhook
 by. Example: `tests/fixtures/pairing/approved_v1_sites.json`.
 
 Requests live in memory for five minutes, at most five at a time, one per address per ten seconds, and codes and ids
-are never logged. An approval can be fetched again for a minute; Disconnect all phones drops every pending request
+are never logged by SpotNav. An approval can be fetched again for a minute; Disconnect all phones drops every pending request
 and approval. The approved handshake is the only way a charger's webhook id leaves Home Assistant, and it and
 `get_site_access` the only ways a home's does: no entity carries one in its state or attributes. (The *App
 connection* and *App pairing* sensors of releases up to 1.17.0 did; they are removed on upgrade, together with their
@@ -109,7 +112,7 @@ and refusals as the charger webhook below. It answers:
 | `spotnav_unknown_charger` | 404 | `charger_id` names no SpotNav charger. |
 | `spotnav_charger_not_in_site` | 403 | `charger_id` names a charger of another home, of none, or a home. |
 | `spotnav_charger_unloaded` | 503 | The charger is this home's, but not loaded. |
-| `spotnav_not_permitted_over_webhook` | 403 | `choose_price_source`, `answer_price_duplicate` or `update_grid_tariff` without `charger_id`: the price and the grid tariff are read-only on the home's door in the beta (`get_site_settings_view` says `writable: false` on `price_settings.price_source` and `.grid_tariff`). The control opt-ins, as on a charger's webhook. |
+| `spotnav_not_permitted_over_webhook` | 403 | `choose_price_source`, `answer_price_duplicate` or `update_grid_tariff` without `charger_id`: the price and the grid tariff are read-only for the home itself in the beta (`get_site_settings_view` says `writable: false` on `price_settings.price_source` and `.grid_tariff`). They are allowed only with a `charger_id`: then they are that charger's own actions, answered as on its webhook (parity with the charger webhook). The control opt-ins, as on a charger's webhook. |
 
 Each refusal is `{"ok": false, "error": <code>, "action": <action>}` (`site_webhook_site_unloaded.json` for the 503). There is no `push_register` for the home
 itself: notifications are a charger's (with a `charger_id`). Examples: `tests/fixtures/webhook/site_webhook_*.json`.
