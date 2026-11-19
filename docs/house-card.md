@@ -28,7 +28,7 @@ site: <the site's entry id>
 ```
 
 Use `charger: <a charger's entry id>` instead and the card finds that charger's site (`site` wins if both are given).
-The card is also in the card picker as "SpotNav house (preview)", set to the first charger's site, else the first site.
+The card is also in the card picker as "SpotNav house", set to the first charger's site, else the first site.
 It reads one read-only answer from SpotNav every five minutes, and, while its Now tab is shown, the live flows every 30
 seconds.
 

@@ -65,8 +65,8 @@ Open a dashboard, choose **Add card** and search for **SpotNav**. There are thre
 | Card | Shows |
 | --- | --- |
 | **SpotNav** | One charger: the price graph, the plan, start and stop, and the settings. |
-| **SpotNav house (preview)** | The whole house: live flows, the battery plan, earnings and prices. |
-| **SpotNav heating (preview)** | The heat pump: the wanted temperature, home or away, the heat plan and hot water. |
+| **SpotNav house** | The whole house: live flows, the battery plan, earnings and prices. |
+| **SpotNav heating** | The heat pump: the wanted temperature, home or away, the heat plan and hot water. |
 
 If a card is missing from the picker after the first install, reload the browser page (Ctrl+Shift+R).
 

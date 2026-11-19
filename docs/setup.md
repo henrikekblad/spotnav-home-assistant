@@ -424,8 +424,8 @@ charger: <charger config entry id>
 
 The card is described in [The card](card.md).
 
-The same bundle has two more cards, for a site: **SpotNav house (preview)** (`type: custom:spotnav-house-card`, see
-[The house card](house-card.md)) and **SpotNav heating (preview)** (`type: custom:spotnav-heat-card`, see
+The same bundle has two more cards, for a site: **SpotNav house** (`type: custom:spotnav-house-card`, see
+[The house card](house-card.md)) and **SpotNav heating** (`type: custom:spotnav-heat-card`, see
 [Heat pumps](heat-pumps.md#the-heat-card)). Each takes `site: <the site's entry id>`, or `charger:` to use that
 charger's site.
 

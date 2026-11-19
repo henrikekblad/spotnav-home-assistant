@@ -28,7 +28,7 @@ export const CARD_PICKER_ENTRY = {
 /** The house card's entry (SpotNav 3.0 preview): the house's load, the sun and the battery plan, in shadow. */
 export const HOUSE_PICKER_ENTRY = {
   type: HOUSE_CARD_TYPE,
-  name: "SpotNav house (preview)",
+  name: "SpotNav house",
   description: "The house's load forecast, the sun and the battery plan from SpotNav, in shadow.",
   preview: true,
   documentationURL: "https://github.com/henrikekblad/spotnav-home-assistant",
@@ -37,7 +37,7 @@ export const HOUSE_PICKER_ENTRY = {
 /** The heat card's entry (SpotNav 3.0 preview): the wanted temperature, home or away, and the day's heat, in shadow. */
 export const HEAT_PICKER_ENTRY = {
   type: HEAT_CARD_TYPE,
-  name: "SpotNav heating (preview)",
+  name: "SpotNav heating",
   description: "The wanted house temperature, home or away, and what SpotNav would do with the heat, in shadow.",
   preview: true,
   documentationURL: "https://github.com/henrikekblad/spotnav-home-assistant",
