@@ -15,9 +15,10 @@ and the level-A gate, `dhw_review.GATES`):
 
 * **The pump's periodic increase** (`next_hygiene`, the legionella run NIBE calls "periodisk höjning"): never
   blocked where the meter shows it. It is told from the runs alone: a run at least `HYGIENE_SIZE` times the site's
-  median run (energy and length), at night (`HYGIENE_NIGHT`), seen at least twice at the same time of day
-  (`HYGIENE_SAME_TIME`) a whole number of weeks apart. Its next one (the last plus that period) is kept free of blocks
-  from `HYGIENE_BEFORE` before its start to `HYGIENE_AFTER` after its usual length. Until it has been seen twice (and
+  median run (energy and length), at night (`HYGIENE_NIGHT`), seen three times at the same time of day
+  (`HYGIENE_SAME_TIME`) at equal intervals of a whole number of days (`HYGIENE_PERIODS`, 2 to 30). Its next one (the
+  last plus that period) is kept free of blocks from `HYGIENE_BEFORE` before its start to `HYGIENE_AFTER` after its
+  usual length. Until it has been seen three times (and
   where the pump runs it at varying times) it is not known, and a block may delay it by up to one block, as any run.
 
 A lowered hour the rules take out is shown as cut (`cuts`): the price rule then lowers the next dearest hour it may,
@@ -59,6 +60,10 @@ HYGIENE_SIZE: Final = 2.0
 #: Local hours a periodic increase starts in (from, to): the night.
 HYGIENE_NIGHT: Final = (22, 7)
 HYGIENE_SAME_TIME: Final = timedelta(minutes=60)
+#: The periods in whole days told (NIBE lets the installer set 1-90 days, 14 by default).
+HYGIENE_PERIODS: Final = range(2, 31)
+#: How long the night's long runs are kept to tell the period: three of the longest period, and a margin.
+HYGIENE_KEEP: Final = timedelta(days=64)
 HYGIENE_BEFORE: Final = timedelta(hours=1)
 HYGIENE_AFTER: Final = timedelta(minutes=30)
 
@@ -157,7 +162,7 @@ def max_day_hours(tank_sensor: bool) -> int | None:
     return None if tank_sensor else MAX_DAY_NO_TANK
 
 
-def _night(moment: datetime, zone: tzinfo) -> bool:
+def is_night(moment: datetime, zone: tzinfo) -> bool:
     hour = moment.astimezone(zone).hour
     first, last = HYGIENE_NIGHT
     return hour >= first or hour < last
@@ -169,43 +174,53 @@ def _minute_gap(a: datetime, b: datetime, zone: tzinfo) -> timedelta:
     return timedelta(minutes=min(minutes, 24 * 60 - minutes))
 
 
-def next_hygiene(runs: Sequence[RunLike], zone: tzinfo, now: datetime) -> tuple[datetime, datetime] | None:
+def long_night(run: RunLike, zone: tzinfo, kwh: float, seconds: float) -> bool:
+    """Whether a run looks like the periodic increase against the site's median run (`kwh`, `seconds`)."""
+    return (
+        run.kwh >= HYGIENE_SIZE * kwh
+        and (run.end - run.start).total_seconds() >= HYGIENE_SIZE * seconds
+        and is_night(run.start, zone)
+    )
+
+
+def next_hygiene(
+    runs: Sequence[RunLike], zone: tzinfo, now: datetime, candidates: Sequence[RunLike] | None = None
+) -> tuple[datetime, datetime] | None:
     """The pump's next periodic increase as the meter has shown it (see the module): `(start, end)` of the time kept
-    free, `None` where it is not known."""
+    free, `None` where it is not known. `runs` give the site's median run; `candidates` (the night's long runs kept
+    for `HYGIENE_KEEP`, else `runs`) are searched for the last increase and two before it at equal intervals of a whole
+    number of days (`HYGIENE_PERIODS`)."""
     real = [run for run in runs if not standby(run, standby_kwh(runs)) and run.end > run.start]
     if len(real) < 3:
         return None
     kwh = statistics.median(run.kwh for run in real)
-    length = statistics.median((run.end - run.start).total_seconds() for run in real)
-    long = sorted(
-        (
-            run
-            for run in real
-            if run.kwh >= HYGIENE_SIZE * kwh
-            and (run.end - run.start).total_seconds() >= HYGIENE_SIZE * length
-            and _night(run.start, zone)
-        ),
-        key=lambda run: run.start,
-    )
-    best: tuple[RunLike, timedelta] | None = None
-    for index, later in enumerate(long):
-        for earlier in long[:index]:
-            if _minute_gap(earlier.start, later.start, zone) > HYGIENE_SAME_TIME:
-                continue
-            days = round((later.start - earlier.start).total_seconds() / 86400)
-            if days < 7 or days % 7:
-                continue
-            period = timedelta(days=days)
-            if best is None or later.start > best[0].start or (later.start == best[0].start and period < best[1]):
-                best = (later, period)
-    if best is None:
+    seconds = statistics.median((run.end - run.start).total_seconds() for run in real)
+    pool = real if candidates is None else [run for run in candidates if run.end > run.start]
+    long = sorted((run for run in pool if long_night(run, zone, kwh, seconds)), key=lambda run: run.start)
+    if len(long) < 3:
         return None
-    last, period = best
-    span = last.end - last.start
-    start = last.start + period
-    while start + span + HYGIENE_AFTER <= now:
-        start += period
-    return start - HYGIENE_BEFORE, start + span + HYGIENE_AFTER
+    last = long[-1]
+    last_day = last.start.astimezone(zone).date()
+
+    def seen(day: date) -> bool:
+        # By the local clock: the pump keeps its start time over a change to or from summer time.
+        return any(
+            run.start.astimezone(zone).date() == day and _minute_gap(run.start, last.start, zone) <= HYGIENE_SAME_TIME
+            for run in long[:-1]
+        )
+
+    for days in HYGIENE_PERIODS:
+        period = timedelta(days=days)
+        if seen(last_day - period) and seen(last_day - 2 * period):
+            span = last.end - last.start
+            clock = last.start.astimezone(zone).timetz().replace(tzinfo=None)
+            day = last_day + period
+            start = datetime.combine(day, clock, tzinfo=zone)
+            while start + span + HYGIENE_AFTER <= now:
+                day += period
+                start = datetime.combine(day, clock, tzinfo=zone)
+            return start - HYGIENE_BEFORE, start + span + HYGIENE_AFTER
+    return None
 
 
 def kept_hours(
@@ -288,8 +303,10 @@ __all__ = [
     "cuts",
     "guard_hours",
     "guards",
+    "is_night",
     "kept_hours",
     "max_day_hours",
+    "long_night",
     "next_hygiene",
     "served",
 ]

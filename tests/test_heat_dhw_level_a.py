@@ -7,6 +7,8 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from custom_components.spotnav.heat.config import HeatConfig
 from custom_components.spotnav.heat.dhw_level_a import (
     CUT_DAY,
@@ -242,33 +244,45 @@ def _week_of_runs(start_day: date, days: int, hygiene_days: tuple[int, ...], at:
     return sorted(out, key=lambda item: item.start)
 
 
-def test_the_periodic_increase_seen_twice_a_week_apart_is_kept_free() -> None:
-    first = DAY - timedelta(days=13)
-    runs = _week_of_runs(first, 14, (0, 7))
+def _history(days: int, hygiene_every: int | None, at: tuple[int, int] = (2, 0), skip: tuple[int, ...] = ()) -> list[HotWaterRun]:
+    """`days` days up to yesterday with the daily runs, and the periodic increase every `hygiene_every` days counted
+    back from yesterday (`skip`: those counts left out)."""
+    first = DAY - timedelta(days=days)
+    marks: tuple[int, ...] = ()
+    if hygiene_every is not None:
+        marks = tuple(days - 1 - n * hygiene_every for n in range(days // hygiene_every + 1) if n not in skip)
+    return _week_of_runs(first, days, tuple(m for m in marks if m >= 0), at)
+
+
+@pytest.mark.parametrize("period", [7, 10, 14, 28])
+def test_the_periodic_increase_seen_three_times_at_equal_intervals_is_kept_free(period: int) -> None:
+    runs = _history(62, period)
     found = next_hygiene(runs, ZONE, local(12))
-    # Last seen six days ago at 02:00 for 90 minutes: the next is a week after it, 02:00 tomorrow, kept free from 01:00
-    # to half an hour after its usual end (04:00).
-    last = local(2, 0, first + timedelta(days=7))
-    assert found == (last + timedelta(days=7) - timedelta(hours=1), last + timedelta(days=7, minutes=120))
+    # Last seen yesterday at 02:00 for 90 minutes: the next is a period after it, kept free from 01:00 to half an hour
+    # after its usual end (04:00).
+    last = local(2, 0, DAY - timedelta(days=1))
+    assert found == (last + timedelta(days=period, hours=-1), last + timedelta(days=period, minutes=120))
     kept = kept_hours([], found)
     assert sorted(kept) == [found[0] + timedelta(hours=index) for index in range(3)]
     assert set(kept.values()) == {("hygiene", None)}
 
 
-def test_a_two_week_period_and_a_shift_within_the_hour() -> None:
-    first = DAY - timedelta(days=20)
-    runs = _week_of_runs(first, 21, (0,)) + _week_of_runs(first + timedelta(days=14), 1, (0,), at=(2, 40))
+def test_a_shift_within_the_hour_still_counts() -> None:
+    runs = [r for r in _history(30, 14) if not (r.kwh == 3.5 and r.start.astimezone(ZONE).date() == DAY - timedelta(days=1))]
+    runs += _week_of_runs(DAY - timedelta(days=1), 1, (0,), at=(2, 40))
     found = next_hygiene(sorted(runs, key=lambda item: item.start), ZONE, local(12))
-    assert found is not None and found[0] == local(2, 40, first + timedelta(days=28)) - timedelta(hours=1)
+    assert found is not None and found[0] == local(2, 40, DAY + timedelta(days=13)) - timedelta(hours=1)
 
 
 def test_the_periodic_increase_is_not_guessed() -> None:
-    first = DAY - timedelta(days=13)
-    # Seen once only, or twice at different times, or not a whole number of weeks apart, or in the day: not known.
-    assert next_hygiene(_week_of_runs(first, 14, (7,)), ZONE, local(12)) is None
-    assert next_hygiene(_week_of_runs(first, 14, (0,)) + _week_of_runs(first + timedelta(days=7), 1, (0,), at=(4, 30)), ZONE, local(12)) is None
-    assert next_hygiene(_week_of_runs(first, 14, (0, 5)), ZONE, local(12)) is None
-    assert next_hygiene(_week_of_runs(first, 14, (0, 7), at=(13, 0)), ZONE, local(12)) is None
+    # Seen twice only, or at unequal intervals, or at different times, or in the day: not known.
+    assert next_hygiene(_history(20, 14), ZONE, local(12)) is None
+    assert next_hygiene(_history(30, 14, skip=(1,)), ZONE, local(12)) is None
+    irregular = _week_of_runs(DAY - timedelta(days=30), 30, (0, 10, 29))
+    assert next_hygiene(irregular, ZONE, local(12)) is None
+    shifted = _week_of_runs(DAY - timedelta(days=30), 30, (1, 15)) + _week_of_runs(DAY - timedelta(days=1), 1, (0,), at=(4, 30))
+    assert next_hygiene(sorted(shifted, key=lambda item: item.start), ZONE, local(12)) is None
+    assert next_hygiene(_history(62, 14, at=(13, 0)), ZONE, local(12)) is None
     assert next_hygiene([], ZONE, local(12)) is None
 
 

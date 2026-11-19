@@ -406,10 +406,10 @@ safe.
 * Without a tank sensor, at most **four lowered hours a day** (the heat's own limit is six), so the pump gets its
   reheats between the blocks. With a tank sensor the 40 °C rule stands in for this.
 * The pump's **periodic increase**, where the meter shows it: a run at least twice the usual one (energy and length)
-  at night, seen twice at the same time of day a whole number of weeks apart. Its next one is kept free of blocks
-  from an hour before to half an hour after its usual length. SpotNav knows it only once it has seen it twice; a
-  pump that runs it at varying times, or one SpotNav has not seen yet, can still have it delayed by one block (at most
-  three hours), after which the pump runs it.
+  at night, seen three times at the same time of day at equal intervals of 2 to 30 days (NIBE's default is 14, so
+  about four weeks of meter readings first). Its next one is kept free of blocks from an hour before to half an hour
+  after its usual length. Until SpotNav has seen it three times, and on a pump that runs it at varying times, a block
+  can still delay it by one block (at most three hours), after which the pump runs it.
 
 A lowered hour these rules take out may move to the next dear hour the plan allows, or simply go. In shadow the plan
 SpotNav steers by still has the hour: *Plan*'s readout says what would change ("skulle förkorta blockeringen före

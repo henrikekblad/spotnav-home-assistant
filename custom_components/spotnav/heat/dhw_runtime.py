@@ -64,7 +64,7 @@ from .dhw_boost import (
     stop_call,
 )
 from .dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN, Entry, Ledger
-from .dhw_level_a import Cut, TankGuard, guards, kept_hours, max_day_hours, next_hygiene
+from .dhw_level_a import HYGIENE_KEEP, Cut, TankGuard, guards, is_night, kept_hours, max_day_hours, next_hygiene
 from .dhw_peaks import PEAK_DAYS, Peak, draws_from_runs, learn_peaks, peak_instant, standby, standby_kwh
 from .dhw_plan import (
     BUDGETS,
@@ -162,6 +162,8 @@ class HotWater:
         self.shadow = shadow
         self.ledger = Ledger()
         self.runs: dict[str, HotWaterRun] = {}
+        #: The night's runs, kept longer (`dhw_level_a.HYGIENE_KEEP`) to tell the pump's periodic increase.
+        self.night_runs: dict[str, HotWaterRun] = {}
         #: Local days the meter had rows for (the peaks' warm start).
         self.seen: set[str] = set()
         self.peaks: list[Peak] = learn_peaks([], timezone.utc, 0)
@@ -214,6 +216,7 @@ class HotWater:
         return {
             "ledger": self.ledger.stored(),
             "runs": [run.as_dict() for run in sorted(self.runs.values(), key=lambda run: run.start)],
+            "night_runs": [run.as_dict() for run in sorted(self.night_runs.values(), key=lambda run: run.start)],
             "seen": sorted(self.seen),
             "peaks": [peak.stored() for peak in self.peaks],
             "days": self.days,
@@ -233,6 +236,8 @@ class HotWater:
         self.ledger = Ledger.from_stored(raw.get("ledger"))
         runs = [run for item in raw.get("runs") or [] if (run := _run_of(item)) is not None]
         self.runs = {run.start.isoformat(): run for run in runs}
+        night = [run for item in raw.get("night_runs") or [] if (run := _run_of(item)) is not None]
+        self.night_runs = {run.start.isoformat(): run for run in night}
         self.seen = {day for day in raw.get("seen") or [] if isinstance(day, str)}
         peaks = [peak for item in raw.get("peaks") or [] if (peak := Peak.from_stored(item)) is not None]
         if peaks:
@@ -361,7 +366,8 @@ class HotWater:
         pump = self._pump()
         runs = list(self.runs.values())
         found = guards(self.peaks, days, self.zone, runs, now, self.filled_peaks())
-        return kept_hours(found, next_hygiene(runs, self.zone, now)), max_day_hours(self.tank_c(pump) is not None)
+        hygiene = next_hygiene(runs, self.zone, now, list(self.night_runs.values()))
+        return kept_hours(found, hygiene), max_day_hours(self.tank_c(pump) is not None)
 
     def filled_peaks(self) -> set[datetime]:
         """The peaks a boost fills for certain: SpotNav's written and read back (`live`), or one already running when
@@ -447,7 +453,12 @@ class HotWater:
         for run in hot_water_runs(periods, found):
             # A run still going at the window's end is taken again, whole, next hour.
             if run.end <= now - timedelta(minutes=5):
-                self.runs[run.start.isoformat()] = run
+                self._keep_run(run)
+
+    def _keep_run(self, run: HotWaterRun) -> None:
+        self.runs[run.start.isoformat()] = run
+        if is_night(run.start, self.zone):
+            self.night_runs[run.start.isoformat()] = run
 
     def _learn(self, now: datetime) -> None:
         first = now - timedelta(days=PEAK_DAYS)
@@ -698,6 +709,7 @@ class HotWater:
             del self.days[key]
         first = now - timedelta(days=PEAK_DAYS + 1)
         self.runs = {key: run for key, run in self.runs.items() if run.start >= first}
+        self.night_runs = {key: run for key, run in self.night_runs.items() if run.start >= now - HYGIENE_KEEP}
         self.seen = {day for day in self.seen if day >= first.astimezone(self.zone).date().isoformat()}
         self.ledger.trim(now)
 

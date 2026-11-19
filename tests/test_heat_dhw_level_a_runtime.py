@@ -226,3 +226,31 @@ async def test_a_planned_boost_drops_the_guard_only_once_written_or_filled(hass:
     hot_water._record(tomorrow.isoformat())["live"] = []  # noqa: SLF001
     hot_water._record(tomorrow.isoformat())["filled"] = [ready.isoformat()]  # noqa: SLF001
     assert not guarded()
+
+
+async def test_a_fourteen_day_periodic_increase_is_told_past_the_peaks_window(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Review S2: the runs for the peaks are kept 22 days, too short to see a 14-day increase three times; the night's
+    long runs are kept longer (`dhw_level_a.HYGIENE_KEEP`), also across a restart."""
+    import json
+
+    from custom_components.spotnav.heat import dhw_runtime
+
+    _site_, controller, _relay, hot_water, now = await _villa(hass, freezer, monkeypatch)
+    config = controller.heat_shadow.config()
+    today = now.astimezone(hot_water.zone).date()
+    for back in range(50, 0, -1):
+        day = today - timedelta(days=back)
+        for hour, minutes, kwh in ((6, 30, 0.9), (19, 25, 0.8)):
+            start = datetime(day.year, day.month, day.day, hour, tzinfo=hot_water.zone).astimezone(timezone.utc)
+            hot_water._keep_run(HotWaterRun(start, start + minutes * MIN, kwh))  # noqa: SLF001
+        if back in (43, 29, 15, 1):
+            start = datetime(day.year, day.month, day.day, 2, tzinfo=hot_water.zone).astimezone(timezone.utc)
+            hot_water._keep_run(HotWaterRun(start, start + 90 * MIN, 3.5))  # noqa: SLF001
+    hot_water._trim(now)  # noqa: SLF001
+    assert min(run.start for run in hot_water.runs.values()) > now - timedelta(days=23)
+    again = dhw_runtime.HotWater(hass, controller.heat_shadow)
+    again.restore(json.loads(json.dumps(hot_water.stored())))
+    for water in (hot_water, again):
+        kept, _cap = water.level_a_rules(now, config, [today])
+        increase = datetime(today.year, today.month, today.day, 2, tzinfo=hot_water.zone).astimezone(timezone.utc) + timedelta(days=13)
+        assert kept.get(increase) == ("hygiene", None)
