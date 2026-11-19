@@ -987,7 +987,8 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "`nibe_heatpump`, Home Assistant core",
         "Local",
         "Relay or SG Ready contact; offset (47011, stored), untested",
-        "Boost: temporary lux, select 48132 (off, 3 h, 6 h, 12 h, one time)",
+        "Boost: temporary lux, select 48132 (off, 3 h, 6 h, 12 h, one time). SpotNav uses \"one time\" for the "
+        "hot water button; planned boosts in shadow first, untested",
         "The lux run ends by itself. Comfort mode and the start and stop temperatures are stored settings.",
     ),
     (
@@ -995,7 +996,8 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "`myuplink`, Home Assistant core",
         "Cloud",
         "Read only; an offset number if you pick one, untested",
-        "Boost: switch temporary lux (50004), select 48132 on SMO 20",
+        "Boost: switch temporary lux (50004), select 48132 on SMO 20. SpotNav uses it for the hot water button; "
+        "planned boosts in shadow first, at most two a day, untested",
         "Needs your own myUplink API app. The lux run ends by itself. Request limits unverified.",
     ),
     (
@@ -1011,7 +1013,8 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "`ctc_bms`, HACS (dklemm/home-assistant-ctc-bms); `ctc_ecozenith`, HACS (beolink/HA-CTC-Local-Easyconf)",
         "Local (Modbus TCP)",
         "Offset (`ctc_bms` only), untested; the Local Easyconf integration is read only",
-        "Boost: extra hot water in hours; hot water mode and setpoint",
+        "Boost: extra hot water in hours; hot water mode and setpoint. SpotNav uses extra hot water for one hour "
+        "for the hot water button; planned boosts in shadow first, untested",
         "These controls are volatile: the pump forgets them about five minutes after the last write, so a lost "
         "connection hands back by itself. Stored parameters are not written.",
     ),
@@ -1020,7 +1023,8 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "HeishaMon with `kamaradclimber/heishamon-homeassistant`, HACS",
         "Local (MQTT, needs the HeishaMon board)",
         "Read; relay or SG Ready contact; an offset number if you pick one, untested",
-        "Boost: force hot water (switch); hot water setpoint 40-75",
+        "Boost: force hot water (switch); hot water setpoint 40-75. SpotNav uses force hot water for the hot water "
+        "button (whether it ends by itself is unverified); planned boosts in shadow first",
         "Whether HeishaMon's commands survive a power cut is unverified.",
     ),
     (
@@ -1164,7 +1168,8 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "A switch entity",
         "Local",
         "Relay: lowers the curve",
-        "A contact on an external hot water input, if the pump has one",
+        "A contact on an external hot water input, if the pump has one. Chosen as the hot water entity, SpotNav "
+        "pulses it for the hot water button; planned boosts in shadow first",
         "",
     ),
     (
@@ -1190,9 +1195,12 @@ def heat_pumps_section() -> list[str]:
         "at most. A stored offset is written rarely, in whole steps, and put back when the control ends.",
         "- **The NIBE S, the CTC and every stored-offset path are untested in the field.** None of them has run on "
         "a real heat pump yet; they are read from the integrations' sources and the makers' manuals.",
-        "- **Hot water on command** is what the integration can do, as the sources describe it. SpotNav lists these "
-        "controls and does not write any of them yet. *Boost* is a run that ends by itself, *setpoint* is a stored "
-        "setting, and *block* holds the pump back. *Unverified* means no source we read says.",
+        "- **Hot water on command** is what the integration can do, as the sources describe it. *Boost* is a run "
+        "that ends by itself, *setpoint* is a stored setting, and *block* holds the pump back. *Unverified* means no "
+        "source we read says. Where a boost ends by itself, SpotNav uses it for the **Varmvatten nu** button on the "
+        "heat card (your own start, any user). SpotNav also plans boosts before the household's hot water peaks, in "
+        "shadow first: they are written only with **Styr värmen** on, after a week of shadow that hit the peaks "
+        "(see [Heat pumps](heat-pumps.md#hot-water)). Setpoints are not written.",
         "- Cloud routes are rate limited. They get at most two planned hot water actions a day (before the morning and the evening showers), never a loop; a local route is bounded only by wear.",
         "",
         *table(HEAT_PUMP_HEADER, [row for row in HEAT_PUMPS]),
