@@ -290,3 +290,16 @@ async def test_what_was_kept_survives_a_restart(hass: HomeAssistant, freezer, mo
     assert again.log.forecasts == shadow.log.forecasts
     assert planes_as_rows(again.planes) == planes_as_rows(shadow.planes)
     assert again.archive_upto == shadow.archive_upto
+
+
+async def test_the_snapshot_states_the_latitude_in_whole_degrees_only_and_never_the_longitude(
+    hass: HomeAssistant, freezer
+) -> None:
+    _entry, controller = await _site(hass, freezer)
+    shadow = controller.solar_shadow
+    hass.config.latitude, hass.config.longitude = 55.6789, 13.0123
+    snapshot = shadow.snapshot()
+    assert snapshot["latitude"] == 56
+    assert "longitude" not in snapshot and "13.0" not in str(snapshot)
+    hass.config.latitude = None  # type: ignore[assignment]
+    assert shadow.snapshot()["latitude"] is None

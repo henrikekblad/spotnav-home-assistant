@@ -28,7 +28,8 @@ such as `SN-7KQ4`: mention it in your forum post, your message in the group or y
 be found.
 
 What is sent is the same file **Download debug info** saves (below): versions, settings, entity names, and the
-logs and charge history of the last days, with no passwords, tokens, e-mail addresses or exact location, and without
+logs and charge history of the last days, with no passwords, tokens, e-mail addresses or exact location (the solar forecast's review states only the
+latitude in whole degrees, about 110 km, never the longitude), and without
 the browser's user agent. With it go your message,
 the e-mail address if you gave one, the SpotNav and Home Assistant versions, and an anonymous id for the
 installation (a salted hash of Home Assistant's instance id, never the id itself), which lets the server limit how

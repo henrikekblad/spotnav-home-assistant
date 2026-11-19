@@ -583,6 +583,12 @@ class SiteSolarShadow:
 
     # ---- what is shown
 
+    def _latitude_band(self) -> int | None:
+        latitude = self.hass.config.latitude
+        if not isinstance(latitude, (int, float)) or isinstance(latitude, bool) or not -90 <= latitude <= 90:
+            return None
+        return round(latitude)
+
     def snapshot(self) -> dict[str, Any]:
         """The status, the fetch, what is kept, the planes, the factors, the candidates' next hours and the review."""
         now = dt_util.utcnow()
@@ -590,6 +596,9 @@ class SiteSolarShadow:
         return {
             # Shadow only: nothing here feeds a plan.
             "status": self.status,
+            # The home's latitude in whole degrees (about 110 km), so the reviews can be compared by how high the sun
+            # gets; never the longitude, never finer (the bundle's coordinate rule keys on "latitude" too).
+            "latitude": self._latitude_band(),
             "candidates": list(CANDIDATES),
             "fetch": {
                 "source": "open-meteo.com (CC BY 4.0)",

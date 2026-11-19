@@ -140,7 +140,7 @@ SpotNav sends nothing about your installation by itself. The debug info leaves H
 administrator sends it (**Send debug info**, kept 30 days), or while they have ticked **Beta tester**: opt-in, off by
 default, the same redacted file once a night for 14 days, then it stops by itself; beta reports and an optional
 e-mail address are kept 90 days. The file holds versions, settings, entity names and recent logs, never passwords,
-tokens or the exact location. See [Beta testing](docs/troubleshooting.md#beta-testing) and the
+tokens or the exact location (only the latitude in whole degrees, for the solar forecast's review). See [Beta testing](docs/troubleshooting.md#beta-testing) and the
 [privacy policy](https://spotnav.sensnology.se/privacy).
 
 ## Licence
