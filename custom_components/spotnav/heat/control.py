@@ -12,7 +12,9 @@ lowering (or the raise) as SpotNav wrote it and "open" the pump's normal state:
 
 * *SG Ready API*: its activation switch is turned on before the first closing (kept first, read back, at most
   `paths.ACTIVATION_WRITES_DAY` a day) and, where SpotNav turned it on, off again once control no longer runs,
-  nothing is held and the mode reads normal: mode normal first, then the switch.
+  nothing is held and the mode reads normal: mode normal first, then the switch. Where the mode does not go back
+  (a stop that cannot wait for it, `OPEN_TRIES` openings that failed, a contact let go), the switch SpotNav turned on
+  is turned off all the same: it ends the block or the raise by itself (`_async_fallback_off`).
 * *A stored offset* (NIBE): the value found is kept before the lowering is written (`snapshots`) and written back
   at every exit, at Home Assistant's stop and, where that did not take, at the next start. A value that is no
   longer the one SpotNav wrote is someone else's: nothing is written back.
@@ -496,6 +498,9 @@ class HeatControl:
                     self._end_lowering(dt_util.utcnow())
             except Exception:  # noqa: BLE001 - kept held: opened at the next start
                 _LOGGER.warning("SpotNav heat control: the relay could not be opened at the stop", exc_info=True)
+        if self.held or self.raised:
+            # The SG Ready API's mode did not read normal in time: its activation switch is the second way back.
+            await self._async_fallback_off(dt_util.utcnow(), "stop", stopping=True)
         try:
             await self._async_deactivate(dt_util.utcnow(), stopping=True)
         except Exception:  # noqa: BLE001 - kept: turned off at the next start
@@ -614,6 +619,9 @@ class HeatControl:
                 _LOGGER.warning("SpotNav heat control: the raise contact could not be opened", exc_info=True)
         try:
             await self._async_renew(now)
+            if (self.held and self._open_failures >= OPEN_TRIES) or (self.raised and self._b_open_failures >= OPEN_TRIES):
+                # Openings that keep failing: on the SG Ready API the switch ends the block or the raise by itself.
+                await self._async_fallback_off(now, "open_failed")
             await self._async_deactivate(now)
         except asyncio.CancelledError:
             raise
@@ -645,6 +653,7 @@ class HeatControl:
                 )
                 self._log(now, "relay_let_go", relay=self.relay)
                 self.pending = None
+                await self._async_fallback_off(now, "let_go")
                 self._end_lowering(now)
             if self.held:
                 if self.pending is None or now - self.pending.at > READ_BACK:
@@ -1244,6 +1253,32 @@ class HeatControl:
         if self._switch_state(switch) is False:
             self.activation, self._deactivate_at = None, None
 
+    async def _async_fallback_off(self, now: datetime, why: str, *, stopping: bool = False) -> None:
+        """The SG Ready API's second way back: where SpotNav turned the activation switch on and the mode does not read
+        normal (a stop that could not wait for it, openings that keep failing, a contact let go), the switch is
+        turned off, which ends the block or the raise by itself through another register. The mode still reads as
+        SpotNav's closing and is put back to normal at a later look or the next start. Never raises."""
+        held = self.activation
+        if held is None or self._switch_state(held["entity"]) is not True:
+            return
+        mode = self.hass.states.get(held["mode"])
+        if mode is not None and paths.mode_of(mode.state) == paths.MODE_NORMAL:
+            return
+        switch = held["entity"]
+        self._log(now, "deactivate_fallback", entity=switch, why=why)
+        _LOGGER.warning("SpotNav heat control: the SG Ready mode did not go back to normal (%s); turning %s off", why, switch)
+        try:
+            await self._async_switch(switch, False)
+            if stopping:
+                async with asyncio.timeout(SHUTDOWN_WAIT_S):
+                    while self._switch_state(switch) is True:
+                        await asyncio.sleep(0.2)
+        except Exception:  # noqa: BLE001 - tried again at the next look, or the next start
+            _LOGGER.warning("SpotNav heat control: %s could not be turned off either", switch, exc_info=True)
+            return
+        if self._switch_state(switch) is False:
+            self.activation, self._deactivate_at = None, None
+
     async def _async_renew(self, now: datetime) -> None:
         """The watchdog of a volatile offset: the value SpotNav holds is written again every `paths.RENEW`, well
         inside the controller's five minutes. A renewal that has failed for `paths.EXPIRY` (the controller has
@@ -1465,6 +1500,7 @@ class HeatControl:
                 _LOGGER.warning("SpotNav heat control: the raise contact %s, held closed, could not be opened; let go", old)
                 self._log(now, "raise_let_go", relay=old)
                 self.pending_b = None
+                await self._async_fallback_off(now, "let_go")
                 self._end_raise(now)
             if self.raised:
                 if self.pending_b is None or now - self.pending_b.at > READ_BACK or self.pending_b.closed:

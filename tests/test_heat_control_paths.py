@@ -380,6 +380,36 @@ async def test_a_switch_that_cannot_be_turned_on_writes_no_block(hass: HomeAssis
     assert control.paused_reason == "no_read_back" and not control.held
 
 
+async def test_a_block_whose_mode_does_not_go_back_at_the_stop_is_ended_by_the_switch(hass: HomeAssistant, freezer) -> None:
+    _site_, control, pump, now = await _running(hass, freezer, _sg_api(hass), {0: "lower", 1: "lower"})
+    await _look(control, now)
+    assert pump.value(MODE) == "0.0" and pump.value(API) == "on"
+    pump.fail.add(MODE)
+    await control.async_shutdown()
+    # The mode could not be written: the switch SpotNav turned on is the second way back.
+    assert pump.calls == [(API, "on"), (MODE, 0.0), (MODE, 1.0), (API, "off")] and pump.value(API) == "off"
+    assert control.held and control.activation is None
+    assert [entry["what"] for entry in control.log][-1] == "deactivate_fallback"
+
+
+async def test_openings_of_the_mode_that_keep_failing_turn_the_switch_off(hass: HomeAssistant, freezer) -> None:
+    _site_, control, pump, now = await _running(hass, freezer, _sg_api(hass), {0: "lower", 1: "lower"})
+    await _look(control, now)
+    pump.fail.add(MODE)
+    moment = now + 2 * H
+    for _try in range(4):
+        await _look(control, moment, {})
+        moment += 6 * MIN
+    assert pump.written(MODE)[-1] == 1.0 and pump.value(MODE) == "0.0"
+    assert pump.value(API) == "off" and pump.written(API) == ["on", "off"] and control.activation is None
+    # The mode is put back once it can be written; the switch stays off.
+    pump.fail.clear()
+    for _try in range(3):
+        await _look(control, moment, {})
+        moment += 6 * MIN
+    assert pump.value(MODE) == "1.0" and not control.held and pump.written(API) == ["on", "off"]
+
+
 # ------------------------------------------------------------------------------------------------ CTC's volatile offset
 
 
