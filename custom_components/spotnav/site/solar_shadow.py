@@ -259,13 +259,18 @@ class SiteSolarShadow:
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
         self.tick(dt_util.utcnow())
 
-    async def async_shutdown(self) -> None:
+    @callback
+    def halt(self) -> None:
+        """The site shuts down: no look from here (the store is closed by `async_shutdown`)."""
         self._closed = True
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
         if self._task is not None and not self._task.done():
             self._task.cancel()
+
+    async def async_shutdown(self) -> None:
+        self.halt()
         await self._store.async_close()
 
     @staticmethod

@@ -482,6 +482,22 @@ class HeatControl:
         self._saved = data
         return True
 
+    @callback
+    def halt(self) -> None:
+        """The site shuts down: no look starts any more, from the timer or a watched contact (a look running ends in
+        `async_shutdown`, which then opens what is held)."""
+        self._closed = True
+        if self._timer_cancel is not None:
+            self._timer_cancel()
+            self._timer_cancel = None
+        self._unwatch_contacts()
+
+    async def async_save(self) -> None:
+        """Keep the state as it stands (a hand-back cut short at Home Assistant's stop: the next start opens what is
+        still held). Nothing before the state was read."""
+        if self._loaded:
+            await self._store.async_save(self._data())
+
     async def async_shutdown(self) -> None:
         """Open the relay SpotNav holds (bounded) and keep the state: a relay still held is opened at the next start."""
         self._closed = True

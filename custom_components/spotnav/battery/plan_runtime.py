@@ -544,10 +544,14 @@ class BatteryPlanShadow:
         except Exception:  # noqa: BLE001 - a hook value left in place prices nothing; it is tried again next start
             _LOGGER.warning("SpotNav could not move the site's credit per sold kWh to its electricity price")
 
-    async def async_shutdown(self) -> None:
+    def halt(self) -> None:
+        """The site shuts down: no solve runs or starts from here (the record is saved by `async_shutdown`)."""
         self._closed = True
         for task in list(self._tasks):
             task.cancel()
+
+    async def async_shutdown(self) -> None:
+        self.halt()
         if self._loaded:
             await self._store.async_save(self.as_dict())
 

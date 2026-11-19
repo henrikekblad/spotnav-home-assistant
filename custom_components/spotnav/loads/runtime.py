@@ -174,13 +174,18 @@ class SwitchLoadShadow:
         self._look_failed_logged = True
         _LOGGER.warning("SpotNav switched load: the look failed; it is tried again at each look", exc_info=True)
 
-    async def async_shutdown(self) -> None:
+    @callback
+    def halt(self) -> None:
+        """The site shuts down: no look or plan from here (the book is saved by `async_shutdown`)."""
         self._closed = True
         if self._plan_task is not None and not self._plan_task.done():
             self._plan_task.cancel()
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
+
+    async def async_shutdown(self) -> None:
+        self.halt()
         if self._loaded:
             data = self._book_data()
             if data != self._saved:
