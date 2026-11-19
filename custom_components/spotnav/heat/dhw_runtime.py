@@ -485,6 +485,9 @@ class HotWater:
         meter = self.shadow.site.house_forecast.heat.meter
         if not meter.found:
             return
+        if "recorder" not in self.hass.config.components:
+            # No recorder loaded: no history this hour (its `get_instance` would raise).
+            return
         from ..site.heat_meter import async_heat_hours  # noqa: PLC0415 - the site imports this module
 
         rows = await async_heat_hours(self.hass, meter, now - timedelta(hours=26), now, "5minute")

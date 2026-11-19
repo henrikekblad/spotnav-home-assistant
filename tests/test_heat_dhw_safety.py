@@ -797,3 +797,28 @@ async def test_fuse_b1_the_button_refuses_on_the_measured_margin(hass: HomeAssis
     _fuse(monkeypatch, hot_water, "observing", {"l1": -3.0, "l2": 10.0, "l3": 10.0}, {"l1": 14.2, "l2": 27.0, "l3": 27.0})
     answer = (await press(hass, "start", site_id=site.entry_id))["result"]
     assert answer["error"] == "spotnav_no_headroom" and writes.calls == []
+
+
+# ---- R1: no recorder loaded is no history, never a raise
+
+
+async def test_r1_the_runs_are_not_read_without_the_recorder(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import custom_components.spotnav.site.heat_meter as heat_meter
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hot_water = controller.heat_shadow.hot_water
+    meter = SimpleNamespace(found=True, entity_id="sensor.heat_pump_power", kind=None)
+    monkeypatch.setattr(controller.house_forecast.heat, "meter", meter)
+    calls: list[Any] = []
+
+    async def heat_hours(*args: Any, **kwargs: Any) -> dict:
+        calls.append(args)
+        raise KeyError("recorder")  # what `get_instance` does when the recorder is not loaded
+
+    monkeypatch.setattr(heat_meter, "async_heat_hours", heat_hours)
+    assert "recorder" not in hass.config.components
+    runs = dict(hot_water.runs)
+    await hot_water._async_read_runs(controller.demand.now())
+    assert calls == [] and hot_water.runs == runs
