@@ -11,7 +11,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 DOMAIN = "sigen"
-PLATFORMS = ["sensor"]
+def _control(key: str, value) -> None:
+    """A command the plant took: the demo house's battery follows it (`demo_house/model.py`)."""
+    try:
+        from custom_components.demo_house import model
+    except ImportError:  # pragma: no cover
+        return
+    model.CONTROL[key] = value
+
+
+PLATFORMS = ["sensor", "number", "select", "switch"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

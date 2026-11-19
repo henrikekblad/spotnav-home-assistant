@@ -1,0 +1,1 @@
+{"domain": "demo_house", "name": "Demo house", "version": "0.0.0", "config_flow": true, "integration_type": "hub", "iot_class": "local_polling", "documentation": "https://example.invalid", "codeowners": [], "requirements": [], "after_dependencies": ["recorder"]}

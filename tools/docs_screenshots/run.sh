@@ -70,6 +70,9 @@ http:
   server_port: $HA_PORT
 frontend:
 config:
+recorder:
+history:
+energy:
 automation: !include automations.yaml
 logger:
   default: warning
@@ -91,7 +94,7 @@ trap cleanup EXIT INT TERM
 # 4. The ECB rates stub, then Home Assistant pointed at it (prices come from the demo Nord Pool integration).
 "$VENV/bin/python" "$HERE/rates_stub.py" "$STUB_PORT" >"$LOGS/rates_stub.log" 2>&1 &
 PIDS+=($!)
-DOCS_SEED_SESSIONS=1 DOCS_PRICE_FIXTURE="$REPO/tests/fixtures/relay/day_SE4_2026-09-22_96.json" \
+DOCS_SEED_SESSIONS=1 DOCS_SEED_HOUSE=1 DOCS_PRICE_FIXTURE="$REPO/tests/fixtures/relay/day_SE4_2026-09-22_96.json" \
   RATES_STUB_URL="http://127.0.0.1:$STUB_PORT" "$VENV/bin/python" "$HERE/ha_launch.py" -c "$CONFIG" >"$LOGS/home-assistant.log" 2>&1 &
 PIDS+=($!)
 
@@ -100,7 +103,7 @@ export HA_URL="http://127.0.0.1:$HA_PORT"
 export REPO_ROOT="$REPO"
 START=$SECONDS
 status=0
-node "$HERE/driver/shots.mjs" "${SHOTS[@]}" || status=$?
+node "$HERE/driver/${DRIVER:-shots.mjs}" "${SHOTS[@]}" || status=$?
 echo "== finished in $((SECONDS - START)) s (exit $status); logs in $LOGS"
 if [ "$KEEP_HA" = 1 ]; then
   echo "== Home Assistant stays up on $HA_URL until you press Ctrl-C"
