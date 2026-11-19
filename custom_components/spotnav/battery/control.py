@@ -75,6 +75,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
 from homeassistant.util import dt as dt_util
 
+from ..beta import learning_gate_open
 from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGER_ENTRY_IDS,
@@ -100,6 +101,7 @@ from .commands import (
     answered,
     control_for,
     export_control_for,
+    field_tested as recipe_field_tested,
     fixed_rate_kw,
     reading,
     service_call,
@@ -129,7 +131,7 @@ from .plan_model import (
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
-from .verify import TEST_CHARGE_KW, Sample, Verification
+from .verify import TEST_CHARGE_KW, Sample, Timing, Verification
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -324,6 +326,10 @@ class BatteryControl:
         #: The verification reports by firmware key (`gate.merge_report`).
         self.reports: dict[str, Any] = {}
         self.verification: Verification | None = None
+        #: Whether the running verification is a person's hardware test (`async_hardware_test_start`), and the last
+        #: one's report (never merged into `reports`).
+        self._hw_run = False
+        self.hardware_report: dict[str, Any] | None = None
         #: The key and attempt the running verification counts for.
         self._verify_key: str | None = None
         self._verify_attempt = 0
@@ -579,7 +585,17 @@ class BatteryControl:
     def options(self) -> gate.Options:
         """The site's options, from its entry as stored now (a settings write needs no reload)."""
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
-        return gate.Options.from_config(entry.data if entry is not None else self.site.config)
+        return gate.Options.from_config(
+            entry.data if entry is not None else self.site.config, shadow_default=self.shadow_default()
+        )
+
+    def shadow_default(self) -> bool:
+        """Shadow only's default here (`gate.shadow_default`): the plant's recipe as last read (none read yet: on),
+        and whether the site is a beta tester."""
+        return gate.shadow_default(
+            field_tested=recipe_field_tested(self.facts.brand),
+            beta=learning_gate_open(self.hass, self.site.entry_id),
+        )
 
     def _migrate_mode(self) -> None:
         """Once: a site that allowed selling and never chose a mode gets Max profit stored (the legacy option is read
@@ -700,8 +716,9 @@ class BatteryControl:
 
     async def _async_look(self, now: datetime) -> None:
         self._look_id += 1
-        options = self.options()
+        # The facts first: the brand read decides shadow only's default (`shadow_default`).
         self.facts = self._read_facts()
+        options = self.options()
         await self._async_read_sources(now)
         self._transitions(options, now)
         trial = self.trial
@@ -721,7 +738,9 @@ class BatteryControl:
         elif trial is not None and not trial.export:
             await self._async_battery_step(now, self._trial_slot(now, trial, options), allowed=True)
         elif self.verification is not None and not self.verification.done:
-            if options.writes:
+            if options.writes or (self._hw_run and options.enabled):
+                # A person's hardware test runs under shadow only too (as a forced test action does); never without
+                # the opt-in.
                 await self._async_verify(now)
             else:
                 self._end_verification(now)
@@ -1130,6 +1149,15 @@ class BatteryControl:
     def _end_verification(self, now: datetime) -> None:
         """Keep what a run found so far (a run ended by a stop or by turning off: its open modes stay pending)."""
         verification = self.verification
+        if verification is not None and self._hw_run:
+            # The hardware test's report is its own; the routine's per firmware is untouched.
+            self._hw_run = False
+            self.hardware_report = {**verification.report(), "completed": verification.done}
+            self._log([{"at": now.isoformat(), "kind": "hardware_test_done" if verification.done else
+                        "hardware_test_stopped", "modes": {
+                            result.mode: result.outcome for result in verification.results}}])
+            self.verification = None
+            return
         if verification is None or self._verify_key is None:
             self.verification = None
             return
@@ -1229,6 +1257,77 @@ class BatteryControl:
             blocker=seen.blocker,
             executor_idle=executor.state.phase == "idle" and not executor.state.holds_snapshot,
         )
+
+    # ---- a person's hardware test
+
+    def hardware_test_refusal(self) -> str | None:
+        """Why the battery part of a hardware test cannot start now, `None` when it can: the opt-in, everything the
+        person still has to do (`_needs`: an acknowledgement, a control to enable), a known firmware, nothing else
+        running on the plant."""
+        if not self._started or self._closed:
+            return "starting"
+        if control_for(self.facts.brand) is None:
+            return "no_battery_control"
+        if not self.options().enabled:
+            return "not_enabled"
+        needs = self._needs()
+        if needs:
+            return f"needs:{needs[0]}"
+        if self.trial is not None:
+            return "trial"
+        if self.verification is not None and not self.verification.done:
+            return "verifying"
+        return None
+
+    async def async_hardware_test_start(self) -> str | None:
+        """Start the battery part of a person's hardware test (`verify.Timing.quick`, `stop_on_fail`): hold, a small
+        grid charge under the HA-down cap, a discharge for the house and the hand-back, through the executor with
+        every rule. Answers the refusal code, `None` once it started."""
+        why = self.hardware_test_refusal()
+        if why is not None:
+            return why
+        async with self._lock:
+            now = dt_util.now()
+            executor = self._executor()
+            if executor is None:
+                return "no_battery_control"
+            self.verification = Verification(
+                executor, now, firmware=self.facts.firmware, modes=gate.BATTERY_MODES,
+                tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
+            )
+            self._hw_run = True
+            self._verify_key = None
+            self.hardware_report = None
+            self._log([{"at": now.isoformat(), "kind": "hardware_test_started", "reason": self.firmware_key()}])
+            _LOGGER.info("SpotNav battery control: a hardware test started (%s)", self.firmware_key())
+            await self._async_look(now)
+        return None
+
+    async def async_hardware_test_stop(self, reason: str) -> None:
+        """End a running hardware test at once and hand the plant back (its deadline, an anomaly elsewhere, an
+        unload). Nothing when none runs."""
+        async with self._lock:
+            if not self._hw_run:
+                return
+            self._end_verification(dt_util.now())
+            if self.executor is not None and self._holding(self.executor):
+                await self._async_until_handed_back(reason)
+            await self._async_save()
+
+    def hardware_test_progress(self) -> dict[str, Any]:
+        """The battery part as the test runner reads it: running or not, the mode and stage now, and the report so
+        far (the finished one once done)."""
+        verification = self.verification if self._hw_run else None
+        current = None if verification is None else verification.current
+        executor = self.executor
+        return {
+            "running": verification is not None,
+            "mode": None if current is None else current.mode,
+            "stage": None if verification is None else verification.stage,
+            "report": verification.report() if verification is not None else self.hardware_report,
+            "holding": executor is not None and self._holding(executor),
+            "firmware_key": self.firmware_key(),
+        }
 
     # ---- the settings
 
@@ -2053,7 +2152,10 @@ class BatteryControl:
         step: the entry can change while a look waits on a write)."""
         options = self.options()
         trial = self.trial
-        return options.writes or (trial is not None and self._trial_allowed(trial, options))
+        return (
+            options.writes or (trial is not None and self._trial_allowed(trial, options))
+            or (self._hw_run and options.enabled)
+        )
 
     def _gated(self, inputs: ExecInputs, allowed: bool) -> tuple[ExecInputs, bool]:
         """A step the options no longer allow becomes a hand-back."""

@@ -56,6 +56,12 @@ through the executor's export instance) and `normal` (handed back). Its sample's
 + import), judged as a hold judges the battery's: the export must stop. It can be judged only while the site exports
 (`not_judgeable:not_exporting` otherwise).
 
+**The hardware test** (`Timing.quick`, `stop_on_fail`; `control.BatteryControl.async_hardware_test`): the same
+modes through the same executor, started by a person and bounded to minutes: a shorter settle and fewer, closer
+readings, the hold's first variant that has not failed only, and the first mode that does not pass (an outcome
+other than `obeyed` or `not_judgeable:*`) skips the rest but normal, the hand-back's check. Its report is the
+test's own: it never counts towards the routine's per firmware (`gate.merge_report`).
+
 Pure: no Home Assistant import; times are aware datetimes from the caller.
 """
 
@@ -130,6 +136,23 @@ Stage = Literal["command", "settle", "read", "hand_back", "done"]
 
 
 @dataclass(frozen=True, slots=True)
+class Timing:
+    """How long a mode settles, how many readings judge it and how far apart, and how long its writes may take (s)."""
+
+    settle_s: float = SETTLE_S
+    readings: int = READINGS
+    reading_gap_s: float = READING_GAP_S
+    command_timeout_s: float = COMMAND_TIMEOUT_S
+
+    @classmethod
+    def quick(cls) -> Timing:
+        """The hardware test's: hold, charge, discharge and the hand-back in about nine minutes. A mode after a
+        hand-back waits for the executor's re-arm (`executor.REARM_S`, never shortened) before its writes are
+        taken, so the time to take them stays generous; the settle and the readings are what is shortened."""
+        return cls(settle_s=20.0, readings=2, reading_gap_s=10.0, command_timeout_s=240.0)
+
+
+@dataclass(frozen=True, slots=True)
 class Sample:
     """The battery now: power (kW, + charging), its age (s), SoC (%) and the house's deficit (kW, for a discharge).
     For the export limit: the site's grid power (kW, + import) and its age."""
@@ -189,8 +212,12 @@ class Verification:
     def __init__(
         self, executor: Executor, now: datetime, *, firmware: str | None, charge_kw: float = TEST_CHARGE_KW,
         modes: tuple[str, ...] | None = None, tried: tuple[Mapping[str, Any], ...] = (),
+        timing: Timing | None = None, stop_on_fail: bool = False,
     ) -> None:
         self.executor = executor
+        self.timing = timing or Timing()
+        #: The hardware test's: a mode that does not pass ends the run (normal still hands back and is judged).
+        self.stop_on_fail = stop_on_fail
         self.firmware = firmware or "unknown"
         self.brand = executor.control.brand
         self.started_at = now
@@ -331,11 +358,14 @@ class Verification:
             if taken:
                 result.taken_at = now
                 self._enter(now, "settle")
-            elif result.commanded_at is not None and (now - result.commanded_at).total_seconds() >= COMMAND_TIMEOUT_S:
+            elif (
+                result.commanded_at is not None
+                and (now - result.commanded_at).total_seconds() >= self.timing.command_timeout_s
+            ):
                 self._abort(now, "aborted:command_timeout")
             return
         if self.stage == "settle":
-            settle = PHASE_SETTLE_S if result.mode == MODE_PER_PHASE else SETTLE_S
+            settle = PHASE_SETTLE_S if result.mode == MODE_PER_PHASE else self.timing.settle_s
             if (now - self.stage_at).total_seconds() >= settle:
                 self._enter(now, "read")
             else:
@@ -362,7 +392,7 @@ class Verification:
             self._next(now)
 
     def _read(self, now: datetime, result: ModeResult, sample: Sample, capability: Capability) -> None:
-        if self.last_reading_at is not None and (now - self.last_reading_at).total_seconds() < READING_GAP_S:
+        if self.last_reading_at is not None and (now - self.last_reading_at).total_seconds() < self.timing.reading_gap_s:
             return
         self.last_reading_at = now
         # The export limit is judged as a hold, on the grid's power: what left the site must stop.
@@ -403,7 +433,7 @@ class Verification:
             {"at": now.isoformat(), "power_kw": round(sample.power_kw, 3), "soc_pct": sample.soc_pct,
              "expected_kw": round(expected, 3), "verdict": verdict}
         )
-        if len(result.readings) < READINGS:
+        if len(result.readings) < self.timing.readings:
             return
         verdicts = {row["verdict"] for row in result.readings}
         result.outcome = "obeyed" if verdicts == {"ok"} else "ignored" if verdicts == {"no_effect"} else "partial"
@@ -481,7 +511,10 @@ class Verification:
         """A hold variant that failed (`VARIANT_RETRY`) is recorded; with another left, hold is tried again with it
         once the battery is handed back. Whether it will be."""
         outcome = result.outcome or ""
-        if result.action != ACTION_HOLD or result.variant is None or not outcome.startswith(VARIANT_RETRY):
+        if (
+            result.action != ACTION_HOLD or result.variant is None or not outcome.startswith(VARIANT_RETRY)
+            or self.stop_on_fail
+        ):
             if result.variant is not None and result.outcome is not None:
                 result.variants.append({"variant": result.variant, "outcome": result.outcome})
             return False
@@ -526,6 +559,15 @@ class Verification:
         self._finish(now)
 
     def _next(self, now: datetime) -> None:
+        result = self.current
+        if self.stop_on_fail and result is not None and result.action != ACTION_SELF_CONSUME and not _passes(result):
+            # The hardware test: the first mode that did not pass skips the rest; normal judges the hand-back.
+            normal = len(self.results) - 1
+            for later in self.results[self.index + 1:normal]:
+                later.outcome = "skipped"
+            self.index = normal
+            self._enter(now, "command")
+            return
         self.index += 1
         if self.index >= len(self.results):
             self._finish(now)
@@ -544,6 +586,12 @@ class Verification:
             "finished_at": None if self.finished_at is None else self.finished_at.isoformat(),
             "modes": {result.mode: result.as_dict() for result in self.results},
         }
+
+
+def _passes(result: ModeResult) -> bool:
+    """Whether a mode's outcome lets the hardware test go on: obeyed, or not judgeable at this moment."""
+    outcome = result.outcome or ""
+    return outcome == "obeyed" or outcome.startswith("not_judgeable:")
 
 
 def _probe_unfit(sample: Sample, *, before: bool) -> str | None:

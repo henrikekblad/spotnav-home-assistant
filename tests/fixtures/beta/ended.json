@@ -1,0 +1,15 @@
+{
+  "api_version": 1,
+  "beta": {
+    "email": "me@example.com",
+    "ended": true,
+    "ends_at": null,
+    "on": false,
+    "started_at": "2026-11-19T11:15:00-08:00"
+  },
+  "error": null,
+  "ok": true,
+  "ref": null,
+  "retry_after_s": null,
+  "test": null
+}

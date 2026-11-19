@@ -5,13 +5,18 @@ with the administrator's message and, if they gave one, an e-mail address to ans
 `POST /v1/support/report` as gzip-compressed JSON:
 
     {"version": 1, "install": "<sha256 hex>", "message": "...", "email": "..." | null,
-     "spotnav_version": "...", "ha_version": "...", "bundle": {...}}
+     "spotnav_version": "...", "ha_version": "...", "bundle": {...}, "kind": "beta_daily" | "beta_test"}
+
+`kind` is left out for a report a person sends (the relay reads it as `support`); the beta tester mode (`beta.py`)
+sends `beta_daily` (once a night for its 14 days) and `beta_test` (a finished hardware test, `hardware_test.py`),
+with an empty message. A failed hardware test shows in the bundle's top-level `hardware_test.result`.
 
 `install` is the SHA-256 of Home Assistant's instance id followed by a fixed SpotNav salt, so the relay can count
 one installation's reports without ever being sent the id itself. The relay answers `201 {"ref": "SN-XXXX"}`, or
 `400`, `413`, `429 {"retry_after_s": n}` or `503`; each refusal is one stable code here.
 
-Nothing here runs by itself: the only caller is the admin-only `spotnav/send_debug_info` command. The bundle is
+Nothing here runs by itself for a person's report: its only caller is the admin-only `spotnav/send_debug_info`
+command; the beta tester mode's reports are sent only while an administrator has it on. The bundle is
 built as the download builds it (copied on the loop, redacted in the executor); the JSON encoding and the gzip
 run in the executor too, and the POST uses Home Assistant's shared client session.
 """
@@ -63,6 +68,12 @@ ERROR_TOO_LARGE: Final = "spotnav_report_too_large"
 ERROR_REJECTED: Final = "spotnav_report_rejected"
 ERROR_NETWORK: Final = "spotnav_report_network"
 ERROR_SERVER: Final = "spotnav_report_server"
+
+#: The report kinds besides a person's own (`support`, sent without `kind`).
+KIND_SUPPORT: Final = "support"
+KIND_BETA_DAILY: Final = "beta_daily"
+KIND_BETA_TEST: Final = "beta_test"
+KINDS: Final = (KIND_SUPPORT, KIND_BETA_DAILY, KIND_BETA_TEST)
 
 _REF = re.compile(r"^SN-[A-Z0-9]{4}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -136,9 +147,13 @@ async def async_send_report(
     email: str | None,
     client: dict[str, Any] | None = None,
     *,
+    kind: str = KIND_SUPPORT,
     base_url: str = DEFAULT_BASE_URL,
 ) -> ReportResult:
-    """Build the bundle, send it once, and say what came of it. Never raises for the relay's answer."""
+    """Build the bundle, send it once, and say what came of it. Never raises for the relay's answer. `kind`: a
+    person's report (`support`, sent without the field) or one of the beta tester mode's."""
+    if kind not in KINDS:
+        raise ValueError(f"unknown report kind {kind!r}")
     bundle = await async_build_debug_bundle(hass)
     if client is not None:
         bundle["client"] = client
@@ -152,6 +167,8 @@ async def async_send_report(
         "ha_version": HA_VERSION,
         "bundle": bundle,
     }
+    if kind != KIND_SUPPORT:
+        payload["kind"] = kind
     body = await hass.async_add_executor_job(encode_report, payload)
     if len(body) > MAX_BODY_BYTES:
         _LOGGER.info("The debug report was not sent: %d bytes compressed is more than the server takes", len(body))

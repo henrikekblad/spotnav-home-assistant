@@ -124,6 +124,8 @@ language files in `www/i18n/` are committed; `npm run build` regenerates both, a
   with the issue's number in the subject. The file holds your entity names and charging times, so please don't
   attach it to the public issue. [Troubleshooting](docs/troubleshooting.md)
   covers the common problems.
+- **Become a beta tester.** In the card, **Settings, Support, Beta tester** sends the redacted debug info once a
+  night for 14 days and offers a short hardware test; see [Beta testing](docs/troubleshooting.md#beta-testing).
 - **Tell how your hardware works.** A short [hardware report](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose)
   moves a charger, meter or car from "supported" to "confirmed" and helps the next person decide.
 - **Contribute.** Pull requests are welcome, for code as well as [translations](docs/translating.md); see
@@ -131,6 +133,15 @@ language files in `www/i18n/` are committed; `npm run build` regenerates both, a
 - ⭐ **Star the repository.** Stars help others find SpotNav on GitHub and in HACS.
 - 💖 **Sponsor.** If SpotNav saves you money, [GitHub Sponsors](https://github.com/sponsors/henrikekblad) takes a
   one-time or monthly contribution and keeps the project going.
+
+## Privacy
+
+SpotNav sends nothing about your installation by itself. The debug info leaves Home Assistant only when an
+administrator sends it (**Send debug info**, kept 30 days), or while they have ticked **Beta tester**: opt-in, off by
+default, the same redacted file once a night for 14 days, then it stops by itself; beta reports and an optional
+e-mail address are kept 90 days. The file holds versions, settings, entity names and recent logs, never passwords,
+tokens or the exact location. See [Beta testing](docs/troubleshooting.md#beta-testing) and the
+[privacy policy](https://spotnav.sensnology.se/privacy).
 
 ## Licence
 

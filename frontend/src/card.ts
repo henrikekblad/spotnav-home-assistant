@@ -59,6 +59,7 @@ import {
   suggestImportTarget,
   setEntsoeKey,
   updateVehicle,
+  betaCommand,
 } from "./api";
 import { brandMark } from "./card-header";
 import {
@@ -85,6 +86,7 @@ import {
 import { decodeBlueprintUse, type BlueprintUse } from "./automations";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { sendDebugReport, sendFailureText, type SendOutcome } from "./send-debug";
+import type { BetaRequest } from "./beta";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
 import {
@@ -1653,6 +1655,16 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /** How many automations use each blueprint, for the Automations list; `null` on any failure (no count shown). */
+  /** The beta box and the hardware test (`beta.ts`) for this charger's site; refused without an administrator. */
+  private async beta(request: BetaRequest): Promise<unknown> {
+    const hass = this.hassObject;
+    const charger = this.config?.charger;
+    if (!this.connected || hass === null || !this.isAdmin || charger === undefined || charger === "") {
+      throw new Error("not available");
+    }
+    return await betaCommand(hass, { charger_id: charger }, request);
+  }
+
   private async loadBlueprintUse(): Promise<BlueprintUse | null> {
     const hass = this.hassObject;
     if (!this.connected || hass === null || !this.isAdmin) {
@@ -3012,6 +3024,7 @@ export class SpotnavCard extends HTMLElement {
           void this.downloadDebug();
         },
         onSendDebug: (message, email) => this.sendDebug(message, email),
+        onBeta: (request) => this.beta(request),
         onLoadBlueprintUse: () => this.loadBlueprintUse(),
         onSaveEntities: (scope, draft) => {
           void this.saveEntities(scope, draft);

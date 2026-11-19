@@ -212,7 +212,9 @@ async def test_shadow_only_is_the_default_and_refuses_every_write_while_it_logs_
     _export_limit(hass)
     control = BatteryControl(hass, controller, plan_source=_hold, sell_source=lambda _now: -12.0)
     await control.async_start()
-    _options(hass, site, enabled=True)  # opted in, shadow only left on (the default)
+    # Opted in with shadow only stored on (a field-tested Sigenergy plant leaves it off by default; a site that
+    # stored it keeps it).
+    _options(hass, site, enabled=True, shadow_only=True)
     _passed(control)
     assert control.state() == "shadow_only"
     now = dt_util.now()
@@ -570,7 +572,7 @@ async def test_the_export_limit_is_never_written_while_shadow_only(
     _export_limit(hass)
     control = BatteryControl(hass, controller, plan_source=lambda _now: None, sell_source=lambda _now: -12.0)
     await control.async_start()
-    _options(hass, site, enabled=True)
+    _options(hass, site, enabled=True, shadow_only=True)
     with pytest.raises(ControlNotReachable):
         await control.async_export_tick()
     await control.async_look()
@@ -1649,7 +1651,7 @@ async def test_the_shadow_shows_the_hold_variant_the_verification_passed(
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = BatteryControl(hass, controller, plan_source=_hold)
     await control.async_start()
-    _options(hass, site, enabled=True)  # shadow only
+    _options(hass, site, enabled=True, shadow_only=True)
     _passed(control)
     control.reports[control.firmware_key()]["modes"]["hold"] |= {
         "variant": "pv_first",
@@ -1707,3 +1709,70 @@ async def test_the_status_names_the_device_that_holds_a_disabled_control(
     status = control.status()
     assert any(need.startswith("control_disabled:") for need in status["needs"])
     assert status["device_id"] == registry.async_get(SWITCH).device_id is not None
+
+
+async def test_a_hardware_test_runs_under_shadow_only_in_minutes_and_leaves_the_routine_s_report_alone(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    assert control.hardware_test_refusal() == "not_enabled"
+    assert await control.async_hardware_test_start() == "not_enabled"
+    _options(hass, site, enabled=True, shadow_only=True)
+    control.facts = control._read_facts()
+    assert control.hardware_test_refusal() is None
+    assert await control.async_hardware_test_start() is None
+    assert control.hardware_test_progress()["running"] and control.hardware_test_progress()["mode"] == "hold"
+    assert control.state() == "shadow_only"
+    started = dt_util.now()
+    now = started
+    while control.hardware_test_progress()["running"] and now < started + timedelta(minutes=15):
+        now = await _looks(control, now, 1)
+    progress = control.hardware_test_progress()
+    assert not progress["running"] and now - started <= timedelta(minutes=10)
+    assert {mode: row["outcome"] for mode, row in progress["report"]["modes"].items()} == {
+        "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored",
+    }
+    assert control.reports == {}, "the test never counts as the verification routine"
+    assert control.state() == "shadow_only"
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+
+
+async def test_a_hardware_test_stopped_hands_the_plant_back_at_once(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=True)
+    control.facts = control._read_facts()
+    assert await control.async_hardware_test_start() is None
+    await _looks(control, dt_util.now() + timedelta(seconds=10), 3)
+    assert hass.states.get(SWITCH).state == "on"
+    await control.async_hardware_test_stop("hardware_test_deadline")
+    assert not control.hardware_test_progress()["running"]
+    assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
+    assert control.hardware_report is not None and control.hardware_report["completed"] is False
+
+
+async def test_a_field_tested_recipe_or_a_beta_tester_leaves_shadow_only_off_by_default(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller)
+    await control.async_start()
+    control.facts = control._read_facts()
+    # Not yet for Sigenergy (its on-site tests are rerun first): shadow only stays on by default.
+    assert control.options().shadow_only is True
+    monkeypatch.setattr(control_module, "recipe_field_tested", lambda brand: brand == "sigenergy")
+    assert control.options().shadow_only is False
+    _options(hass, site, shadow_only=True)
+    assert control.options().shadow_only is True, "a stored value is kept"
+    hass.config_entries.async_update_entry(
+        site, data={key: value for key, value in site.data.items() if key != gate.CONF_SHADOW_ONLY}
+    )
+    monkeypatch.setattr(control_module, "recipe_field_tested", lambda _brand: False)
+    assert control.options().shadow_only is True
+    monkeypatch.setattr(control_module, "learning_gate_open", lambda _hass, _site: True)
+    assert control.options().shadow_only is False, "a beta tester's site"

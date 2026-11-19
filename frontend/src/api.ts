@@ -6,6 +6,7 @@ import {
   ACTION_API_VERSION,
   ACTION_STOP,
   API_VERSION,
+  BETA_API_VERSION,
   BLUEPRINTS_API_VERSION,
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
@@ -374,6 +375,24 @@ export async function sendDebugInfo(
     message: report.message,
     ...(report.email === null ? {} : { email: report.email }),
     client: report.client,
+  });
+}
+
+/**
+ * The beta tester box and the hardware test (administrators only, `beta.ts`): `target` names the site, or the charger
+ * whose site it is. `unknown` until decoded.
+ */
+export async function betaCommand(
+  hass: HomeAssistantLike,
+  target: { site_id: string } | { charger_id: string },
+  request: { action: string; changes?: Record<string, unknown> },
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/beta",
+    api_version: BETA_API_VERSION,
+    ...target,
+    action: request.action,
+    ...(request.changes === undefined ? {} : { changes: request.changes }),
   });
 }
 

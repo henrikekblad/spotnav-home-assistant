@@ -58,6 +58,10 @@ export class FakeHass implements HomeAssistantLike {
   readonly liveMessages: Record<string, unknown>[] = [];
   liveHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
+  /** `spotnav/beta`, read when Support is shown to an administrator, on its own line too; the default never answers. */
+  readonly betaMessages: Record<string, unknown>[] = [];
+  betaHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
   }
@@ -91,6 +95,10 @@ export class FakeHass implements HomeAssistantLike {
     if (message["type"] === "spotnav/get_site_settings_view" || message["type"] === "spotnav/get_heat" || message["type"] === "spotnav/battery_control") {
       this.siteMessages.push(message);
       return (this.siteHandler === null ? new Promise<unknown>(() => undefined) : this.siteHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/beta") {
+      this.betaMessages.push(message);
+      return (this.betaHandler === null ? new Promise<unknown>(() => undefined) : this.betaHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_card_info") {
       this.cardInfoMessages.push(message);

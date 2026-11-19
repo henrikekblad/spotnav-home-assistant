@@ -129,6 +129,7 @@ from ..planning.auto_settings import (
 from ..runtime import charger_data, controller_for, domain_data, preview_for
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
 from ..battery.control import BatteryControl
+from ..hardware_test import HardwareTest
 from ..battery.runtime import BatteryShadow
 from ..loads.runtime import SwitchLoadShadow
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
@@ -832,6 +833,9 @@ class SiteCapacityController:
         # default) and a check that the pump answers it; every exit opens the relay. Shut down first beside the battery.
         self.heat_control = HeatControl(hass, self.heat_shadow)
         self.heat_shadow.control = self.heat_control
+        # A person's hardware test of the battery and the heat path (`hardware_test.py`), through their own engines;
+        # never on a timer. Shut down first, before the battery and the heat control.
+        self.hardware_test = HardwareTest(hass, self)
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -894,6 +898,7 @@ class SiteCapacityController:
         await self.solar_shadow.async_start()
         await self.heat_shadow.async_start()
         await self.heat_control.async_start()
+        await self.hardware_test.async_load()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -923,6 +928,10 @@ class SiteCapacityController:
         cancel the timer and listeners, then close each part (one failing does not skip the rest), then any
         unfinished apply pass."""
         self._closed = True
+        try:
+            await self.hardware_test.async_shutdown()
+        except Exception:  # noqa: BLE001 - the battery and the heat path below hand back what it engaged
+            _LOGGER.warning("SpotNav site: ending the hardware test failed", exc_info=True)
         try:
             await self.battery_control.async_shutdown()
         except Exception:  # noqa: BLE001 - the rest of the site must still shut down; the state is stored

@@ -1,0 +1,24 @@
+{
+  "api_version": 1,
+  "beta": {
+    "email": null,
+    "ended": false,
+    "ends_at": null,
+    "on": false,
+    "started_at": null
+  },
+  "error": null,
+  "ok": true,
+  "ref": null,
+  "retry_after_s": null,
+  "test": {
+    "blocked": null,
+    "finished_at": null,
+    "next_at": null,
+    "result": null,
+    "sent_ref": null,
+    "started_at": null,
+    "state": "idle",
+    "steps": []
+  }
+}

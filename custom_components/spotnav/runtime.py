@@ -28,6 +28,7 @@ from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_CHARGER, ENTRY_TYPE_PRICE
 
 
 if TYPE_CHECKING:
+    from .beta import Beta
     from .debug_day import ChargerDay
     from .log_buffer import SpotNavLogBuffer
     from .planning.auto_controller import AutoPlannerController
@@ -123,6 +124,8 @@ class SpotNavData:
     #: The bundle hash in the card URL Home Assistant hands the browsers (`card_asset.py`), `None` until served.
     card_served_digest: str | None = None
     log_buffer: SpotNavLogBuffer | None = None
+    #: The beta tester mode (`beta.py`), set up with the domain.
+    beta: Beta | None = None
     #: When the integration loaded; the start-up grace (`startup.py`) counts from here.
     started_at: datetime = field(default_factory=dt_util.utcnow)
 

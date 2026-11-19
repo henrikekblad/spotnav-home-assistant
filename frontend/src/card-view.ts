@@ -132,6 +132,7 @@ import {
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
 import { sendDebugEditor, type SendDebug } from "./send-debug";
+import { betaEditor, betaSummary, readBeta, type BetaAnswer, type BetaCall } from "./beta";
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
 import type { PowerState, PowerUi } from "./power-view";
@@ -310,6 +311,8 @@ export interface CardViewInput {
   onDownloadDebug?: () => void;
   /** The admin sent the debug info from its dialog: the reference, or the sentence to show. */
   onSendDebug?: SendDebug;
+  /** The beta box and the hardware test in Support (`beta.ts`), administrators only. */
+  onBeta?: BetaCall;
   /** How many automations use each of SpotNav's blueprints (`automations.ts`), `null` when it could not be read. */
   onLoadBlueprintUse?: () => Promise<BlueprintUse | null>;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
@@ -2850,6 +2853,9 @@ export function createCardView(input: CardViewInput): CardView {
           () => openAutomations(),
         ),
       );
+      if (input.onBeta !== undefined) {
+        section.append(betaRow());
+      }
       section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
     }
     const actions = element(doc, "div", C.settingsSupportActions);
@@ -2882,6 +2888,43 @@ export function createCardView(input: CardViewInput): CardView {
     }
     section.append(actions);
     return section;
+  }
+
+  /** The "Betatestare" row's value, read once and then from every answer its dialog reads. */
+  let betaAnswer: BetaAnswer | null = null;
+  let betaRead = false;
+  let betaValue: HTMLElement | null = null;
+
+  function betaRow(): HTMLElement {
+    const row = overviewRow("beta", translate(model.language, "beta.label"), betaSummary(model.language, betaAnswer), () => openBeta());
+    betaValue = row.querySelector<HTMLElement>("[data-edit='beta']");
+    const call = input.onBeta;
+    if (!betaRead && call !== undefined) {
+      betaRead = true;
+      void readBeta(call).then((answer) => showBeta(answer));
+    }
+    return row;
+  }
+
+  function showBeta(answer: BetaAnswer | null): void {
+    if (answer === null || destroyed) {
+      return;
+    }
+    betaAnswer = answer;
+    if (betaValue !== null) {
+      betaValue.textContent = betaSummary(model.language, answer);
+    }
+  }
+
+  /** The beta box and the hardware test, in the value editors' dialog, back to Settings when closed. */
+  function openBeta(): void {
+    const call = input.onBeta;
+    if (call === undefined) {
+      return;
+    }
+    openValueEditor(translate(model.language, "beta.label"), (handlers) =>
+      betaEditor({ doc, language: model.language, idPrefix, call, onAnswer: (answer) => showBeta(answer) }, () => handlers.onDone()),
+    );
   }
 
   /** "Send debug info": its dialog, in the value editors' dialog, back to Settings when closed. Administrators only. */

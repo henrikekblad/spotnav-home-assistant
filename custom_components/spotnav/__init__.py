@@ -24,7 +24,10 @@ from homeassistant.util import dt as dt_util
 from .api.dashboard import async_setup_dashboard_api
 from .api.blueprints import async_setup_blueprints_api
 from .api.site_view import async_setup_site_view_api
+from .api.beta import async_setup_beta_api
 from .api.debug import async_setup_debug_api
+from .beta import Beta
+from .hardware_test import HardwareTest
 from .blueprint_install import async_install_blueprints
 from .api.entity_config import async_setup_entity_config_api
 from .api.camera import async_setup_camera_api
@@ -195,6 +198,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     repository = await async_setup_price_repository(hass)
     await async_setup_price_refresh(hass, repository)
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, partial(_async_stop, hass))
+    # The beta tester mode (off by default): its state and, while on, the nightly report's timer.
+    data.beta = Beta(hass)
+    await data.beta.async_load()
     await async_setup_auto_settings(hass)
     # The price entries' marker, duplicates and revision ledger, before any entry answers a settings record.
     await async_setup_price_store(hass)
@@ -234,6 +240,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_target_suggestion_api(hass)
     async_setup_camera_api(hass)
     async_setup_debug_api(hass)
+    async_setup_beta_api(hass)
     async_setup_blueprints_api(hass)
     async_setup_site_view_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
@@ -316,6 +323,8 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
         await fx_rates.async_stop()
     if (buffer := getattr(domain_data(hass), "log_buffer", None)) is not None:
         await buffer.async_flush()
+    if (beta := getattr(domain_data(hass), "beta", None)) is not None:
+        await beta.async_stop()
     if (sessions := getattr(domain_data(hass), "session_store", None)) is not None:
         # Both session stores current at a clean stop: an older version, installed again, reads only the big one.
         await sessions.async_flush()
@@ -956,6 +965,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SiteSolarShadow.async_remove_stored(hass, entry.entry_id)
         await HeatShadow.async_remove_stored(hass, entry.entry_id)
         await HeatControl.async_remove_stored(hass, entry.entry_id)
+        await HardwareTest.async_remove_stored(hass, entry.entry_id)
         return
     # The charger is given back as SpotNav found it, as far as SpotNav knows: the current it had before SpotNav,
     # and a stop of SpotNav's own undone. Read before the stores below go (it is kept in the controller's).
