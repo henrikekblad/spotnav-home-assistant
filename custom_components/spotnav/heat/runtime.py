@@ -59,12 +59,14 @@ from .. import time_zones
 from ..const import CONF_HEAT, DOMAIN
 from ..pricing.period_prices import period_price_slots
 from ..site.energy_statistics import short_term_days
+from ..site.history_period import PERIOD_DAY, midnight_utc, period_of
 from .automations import SteeringAutomation, steering_automations
 from .dhw_runtime import HotWater
 from .config import BAND_C, PATH_OFFSET, PATH_RELAY, PATH_SG_READY, PATH_SG_READY_API, HeatConfig, read_config
 from .dhw_level_a import Cut
 from .dhw_level_a import cuts as level_a_cuts
 from .dhw_review import MODE_LIVE
+from .history import hour_prices
 from .meter_split import hot_water_runs, levels
 from .paths import lower_contact
 from .relay_effect import (
@@ -826,8 +828,6 @@ class HeatShadow:
     async def _async_review(self, now: datetime) -> None:
         """Review the kept days that are due (see the module)."""
         from ..site.heat_meter import async_heat_hours  # noqa: PLC0415
-        from ..site.history_period import PERIOD_DAY, midnight_utc, period_of  # noqa: PLC0415
-        from .history import hour_prices  # noqa: PLC0415
 
         keep = short_term_days(self.hass)
         zone = time_zones.require_zone(self.tz)

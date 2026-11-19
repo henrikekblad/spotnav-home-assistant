@@ -48,6 +48,7 @@ from homeassistant.util import dt as dt_util
 
 from .. import time_zones
 from ..pricing.period_prices import period_price_slots
+from ..site.history_period import PERIOD_DAY, midnight_utc, period_of
 from .config import HeatConfig
 from .dhw_boost import (
     PULSE,
@@ -670,7 +671,6 @@ class HotWater:
         ]
 
     async def _async_review(self, now: datetime) -> None:
-        from ..site.history_period import PERIOD_DAY, midnight_utc, period_of  # noqa: PLC0415
 
         tz = self.shadow.tz
         for key in sorted(self.days):

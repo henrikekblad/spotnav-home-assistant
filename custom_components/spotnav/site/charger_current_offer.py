@@ -33,9 +33,11 @@ from ..const import (
 )
 from ..execution.charger_entities import charger_device_id, EntityMatcher, is_current_sensor
 from ..execution.charger_profiles import profile_for
+from ..planning.first_run import site_for_charger
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from .measurement_source import PhaseMeasurementSource, source_to_dict
 from .site_capacity import PHASES, PhaseName
+from .site_join import MEASURED_SOURCE_DECLINED
 
 #: The prefix of an offer's id, followed by the charger's entry id (`apply_detection` takes it).
 OFFER_PREFIX: Final = "charger_current:"
@@ -176,9 +178,6 @@ def own_current_sensors(
 
 def charger_own_current_sensors(hass: HomeAssistant, charger_entry_id: str) -> OwnCurrentSensors | None:
     """`own_current_sensors` for a charger, read with its site's wiring (its phases, the network)."""
-    # Imported here: the flows import this package's modules.
-    from ..planning.first_run import site_for_charger
-
     site = site_for_charger(hass, charger_entry_id)
     wiring = ((site.data.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}) if site is not None else {}
     return own_current_sensors(
@@ -217,8 +216,6 @@ def charger_current_offers(hass: HomeAssistant, site: ConfigEntry) -> list[Charg
 def apply_charger_current_offer(data: dict[str, Any], offer: ChargerCurrentOffer) -> dict[str, Any]:
     """The site's data with the offer's source in that charger's wiring; a source a person had removed on
     purpose (`MEASURED_SOURCE_DECLINED`) is now chosen again."""
-    from .site_join import MEASURED_SOURCE_DECLINED
-
     wiring_by_charger = dict(data.get(CONF_PHASE_WIRING) or {})
     wiring = {
         key: value
