@@ -485,8 +485,23 @@ class HeatShadow:
         return past, [(max(start, now), end) for start, end in ahead if end > now]
 
     def forecast_delta(self, now: datetime) -> dict[datetime, float]:
-        """The change to the house's expected load per hour (`relay_effect.forecast_delta`), from the relay's closings
-        whose rebound is not over; empty without a relay. Kept per 5 minutes."""
+        """The change to the house's expected load per hour: the relay's closings whose rebound is not over
+        (`relay_effect.forecast_delta`, kept per 5 minutes; none without a relay) and SpotNav's own hot-water boosts
+        with the pump's reheats they replace (`HotWater.forecast_delta`), on every path."""
+        heat = self._relay_delta(now)
+        try:
+            water = self.hot_water.forecast_delta(now) if self._loaded else {}
+        except Exception:  # noqa: BLE001 - the hot water's change is extra: the heat's stands
+            _LOGGER.debug("SpotNav hot water: its change to the forecast could not be made", exc_info=True)
+            water = {}
+        if not water:
+            return heat
+        out = dict(heat)
+        for hour, kw in water.items():
+            out[hour] = out.get(hour, 0.0) + kw
+        return out
+
+    def _relay_delta(self, now: datetime) -> dict[datetime, float]:
         if (self.relay_id is None and self.steered is None) or not self._loaded:
             return {}
         controlled = None if self.control is None else self.control.closings_ahead(now)

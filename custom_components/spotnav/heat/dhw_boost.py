@@ -19,7 +19,7 @@ from the learned run length on a one-time run, unknown otherwise.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -38,6 +38,9 @@ RATE: Final = timedelta(minutes=10)
 FAILED_FOR: Final = timedelta(minutes=2)
 #: A pulse's run must show on the meter this soon after the press, or the press is taken as ended.
 PULSE_RUN_WITHIN: Final = timedelta(minutes=10)
+
+#: The phase voltage a boost's current is reckoned at.
+VOLTAGE_V: Final = 230.0
 
 STATE_IDLE: Final = "idle"
 STATE_STARTING: Final = "starting"
@@ -141,6 +144,23 @@ def stop_call(route: Route, options: Sequence[str] = ()) -> tuple[str, str, dict
     return None
 
 
+def fits_fuse(margins: Mapping[str, float | None], boost_kw: float, phases: int = 1) -> bool | None:
+    """Whether a boost of `boost_kw` fits the fuse now: the site's measured margin per phase (A, the fuse less its
+    margin less what flows) holds its current on the tightest phase. A boost on one phase (the worst case, taken
+    until an adapter says the pump heats water on three) needs all of it there. `None` without phase readings."""
+    known = [value for value in margins.values() if value is not None]
+    if not known:
+        return None
+    need_a = boost_kw * 1000.0 / (VOLTAGE_V * max(1, phases))
+    return min(known) >= need_a
+
+
+def over_fuse(margins: Mapping[str, float | None]) -> bool | None:
+    """Whether a phase draws more than the fuse less its margin now; `None` without phase readings."""
+    known = [value for value in margins.values() if value is not None]
+    return None if not known else min(known) < 0.0
+
+
 @dataclass(frozen=True, slots=True)
 class BoostReading:
     """What the shell read now."""
@@ -213,6 +233,8 @@ __all__ = [
     "Route",
     "boost_route",
     "boost_state",
+    "fits_fuse",
+    "over_fuse",
     "start_call",
     "stop_call",
     "SOURCE_BUTTON",

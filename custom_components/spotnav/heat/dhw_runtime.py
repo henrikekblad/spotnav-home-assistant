@@ -49,12 +49,14 @@ from .dhw_boost import (
     BoostReading,
     Route,
     boost_route,
+    fits_fuse,
+    over_fuse,
     boost_state,
     start_call,
     stop_call,
 )
 from .dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN, Entry, Ledger
-from .dhw_peaks import PEAK_DAYS, Peak, draws_from_runs, learn_peaks, peak_instant, standby
+from .dhw_peaks import PEAK_DAYS, Peak, draws_from_runs, learn_peaks, peak_instant, standby, standby_kwh
 from .dhw_plan import (
     BUDGETS,
     DEFAULT_BOOST_KW,
@@ -65,6 +67,7 @@ from .dhw_plan import (
     Pick,
     PlanInputs,
     hourly_to_quarters,
+    min_gain,
     plan,
     quarter_of,
     quarters_of,
@@ -87,6 +90,17 @@ POLL_S: Final = 5.0
 #: The heat control's safety reasons under which no planned boost starts (the compressor goes to the house).
 UNSAFE: Final = frozenset({"too_cold", "room_cold", "stale"})
 LOG_SIZE: Final = 48
+#: Looks in a row over the fuse before SpotNav's own running boost is shed.
+SHED_LOOKS: Final = 2
+
+
+def beta_gate_open(hass: HomeAssistant, site: Any) -> bool:
+    """Whether the site's beta testing skips the learning gate (`dhw_review.GATES`).
+
+    MERGE: the single call site for the beta switch. Once v3-beta is merged, return its
+    `learning_gate_open(hass, site)` here (or its beta flag accessor); until then no site is a beta site."""
+    del hass, site
+    return False
 
 
 async def _pause(seconds: float) -> None:
@@ -103,7 +117,8 @@ def _run_of(raw: Any) -> HotWaterRun | None:
 def learned_run(runs: Sequence[HotWaterRun]) -> tuple[timedelta, float]:
     """The run's length (rounded up to the quarter, at least one) and the boost's power (kW) from the runs that are
     no standby loss; the defaults without any."""
-    real = [run for run in runs if not standby(run) and run.end > run.start]
+    cutoff = standby_kwh(runs)
+    real = [run for run in runs if not standby(run, cutoff) and run.end > run.start]
     if not real:
         return DEFAULT_RUN, DEFAULT_BOOST_KW
     minutes = statistics.median((run.end - run.start).total_seconds() / 60 for run in real)
@@ -130,6 +145,8 @@ class HotWater:
         self.gate_since: str | None = None
         self.backed_off: str | None = None
         self.ended_day: str | None = None
+        #: The site's standby cutoff (kWh, `dhw_peaks.standby_kwh` on the runs kept).
+        self.standby: float = standby_kwh(())
         self.run_len: timedelta = DEFAULT_RUN
         self.boost_kw: float = DEFAULT_BOOST_KW
         self.made_at: datetime | None = None
@@ -137,6 +154,11 @@ class HotWater:
         self._pending: asyncio.Task[None] | None = None
         self._failed_at: datetime | None = None
         self._retry_at: dict[str, datetime] = {}
+        self._over_looks = 0
+        #: The local day SpotNav shed its own boost for the fuse (not restarted that day).
+        self.shed_day: str | None = None
+        self._delta_key: Any = None
+        self._delta: dict[datetime, float] = {}
 
     # ---- store
 
@@ -169,6 +191,7 @@ class HotWater:
             value = raw.get(name)
             setattr(self, name, value if isinstance(value, str) else None)
         self.run_len, self.boost_kw = learned_run(list(self.runs.values()))
+        self.standby = standby_kwh(self.runs.values())
 
     # ---- reads
 
@@ -208,7 +231,11 @@ class HotWater:
         return out
 
     def gate_state(self) -> dict[str, Any]:
-        return {**gate(self.gate_reviews(), LEVEL_B), "backed_off": self.backed_off}
+        state = gate(self.gate_reviews(), LEVEL_B)
+        if not state["open"] and beta_gate_open(self.hass, self.shadow.site):
+            # A beta tester skips the shadow gate: the figures stay as they are, the gate opens.
+            state["open"] = True
+        return {**state, "backed_off": self.backed_off}
 
     def mode(self, config: HeatConfig, route: Route | None, pump: Any) -> str:
         if self.watched(pump):
@@ -283,7 +310,8 @@ class HotWater:
         own = self.ledger.starts()
         days = sorted(day for day in self.seen if day >= first.astimezone(self.zone).date().isoformat())
         hold = any(entry.source == SOURCE_PLAN and entry.at >= first for entry in self.ledger.entries)
-        self.peaks = learn_peaks(draws_from_runs(window, own), self.zone, len(days), previous=self.peaks, hold=hold)
+        self.standby = standby_kwh(window)
+        self.peaks = learn_peaks(draws_from_runs(window, own, self.standby), self.zone, len(days), previous=self.peaks, hold=hold)
         self.run_len, self.boost_kw = learned_run(window)
 
     def inputs(self, now: datetime, config: HeatConfig, route: Route) -> PlanInputs:
@@ -301,7 +329,11 @@ class HotWater:
         buy = quarters_of([(slot.start, slot.end, slot.buy) for slot in slots])
         sell = quarters_of([(slot.start, slot.end, slot.sell) for slot in slots])
         forecast = site.house_forecast
-        load = hourly_to_quarters(forecast.plan_kw_by_hour(now, heat=True))
+        # The house with the heat's change, less the boosts' own (they are placed here again, not counted twice).
+        own = self.forecast_delta(now)
+        load = hourly_to_quarters(
+            {hour: max(0.0, kw - own.get(hour, 0.0)) for hour, kw in forecast.plan_kw_by_hour(now, heat=True).items()}
+        )
         try:
             windows = site_car_windows(self.hass, site)
         except Exception:  # noqa: BLE001 - no car plan: none counted
@@ -361,7 +393,15 @@ class HotWater:
             run_len=self.run_len,
             boost_kw=self.boost_kw,
             previous=self.picks,
+            min_gain=min_gain(self._currency()),
         )
+
+    def _currency(self) -> str | None:
+        from ..pricing.price_source import site_price_source  # noqa: PLC0415 - it imports the planner
+
+        source = site_price_source(self.hass, self.shadow.site.entry_id)
+        area = None if source is None else source.area
+        return None if area is None else area.currency
 
     def _plan(self, now: datetime) -> None:
         config = self.shadow.config()
@@ -455,6 +495,7 @@ class HotWater:
                 prices.get,
                 mode=MODE_LIVE if live else MODE_SHADOW,
                 live_peaks=live,
+                cutoff=self.standby,
             )
             _LOGGER.info("SpotNav hot water: %s reviewed: %s", key, {k: v for k, v in record["review"].items() if k != "per_peak"})
         today = now.astimezone(self.zone).date()
@@ -475,10 +516,12 @@ class HotWater:
     # ---- each look: live boosts
 
     def tick(self, now: datetime) -> None:
-        """Start a live pick whose time has come (see the module)."""
+        """Shed SpotNav's own running boost under fuse pressure; start a live pick whose time has come (see the
+        module)."""
         if self._pending is not None and not self._pending.done():
             return
         config = self.shadow.config()
+        self._shed_check(now, config)
         if not config.control_enabled or not self.picks:
             # Nothing planned is written without the opt-in: no need to read the pump each look.
             return
@@ -507,6 +550,63 @@ class HotWater:
             )
             return
 
+    def _shed_check(self, now: datetime, config: HeatConfig) -> None:
+        """SpotNav's own planned boost running while a phase is over the fuse for `SHED_LOOKS` looks: ended, and not
+        started again that day. A household's or the button's boost is never shed."""
+        last = self.ledger.last(SOURCE_PLAN)
+        if last is None or last.read_back is not True or now - last.at > timedelta(hours=2):
+            self._over_looks = 0
+            return
+        if not over_fuse(self._margins()):
+            self._over_looks = 0
+            return
+        route = self.route(config)
+        if route is None or route.entity_id != last.entity_id:
+            return
+        on, since = self._on(route)
+        if not on or self.ledger.source_of_on(route.entity_id, since) != SOURCE_PLAN:
+            return
+        self._over_looks += 1
+        if self._over_looks < SHED_LOOKS:
+            return
+        call = stop_call(route, self._options(route))
+        if call is None:
+            return
+        self._over_looks = 0
+        self.shed_day = now.astimezone(self.zone).date().isoformat()
+        _LOGGER.info("SpotNav hot water: its own boost ended for the fuse; not started again today")
+        self._pending = self.hass.async_create_background_task(
+            self.hass.services.async_call(call[0], call[1], call[2], blocking=True), f"spotnav hot water shed {self.shadow.site.entry_id}"
+        )
+
+    def forecast_delta(self, now: datetime) -> dict[datetime, float]:
+        """The change SpotNav's own boosts bring to the house's load per hour (kW), what the cars' and the battery's
+        plans count on (`HeatShadow.forecast_delta`): each boost that will be written (live) adds its power over its
+        run, and the pump's own reheat it replaces is taken out at its expected time. Nothing in shadow: there the
+        pump runs as it always has. Kept per 5 minutes."""
+        key = (int(now.timestamp() // 300), tuple(pick.start for pick in self.picks), self.shed_day, self.ended_day)
+        if key == self._delta_key:
+            return self._delta
+        out: dict[datetime, float] = {}
+        if self.picks:
+            config = self.shadow.config()
+            pump = self._pump() if config.control_enabled else None
+            route = None if pump is None and not config.hot_water_entity else self.route(config, pump)
+            today = now.astimezone(self.zone).date().isoformat()
+            if route is not None and self.mode(config, route, pump) == MODE_LIVE and today not in (self.shed_day, self.ended_day):
+                from .relay_effect import hour_shares  # noqa: PLC0415
+
+                run_h = max(self.run_len.total_seconds() / 3600.0, 0.25)
+                for pick in self.picks:
+                    if pick.end <= now or pick.peak <= now:
+                        continue
+                    for hour, share in hour_shares(max(pick.start, now), pick.end):
+                        out[hour] = out.get(hour, 0.0) + self.boost_kw * share
+                    for hour, share in hour_shares(pick.own_at, pick.own_at + self.run_len):
+                        out[hour] = out.get(hour, 0.0) - pick.kwh / run_h * share
+        self._delta_key, self._delta = key, out
+        return out
+
     def _live_blocker(self, now: datetime, route: Route) -> str | None:
         control = self.shadow.control
         safety = None if control is None else getattr(control, "safety", None)
@@ -517,7 +617,16 @@ class HotWater:
         budget = BUDGETS.get(route.kind, BUDGETS[ROUTE_ONE_SHOT])
         if self.ledger.used_on(now.astimezone(self.zone).date(), self.zone, SOURCE_PLAN) >= budget:
             return "budget"
+        if self.shed_day == now.astimezone(self.zone).date().isoformat():
+            return "shed"
+        if fits_fuse(self._margins(), self.boost_kw) is False:
+            # A car started since the boost was placed, or the house draws more: no room on the fuse now.
+            return "fuse"
         return None
+
+    def _margins(self) -> dict[str, float | None]:
+        result = getattr(self.shadow.site, "result", None)
+        return dict(getattr(result, "measured_margin_a", None) or {})
 
     async def _async_live_start(self, now: datetime, route: Route, pick: Pick) -> None:
         try:
@@ -682,7 +791,7 @@ class HotWater:
             until = next(
                 (datetime.fromisoformat(item[1]) for item in record.get("peaks") or [] if item[0] == key), pick.peak + timedelta(hours=2)
             )
-            pump_run = next((run for run in own_runs if not standby(run) and pick.start <= run.start <= until + timedelta(minutes=90)), None)
+            pump_run = next((run for run in own_runs if not standby(run, self.standby) and pick.start <= run.start <= until + timedelta(minutes=90)), None)
             planned.append(
                 {
                     "start": pick.start.isoformat(),
@@ -733,6 +842,8 @@ class HotWater:
             "mode": self.mode(config, route, pump),
             "gate": self.gate_state(),
             "ended_day": self.ended_day,
+            "shed_day": self.shed_day,
+            "standby_kwh": round(self.standby, 3),
             "run_len_min": self.run_len.total_seconds() / 60,
             "boost_kw": round(self.boost_kw, 2),
             "peaks": [peak.stored() for peak in self.peaks],

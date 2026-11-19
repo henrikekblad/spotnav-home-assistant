@@ -356,3 +356,111 @@ async def test_a_live_boost_read_back_is_kept_and_a_local_one_tried_again(hass: 
     hot_water.tick(now + timedelta(minutes=6))
     await settle(hass)
     assert len(writes.calls) == 2
+
+
+# ------------------------------------------------------------------------------------------------ the joint plan
+
+
+def _live_pick(hot_water: Any, now: datetime, start_in: timedelta = timedelta(hours=1)) -> Any:
+    from custom_components.spotnav.heat.dhw_plan import Pick
+
+    start = now.replace(minute=0, second=0, microsecond=0) + start_in
+    peak = start + timedelta(hours=2)
+    return Pick(start, start + timedelta(minutes=30), 1.5, 40.0, "cheap", peak, peak + timedelta(minutes=20), 150.0, 100.0)
+
+
+async def test_live_boosts_are_in_what_the_car_and_battery_plans_see(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """A boost that will be written adds its power over its run and takes the pump's own reheat out where it was
+    expected, in the house figure every plan reads; in shadow nothing changes."""
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX), control_enabled=True)
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    shadow = controller.heat_shadow
+    hot_water = shadow.hot_water
+    now = controller.demand.now()
+    pick = _live_pick(hot_water, now)
+    hot_water.picks = [pick]
+    hot_water.run_len = timedelta(minutes=30)
+    hot_water.boost_kw = 3.0
+    boost_hour = pick.start
+    own_hour = pick.own_at.replace(minute=0)
+    # Shadow: the plans see nothing of it.
+    assert shadow.forecast_delta(now) == {}
+    _open_gate(hot_water, now.astimezone(hot_water.zone).date())
+    hot_water._delta_key = None  # noqa: SLF001 - the gate opened under the test
+    delta = shadow.forecast_delta(now)
+    assert delta[boost_hour] == pytest.approx(1.5)  # 3 kW for half the hour
+    assert delta[own_hour] == pytest.approx(-1.5)  # 1.5 kWh of the pump's own reheat, moved
+    # The house figure the car's import target and the battery plan read (`_with_heat`) carries it.
+    forecast = controller.house_forecast
+    seen = forecast._with_heat({boost_hour: 1.0, own_hour: 2.0}, now)  # noqa: SLF001
+    assert seen == {boost_hour: pytest.approx(2.5), own_hour: pytest.approx(0.5)}
+    # Its own planner does not count the boost twice: the load it plans against leaves its own change out.
+    slots = _prices(controller, now, (now.astimezone(hot_water.zone).hour + 1,))
+    monkeypatch.setattr(controller.battery_shadow.plan, "buy_slots", lambda _now: slots)
+    monkeypatch.setattr(forecast, "plan_kw_by_hour", lambda _now, heat=True: forecast._with_heat({boost_hour: 1.0}, _now))  # noqa: SLF001
+    inputs = hot_water.inputs(now, shadow.config(), hot_water.route())
+    assert inputs.load_kw[boost_hour] == pytest.approx(1.0)
+
+
+async def test_a_car_that_starts_after_the_boost_was_placed(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """The boost was placed with room under the fuse; a car then starts. The boost is not started without room on
+    the tightest phase; once running, SpotNav's own boost is shed under fuse pressure and not started again that
+    day. A household's boost is never shed."""
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX), control_enabled=True)
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    writes = Writes(hass)
+    hot_water = controller.heat_shadow.hot_water
+    monkeypatch.setattr(hot_water, "_meter_fresh", lambda _now: True)
+    now = controller.demand.now()
+    _open_gate(hot_water, now.astimezone(hot_water.zone).date())
+    pick = _live_pick(hot_water, now, timedelta(0))
+    hot_water.picks = [pick]
+    hot_water.boost_kw = 3.0
+    margins = {"l1": 20.0, "l2": 6.0, "l3": 18.0}
+    monkeypatch.setattr(hot_water, "_margins", lambda: margins)
+    at = max(now, pick.start)
+    # 3 kW on one phase is 13 A: the car left 6 A on L2.
+    hot_water.tick(at)
+    await settle(hass)
+    assert writes.calls == []
+    margins["l2"] = 16.0
+    hot_water.tick(at + timedelta(minutes=1))
+    await settle(hass)
+    assert writes.calls == [("select", "select_option", {"entity_id": LUX, "option": "One time increase"})]
+    # The car takes more: a phase over the fuse for two looks ends SpotNav's own boost.
+    margins["l2"] = -2.0
+    hot_water.tick(at + timedelta(minutes=2))
+    await settle(hass)
+    assert len(writes.calls) == 1
+    hot_water.tick(at + timedelta(minutes=3))
+    await settle(hass)
+    assert writes.calls[-1] == ("select", "select_option", {"entity_id": LUX, "option": "Off"})
+    assert hot_water.shed_day == at.astimezone(hot_water.zone).date().isoformat()
+    # Not started again that day, and the plans no longer count it.
+    margins["l2"] = 16.0
+    hot_water.picks = [_live_pick(hot_water, at, timedelta(minutes=5))]
+    hot_water.tick(at + timedelta(minutes=5))
+    await settle(hass)
+    assert len(writes.calls) == 2
+    hot_water._delta_key = None  # noqa: SLF001
+    assert hot_water.forecast_delta(at + timedelta(minutes=5)) == {}
+    # The household's own boost is never shed.
+    hot_water.shed_day = None
+    freezer.tick(timedelta(minutes=30))
+    hass.states.async_set(LUX, "One time increase", {"options": LUX_OPTIONS})
+    assert hot_water.boost()["source"] == "user"
+    margins["l2"] = -5.0
+    for minute in range(10, 14):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert len(writes.calls) == 2
+
+
+async def test_a_beta_site_skips_the_gate(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX), control_enabled=True)
+    hot_water = controller.heat_shadow.hot_water
+    config = controller.heat_shadow.config()
+    assert hot_water.mode(config, hot_water.route(config), hot_water._pump()) == "shadow"  # noqa: SLF001
+    monkeypatch.setattr(dhw_runtime, "beta_gate_open", lambda _hass, _site: True)
+    assert hot_water.gate_state()["open"] is True and hot_water.gate_state()["days"] == 0
+    assert hot_water.mode(config, hot_water.route(config), hot_water._pump()) == "live"  # noqa: SLF001
