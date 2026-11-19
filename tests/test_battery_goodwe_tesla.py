@@ -207,6 +207,32 @@ def test_a_goodwe_charge_that_takes_more_than_its_share_is_handed_back() -> None
     assert not events(results, "hand_back") and executor.state.phase == "active"
 
 
+@dataclass
+class _GoodweInverter(_Fake):
+    """The HACS select as at the pinned commit: it sends the eco group (`sent`) when set to eco_charge, and again when
+    an eco number's state changes while it is in eco_charge (`select.py` `update_eco_mode_power/soc`)."""
+
+    def apply(self, op):  # type: ignore[no-untyped-def]
+        before = dict(self.states)
+        taken = super().apply(op)
+        mode = self.states["operation_mode"]
+        number_changed = op.role in ("eco_power", "eco_soc") and before.get(op.role) != self.states[op.role]
+        if (op.role == "operation_mode" and mode == "eco_charge") or (number_changed and mode == "eco_charge"):
+            self.sent = {"power": self.states["eco_power"], "soc": self.states["eco_soc"]}
+        return taken
+
+
+def test_a_lowered_goodwe_rate_reaches_the_inverter_by_the_numbers_write() -> None:
+    executor = Executor(GOODWE_CONTROL)
+    battery = _GoodweInverter(GOODWE_CONTROL, dict(GOODWE_STATES), soc_pct=42.7)
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 6.0, headroom_a=40.0)
+    assert battery.sent == {"power": "60", "soc": "100"}
+    # The headroom falls: the rate goes down, only the number is written, and the select sends the group again.
+    _now, results = run(executor, battery, now, 6, "grid_charge", 6.0, headroom_a=12.0, power_kw=2.0, grid_import_kw=3.0)
+    assert [role for role, _value in written(results)] == ["eco_power"]
+    assert battery.sent["power"] == battery.states["eco_power"] != "60"
+
+
 def test_goodwe_without_a_battery_rating_does_not_start_a_grid_charge() -> None:
     executor, battery = _goodwe(rated_kw=None)
     _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0)

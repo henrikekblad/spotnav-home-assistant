@@ -109,9 +109,11 @@ The entity keys, options and services below were checked against each integratio
   peak_shaving, self_use, eco_charge, eco_discharge), numbers `eco_mode_power` (% of the battery's rated power, 0-100)
   and `eco_mode_soc` (%, 0-100) and `battery_discharge_depth` (on-grid depth of discharge, %, 0-99; the register holds
   100 less it, `et.py` `set_ongrid_battery_dod`). The two eco numbers are **not written to the inverter on their
-  own** (`number.py`, `setter=None`): the select caches them (`select.py` `update_eco_mode_power/soc`) and sends the
-  eco group (`set_operation_mode`: group 1, 00:00-23:59, all days, groups 2-4 off, work mode 3) when it changes to
-  `eco_charge`. So numbers first, the mode last; back: the mode first, then the numbers. The select does not poll
+  own** (`number.py`, `setter=None`): the select caches them and sends the eco group (`set_operation_mode`: group
+  1, 00:00-23:59, all days, groups 2-4 off, work mode 3) when it is set to `eco_charge`, and again whenever either
+  number's state changes while it is in `eco_charge` (`select.py` `update_eco_mode_power/soc`, a state-change listener
+  the select sets up for the numbers registered when it is), so a lowered rate reaches the inverter by the number's
+  write alone. So numbers first, the mode last; back: the mode first, then the numbers. The select does not poll
   (`should_poll = False`) and the numbers only echo what was written, so the read-back proves only what Home Assistant
   holds (`local_readback`): the battery's power shows the effect. A grid charge is `eco_charge` at a share of the
   rated power (1 % steps, rounded down; the rating is the BMS' present limit times the voltage, an estimate) with the
