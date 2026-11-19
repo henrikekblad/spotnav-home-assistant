@@ -136,7 +136,7 @@ async def test_a_day_s_cold_risk_is_reviewed_and_three_in_a_week_close_the_gate(
     hot_water.runs[start.isoformat()] = HotWaterRun(start, start + 30 * MIN, 0.9)
     block = (_local(hot_water, now, 4, -1), _local(hot_water, now, 6, -1) + 10 * MIN)
     monkeypatch.setattr(shadow, "relay_intervals", lambda _now: ([block], []))
-    monkeypatch.setattr("custom_components.spotnav.api.house_history.period_price_slots", lambda *_args: [])
+    monkeypatch.setattr("custom_components.spotnav.heat.dhw_runtime.period_price_slots", lambda *_args: [])
     await hot_water._async_review(_local(hot_water, now, 4))  # noqa: SLF001
     review = record["review"]
     assert (review["cold_risks"], review["blocks_cut"], review["a_mode"]) == (1, 1, "shadow")
@@ -151,7 +151,7 @@ async def _backed_off(hass: HomeAssistant, freezer: Any, monkeypatch: pytest.Mon
         monkeypatch.setattr(dhw_runtime, "beta_gate_open", lambda *_args: True)
     _site_, controller, _relay, hot_water, now = await _villa(hass, freezer, monkeypatch)
     today = now.astimezone(hot_water.zone).date()
-    monkeypatch.setattr("custom_components.spotnav.api.house_history.period_price_slots", lambda *_args: [])
+    monkeypatch.setattr("custom_components.spotnav.heat.dhw_runtime.period_price_slots", lambda *_args: [])
     if not beta:
         _open_a_gate(hot_water, today)
         hot_water.a_opened = (today - timedelta(days=5)).isoformat()

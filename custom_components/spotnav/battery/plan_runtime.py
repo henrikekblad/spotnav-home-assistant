@@ -75,6 +75,7 @@ from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.forecast_band import FORM_ADDITIVE, FORM_RATIO, BandView, ErrorBand, learn, pairs_from_log, view
 from ..site.forecast_log import KIND_HOUSE_MEDIAN, KIND_SUN, KIND_SUN_CORRECTED
 from ..site.house_forecast import BASIS_GROSS, MEDIAN_QUANTILE
+from ..site.import_target import stored_import_target_kw
 from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
 from .defensive import NO_BAND, DefensiveInputs, defensive_inputs
 from .facts import BatteryFacts
@@ -310,8 +311,6 @@ def site_car_windows(hass: HomeAssistant, site: SiteCapacityController) -> list[
 def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> float | None:
     """The most the site may import (kW, `plan_shadow.import_cap_kw`): the main fuse less its margin, and the import
     target's held level where one is set."""
-    from ..api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports the site
-
     entry = hass.config_entries.async_get_entry(site.entry_id)
     config = site.config
     return import_cap_kw(

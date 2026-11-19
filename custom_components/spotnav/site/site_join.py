@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MEASURED_CURRENT_SOURCE, CONF_PHASE_WIRING, DOMAIN
+from ..execution.charger_entities import charger_device_id
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..vehicles.discovery import profile_attribute_source
 from .measurement_source import source_from_dict, source_to_dict
@@ -113,9 +114,6 @@ def backfill_profile_measured_sources(hass: HomeAssistant, site: ConfigEntry) ->
     site's (the site reloads when its voltage changes, so this runs then too; the site also reads it at its live
     voltage, `_read_charger_measured_current`).
     """
-    # Imported here: the flows import this module's neighbours, and they import the controller.
-    from ..flows.measured_source import charger_device_id
-
     wiring_by_charger = site.data.get(CONF_PHASE_WIRING) or {}
     voltage = stored_voltage_between_phases_v(site.data)
     updated: dict[str, Any] = {}

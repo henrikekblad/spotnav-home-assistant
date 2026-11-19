@@ -39,11 +39,12 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import callback, HomeAssistant
 
-from ..battery.plan_shadow import DayReview, PriceSlot, price_slots
+from ..battery.plan_shadow import DayReview
 from ..day_export import ARCHIVE_DIR
 from ..planning.demand_charge import hour_start
+from ..pricing.period_prices import period_price_slots
 from ..pricing.price_source import site_price_source
-from ..runtime import domain_data, site_controller_for
+from ..runtime import site_controller_for
 from ..site.energy_flow import EnergyHour
 from ..site.energy_statistics import async_energy_prefs, energy_flow_ids
 from ..site.history_period import PERIOD_DAY, Period, local_date, requested_period, utc_bounds
@@ -75,33 +76,6 @@ def _arbitrage(controller: Any, has_battery: bool) -> dict[str, Any]:
         "flow_days": {day: money.flow for day, money in stored.days.items() if money.flow is not None},
         "flow_hours": {hour: flow for money in stored.days.values() for hour, flow in money.hour_flows.items()},
     }
-
-
-def period_price_slots(hass: HomeAssistant, site_entry_id: str, period: Period) -> list[PriceSlot]:
-    """The period's price slots with the fees as set now, from the day documents held (nothing is fetched); none
-    without a price source, its area or its fees. A day either side is read too (an area on another clock)."""
-    from ..pricing.price_points import price_points  # noqa: PLC0415 - it imports the planner
-    from ..planning.planner import PlannerInputError  # noqa: PLC0415
-
-    source = site_price_source(hass, site_entry_id)
-    repository = domain_data(hass).price_repository
-    if source is None or source.area is None or repository is None:
-        return []
-    fiscal = source.fiscal
-    if fiscal is None:
-        return []
-    documents = []
-    day = period.first - timedelta(days=1)
-    while day <= period.end:
-        document = repository.day_snapshot(source.area_id, day).document
-        if document is not None:
-            documents.append(document)
-        day += timedelta(days=1)
-    try:
-        points = price_points(documents, currency=source.area.currency, fiscal=fiscal)
-    except PlannerInputError:
-        return []
-    return price_slots(((point.start, point.end, point.spot) for point in points), fiscal)
 
 
 def read_archived_reviews(folder: Path, days: Sequence[date]) -> dict[date, DayReview]:

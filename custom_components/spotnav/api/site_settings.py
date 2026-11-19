@@ -58,6 +58,7 @@ from ..const import (
 from ..planning.hybrid_forecast import async_forecast_capable_domains
 from ..runtime import site_controller_for
 from ..site.house_loads import merged_belongs, stored_belongs
+from ..site.import_target import stored_import_target_kw
 from ..site.site_capacity_controller import (
     ENABLE_ALREADY,
     ENABLE_ENABLED,
@@ -73,7 +74,7 @@ from .common import (
     lookup_site,
     send_unsupported_version,
 )
-from .entity_fields import import_target_error, stored_import_target_kw
+from .entity_fields import import_target_error
 from .heat import forget_cached_heat
 from .heat_history import forget_cached_heat_history
 from .house import forget_cached_flow

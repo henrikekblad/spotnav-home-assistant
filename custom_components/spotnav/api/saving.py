@@ -5,7 +5,7 @@ car's figure needs, for the house card (`api/house.py`, `api/house_history.py`) 
 What is read: the site's chargers' sessions (the session store, in memory); for the sessions with a plug-in time, the
 Energy dashboard's meters and the chargers' registers by the hour from the recorder's long-term statistics over their
 span (`api/house._hourly_periods`, in the recorder's executor) and the area's held day prices with the fees as set
-now (`api/house_history.period_price_slots`, in memory); the battery's day money (`battery/stored_value.py`) and the
+now (`pricing/period_prices.period_price_slots`, in memory); the battery's day money (`battery/stored_value.py`) and the
 heat shadow's days (`heat/runtime.py`), in memory. A session's figure is kept per site once it is settled (closed,
 and its last hour two hours behind, so the statistics have it); an open or fresh one is worked out again.
 """
@@ -22,6 +22,7 @@ from homeassistant.core import HomeAssistant, callback
 from .. import time_zones
 from ..const import CONF_CHARGER_ENTRY_IDS, DOMAIN
 from ..planning.demand_charge import hour_start
+from ..pricing.period_prices import period_price_slots
 from ..runtime import domain_data
 from ..sessions.model import ChargeSession
 from ..site.history_period import PERIOD_DAY, Period
@@ -66,7 +67,6 @@ async def async_session_savings(
     """Each session's car saving (minor units, `site/spotnav_saving.session_savings`), `None` where it cannot be
     known; the plug-ins of the sessions given are completed from the site's other sessions."""
     from .house import _car_register_ids, _hourly_periods  # noqa: PLC0415 - the house API imports this module
-    from .house_history import period_price_slots  # noqa: PLC0415
     from ..site.energy_statistics import async_energy_prefs, energy_flow_ids  # noqa: PLC0415
 
     now = controller.demand.now()

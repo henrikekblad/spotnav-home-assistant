@@ -31,11 +31,13 @@ from ..const import (
     CONF_PHASE_WIRING,
     VOLTAGE_BETWEEN_PHASES_IT_V,
 )
-from ..execution.charger_entities import EntityMatcher
+from ..execution.charger_entities import charger_device_id, EntityMatcher, is_current_sensor
 from ..execution.charger_profiles import profile_for
+from ..planning.first_run import site_for_charger
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from .measurement_source import PhaseMeasurementSource, source_to_dict
 from .site_capacity import PHASES, PhaseName
+from .site_join import MEASURED_SOURCE_DECLINED
 
 #: The prefix of an offer's id, followed by the charger's entry id (`apply_detection` takes it).
 OFFER_PREFIX: Final = "charger_current:"
@@ -121,9 +123,6 @@ def own_current_sensors(
         return None
     registry = er.async_get(hass)
     entries = er.async_entries_for_device(registry, device_id, include_disabled_entities=True)
-    # Imported here: the flows import this package's modules.
-    from ..flows.charger_detection import _is_current_sensor
-
     for platform in dict.fromkeys(entry.platform for entry in entries):
         profile = profile_for(platform)
         if profile is None:
@@ -162,7 +161,7 @@ def own_current_sensors(
         chosen = [sensor for sensor in sensors if sensor is not None]
         if len({sensor.entity_id for sensor in chosen}) != len(PHASES):
             continue
-        if not all(_is_current_sensor(hass, sensor) for sensor in chosen):
+        if not all(is_current_sensor(hass, sensor) for sensor in chosen):
             continue
         if not all(_usable(sensor) for sensor in chosen):
             return None
@@ -179,10 +178,6 @@ def own_current_sensors(
 
 def charger_own_current_sensors(hass: HomeAssistant, charger_entry_id: str) -> OwnCurrentSensors | None:
     """`own_current_sensors` for a charger, read with its site's wiring (its phases, the network)."""
-    # Imported here: the flows import this package's modules.
-    from ..flows.measured_source import charger_device_id
-    from ..planning.first_run import site_for_charger
-
     site = site_for_charger(hass, charger_entry_id)
     wiring = ((site.data.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}) if site is not None else {}
     return own_current_sensors(
@@ -221,8 +216,6 @@ def charger_current_offers(hass: HomeAssistant, site: ConfigEntry) -> list[Charg
 def apply_charger_current_offer(data: dict[str, Any], offer: ChargerCurrentOffer) -> dict[str, Any]:
     """The site's data with the offer's source in that charger's wiring; a source a person had removed on
     purpose (`MEASURED_SOURCE_DECLINED`) is now chosen again."""
-    from .site_join import MEASURED_SOURCE_DECLINED
-
     wiring_by_charger = dict(data.get(CONF_PHASE_WIRING) or {})
     wiring = {
         key: value

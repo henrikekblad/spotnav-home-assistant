@@ -39,6 +39,7 @@ from .runtime import (
     price_data,
     site_controller_for,
 )
+from .site.import_target import stored_import_target_kw
 from .site.regulator import RegulatorDecision
 from .site.site_capacity import ChargerAllocation, site_activity, SiteCapacityResult
 from .vehicles.capability import SiteCapabilitySnapshot
@@ -232,7 +233,6 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
 
 
 def _demand_diagnostics(hass: HomeAssistant, entry: ConfigEntry, controller: Any) -> dict[str, Any] | None:
-    from .api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports this module's peers
     from .pricing.price_source import site_demand_components  # noqa: PLC0415
 
     try:

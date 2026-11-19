@@ -55,7 +55,6 @@ from ..const import (
     CONF_BATTERY_POWER_INVERTED,
     CHARGER_PRIORITIES,
     CONF_CHARGE_CONTROL,
-    CONF_CHARGER_ENTRY_IDS,
     CONF_CHARGER_PRIORITY,
     CONF_CHARGER_PLATFORM,
     CONF_CONTROL_PATH,
@@ -69,7 +68,6 @@ from ..const import (
     CONF_POWER_ENTITY,
     CONF_GRID_POWER_INVERTED,
     CONF_GRID_POWER_SOURCE,
-    CONF_IMPORT_TARGET_KW,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
@@ -93,16 +91,15 @@ from ..core.electric import stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
 from ..site.heat_meter import needs_setting
+from ..site.import_target import stored_import_target_kw
 from ..site.battery_limit import battery_import_limit, WARNING_CODE as BATTERY_LIMIT_WARNING
 from ..site.site_detection import (
     apply_meter_candidate,
     BatteryCandidate,
-    detect_site_from_hass,
-    Detection,
-    excluded_charger_devices,
     find_own_load_balancing_from_hass,
     freshness_warnings,
     MeterCandidate,
+    site_detection,
 )
 from ..site.charger_current_offer import (
     charger_own_current_sensors,
@@ -1080,14 +1077,6 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
     return values
 
 
-def stored_import_target_kw(data: Any) -> float | None:
-    """The site's import target as stored (kW), or `None` for none or one that cannot be read."""
-    value = data.get(CONF_IMPORT_TARGET_KW) if hasattr(data, "get") else None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-        return None
-    return float(value)
-
-
 def import_target_error(changes: dict[str, Any]) -> FieldError | None:
     """`import_target_kw` in a write: `null` or `""` clears it, else a number within the bounds."""
     if FIELD_IMPORT_TARGET_KW not in changes:
@@ -1417,15 +1406,6 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
 
 
 # ---- Detection, warnings and measurement state for the card ------------------------------------
-
-
-def _site_excluded_devices(hass: HomeAssistant, entry: ConfigEntry) -> set[str]:
-    return excluded_charger_devices(hass, list(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []))
-
-
-def site_detection(hass: HomeAssistant, entry: ConfigEntry) -> Detection:
-    """Meter and battery candidates for this site, charger devices excluded."""
-    return detect_site_from_hass(hass, excluded_device_ids=_site_excluded_devices(hass, entry))
 
 
 def resolve_detection_candidate(

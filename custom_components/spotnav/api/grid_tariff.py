@@ -111,9 +111,10 @@ from ..const import (
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
+from ..site.import_target import stored_import_target_kw
 from ..site.measurement_source import grid_power_source_from_dict
 from .common import ERROR_CHARGER_REQUIRED, ERROR_NOT_ADMIN, is_admin, lookup_charger, lookup_site
-from .entity_fields import ERR_INVALID_VALUE, stored_import_target_kw
+from .entity_fields import ERR_INVALID_VALUE
 
 _LOGGER = logging.getLogger(__name__)
 

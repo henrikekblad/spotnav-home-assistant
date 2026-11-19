@@ -42,6 +42,7 @@ from homeassistant.core import HomeAssistant
 
 from . import time_zones
 from .const import CONF_CHARGER_ENTRY_IDS, CONF_MAIN_FUSE_A
+from .site.import_target import stored_import_target_kw
 
 #: The record's shape; a reader checks it.
 SCHEMA: Final = 1
@@ -331,7 +332,6 @@ def _instant(raw: Any) -> datetime | None:
 
 def settings_part(hass: HomeAssistant, entry: ConfigEntry, controller: Any, source: Any) -> dict[str, Any]:
     """The site's settings the day's decisions read, as they are now."""
-    from .api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports the site
     from .battery.plan_runtime import limited_params, site_import_cap_kw  # noqa: PLC0415
     from .battery.learned import with_learned  # noqa: PLC0415
     from .battery.plan_shadow import battery_params  # noqa: PLC0415

@@ -9,7 +9,7 @@ from typing import Any, Literal
 import voluptuous as vol
 from homeassistant.helpers import entity_registry as er, selector
 
-from ..const import CONF_CHARGE_CONTROL
+from ..execution.charger_entities import charger_device_id
 from ..site.measurement_source import PhaseMeasurementSource, source_to_dict
 from ..site.site_capacity import normalized_ampere_unit
 from ..vehicles.discovery import (
@@ -39,21 +39,6 @@ from .labels import (
 
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def charger_device_id(hass, charger_entry_id: str) -> str | None:
-    """The Home Assistant device backing a charger's charge-control entity, if resolvable; used only
-    to scope discovery to that charger's device (see vehicles/discovery.py).
-    """
-    charger_entry = hass.config_entries.async_get_entry(charger_entry_id)
-    if charger_entry is None:
-        return None
-    charge_control = charger_entry.data.get(CONF_CHARGE_CONTROL)
-    if not charge_control:
-        return None
-    registry = er.async_get(hass)
-    entity_entry = registry.async_get(charge_control)
-    return entity_entry.device_id if entity_entry else None
 
 
 @dataclass(frozen=True, slots=True)
