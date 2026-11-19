@@ -4,6 +4,7 @@ on a device."""
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from datetime import timedelta
 
@@ -274,7 +275,9 @@ def test_the_fixed_charge_rate_is_the_plants_own_maximum() -> None:
     facts = BatteryFacts(capacity_kwh=13.5)
     assert fixed_rate_kw(TESLA_CONTROL, facts) == 5.0
     assert fixed_rate_kw(TESLA_CONTROL, BatteryFacts(capacity_kwh=27.0)) == 10.0
-    assert fixed_rate_kw(TESLA_CONTROL, BatteryFacts()) == 5.0
+    # The size unknown: the number of Powerwalls is unknown, so the rate is unbounded (two would be checked as one).
+    assert fixed_rate_kw(TESLA_CONTROL, BatteryFacts()) == math.inf
+    assert fixed_rate_kw(TESLA_CONTROL, BatteryFacts(rated_charge_kw=7.0)) == math.inf
     assert fixed_rate_kw(TESLA_CONTROL, BatteryFacts(capacity_kwh=13.5, rated_charge_kw=7.0)) == 7.0
     assert fixed_rate_kw(GOODWE_CONTROL, facts) is None
 
@@ -284,6 +287,8 @@ def test_a_fixed_charge_that_does_not_fit_under_the_fuse_is_refused_not_lowered(
     assert restricted(slot, {"grid_charge"}, 4.0, None, 5.0) == ((("self_consume", 0.0, None)), "grid_charge_cap_fixed")
     assert restricted(slot, {"grid_charge"}, 6.0, None, 5.0) == (slot, None)
     assert restricted(slot, {"grid_charge"}, None, None, 5.0) == (slot, None)
+    # The size unknown: never run, whatever the cap.
+    assert restricted(slot, {"grid_charge"}, None, None, math.inf) == (("self_consume", 0.0, None), "grid_charge_size_unknown")
     # A settable rate is lowered to the cap, as before.
     assert restricted(slot, {"grid_charge"}, 2.0) == (("grid_charge", 2.0, None), "grid_charge_cap")
 
@@ -296,6 +301,12 @@ def test_the_executor_refuses_a_fixed_charge_over_the_live_headroom() -> None:
     executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
     assert executor.state.phase == "active" and executor.state.rate_kw == 5.0
+
+
+def test_a_fixed_charge_without_the_batterys_size_is_refused() -> None:
+    executor, battery = _tesla(capacity_kwh=None, rated_kw=None)
+    _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0, headroom_a=60.0)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "size_unknown"
 
 
 def test_the_live_check_counts_a_fixed_charge_on_one_phase() -> None:

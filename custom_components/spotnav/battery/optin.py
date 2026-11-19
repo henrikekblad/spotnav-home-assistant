@@ -69,9 +69,12 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("number", "battery_discharge_depth"),
     ),
     # Tesla's reserve and grid-charging switch are enabled by default; listed so a person's own disable is offered.
+    # The battery's size is disabled by default, and without it no grid charge runs (the number of Powerwalls is
+    # not known, `commands.fixed_rate_kw`).
     "tesla": (
         ("number", "backup_reserve_percent"),
         ("switch", "components_disallow_charge_from_grid_with_solar_installed"),
+        ("sensor", "total_pack_energy"),
     ),
 }
 

@@ -1405,10 +1405,12 @@ class Executor:
         if action == ACTION_GRID_CHARGE and self.control.fixed_charge:
             # The plant charges at its own rate: it must fit under the fuse cap as it is, never lowered.
             fixed = fixed_rate_kw(self.control, facts)
+            if fixed is None or not math.isfinite(fixed):
+                return 0.0, "size_unknown"
             cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False, phases=self._charge_phases(inputs))
             if cap is None:
                 return 0.0, "headroom_unknown"
-            if fixed is None or fixed > cap + RATE_TOLERANCE_KW:
+            if fixed > cap + RATE_TOLERANCE_KW:
                 return 0.0, "fuse_headroom"
             return round(fixed, 3), None
         if action == ACTION_GRID_CHARGE:

@@ -531,12 +531,15 @@ def _resolve(value: Native, soc_pct: float | None, rated_kw: float | None) -> Na
 
 def fixed_rate_kw(control: BrandControl, facts: Any) -> float | None:
     """The rate a plant charges at when the recipe cannot set it (`BrandControl.fixed_charge`), in kW: the larger of
-    its own rating (read or learnt, `facts.max_charge_kw`) and the recipe's figure per unit of battery size. `None`
-    for a control that sets its rate."""
+    its own rating (`facts.max_charge_kw`) and the recipe's figure per unit of battery size. Infinite while the
+    battery's size is not read (the number of units is then unknown: two Powerwalls are not checked as one), so every
+    such charge is refused. `None` for a control that sets its rate."""
     if not control.fixed_charge:
         return None
     capacity = getattr(facts, "capacity_kwh", None)
-    units = 1 if not isinstance(capacity, (int, float)) or capacity <= 0 else max(1, math.ceil(capacity / control.fixed_unit_kwh - 0.15))
+    if not isinstance(capacity, (int, float)) or isinstance(capacity, bool) or not math.isfinite(capacity) or capacity <= 0:
+        return math.inf
+    units = max(1, math.ceil(capacity / control.fixed_unit_kwh - 0.15))
     rating = getattr(facts, "max_charge_kw", None)
     return max(control.fixed_charge_kw * units, rating if isinstance(rating, (int, float)) else 0.0)
 

@@ -633,7 +633,8 @@ def restricted(
     """The slot control may run (an action the report does not allow becomes plain self-consumption; a grid charge
     is capped by `cap_kw`, a discharge to the grid by `export_cap_kw`; `restricted`'s second value says why it
     changed). `fixed_charge_kw`: the plant charges at its own rate (Tesla): the charge runs as planned or, when that
-    rate is over the cap, not at all (`grid_charge_cap_fixed`): it is never lowered."""
+    rate is over the cap, not at all (`grid_charge_cap_fixed`): it is never lowered. An infinite rate (the battery's
+    size, so its number of units, is not read) is never run (`grid_charge_size_unknown`)."""
     if slot is None:
         return None, None
     action, rate, end = slot
@@ -642,6 +643,8 @@ def restricted(
     if action not in allowed:
         return (ACTION_SELF_CONSUME, 0.0, end), f"not_verified:{action}"
     if action == ACTION_GRID_CHARGE and fixed_charge_kw is not None:
+        if not math.isfinite(fixed_charge_kw):
+            return (ACTION_SELF_CONSUME, 0.0, end), "grid_charge_size_unknown"
         if cap_kw is not None and fixed_charge_kw > cap_kw:
             return (ACTION_SELF_CONSUME, 0.0, end), "grid_charge_cap_fixed"
         return slot, None

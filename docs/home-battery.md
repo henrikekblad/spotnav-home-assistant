@@ -68,7 +68,7 @@ administrators can confirm, and never over the webhook. The entities per brand:
 * Huawei: forcible charge/discharge write, maximum charging and discharging power.
 * SolaX: remote control autorepeat duration, active power, power control and trigger.
 * GoodWe (the HACS integration): operation mode, eco mode power, eco mode SoC and the depth of discharge.
-* Tesla Powerwall: backup reserve and the grid charging switch.
+* Tesla Powerwall: backup reserve, the grid charging switch and the battery's size (its pack energy).
 
 **GoodWe and Tesla Powerwall: mapped, never run on a device.** Both are switched on by the same switch and checked by
 the same routine as the others, and both are untested.
@@ -85,7 +85,9 @@ the same routine as the others, and both are untested.
   a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no change
   of action within 15 minutes. A hold sets the backup reserve to the level now (rounded down); a grid charge sets the
   reserve to 100 % and allows grid charging. The charge power is the Powerwall's own (about 1.7 kW each in reports, not
-  measured here), so SpotNav uses the plant's maximum for the fuse cap and does not start a charge that does not fit.
+  measured here), so SpotNav uses the plant's maximum (5 kW per Powerwall) on one phase for the fuse cap and does not
+  start a charge that does not fit. It does not start one at all while the battery's size is not read (the size
+  sensor is disabled by default; the switch's dialog offers it): without it two Powerwalls would be checked as one.
   It runs only while the operation mode is self-powered; Time-Based Control and Backup are left alone. The grid charging
   switch exists only on a site with solar. Nothing stops a command when Home Assistant stops, and the cloud may take
   minutes to show a change.
