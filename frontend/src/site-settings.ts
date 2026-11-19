@@ -6,6 +6,7 @@ import { formatNumber } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { decodeSite, type Site } from "./validate";
 import { SITE_SETTINGS_API_VERSION } from "./types";
+import { hasAllKeys, hasUnknownKeys } from "./contract";
 
 class MalformedPayload extends Error {}
 
@@ -22,13 +23,8 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (Object.keys(source).length !== keys.length) {
+  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
     bad();
-  }
-  for (const key of keys) {
-    if (!Object.prototype.hasOwnProperty.call(source, key)) {
-      bad();
-    }
   }
 }
 

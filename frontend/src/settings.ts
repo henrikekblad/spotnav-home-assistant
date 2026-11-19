@@ -34,6 +34,7 @@ import {
   type SettingsRecord,
 } from "./types";
 import type { Fiscal } from "./validate";
+import { hasAllKeys, hasUnknownKeys } from "./contract";
 
 class MalformedPayload extends Error {}
 
@@ -50,13 +51,8 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (Object.keys(source).length !== keys.length) {
-    return bad();
-  }
-  for (const key of keys) {
-    if (!Object.prototype.hasOwnProperty.call(source, key)) {
-      return bad();
-    }
+  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
+    bad();
   }
 }
 

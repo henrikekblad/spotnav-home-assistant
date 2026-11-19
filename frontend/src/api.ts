@@ -30,6 +30,7 @@ import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
 import { HEAT_API_VERSION, HEAT_HISTORY_API_VERSION } from "./heat-model";
 import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION, HOUSE_LOADS_API_VERSION, HOUSE_NOW_API_VERSION } from "./house-model";
 import { BATTERY_CONTROL_API_VERSION, SITE_VIEW_API_VERSION } from "./site-model";
+import { hasUnknownKeys } from "./contract";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
 
@@ -139,7 +140,7 @@ function decodeActionResult(raw: unknown): ManualActionResult {
       throw new SpotnavApiError(null);
     }
   }
-  if (Object.keys(record).length !== keys.length) {
+  if (hasUnknownKeys(record, keys)) {
     throw new SpotnavApiError(null);
   }
   const version = record.api_version;

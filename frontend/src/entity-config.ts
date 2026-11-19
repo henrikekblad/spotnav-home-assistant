@@ -10,6 +10,7 @@
 import type { TranslationKey } from "./i18n";
 import { ENTITY_CONFIG_API_VERSION } from "./types";
 import { decodeVehicle as decodeVehicleRow, type Vehicle } from "./validate";
+import { hasAllKeys, hasUnknownKeys } from "./contract";
 
 class MalformedPayload extends Error {}
 
@@ -26,13 +27,8 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (Object.keys(source).length !== keys.length) {
+  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
     bad();
-  }
-  for (const key of keys) {
-    if (!Object.prototype.hasOwnProperty.call(source, key)) {
-      bad();
-    }
   }
 }
 

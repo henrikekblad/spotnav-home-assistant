@@ -4,9 +4,10 @@
 // 14-day period has ended by itself ("nothing is sent any more"), and "Kör hårdvarutest": started by the
 // administrator, its steps shown live (the box reads the command again while a test runs), its result, and "Skicka"
 // when beta is off (beta sends a finished test by itself). The backend decides everything; the card only shows the
-// answer, read strictly: an answer with a key the card does not know is no answer.
+// answer; a missing or mistyped known key is no answer, an unknown key is ignored (see `contract.ts`).
 
 import { translate, type Language, type TranslationKey } from "./i18n";
+import { hasAllKeys, hasUnknownKeys } from "./contract";
 import { PRIVACY_URL, MAX_EMAIL_CHARS, sendFailureText } from "./send-debug";
 import { BETA_API_VERSION } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -54,8 +55,7 @@ function record(value: unknown, keys: readonly string[]): Record<string, unknown
     return null;
   }
   const object = value as Record<string, unknown>;
-  const own = Object.keys(object);
-  if (own.length !== keys.length || !keys.every((key) => own.includes(key))) {
+  if (!hasAllKeys(object, keys) || hasUnknownKeys(object, keys)) {
     return null;
   }
   return object;

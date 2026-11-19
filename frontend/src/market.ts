@@ -27,6 +27,7 @@ import {
   type SettingsBody,
   type SettingsRecord,
 } from "./types";
+import { hasAllKeys, hasUnknownKeys } from "./contract";
 
 export type MarketDecodeResult =
   | { ok: true; value: MarketOptionsV1 }
@@ -48,13 +49,8 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (Object.keys(source).length !== keys.length) {
-    return bad();
-  }
-  for (const key of keys) {
-    if (!Object.prototype.hasOwnProperty.call(source, key)) {
-      return bad();
-    }
+  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
+    bad();
   }
 }
 
