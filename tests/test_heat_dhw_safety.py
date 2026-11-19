@@ -430,3 +430,37 @@ async def test_s5_an_unverified_boost_is_the_buttons_only_and_is_stopped_after_i
     hot_water.tick(started + timedelta(minutes=48))
     await settle(hass)
     assert len(writes.calls) == 2
+
+
+# ---- S6: the gate stays open while steering; only misses close it
+
+
+async def test_s6_the_gate_stays_open_through_live_weeks_and_closes_on_misses(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from datetime import date
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX), control_enabled=True)
+    hot_water = controller.heat_shadow.hot_water
+    now = controller.demand.now()
+    today = now.astimezone(hot_water.zone).date()
+    _open_gate(hot_water, today)
+    await hot_water._async_review(now)  # noqa: SLF001 - latches the opening
+    assert hot_water.gate_state()["open"] and hot_water.opened == today.isoformat()
+    # Five weeks of steering later: the shadow days are trimmed away, the gate stays open.
+    hot_water.days = {}
+    for index in range(1, 36):
+        day = today + timedelta(days=index)
+        hot_water.days[day.isoformat()] = {
+            "peaks": [], "picks": {}, "live": ["x"], "filled": [],
+            "review": {"date": day.isoformat(), "mode": "live", "hits": 2, "peaks": 2, "saved": 5.0, "misses": 0},
+        }
+    later = now + timedelta(days=36)
+    await hot_water._async_review(later)  # noqa: SLF001
+    assert hot_water.gate_state()["open"] is True
+    # Three misses in a week: back to shadow, once.
+    for index in (33, 34, 35):
+        hot_water.days[(today + timedelta(days=index)).isoformat()]["review"]["misses"] = 1
+    await hot_water._async_review(later)  # noqa: SLF001
+    state = hot_water.gate_state()
+    assert state["open"] is False and state["backed_off"] == later.astimezone(hot_water.zone).date().isoformat()
+    assert hot_water.opened is None
+    assert isinstance(date.fromisoformat(hot_water.gate_since), date)

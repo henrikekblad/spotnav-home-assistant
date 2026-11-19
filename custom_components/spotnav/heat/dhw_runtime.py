@@ -148,6 +148,8 @@ class HotWater:
         #: The gate counts shadow days after this day (it closed then).
         self.gate_since: str | None = None
         self.backed_off: str | None = None
+        #: The day the gate opened: it stays open until misses close it (`back_off`).
+        self.opened: str | None = None
         self.ended_day: str | None = None
         #: The site's standby cutoff (kWh, `dhw_peaks.standby_kwh` on the runs kept).
         self.standby: float = standby_kwh(())
@@ -179,6 +181,7 @@ class HotWater:
             "days": self.days,
             "gate_since": self.gate_since,
             "backed_off": self.backed_off,
+            "opened": self.opened,
             "ended_day": self.ended_day,
             "picks": [pick.stored() for pick in self.picks],
         }
@@ -196,7 +199,7 @@ class HotWater:
         days = raw.get("days")
         if isinstance(days, dict):
             self.days = {key: value for key, value in days.items() if isinstance(key, str) and isinstance(value, dict)}
-        for name in ("gate_since", "backed_off", "ended_day"):
+        for name in ("gate_since", "backed_off", "opened", "ended_day"):
             value = raw.get(name)
             setattr(self, name, value if isinstance(value, str) else None)
         self.picks = [pick for item in raw.get("picks") or [] if (pick := Pick.from_stored(item)) is not None]
@@ -260,6 +263,8 @@ class HotWater:
 
     def gate_state(self) -> dict[str, Any]:
         state = gate(self.gate_reviews(), LEVEL_B)
+        if self.opened is not None:
+            state["open"] = True
         if not state["open"] and beta_gate_open(self.hass, self.shadow.site):
             # A beta tester skips the shadow gate: the figures stay as they are, the gate opens.
             state["open"] = True
@@ -527,10 +532,18 @@ class HotWater:
             )
             _LOGGER.info("SpotNav hot water: %s reviewed: %s", key, {k: v for k, v in record["review"].items() if k != "per_peak"})
         today = now.astimezone(self.zone).date()
-        if back_off([r for d in self.days.values() if isinstance(r := d.get("review"), dict)], today) and self.gate_state()["open"]:
+        reviews = [r for d in self.days.values() if isinstance(r := d.get("review"), dict)]
+        if self.gate_state()["open"] and back_off(reviews, today) and self.backed_off != today.isoformat():
+            # Only misses close the gate: its shadow days count again from tomorrow.
             self.gate_since = today.isoformat()
             self.backed_off = today.isoformat()
+            self.opened = None
             _LOGGER.info("SpotNav hot water: too many misses in a week; back to shadow")
+        elif self.opened is None and gate(self.gate_reviews(), LEVEL_B)["open"]:
+            # Opened once, the gate stays open while steering: the shadow days that opened it age out of the kept
+            # days, and live days are no shadow days.
+            self.opened = today.isoformat()
+            _LOGGER.info("SpotNav hot water: the shadow gate opened")
 
     def _trim(self, now: datetime) -> None:
         oldest = (now - timedelta(days=DAYS_KEPT)).astimezone(self.zone).date().isoformat()
