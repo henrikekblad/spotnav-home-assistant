@@ -426,6 +426,13 @@ class BrandControl:
     #: (an upper figure, so it is reached no sooner), renewed every block from the SoC then. Without a dead-man a
     #: Home Assistant (or a cloud) that stops leaves at most one block's charge from the grid, not a full battery.
     charge_block_s: float | None = None
+    #: How long after a hand-back its writes are watched (s): where the read-back is only Home Assistant's own echo
+    #: (`local_readback`) a device or a cloud that refused the restore shows SpotNav's value again on a later poll,
+    #: and the restore is then written again (`executor.SETTLE_ATTEMPTS`). 0: not watched.
+    settle_s: float = 0.0
+    #: How often a restore given up is tried again while the control is blocked (s), where each write costs (a
+    #: cloud's billed commands); `None`: `executor.BLOCKED_RESTORE_S`.
+    restore_retry_s: float | None = None
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -954,6 +961,8 @@ GOODWE_CONTROL: Final = BrandControl(
     # A grid charge stops with the mode back to general; no peak cover under a hold (the cut-off is a stored setting).
     peak_first={ACTION_GRID_CHARGE: ("operation_mode",)},
     local_readback=True,
+    # The numbers and the select do not poll, so only a reload shows a refused restore; watched as any echo is.
+    settle_s=900.0,
     hacs_roles=("eco_power", "eco_soc"),
     # Unconfirmed whether the inverter charges from the grid to a cut-off at the SoC: a hold that does is handed back.
     hold_grid_guard=True,
@@ -1006,6 +1015,10 @@ TESLA_CONTROL: Final = BrandControl(
     hold_grid_guard=True,
     hold_charges_without=("grid_charging",),
     charge_block_s=TESLA_CHARGE_BLOCK_S,
+    # tesla_fleet echoes a write at once and polls the cloud every 60 s: fifteen polls show a refused restore. A
+    # restore given up is tried hourly, not every 15 minutes (each is a billed command).
+    settle_s=900.0,
+    restore_retry_s=3600.0,
     note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
     " reports): a charge that does not fit under the fuse is refused, not lowered.",
 )

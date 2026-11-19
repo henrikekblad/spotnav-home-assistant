@@ -35,7 +35,12 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   first), while the other roles are handed back. A role
   that meanwhile needs no write (it reads its restore value, or its select is idle once Remote EMS is off) drops its
   retry, and a write made for the action that is still awaited when the hand-back begins is no restore retry: every
-  hand-back ends.
+  hand-back ends. Where the read-back is only Home Assistant's own echo, a recipe may watch the hand-back's writes
+  a while after it ends (`BrandControl.settle_s`): a role that reads SpotNav's value again kept no restore (a cloud
+  refused it) and is written again `SETTLE_ATTEMPTS` times, then the control blocks (`restore_not_held`) until the
+  role reads the value found or someone else's; meanwhile the facts still read the value found (`found_states`). A
+  restore given up is tried again every `BLOCKED_RESTORE_S`, or the recipe's longer `restore_retry_s` where each
+  write is a billed cloud command.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
   grid (at most its charge, the commanded rate and the site's import) plus the least phase's headroom less
   `HEADROOM_MARGIN_A`, counted on the phases the plant spreads its charge over (`ExecInputs.charge_phases`, else the
@@ -258,6 +263,10 @@ RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
 #: A restore given up after every retry is tried again this often while the control is blocked (s): Remote EMS or a
 #: limit left set must not wait for a restart.
 BLOCKED_RESTORE_S: Final = 900.0
+#: A restore read back only by Home Assistant's echo that shows SpotNav's value again within the recipe's
+#: `settle_s` is written again this many times; then the control blocks (`restore_not_held:<roles>`) until the role
+#: reads the value found again (set back by hand) or someone else's.
+SETTLE_ATTEMPTS: Final = 2
 
 Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
@@ -457,6 +466,13 @@ class ExecState:
     phase_over_at: datetime | None = None
     #: Writes today to setpoints (`commands.WriteClass`), counted apart from the settings' (`writes_today`).
     setpoint_writes_today: int = 0
+    #: The value SpotNav last wrote per role for an action (not a restore), stored: what a refused restore shows.
+    wrote: dict[str, Native] = field(default_factory=dict)
+    #: After a hand-back, the roles watched for a restore not held (`BrandControl.settle_s`): per role the state found,
+    #: its restore value, SpotNav's value and the entity; until when; and the restores written again so far.
+    settle: dict[str, tuple[str, Native, Native, str]] = field(default_factory=dict)
+    settle_until: datetime | None = None
+    settle_misses: int = 0
 
     @property
     def holds_snapshot(self) -> bool:
@@ -501,6 +517,10 @@ class ExecState:
             "phased": self.phased,
             "phase_kw": None if self.phase_kw is None else list(self.phase_kw),
             "setpoint_writes_today": self.setpoint_writes_today,
+            "wrote": dict(self.wrote),
+            "settle": {name: list(row) for name, row in self.settle.items()},
+            "settle_until": iso(self.settle_until),
+            "settle_misses": self.settle_misses,
         }
 
     @classmethod
@@ -543,6 +563,16 @@ class ExecState:
             phase_kw = (float(raw_phases[0]), float(raw_phases[1]), float(raw_phases[2]))
         writes = data.get("writes_today")
         setpoints = data.get("setpoint_writes_today")
+        misses = data.get("settle_misses")
+        settle: dict[str, tuple[str, Native, Native, str]] = {}
+        raw_settle = data.get("settle")
+        if isinstance(raw_settle, Mapping):
+            for name, row in raw_settle.items():
+                if (
+                    isinstance(row, list) and len(row) == 4 and isinstance(row[0], str) and isinstance(row[3], str)
+                    and all(isinstance(value, (str, bool, int, float)) for value in row[1:3])
+                ):
+                    settle[str(name)] = (row[0], row[1], row[2], row[3])
         retries: dict[str, tuple[int, datetime]] = {}
         raw_retries = data.get("retries")
         if isinstance(raw_retries, Mapping):
@@ -588,6 +618,10 @@ class ExecState:
             setpoint_writes_today=(
                 setpoints if isinstance(setpoints, int) and not isinstance(setpoints, bool) and setpoints >= 0 else 0
             ),
+            wrote=natives("wrote"),
+            settle=settle,
+            settle_until=parse_aware_datetime(data.get("settle_until")),
+            settle_misses=misses if isinstance(misses, int) and not isinstance(misses, bool) and misses >= 0 else 0,
         )
 
 
@@ -881,7 +915,11 @@ class Executor:
         battery's facts read in place of SpotNav's own value (`facts.battery_facts`), so a floor set for a hold is
         never taken for the battery's own and the plan does not see an empty battery."""
         state = self.state
-        return {
+        found = {
+            entity_id: row[0] for row in state.settle.values()
+            if (entity_id := row[3]) and row[0].strip().lower() not in _NO_VALUE
+        }
+        return found | {
             state.entities[name]: value for name, value in state.snapshot.items()
             if name in state.entities and value.strip().lower() not in _NO_VALUE
         }
@@ -947,7 +985,8 @@ class Executor:
     def reset(self) -> None:
         """Lift a block (the part's next explicit decision); never while a snapshot waits to be restored."""
         if self.state.phase == "blocked" and not self.state.holds_snapshot:
-            self.state = replace(self.state, phase="idle", blocked=None, reason=None, given_up=())
+            # A restore not held gets its attempts again (the record stays: the next look writes it again).
+            self.state = replace(self.state, phase="idle", blocked=None, reason=None, given_up=(), settle_misses=0)
 
     # --- one look ---
 
@@ -970,9 +1009,13 @@ class Executor:
             events.append(_event(now, "unblocked", state.blocked or ""))
         if (
             state.phase == "blocked" and state.holds_snapshot and (state.blocked or "").startswith("restore_failed")
-            and (state.released_at is None or (now - state.released_at).total_seconds() >= BLOCKED_RESTORE_S)
+            and (
+                state.released_at is None
+                or (now - state.released_at).total_seconds() >= max(BLOCKED_RESTORE_S, self.control.restore_retry_s or 0.0)
+            )
         ):
             events += self._begin_restore(now, "restore_again")
+        events += self._settle(inputs)
 
         events += self._observe(inputs)
         if self.state.phase == "active":
@@ -1419,6 +1462,15 @@ class Executor:
             blocked = None
         if state.reason == "daily_write_cap":
             blocked = "daily_write_cap"
+        settle: dict[str, tuple[str, Native, Native, str]] = {}
+        if self.control.settle_s > 0:
+            # Watched a while: a restore that only Home Assistant echoed may show SpotNav's value again.
+            settle = {
+                name: (state.snapshot[name], state.restore_values[name], state.wrote[name], state.entities[name])
+                for name in state.written
+                if name in state.snapshot and name in state.restore_values and name in state.wrote
+                and name in state.entities and name not in state.given_up
+            }
         # A role that goes idle with the switch, written by the action, and handed back without a read-back.
         unsure = tuple(
             role.name for role in self.control.roles
@@ -1429,9 +1481,71 @@ class Executor:
             state, phase="blocked" if blocked else "idle", blocked=blocked, action=None, rate_kw=0.0, target={},
             snapshot={}, restore_values={}, entities={}, device_id=None, snapshot_at=None, sent=(), renew=(),
             released_at=now, given_up=state.given_up if blocked else (), written=(), confirmed=(),
-            unsure=tuple(dict.fromkeys((*state.unsure, *unsure))), phase_kw=None,
+            unsure=tuple(dict.fromkeys((*state.unsure, *unsure))), phase_kw=None, wrote={},
+            settle=settle, settle_until=now + timedelta(seconds=self.control.settle_s) if settle else None,
+            settle_misses=state.settle_misses if settle else 0,
         )
         return [_event(now, "handed_back", state.reason or "")]
+
+    def _settle(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """After a hand-back (`ExecState.settle`): a role that reads SpotNav's value again did not keep its restore
+        (a cloud refused it, or only Home Assistant echoed it). It is written again, `SETTLE_ATTEMPTS` times; then the
+        control blocks (`restore_not_held:<roles>`, the value found is kept so the facts still read it) until the role
+        reads the value found or someone else's. A role that reads someone else's value is no longer watched; the
+        watch ends `settle_s` after the hand-back."""
+        state = self.state
+        now = inputs.now
+        if not state.settle or state.phase not in ("idle", "blocked") or state.holds_snapshot:
+            return []
+        keep: dict[str, tuple[str, Native, Native, str]] = {}
+        not_held: list[str] = []
+        for name, row in state.settle.items():
+            _found, restore, wrote, _entity = row
+            try:
+                role = self.control.role(name)
+            except KeyError:
+                continue
+            read = inputs.reads.get(name)
+            now_read = reading(role, None if read is None else read.state)
+            step = None if read is None else (read.step or role.step)
+            if now_read is None or same(restore, now_read, step):
+                keep[name] = row
+            elif same(wrote, now_read, step):
+                keep[name] = row
+                not_held.append(name)
+        stuck = state.phase == "blocked" and (state.blocked or "").startswith("restore_not_held")
+        if not not_held:
+            if stuck:
+                # Set back (by hand) or taken by someone else: nothing of SpotNav's is left standing.
+                self.state = replace(state, phase="idle", blocked=None, reason=None, settle={}, settle_until=None,
+                                     settle_misses=0)
+                return [_event(now, "unblocked", state.blocked or "")]
+            if not keep or state.settle_until is None or now >= state.settle_until:
+                self.state = replace(state, settle={}, settle_until=None, settle_misses=0)
+            elif keep != state.settle:
+                self.state = replace(state, settle=keep)
+            return []
+        if stuck:
+            if keep != state.settle:
+                self.state = replace(state, settle=keep)
+            return []
+        misses = state.settle_misses + 1
+        events = [_event(now, "restore_not_held", ",".join(not_held), attempt=misses)]
+        if misses > SETTLE_ATTEMPTS:
+            self.state = replace(
+                state, phase="blocked", blocked=f"restore_not_held:{','.join(not_held)}", settle=keep,
+                settle_until=None, settle_misses=misses,
+            )
+            return events
+        rows = {name: keep[name] for name in not_held}
+        self.state = replace(
+            state, action=None, snapshot={name: row[0] for name, row in rows.items()},
+            restore_values={name: row[1] for name, row in rows.items()},
+            entities={name: row[3] for name, row in rows.items()},
+            wrote={name: row[2] for name, row in rows.items()}, written=tuple(not_held),
+            settle={}, settle_until=None, settle_misses=misses, released_at=now,
+        )
+        return events + self._begin_restore(now, "restore_not_held")
 
     # --- entering ---
 
@@ -1624,7 +1738,10 @@ class Executor:
             restore_values[role.name] = value
         action = inputs.action
         assert action is not None
-        self.state = replace(self.state, priming=bool(self.state.unsure and self.control.prime))
+        self.state = replace(
+            self.state, priming=bool(self.state.unsure and self.control.prime), wrote={}, settle={},
+            settle_until=None, settle_misses=0,
+        )
         self.state = replace(
             self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
             target=self._wanted(action, rate, restore_values, phases), snapshot=snapshot,
@@ -1929,6 +2046,8 @@ class Executor:
         writes = state.writes_today + (0 if setpoint else counted)
         setpoints = state.setpoint_writes_today + (counted if setpoint else 0)
         written = state.written if name in state.written else (*state.written, name)
+        if not restoring and not renewing:
+            state = replace(state, wrote=state.wrote | {name: value})
         if role.method == "button":
             # A button has no read-back: pressed once per target; the monitor judges what it did.
             self.state = replace(state, sent=sent, renew=renew, writes_today=writes, written=written,

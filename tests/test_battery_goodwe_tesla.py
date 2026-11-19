@@ -258,8 +258,77 @@ def test_the_executor_names_the_states_it_found_while_it_holds_a_snapshot() -> N
     now, _ = run(executor, battery, T0, 8, "hold")
     assert battery.states["reserve"] == "40"
     assert executor.found_states() == {"number.tesla_reserve": "20", "switch.tesla_grid_charging": "off"}
-    run(executor, battery, now + timedelta(hours=1), 12, "self_consume")
-    assert executor.state.phase == "idle" and executor.found_states() == {}
+    now, _ = run(executor, battery, now + timedelta(hours=1), 12, "self_consume")
+    # Watched a while after the hand-back (a refused restore shows SpotNav's value again): still the value found.
+    assert executor.state.phase == "idle" and executor.found_states() == {"number.tesla_reserve": "20"}
+    run(executor, battery, now + timedelta(seconds=TESLA_CONTROL.settle_s), 2, "self_consume")
+    assert executor.found_states() == {} and executor.state.settle == {}
+
+
+def _held_then_handed_back(**kw):  # type: ignore[no-untyped-def]
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None, **kw)
+    now, _ = run(executor, battery, T0, 8, "hold")
+    now, results = run(executor, battery, now + timedelta(hours=1), 12, "self_consume")
+    assert written(results) == [("reserve", 20.0)] and executor.state.phase == "idle"
+    return executor, battery, now
+
+
+def test_a_restore_the_cloud_does_not_keep_is_written_again_then_blocks_until_set_back() -> None:
+    executor, battery, now = _held_then_handed_back()
+    for attempt in (1, 2):
+        # The cloud's next poll shows SpotNav's reserve again: the restore did not hold.
+        battery.states["reserve"] = "40"
+        now, results = run(executor, battery, now + timedelta(minutes=1), 12, "self_consume")
+        assert [e["attempt"] for e in events(results, "restore_not_held")] == [attempt]
+        assert written(results) == [("reserve", 20.0)]
+        assert executor.found_states() == {"number.tesla_reserve": "20"}
+    battery.states["reserve"] = "40"
+    now, results = run(executor, battery, now + timedelta(minutes=1), 12, "self_consume")
+    assert written(results) == [] and executor.state.blocked == "restore_not_held:reserve"
+    # Blocked: no new action, and the facts still read the floor found.
+    now, results = run(executor, battery, now + timedelta(hours=2), 6, "hold")
+    assert written(results) == [] and executor.found_states() == {"number.tesla_reserve": "20"}
+    # Set back by hand: the block ends by itself.
+    battery.states["reserve"] = "20"
+    _now, results = run(executor, battery, now, 2, "self_consume")
+    assert executor.state.phase == "idle" and executor.state.settle == {} and events(results, "unblocked")
+
+
+def test_a_restore_that_holds_or_that_someone_else_changes_is_left_alone() -> None:
+    executor, battery, now = _held_then_handed_back()
+    _now, results = run(executor, battery, now + timedelta(seconds=TESLA_CONTROL.settle_s), 2, "self_consume")
+    assert written(results) == [] and executor.state.settle == {}
+    executor, battery, now = _held_then_handed_back()
+    battery.states["reserve"] = "35"
+    _now, results = run(executor, battery, now + timedelta(minutes=1), 4, "self_consume")
+    assert written(results) == [] and executor.state.settle == {} and executor.found_states() == {}
+
+
+def test_the_watch_after_a_hand_back_survives_a_restart() -> None:
+    from custom_components.spotnav.battery.executor import ExecState
+
+    executor, battery, now = _held_then_handed_back()
+    restored = Executor(TESLA_CONTROL, state=ExecState.from_dict(executor.state.as_dict()))
+    assert restored.state.settle == executor.state.settle and restored.state.settle_until == executor.state.settle_until
+    battery.states["reserve"] = "40"
+    _now, results = run(restored, battery, now + timedelta(minutes=1), 12, "self_consume")
+    assert written(results) == [("reserve", 20.0)]
+
+
+def test_a_slow_recipe_tries_a_restore_given_up_again_hourly_not_every_quarter() -> None:
+    from custom_components.spotnav.battery.executor import BLOCKED_RESTORE_S
+
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    now, _ = run(executor, battery, T0, 8, "hold")
+    battery.raises = {"reserve"}
+    # Every retry of the restore fails (the cloud refuses it): given up, blocked with the snapshot kept.
+    now, _ = run(executor, battery, now, 300, "self_consume")
+    assert (executor.state.blocked or "").startswith("restore_failed")
+    released = executor.state.released_at
+    _now, results = run(executor, battery, released + timedelta(seconds=BLOCKED_RESTORE_S + 5), 2, "self_consume")
+    assert written(results) == []
+    _now, results = run(executor, battery, released + timedelta(seconds=TESLA_CONTROL.restore_retry_s + 5), 2, "self_consume")
+    assert ("reserve", 20.0) in written(results)
 
 
 def test_goodwe_without_a_battery_rating_does_not_start_a_grid_charge() -> None:
