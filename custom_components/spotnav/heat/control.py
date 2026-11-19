@@ -518,7 +518,25 @@ class HeatControl:
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
-        await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+        """Forget the kept state when the site is removed. What the hand-back at the unload could not give back is
+        the last record of it: logged first, so it can be set back by hand."""
+        store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(entry_id))
+        try:
+            kept = await store.async_load()
+        except Exception:  # noqa: BLE001 - nothing to tell
+            kept = None
+        if isinstance(kept, dict) and (kept.get("held") or kept.get("raised") or kept.get("snapshots") or kept.get("activation")):
+            _LOGGER.warning(
+                "SpotNav heat control: removed while a change of its was not handed back; set it back by hand: "
+                "lowering %s held %s, raise %s held %s, offset values found %s, SG Ready switch turned on %s",
+                kept.get("relay"),
+                kept.get("held"),
+                kept.get("raise_entity"),
+                kept.get("raised"),
+                kept.get("snapshots"),
+                kept.get("activation"),
+            )
+        await store.async_remove()
 
     # ---- looks
 

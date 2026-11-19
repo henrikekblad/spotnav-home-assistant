@@ -784,6 +784,16 @@ async def test_an_offset_changed_by_hand_while_spotnav_holds_nothing_is_the_hous
     assert _homes(hass, site) == {NIBE: 1.0} and control.offset_home is None and pump.calls == []
 
 
+async def test_a_removal_that_could_not_hand_back_logs_what_to_set_back(hass: HomeAssistant, freezer, caplog) -> None:
+    _site_, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {0: "lower", 1: "lower"})
+    await _look(control, now)
+    pump.fail.add(NIBE)
+    await control.async_shutdown()
+    assert control.held
+    await HeatControl.async_remove_stored(hass, control.site.entry_id)
+    assert "not handed back" in caplog.text and NIBE in caplog.text and "'found': -1.0" in caplog.text
+
+
 async def test_an_offset_someone_else_changed_pauses_control_and_is_left_alone(hass: HomeAssistant, freezer) -> None:
     _site_, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {0: "lower", 1: "lower"})
     await _look(control, now)
