@@ -26,9 +26,13 @@ start).
 ## SpotNav's own battery control (off by default, in testing)
 
 SpotNav can run the battery itself: hold it while the car charges from the grid, charge it in cheap hours, and
-stop export when selling costs money. **It is off by default, and in this release it is still being tested on site:
-even switched on, it only logs what it would do until the tests are done (the line under the switch says "Test:
-SpotNav controls nothing yet and only logs what it would do").** The switch is in the
+stop export when selling costs money. **It is off by default.** What happens when you switch it on depends on
+whether the brand's recipe has been tested on a real plant: for **Sigenergy** (tested on site) the check below runs
+and control starts once it passed; for the brands not yet tested on a plant (Victron, Solinteg, Ferroamp, GoodWe,
+Tesla and the others) it only logs what it would do (the line under the switch says "Test: SpotNav controls nothing
+yet and only logs what it would do"), unless the installation is a
+[beta tester](troubleshooting.md#beta-testing), when the check runs for them too. Either way control runs only once
+the brand's check passed, and every fuse rule below applies (beta or not). The switch is in the
 settings popover's **Home battery** section, shown when SpotNav finds a battery: from the house card's gear, the heat
 card's gear or the charging card's **Settings** (administrators only). The section also has:
 
