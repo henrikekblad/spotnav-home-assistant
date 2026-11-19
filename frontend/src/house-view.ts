@@ -4,12 +4,13 @@
 // every figure is the backend's.
 
 import { attachScrub } from "./chart-scrub";
-import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwhText, kwText, moneyMinorAsMajor as amount, type EntityWords, type FormatContext } from "./format";
+import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwhText, kwText, moneyMinorAsMajor as amount, percentWhole, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./house-model";
 import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
 import type { BatteryFlow, HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
+import { localDayKey } from "./chart";
 import { energyChart, flowWords, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
 import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
 import { dayOnly, periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
@@ -114,10 +115,6 @@ export interface HouseRenderInput {
 }
 
 // ------------------------------------------------------------------------------------------------ words
-
-function pct(language: Language, value: number): string {
-  return `${formatNumber(language, value, 0)} %`;
-}
 
 /** An error figure: two decimals below 1, one above ("±0,09 kW", "±1,2 kW"). */
 function plusMinus(language: Language, value: number, unit: string): string {
@@ -253,9 +250,9 @@ export function hourFigures(
   }
   if (visible("battery")) {
     if (hour.soc_pct !== null) {
-      parts.push(translate(language, "house.readout.soc", { pct: pct(language, hour.soc_pct) }));
+      parts.push(translate(language, "house.readout.soc", { pct: percentWhole(language, hour.soc_pct) }));
     } else if (!past && hour.soc_plan_pct !== null) {
-      parts.push(translate(language, "house.readout.socPlan", { pct: pct(language, hour.soc_plan_pct) }));
+      parts.push(translate(language, "house.readout.socPlan", { pct: percentWhole(language, hour.soc_plan_pct) }));
     }
   }
   const tint = hour.battery_action === "grid_charge" ? "charge" : hour.battery_action === "export_discharge" ? "sell" : null;
@@ -590,7 +587,7 @@ function chartBlock(
 }
 
 function pctOf(language: Language, part: number, whole: number): string {
-  return whole > 0 ? `${formatNumber(language, (part / whole) * 100, 0)} %` : "–";
+  return whole > 0 ? percentWhole(language, (part / whole) * 100) : "–";
 }
 
 /** The day's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. Today before
@@ -744,9 +741,7 @@ export function houseSources(doc: Document, language: Language, answer: HouseAns
 /** The site's local date at `nowMs`. */
 export function localDate(timeZone: string, nowMs: number): string {
   try {
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(nowMs));
-    const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
-    return `${get("year")}-${get("month")}-${get("day")}`;
+    return localDayKey(nowMs, timeZone);
   } catch {
     return new Date(nowMs).toISOString().slice(0, 10);
   }

@@ -8,16 +8,7 @@
 
 import { SESSIONS_API_VERSION } from "./types";
 import { scrubBars } from "./chart-scrub";
-import {
-  dateLabel,
-  DEFAULT_PRICE_UNIT,
-  energyTenths,
-  formatNumber,
-  money,
-  pricePerKwh,
-  type FormatContext,
-  type PriceUnit,
-} from "./format";
+import { clockOf, dateLabel, DEFAULT_PRICE_UNIT, energyTenths, formatNumber, money, pad2, percentWhole, pricePerKwh, type FormatContext, type PriceUnit } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { powerBody, type PowerHandlers, type PowerState, type PowerUi } from "./power-view";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -209,10 +200,6 @@ function monthParts(period: string): [number, number] | null {
   return match === null ? null : [Number(match[1]), Number(match[2])];
 }
 
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
 /** The month `offset` months from `period` (negative is earlier), `YYYY-MM`. */
 export function shiftMonth(period: string, offset: number): string {
   const parts = monthParts(period);
@@ -220,7 +207,7 @@ export function shiftMonth(period: string, offset: number): string {
     return period;
   }
   const index = parts[0] * 12 + parts[1] - 1 + offset;
-  return `${Math.floor(index / 12)}-${pad((index % 12) + 1)}`;
+  return `${Math.floor(index / 12)}-${pad2((index % 12) + 1)}`;
 }
 
 /**
@@ -325,17 +312,8 @@ function formatContext(
   };
 }
 
-/** The wall clock as the backend wrote it (Home Assistant's own zone): `2026-09-22T14:05:00+02:00` -> `14:05`. */
-function clockOf(iso: string): string {
-  return /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(iso)?.[1] ?? "";
-}
-
 function dayOf(iso: string): string {
   return iso.slice(0, 10);
-}
-
-function percent(language: Language, share: number): string {
-  return `${formatNumber(language, share * 100, 0)} %`;
 }
 
 function sessionsCount(language: Language, count: number): string {
@@ -400,7 +378,7 @@ function monthSummary(doc: Document, language: Language, bucket: SessionBucket, 
   card.append(element(doc, "p", C.historyFigures, figures(language, bucket, priceUnit)));
   const notes = [sessionsCount(language, bucket.sessions)];
   if (bucket.solar_share !== null) {
-    notes.push(translate(language, "history.solar", { percent: percent(language, bucket.solar_share) }));
+    notes.push(translate(language, "history.solar", { percent: percentWhole(language, bucket.solar_share * 100) }));
   }
   if (bucket.estimated) {
     notes.push(translate(language, "history.estimated"));
@@ -421,7 +399,7 @@ export function dayFigures(language: Language, day: SessionBucket, priceUnit: Pr
   }
   const parts = [figures(language, day, priceUnit)];
   if (day.solar_share !== null) {
-    parts.push(translate(language, "history.solar", { percent: percent(language, day.solar_share) }));
+    parts.push(translate(language, "history.solar", { percent: percentWhole(language, day.solar_share * 100) }));
   }
   return `${date} · ${parts.join(" · ")}`;
 }
@@ -522,7 +500,7 @@ function sessionRow(doc: Document, language: Language, session: SessionRecord, p
     notes.push(session.vehicle);
   }
   if (session.solar_share !== null) {
-    notes.push(translate(language, "history.solar", { percent: percent(language, session.solar_share) }));
+    notes.push(translate(language, "history.solar", { percent: percentWhole(language, session.solar_share * 100) }));
   }
   if (session.estimated) {
     notes.push(translate(language, "history.estimated"));

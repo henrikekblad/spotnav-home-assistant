@@ -9,7 +9,7 @@
 // still kept; an older month keeps its days only). Hover, focus or a tap shows the figures in the readout under the
 // chart, as the charge history's day chart does. Nothing is recomputed: every figure is the backend's.
 
-import { dateLabel, formatNumber, kwText } from "./format";
+import { clockOf, dateLabel, formatNumber, kwText, pad2 } from "./format";
 import { DAY_WORDS, monthsText } from "./grid-tariff";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { decodeDemandComponent, type DemandComponent } from "./validate";
@@ -171,11 +171,6 @@ export interface PowerHandlers {
 
 // ------------------------------------------------------------------------------------------- rendering
 
-/** The wall clock as the backend wrote it (the area's own zone): `2026-09-22T19:00:00+02:00` -> `19:00`. */
-function clockOf(iso: string): string {
-  return /T(\d{2}:\d{2})/.exec(iso)?.[1] ?? "";
-}
-
 function daysInMonth(month: string): number {
   const [year, number] = month.split("-").map(Number) as [number, number];
   return new Date(Date.UTC(year, number, 0)).getUTCDate();
@@ -197,10 +192,6 @@ function inline(language: Language, word: string, keep = false): string {
   return language === "de" || keep ? word : word.charAt(0).toLocaleLowerCase(language) + word.slice(1);
 }
 
-function pad(hour: number): string {
-  return String(hour).padStart(2, "0");
-}
-
 /** How the view names the demand charge's parts: by their hours ("Dag 06–23", "Natt 23–06", "Alla timmar"), with the
  * days and months only where they are not all; numbered ("Effektavgift 1") where two would read the same. `inline`
  * is each name as it reads inside a sentence ("räknas för dag 06–23"). */
@@ -219,7 +210,7 @@ export function partNames(language: Language, components: DemandComponent[]): Pa
       inlined.push(translate(language, "power.part.allInline"));
       continue;
     }
-    const hours = `${pad(window.from_hour)}–${pad(window.to_hour)}`;
+    const hours = `${pad2(window.from_hour)}–${pad2(window.to_hour)}`;
     const night = window.from_hour > window.to_hour || window.to_hour <= 7;
     const extra: string[] = [];
     if (window.days !== "all") {

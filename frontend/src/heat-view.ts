@@ -7,7 +7,7 @@
 // only; every figure is the backend's.
 
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
-import { clock, dateLabel, formatFixed, kwhText, kwText, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, kwhText, kwText, pad2, type FormatContext } from "./format";
 import {
   isRelayPath,
   roomName,
@@ -164,10 +164,9 @@ export function localToInstant(date: string, time: string, timeZone: string): nu
 /** An instant as the local date and time in `timeZone` ("2026-11-20", "16:00"). */
 export function instantToLocal(instantMs: number, timeZone: string): { date: string; time: string } {
   const shifted = new Date(instantMs + zoneOffsetMs(timeZone, instantMs));
-  const pad = (n: number): string => String(n).padStart(2, "0");
   return {
-    date: `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`,
-    time: `${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`,
+    date: `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}`,
+    time: `${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}`,
   };
 }
 

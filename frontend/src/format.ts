@@ -227,6 +227,21 @@ export function energyTenths(language: Language, value: number | null): string {
   return `${formatNumber(language, value, 1)} kWh`;
 }
 
+/** A percentage given as a number of percent, whole: "45 %". */
+export function percentWhole(language: Language, percent: number): string {
+  return `${formatNumber(language, percent, 0)} %`;
+}
+
+/** A number as two digits: "07". */
+export function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/** The wall clock as the backend wrote it (its own zone): `2026-09-22T19:00:00+02:00` -> `19:00`, "" if it is no instant. */
+export function clockOf(iso: string): string {
+  return /^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})/.exec(iso)?.[1] ?? "";
+}
+
 export function percentAmount(language: Language, value: number): string {
   return `${formatNumber(language, value, 1)} %`;
 }

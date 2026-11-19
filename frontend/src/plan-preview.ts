@@ -9,6 +9,7 @@
 //   by price as the chart colours it (cheap or dear against its own day's mean), the planned ones marked.
 
 import { localDayKey } from "./chart";
+import { cssPercent } from "./chart-strip";
 import { clock, dayCue, hasZone, hourLabel, type FormatContext } from "./format";
 import { translate } from "./i18n";
 import { lineText } from "./status";
@@ -334,10 +335,6 @@ export function previewStripModel(strip: PlanPreviewStrip, format: FormatContext
   return { cells, runs, ticks: hasZone(format) ? stripTickMarks(strip, format) : [] };
 }
 
-function percent(share: number): string {
-  return `${Math.round(share * 1e6) / 1e4}%`;
-}
-
 /** The strip as DOM: a track of quarter cells, and the hour labels under it. Decorative: the line says it all. */
 function stripNode(doc: Document, strip: PlanPreviewStrip, format: FormatContext): HTMLElement {
   const model = previewStripModel(strip, format);
@@ -351,8 +348,8 @@ function stripNode(doc: Document, strip: PlanPreviewStrip, format: FormatContext
     node.className = C.planPreviewCell;
     node.dataset["planned"] = String(cell.planned);
     node.dataset["price"] = cell.cheap === null ? "none" : cell.cheap ? "cheap" : "dear";
-    node.style.left = percent(cell.left);
-    node.style.width = percent(cell.width);
+    node.style.left = cssPercent(cell.left);
+    node.style.width = cssPercent(cell.width);
     track.append(node);
   }
   const band = doc.createElement("div");
@@ -360,8 +357,8 @@ function stripNode(doc: Document, strip: PlanPreviewStrip, format: FormatContext
   for (const run of model.runs) {
     const node = doc.createElement("span");
     node.className = C.planPreviewRun;
-    node.style.left = percent(run.left);
-    node.style.width = percent(run.width);
+    node.style.left = cssPercent(run.left);
+    node.style.width = cssPercent(run.width);
     band.append(node);
   }
   const labels = doc.createElement("div");
@@ -372,7 +369,7 @@ function stripNode(doc: Document, strip: PlanPreviewStrip, format: FormatContext
     if (tick.edge !== undefined) {
       label.dataset["edge"] = tick.edge;
     }
-    label.style.left = percent(tick.position);
+    label.style.left = cssPercent(tick.position);
     label.textContent = tick.label;
     labels.append(label);
   }
