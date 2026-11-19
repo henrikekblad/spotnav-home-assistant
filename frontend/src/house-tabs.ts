@@ -45,7 +45,6 @@ export const TAB_CLASSES = {
   panel: "spotnav-house-panel",
   picker: "spotnav-house-picker",
   pickerDate: "spotnav-house-picker-date",
-  pickerKind: "spotnav-house-picker-kind",
   pickerStep: "spotnav-house-picker-step",
   pickerRow: "spotnav-house-picker-row",
   pickerLabel: "spotnav-house-picker-label",

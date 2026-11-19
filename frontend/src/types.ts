@@ -25,11 +25,6 @@ export type ManualAction =
  */
 export const ACTION_PAUSE = "pause";
 
-export const ACTION_UNAVAILABLE_ERROR = "spotnav_action_unavailable";
-export const ACTION_FAILED_ERROR = "spotnav_action_failed";
-export const ACTION_RECONCILE_FAILED_ERROR = "spotnav_action_reconcile_failed";
-export const INVALID_PAUSE_ERROR = "invalid_pause";
-
 /**
  * The vehicle-side observation vocabulary, as the backend publishes it (`charge_progress.py`): wire
  * strings, not translations. `state` decides whether the card says anything; `reason` is the stable
@@ -111,7 +106,6 @@ export const BETA_API_VERSION = 1;
 /** `spotnav/get_blueprints` (`api/blueprints.py`). */
 export const BLUEPRINTS_API_VERSION = 1;
 
-export const SETTINGS_DRIVER_MANUAL = "manual_kwh";
 export const SETTINGS_DRIVER_TARGET_SOC = "target_soc";
 
 export const SETTINGS_STRATEGY_CHEAPEST = "cheapest";

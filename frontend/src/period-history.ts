@@ -144,12 +144,6 @@ export function historyIcon(doc: Document, size = 16, className?: string): SVGEl
   return svg;
 }
 
-const STEP_KEYS: Record<HistoryPeriod, [TranslationKey, TranslationKey, TranslationKey]> = {
-  day: ["hist.previous.day", "hist.next.day", "hist.pick.day"],
-  month: ["hist.previous.month", "hist.next.month", "hist.pick.month"],
-  year: ["hist.previous.year", "hist.next.year", "hist.pick.year"],
-};
-
 /** The months the month picker offers, newest first: back `PICKER_MONTHS` from today's, and the one shown. */
 export function pickerMonths(today: string, shown: string): string[] {
   const months = new Set<string>([periodStart("month", shown)]);
@@ -165,91 +159,6 @@ export function pickerYears(today: string, shown: string): string[] {
     years.add(shiftPeriod("year", today, -back));
   }
   return [...years].sort().reverse();
-}
-
-/**
- * The Day / Month / Year tabs, the ‹ › steps with the picker between them, and the Detailed switch. `today` is the
- * site's local date; `shown` the first day of the period shown. Nothing after today is offered.
- */
-export function periodNav(doc: Document, language: Language, ui: PeriodUi, today: string, shown: string, handlers: PeriodHandlers): HTMLElement {
-  const nav = element(doc, "div", "spotnav-period-nav");
-  const tabs = element(doc, "div", C.historyViews);
-  tabs.setAttribute("role", "group");
-  tabs.setAttribute("aria-label", translate(language, "hist.period.label"));
-  for (const period of HISTORY_PERIODS) {
-    const button = element(doc, "button", C.historyToggleButton, translate(language, `hist.period.${period}`));
-    button.type = "button";
-    button.dataset["period"] = period;
-    button.setAttribute("aria-pressed", String(ui.period === period));
-    button.addEventListener("click", () => {
-      if (ui.period !== period) {
-        // The same moment in the new kind: today's period when the shown one holds today.
-        handlers.onPeriod(period, ui.date);
-      }
-    });
-    tabs.append(button);
-  }
-  const [previousKey, nextKey, pickKey] = STEP_KEYS[ui.period];
-  const row = element(doc, "div", C.historyMonthPicker);
-  const step = (label: TranslationKey, glyph: string, target: string, allowed: boolean, which: string): HTMLButtonElement => {
-    const button = element(doc, "button", C.historyToggleButton, glyph);
-    button.type = "button";
-    button.dataset["step"] = which;
-    button.setAttribute("aria-label", translate(language, label));
-    button.disabled = !allowed;
-    button.addEventListener("click", () => handlers.onPeriod(ui.period, target >= periodStart(ui.period, today) ? null : target));
-    return button;
-  };
-  const before = shiftPeriod(ui.period, shown, -1);
-  const after = shiftPeriod(ui.period, shown, 1);
-  const earliest = shiftPeriod("year", today, -PICKER_YEARS);
-  let picker: HTMLElement;
-  if (ui.period === "day") {
-    const input = element(doc, "input");
-    input.type = "date";
-    input.value = shown;
-    input.max = today;
-    input.min = periodStart("year", earliest);
-    input.dataset["pick"] = "day";
-    input.setAttribute("aria-label", translate(language, pickKey));
-    input.addEventListener("change", () => {
-      if (DATE.test(input.value) && input.value <= today) {
-        handlers.onPeriod("day", input.value === today ? null : input.value);
-      }
-    });
-    picker = input;
-  } else {
-    const select = element(doc, "select");
-    select.dataset["pick"] = ui.period;
-    select.setAttribute("aria-label", translate(language, pickKey));
-    const options = ui.period === "month" ? pickerMonths(periodStart("month", today), shown) : pickerYears(periodStart("year", today), shown);
-    for (const first of options) {
-      const option = new Option(periodLabel(language, ui.period, first), first);
-      option.selected = first === shown;
-      select.append(option);
-    }
-    select.addEventListener("change", () => {
-      if (DATE.test(select.value)) {
-        handlers.onPeriod(ui.period, select.value >= periodStart(ui.period, today) ? null : select.value);
-      }
-    });
-    picker = select;
-  }
-  row.append(
-    step(previousKey, "‹", before, before >= periodStart(ui.period, earliest), "back"),
-    picker,
-    step(nextKey, "›", after, after <= today, "forward"),
-  );
-  // Shown as a link, not a fourth period: the same words as the house card's details.
-  const detailed = element(doc, "button", `${C.linkButton} spotnav-period-detailed`, translate(language, ui.detailed ? "details.hide" : "details.show"));
-  detailed.type = "button";
-  detailed.dataset["detailed"] = "toggle";
-  detailed.setAttribute("aria-expanded", String(ui.detailed));
-  detailed.addEventListener("click", () => handlers.onDetailed(!ui.detailed));
-  const top = element(doc, "div", "spotnav-period-top");
-  top.append(tabs, detailed);
-  nav.append(top, row);
-  return nav;
 }
 
 /** One bar of the period's chart: its height and colour's position between cheap (0) and dear (1) or none, or, with

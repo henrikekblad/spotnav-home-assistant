@@ -30,7 +30,6 @@ export const VISUAL_CLASSES = {
   iconButton: "spotnav-icon-button",
   infoButton: "spotnav-info-button",
   headerActions: "spotnav-header-actions",
-  actionRow: "spotnav-action-row",
   button: "spotnav-button",
   actionButton: "spotnav-action-button",
   plannerButton: "spotnav-planner-button",
@@ -178,7 +177,6 @@ export const VISUAL_CLASSES = {
   settingsNote: "spotnav-settings-note",
   settingsFact: "spotnav-settings-fact",
   capacityBlock: "spotnav-capacity-block",
-  socLink: "spotnav-soc-link",
   settingsConflict: "spotnav-settings-conflict",
   settingsSlider: "spotnav-settings-slider",
   settingsUnit: "spotnav-settings-unit",
@@ -684,17 +682,6 @@ export const VISUAL_STYLES = `
   .spotnav-capability[data-soc-row] {
     padding: 2px 0;
   }
-  .spotnav-button.spotnav-soc-link {
-    margin: 4px 0 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--primary-color, #03a9f4);
-    text-decoration: underline;
-    font-size: 0.9rem;
-    min-height: 32px;
-    text-align: left;
-  }
   .spotnav-settings-conflict {
     margin: 8px 0 0;
     color: var(--error-color, #db4437);
@@ -802,13 +789,6 @@ export const VISUAL_STYLES = `
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-  .spotnav-action-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0 0;
   }
   /*
    * The action bar: four equal cells (2x2 narrow, 4x1 wide). The wrapper is the size container, so the
