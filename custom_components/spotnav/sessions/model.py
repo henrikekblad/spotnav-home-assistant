@@ -75,7 +75,7 @@ _OPTIONAL_FIELDS: Final = frozenset(
     }
 )
 #: How the session's vehicle was decided (`vehicles/identification.py`'s `METHODS`).
-VEHICLE_DECIDED_BY: Final = ("manual", "answered", "plug_sensor", "location", "only_candidate", "assumed")
+VEHICLE_DECIDED_BY: Final = ("manual", "answered", "plug_sensor", "location", "only_candidate", "assumed", "camera")
 #: What a record written before intervals existed carried instead.
 _PRE_INTERVAL_FIELDS: Final = frozenset({"priced_kwh", "cost_minor", "reference_cost_minor"})
 
