@@ -38,8 +38,8 @@ another meter phase would be wrong from the start). Then, for each phase in turn
 phase alone (`PROBE_KW`; the other two at 0). A discharge
 because it lowers that phase's import whatever the house does, so it needs no room under the fuse and can be tried
 on a phase that has none, which is the phase that matters; the recipe's sign makes a charge the same target
-negated. After `PHASE_SETTLE_S` (a target settles in seconds) each of `READINGS` readings `PHASE_READING_GAP_S`
-apart must show the plant's own power on that phase at the target and about nothing on the other two (the sign and
+negated. After `PHASE_SETTLE_S` (a target settles in seconds; the hardware test's shorter settle when it is shorter)
+each of `READINGS` readings `PHASE_READING_GAP_S` apart (the hardware test's fewer and closer ones) must show the plant's own power on that phase at the target and about nothing on the other two (the sign and
 that the target acts alone), and the house on that phase, reckoned as the meter's import plus the plant's output
 there, unchanged from before the probe (the mapping: with the plant's phase on another of the meter's phases the
 house would seem to jump by the probe on both). All three phases so: `obeyed`, the capability (`gate.per_phase`
@@ -50,6 +50,22 @@ plant look wrong is never a decisive answer (`_probe_unfit`): the sun giving mor
 exports or the battery charges before the probe, so a phase's target is not the only thing moving it), the battery
 near full or near empty (it cannot put out, or take, what a target asks), or the export limit held at 0
 (`Sample.curtailing`): `not_judgeable:sun_surplus`, `soc_near_end`, `export_curtailed`, tried again at a later run.
+A plant whose power on the probed phase goes the other way than the target says, in every reading, has its sign
+wrong: the phase's row says `wrong_sign` and the mode is `partial`.
+
+**The charge per phase** (`Verification.charge_per_phase`). Where the balanced grid charge has no room under its
+HA-down cap (an unbalanced house: the worst phase is full, `gate.grid_charge_cap_kw`) and the plant takes targets
+per phase, the mode `charge` is tried as a charge on one phase instead (`phase_charge_step`): on the phase whose own
+HA-down cap (`gate.grid_charge_phase_caps_kw`) is the largest, at most `PROBE_KW` and at most that cap, in whole
+amps, the other two at 0. It runs as the probe above does (every target at 0 first, then the charge; the same
+readings, the plant's power on that phase at the target's charge and the house on it unchanged) through the same
+executor, where every fuse rule acts on it as on any charge per phase: the phase's live room, down at once, up only
+after the dwell, the runaway. It is judged on what the executor commands on that phase as it reads (a target it
+lowered to the phase's room is the one judged; one it keeps at nothing once it could raise it is
+`not_judgeable:fuse_headroom`). Its row says so (`via: per_phase`, its `phases` row with `sign` and `mapping`), and
+what it shows of the sign and the mapping is the capability's too (`gate.per_phase`): a charge passed this way
+allows a grid charge only as a charge per phase, once the mode `per_phase` passed as well (`gate.allowed_actions`,
+`gate.charge_by_phases`). No phase with room either: `not_judgeable:no_phase_room`.
 
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
@@ -67,13 +83,14 @@ Pure: no Home Assistant import; times are aware datetimes from the caller.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final, Literal
 
 from .commands import ACTION_CURTAIL_EXPORT, Phases
-from .executor import Executor, StepResult
+from .executor import RATE_UP_DWELL_S, Executor, StepResult
 from .gate import MODE_PER_PHASE, PHASE_NAMES, mode_verdict
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
@@ -116,6 +133,11 @@ PHASE_SETTLE_S: Final = 60.0
 PHASE_READING_GAP_S: Final = 20.0
 PROBE_POWER_TOLERANCE_KW: Final = 0.3
 PROBE_HOUSE_TOLERANCE_KW: Final = 0.4
+#: The least charge on one phase the mode `charge` tries per phase (kW): below it a reading at the target cannot be
+#: told from one at nothing or one of the wrong sign (`PROBE_POWER_TOLERANCE_KW`).
+PHASE_CHARGE_MIN_KW: Final = 0.5
+#: What the mode `charge` tried per phase records in its row (`ModeResult.via`).
+VIA_PER_PHASE: Final = "per_phase"
 
 #: The modes, in order: (name, the plan action commanded). `per_phase` runs only when a run names it.
 MODES: Final[tuple[tuple[str, str], ...]] = (
@@ -185,14 +207,24 @@ class ModeResult:
     #: A hold's variant judged in this row, and every variant tried with its outcome (`[{variant, outcome}]`).
     variant: str | None = None
     variants: list[dict[str, Any]] = field(default_factory=list)
-    #: The mode `per_phase`: each phase probed, with its outcome and readings (`[{phase, target_kw, outcome}]`).
+    #: The mode `per_phase`, and `charge` tried per phase: each phase probed, with its outcome, what it showed of
+    #: the sign and the mapping, and its readings (`[{phase, target_kw, outcome, sign, mapping, readings}]`).
     phases: list[dict[str, Any]] = field(default_factory=list)
+    #: `charge` tried as a charge on one phase (`VIA_PER_PHASE`), `None` for the brand's own balanced charge.
+    via: str | None = None
+
+    @property
+    def phased(self) -> bool:
+        """Whether this mode commands targets per phase (`Verification.probe`)."""
+        return self.mode == MODE_PER_PHASE or self.via == VIA_PER_PHASE
 
     def as_dict(self) -> dict[str, Any]:
         extra: dict[str, Any] = {}
         if self.variant is not None:
             extra = {"variant": self.variant, "variants": [dict(row) for row in self.variants]}
-        if self.mode == MODE_PER_PHASE:
+        if self.via is not None:
+            extra["via"] = self.via
+        if self.phased:
             extra["phases"] = [dict(row) for row in self.phases]
         return extra | {
             "mode": self.mode,
@@ -237,9 +269,13 @@ class Verification:
             if (modes is None and name != MODE_PER_PHASE) or (modes is not None and name in modes)
             or action == ACTION_SELF_CONSUME
         ]
-        #: The mode `per_phase`: the phase probed now, and the house per phase before its probe (kW).
+        #: The phased modes: the steps (phase index, charge kW, negative a discharge), the step now (-1: every
+        #: target at 0), and the house per phase before its probe (kW).
+        self.steps: list[tuple[int, float]] = [(index, -PROBE_KW) for index in range(3)]
         self.probe_index = 0
         self.probe_house: Phases | None = None
+        #: Whether the executor ran targets per phase before `charge` was tried per phase (given back after it).
+        self.phased_before: bool | None = None
         # The hold variants still to try: those an earlier run (`tried`, from the report's hold row) did not fail.
         failed = {str(row.get("variant")) for row in tried if mode_verdict(row.get("outcome")) == "fail"}
         self.variants: list[str] = [name for name in executor.control.variant_names() if name not in failed]
@@ -283,6 +319,7 @@ class Verification:
                     self._next(now)
                     return ACTION_SELF_CONSUME, 0.0
                 # Every target at 0 first (`probe_index` -1): the house per phase is read under that.
+                self.steps = [(index, -PROBE_KW) for index in range(3)]
                 self.probe_index, self.probe_house = -1, None
             if self.variant_wait_since is not None:
                 if sample.power_kw is None or sample.power_kw > -FLOOR_KW:
@@ -300,16 +337,64 @@ class Verification:
                 result.rate_kw = min(self.charge_kw, rated_charge_kw) if rated_charge_kw else self.charge_kw
         return result.action, result.rate_kw
 
-    def probe(self) -> Phases | None:
-        """The charge per phase to command in this look for the mode `per_phase` (kW, negative: the discharge on the
-        phase probed now), `None` in every other mode and once the mode is handing back."""
+    def charge_per_phase(self, now: datetime, sample: Sample, step: tuple[int, float] | None) -> None:
+        """The mode `charge`, which has no room as the balanced charge, tried as a charge on one phase (see the
+        module): `step` (`phase_charge_step`) on the phase with the most room, `None` when no phase has any
+        (`not_judgeable:no_phase_room`). Left for a later run, with nothing written, when the executor cannot run
+        its targets per phase now or the moment could not judge it soundly (`_probe_unfit`)."""
         result = self.current
-        if result is None or result.mode != MODE_PER_PHASE or self.stage == "hand_back" or result.commanded_at is None:
+        if result is None or result.action != ACTION_GRID_CHARGE or result.phased or self.stage != "command":
+            return
+        if step is None:
+            self.not_judgeable(now, "no_phase_room")
+            return
+        before = self.executor.control.phased
+        if not self.executor.use_phases(True):
+            self.not_judgeable(now, "grid_charge_cap")
+            return
+        self.phased_before = before
+        house = _house_kw(sample)
+        unfit = "phase_reading_stale" if house is None else _probe_unfit(sample, before=True)
+        if unfit is not None:
+            self.not_judgeable(now, unfit)
+            return
+        result.via = VIA_PER_PHASE
+        result.rate_kw = step[1]
+        self.steps = [step]
+        self.probe_index, self.probe_house = -1, None
+
+    def probe(self) -> Phases | None:
+        """The charge per phase to command in this look for a phased mode (kW, negative: a discharge; the mode
+        `per_phase`, and `charge` tried per phase), `None` in every other mode and once the mode is handing back."""
+        result = self.current
+        if result is None or not result.phased or self.stage == "hand_back" or result.commanded_at is None:
             return None
         values = [0.0, 0.0, 0.0]
         if self.probe_index >= 0:
-            values[self.probe_index] = -PROBE_KW
+            phase, target = self.steps[self.probe_index]
+            values[phase] = target
         return (values[0], values[1], values[2])
+
+    def _probe_taken(self, commanded: Phases | None) -> bool:
+        """Whether the executor commands the probe now: every target as asked, except that a charge may be lowered
+        to its phase's room (the executor's own fuse rule); one it has not raised at all is not taken."""
+        wanted = self.probe()
+        if commanded is None or wanted is None:
+            return False
+        for value, asked in zip(commanded, wanted, strict=True):
+            if asked > 0:
+                if not 0 < value <= asked + 1e-9:
+                    return False
+            elif abs(value - asked) > 1e-9:
+                return False
+        return True
+
+    def _probe_not_raised(self, commanded: Phases | None) -> bool:
+        """Whether the step now is a charge the executor still holds at nothing on its phase (no live room)."""
+        if self.probe_index < 0 or commanded is None:
+            return False
+        phase, target = self.steps[self.probe_index]
+        return target > 0 and commanded[phase] <= 1e-9
 
     def not_judgeable(self, now: datetime, why: str) -> None:
         """The running mode cannot be tried now for a reason of the shell's (the grid charge cap): it is left pending
@@ -353,11 +438,20 @@ class Verification:
                     self._finish(now)
                 return
             taken = state.phase == "active" and state.action == result.action and state.pending is None and not step.ops
-            if taken and result.mode == MODE_PER_PHASE and state.phase_kw != self.probe():
+            if taken and result.phased and not self._probe_taken(state.phase_kw):
                 taken = False
+            changed = state.rate_changed_at
             if taken:
                 result.taken_at = now
                 self._enter(now, "settle")
+            elif (
+                result.phased and state.phase == "active" and state.pending is None and not step.ops
+                and self._probe_not_raised(state.phase_kw) and changed is not None
+                and (now - changed).total_seconds() >= RATE_UP_DWELL_S
+            ):
+                # The executor could raise the charge in this look and kept it at nothing: no live room on its phase.
+                result.outcome = "not_judgeable:fuse_headroom"
+                self._enter(now, "hand_back")
             elif (
                 result.commanded_at is not None
                 and (now - result.commanded_at).total_seconds() >= self.timing.command_timeout_s
@@ -365,14 +459,14 @@ class Verification:
                 self._abort(now, "aborted:command_timeout")
             return
         if self.stage == "settle":
-            settle = PHASE_SETTLE_S if result.mode == MODE_PER_PHASE else self.timing.settle_s
+            settle = min(PHASE_SETTLE_S, self.timing.settle_s) if result.phased else self.timing.settle_s
             if (now - self.stage_at).total_seconds() >= settle:
                 self._enter(now, "read")
             else:
                 return
         if self.stage == "read":
-            if result.mode == MODE_PER_PHASE:
-                self._read_phase(now, result, sample)
+            if result.phased:
+                self._read_phase(now, result, sample, state.phase_kw)
             else:
                 self._read(now, result, sample, capability)
             return
@@ -440,10 +534,13 @@ class Verification:
         self._variant_failed(now, result)
         self._enter(now, "hand_back")
 
-    def _read_phase(self, now: datetime, result: ModeResult, sample: Sample) -> None:
-        """One reading of the probe on one phase (see the module): the plant's power on it at the target and on the
-        others at nothing, and the house on it where it was."""
-        if self.last_reading_at is not None and (now - self.last_reading_at).total_seconds() < PHASE_READING_GAP_S:
+    def _read_phase(self, now: datetime, result: ModeResult, sample: Sample, commanded: Phases | None) -> None:
+        """One reading of a phased mode's step (see the module): the plant's power on the probed phase at what the
+        executor commands there (`commanded`: a charge it lowered to the phase's room is judged at that), the others
+        at nothing, and the house on it where it was."""
+        if self.last_reading_at is not None and (now - self.last_reading_at).total_seconds() < min(
+            PHASE_READING_GAP_S, self.timing.reading_gap_s
+        ):
             return
         self.last_reading_at = now
         index = self.probe_index
@@ -452,6 +549,9 @@ class Verification:
         unfit = _probe_unfit(sample, before=False)
         if plant is None or grid is None or house is None or (before is None and index >= 0):
             unfit = "phase_reading_stale"
+        elif index >= 0 and self._probe_not_raised(commanded):
+            # The phase's live room fell to nothing and the executor took the charge down: nothing to judge.
+            unfit = "fuse_headroom"
         if unfit is not None:
             result.outcome = f"not_judgeable:{unfit}"
             self._enter(now, "hand_back")
@@ -470,41 +570,53 @@ class Verification:
             self._enter(now, "command")
             return
         assert before is not None
-        others = [abs(plant[other]) for other in range(3) if other != index]
-        acts = abs(plant[index] - PROBE_KW) <= PROBE_POWER_TOLERANCE_KW and max(others) <= PROBE_POWER_TOLERANCE_KW
-        moved = house[index] - before[index]
-        if not acts:
-            verdict = "no_effect" if plant[index] < FAIL_FRACTION * PROBE_KW else "partial"
-        else:
+        phase, asked = self.steps[index]
+        target = asked if commanded is None or asked <= 0 else min(asked, commanded[phase])
+        # The plant's own power is + output: a charge of `target` on the phase reads as -target there.
+        expected = -target
+        others = [abs(plant[other]) for other in range(3) if other != phase]
+        acts = abs(plant[phase] - expected) <= PROBE_POWER_TOLERANCE_KW and max(others) <= PROBE_POWER_TOLERANCE_KW
+        moved = house[phase] - before[phase]
+        toward = plant[phase] if expected > 0 else -plant[phase]  # how far the plant went the way it was told
+        if acts:
             verdict = "ok" if abs(moved) <= PROBE_HOUSE_TOLERANCE_KW else "wrong_phase"
+        elif -toward >= FAIL_FRACTION * abs(expected) and -toward > PROBE_POWER_TOLERANCE_KW:
+            verdict = "wrong_sign"
+        elif toward < FAIL_FRACTION * abs(expected):
+            verdict = "no_effect"
+        else:
+            verdict = "partial"
         result.readings.append({
-            "at": now.isoformat(), "phase": PHASE_NAMES[index], "plant_kw": [round(value, 3) for value in plant],
-            "grid_kw": [round(value, 3) for value in grid], "house_moved_kw": round(moved, 3), "verdict": verdict,
+            "at": now.isoformat(), "phase": PHASE_NAMES[phase], "target_kw": round(target, 3),
+            "plant_kw": [round(value, 3) for value in plant], "grid_kw": [round(value, 3) for value in grid],
+            "house_moved_kw": round(moved, 3), "verdict": verdict,
         })
-        if len(result.readings) < READINGS:
+        if len(result.readings) < min(READINGS, self.timing.readings):
             return
         verdicts = {row["verdict"] for row in result.readings}
-        if verdicts == {"ok"}:
+        if len(verdicts) == 1 and verdicts <= {"no_effect", "wrong_phase", "wrong_sign"}:
+            outcome = "ignored" if verdicts == {"no_effect"} else next(iter(verdicts))
+        elif verdicts == {"ok"}:
             outcome = "obeyed"
-        elif verdicts == {"no_effect"}:
-            outcome = "ignored"
-        elif verdicts == {"wrong_phase"}:
-            outcome = "wrong_phase"
         elif "wrong_phase" in verdicts and verdicts <= {"ok", "wrong_phase"}:
             outcome = "not_judgeable:house_changed"
         else:
             outcome = "partial"
         result.phases.append({
-            "phase": PHASE_NAMES[index], "target_kw": -PROBE_KW, "outcome": outcome, "readings": list(result.readings),
+            "phase": PHASE_NAMES[phase], "target_kw": round(asked, 3), "outcome": outcome,
+            "sign": "wrong" if outcome == "wrong_sign" else "ok" if outcome in (
+                "obeyed", "wrong_phase", "not_judgeable:house_changed") else None,
+            "mapping": "wrong" if outcome == "wrong_phase" else "ok" if outcome == "obeyed" else None,
+            "readings": list(result.readings),
         })
         result.readings = []
-        if outcome == "obeyed" and index < 2:
+        if outcome == "obeyed" and index < len(self.steps) - 1:
             # The next phase, from the house as it reads under this one's probe (just judged right).
             self.probe_index, self.probe_house = index + 1, house
             result.commanded_at = now  # the next phase's own time to be taken (`COMMAND_TIMEOUT_S`)
             self._enter(now, "command")
             return
-        result.outcome = "partial" if outcome == "wrong_phase" else outcome
+        result.outcome = "partial" if outcome in ("wrong_phase", "wrong_sign") else outcome
         self._enter(now, "hand_back")
 
     def _variant_failed(self, now: datetime, result: ModeResult) -> bool:
@@ -560,6 +672,10 @@ class Verification:
 
     def _next(self, now: datetime) -> None:
         result = self.current
+        if result is not None and result.via == VIA_PER_PHASE and self.phased_before is not None:
+            # `charge` tried per phase is done and handed back: the executor's control as it was before it.
+            if self.executor.use_phases(self.phased_before):
+                self.phased_before = None
         if self.stop_on_fail and result is not None and result.action != ACTION_SELF_CONSUME and not _passes(result):
             # The hardware test: the first mode that did not pass skips the rest; normal judges the hand-back.
             normal = len(self.results) - 1
@@ -586,6 +702,20 @@ class Verification:
             "finished_at": None if self.finished_at is None else self.finished_at.isoformat(),
             "modes": {result.mode: result.as_dict() for result in self.results},
         }
+
+
+def phase_charge_step(caps_kw: Phases, volts_between_phases: float) -> tuple[int, float] | None:
+    """The charge on one phase the mode `charge` tries where the balanced charge has no room (see the module): the
+    phase with the largest HA-down cap (`gate.grid_charge_phase_caps_kw`, the first of equals), at most `PROBE_KW`
+    and at most that cap, in whole amps at the phase voltage; `None` when that is under `PHASE_CHARGE_MIN_KW`."""
+    if volts_between_phases <= 0 or len(caps_kw) != 3 or not all(math.isfinite(cap) for cap in caps_kw):
+        return None
+    phase = max(range(3), key=lambda index: (caps_kw[index], -index))
+    amp_kw = volts_between_phases / math.sqrt(3.0) / 1000.0
+    target = math.floor(min(PROBE_KW, max(caps_kw[phase], 0.0)) / amp_kw + 1e-6) * amp_kw
+    if target < PHASE_CHARGE_MIN_KW:
+        return None
+    return phase, math.floor(target * 1000.0 + 1e-6) / 1000.0
 
 
 def _passes(result: ModeResult) -> bool:
