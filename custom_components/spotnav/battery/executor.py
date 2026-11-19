@@ -2050,9 +2050,12 @@ class Executor:
         ):
             # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
             return events
-        if action != state.action and action == ACTION_EXPORT_DISCHARGE and not self._sale_headroom_ok(inputs):
-            # A change into a sale is held to its start rule: the cover the battery gives now must not come off a
-            # phase that cannot carry it. Handed back (plain self-consumption) instead.
+        if action != state.action and (
+            (action == ACTION_HOLD and not hold_headroom_ok(inputs))
+            or (action == ACTION_EXPORT_DISCHARGE and not self._sale_headroom_ok(inputs))
+        ):
+            # A change into a hold or a sale is held to that action's start rule: the cover the battery gives now
+            # must not come off a phase that cannot carry it. Handed back (plain self-consumption) instead.
             return events + self._begin_restore(now, "headroom_too_small")
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)

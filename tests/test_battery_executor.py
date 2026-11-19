@@ -667,6 +667,23 @@ def test_fuse_s1_a_sale_is_handed_back_when_a_phase_nears_the_fuse() -> None:
     assert executor.state.phase in ("idle", "restoring")
 
 
+def test_fuse_s2_a_change_into_a_hold_passes_the_holds_start_rule() -> None:
+    """The battery covers 3 kW (13 A on one phase) with 8 A left: from idle a hold is refused; as a change from
+    covering the house it is handed back to plain self-consumption, never written."""
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "discharge_house", 3.0, house_deficit_kw=3.0)
+    assert executor.state.phase == "active" and executor.state.action == "discharge_house"
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=8.0, power_kw=-3.0)
+    assert events(results, "change") == []
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+    assert ("discharge_limit", 0.0) not in written(results)
+    # With the room for it, the change is made.
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "discharge_house", 3.0, house_deficit_kw=3.0)
+    _now, results = run(executor, battery, now, 3, "hold", headroom_a=16.0, power_kw=-3.0)
+    assert events(results, "change")[0]["reason"] == "hold"
+
+
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
