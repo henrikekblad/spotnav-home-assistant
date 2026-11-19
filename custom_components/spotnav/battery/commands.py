@@ -693,6 +693,10 @@ class BrandControl:
     #: How often a restore given up is tried again while the control is blocked (s), where each write costs (a
     #: cloud's billed commands); `None`: `executor.BLOCKED_RESTORE_S`.
     restore_retry_s: float | None = None
+    #: The recipe has been tested on a real plant of the brand (the owner's on-site tests): control on it leaves
+    #: shadow only by default (`gate.Options.from_config`). An untested recipe stays shadow only unless the site is a
+    #: beta tester (`beta.learning_gate_open`). Its verification routine and every fuse rule apply either way.
+    field_tested: bool = False
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -1052,6 +1056,7 @@ SIGENERGY_PHASES: Final = PhaseControl(
 
 SIGENERGY_CONTROL: Final = BrandControl(
     brand="sigenergy",
+    field_tested=True,
     adapter=SIGENERGY,
     roles=(_SIG_ENABLE, _SIG_MODE, _SIG_CHARGE, _SIG_DISCHARGE),
     states={
@@ -1444,6 +1449,7 @@ _SIG_EXPORT = Role(
 
 SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
     brand="sigenergy",
+    field_tested=True,
     adapter=SIGENERGY,
     roles=(_SIG_EXPORT,),
     states={ACTION_CURTAIL_EXPORT: lambda _rate, _w: (Want("export_limit", 0.0),)},
@@ -1651,6 +1657,12 @@ def phase_table() -> list[dict[str, Any]]:
                 "requires": {role.name: sorted(states) for role, states, _why in spec.requires},
             })
     return rows
+
+
+def field_tested(brand: str | None) -> bool:
+    """Whether the brand's recipe (its battery control, else its export control) was tested on a real plant."""
+    control = next((control for control in CONTROLS if control.brand == brand), None) or export_control_for(brand)
+    return control is not None and control.field_tested
 
 
 def export_control_for(brand: str | None) -> BrandControl | None:

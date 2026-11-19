@@ -5,8 +5,12 @@ The site's options (`Options`, kept in the site entry's data beside its other se
 * `battery_control_enabled` (default off): the person's opt-in. Turning it on does not turn control on: it starts the
   verification routine (`verify.py`), and control is on only once that passed for the plant's current firmware and
   integration version (`firmware_key`).
-* `battery_control_shadow_only` (default **on**): while on, nothing is written whatever else is set; the shell only
-  logs what it would do. It stays on until the owner's on-site tests are done (plan `v3_battery_control_optin.md`).
+* `battery_control_shadow_only`: while on, nothing is written whatever else is set; the shell only logs what it would
+  do. Its default depends on the plant (`shadow_default`): **off** for a recipe tested on a real plant
+  (`commands.BrandControl.field_tested`: Sigenergy) and for a beta tester's site (`beta.learning_gate_open`), **on**
+  for every other recipe (Victron, Solinteg, Ferroamp, GoodWe, Tesla and the rest). A value the site stored is kept
+  whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
+  runs only once that passed, under every fuse rule.
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
@@ -162,11 +166,12 @@ class Options:
     import_limit_acts: bool = False
 
     @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> Options:
-        """From the site entry's data: anything but a stored boolean is its default (shadow only stays on)."""
+    def from_config(cls, config: Mapping[str, Any], *, shadow_default: bool = True) -> Options:
+        """From the site entry's data: anything but a stored boolean is its default (`shadow_default` for shadow
+        only: on unless the caller knows the plant's recipe was field tested or the site is a beta tester)."""
         return cls(
             enabled=_flag(config.get(CONF_ENABLED), False),
-            shadow_only=_flag(config.get(CONF_SHADOW_ONLY), True),
+            shadow_only=_flag(config.get(CONF_SHADOW_ONLY), shadow_default),
             ai_takeover_ack=_flag(config.get(CONF_AI_TAKEOVER_ACK), False),
             mode=_mode(config),
             import_limit_acts=_flag(config.get(CONF_IMPORT_LIMIT_ACTS), False),
@@ -189,6 +194,11 @@ class Options:
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
             CONF_ALLOW_SELL: self.allow_sell, CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_MODE: self.mode,
         }
+
+
+def shadow_default(*, field_tested: bool, beta: bool) -> bool:
+    """Shadow only's default for a site that never stored it: off for a field-tested recipe or a beta tester."""
+    return not (field_tested or beta)
 
 
 def _mode(config: Mapping[str, Any]) -> str:

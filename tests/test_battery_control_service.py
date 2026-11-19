@@ -45,7 +45,8 @@ async def test_the_test_action_is_for_administrators_refused_while_shadow_only_u
         )
     assert refused.value.translation_placeholders == {"reason": "not_enabled"}, "forcing never lifts the opt-in"
     await hass.services.async_call(
-        DOMAIN, "battery_control_settings", {"battery_control_enabled": True}, blocking=True, context=admin
+        DOMAIN, "battery_control_settings",
+        {"battery_control_enabled": True, "battery_control_shadow_only": True}, blocking=True, context=admin,
     )
     with pytest.raises(ServiceValidationError) as refused:
         await hass.services.async_call(DOMAIN, "battery_control_test", {"action": "hold"}, blocking=True, context=admin)
@@ -64,7 +65,7 @@ async def test_the_test_action_is_for_administrators_refused_while_shadow_only_u
     for index in range(4):
         await control.async_look(dt_util.now() + timedelta(seconds=10 * (index + 1)))
     assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(SWITCH).state == "on"
-    assert control.options() == gate.Options(enabled=True), "the test action changes no setting"
+    assert control.options() == gate.Options(enabled=True, shadow_only=True), "the test action changes no setting"
     answer = await hass.services.async_call(
         DOMAIN, "battery_control_test", {"action": "stop"}, blocking=True, context=admin, return_response=True,
     )
@@ -79,8 +80,8 @@ async def test_the_settings_service_and_the_card_command_write_the_options_witho
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, own=True)
     await hass.async_block_till_done()
     answer = await hass.services.async_call(
-        DOMAIN, "battery_control_settings", {"battery_control_enabled": True}, blocking=True,
-        context=Context(user_id=hass_admin_user.id), return_response=True,
+        DOMAIN, "battery_control_settings", {"battery_control_enabled": True, "battery_control_shadow_only": True},
+        blocking=True, context=Context(user_id=hass_admin_user.id), return_response=True,
     )
     assert answer["options"][gate.CONF_ENABLED] is True and answer["state"] == "shadow_only"
     assert site_controller_for(hass, site.entry_id) is controller, "no reload"
