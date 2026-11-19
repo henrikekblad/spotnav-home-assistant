@@ -173,6 +173,7 @@ class HotWater:
             "gate_since": self.gate_since,
             "backed_off": self.backed_off,
             "ended_day": self.ended_day,
+            "picks": [pick.stored() for pick in self.picks],
         }
 
     def restore(self, raw: Any) -> None:
@@ -191,6 +192,7 @@ class HotWater:
         for name in ("gate_since", "backed_off", "ended_day"):
             value = raw.get(name)
             setattr(self, name, value if isinstance(value, str) else None)
+        self.picks = [pick for item in raw.get("picks") or [] if (pick := Pick.from_stored(item)) is not None]
         self.run_len, self.boost_kw = learned_run(list(self.runs.values()))
         self.standby = standby_kwh(self.runs.values())
 
@@ -522,6 +524,7 @@ class HotWater:
         if self._pending is not None and not self._pending.done():
             return
         config = self.shadow.config()
+        self._observe(now, config)
         self._shed_check(now, config)
         if not config.control_enabled or not self.picks:
             # Nothing planned is written without the opt-in: no need to read the pump each look.
@@ -558,6 +561,14 @@ class HotWater:
             )
             return
 
+    def _observe(self, now: datetime, config: HeatConfig) -> None:
+        """A boost entity read off ends SpotNav's and the button's writes to it in the ledger (their ownership)."""
+        if not any(entry.ended is None and entry.read_back is True for entry in self.ledger.entries):
+            return
+        route = self.route(config)
+        if route is not None and route.kind != "pulse" and not self._on(route)[0]:
+            self.ledger.close(route.entity_id, now)
+
     def _shed_check(self, now: datetime, config: HeatConfig) -> None:
         """SpotNav's own planned boost running while a phase is over the fuse for `SHED_LOOKS` looks: ended, and not
         started again that day. A household's or the button's boost is never shed."""
@@ -571,8 +582,7 @@ class HotWater:
         route = self.route(config)
         if route is None or route.entity_id != last.entity_id:
             return
-        on, since = self._on(route)
-        if not on or self.ledger.source_of_on(route.entity_id, since) != SOURCE_PLAN:
+        if not self._on(route)[0] or self.ledger.owner(route.entity_id, now) != SOURCE_PLAN:
             return
         self._over_looks += 1
         if self._over_looks < SHED_LOOKS:
@@ -724,7 +734,7 @@ class HotWater:
         reading = BoostReading(
             on=on,
             on_since=since,
-            ledger_source=self.ledger.source_of_on(route.entity_id, since) if on else None,
+            ledger_source=self.ledger.owner(route.entity_id, now) if on else None,
             making=self.making_now(),
             pulse_at=pulse_at,
             pending=self._pending is not None and not self._pending.done(),

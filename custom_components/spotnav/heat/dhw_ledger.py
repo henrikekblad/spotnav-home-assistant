@@ -21,6 +21,8 @@ SOURCES: Final = (SOURCE_PLAN, SOURCE_BUTTON)
 
 #: A boost that began this soon after a write is that write's.
 OWN_WINDOW: Final = timedelta(minutes=10)
+#: A boost SpotNav (or the button) started is counted its own at most this long while it reads on.
+OWN_MAX: Final = timedelta(hours=13)
 #: A meter run that began this soon after a write is that write's run.
 RUN_MATCH: Final = timedelta(minutes=30)
 KEEP: Final = timedelta(days=8)
@@ -95,6 +97,25 @@ class Ledger:
             if entry.at - timedelta(minutes=1) <= on_since and on_since - entry.at <= OWN_WINDOW:
                 return entry.source
         return None
+
+    def owner(self, entity_id: str, now: datetime) -> str | None:
+        """Whose the boost reading on now is: the source of the last write to it that was read back and has not
+        ended (`close`), `None` for the household's own. Kept in the ledger, so a restart or a timer that counts down
+        (its state changes each minute) never hands SpotNav's boost to the household."""
+        for entry in reversed(self.entries):
+            if entry.entity_id != entity_id:
+                continue
+            if entry.read_back is True and entry.ended is None and now - entry.at <= OWN_MAX:
+                return entry.source
+            return None
+        return None
+
+    def close(self, entity_id: str, now: datetime) -> None:
+        """The boost on `entity_id` reads off: the writes to it have ended."""
+        self.entries = [
+            replace(entry, ended=now) if entry.entity_id == entity_id and entry.ended is None and entry.read_back is True else entry
+            for entry in self.entries
+        ]
 
     def run_source(self, run_start: datetime) -> str | None:
         """The source of the write that started a meter run beginning at `run_start`, `None` for the pump's own."""

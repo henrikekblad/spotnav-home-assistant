@@ -121,3 +121,38 @@ async def test_b2_an_old_cached_reason_does_not_hold_a_boost(hass: HomeAssistant
     hot_water.tick(at)
     await settle(hass)
     assert writes.calls == [("switch", "turn_on", {"entity_id": CLOUD})]
+
+
+# ---- S7: a boost's owner is kept in the ledger, across a restart and a ticking timer
+
+
+async def test_s7_ownership_survives_a_restart_and_a_counting_timer(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    import json
+
+    from custom_components.spotnav.heat import dhw_runtime
+
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(CTC_BMS, CTC))
+    hass.states.async_set(CTC, "0")
+    Writes(hass)
+    hot_water.tick(at)
+    await settle(hass)
+    assert hot_water.boost()["source"] == "plan"
+    # The timer counts down, long after the write: still SpotNav's.
+    freezer.tick(timedelta(minutes=25))
+    hass.states.async_set(CTC, "0.6")
+    assert hot_water.boost()["source"] == "plan"
+    # Home Assistant restarts: the kept ledger still says whose it is, and the picks are kept too.
+    again = dhw_runtime.HotWater(hass, controller.heat_shadow)
+    again.restore(json.loads(json.dumps(hot_water.stored())))
+    monkeypatch.setattr(again, "_meter_fresh", lambda _now: True)
+    assert again.picks == hot_water.picks
+    controller.heat_shadow.hot_water = again
+    freezer.tick(timedelta(minutes=5))
+    hass.states.async_set(CTC, "0.5")
+    assert again.boost()["source"] == "plan"
+    assert controller.heat_shadow.control._boost_source(controller.heat_shadow.config()) == "plan"  # noqa: SLF001
+    # It ends; the household's next boost is theirs.
+    hass.states.async_set(CTC, "0")
+    again.tick(at + timedelta(minutes=40))
+    hass.states.async_set(CTC, "2")
+    assert again.boost()["source"] == "user"

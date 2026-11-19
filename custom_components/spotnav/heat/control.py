@@ -1178,14 +1178,18 @@ class HeatControl:
         from .detect import read_heat_pumps  # noqa: PLC0415 - read only when it matters
         from .dhw_ledger import SOURCE_PLAN  # noqa: PLC0415
 
+        hot_water = self.shadow.hot_water
         entities = [config.hot_water_entity] if config.hot_water_entity else []
         for pump in read_heat_pumps(self.hass):
             entities.extend(item.entity_id for item in pump.capabilities if item.kind == "hot_water_boost")
-        for entity_id in entities:
+        route = hot_water.route(config)
+        if route is not None:
+            entities.append(route.entity_id)
+        now = dt_util.utcnow()
+        for entity_id in dict.fromkeys(entities):
             state = self.hass.states.get(entity_id)
             if state is not None and paths.boost_on(entity_id, state.state):
-                own = self.shadow.hot_water.ledger.source_of_on(entity_id, state.last_changed)
-                return SOURCE_PLAN if own == SOURCE_PLAN else "user"
+                return SOURCE_PLAN if hot_water.ledger.owner(entity_id, now) == SOURCE_PLAN else "user"
         return None
 
     async def async_sample(self, now: datetime) -> Sample:
