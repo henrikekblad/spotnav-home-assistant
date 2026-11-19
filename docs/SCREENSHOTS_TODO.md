@@ -1,6 +1,7 @@
 ---
 title: Screenshots to take
 description: Screenshots the documentation refers to that do not exist yet. Not a page for the website.
+hidden: true
 ---
 
 # Screenshots to take
