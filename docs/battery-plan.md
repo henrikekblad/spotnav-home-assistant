@@ -76,14 +76,20 @@ on price. Every mode keeps the battery's own lowest level.
 * **Self-consumption**: no plan. The battery covers the house and stores a surplus, as the inverter does by itself. This is
   the baseline every saving is measured against.
 * **Balanced** (the default): the battery may buy cheap and spend in the house. It counts twice the wear cost per kWh, so
-  it cycles less, and it sells stored energy to the grid only when the price is clearly above what that energy cost to store.
-* **Max profit**: every action, with the true wear cost, including selling to the grid where that pays.
+  it cycles less. It sells to the grid only when that is highly profitable, to catch a price peak: the house comes first
+  (the battery keeps what the house is expected to need until the next cheap hours, the cheapest quarter of the hours
+  planned), and only energy beyond that is sold, and only where each kWh earns at least **1 kr** more than keeping it is
+  worth (what the stored energy is worth to the plan, the round trip's loss and the wear). The margin is one constant,
+  not a setting; other currencies have about the same sum (for example 1 kr in Norway, 0.70 kr in Denmark, 10 cent in
+  euro areas).
+* **Max profit**: every action, with the true wear cost, including selling to the grid whenever that pays.
 
 Choose the mode under **Mode** in the settings' **Home battery** section; **Balanced** is the default. All three are
 planned side by side on the same figures (a mode is skipped when the solve would take longer than 5 seconds), so you can
 see what each would have saved. While SpotNav does not control the battery, the choice only moves which row is marked as
 chosen in the comparison. With [battery control](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)
-on, it decides what the battery does, and only **Max profit** sells from the battery to the grid.
+on, it decides what the battery does: **Max profit** sells from the battery to the grid whenever that pays, **Balanced**
+only when it is highly profitable, and **Self-consumption** never.
 
 ### The wear cost
 
