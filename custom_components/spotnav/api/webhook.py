@@ -727,27 +727,37 @@ def _handler_for(entry: ChargerConfigEntry) -> Callable[..., Awaitable[web.Respo
 def async_register_entry_webhook(
     hass: HomeAssistant, entry: ConfigEntry, name: str, handler: Callable[..., Awaitable[web.Response]]
 ) -> None:
-    """Register an entry's webhook under the id its data holds now, and unregister the id it holds then when the entry
-    unloads or fails to set up (`api/phones.py` may have replaced it in between)."""
+    """Register an entry's webhook under the id its data holds now, record it (`SpotNavData.webhook_ids`), and
+    unregister the id recorded then when the entry unloads or fails to set up (`api/phones.py` may have moved it to a
+    new id in between, also while the setup was still running)."""
+    webhook_id = entry.data[CONF_WEBHOOK_ID]
+    webhook.async_register(hass, DOMAIN, name, webhook_id, handler, local_only=False, allowed_methods=("POST",))
+    domain_data(hass).webhook_ids[entry.entry_id] = webhook_id
+
+    def _unregister() -> None:
+        registered = domain_data(hass).webhook_ids.pop(entry.entry_id, None)
+        if registered is not None:
+            webhook.async_unregister(hass, registered)
+
+    entry.async_on_unload(_unregister)
+
+
+def async_move_charger_webhook(hass: HomeAssistant, entry: ChargerConfigEntry) -> None:
+    """The charger's id in its data was replaced (`api/phones.py`): where a webhook is registered for it now (loaded,
+    or set up far enough), answer at the new id only. Where none is, the setup registers the id the data holds."""
+    registered = domain_data(hass).webhook_ids.get(entry.entry_id)
+    new = entry.data[CONF_WEBHOOK_ID]
+    if registered is None or registered == new:
+        return
+    webhook.async_unregister(hass, registered)
     webhook.async_register(
-        hass,
-        DOMAIN,
-        name,
-        entry.data[CONF_WEBHOOK_ID],
-        handler,
-        local_only=False,
-        allowed_methods=("POST",),
+        hass, DOMAIN, CHARGER_WEBHOOK_NAME, new, _handler_for(entry), local_only=False, allowed_methods=("POST",)
     )
-    entry.async_on_unload(lambda: webhook.async_unregister(hass, entry.data[CONF_WEBHOOK_ID]))
+    domain_data(hass).webhook_ids[entry.entry_id] = new
 
 
 #: The name Home Assistant lists the charger webhook by.
 CHARGER_WEBHOOK_NAME: Final = "SpotNav charging control"
-
-
-def charger_webhook_handler(entry: ChargerConfigEntry) -> Callable[..., Awaitable[web.Response]]:
-    """The charger webhook's request handler, for registering it again under a new id (`api/phones.py`)."""
-    return _handler_for(entry)
 
 
 def async_register_charger_webhook(hass: HomeAssistant, entry: ChargerConfigEntry) -> None:

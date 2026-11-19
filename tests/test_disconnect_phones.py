@@ -134,3 +134,65 @@ async def test_only_an_administrator_may_and_nothing_changes_otherwise(hass: Hom
     answer = await _disconnect(hass, api_version=2)
     assert answer == {"success": False, "error": {"code": "spotnav_unsupported_api_version"}}
     assert [entry.data[CONF_WEBHOOK_ID] for entry in (charger, site, home)] == before
+
+
+async def test_a_charger_mid_reload_answers_at_its_new_id(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Disconnect while a charger's reload has registered its webhook but not finished: the new id answers once the
+    reload is done, the old one never again."""
+    import asyncio
+
+    from homeassistant.config_entries import ConfigEntryState
+
+    charger, _site, _home = await _world(hass)
+    client = await hass_client_no_auth()
+    old = charger.data[CONF_WEBHOOK_ID]
+    gate = asyncio.Event()
+    reached = asyncio.Event()
+    forward = hass.config_entries.async_forward_entry_setups
+
+    async def held(entry: Any, platforms: Any) -> None:
+        if entry.entry_id == charger.entry_id:
+            reached.set()
+            await gate.wait()
+        await forward(entry, platforms)
+
+    monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", held)
+    reload = hass.async_create_task(hass.config_entries.async_reload(charger.entry_id))
+    await asyncio.wait_for(reached.wait(), 5)
+    assert charger.state is ConfigEntryState.SETUP_IN_PROGRESS
+
+    # The command's own function: waiting for the loop to be idle would wait for the held reload.
+    from custom_components.spotnav.api.phones import async_disconnect_phones
+
+    await async_disconnect_phones(hass)
+    gate.set()
+    assert await asyncio.wait_for(reload, 5)
+    await hass.async_block_till_done()
+
+    assert charger.state is ConfigEntryState.LOADED
+    assert await _gone(client, old)
+    status, body = await post(client, charger.data[CONF_WEBHOOK_ID], {"action": "get_site_access"})
+    assert status == 200 and body["ok"] is True
+    # And an unload afterwards closes the new id.
+    assert await hass.config_entries.async_unload(charger.entry_id)
+    await hass.async_block_till_done()
+    assert await _gone(client, charger.data[CONF_WEBHOOK_ID])
+
+
+async def test_a_charger_disconnected_before_its_setup_registers_takes_the_new_id(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    charger, _site, _home = await _world(hass)
+    client = await hass_client_no_auth()
+    assert await hass.config_entries.async_unload(charger.entry_id)
+    await hass.async_block_till_done()
+    old = charger.data[CONF_WEBHOOK_ID]
+    await _disconnect(hass)
+    assert await _gone(client, old) and await _gone(client, charger.data[CONF_WEBHOOK_ID])
+    assert await hass.config_entries.async_setup(charger.entry_id)
+    await hass.async_block_till_done()
+    status, _body = await post(client, charger.data[CONF_WEBHOOK_ID], {"action": "get_site_access"})
+    assert status == 200
+    assert await _gone(client, old)

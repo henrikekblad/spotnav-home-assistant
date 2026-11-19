@@ -18,8 +18,8 @@ import logging
 from typing import Any, Final
 
 import voluptuous as vol
-from homeassistant.components import webhook, websocket_api
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from ..const import CONF_ENTRY_TYPE, CONF_WEBHOOK_ID, DOMAIN, ENTRY_TYPE_CHARGER, ENTRY_TYPE_SITE
@@ -29,7 +29,7 @@ from ..runtime import charger_data, domain_data
 from .common import ERROR_NOT_ADMIN, is_admin, send_unsupported_version
 from .pairing import PairingRegister
 from .site_entry_webhook import async_ensure_site_webhook
-from .webhook import CHARGER_WEBHOOK_NAME, charger_webhook_handler
+from .webhook import async_move_charger_webhook
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,21 +44,13 @@ def _kind(entry: ConfigEntry) -> str | None:
 
 
 def _replace_webhook(hass: HomeAssistant, entry: ConfigEntry, kind: str) -> None:
-    """Give one entry a new webhook id and, while it is loaded, answer at the new id only."""
-    old = entry.data[CONF_WEBHOOK_ID]
-    new = new_webhook_id()
-    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_WEBHOOK_ID: new})
+    """Give one entry a new webhook id and answer at the new id only: a site whatever its load state, a charger
+    wherever a webhook is registered for it now (also mid-setup); one set up later registers the new id itself."""
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_WEBHOOK_ID: new_webhook_id()})
     if kind == ENTRY_TYPE_SITE:
-        # A site's door is registered whatever its load state; this moves it to the new id.
         async_ensure_site_webhook(hass, entry)
-        return
-    # A charger's unload unregisters the id its data holds then (`api/webhook.py:async_register_entry_webhook`).
-    webhook.async_unregister(hass, old)
-    if entry.state is not ConfigEntryState.LOADED:
-        return
-    webhook.async_register(
-        hass, DOMAIN, CHARGER_WEBHOOK_NAME, new, charger_webhook_handler(entry), local_only=False, allowed_methods=("POST",)
-    )
+    else:
+        async_move_charger_webhook(hass, entry)
 
 
 async def async_disconnect_phones(hass: HomeAssistant) -> dict[str, int]:
