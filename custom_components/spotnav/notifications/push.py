@@ -55,7 +55,8 @@ KIND_TEST: Final = "test"
 WAKE_TIMEOUT_S: Final = 10.0
 #: The same event for the same charger is not woken for again within this long (as notifications).
 REPEAT_S: Final = 15 * 60.0
-#: At most this many wake-ups per charger in an hour.
+#: At most this many wake-ups per charger in an hour, and (the notifier imports it) notifications per charger in an
+#: hour, whatever they are.
 HOURLY_LIMIT: Final = 12
 #: A `push_ref` as the relay makes one: base64url text (padding allowed), bounded.
 MAX_REF_LENGTH: Final = 512

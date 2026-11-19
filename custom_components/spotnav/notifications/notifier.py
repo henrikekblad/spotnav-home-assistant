@@ -113,7 +113,7 @@ from ..vehicles.guest import is_guest
 from ..const import DOMAIN
 from ..texts import language_of
 from .messages import compose, EVENT_TEST, identify_text, import_target_release_text, import_target_text, Money
-from .push import ChargerPush
+from .push import HOURLY_LIMIT, ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedStopDetector
 
@@ -133,8 +133,6 @@ TARGET_RISK_GROWTH_KWH: Final = 1.0
 TARGET_RELEASE_ACTION: Final = "SPOTNAV_IMPORT_TARGET_RELEASE_"
 #: The event Home Assistant's companion app fires when a notification's button is pressed.
 NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
-#: At most this many notifications per charger in an hour, whatever they are.
-HOURLY_LIMIT: Final = 12
 #: What a tap opens when no dashboard path is set: Home Assistant's default dashboard.
 DEFAULT_URL: Final = "/"
 #: `plan_stopped`'s reason when SpotNav gave up stopping a charger under a person's Stop.
@@ -155,8 +153,8 @@ PLUG_IN_WAIT_S: Final = 45 * 60.0
 _EDGE_S: Final = 60.0
 #: A remainder may carry this much more energy than the told plan (rounding).
 _ENERGY_SLACK_KWH: Final = 0.05
-#: A completed charge's session is the open one, or one that closed this recently.
-_SESSION_RECENT_S: Final = 600.0
+#: A completed charge's session is the open one, or one that closed this recently (`event.py` uses the same rule).
+SESSION_RECENT_S: Final = 600.0
 
 #: The notices about the plan: none is told while a person's Stop holds (`plan_stopped`'s `charger_ignores_stop`
 #: excepted, which is about the Stop itself).
@@ -1121,6 +1119,6 @@ class ChargerNotifier:
         if not closed:
             return None
         last = closed[-1]
-        if last.end is None or (dt_util.utcnow() - last.end).total_seconds() > _SESSION_RECENT_S:
+        if last.end is None or (dt_util.utcnow() - last.end).total_seconds() > SESSION_RECENT_S:
             return None
         return last
