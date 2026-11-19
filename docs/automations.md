@@ -145,9 +145,12 @@ the relay inside the heat pump; the heat pump's manual says which input does wha
 It has three modes.
 
 **Closed while expensive.** The relay is closed while Expensive now is on and opened as soon as it ends,
-for an input that lowers the heating curve or blocks an add-on heater. On a NIBE SPLIT ACVM 270, for
-example, a closed contact on X1:3-4 shifts the heating curve by the number of steps set in menu 2.4, so
-the house runs a little cooler through the expensive hours. With quarter-hour prices Expensive now can be
+for an input that lowers the heating curve or blocks an add-on heater. This is the fallback for a heat pump
+that cannot be reached over the network: a pump with an integration in Home Assistant, such as a NIBE S1255
+through `nibe_heatpump`, is better controlled by SpotNav's own heat plan, which writes SG Ready or the
+curve offset through the integration and raises as well as lowers (see [Heat pumps](heat-pumps.md)). On a
+pump without one, a closed contact that shifts the heating curve by a set number of steps, as many NIBE
+models have, makes the house run a little cooler through the expensive hours. With quarter-hour prices Expensive now can be
 on for a single quarter; the **shortest closing** (45 minutes) keeps such a blip from closing the relay: it
 closes only when the expensive stretch ahead, read from Expensive now's `next_change`, lasts at least that
 long, and then stays closed until Expensive now ends (or a limit below opens it). Set it to 0 to close
@@ -161,7 +164,7 @@ at once. Three limits keep the house warm:
   not closed either.
 
 **Pulse when cheap.** A short pulse (2 seconds) when Cheap now comes on, for an input that starts extra hot
-water. On the NIBE, a pulse of at least 1 second on X6:1-2 starts "temporary extra hot water" for 3 hours.
+water. On many NIBE models, a pulse of at least 1 second on the extra hot water input starts "temporary extra hot water" for 3 hours; a NIBE with `nibe_heatpump` can instead be asked for temporary lux through the integration, see [Hot water](hot-water.md).
 The day is split into as many equal parts as **pulses per day** (1), with at most one pulse in each, and
 never within the **shortest time between pulses** (3 hours) of the last. With one pulse a day it comes when
 the first cheap hours of the day start; set the electricity price's **Cheap hours per day** to 1 to have only
