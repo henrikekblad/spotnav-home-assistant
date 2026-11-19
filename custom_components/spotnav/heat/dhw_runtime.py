@@ -389,7 +389,7 @@ class HotWater:
             record = self._record(day.isoformat())
             if record.get("review") is None:
                 record["peaks"] = [
-                    [instant[0].isoformat(), instant[1].isoformat()]
+                    [instant[0].astimezone(timezone.utc).isoformat(), instant[1].astimezone(timezone.utc).isoformat()]
                     for peak in self.peaks
                     for instant in (peak_instant(peak, day, zone),)
                 ]
@@ -479,6 +479,9 @@ class HotWater:
         if self._pending is not None and not self._pending.done():
             return
         config = self.shadow.config()
+        if not config.control_enabled or not self.picks:
+            # Nothing planned is written without the opt-in: no need to read the pump each look.
+            return
         pump = self._pump()
         route = self.route(config, pump)
         if route is None or self.mode(config, route, pump) != MODE_LIVE:

@@ -4,6 +4,7 @@ the opt-in and the gate."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -46,7 +47,12 @@ async def settle(hass: HomeAssistant) -> None:
 async def press(hass: HomeAssistant, action: Any, **request: Any) -> dict[str, Any]:
     connection = _Connection(admin=False)
     websocket_heat_boost(hass, connection, {"id": 1, "type": "spotnav/heat_boost", "api_version": 1, "action": action, **request})  # type: ignore[arg-type]
-    await hass.async_block_till_done()
+    # The command runs as a background task: wait for its answer.
+    for _ in range(100):
+        await hass.async_block_till_done()
+        if connection.answers:
+            break
+        await asyncio.sleep(0)
     (answer,) = connection.answers
     await settle(hass)
     return answer
@@ -312,7 +318,7 @@ async def test_live_behind_the_opt_in_and_the_gate(hass: HomeAssistant, freezer,
     # Not read back on a cloud: no retry, planned hot water ends for the day.
     assert hot_water.ended_day == today.isoformat()
     hot_water.tick(now + timedelta(minutes=6))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(writes.calls) == 1
     # The pump's own price control on: watch only.
     monkeypatch.setattr(dhw_runtime.HotWater, "_pump", lambda _self: _pump(MYUPLINK, "switch.f730_temporary_lux_50004", price_control="active"))
@@ -338,15 +344,15 @@ async def test_a_live_boost_read_back_is_kept_and_a_local_one_tried_again(hass: 
     # Tried once more after five minutes; this time it is seen.
     writes.seen = True
     hot_water.tick(now + timedelta(minutes=2))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(writes.calls) == 1
     hot_water.tick(now + timedelta(minutes=5))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(writes.calls) == 2
     record = hot_water.days[pick.peak.astimezone(hot_water.zone).date().isoformat()]
     assert record["live"] == [pick.peak.isoformat()]
     assert hot_water.ledger.last(SOURCE_PLAN).read_back is True
     # Once written, never again for that peak.
     hot_water.tick(now + timedelta(minutes=6))
-    await hass.async_block_till_done()
+    await settle(hass)
     assert len(writes.calls) == 2
