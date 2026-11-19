@@ -1431,8 +1431,7 @@ async def test_the_test_action_is_refused_while_the_opt_in_is_off_even_forced(
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = BatteryControl(hass, controller)
     await control.async_start()
-    # Sigenergy's recipe is field tested: shadow only is off by default; still nothing without the opt-in.
-    assert control.options() == gate.Options(shadow_only=False)
+    assert control.options() == gate.Options()
     with pytest.raises(TrialRefused) as refused:
         await control.async_trial("grid_charge", 6.0, 5, force=True)
     assert refused.value.code == "not_enabled"
@@ -1755,3 +1754,25 @@ async def test_a_hardware_test_stopped_hands_the_plant_back_at_once(
     assert not control.hardware_test_progress()["running"]
     assert hass.states.get(SWITCH).state == "off" and hass.states.get(DISCHARGE).state == "23.04"
     assert control.hardware_report is not None and control.hardware_report["completed"] is False
+
+
+async def test_a_field_tested_recipe_or_a_beta_tester_leaves_shadow_only_off_by_default(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller)
+    await control.async_start()
+    control.facts = control._read_facts()
+    # Not yet for Sigenergy (its on-site tests are rerun first): shadow only stays on by default.
+    assert control.options().shadow_only is True
+    monkeypatch.setattr(control_module, "recipe_field_tested", lambda brand: brand == "sigenergy")
+    assert control.options().shadow_only is False
+    _options(hass, site, shadow_only=True)
+    assert control.options().shadow_only is True, "a stored value is kept"
+    hass.config_entries.async_update_entry(
+        site, data={key: value for key, value in site.data.items() if key != gate.CONF_SHADOW_ONLY}
+    )
+    monkeypatch.setattr(control_module, "recipe_field_tested", lambda _brand: False)
+    assert control.options().shadow_only is True
+    monkeypatch.setattr(control_module, "learning_gate_open", lambda _hass, _site: True)
+    assert control.options().shadow_only is False, "a beta tester's site"

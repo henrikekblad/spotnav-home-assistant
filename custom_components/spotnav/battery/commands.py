@@ -1056,7 +1056,8 @@ SIGENERGY_PHASES: Final = PhaseControl(
 
 SIGENERGY_CONTROL: Final = BrandControl(
     brand="sigenergy",
-    field_tested=True,
+    # Flips to True once the owner's on-site tests are rerun on the reworked executor (one line, here and below).
+    field_tested=False,
     adapter=SIGENERGY,
     roles=(_SIG_ENABLE, _SIG_MODE, _SIG_CHARGE, _SIG_DISCHARGE),
     states={
@@ -1449,7 +1450,8 @@ _SIG_EXPORT = Role(
 
 SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
     brand="sigenergy",
-    field_tested=True,
+    # Flips to True once the owner's on-site tests are rerun on the reworked executor (one line, here and below).
+    field_tested=False,
     adapter=SIGENERGY,
     roles=(_SIG_EXPORT,),
     states={ACTION_CURTAIL_EXPORT: lambda _rate, _w: (Want("export_limit", 0.0),)},

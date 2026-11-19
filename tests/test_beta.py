@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -202,10 +203,15 @@ async def test_the_command_is_for_administrators_and_sets_the_box_and_the_addres
 # ---- the battery's shadow-only default
 
 
-def test_shadow_only_is_off_by_default_only_for_a_field_tested_recipe_or_a_beta_tester() -> None:
-    assert commands.field_tested("sigenergy") is True
-    for brand in ("victron", "solinteg", "ferroamp", "goodwe", "tesla", "solaredge", "huawei", "solax", None):
+def test_shadow_only_is_off_by_default_only_for_a_field_tested_recipe_or_a_beta_tester(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No recipe is field tested yet: Sigenergy's flips once the owner's on-site tests are rerun.
+    for brand in ("sigenergy", "victron", "solinteg", "ferroamp", "goodwe", "tesla", "solaredge", "huawei", "solax", None):
         assert commands.field_tested(brand) is False, brand
+    tested = replace(commands.SIGENERGY_CONTROL, field_tested=True)
+    monkeypatch.setattr(commands, "CONTROLS", (tested, *commands.CONTROLS[1:]))
+    assert commands.field_tested("sigenergy") is True, "the recipe's field decides, no brand branch"
     assert gate.shadow_default(field_tested=True, beta=False) is False
     assert gate.shadow_default(field_tested=False, beta=True) is False
     assert gate.shadow_default(field_tested=False, beta=False) is True

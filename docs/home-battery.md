@@ -27,9 +27,9 @@ start).
 
 SpotNav can run the battery itself: hold it while the car charges from the grid, charge it in cheap hours, and
 stop export when selling costs money. **It is off by default.** What happens when you switch it on depends on
-whether the brand's recipe has been tested on a real plant: for **Sigenergy** (tested on site) the check below runs
-and control starts once it passed; for the brands not yet tested on a plant (Victron, Solinteg, Ferroamp, GoodWe,
-Tesla and the others) it only logs what it would do (the line under the switch says "Test: SpotNav controls nothing
+whether the brand's recipe has been tested on a real plant: for a tested recipe the check below runs and control
+starts once it passed; no recipe is marked tested yet (Sigenergy will be once its on-site tests are rerun), so for
+every brand it only logs what it would do (the line under the switch says "Test: SpotNav controls nothing
 yet and only logs what it would do"), unless the installation is a
 [beta tester](troubleshooting.md#beta-testing), when the check runs for them too. Either way control runs only once
 the brand's check passed, and every fuse rule below applies (beta or not). The switch is in the

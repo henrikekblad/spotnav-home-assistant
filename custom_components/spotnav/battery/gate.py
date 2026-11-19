@@ -7,8 +7,8 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   integration version (`firmware_key`).
 * `battery_control_shadow_only`: while on, nothing is written whatever else is set; the shell only logs what it would
   do. Its default depends on the plant (`shadow_default`): **off** for a recipe tested on a real plant
-  (`commands.BrandControl.field_tested`: Sigenergy) and for a beta tester's site (`beta.learning_gate_open`), **on**
-  for every other recipe (Victron, Solinteg, Ferroamp, GoodWe, Tesla and the rest). A value the site stored is kept
+  (`commands.BrandControl.field_tested`; none yet: Sigenergy's flips once the owner's on-site tests are rerun) and
+  for a beta tester's site (`beta.learning_gate_open`), **on** for every other recipe. A value the site stored is kept
   whatever the default (a site that set it keeps it). Off only lets the verification routine start: control still
   runs only once that passed, under every fuse rule.
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
