@@ -10,16 +10,20 @@ from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL, SOLARE
 from custom_components.spotnav.battery.executor import Executor
 from custom_components.spotnav.battery.gate import mode_verdict
 from custom_components.spotnav.battery.monitor import Capability
-from custom_components.spotnav.battery.verify import MAX_REPORTS, Sample, Verification, keep_report
+from custom_components.spotnav.battery.verify import MAX_REPORTS, Sample, Timing, Verification, keep_report
 from tests.battery_control_fakes import SIGENERGY_STATES, SOLAREDGE_STATES, T0, TICK, FakeBattery, inputs
 
 
 def _verify(
     executor: Executor, battery: FakeBattery, *, looks: int = 400, house_kw: float = 2.0,
     modes: tuple[str, ...] | None = None, headroom: Callable[[str | None], float] = lambda _mode: 20.0,
+    quick: bool = False,
 ) -> Verification:
     now = T0
-    verification = Verification(executor, now, firmware="V100R001C21SPC117", modes=modes)
+    verification = Verification(
+        executor, now, firmware="V100R001C21SPC117", modes=modes,
+        timing=Timing.quick() if quick else None, stop_on_fail=quick,
+    )
     failed: tuple[str, ...] = ()
     capability = Capability(rated_charge_kw=10.0, rated_discharge_kw=10.0)
     for _ in range(looks):
@@ -132,3 +136,32 @@ def test_reports_are_kept_per_firmware_and_bounded() -> None:
     later = datetime(2026, 12, 1, tzinfo=T0.tzinfo).isoformat()
     reports = keep_report(reports, {"firmware": "FW5", "started_at": later, "finished_at": later, "new": True})
     assert reports["FW5"]["new"] is True and list(reports)[-1] == "FW5"
+
+
+def test_the_hardware_test_runs_every_mode_in_minutes() -> None:
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    executor = Executor(SIGENERGY_CONTROL)
+    verification = _verify(executor, battery, quick=True)
+    assert verification.done
+    assert _outcomes(verification) == {
+        "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored"
+    }
+    assert len(verification.report()["modes"]["hold"]["readings"]) == 2
+    assert verification.finished_at is not None
+    assert (verification.finished_at - verification.started_at).total_seconds() <= 10 * 60
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+
+
+def test_the_hardware_test_stops_at_the_first_mode_that_does_not_pass_and_hands_back() -> None:
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), obeys=False)
+    executor = Executor(SIGENERGY_CONTROL)
+    verification = _verify(executor, battery, quick=True)
+    outcomes = _outcomes(verification)
+    # Ignored under its first hold variant: no second variant, no further mode; normal judges the hand-back.
+    assert outcomes["hold"] == "ignored"
+    assert outcomes["charge"] == outcomes["discharge_house"] == "skipped"
+    assert outcomes["normal"] == "restored"
+    assert len(verification.report()["modes"]["hold"]["variants"]) == 1
+    # Handed back: nothing SpotNav wrote is left (a limit never set keeps "never set").
+    assert {key: value for key, value in battery.states.items() if key != "charge_limit"} == {
+        key: value for key, value in SIGENERGY_STATES.items() if key != "charge_limit"}
