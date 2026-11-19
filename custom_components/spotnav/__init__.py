@@ -959,10 +959,11 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         async_drop_pointers(hass, entry.entry_id)
         async_price_sources_changed(hass, entry.entry_id)
         return
+    if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+        # Its door closes for good, before anything here awaits: the id answers nothing any more.
+        async_drop_site_webhook(hass, entry.entry_id)
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
-        # Its door closes for good: the id answers nothing any more.
-        async_drop_site_webhook(hass, entry.entry_id)
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)

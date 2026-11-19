@@ -353,3 +353,29 @@ async def test_asking_for_the_site_is_rate_limited_per_charger(hass: HomeAssista
     # Another charger has its own count.
     status, _body = await post(client, "webhook-entry_b", {"action": "get_site_access"})
     assert status == 200
+
+
+async def test_a_removed_home_closes_its_door_first(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The door closes before anything else the removal awaits, so a later failure there cannot leave it open."""
+    import custom_components.spotnav as integration
+    from custom_components.spotnav.runtime import domain_data
+
+    home = make_site_entry(hass, entry_id="home_gone", charger_entry_ids=[], title="Villa")
+    assert await hass.config_entries.async_setup(home.entry_id)
+    await hass.async_block_till_done()
+    secret = _hook(home)
+
+    async def broken(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("repairs failed")
+
+    monkeypatch.setattr(integration, "async_sync_resolution_repairs", broken)
+    try:
+        await integration.async_remove_entry(hass, home)
+    except RuntimeError:
+        pass
+    assert home.entry_id not in domain_data(hass).webhook_ids
+    client = await hass_client_no_auth()
+    response = await client.post(f"/api/webhook/{secret}", json={"version": 1, "action": "get_site"})
+    assert response.status == 200 and await response.text() == ""
