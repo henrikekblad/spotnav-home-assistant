@@ -6,7 +6,9 @@ through the engine that already writes to it, with every rule of that engine, in
 
 * **The home battery** (`battery/control.py`, `async_hardware_test_start`): the verification routine's modes in
   minutes (`verify.Timing.quick`): hold, a small grid charge under the HA-down fuse cap (the learned per-phase house
-  peak, or its conservative default), a discharge for the house, and the hand-back judged. Needs the battery opt-in
+  peak, or its conservative default; where that leaves the balanced charge no room and the plant takes targets per
+  phase, a charge of at most 1 kW on the phase with the most room, its sign and phase mapping judged), a discharge
+  for the house, and the hand-back judged. Needs the battery opt-in
   and everything the card's checklist asks first (acknowledgements, controls to enable); runs under shadow only too,
   as a forced test action does.
 * **The heat path** (`heat/control.py`, `async_test_start`): engaged, held a minute, released, each write read back.

@@ -1,6 +1,7 @@
 """A grid charge per phase through the shell (`battery/control.py`) on the owner's plant in a fake Home Assistant:
 when it is used and when the balanced charge is, the verification's mode `per_phase` (the sign and the phase
-mapping), the status, and an unbalanced house under the fuse when Home Assistant stops."""
+mapping), its `charge` tried per phase where the balanced charge has no room (and so the hardware test's), the
+status, and an unbalanced house under the fuse when Home Assistant stops."""
 
 from __future__ import annotations
 
@@ -76,6 +77,8 @@ class World:
         self.wiring = (0, 1, 2)
         self.follows = True
         self.known = True
+        #: -1: the plant does the opposite of what its targets say (a sign error in the recipe).
+        self.sign = 1.0
 
     def targets(self) -> tuple[float, float, float]:
         states = [self.hass.states.get(entity_id) for entity_id in TARGETS]
@@ -85,7 +88,9 @@ class World:
         """The plant's own power per phase as it names its phases (kW, + output)."""
         state = self.hass.states.get
         if state(SWITCH).state == "on" and state(MODE).state == "PCS Remote Control":
-            return self.targets() if self.follows else (0.0, 0.0, 0.0)
+            if not self.follows:
+                return (0.0, 0.0, 0.0)
+            return tuple(self.sign * target for target in self.targets())  # type: ignore[return-value]
         if state(SWITCH).state == "on" and state(MODE).state == "Command Charging (Grid First)":
             each = -float(state(CHARGE).state) / 3
             return (each, each, each)
@@ -413,3 +418,191 @@ async def test_the_plain_control_starts_nothing_while_a_phase_target_is_left_sta
     hass.states.async_set(TARGETS[1], "0.0", {"unit_of_measurement": "kW", "step": 0.001})
     await _looks(control, dt_util.now() + timedelta(minutes=1), 4)
     assert hass.states.get(SWITCH).state == "on"
+
+
+# --- `charge` per phase where the balanced charge has no room ------------------------------------------------------
+
+
+async def _hardware_test(control: BatteryControl, hass, site) -> dict[str, Any]:
+    """A person's hardware test run to its end (under the test's ten minutes); its report."""
+    _options(hass, site, enabled=True, shadow_only=True)
+    control.facts = control._read_facts()
+    assert await control.async_hardware_test_start() is None
+    started = now = dt_util.now()
+    while control.hardware_test_progress()["running"] and now < started + timedelta(minutes=15):
+        now = await _looks(control, now, 1)
+    assert now - started <= timedelta(minutes=10), "within the hardware test's deadline"
+    return control.hardware_test_progress()["report"]
+
+
+def _charge_targets(plant: Any) -> list[tuple[str, float]]:
+    return [(entity_id, value) for entity_id, value in _writes(plant) if entity_id in TARGETS]
+
+
+async def test_the_hardware_test_charges_on_the_phase_with_room_where_the_balanced_charge_has_none(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """The owner's site on 2026-11-18: L2 full at its learned peak, so the balanced cap is 0 and the charge step was
+    `not_judgeable:grid_charge_cap`. Now it charges on L1, within L1's own HA-down cap, and hands back."""
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    assert control._grid_charge_cap_kw(dt_util.now(), control.options()) == 0.0
+    stopped: list[list[float]] = []
+    original = control._async_verify
+
+    async def verify(now):
+        result = await original(now)
+        stopped.append(world.stopped_a(PEAKS))
+        return result
+
+    monkeypatch.setattr(control, "_async_verify", verify)
+    report = await _hardware_test(control, hass, site)
+    modes = {mode: row["outcome"] for mode, row in report["modes"].items()}
+    assert modes == {"hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored"}
+    row = report["modes"]["charge"]
+    assert row["via"] == "per_phase" and row["rate_kw"] == pytest.approx(0.923)
+    assert [(phase["phase"], phase["target_kw"], phase["outcome"], phase["sign"], phase["mapping"])
+            for phase in row["phases"]] == [("L1", 0.923, "obeyed", "ok", "ok")]
+    assert all(reading["plant_kw"][0] == pytest.approx(-0.92) for reading in row["phases"][0]["readings"])
+    # L1 alone, a charge (a negative target) of 4 A, then back to 0; the balanced charge is never commanded.
+    assert _charge_targets(plant) == [(TARGETS[0], -0.92), (TARGETS[0], 0.0)]
+    assert not any(call[2].get("option") == "Command Charging (Grid First)" for call in plant.calls)
+    # Every look: were Home Assistant to stop, every phase stays under the fuse with the house at its peak.
+    assert stopped and all(amps <= 20.0 - 2.0 + 1e-9 for look in stopped for amps in look)
+    assert world.targets() == (0.0, 0.0, 0.0) and hass.states.get(SWITCH).state == "off"
+    assert control.executor is not None and not control.executor.control.phased, "the control as it was before"
+    assert control.reports == {}, "the hardware test never counts as the routine"
+
+
+@pytest.mark.parametrize(("fault", "phase_outcome"), [("sign", "wrong_sign"), ("rotated", "wrong_phase")])
+async def test_a_charge_per_phase_of_the_wrong_sign_or_on_another_phase_fails_and_hands_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], fault: str,
+    phase_outcome: str,
+) -> None:
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    if fault == "sign":
+        world.sign = -1.0
+    else:
+        # The plant's phase A is the meter's L2: its charge lands on the full phase, and L1's house seems to fall.
+        world.wiring = (1, 2, 0)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    report = await _hardware_test(control, hass, site)
+    modes = {mode: row["outcome"] for mode, row in report["modes"].items()}
+    assert modes == {"hold": "obeyed", "charge": "partial", "discharge_house": "skipped", "normal": "restored"}
+    phases = report["modes"]["charge"]["phases"]
+    assert [(phase["phase"], phase["outcome"]) for phase in phases] == [("L1", phase_outcome)]
+    if fault == "sign":
+        assert phases[0]["sign"] == "wrong" and phases[0]["mapping"] is None
+    else:
+        assert phases[0]["sign"] == "ok" and phases[0]["mapping"] == "wrong"
+        assert all(reading["house_moved_kw"] == pytest.approx(-0.92) for reading in phases[0]["readings"])
+    assert _charge_targets(plant) == [(TARGETS[0], -0.92), (TARGETS[0], 0.0)], "handed back at once"
+    assert world.targets() == (0.0, 0.0, 0.0) and hass.states.get(SWITCH).state == "off"
+    # In the routine's report it is the capability's answer too, and no grid charge is allowed on it.
+    routine = {"modes": {**report["modes"], "per_phase": {"mode": "per_phase", "outcome": "obeyed"}}}
+    assert gate.per_phase(routine) == "failed" and gate.charge_by_phases(routine)
+    assert gate.report_status(routine) == "passed"
+    assert "grid_charge" not in gate.allowed_actions(routine, control.options())
+
+
+async def test_without_room_on_any_phase_the_charge_step_says_so_and_writes_nothing(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, world = await _world(
+        hass, monkeypatch, hass_storage, peaks={"L1": 16.0, "L2": 18.0, "L3": 17.4}
+    )
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    report = await _hardware_test(control, hass, site)
+    assert report["modes"]["charge"]["outcome"] == "not_judgeable:no_phase_room"
+    assert "via" not in report["modes"]["charge"]
+    assert report["modes"]["discharge_house"]["outcome"] == "obeyed", "the test goes on"
+    assert _charge_targets(plant) == []
+
+
+async def test_without_the_targets_the_charge_step_stays_left_for_the_balanced_cap(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage, controls=False)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    report = await _hardware_test(control, hass, site)
+    assert report["modes"]["charge"]["outcome"] == "not_judgeable:grid_charge_cap"
+
+
+async def test_the_routine_s_charge_per_phase_lets_control_charge_only_per_phase(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    plan: dict[str, Any] = {"slot": None}
+    control = BatteryControl(hass, controller, plan_source=lambda _now: plan["slot"])
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    now = await _looks(control, dt_util.now(), 400)
+    report = control.report()
+    assert report["modes"]["charge"]["outcome"] == "obeyed" and report["modes"]["charge"]["via"] == "per_phase"
+    assert report["modes"]["per_phase"]["outcome"] == "obeyed"
+    assert gate.per_phase(report) == "verified" and "grid_charge" in control.allowed()
+    # A grid charge in the plan runs per phase, within each phase's cap.
+    plant.calls.clear()
+    plan["slot"] = ("grid_charge", 12.0, None)
+    now = await _looks(control, now, 8)
+    assert world.targets() == (-0.92, 0.0, 0.0)
+    assert not any(call[2].get("option") == "Command Charging (Grid First)" for call in plant.calls)
+    # A reading per phase gone: the charge per phase cannot run, and the balanced one was never shown: none.
+    plan["slot"] = None
+    now = await _looks(control, now, 8)
+    monkeypatch.setattr(BatteryControl, "_phase_headroom_a", lambda self: None)
+    control._look_id += 1  # `_phase_missing` is read once a look
+    plan["slot"] = ("grid_charge", 12.0, None)
+    assert control._control_slot(now, control.options()) == ("self_consume", 0.0, None)
+    assert control._restricted == "not_verified:grid_charge"
+
+
+def test_the_charge_per_phase_tries_the_phase_with_the_largest_cap_in_whole_amps() -> None:
+    from custom_components.spotnav.battery.verify import phase_charge_step
+
+    # At most 1 kW and the phase's cap, in whole amps at 230.9 V; none under 0.5 kW; the first of equals.
+    assert phase_charge_step((1.02, 0.0, 0.14), 400.0) == (0, 0.923)
+    assert phase_charge_step((0.0, 0.7, 0.6), 400.0) == (1, 0.692)
+    assert phase_charge_step((0.3, 0.0, 0.46), 400.0) is None
+    assert phase_charge_step((2.0, 2.0, 0.0), 400.0) == (0, 0.923)
+
+
+@pytest.mark.parametrize(("house_a", "outcome"), [(17.5, "not_judgeable:fuse_headroom"), (15.0, "obeyed")])
+async def test_the_charge_per_phase_is_judged_at_what_the_live_room_leaves_and_not_at_all_without_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], house_a: float, outcome: str
+) -> None:
+    # L1's house high in the charge step (its learned peak still leaves a cap). With a little room, from the step's
+    # start: the charge is lowered to it in whole amps (3 A) and judged at that. With its live room under the 2 A
+    # kept, from the charge itself on (every target at 0 first, as the step starts, and a step that starts with no
+    # room is the start rule's): the executor keeps the charge at nothing, so the step is left for later, not failed.
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    original = control._async_verify
+
+    async def verify(now):
+        verification = control.verification
+        current = None if verification is None else verification.current
+        probe = None if verification is None else verification.probe()
+        if outcome == "obeyed":
+            high = current is not None and current.mode == "charge"
+        else:
+            high = probe is not None and any(value > 0 for value in probe)
+        world.house_kw[0] = house_a * VOLTS / 1000 if high else HOUSE_KW / 4
+        return await original(now)
+
+    monkeypatch.setattr(control, "_async_verify", verify)
+    report = await _hardware_test(control, hass, site)
+    row = report["modes"]["charge"]
+    assert row["outcome"] == outcome, row["phases"]
+    assert report["modes"]["discharge_house"]["outcome"] == "obeyed"
+    if outcome != "obeyed":
+        assert all(value == 0.0 for _entity_id, value in _charge_targets(plant)), "never a charge written"
+    else:
+        assert row["phases"][0]["target_kw"] == pytest.approx(0.923)
+        assert [reading["target_kw"] for reading in row["phases"][0]["readings"]] == [pytest.approx(0.69)] * 2
+        assert (TARGETS[0], -0.69) in _charge_targets(plant)
