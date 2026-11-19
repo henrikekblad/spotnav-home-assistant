@@ -10,7 +10,9 @@ from custom_components.spotnav.battery.adapters import FERROAMP, adapter_for
 from custom_components.spotnav.battery.commands import (
     FERROAMP_CONTROL,
     NORMAL,
+    Role,
     SETPOINT_WRITES_UNSTATED,
+    answered,
     control_for,
     ferroamp_last_cmd,
     service_call,
@@ -101,3 +103,63 @@ def test_with_the_days_requests_spent_a_rate_that_must_fall_hands_the_hub_back()
     _now, results = run(executor, battery, now, 6, "grid_charge", 1.0)
     assert events(results, "hand_back")[0]["reason"] == "setpoint_write_cap"
     assert written(results) == [("command", "auto")] and battery.states["command"] == "auto"
+
+
+def test_the_last_request_counts_only_once_the_hub_acked_it() -> None:
+    role = FERROAMP_CONTROL.role("command")
+    # No request since the integration started (or a restart: the attributes are not restored): the state as is.
+    assert answered(role, "auto", {}) == "auto" and answered(role, "charge (1000)", None) == "charge (1000)"
+    # Published, the answer awaited: no reading yet.
+    assert answered(role, "auto", {"transId": "t1", "status": None, "message": None}) == "unavailable"
+    assert answered(role, "auto", {"transId": "t1", "status": "ack"}) == "auto"
+    assert answered(role, "auto", {"transId": "t1", "status": "nak", "message": "Other transaction in progress"}) == (
+        "unavailable"
+    )
+    assert ferroamp_last_cmd(answered(role, "auto", {"transId": "t1", "status": "nak"})) is None
+    # A role without an answer is read as before.
+    assert answered(Role("x", "number", role.match), "5", {"transId": "t", "status": None}) == "5"
+
+
+def test_a_refused_hand_back_is_not_confirmed_by_its_own_request_and_is_sent_again() -> None:
+    """The hub naks `auto` (another transaction runs). The sensor shows `auto` all the same; the hand-back is not
+    done until a later `auto` is acked."""
+    executor = Executor(FERROAMP_CONTROL)
+    battery = FakeBattery(FERROAMP_CONTROL, dict(FERROAMP_STATES))
+    now, _ = run(executor, battery, T0, 4, "grid_charge", 3.0)
+    assert executor.state.phase == "active"
+    battery.refuse_next = 1
+    now, results = run(executor, battery, now, 4, "self_consume")
+    assert written(results) == [("command", "auto")] and battery.states["command"] == "auto"
+    assert executor.state.phase == "restoring", "a nak'd hand-back is not confirmed by the request it shows"
+    _now, results = run(executor, battery, now, 15, "self_consume")
+    assert written(results) == [("command", "auto")] and battery.attributes["command"]["status"] == "ack"
+    assert executor.state.phase == "idle"
+
+
+def test_a_refused_charge_is_never_taken_as_running() -> None:
+    executor = Executor(FERROAMP_CONTROL)
+    battery = FakeBattery(FERROAMP_CONTROL, dict(FERROAMP_STATES), refuse_next=1)
+    _now, results = run(executor, battery, T0, 12, "grid_charge", 3.0)
+    assert written(results) == [("command", "charge:3000"), ("command", "auto")]
+    assert events(results, "not_taken")[0]["why"] == "no_read_back"
+    assert [event["read"] for event in events(results, "confirmed")] == ["auto"]
+    assert executor.state.phase == "blocked"
+
+
+def test_the_shell_reads_the_hubs_answer_from_the_attributes() -> None:
+    from homeassistant.core import State
+
+    from custom_components.spotnav.battery.control import stored_reads
+    from custom_components.spotnav.battery.executor import role_reads
+    from custom_components.spotnav.battery.facts import EntityFact
+
+    attrs = {"transId": "t1", "status": "nak", "message": "Other transaction in progress"}
+    states = {"sensor.hub_last_cmd": State("sensor.hub_last_cmd", "auto", attrs)}
+    hass = type("Hass", (), {"states": type("States", (), {"get": staticmethod(states.get)})()})()
+    executor = Executor(FERROAMP_CONTROL)
+    executor.state = replace(executor.state, entities={"command": "sensor.hub_last_cmd"})
+    assert stored_reads(hass, executor)["command"].state == "unavailable"  # type: ignore[arg-type]
+    fact = EntityFact("sensor.hub_last_cmd", "ferroamp", unique_id="hub_last_cmd", state="auto", attributes=attrs)
+    assert role_reads(FERROAMP_CONTROL, [fact], fact)["command"].state == "unavailable"
+    acked = replace(fact, attributes=attrs | {"status": "ack"})
+    assert role_reads(FERROAMP_CONTROL, [acked], acked)["command"].state == "auto"

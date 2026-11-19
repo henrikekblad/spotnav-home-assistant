@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_RESTORED
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
@@ -97,6 +97,7 @@ from .commands import (
     WATCHDOG_S,
     BrandControl,
     Phases,
+    answered,
     control_for,
     export_control_for,
     reading,
@@ -192,12 +193,23 @@ def _float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _state_of(control: BrandControl, name: str, state: State | None) -> str | None:
+    """A stored control's state as its role reads it (`commands.answered`); `None` when the entity is gone."""
+    if state is None:
+        return None
+    try:
+        role = control.role(name)
+    except KeyError:
+        return state.state
+    return answered(role, state.state, state.attributes)
+
+
 def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]:
     """Each control the executor wrote, read by its stored entity (no registry lookup)."""
     reads: dict[str, RoleRead] = {}
     for name, entity_id in executor.state.entities.items():
         state = hass.states.get(entity_id)
-        reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+        reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                found=state is not None, enabled=state is not None, device_id=executor.state.device_id)
     return reads
 
@@ -1765,7 +1777,7 @@ class BatteryControl:
             for name, entity_id in executor.state.entities.items():
                 if name not in reads:
                     state = self.hass.states.get(entity_id)
-                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                    reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                            found=state is not None, enabled=state is not None)
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
@@ -1809,7 +1821,7 @@ class BatteryControl:
             for name, entity_id in executor.state.entities.items():
                 if name not in reads:
                     state = self.hass.states.get(entity_id)
-                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                    reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                            found=state is not None, enabled=state is not None,
                                            device_id=executor.state.device_id)
         return reads

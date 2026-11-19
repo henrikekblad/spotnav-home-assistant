@@ -107,12 +107,16 @@ The entity keys, options and services below were checked against each integratio
   `ferroamp.autocharge` (hands the batteries back to the hub), each with `target`, the EnergyHub's device id
   (`__init__.py`, `services.yaml`). They publish to `extapi/control/request` and read nothing back; the sensor
   `<slug>_ehub_last_cmd` (`sensor.py`, state `charge (1000)`, `discharge (500)` or `auto`, kept over a restart)
-  shows the last request on the topic, whoever sent it, and its attributes the hub's ack or nak, which SpotNav does
-  not read: the state proves only that a request was published, so the battery's power is what judges the effect
-  (`local_readback`). The spec documents no timeout for a request (nothing renews it, no watchdog is mapped) and
+  shows the last request on the topic, whoever sent it, set when the request is published; its attributes
+  `transId` and `status` (`add_request`, `add_response`) carry the hub's `ack` or `nak` for that request. The state
+  alone proves only that a request was published, so the role reads it only once the attributes show the hub's
+  `ack` (`Role.answer`, `answered`): until then, and after a `nak`, it is no reading, so a write is confirmed by the
+  hub's answer and a refused one (a hand-back to `auto` among them) is retried or handed back like any write that
+  does not read back. The attributes are not restored over a restart: with no `transId` the state is read as it is.
+  The battery's power judges the effect besides (`local_readback`). The spec documents no timeout for a request (nothing renews it, no watchdog is mapped) and
   no value that holds: a hold is `charge` at 0 W, `discharge` at 0 W the second variant for the verification to try
-  (not verified on a hub; the hub may nak a 0). One request at a time: a new one while another runs is nak'd, so a
-  write can be dropped without an error. A discharge to the house is `auto`, the hub's own
+  (not verified on a hub; the hub may nak a 0). One request at a time: a new one while another runs is nak'd (no error
+  to the service call; the `nak` is what shows it). A discharge to the house is `auto`, the hub's own
   strategy (`discharge` at a power may export); a person who has FerroAI or a peak-shaving strategy on in EnergyCloud
   gets that strategy there. **ACE** (adaptive current equalisation) moves
   energy between the phases in the hub to keep each grid phase under the threshold set in EnergyCloud; it runs in
@@ -173,6 +177,16 @@ Native = float | str | bool
 
 
 @dataclass(frozen=True, slots=True)
+class Answer:
+    """Where a device answers each request in the entity's attributes (`Role.answer`): the attribute that names the
+    request's transaction, the one that holds the device's answer to it, and the answers that mean it was taken."""
+
+    transaction: str
+    status: str
+    taken: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
 class Role:
     """One entity the control writes (or, for a service, reads back)."""
 
@@ -197,6 +211,9 @@ class Role:
     idle_when: frozenset[str] = frozenset()
     #: Which daily write budget its writes count against (`BrandControl.write_cap`).
     write_class: WriteClass = "setting"
+    #: A role whose state shows the last request, not that the device took it (Ferroamp's last command): the
+    #: device's answer in the attributes, without which the state is no reading (`answered`).
+    answer: Answer | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -449,6 +466,20 @@ def reading(role: Role, state: str | None) -> str | None:
     if state is None or state.strip().lower() in _NO_READING:
         return None
     return state
+
+
+def answered(role: Role, state: str | None, attributes: Mapping[str, Any] | None) -> str | None:
+    """The state a role is read by (before `reading`). For a role whose state shows the last request whoever sent it
+    and whose device answers each request in the attributes (`Role.answer`), the state counts only once the device
+    took that request: while the answer is awaited, and after a refusal, the read is `unavailable`, no evidence, so a
+    write is never confirmed by its own request (the ledger waits, then retries or hands back) and a refused one is
+    never someone else's change. Without a transaction in the attributes (no request seen since the integration
+    started; a restart does not restore the attributes) the state is read as it is."""
+    spec = role.answer
+    if spec is None or state is None or not attributes or attributes.get(spec.transaction) is None:
+        return state
+    answer = attributes.get(spec.status)
+    return state if isinstance(answer, str) and answer.strip().lower() in spec.taken else "unavailable"
 
 
 # --- Huawei's summary sensor ---------------------------------------------------------------------------------
@@ -782,6 +813,8 @@ _FA_CMD = Role(
     "command", "service", _key("last_cmd"), scale=1000.0, step=500.0, restored=False,
     services={"charge": "ferroamp.charge", "discharge": "ferroamp.discharge", "auto": "ferroamp.autocharge"},
     normalize=ferroamp_last_cmd, write_class="setpoint",
+    # The state is the request as published; only the hub's ack for that transaction shows it was taken.
+    answer=Answer("transId", "status", frozenset({"ack"})),
 )
 
 

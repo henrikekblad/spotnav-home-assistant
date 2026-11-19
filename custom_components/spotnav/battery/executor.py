@@ -147,6 +147,7 @@ from .commands import (
     Native,
     Phases,
     Role,
+    answered,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
@@ -277,7 +278,8 @@ def role_reads(control: BrandControl, entities: Sequence[EntityFact], battery: E
         if found is None:
             continue
         reads[role.name] = RoleRead(
-            entity_id=found.entity_id, state=found.state, found=True, enabled=not found.disabled, step=found.step,
+            entity_id=found.entity_id, state=answered(role, found.state, found.attributes), found=True,
+            enabled=not found.disabled, step=found.step,
             device_id=found.device_id,
         )
     return reads
