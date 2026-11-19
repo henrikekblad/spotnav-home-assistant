@@ -386,6 +386,10 @@ class BatteryControl:
         self._closed = False
         self._shut_down = False
         self._start_task: asyncio.Task[None] | None = None
+        # The site shuts down (`halt`): no look starts from the timer any more; a hardware test still hands back.
+        self._halted = False
+        # The store was read (`async_start`): before that, a save would write over a snapshot it holds.
+        self._loaded = False
         self._look_task: asyncio.Task[None] | None = None
         self._timer_cancel: Callable[[], None] | None = None
         self._look_failures: set[str] = set()
@@ -438,13 +442,32 @@ class BatteryControl:
             delay = min(delay * 2, START_RETRY_MAX_S)
             if self._closed:
                 return
-        if self._closed:
+        if self._closed or self._halted:
             return
         self._timer_cancel = async_track_time_interval(self.hass, self._on_timer, timedelta(seconds=TICK_S))
 
     @callback
+    def halt(self) -> None:
+        """The site shuts down: the look timer ends (a look running ends in `async_shutdown`). Not closed yet: a
+        running hardware test is still handed back through this control first."""
+        self._halted = True
+        if self._timer_cancel is not None:
+            self._timer_cancel()
+            self._timer_cancel = None
+
+    def holds_anything(self) -> bool:
+        """Whether the battery or the export limit is still held (a snapshot not handed back)."""
+        return self._holds_anything()
+
+    async def async_save(self) -> None:
+        """Store the state as it stands (a hand-back cut short at Home Assistant's stop: the next start finishes it).
+        Nothing before the store was read."""
+        if self._loaded:
+            await self._async_save()
+
+    @callback
     def _on_timer(self, _now: datetime) -> None:
-        if self._closed or (self._look_task is not None and not self._look_task.done()):
+        if self._closed or self._halted or (self._look_task is not None and not self._look_task.done()):
             return  # a look still runs (a slow write): this one is skipped, the next timer comes
         self._look_task = self.hass.async_create_background_task(
             self.async_look(), f"spotnav_battery_control_look_{self.site.entry_id}"
@@ -458,6 +481,7 @@ class BatteryControl:
             _LOGGER.warning("The battery control state could not be read")
             stored = None
         self._stored = dict(stored) if isinstance(stored, dict) else {}
+        self._loaded = True
         self._migrate_mode()
         reports = self._stored.get("reports")
         self.reports = dict(reports) if isinstance(reports, dict) else {}
@@ -583,8 +607,10 @@ class BatteryControl:
                 _LOGGER.warning("SpotNav battery control: the hand-back on unload did not finish; it is finished at the next start")
             except Exception:  # noqa: BLE001 - the rest of the site must still shut down; the state is stored
                 _LOGGER.warning("SpotNav battery control: the hand-back on unload failed", exc_info=True)
-        with contextlib.suppress(Exception):
-            await self._async_save()
+        if self._loaded:
+            # Never before the store was read (a start cancelled early): its snapshot stays for the next start.
+            with contextlib.suppress(Exception):
+                await self._async_save()
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str, config: dict[str, Any] | None = None) -> None:

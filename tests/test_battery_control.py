@@ -1342,7 +1342,7 @@ async def test_home_assistant_s_stop_saves_the_sessions_first_and_bounds_the_bat
             await asyncio.sleep(3600)
 
     monkeypatch.setattr(controller.battery_control, "async_shutdown", slow_hand_back)
-    monkeypatch.setattr(integration, "BATTERY_STOP_TOTAL_S", 0.05)
+    monkeypatch.setattr(integration, "SITE_STOP_HAND_BACK_S", 0.05)
     async with asyncio.timeout(5):
         await integration._async_stop(hass)
     first = order.index("battery")
