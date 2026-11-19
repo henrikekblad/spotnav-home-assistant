@@ -36,7 +36,8 @@ async def _two_chargers_and_a_site(hass: HomeAssistant):
 
 
 async def test_no_entity_state_or_attribute_carries_a_webhook_id(hass: HomeAssistant) -> None:
-    await _two_chargers_and_a_site(hass)
+    """Neither a charger's nor the site's (SpotNav 3.0, the site webhook)."""
+    *_chargers, site = await _two_chargers_and_a_site(hass)
     registry = er.async_get(hass)
     ours = [entity.entity_id for entity in registry.entities.values() if entity.platform == DOMAIN]
     assert ours
@@ -46,7 +47,7 @@ async def test_no_entity_state_or_attribute_carries_a_webhook_id(hass: HomeAssis
         if state is None:
             continue
         dump = json.dumps({"state": state.state, "attributes": dict(state.attributes)}, default=str)
-        for marker in SECRET_MARKERS:
+        for marker in (*SECRET_MARKERS, site.data["webhook_id"]):
             assert marker not in dump, f"{entity_id} carries {marker!r}"
 
 

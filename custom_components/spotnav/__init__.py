@@ -60,6 +60,7 @@ from .api.price_source import async_setup_price_source_api
 from .api.site_price import async_setup_site_price_api
 from .api.site_settings import async_setup_site_settings_api
 from .api.webhook import async_register_charger_webhook
+from .api.site_entry_webhook import async_register_site_webhook
 from .card_asset import async_setup_card_asset
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
@@ -849,7 +850,9 @@ async def _async_setup_auto_preview(
 
 
 async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -> bool:
-    """Set up a site capacity (dynamic load balancing) entry. Registers no webhook."""
+    """Set up a site (a home: load balancing, house, battery, heat) entry, and its webhook."""
+    # Unregistered when the entry unloads or fails to set up (`async_on_unload`).
+    async_register_site_webhook(hass, entry)
     if hass.state is not CoreState.running:
         # At boot every entry is known once Home Assistant has started: then drop members a former
         # version left behind when their charger was deleted, and reload if any were.

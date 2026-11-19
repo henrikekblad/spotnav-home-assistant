@@ -629,6 +629,30 @@ async def async_webhook_update_site_settings(
     return 200, _with_target(hass, entry.entry_id, payload.get("changes"), _envelope(site, restore))
 
 
+async def async_site_webhook_update_site_settings(
+    hass: HomeAssistant, site: ConfigEntry, payload: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """`update_site_settings` over the site webhook (`api/site_entry_webhook.py`): as over the charger webhook, but
+    the site is the webhook's own (the `site_id` path, a site without chargers too). Returns `(http_status, body)`."""
+    version = payload.get("api_version")
+    if version is not None and (isinstance(version, bool) or version != SITE_SETTINGS_API_VERSION):
+        return 400, _failure(ERROR_UNSUPPORTED_VERSION, None)
+    changes = payload.get("changes")
+    try:
+        written, restore = await async_update_site_settings(
+            hass,
+            None,
+            expected=payload.get("expected"),
+            changes=changes,
+            active_control_writable=False,
+            site_id=site.entry_id,
+        )
+    except SiteSettingsRefusal as refusal:
+        status = {ERROR_CONFLICT: 409, ERROR_NOT_PERMITTED_OVER_WEBHOOK: 403}.get(refusal.code, 400)
+        return status, _with_target(hass, None, changes, _failure(refusal.code, refusal.site), site.entry_id)
+    return 200, _with_target(hass, None, changes, _envelope(written, restore), site.entry_id)
+
+
 @callback
 def async_setup_site_settings_api(hass: HomeAssistant) -> None:
     """Register this contract's one command once for the domain, not once per config entry."""

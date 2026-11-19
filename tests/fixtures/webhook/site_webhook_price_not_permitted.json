@@ -1,0 +1,5 @@
+{
+  "action": "update_grid_tariff",
+  "error": "spotnav_not_permitted_over_webhook",
+  "ok": false
+}
