@@ -409,6 +409,11 @@ class BrandControl:
     #: did not take, and is handed back as an idle hold that charges is (`executor.HOLD_CHARGE_S`). The sun may
     #: still be stored.
     hold_grid_guard: bool = False
+    #: Optional roles whose absence lets a hold itself charge from the grid at the plant's fixed rate (Tesla without
+    #: the grid-charging switch: a reserve above the SoC then charges from the grid, whatever the margin): such a
+    #: hold runs only while that rate fits under the fuse cap, as a fixed grid charge must (`gate.restricted`,
+    #: `executor`'s start rule).
+    hold_charges_without: tuple[str, ...] = ()
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -957,6 +962,7 @@ TESLA_CONTROL: Final = BrandControl(
     write_caps={"setting": TESLA_WRITES_PER_DAY},
     soc_floor_margin_pct=2.0,
     hold_grid_guard=True,
+    hold_charges_without=("grid_charging",),
     note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
     " reports): a charge that does not fit under the fuse is refused, not lowered.",
 )

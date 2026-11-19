@@ -1330,7 +1330,7 @@ class BatteryControl:
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
         slot, why = gate.restricted(
             self._merged_slot(now), allowed, self._charge_limits(now, options, phased=control.phased)[0],
-            self._export_cap_kw(), self._fixed_charge_kw(),
+            self._export_cap_kw(), self._fixed_charge_kw(), hold_charges=self._hold_charges(),
         )
         action = None if slot is None else slot[0]
         if action in (None, ACTION_SELF_CONSUME):
@@ -1364,10 +1364,19 @@ class BatteryControl:
         control = control_for(self.facts.brand)
         return None if control is None else fixed_rate_kw(control, self.facts)
 
+    def _hold_charges(self) -> bool:
+        """Whether a hold on this plant may itself charge from the grid at its fixed rate: a role whose absence lets it
+        (`BrandControl.hold_charges_without`) is not found."""
+        control = control_for(self.facts.brand)
+        if control is None or not control.hold_charges_without:
+            return False
+        reads = read_role_reads(self.hass, self.site.config, control)
+        return any((read := reads.get(name)) is None or not read.found for name in control.hold_charges_without)
+
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         slot, why = gate.restricted(
             self._merged_slot(now), gate.allowed_actions(self.report(), options), self._charge_limits(now, options)[0],
-            self._export_cap_kw(), self._fixed_charge_kw(),
+            self._export_cap_kw(), self._fixed_charge_kw(), hold_charges=self._hold_charges(),
         )
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.

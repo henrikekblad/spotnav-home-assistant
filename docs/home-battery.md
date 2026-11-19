@@ -92,7 +92,9 @@ the same routine as the others, and both are untested.
   start a charge that does not fit. It does not start one at all while the battery's size is not read (the size
   sensor is disabled by default; the switch's dialog offers it): without it two Powerwalls would be checked as one.
   It runs only while the operation mode is self-powered; Time-Based Control and Backup are left alone. The grid charging
-  switch exists only on a site with solar. Nothing stops a command when Home Assistant stops, and the cloud may take
+  switch exists only on a site with solar; without it a reserve above the level charges from the grid
+  whatever SpotNav does, so there a hold runs only where the Powerwall's charge would fit under the fuse cap as a grid
+  charge must. Nothing stops a command when Home Assistant stops, and the cloud may take
   minutes to show a change.
 
 **Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus

@@ -264,6 +264,38 @@ def test_a_hold_that_stores_the_sun_is_kept() -> None:
         assert not events(results, "hand_back") and executor.state.phase == "active"
 
 
+def test_a_tesla_hold_without_the_grid_charging_switch_starts_only_where_its_charge_would_fit() -> None:
+    # Without the switch a reserve above the level charges from the grid at the Powerwall's own rate, whatever the
+    # margin: the hold must fit as a grid charge must, with the discharge it stops covering counted too.
+    executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
+    _now, results = run(executor, battery, T0, 4, "hold", headroom_a=20.0, power_kw=0.0)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "fuse_headroom"
+    executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
+    _now, results = run(executor, battery, T0, 4, "hold", headroom_a=30.0, power_kw=-2.0)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "fuse_headroom"
+    executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=None, rated_kw=None)
+    _now, results = run(executor, battery, T0, 4, "hold", headroom_a=60.0, power_kw=0.0)
+    assert events(results, "not_started")[0]["reason"] == "size_unknown"
+    executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
+    _now, results = run(executor, battery, T0, 8, "hold", headroom_a=30.0, power_kw=0.0)
+    assert written(results) == [("reserve", 40.0)]
+    # With the switch, grid charging is turned off and the hold needs no such room.
+    executor, battery = _tesla(capacity_kwh=None, rated_kw=None)
+    _now, results = run(executor, battery, T0, 8, "hold", headroom_a=20.0)
+    assert written(results) == [("reserve", 40.0)]
+
+
+def test_the_gate_refuses_a_hold_that_may_charge_over_the_cap() -> None:
+    slot = ("hold", 0.0, None)
+    assert restricted(slot, {"hold"}, 4.0, None, 5.0, hold_charges=True) == (("self_consume", 0.0, None), "hold_cap_fixed")
+    assert restricted(slot, {"hold"}, 6.0, None, 5.0, hold_charges=True) == (slot, None)
+    assert restricted(slot, {"hold"}, 4.0, None, math.inf, hold_charges=True) == (
+        ("self_consume", 0.0, None), "hold_size_unknown"
+    )
+    # A hold that cannot charge (the switch is there) is not capped.
+    assert restricted(slot, {"hold"}, 0.0, None, 5.0) == (slot, None)
+
+
 def test_a_tesla_site_without_solar_has_no_grid_charging_switch_and_still_charges_by_the_reserve() -> None:
     executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)

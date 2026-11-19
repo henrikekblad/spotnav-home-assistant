@@ -1447,6 +1447,22 @@ class Executor:
                 return 0.0, "rate_too_small"
         return round(rate, 3), None
 
+    def _hold_charge_problem(self, inputs: ExecInputs) -> str | None:
+        """Why a hold that may itself charge from the grid at the plant's fixed rate
+        (`BrandControl.hold_charges_without`, a role this plant lacks) cannot start: that rate does not fit in the
+        headroom left once the battery stops covering what it discharges now (`size_unknown`, `fuse_headroom`)."""
+        if not any(name in self._absent for name in self.control.hold_charges_without):
+            return None
+        fixed = fixed_rate_kw(self.control, inputs.facts)
+        if fixed is None or not math.isfinite(fixed):
+            return "size_unknown"
+        if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
+            return "headroom_unknown"
+        power = inputs.facts.power_kw
+        covered_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases if power is not None and power < 0 else 0.0
+        room = _kw(inputs.headroom_a - covered_a - HEADROOM_MARGIN_A, inputs.volts_between_phases, self._charge_phases(inputs))
+        return "fuse_headroom" if fixed > room + RATE_TOLERANCE_KW else None
+
     def _charge_phases(self, inputs: ExecInputs) -> int:
         """The phases a balanced grid charge is spread over: the shell's reading, else the recipe's."""
         phases = inputs.charge_phases if inputs.charge_phases is not None else self.control.grid_charge_phases
@@ -1474,6 +1490,11 @@ class Executor:
             return "headroom_unknown"
         if action == ACTION_HOLD and not hold_headroom_ok(inputs):
             return "headroom_too_small"
+        if action == ACTION_HOLD:
+            self._sense(inputs)
+            problem = self._hold_charge_problem(inputs)
+            if problem is not None:
+                return problem
         if action == ACTION_GRID_CHARGE and inputs.headroom_a < HEADROOM_MARGIN_A:
             return "headroom_too_small"
         if action == ACTION_GRID_CHARGE and inputs.phase_probe_kw is not None and not hold_headroom_ok(inputs):
