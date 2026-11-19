@@ -21,7 +21,7 @@ import custom_components.spotnav as integration
 from custom_components.spotnav.battery.control import BatteryControl, store_key
 from custom_components.spotnav.heat.control import HeatControl
 from custom_components.spotnav.heat.runtime import HeatShadow
-from custom_components.spotnav.runtime import site_controller_for
+from custom_components.spotnav.runtime import controller_for, site_controller_for
 from custom_components.spotnav.site.site_capacity_controller import SHUTDOWNS_KEY
 
 from tests.world import setup_charger_and_site
@@ -148,6 +148,38 @@ async def test_a_reload_during_a_long_hand_back_waits_for_it_and_the_old_copy_wr
     platforms = recorder.events.index((-1, "platforms unloaded"))
     assert last_old < platforms < first_new
     assert not hass.data.get(SHUTDOWNS_KEY)
+
+
+async def test_the_chargers_keep_their_start_cap_until_the_hand_back_has_ended(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The chargers stay live while the site hands back: a plan's start, a resend or a session's write in that time
+    is still capped by the site. The cap goes only once the hand-back has ended."""
+    site, recorder = await _site(hass, monkeypatch)
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None and charger._start_cap is not None  # noqa: SLF001
+    unload = hass.async_create_task(hass.config_entries.async_unload(site.entry_id))
+    await recorder.handing_back.wait()
+    assert charger._start_cap is not None, "the site still caps a start while it hands back"  # noqa: SLF001
+    recorder.release.set()
+    assert await unload
+    assert charger._start_cap is None  # noqa: SLF001
+
+
+async def test_home_assistant_s_stop_leaves_the_chargers_capped(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """At Home Assistant's stop nothing unloads and the chargers run on to the end: the site's cap stays with them.
+    The entry's own unload afterwards lets go."""
+    site, recorder = await _site(hass, monkeypatch)
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None
+    recorder.release.set()
+    async with asyncio.timeout(5):
+        await integration._async_stop(hass)  # noqa: SLF001
+    assert charger._start_cap is not None  # noqa: SLF001
+    assert await hass.config_entries.async_unload(site.entry_id)
+    assert charger._start_cap is None  # noqa: SLF001
 
 
 async def test_the_old_copy_never_saves_over_the_new_copy_s_snapshot(

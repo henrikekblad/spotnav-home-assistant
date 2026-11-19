@@ -613,6 +613,8 @@ class SiteCapacityController:
         self._timer_cancel: Callable[[], None] | None = None
         self._state_listener_cancel: Callable[[], None] | None = None
         self._controller_listener_cancels: list[Callable[[], None]] = []
+        # The chargers' start caps: kept past `_halt` until the hand-back has ended (`release_start_caps`).
+        self._start_cap_cancels: list[Callable[[], None]] = []
         self._listeners: set[Callable[[], None]] = set()
         # A solar coordinator's re-render is on its way to the listeners (`notify_solar_surplus_changed`).
         self._rerendering = False
@@ -966,6 +968,18 @@ class SiteCapacityController:
 
             task.add_done_callback(_forget)
         await asyncio.shield(task)
+        if deadline is None:
+            # The chargers stay live while the site hands back: until then a start, a resend or a session's write
+            # is still capped by the site. At Home Assistant's stop (`deadline`) nothing unloads and the chargers
+            # run on until the end, so the cap stays; the entry's unload after it lets go.
+            self.release_start_caps()
+
+    @callback
+    def release_start_caps(self) -> None:
+        """Let go of the chargers' start caps, once the site has handed back. Idempotent."""
+        for cancel in self._start_cap_cancels:
+            cancel()
+        self._start_cap_cancels.clear()
 
     async def _async_shutdown(self, deadline: float | None) -> None:
         self._halt()
@@ -996,7 +1010,8 @@ class SiteCapacityController:
     def _halt(self) -> None:
         """Nothing new starts from here: the site's timers and listeners end, and every part that runs on a timer
         stops (the battery plan, a live hot-water boost, the switched load, the shadows; the battery control's
-        looks). The heat control keeps looking until the hardware test is handed back (`_async_hand_back`)."""
+        looks). The heat control keeps looking until the hardware test is handed back (`_async_hand_back`). The
+        chargers' start caps stay until the hand-back has ended (`release_start_caps`)."""
         self._closed = True
         self._cancel_probe_timer()
         for name in ("_history_cancel", "_phase_peaks_cancel", "_timer_cancel", "_state_listener_cancel",
@@ -1130,7 +1145,7 @@ class SiteCapacityController:
                         charger_entry_id, amps, reason
                     ),
                 )
-                self._controller_listener_cancels.append(
+                self._start_cap_cancels.append(
                     lambda controller=charger_controller: controller.set_start_cap(None)
                 )
 
