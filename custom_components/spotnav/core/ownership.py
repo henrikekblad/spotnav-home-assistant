@@ -396,7 +396,7 @@ def owner_as_sent(session: ChargeSession, sent: str | None) -> str:
     """The owner while a start (`SENT_START`) or a stop (`SENT_STOP`) of ours has gone out and its result is not decided
     yet, as today's code writes `charge_origin` as the command goes out: a start's the owner the start awaiting its
     result is for (the session's own when none awaits one, or it names no owner), a stop's nobody. With nothing sent,
-    the session's owner. A save in that gap writes this owner, in the record and in today's keys alike, so a restart
+    the session's owner. A save in that gap writes this owner in the record, so a restart
     before the result is decided reads the charge as the command made it (the core end state plan, step 8)."""
     if sent == SENT_STOP:
         return OWNER_NONE

@@ -16,9 +16,10 @@ from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.session import ChargeSession, ManualPause
 from custom_components.spotnav.execution import auto_execution as auto_execution_module
 from custom_components.spotnav.execution import session_runner
-from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_STORE_KEY
+from custom_components.spotnav.execution.controller import OWNERSHIP_KEYS, SESSION_ORDER_KEY, SESSION_STORE_KEY
 from custom_components.spotnav.execution.session_runner import SessionRunner
 
+from .helpers import with_ownership_view
 from .pause_world import later_window, pause_world, SWITCH, two_windows, World
 from .relay import FakeScheduler
 
@@ -183,12 +184,13 @@ async def test_a_resume_that_raises_after_its_write_leaves_no_feed_open(
 
 
 async def _as_the_previous_logic_left_it(world: World) -> None:
-    """Today's keys alone on disk, as a charger an earlier release ran with the previous logic left them: the record
-    of the core's is dropped, and the controller going down saves nothing more."""
+    """The ownership keys alone on disk, as a charger an earlier release ran with the previous logic left them (derived
+    from the core's record, as 2.x wrote them): the record of the core's is dropped, and the controller going down
+    saves nothing more."""
     controller = world.controller
     controller._cancel_session_save()  # noqa: SLF001
     await world.hass.async_block_till_done()
-    record = dict(await controller._store.async_load())  # noqa: SLF001
+    record = with_ownership_view(await controller._store.async_load())  # noqa: SLF001
     record.pop(SESSION_STORE_KEY, None)
     record.pop(SESSION_ORDER_KEY, None)
     await controller._store.async_save(record)  # noqa: SLF001
@@ -204,6 +206,7 @@ async def _upgraded(world: World) -> World:
     restarted = await world.restart()
     stored = await restarted.controller._store.async_load()  # noqa: SLF001
     assert SESSION_STORE_KEY in stored, "migrated once and written at once"
+    assert not set(OWNERSHIP_KEYS) & set(stored), "written in this release's shape, without the keys"
     return restarted
 
 

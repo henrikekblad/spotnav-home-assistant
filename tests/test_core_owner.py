@@ -1,7 +1,6 @@
 """The owner in the core's session (the core end state plan, step 7): while the core drives, who owns the charge is the
-session's `owner`, and today's `charge_origin` and `plan_charge` are derived from it (`controller._CORE_OWNER_ORIGIN`),
-read from it, and still written to today's keys, so an older build reads them as before. With the option off,
-today's fields stay the truth. Every test here runs in both modes."""
+session's `owner`, and `charge_origin` and `plan_charge` are derived from it (`controller._CORE_OWNER_ORIGIN`). 3.0 no
+longer writes them as keys beside the record: the tests read them from the stored record (`with_ownership_view`)."""
 
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ from custom_components.spotnav.execution.controller import _CORE_OWNER_ORIGIN, S
 from custom_components.spotnav.planning.auto_settings import STRATEGY_SOLAR
 from custom_components.spotnav.runtime import executor_for
 
-from .helpers import install_schedule
+from .helpers import install_schedule, with_ownership_view
 from .pause_world import ENTRY, open_window, pause_world, SWITCH, World
 from .relay import FakeScheduler
 from .world import solar_setup
@@ -74,7 +73,7 @@ async def test_the_suns_take_over_never_stops_a_charge_now_start_on_its_way(
 
 async def _stored(world: World) -> dict[str, Any]:
     await world.hass.async_block_till_done()
-    return await world.controller._store.async_load()  # noqa: SLF001
+    return with_ownership_view(await world.controller._store.async_load())  # noqa: SLF001
 
 
 def _owner(world: World) -> tuple[str | None, bool]:

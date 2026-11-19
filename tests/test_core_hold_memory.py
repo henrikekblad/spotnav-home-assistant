@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.spotnav.core.session import ChargeSession
 from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_STORE_KEY
 
-from .helpers import install_schedule
+from .helpers import install_schedule, with_ownership_view
 from .pause_world import later_window, pause_world, SWITCH, World
 from .relay import FakeScheduler
 
@@ -31,7 +31,7 @@ def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> b
 
 async def _stored(world: World) -> dict[str, Any]:
     await world.hass.async_block_till_done()
-    return await world.controller._store.async_load()  # noqa: SLF001
+    return with_ownership_view(await world.controller._store.async_load())  # noqa: SLF001
 
 
 def _session(world: World) -> ChargeSession:

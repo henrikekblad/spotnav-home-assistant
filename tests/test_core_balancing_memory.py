@@ -16,6 +16,7 @@ from custom_components.spotnav.core.session import ChargeSession
 from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_STORE_KEY
 from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
 
+from .helpers import with_ownership_view
 from .pause_world import pause_world, World
 from .relay import FakeScheduler
 
@@ -29,7 +30,7 @@ def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> b
 
 async def _stored(world: World) -> dict[str, Any]:
     await world.hass.async_block_till_done()
-    return await world.controller._store.async_load()  # noqa: SLF001
+    return with_ownership_view(await world.controller._store.async_load())  # noqa: SLF001
 
 
 async def _persons_charge_held_back(world: World) -> None:
