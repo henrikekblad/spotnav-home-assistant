@@ -511,7 +511,8 @@ class HeatControl:
             # The SG Ready API's mode did not read normal in time: its activation switch is the second way back.
             await self._async_fallback_off(dt_util.utcnow(), "stop", stopping=True)
         try:
-            await self._async_deactivate(dt_util.utcnow(), stopping=True)
+            if not self._activation_stays():
+                await self._async_deactivate(dt_util.utcnow(), stopping=True)
         except Exception:  # noqa: BLE001 - kept: turned off at the next start
             _LOGGER.warning("SpotNav heat control: the SG Ready API could not be turned off at the stop", exc_info=True)
         await self._store.async_save(self._data())
@@ -519,12 +520,22 @@ class HeatControl:
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
         """Forget the kept state when the site is removed. What the hand-back at the unload could not give back is
-        the last record of it: logged first, so it can be set back by hand."""
+        the last record of it: logged first, so it can be set back by hand. An SG Ready switch SpotNav turned on is
+        turned off here where the mode reads normal (the stop leaves it on for the next start)."""
         store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(entry_id))
         try:
             kept = await store.async_load()
         except Exception:  # noqa: BLE001 - nothing to tell
             kept = None
+        if isinstance(kept, dict) and isinstance(activation := kept.get("activation"), dict):
+            switch, mode = hass.states.get(str(activation.get("entity"))), hass.states.get(str(activation.get("mode")))
+            if switch is not None and switch.state == "on" and mode is not None and paths.mode_of(mode.state) == paths.MODE_NORMAL:
+                try:
+                    async with asyncio.timeout(CALL_TIMEOUT_S):
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": switch.entity_id}, blocking=True)
+                    kept["activation"] = None
+                except Exception:  # noqa: BLE001 - logged below
+                    _LOGGER.debug("SpotNav heat control: %s could not be turned off at the removal", switch.entity_id, exc_info=True)
         if isinstance(kept, dict) and (kept.get("held") or kept.get("raised") or kept.get("snapshots") or kept.get("activation")):
             _LOGGER.warning(
                 "SpotNav heat control: removed while a change of its was not handed back; set it back by hand: "
@@ -1302,6 +1313,22 @@ class HeatControl:
                 return
         if self._switch_state(switch) is False:
             self.activation, self._deactivate_at = None, None
+
+    def _activation_stays(self) -> bool:
+        """Whether the stop leaves the SG Ready API's switch on: control still runs on that path, nothing is held and
+        the mode reads normal (the pump runs as without SpotNav). Kept, so a day of restarts does not use up
+        `paths.ACTIVATION_WRITES_DAY`; turned off when control stops at a later look or at the site's removal."""
+        held = self.activation
+        if held is None or self.held or self.raised:
+            return False
+        config = self.shadow.config()
+        mode = self.hass.states.get(held["mode"])
+        return (
+            config.control_enabled
+            and paths.activation_switch(config) == held["entity"]
+            and mode is not None
+            and paths.mode_of(mode.state) == paths.MODE_NORMAL
+        )
 
     async def _async_fallback_off(self, now: datetime, why: str, *, stopping: bool = False) -> None:
         """The SG Ready API's second way back: where SpotNav turned the activation switch on and the mode does not read

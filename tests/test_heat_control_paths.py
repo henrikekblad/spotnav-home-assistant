@@ -494,6 +494,18 @@ async def test_a_curve_offset_goes_on_beside_a_hot_water_boost(hass: HomeAssista
     assert pump.calls == [(NIBE, -3.0)] and control.safety is None
 
 
+async def test_the_stop_leaves_the_switch_on_while_control_runs_and_the_removal_turns_it_off(hass: HomeAssistant, freezer) -> None:
+    _site_, control, pump, now = await _running(hass, freezer, _sg_api(hass), {0: "lower", 1: "lower"})
+    await _look(control, now)
+    await _look(control, now + 2 * H, {})
+    assert pump.value(MODE) == "1.0" and pump.value(API) == "on"
+    # Mode normal and control on: a restart does not use up a day's turnings on.
+    await control.async_shutdown()
+    assert pump.written(API) == ["on"] and control.activation == {"entity": API, "mode": MODE}
+    await HeatControl.async_remove_stored(hass, control.site.entry_id)
+    assert pump.written(API) == ["on", "off"]
+
+
 # ------------------------------------------------------------------------------------------------ CTC's volatile offset
 
 

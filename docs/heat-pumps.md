@@ -261,7 +261,9 @@ The rules are SG Ready's own, above: every change goes through normal (mode 1 is
 have read for 10 seconds, before the other mode is written), raises only in the plan's pre-heat hours, and no raise
 at all while the number or the switch only assumes its state. SpotNav turns the switch on before its first block or
 raise and leaves it on while it controls. When control stops (the switch off, a pause that lasts, another path
-chosen, Home Assistant stopping) it writes mode normal first and then turns the switch off. If the mode does not go
+chosen, Home Assistant stopping while a block or raise holds, SpotNav removed) it writes mode normal first and then
+turns the switch off. A restart while the mode reads normal leaves the switch on (the pump runs as without SpotNav
+then), so a day of restarts does not use up the four turnings on. If the mode does not go
 back to normal (the write fails at the stop, or three openings in a row are not read back), SpotNav turns the switch
 it turned on off anyway: with the switch off the pump no longer acts on the mode, so the block ends by that second
 way, and the mode is written back to normal once it can be. A switch that was on before SpotNav came is not
