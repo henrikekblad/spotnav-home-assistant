@@ -3,7 +3,8 @@ or away, the cooler night, the sensors, the control paths and the zones. Pure: r
 entry's data under `CONF_HEAT` (`api/heat.py`), judged here.
 
 These settings say what SpotNav aims for and which entities it would steer. Nothing here writes to a heat pump, a
-thermostat or a relay; only `control_enabled` lets the heat control (`heat/control.py`) switch the relay path's relay.
+thermostat or a relay; only `control_enabled` lets the heat control (`heat/control.py`) steer the pump through the
+chosen path (a relay, SG Ready's contacts, the SG Ready API's mode, a curve offset: `heat/paths.py`).
 
 An indoor sensor's offset is its room's own aim against the house target (a cooler upstairs at -1.5, a sensor that
 reads half a degree too warm at +0.5): the coldest-room rule and the comfort review compare each sensor's reading less
@@ -19,8 +20,10 @@ hand-edited one never fails a read):
      indoor_sensors: [sensor ids] (up to 8), outdoor_sensor: sensor id | null (null: the house forecast's own),
      indoor_offsets: [{entity_id: one of the indoor sensors, offset_c: -3..3 in 0.5 steps, never 0}] (none),
      control_enabled: bool (false: SpotNav's opt-in to switch the relay itself, `heat/control.py`),
-     control_path: "none" | "relay" | "sg_ready" | "offset" | "setpoint", control_entity: id | null,
-     control_entity_b: id | null (SG Ready's second contact), hot_water_entity: id | null,
+     control_path: "none" | "relay" | "sg_ready" | "sg_ready_api" | "offset" | "setpoint", control_entity: id | null
+     (the relay or contact A, the SG Ready API's mode number, the offset number, the climate entity),
+     control_entity_b: id | null (SG Ready's second contact; the SG Ready API's activation switch),
+     hot_water_entity: id | null,
      zones: [{entity_id: climate id, offset_c: -3..3 in 0.5 steps}] (up to 8)}
 """
 
@@ -63,15 +66,23 @@ MODES: Final = (MODE_HOME, MODE_AWAY)
 PATH_NONE: Final = "none"
 PATH_RELAY: Final = "relay"
 PATH_SG_READY: Final = "sg_ready"
+#: SG Ready written through the integration (NIBE S series): a mode number and the switch that lets it act.
+PATH_SG_READY_API: Final = "sg_ready_api"
 PATH_OFFSET: Final = "offset"
 PATH_SETPOINT: Final = "setpoint"
-PATHS: Final = (PATH_NONE, PATH_RELAY, PATH_SG_READY, PATH_OFFSET, PATH_SETPOINT)
-#: The domains each control path's entity may be in (SG Ready: both contacts).
+PATHS: Final = (PATH_NONE, PATH_RELAY, PATH_SG_READY, PATH_SG_READY_API, PATH_OFFSET, PATH_SETPOINT)
+#: The domains each control path's entity may be in.
 PATH_DOMAINS: Final[dict[str, tuple[str, ...]]] = {
     PATH_RELAY: ("switch", "input_boolean"),
     PATH_SG_READY: ("switch", "input_boolean"),
+    PATH_SG_READY_API: ("number", "input_number"),
     PATH_OFFSET: ("number", "input_number"),
     PATH_SETPOINT: ("climate",),
+}
+#: The paths with a second entity and its domains: SG Ready's contact B, the SG Ready API's activation switch.
+PATH_DOMAINS_B: Final[dict[str, tuple[str, ...]]] = {
+    PATH_SG_READY: ("switch", "input_boolean"),
+    PATH_SG_READY_API: ("switch", "input_boolean"),
 }
 HOT_WATER_DOMAINS: Final = ("switch", "input_boolean", "button", "input_button")
 
@@ -302,7 +313,7 @@ def read_config(raw: Any) -> HeatConfig:
     path = raw.get(F_PATH) if raw.get(F_PATH) in PATHS else PATH_NONE
     domains = PATH_DOMAINS.get(path, ())
     control = _entity(raw.get(F_CONTROL), domains) if path != PATH_NONE else None
-    control_b = _entity(raw.get(F_CONTROL_B), domains) if path == PATH_SG_READY else None
+    control_b = _entity(raw.get(F_CONTROL_B), PATH_DOMAINS_B[path]) if path in PATH_DOMAINS_B else None
     away_delta = _step_in(raw.get(F_AWAY_DELTA), AWAY_DELTA_MIN_C, AWAY_DELTA_MAX_C)
     return HeatConfig(
         target_c=DEFAULT_TARGET_C if target is None else target,
@@ -340,7 +351,8 @@ class FieldError:
 
 
 #: What an entity id is, for the judge: `None` when Home Assistant knows no such entity, else whether it fits the
-#: role named (`indoor`, `outdoor`, `zone`, `relay`, `sg_ready`, `offset`, `setpoint`, `hot_water`).
+#: role named (`indoor`, `outdoor`, `zone`, a control path's own name for its first entity and `<path>_b` for its
+#: second, `hot_water`).
 EntityCheck = Callable[[str, str], bool | None]
 
 
@@ -487,11 +499,11 @@ def apply_changes(
                 domains = PATH_DOMAINS[path]
                 if first is not None:
                     _check_entity(errors, F_CONTROL, first, path, domains, check)
-                if path == PATH_SG_READY and second is not None:
-                    _check_entity(errors, F_CONTROL_B, second, path, domains, check)
+                if path in PATH_DOMAINS_B and second is not None:
+                    _check_entity(errors, F_CONTROL_B, second, f"{path}_b", PATH_DOMAINS_B[path], check)
                     if second == first:
                         errors.append(FieldError(F_CONTROL_B, ERR_DUPLICATE))
-                elif path != PATH_SG_READY:
+                elif path not in PATH_DOMAINS_B:
                     second = None
                 if len(errors) == before:
                     updated = replace(updated, control_path=path, control_entity=first, control_entity_b=second)

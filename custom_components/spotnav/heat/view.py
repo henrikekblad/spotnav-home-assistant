@@ -9,7 +9,8 @@
      zones: [{entity_id, name, kind: "floor" | "air", offset_c, aim_c, current_c, setpoint_c, hvac_mode, heating,
               power_w, available}],
      pump: {integration, brand, label, priority, compressor_running, supply_c, hot_water_c, degree_minutes,
-            immersion_on, price_control, control, capabilities: [kind], disabled: [entity ids], device_id} | null,
+            immersion_on, price_control, control, capabilities: [kind], disabled: [entity ids], device_id,
+            paths: [{path, control_entity, control_entity_b}]} | null,
      meter: {status, entity_id, name, source, setting_offered, candidates, kw_now, state, baseline_kw} | null,
      today: {date, total_kwh, heat_kwh, hot_water_kwh, zones_kwh, runs: [{start, end, kwh}], baseline_kw, cost,
              money} | null,
@@ -24,18 +25,29 @@
              effect: {lower_share, rebound, blocks}} | null,
      review: yesterday's review (`heat/review.py`) | null,
      control: {enabled, state: "off" | "verifying" | "running" | "waiting", reason, automation: {entity_id, name} | null,
-               check: "passed" | "failed" | null, lowered, since, until, paused_until, raised, raise_until} | null,
+               check: "passed" | "failed" | null, lowered, since, until, paused_until, raised, raise_until,
+               path: the control path steered | null, untested: bool,
+               enable_entities: {integration, entities: [{entity_id, name}]} | null,
+               offset_home: {entity_id, value, home} | null} | null,
      ahead: [{start, action, target_c, reason, hot_water}]}
 
 `ahead` is the plan from the running hour on, `AHEAD_HOURS` of them at most (the card's strip under the dial): the
 band's own hours to midnight, then tomorrow's as the same rule plans them once every hour of tomorrow has its price
 (without them the list ends at midnight: nothing is guessed).
 
-`control` is SpotNav's own switching of the relay (`heat/control.py`, `HeatControl.status`): `reason` is the check's
+`control` is SpotNav's own steering of the pump (`heat/control.py`, `HeatControl.status`): `reason` is the check's
 phase while verifying, the rules' reason while running (`heat/relay_control.py`), what it waits for while waiting.
+`path` is the settings' control path once it has what it needs to steer (`heat/paths.py`), `untested` that the path
+has not run on a real heat pump yet (the card says so), `enable_entities` the path's entities that are disabled in
+their integration: the card lists them when "Styr värmen" is turned on and the write's `enable_control_entities`
+enables them (`heat/optin.py`). `offset_home` is a stored offset that reads other than the household's own value
+while SpotNav holds nothing (`HeatControl._track_home`): the card asks to put it back or keep it (the write's
+`offset_home`). `pump.paths` are the control paths the pump's own entities offer
+(`paths.detected_paths`): the card fills a chosen path's entities in from them.
 Each band hour's `executed_min` is the minutes SpotNav itself held the relay closed (`null` without the control), its
 `raised_min` the minutes SpotNav held SG Ready's second contact (B, the raise) closed: `null` where the pump cannot be
-raised (any path but SG Ready with both contacts), so the card draws the plan's pre-heat hours as raises only there.
+raised (the relay, or SG Ready without its second contact), so the card draws the plan's pre-heat hours as raises
+only there.
 
 The band is SpotNav's own plan (`heat/shadow_rule.band`, joint with the cars, the battery and the import cap: the
 `tight` hours); an hour already begun shows what was planned when it began (`kept`). Beside it each hour says how many
@@ -63,6 +75,7 @@ from .. import time_zones
 from .config import BAND_C, MODE_AWAY, HeatConfig
 from .facts import MISSING_DISABLED, HeatPumpFacts
 from .meter_split import DaySplit, Levels, state_now
+from .paths import detected_paths
 from .rooms import Indoor
 from .automations import SteeringAutomation
 from .relay_effect import Effect
@@ -237,6 +250,7 @@ def _pump(facts: HeatPumpFacts) -> dict[str, Any]:
         "capabilities": sorted({c.kind for c in facts.capabilities if c.enabled and c.available}),
         "disabled": sorted(role for role, why in facts.missing.items() if why == MISSING_DISABLED),
         "device_id": facts.device_id,
+        "paths": detected_paths(facts),
     }
 
 

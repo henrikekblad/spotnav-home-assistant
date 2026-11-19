@@ -8,7 +8,7 @@
 
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
-import { roomName, type HeatAheadHour, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
+import { isRelayPath, roomName, type HeatAheadHour, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
 import { dayChart, hoursOf } from "./heat-day-chart";
 import type { HeatHistory } from "./heat-history";
 import { HEAT_CLASSES as X } from "./heat-styles";
@@ -177,6 +177,14 @@ function signedDegrees(language: Language, value: number): string {
     return "0 °C";
   }
   return `${value > 0 ? "+" : "−"}${formatFixed(language, Math.abs(value), 1)} °C`;
+}
+
+/** A heating curve offset as the pump shows it: signed, no unit ("0", "+1", "−2", "−1.5"). */
+export function offsetValue(language: Language, value: number): string {
+  if (value === 0) {
+    return "0";
+  }
+  return `${value > 0 ? "+" : "−"}${formatFixed(language, Math.abs(value), Number.isInteger(value) ? 0 : 1)}`;
 }
 
 function kw(language: Language, value: number): string {
@@ -513,9 +521,11 @@ export function wouldLine(language: Language, answer: HeatAnswer): string | null
   }
   // A lowering's own reason; the dear hours are the plain one.
   const lowerKey = would.reason === "tight_hour" ? "heat.would.lowerTight" : would.reason === "room_warm" ? "heat.would.lowerWarm" : "heat.would.lower";
-  // On SG Ready with both contacts, the pre-heat is a raise of the pump through its second contact.
-  const raisable = answer.config.control_path === "sg_ready" && answer.config.control_entity !== null && answer.config.control_entity_b !== null;
-  const key = would.action === "lower" ? lowerKey : would.action === "preheat" && raisable ? "heat.would.raise" : `heat.would.${would.action}`;
+  // On SG Ready with both contacts, or through its API, the pre-heat is a raise of the pump by SG Ready (the words
+  // name it; an offset's raise keeps the pre-heat's own words).
+  const { control_path: path, control_entity: first, control_entity_b: second } = answer.config;
+  const sgRaise = (path === "sg_ready" || path === "sg_ready_api") && first !== null && second !== null;
+  const key = would.action === "lower" ? lowerKey : would.action === "preheat" && sgRaise ? "heat.would.raise" : `heat.would.${would.action}`;
   return translate(language, key as TranslationKey, {
     temp: degrees(language, would.target_c),
     until: would.until === null ? "" : whenLabel(language, answer, Date.parse(would.until)),
@@ -608,9 +618,16 @@ export function reviewLines(language: Language, answer: HeatAnswer): { key: stri
 export const AHEAD_HOURS = 12;
 const AHEAD_ACTIONS = ["lower", "preheat", "night", "away"] as const;
 
-/** Whether a pre-heat is a raise of the pump through SG Ready's second contact. */
+/**
+ * Whether a pre-heat is a raise of the pump: through SG Ready's second contact, the SG Ready API's low-price mode
+ * (which needs its activation switch), or a curve offset above the value found.
+ */
 function raisable(answer: HeatAnswer): boolean {
-  return answer.config.control_path === "sg_ready" && answer.config.control_entity !== null && answer.config.control_entity_b !== null;
+  const { control_path: path, control_entity: first, control_entity_b: second } = answer.config;
+  if (first === null) {
+    return false;
+  }
+  return path === "offset" || ((path === "sg_ready" || path === "sg_ready_api") && second !== null);
 }
 
 /**
@@ -1006,7 +1023,10 @@ const CONTROL_WAITS = [
   "automation", "other_controller", "pump_price_control", "relay_unavailable", "relay_closed", "no_relay", "no_signal",
   "check_failed", "foreign_change", "no_read_back",
 ];
-const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b"];
+const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b", "hot_water"];
+/** The waits whose words name the relay: the other paths have their own (`heat.control.path.wait.*`). */
+const PATH_WAITS = ["relay_unavailable", "relay_closed", "no_relay", "no_signal", "check_failed", "foreign_change", "no_read_back"];
+const STEERED_PATHS = ["relay", "sg_ready", "sg_ready_api", "offset"];
 
 /**
  * The line under "Styr värmen": off, checking the pump answers the relay, controlling (lowered until when, or the
@@ -1021,8 +1041,10 @@ export function controlLine(language: Language, answer: HeatAnswer): string | nu
   if (!control.enabled || control.state === "off") {
     return translate(language, "heat.control.off");
   }
+  // The relay's words name the relay; the paths through the pump's own settings have their own.
+  const own = isRelayPath(answer.config.control_path) ? "heat.control" : "heat.control.path";
   if (control.state === "verifying") {
-    return translate(language, control.reason === "wait" ? "heat.control.verifyingWait" : "heat.control.verifying");
+    return translate(language, `${own}.${control.reason === "wait" ? "verifyingWait" : "verifying"}` as TranslationKey);
   }
   if (control.state === "running") {
     if (control.raised) {
@@ -1044,7 +1066,8 @@ export function controlLine(language: Language, answer: HeatAnswer): string | nu
     return translate(language, "heat.control.waiting");
   }
   // A pause lasts to the next day: the line says "tomorrow".
-  return translate(language, `heat.control.wait.${reason}` as TranslationKey, { name: control.automation?.name ?? "" });
+  const scope = PATH_WAITS.includes(reason) ? own : "heat.control";
+  return translate(language, `${scope}.wait.${reason}` as TranslationKey, { name: control.automation?.name ?? "" });
 }
 
 export type HeatSettingKey =
@@ -1059,6 +1082,7 @@ export type HeatSettingKey =
   | `zone:${string}`
   | `sensor:${string}`
   | "steer"
+  | "offsetHome"
   | "night"
   | "awayDelta";
 
@@ -1083,8 +1107,8 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
       }),
     );
   };
-  // "Styr värmen": on the relay path (and SG Ready's) only, with one line on what it does or waits for.
-  if (["relay", "sg_ready"].includes(config.control_path) || config.control_enabled) {
+  // "Styr värmen": on the paths SpotNav can steer, with one line on what it does or waits for.
+  if (STEERED_PATHS.includes(config.control_path) || config.control_enabled) {
     row(
       "steer",
       translate(language, "heat.settings.steer"),
@@ -1096,6 +1120,22 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
       help.dataset["help"] = "steer";
       help.dataset["controlState"] = answer.control?.state ?? "off";
       section.append(help);
+    }
+    if (answer.control?.untested === true) {
+      // A path that has not run on a real heat pump yet says so, on or off.
+      const untested = element(doc, "p", C.settingRowHelp, translate(language, "heat.settings.untested"));
+      untested.dataset["help"] = "untested";
+      section.append(untested);
+    }
+    const home = answer.control?.offset_home ?? null;
+    if (home !== null) {
+      // The stored offset was not put back (a lost store, a change while Home Assistant was down): one row that
+      // asks, gone once the offset reads the household's own value again.
+      row(
+        "offsetHome",
+        translate(language, "heat.settings.offsetHome"),
+        translate(language, "heat.settings.offsetHomeValue", { value: offsetValue(language, home.value), home: offsetValue(language, home.home) }),
+      );
     }
   }
   const sensors = config.indoor_sensors;
@@ -1131,6 +1171,8 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
   }
   if (config.control_path === "sg_ready") {
     row("controlB", translate(language, "heat.settings.controlB"), nameOf(names, config.control_entity_b, none));
+  } else if (config.control_path === "sg_ready_api") {
+    row("controlB", translate(language, "heat.settings.controlApiSwitch"), nameOf(names, config.control_entity_b, none));
   }
   row("hotWater", translate(language, "heat.settings.hotWater"), nameOf(names, config.hot_water_entity, none));
   row(

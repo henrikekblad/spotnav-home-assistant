@@ -15,7 +15,7 @@
 
 import { getHeat, getPeriodHistory, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { browserStore, type PreferenceStore } from "./chart-preference";
-import { writeError, writeHeat } from "./heat-editors";
+import { writeError, writeHeat, type HeatWriteOptions } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
 import {
@@ -465,7 +465,7 @@ export class SpotnavHeatCard extends HTMLElement {
   }
 
   /** Write `changes` with what was last seen for the same keys; `null` when it took, else the sentence. */
-  async write(changes: Partial<Record<keyof HeatConfig, unknown>>): Promise<string | null> {
+  async write(changes: Partial<Record<keyof HeatConfig, unknown>>, options?: HeatWriteOptions): Promise<string | null> {
     const hass = this.hassObject;
     const target = this.target();
     const answer = this.answer();
@@ -473,7 +473,7 @@ export class SpotnavHeatCard extends HTMLElement {
     if (hass === null || target === null || answer === null) {
       return translate(language, "heat.error.generic");
     }
-    const result = await writeHeat(hass, target, answer, changes, language);
+    const result = await writeHeat(hass, target, answer, changes, language, options);
     if (result.config !== null && this.state.kind === "ready") {
       // The stored settings at once; the rest of the view follows with the read.
       this.state = { kind: "ready", answer: { ...this.state.answer, config: result.config } };

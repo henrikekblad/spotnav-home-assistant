@@ -281,6 +281,10 @@ def control_status(state: str, reason: str | None, **extra: Any) -> dict[str, An
         "paused_until": None,
         "raised": False,
         "raise_until": None,
+        "path": "relay",
+        "untested": False,
+        "enable_entities": None,
+        "offset_home": None,
         **extra,
     }
 
@@ -355,6 +359,79 @@ def network_pump_answer() -> dict[str, Any]:
             control=control_status("off", None),
         )
     )
+
+
+def sg_api_pump_answer() -> dict[str, Any]:
+    """A NIBE S series pump whose SG Ready API is chosen as the control path, still off: the two coils are disabled
+    in the integration (the opt-in's confirm enables them), and the path has not run on a real pump yet."""
+    mode, switch = "number.s1155_requested_operating_mode_sg_ready_46009", "switch.s1155_activate_sg_ready_via_api_43033"
+    config = HeatConfig(control_path="sg_ready_api", control_entity=mode, control_entity_b=switch)
+    pump = HeatPumpFacts(
+        integration="nibe_heatpump",
+        brand="nibe_s",
+        label="NIBE S series (local)",
+        anchor_entity_id="sensor.s1155_current_outdoor_temperature_bt1_30002",
+        device_id="device_s1155",
+        outdoor_temp_c=4.5,
+        supply_temp_c=34.0,
+        calc_supply_temp_c=35.5,
+        compressor_running=True,
+        priority="heating",
+        price_control=PriceControl("off", "off", ("switch.s1155_activated_smart_price_adaption_40844",)),
+        capabilities=(
+            CapabilityStatus("offset", "number.s1155_heating_offset_climate_system_1_40031", "number", True, True, "0", -10, 10, 1),
+            CapabilityStatus("sg_ready", switch, "switch", False, False),
+            CapabilityStatus("sg_ready", mode, "number", False, False, None, 0, 3, 1),
+        ),
+    )
+    return heat_view(
+        HeatViewInputs(
+            site_id="site_nibe_s",
+            now=NOW,
+            tz="Europe/Stockholm",
+            writable=True,
+            config=config,
+            config_block=config_block(_Entry({"heat": config.as_dict()})),  # type: ignore[arg-type]
+            indoor=indoor([], NOW),
+            outdoor=Outdoor(4.5, "sensor.s1155_current_outdoor_temperature_bt1_30002", "BT1", "pump"),
+            pump=pump,
+            prices=_slots(),
+            money=("SEK", "kr", "öre"),
+            choices={
+                "indoor": [], "outdoor": [], "zones": [], "setpoint": [], "hot_water": [], "meter": None,
+                "offset": [{"entity_id": "number.s1155_heating_offset_climate_system_1_40031", "name": "Heating offset climate system 1", "value": "0"}],
+                "relay": [
+                    {"entity_id": mode, "name": "Requested operating mode (SG Ready)", "value": None},
+                    {"entity_id": switch, "name": "Activate SG Ready via API", "value": None},
+                ],
+            },
+            control=control_status(
+                "off",
+                None,
+                enabled=False,
+                path="sg_ready_api",
+                untested=True,
+                enable_entities={
+                    "integration": "S1155",
+                    "entities": [
+                        {"entity_id": switch, "name": "Activate SG Ready via API"},
+                        {"entity_id": mode, "name": "Requested operating mode (SG Ready)"},
+                    ],
+                },
+            ),
+        )
+    )
+
+
+def test_the_pump_with_the_sg_ready_api() -> None:
+    answer = sg_api_pump_answer()
+    paths = answer["pump"]["paths"]
+    assert [item["path"] for item in paths] == ["sg_ready_api", "offset"]
+    assert paths[0]["control_entity"] == answer["config"]["control_entity"] and paths[0]["control_entity_b"] == answer["config"]["control_entity_b"]
+    assert answer["control"]["path"] == "sg_ready_api" and answer["control"]["untested"] is True
+    assert len(answer["control"]["enable_entities"]["entities"]) == 2
+    assert answer["shadow"] is True and answer["relay"] is None
+    _write_or_compare("sg_api_pump.json", answer)
 
 
 def test_the_villa() -> None:

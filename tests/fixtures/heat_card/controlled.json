@@ -542,14 +542,18 @@
   "control": {
     "automation": null,
     "check": "passed",
+    "enable_entities": null,
     "enabled": true,
     "lowered": true,
+    "offset_home": null,
+    "path": "relay",
     "paused_until": null,
     "raise_until": null,
     "raised": false,
     "reason": "planned",
     "since": "2026-11-16T16:00:00+00:00",
     "state": "running",
+    "untested": false,
     "until": "2026-11-16T18:00:00+00:00"
   },
   "indoor": {

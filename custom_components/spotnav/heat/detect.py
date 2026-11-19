@@ -13,7 +13,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .adapters import PLATFORMS
+from .adapters import PLATFORMS, adapters_for
 from .facts import HeatEntity, HeatPumpFacts, find_heat_pumps
 
 #: Other heat pump controllers SpotNav steps back for (plan section 6): their integration's domain.
@@ -52,6 +52,40 @@ def other_controllers(hass: HomeAssistant) -> tuple[str, ...]:
         domain
         for domain in OTHER_CONTROLLERS
         if any(entry.disabled_by is None for entry in hass.config_entries.async_entries(domain))
+    )
+
+
+def offset_capability(hass: HomeAssistant, entity_id: str) -> tuple[str, bool, bool] | None:
+    """An offset number SpotNav knows, by its integration and unique id: `(brand, volatile, cloud)`; `None` for any
+    other number (a person's own choice: treated as a stored setting). A registry read only."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None:
+        return None
+    for adapter in adapters_for(entry.platform):
+        for capability in adapter.capabilities:
+            if capability.kind == "offset" and capability.match.matches(entry.domain, str(entry.unique_id or "")):
+                return adapter.brand, capability.volatile, adapter.cloud
+    return None
+
+
+def cloud_entity(hass: HomeAssistant, entity_id: str) -> bool:
+    """Whether an entity belongs to a heat pump integration read through the maker's cloud (read only, plan section
+    4: nothing is steered through it). A registry read only."""
+    entry = er.async_get(hass).async_get(entity_id)
+    return entry is not None and any(adapter.cloud for adapter in adapters_for(entry.platform))
+
+
+def sg_ready_api_fits(hass: HomeAssistant, entity_id: str, domain: str) -> bool:
+    """Whether an entity is a pump's own SG Ready control of `domain` (the SG Ready API's mode `number`, its
+    activation `switch`) by its integration and unique id, not through a cloud: the only entities the SG Ready API
+    path writes. A registry read only."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None or entry.domain != domain:
+        return False
+    return any(
+        not adapter.cloud and capability.kind == "sg_ready" and capability.match.matches(entry.domain, str(entry.unique_id or ""))
+        for adapter in adapters_for(entry.platform)
+        for capability in adapter.capabilities
     )
 
 

@@ -134,6 +134,10 @@ CONF_HEAT_METER_ENTITY = "heat_meter_entity"
 #: The heat card's settings (`heat/config.py`): the wanted temperature, home or away, the cooler night, the sensors,
 #: the control paths and the zones. Shadow only: nothing is written to any heating device.
 CONF_HEAT = "heat"
+#: The household's own value of the stored heat-curve offset SpotNav steers (`heat/control.py`): `{entity id: value}`.
+#: Kept in the entry, not in the heat control's store, so a lost or old store still knows what to put back. Set when
+#: the path is first seen, and changed only when the offset changes while SpotNav holds nothing on it.
+CONF_HEAT_OFFSET_HOME = "heat_offset_home"
 #: Where an Energy dashboard individual device the house pie cannot tie to a load belongs, as the household chose
 #: (`site/house_loads.py`): `{statistic id: "heat" | "car" | "none"}`; absent is the house.
 CONF_METER_BELONGS = "meter_belongs"

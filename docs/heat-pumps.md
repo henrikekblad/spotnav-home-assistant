@@ -1,9 +1,12 @@
 # Heat pumps
 
 SpotNav finds a heat pump by its Home Assistant integration, with no setting, and reads what the pump reports. It
-writes no setting, no offset and no setpoint on any heat pump. The one thing it can switch is a **relay** that lowers
-the pump's curve, and only when you turn on **Styr värmen** (see [below](#spotnavs-own-heat-control-relay-off-by-default)).
-What it reads is shown in the diagnostics (`heat_pump`).
+writes nothing to a heat pump unless you turn on **Styr värmen** (see
+[below](#spotnavs-own-heat-control-relay-off-by-default)). Then it steers through the one control path you chose: a
+**relay** that lowers the pump's curve, SG Ready's two contacts, or, on some pumps, SG Ready or the heating curve
+offset through the pump's own integration (see
+[Control through the pump's own integration](#control-through-the-pumps-own-integration-not-yet-tried-on-a-real-pump)).
+It never writes a setpoint. What it reads is shown in the diagnostics (`heat_pump`).
 
 Which other pumps and Home Assistant integrations can be controlled, and which can make hot water on command, is
 in [Supported heat pumps](supported.md#supported-heat-pumps).
@@ -20,14 +23,16 @@ in [Supported heat pumps](supported.md#supported-heat-pumps).
 
 ## What is read
 
-Where the pump has it: the outdoor, supply, calculated supply (NIBE 43009), return, room and hot water temperatures,
+Where the pump has it: the outdoor, supply, calculated supply (NIBE F 43009, NIBE S 31018, CTC 62007), return, room
+and hot water temperatures,
 the degree minutes, the
 compressor's speed and whether it runs, the immersion heater's power or state, and whether the pump is heating the
 house or the hot water now. A reading that is `unknown` or `unavailable`, belongs to a disabled entity, or is out of
 any plausible range (NIBE's "no sensor" -3276.8, for example) is left out, and the diagnostics say why.
 
 SpotNav also lists the controls a pump offers (heat curve offset, setpoint, SG Ready through the integration, extra
-hot water, compressor limits) with their entities and ranges. It only lists them.
+hot water, compressor limits) with their entities and ranges. Most are only listed; the ones SpotNav can steer
+through are in the table further down.
 
 ## The pump's own price control
 
@@ -115,9 +120,10 @@ comfort figures of the day's review and the heat history. The card still shows e
 With the heat pump's lowering input wired to a relay in Home Assistant (NIBE's external contact set to shift the curve
 down, or an SG Ready pump's first contact), SpotNav can switch that relay itself on its own heat plan, the same plan
 the heat card's day chart shows. **It is off by default.** The switch, **Styr värmen**, is in the **Heating** section of
-the settings popover (administrators only) and is shown when the control path is **Relay** or **SG Ready**. Off, the
-relay is left alone and SpotNav only shows what it would do. Level C/D (a setpoint or a curve offset written to the
-pump) is not part of this.
+the settings popover (administrators only) and is shown when the control path is **Relay**, **SG Ready**, **SG Ready
+through the integration** or **Heating curve offset**. Off, nothing is written and SpotNav only shows what it would
+do. A setpoint written to the pump is not part of this. What follows is written for the relay; the two paths through
+the pump's own integration follow the same rules, and their own section says what differs.
 
 **Open relay = the pump's normal curve.** That is the fail-safe state, and every way out ends there: the switch turned
 off, a block or a pause (below), a safety reason, another relay chosen, SpotNav unloaded, and Home Assistant stopping.
@@ -147,8 +153,11 @@ again after checking the wiring.
   after a restart.
 * Never at **−15 °C or colder** outdoors.
 * **Released at once** when a counted room (its offset counted) falls below the comfort band, when the plan or the
-  outdoor reading is missing or old (and nothing starts again until they have been good for 10 minutes), or when SG
-  Ready's second contact is on by someone else.
+  outdoor reading is missing or old (and nothing starts again until they have been good for 10 minutes), when SG
+  Ready's second contact is on by someone else, or, on the relay and SG Ready paths, when a hot-water boost is on
+  (the hot-water entity in the settings, or the pump's own boost such as NIBE's temporary lux): a block can stop hot
+  water too, so a boost you started is never cut off and no lowering starts while it runs. A curve offset does not
+  touch hot water and goes on beside it.
 * At most 6 switchings a day (both SG Ready contacts together).
 * On the relay path pre-heating stays planning only: one relay can lower the curve, not raise it. SG Ready with both
   contacts can raise as well (below).
@@ -204,3 +213,107 @@ for SG Ready's raise, else what the heat pump does) with no **Test** before it, 
 columns in the Plan tab's chart (**SpotNav sänkte**), beside the plan's lighter ones, the rooms and the setpoint. Tap
 or point at the chart for a time's figures. The diagnostics (`heat_settings.control`) keep the switchings, the check's
 results and why each decision was made.
+
+## Control through the pump's own integration (not yet tried on a real pump)
+
+Three control paths need no relay and no electrician: SpotNav writes to an entity of the heat pump's own
+integration. **None of them has run on a real heat pump yet.** The registers, their ranges and what the integrations
+do with them are read from the integrations' sources, and the settings say under the switch that the path is untried.
+If you run one, watch the first days and tell us what you see.
+
+Everything in the section above holds for them as well: off by default behind **Styr värmen**, the check before
+control starts, the same plan and rules (45 minutes to 3 hours, 6 hours a day, never at −15 °C, released when a room
+gets cold), every write read back, and someone else's change wins: a value you or another automation set is left as
+it is and SpotNav pauses until the next day. "Closed" in that section is the lowering as SpotNav wrote it, "open" the
+pump's normal state. SpotNav's own lowerings on these paths count in the house forecast (the heat taken away and
+its rebound after), and so in the battery's and the cars' plans and the day's review, as a relay's closings do.
+
+| Path | Pump and integration | What SpotNav writes | Writes a day | Handed back by |
+| --- | --- | --- | --- | --- |
+| SG Ready through the integration | NIBE S series, NIBE Heat Pump (`nibe_heatpump`, local) | number 46009 "Requested operating mode (SG Ready)", with switch 43033 "Activate SG Ready via API" on | at most 6 mode changes; the switch on at most 4 times | mode normal, then the switch off |
+| Heating curve offset, stored | NIBE F series 47011 "Heat Offset S1", NIBE S series 40031 "Heating offset climate system 1" (`nibe_heatpump`, local); any other number you choose | the offset: the value found less 2 steps (1 step below −5 °C outdoors), plus 1 step for a raise | at most 24 | the value found written back |
+| Heating curve offset, volatile | CTC, CTC Heat Pump (BMS) (`ctc_bms`) 1023 "Curve adjustment override" | the override: −3 °C (−2 °C below −5 °C outdoors), +2 °C for a raise | at most 24 changes; renewed every 2 minutes while held | the override released |
+
+SpotNav finds these entities on the pump: under **Control** a path the pump has is marked **Found on the heat pump**,
+and choosing it fills its entities in. Through NIBE's cloud (myUplink) nothing is steered, and CTC Local Easyconf
+(`ctc_ecozenith`) has no curve adjustment among its controls, so it has no offset path.
+
+**NIBE's entities are disabled by default.** When you turn **Styr värmen** on, the dialog lists the path's entities
+that are still disabled in NIBE Heat Pump (the ones written, and the calculated supply the check reads). Saving
+enables exactly those and reloads the integration once. Nothing is enabled before you save, and turning control off
+leaves them enabled.
+
+### SG Ready through the integration (NIBE S series)
+
+The number holds the mode the pump is asked for, and acts only while the switch is on. Only the pump's own SG Ready
+number and switch (found by NIBE Heat Pump's register numbers) are accepted for this path, also when the settings
+are written another way than through the card, so SpotNav never writes a mode to another number. On no path is
+anything written through a heat pump integration that runs through the maker's cloud.
+
+| Mode | SG Ready state | SpotNav |
+|---|---|---|
+| 0 | blocked or lowered, (1,0) | the plan's lowered hours |
+| 1 | normal, (0,0) | every other hour, and every way out |
+| 2 | low price, the recommended raise, (0,1) | the plan's pre-heat hours |
+| 3 | overcapacity, the forced raise, (1,1) | **never written**, and never taken over when someone else set it |
+
+The integration's register list does not name the four values. The table follows SG Ready's own order and NIBE's
+menu, with the register's default (1) as normal. **Confirming this mapping is the first thing to do on a real pump.**
+
+The rules are SG Ready's own, above: every change goes through normal (mode 1 is written and read back, and has to
+have read for 10 seconds, before the other mode is written), raises only in the plan's pre-heat hours, and no raise
+at all while the number or the switch only assumes its state. SpotNav turns the switch on before its first block or
+raise and leaves it on while it controls. When control stops (the switch off, a pause that lasts, another path
+chosen, Home Assistant stopping while a block or raise holds, SpotNav removed) it writes mode normal first and then
+turns the switch off. A restart while the mode reads normal leaves the switch on (the pump runs as without SpotNav
+then), so a day of restarts does not use up the four turnings on. If the mode does not go
+back to normal (the write fails at the stop, or three openings in a row are not read back), SpotNav turns the switch
+it turned on off anyway: with the switch off the pump no longer acts on the mode, so the block ends by that second
+way, and the mode is written back to normal once it can be. A switch that was on before SpotNav came is not
+SpotNav's to turn off. Whether the pump keeps these two registers through a power cut is
+not said in the integration's register list, so they are written as stored settings: a few times a day.
+
+### The heating curve offset
+
+SpotNav moves the offset from the value it finds, in whole steps, never further than 3 steps from that value, never
+further than 3 steps from your own value (below) whatever it finds, and never outside the number's own range (an
+offset already at the end of its range is not moved at all).
+
+Why 2 steps: the plan lets the house move half a degree around its temperature in runs of at most three hours. One
+NIBE offset step is about 1 °C of room temperature once the house has settled, and a house follows slowly, so three
+hours at 2 steps move a light house about 0.4 °C and a heavy one about 0.1 °C. Three steps would take the light
+house out of the band. Below −5 °C outdoors the lowering is 1 step, and a raise is 1 step. CTC's adjustment is in
+degrees of supply temperature, where a degree of room is 2 to 3 °C: −3 °C is about one NIBE step, shallower on
+purpose since the path is new, and still twice what the check needs to see on the calculated supply.
+
+**NIBE (stored).** A stored setting is written sparingly: a new move (a lowering or a raise) waits until 15 minutes
+after the last write and 45 minutes after the last write the other way, so a raise that ends into a lowering puts
+the value back at once and lowers it a quarter of an hour later. Putting the value back never waits: the end of a
+lowering, a room gone cold or any other way out goes at once.
+
+The offset is a stored setting, so a lowering would stay if nobody put it back. SpotNav keeps the
+value it found before it writes, and writes it back when the lowering ends, when control is turned off, paused or
+blocked, when SpotNav is unloaded and when Home Assistant stops. If Home Assistant went down without that (a crash, a
+power cut), the value is put back at the next start, before anything else. If the offset is no longer the value
+SpotNav wrote (you changed it meanwhile), nothing is put back: your value stands.
+
+SpotNav also keeps **your own value** of the offset in the site's settings, not beside its kept state: the value it
+read when the path was first chosen, and again each time the offset changes while SpotNav holds nothing on it (you
+or the pump's menu changed it). Should SpotNav's kept state be lost while a lowering stands (an old backup restored,
+a dead SD card), SpotNav does not write anything by itself. The settings then show a row, **Offset not put back**,
+with the value it reads and yours ("−2 (was 0)"); open it to put your value back or to keep the one it reads as your
+own. The row also shows when the offset was changed while Home Assistant was down, and it goes away by itself once
+the offset reads your value again. A lowering never goes further than 3 steps below your value, so a lowering left
+standing is never the start of a deeper one.
+
+**CTC (volatile).** CTC's controller forgets the override five minutes after the last write, and CTC Heat Pump (BMS)
+rewrites a held override every minute by itself while Home Assistant runs. SpotNav also writes its value again every
+2 minutes, so the hold never rests on the integration's rewrite alone (these renewals cost no write cycles and are
+counted apart, at most 1000 a day), and ends the lowering for the day if its renewals have failed for 5 minutes.
+They are no dead-man: while Home Assistant runs, the integration keeps the hold even if SpotNav stops. It hands back by setting the override to 0,
+which the integration takes as "release": nothing more is written and the pump is back on its own curve within five
+minutes. So if Home Assistant or the link to the pump stops, the lowering ends by itself within five minutes; while
+Home Assistant runs, it is SpotNav's rules that end it. An override that someone else holds is left alone.
+
+The diagnostics (`heat_settings.control`) show the path's write class and the day's counts (`writes`), the kept
+offset moves (`kept.snapshots`) and whether SpotNav holds the SG Ready switch (`kept.activation`).

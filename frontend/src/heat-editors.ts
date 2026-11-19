@@ -3,9 +3,9 @@
 // SpotNav's own heat settings for the site (`spotnav/update_heat`), never a heating device.
 
 import { updateHeat, type SiteTarget } from "./api";
-import { decodeHeatWrite, roomName, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
+import { decodeHeatWrite, isRelayPath, roomName, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
-import { instantToLocal, localToInstant, namesOf, type HeatSettingKey } from "./heat-view";
+import { instantToLocal, localToInstant, namesOf, offsetValue, type HeatSettingKey } from "./heat-view";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
 import { multiEditor, numberEditor, onOffEditor, shell, singleEditor, type ChoiceOption, type EditorHandlers } from "./value-editors";
@@ -19,9 +19,20 @@ export interface HeatEditorInput {
   language: Language;
   idPrefix: string;
   answer: HeatAnswer;
-  /** Writes `changes`; `null` when it took, else the sentence to show. */
-  write: (changes: Partial<Record<keyof HeatConfig, unknown>>) => Promise<string | null>;
+  /**
+   * Writes `changes`; `null` when it took, else the sentence to show. `enable`: the person confirmed that the
+   * control path's disabled entities are to be enabled with it.
+   */
+  write: (changes: Partial<Record<keyof HeatConfig, unknown>>, options?: HeatWriteOptions) => Promise<string | null>;
 }
+
+export interface HeatWriteOptions {
+  enable?: boolean;
+  /** The answer to the stored offset's line (`HeatControl.offset_home`). */
+  offsetHome?: "restore" | "keep";
+}
+
+const NUMBERS = /^(number|input_number)\./;
 
 /** A refused write in words. */
 export function writeError(language: Language, error: string | null, fieldCodes: readonly string[]): string {
@@ -51,6 +62,7 @@ export async function writeHeat(
   answer: HeatAnswer,
   changes: Partial<Record<keyof HeatConfig, unknown>>,
   language: Language,
+  options: HeatWriteOptions = {},
 ): Promise<{ error: string | null; config: HeatConfig | null }> {
   const expected: Record<string, unknown> = {};
   for (const key of Object.keys(changes) as (keyof HeatConfig)[]) {
@@ -58,7 +70,7 @@ export async function writeHeat(
   }
   let raw: unknown;
   try {
-    raw = await updateHeat(hass, target, changes, expected);
+    raw = await updateHeat(hass, target, changes, expected, options.enable === true, options.offsetHome ?? null);
   } catch {
     return { error: translate(language, "heat.error.generic"), config: null };
   }
@@ -96,11 +108,48 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
     return { title: t("heat.settings.night"), body: nightEditor(input, handlers) };
   }
   if (key === "steer") {
+    // What turning it on means on this path, that a new path is untried, and the entities it turns on with it.
+    const found = config.control_enabled ? null : (answer.control?.enable_entities ?? null);
+    const parts = [t(isRelayPath(config.control_path) ? "heat.settings.steerHelp" : "heat.settings.steerHelpPath")];
+    if (answer.control?.untested === true) {
+      parts.push(t("heat.settings.untested"));
+    }
+    if (found !== null) {
+      const names = new Intl.ListFormat(language, { type: "conjunction" }).format(found.entities.map((entity) => entity.name));
+      parts.push(t("heat.settings.enableEntities", { integration: found.integration, names }));
+    }
     return {
       title: t("heat.settings.steer"),
-      body: onOffEditor(doc, language, { intro: t("heat.settings.steerHelp"), on: config.control_enabled, idPrefix: prefix }, async (on) =>
-        on === config.control_enabled ? null : await input.write({ control_enabled: on }),
+      body: onOffEditor(doc, language, { intro: parts.join(" "), on: config.control_enabled, idPrefix: prefix }, async (on) =>
+        on === config.control_enabled ? null : await input.write({ control_enabled: on }, { enable: on && found !== null }),
       handlers),
+    };
+  }
+  if (key === "offsetHome") {
+    // The stored offset reads other than the household's own value: put it back, or keep it. Nothing is written
+    // without this answer.
+    const line = answer.control?.offset_home ?? null;
+    if (line === null) {
+      return null;
+    }
+    const words = { value: offsetValue(language, line.value), home: offsetValue(language, line.home) };
+    return {
+      title: t("heat.settings.offsetHome"),
+      body: singleEditor(
+        doc,
+        language,
+        {
+          intro: t("heat.settings.offsetHomeHelp", words),
+          options: [
+            { value: "restore", label: t("heat.settings.offsetHomeRestore", words) },
+            { value: "keep", label: t("heat.settings.offsetHomeKeep", words) },
+          ],
+          selected: null,
+          idPrefix: prefix,
+        },
+        (value) => input.write({}, { offsetHome: value === "keep" ? "keep" : "restore" }),
+        handlers,
+      ),
     };
   }
   if (choices === null) {
@@ -125,23 +174,57 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
       return choices.meter === null
         ? null
         : pick(t("heat.settings.meter"), [none, ...choices.meter.map(option)], config.heat_meter_entity, (value) => input.write({ heat_meter_entity: value }), t("heat.settings.meterHelp"));
-    case "path":
+    case "path": {
+      // A path the pump's own entities offer says so, and choosing it fills its entities in. SG Ready through the
+      // integration is offered only where the pump has it (or it is chosen already).
+      const found = answer.pump?.paths ?? [];
+      const offered = ["none", "relay", "sg_ready", "sg_ready_api", "offset", "setpoint"].filter(
+        (path) => path !== "sg_ready_api" || config.control_path === path || found.some((item) => item.path === path),
+      );
       return pick(
         t("heat.settings.path"),
-        ["none", "relay", "sg_ready", "offset", "setpoint"].map((path) => ({ value: path, label: t(`heat.path.${path}` as TranslationKey) })),
+        offered.map((path) => ({
+          value: path,
+          label: t(`heat.path.${path}` as TranslationKey),
+          ...(found.some((item) => item.path === path) ? { help: t("heat.settings.pathFound") } : {}),
+        })),
         config.control_path,
-        (value) => input.write({ control_path: value ?? "none" }),
+        (value) => {
+          const path = value ?? "none";
+          const hit = path === config.control_path ? undefined : found.find((item) => item.path === path);
+          return input.write(
+            hit === undefined ? { control_path: path } : { control_path: path, control_entity: hit.control_entity, control_entity_b: hit.control_entity_b },
+          );
+        },
         t("heat.settings.pathHelp"),
       );
+    }
     case "control":
     case "controlB": {
-      const group = config.control_path === "offset" ? choices.offset : config.control_path === "setpoint" ? choices.setpoint : choices.relay;
+      const path = config.control_path;
+      const api = path === "sg_ready_api";
+      // The relay's list holds the pump's SG Ready entities too: the API's mode is a number, a contact is a switch.
+      const group =
+        path === "offset"
+          ? choices.offset
+          : path === "setpoint"
+            ? choices.setpoint
+            : choices.relay.filter((choice) => NUMBERS.test(choice.entity_id) === (api && key === "control"));
       const field = key === "control" ? "control_entity" : "control_entity_b";
-      // On SG Ready, each contact's own job in plain words: A blocks or lowers, B raises, and how they are wired.
-      const help = config.control_path !== "sg_ready" ? undefined : t(key === "control" ? "heat.settings.controlSgReadyHelp" : "heat.settings.controlBHelp");
-      return pick(t(key === "control" ? "heat.settings.control" : "heat.settings.controlB"), [none, ...group.map(option)], config[field], (value) =>
+      // Each entity's own job in plain words: on SG Ready A blocks or lowers and B raises; the API's mode and its
+      // switch; the offset SpotNav moves and puts back.
+      const helpKey: TranslationKey | undefined =
+        path === "sg_ready"
+          ? key === "control" ? "heat.settings.controlSgReadyHelp" : "heat.settings.controlBHelp"
+          : api
+            ? key === "control" ? "heat.settings.controlApiHelp" : "heat.settings.controlApiSwitchHelp"
+            : path === "offset"
+              ? "heat.settings.controlOffsetHelp"
+              : undefined;
+      const title = key === "control" ? "heat.settings.control" : api ? "heat.settings.controlApiSwitch" : "heat.settings.controlB";
+      return pick(t(title), [none, ...group.map(option)], config[field], (value) =>
         input.write({ control_path: config.control_path, [field]: value }),
-      help);
+      helpKey === undefined ? undefined : t(helpKey));
     }
     case "hotWater":
       return pick(t("heat.settings.hotWater"), [none, ...choices.hot_water.map(option)], config.hot_water_entity, (value) => input.write({ hot_water_entity: value }), t("heat.settings.hotWaterHelp"));

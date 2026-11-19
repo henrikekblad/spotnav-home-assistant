@@ -8,6 +8,9 @@ this plan and tells what it will close ahead (`control.closings_ahead`).
 
 * **The relay** (the heat settings' control entity on the relay or SG Ready path; relay A for SG Ready): its closed
   intervals from the recorder (the last `RELAY_DAYS`, read again every hour) and its state now; whoever closes it.
+  On the paths through the pump's own settings (the SG Ready API's mode, a curve offset: `steered`) the lowering is
+  SpotNav's alone, so its closed intervals are the heat control's own lowerings (`HeatControl.lowerings`) and its
+  state now whether the control holds one; the rest below holds for them as for a relay.
   Its closings ahead are the SpotNav blueprint's where an enabled one drives it (`heat/relay_schedule.py`, from the
   blueprint's inputs and the price's expensive intervals), else a closing now lasts at most three hours.
 * **The forecast's change** (`forecast_delta`, read by the house forecast's plan figures): the lowered heat and the
@@ -51,8 +54,9 @@ from homeassistant.util import dt as dt_util
 from .. import time_zones
 from ..const import CONF_HEAT, DOMAIN
 from .automations import SteeringAutomation, steering_automations
-from .config import BAND_C, PATH_RELAY, PATH_SG_READY, HeatConfig, read_config
+from .config import BAND_C, PATH_OFFSET, PATH_RELAY, PATH_SG_READY, PATH_SG_READY_API, HeatConfig, read_config
 from .meter_split import hot_water_runs, levels
+from .paths import lower_contact
 from .relay_effect import (
     AFTER,
     BEFORE,
@@ -149,6 +153,26 @@ def relay_entity(config: HeatConfig) -> str | None:
     if config.control_path in (PATH_RELAY, PATH_SG_READY):
         return config.control_entity
     return None
+
+
+def steered_contact(config: HeatConfig) -> str | None:
+    """The lowering contact on a path through the pump's own settings (`paths.lower_contact`), `None` on the relay
+    paths and where there is nothing to steer: only SpotNav's heat control lowers through it."""
+    return lower_contact(config) if config.control_path in (PATH_SG_READY_API, PATH_OFFSET) else None
+
+
+def lowering_states(lowerings: Sequence[Sequence[datetime | None]], start: datetime, end: datetime) -> list[tuple[datetime, bool]]:
+    """The heat control's lowerings (`[start, end | None]`) as a relay's states `(since, closed)` within `[start, end)`,
+    open at `start` unless a lowering covers it (`relay_effect.closed_intervals` reads them)."""
+    out: list[tuple[datetime, bool]] = [(start, False)]
+    for begin, finish in sorted((item[0], item[1]) for item in lowerings if item[0] is not None):
+        assert begin is not None
+        if (finish is not None and finish <= start) or begin >= end:
+            continue
+        out.append((max(begin, start), True))
+        if finish is not None and finish < end:
+            out.append((finish, False))
+    return out
 
 
 def merged(intervals: Sequence[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
@@ -263,6 +287,8 @@ class HeatShadow:
         #: Per local day (ISO): `plan` {hour start ISO: [action, reason]} as planned when the hour began, `review`.
         self.days: dict[str, dict[str, Any]] = {}
         self.relay_id: str | None = None
+        #: The lowering contact on a path through the pump's own settings (`steered_contact`), `None` on a relay path.
+        self.steered: str | None = None
         #: The relay's states `(since, closed)` from the recorder and as seen since.
         self.relay_states: list[tuple[datetime, bool]] = []
         self.automations: list[SteeringAutomation] = []
@@ -340,6 +366,22 @@ class HeatShadow:
     def tz(self) -> str:
         return self.site.demand.tracker.tz
 
+    def _closed_now(self) -> tuple[bool | None, datetime | None]:
+        """Whether the lowering holds now and since when: the relay as read, or on a steered path whether the heat
+        control holds its lowering; `None` when neither can be told."""
+        if self.relay_id is not None:
+            return self._relay_now()
+        control = self.control
+        if self.steered is None or control is None or control.relay != self.steered:
+            return None, None
+        if not control.held:
+            return False, control.last_end
+        return True, control.held_since
+
+    def _steered_states(self, start: datetime, end: datetime) -> list[tuple[datetime, bool]]:
+        control = self.control
+        return [] if control is None else lowering_states(control.lowerings, start, end)
+
     def _relay_now(self) -> tuple[bool | None, datetime | None]:
         """Whether the relay is closed now and since when; `None` when it cannot be read."""
         if self.relay_id is None:
@@ -383,10 +425,12 @@ class HeatShadow:
     def relay_source(self) -> tuple[str | None, SteeringAutomation | None]:
         """Who is expected to drive the relay: SpotNav's heat control while it runs, the SpotNav blueprint (with its
         automation) or someone unknown."""
-        if self.relay_id is None:
+        if self.relay_id is None and self.steered is None:
             return None, None
         if self.control is not None and self.control.closings_ahead(dt_util.utcnow()) is not None:
             return SOURCE_SPOTNAV, None
+        if self.relay_id is None:
+            return SOURCE_UNKNOWN, None
         for automation in self.automations:
             if automation.rule is not None and automation.rule.relay == self.relay_id:
                 return SOURCE_BLUEPRINT, automation
@@ -394,7 +438,7 @@ class HeatShadow:
 
     def relay_intervals(self, now: datetime) -> tuple[list[tuple[datetime, datetime]], list[tuple[datetime, datetime]]]:
         """The relay's closed intervals: as it really was (up to now) and as expected from now on."""
-        closed_now, since = self._relay_now()
+        closed_now, since = self._closed_now()
         states = list(self.relay_states)
         if closed_now is not None and since is not None and (not states or states[-1][1] != closed_now):
             states.append((since, closed_now))
@@ -429,10 +473,10 @@ class HeatShadow:
     def forecast_delta(self, now: datetime) -> dict[datetime, float]:
         """The change to the house's expected load per hour (`relay_effect.forecast_delta`), from the relay's closings
         whose rebound is not over; empty without a relay. Kept per 5 minutes."""
-        if self.relay_id is None or not self._loaded:
+        if (self.relay_id is None and self.steered is None) or not self._loaded:
             return {}
         controlled = None if self.control is None else self.control.closings_ahead(now)
-        key = (int(now.timestamp() // 300), self._relay_now(), len(self.relay_states), self.effect, None if controlled is None else tuple(controlled))
+        key = (int(now.timestamp() // 300), self._closed_now(), len(self.relay_states), self.effect, None if controlled is None else tuple(controlled))
         if key == self._delta_key:
             return self._delta
         past, ahead = self.relay_intervals(now)
@@ -455,10 +499,11 @@ class HeatShadow:
             return
         config = self.config()
         relay = relay_entity(config)
-        if relay != self.relay_id:
-            self.relay_id, self.relay_states, self._for_hour = relay, [], None
+        steered = steered_contact(config)
+        if relay != self.relay_id or steered != self.steered:
+            self.relay_id, self.steered, self.relay_states, self._for_hour = relay, steered, [], None
             self._given_up.clear()
-        closed_now, since = self._relay_now()
+        closed_now, since = self._closed_now()
         if closed_now is not None and since is not None and (not self.relay_states or self.relay_states[-1][1] != closed_now):
             self.relay_states.append((since, closed_now))
         watched = [entity for entity in (relay, config.control_entity_b, *(zone.entity_id for zone in config.zones)) if entity]
@@ -502,10 +547,10 @@ class HeatShadow:
             self._running = False
 
     async def _async_read_relay(self, now: datetime) -> None:
-        if self.relay_id is None:
-            self.relay_states = []
-            return
         start = now - timedelta(days=RELAY_DAYS)
+        if self.relay_id is None:
+            self.relay_states = [] if self.steered is None else self._steered_states(start, now)
+            return
         states = await self._async_states(self.relay_id, start, now)
         if states is not None:
             self.relay_states = states
@@ -538,7 +583,7 @@ class HeatShadow:
     async def _async_measure(self, now: datetime) -> None:
         """Measure the relay's closings whose rebound window has passed and which are not measured yet."""
         meter = self.site.house_forecast.heat.meter
-        if self.relay_id is None or not meter.found:
+        if (self.relay_id is None and self.steered is None) or not meter.found:
             return
         from ..site.heat_meter import async_heat_hours  # noqa: PLC0415 - the site imports this module
 
@@ -728,7 +773,11 @@ class HeatShadow:
             if now < end + AFTER or keep is None or now - start > timedelta(days=keep):
                 continue
             heat = await async_heat_hours(self.hass, meter, start, end) if meter.found else {}
-            states = await self._async_states(self.relay_id, start, end) if self.relay_id else []
+            if self.relay_id:
+                states = await self._async_states(self.relay_id, start, end)
+            else:
+                # A steered path's closings are SpotNav's own lowerings.
+                states = self._steered_states(start, end) if self.steered else []
             relay = [] if not states else [(a, b) for a, b in closed_intervals(states, end) if a >= start]
             coldest = await self._async_coldest(config, start, end + AFTER)
             prices = hour_prices(
@@ -795,10 +844,11 @@ class HeatShadow:
     def diagnostics(self) -> dict[str, Any]:
         now = dt_util.utcnow()
         source, automation = self.relay_source()
-        past, ahead = self.relay_intervals(now) if self.relay_id else ([], [])
+        past, ahead = self.relay_intervals(now) if self.relay_id or self.steered else ([], [])
         return {
             "status": self.status,
             "relay": self.relay_id,
+            "steered": self.steered,
             "relay_source": source,
             "relay_automation": None if automation is None else automation.as_dict(),
             "closed": [[start.isoformat(), end.isoformat()] for start, end in past[-8:]],

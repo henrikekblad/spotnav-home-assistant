@@ -2,8 +2,26 @@
 `plans/v3_heating_plan.md` step 5, the owner's decisions of 2026-11-16). One per site, owned by its
 `SiteCapacityController`, beside the heat shadow (`heat/runtime.py`) whose plan it carries out.
 
-**The opt-in**: the heat settings' `control_enabled` ("Styr värmen", off by default), on the relay path or SG Ready's
-first contact only. Nothing is written without it. The rules and the check are pure (`heat/relay_control.py`).
+**The opt-in**: the heat settings' `control_enabled` ("Styr värmen", off by default). Nothing is written without it.
+The rules and the check are pure (`heat/relay_control.py`).
+
+**The paths**: the relay and SG Ready's two contacts are switches. The SG Ready API's mode and a curve offset are
+read as the same two contacts on one number (`heat/paths.py`, which says what each value means and what is written;
+none of them has run on a real heat pump yet). Everything below holds for them as for a relay, "closed" being the
+lowering (or the raise) as SpotNav wrote it and "open" the pump's normal state:
+
+* *SG Ready API*: its activation switch is turned on before the first closing (kept first, read back, at most
+  `paths.ACTIVATION_WRITES_DAY` a day) and, where SpotNav turned it on, off again once control no longer runs,
+  nothing is held and the mode reads normal: mode normal first, then the switch. Where the mode does not go back
+  (a stop that cannot wait for it, `OPEN_TRIES` openings that failed, a contact let go), the switch SpotNav turned on
+  is turned off all the same: it ends the block or the raise by itself (`_async_fallback_off`).
+* *A stored offset* (NIBE): the value found is kept before the lowering is written (`snapshots`) and written back
+  at every exit, at Home Assistant's stop and, where that did not take, at the next start. A closing waits for the
+  plan's write spacing (`paths.move_waits`, kept in `offset_moves`); an opening never does. A value that is no
+  longer the one SpotNav wrote is someone else's: nothing is written back.
+* *A volatile offset* (CTC): written again every `paths.RENEW` while held (a renewal, no dead-man: see `paths`; its
+  own day count, `renewals`); a renewal that has failed for `paths.EXPIRY` ends the lowering and pauses control for
+  the day. Handed back by writing the release; unknown reads as released.
 
 **Each look** (`LOOK_S`, at once after a heat settings write, and within `CONTACT_DEBOUNCE_S` of a contact's change
 SpotNav did not make), never raises:
@@ -31,7 +49,8 @@ SpotNav did not make), never raises:
    the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`; a sensor that
    has not reported for `runtime.STALE_AFTER` does not read), outdoors at or below -15 °C (the lowest of the chosen
    sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)
-   below the band, SG Ready's second contact on or unreadable.
+   below the band, SG Ready's second contact on or unreadable, a hot-water boost on where the path blocks the
+   compressor (`paths.blocks_hot_water`: a block may stop hot water too, and a boost someone started is never cut off).
 
 7. **SG Ready's raise** (contact B, where SG Ready has both contacts): after the lowering's look,
    `relay_control.decide_raise` on the plan's raise hours (the cheap hour before a lowered run, the warm-up before the
@@ -55,6 +74,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -67,16 +87,16 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
-from ..const import DOMAIN
+from ..const import CONF_HEAT_OFFSET_HOME, DOMAIN
+from . import optin, paths
 from .automations import SteeringAutomation, steering_automations
-from .config import BAND_C, PATH_SG_READY, HeatConfig
+from .config import BAND_C, HeatConfig
 from .shadow_rule import RETURN_HOURS
 from .meter_split import Levels, levels, state_now
 from .relay_control import (
     closings_ahead as relay_closings_ahead,
     FAILED,
     GOOD_FOR,
-    MAX_WRITES_DAY,
     NO_LOWER_AT_C,
     PASSED,
     RAISE_AWAY,
@@ -89,6 +109,7 @@ from .relay_control import (
     BASELINE,
     PHASE_WAIT,
     RAISE_ASSUMED_STATE,
+    SAFETY_HOT_WATER,
     SAFETY_ROOM_COLD,
     SAFETY_SETTLING,
     SAFETY_SG_READY_B,
@@ -134,6 +155,8 @@ OPEN_TRIES: Final = 3
 CALL_TIMEOUT_S: Final = 10.0
 #: How long the shutdown waits for the opening to be read back (s).
 SHUTDOWN_WAIT_S: Final = 5.0
+#: How long the SG Ready API's activation switch may take to read on before the mode is written (s).
+ACTIVATE_WAIT_S: Final = 5.0
 #: The plan must have been made within this long to be acted on.
 FRESH_PLAN: Final = timedelta(hours=2)
 #: The meter's readings averaged for what the pump does (a compressor start's spike is no hot-water run), and how much
@@ -170,11 +193,16 @@ RAISE_OFF: Final = "raise_off"
 CLOSED: Final = frozenset({"on"})
 
 
+def lower_entity(config: HeatConfig) -> str | None:
+    """Contact A (the lowering) of the settings' control path, as its key (`paths.lower_contact`: a switch's entity
+    id, or the SG Ready API's mode or an offset read as A); `None` where there is nothing to steer."""
+    return paths.lower_contact(config)
+
+
 def raise_entity(config: HeatConfig) -> str | None:
-    """SG Ready's second contact (B, the raise) where SG Ready has both contacts; `None` on any other path."""
-    if config.control_path == PATH_SG_READY and config.control_entity and config.control_entity_b:
-        return config.control_entity_b
-    return None
+    """Contact B (the raise), as its key (`paths.raise_contact`): SG Ready's second contact where it has both, the
+    SG Ready API's low-price mode, an offset above the value found; `None` where the path cannot raise."""
+    return paths.raise_contact(config) or None
 
 
 def store_key(entry_id: str) -> str:
@@ -230,7 +258,28 @@ class HeatControl:
         self.raise_check = RaiseCheck()
         self.raise_paused_until: datetime | None = None
         self.raise_paused_reason: str | None = None
+        #: The offsets SpotNav moved, per contact: the value found and the value written (`paths.Snapshot`).
+        self.snapshots: dict[str, paths.Snapshot] = {}
+        #: The SG Ready API's activation switch while SpotNav turned it on: `{entity, mode}` (the mode's number).
+        self.activation: dict[str, str] | None = None
+        #: Per local day: the volatile offset's renewals, and the activation switch's turnings on.
+        self.renewals: dict[str, int] = {}
+        self.activations: dict[str, int] = {}
+        #: A stored offset's writes of the last `paths.REVERSAL_SPACING`: `(when, direction)`, for the write spacing.
+        self.offset_moves: list[tuple[datetime, int]] = []
         # Seen.
+        #: A stored offset's value as last read while SpotNav held nothing on it, since this start: a change between
+        #: two such readings is the household's own (`_track_home`).
+        self._offset_seen: dict[str, float] = {}
+        #: The stored offset reads other than the household's own value while SpotNav holds nothing:
+        #: `{entity_id, value, home}`, the card's line asks to put it back or keep it (`async_offset_home`).
+        self.offset_home: dict[str, Any] | None = None
+        #: Per contact: when its volatile value was last written, and last written with success.
+        self._renewed_at: dict[str, datetime] = {}
+        self._renew_ok: dict[str, datetime] = {}
+        self._deactivate_at: datetime | None = None
+        #: Since when control has not run on the SG Ready API's path with nothing held.
+        self._idle_since: datetime | None = None
         self.pending_b: Pending | None = None
         self.raise_decision: Decision | None = None
         self._reopen_b = False
@@ -309,12 +358,10 @@ class HeatControl:
         """The kept state is lost, so whether SpotNav left a contact closed is not known: behind the opt-in, both
         contacts are taken as held and opened once at the first look where they read (as after a stop while held; one
         that reads open is left alone). Without it SpotNav's own closing would read as someone else's for good."""
-        from .runtime import relay_entity  # noqa: PLC0415 - the runtime imports this module
-
         config = self.shadow.config()
         if not config.control_enabled:
             return
-        self.relay, self.raise_entity = relay_entity(config), raise_entity(config)
+        self.relay, self.raise_entity = lower_entity(config), raise_entity(config)
         if self.relay is not None:
             self.held, self.held_since, self._reopen = True, None, True
         if self.raise_entity is not None:
@@ -358,6 +405,21 @@ class HeatControl:
             # B held at the last stop: opened at the first look, before A may close.
             self._reopen_b = True
             _LOGGER.info("SpotNav heat control: the raise contact %s was held at the last stop; opening it", self.raise_entity)
+        snapshots = raw.get("snapshots")
+        if isinstance(snapshots, dict):
+            for key, item in snapshots.items():
+                if isinstance(key, str) and (snapshot := paths.Snapshot.from_dict(item)) is not None:
+                    self.snapshots[key] = snapshot
+        activation = raw.get("activation")
+        if isinstance(activation, dict) and isinstance(activation.get("entity"), str) and isinstance(activation.get("mode"), str):
+            self.activation = {"entity": activation["entity"], "mode": activation["mode"]}
+        for name in ("renewals", "activations"):
+            counts = raw.get(name)
+            if isinstance(counts, dict):
+                setattr(self, name, {day: count for day, count in counts.items() if isinstance(count, int)})
+        for item in raw.get("offset_moves") or []:
+            if isinstance(item, list) and len(item) == 2 and (at := _instant(item[0])) is not None and item[1] in (-1, 1):
+                self.offset_moves.append((at, item[1]))
 
     def _data(self) -> dict[str, Any]:
         return {
@@ -379,6 +441,11 @@ class HeatControl:
             "raise_check": self.raise_check.as_dict(),
             "raise_paused_until": None if self.raise_paused_until is None else self.raise_paused_until.isoformat(),
             "raise_paused_reason": self.raise_paused_reason,
+            "snapshots": {key: snapshot.as_dict() for key, snapshot in self.snapshots.items()},
+            "activation": None if self.activation is None else dict(self.activation),
+            "renewals": self.renewals,
+            "activations": self.activations,
+            "offset_moves": [[at.isoformat(), direction] for at, direction in self.offset_moves],
         }
 
     def _save(self) -> None:
@@ -440,11 +507,47 @@ class HeatControl:
                     self._end_lowering(dt_util.utcnow())
             except Exception:  # noqa: BLE001 - kept held: opened at the next start
                 _LOGGER.warning("SpotNav heat control: the relay could not be opened at the stop", exc_info=True)
+        if self.held or self.raised:
+            # The SG Ready API's mode did not read normal in time: its activation switch is the second way back.
+            await self._async_fallback_off(dt_util.utcnow(), "stop", stopping=True)
+        try:
+            if not self._activation_stays():
+                await self._async_deactivate(dt_util.utcnow(), stopping=True)
+        except Exception:  # noqa: BLE001 - kept: turned off at the next start
+            _LOGGER.warning("SpotNav heat control: the SG Ready API could not be turned off at the stop", exc_info=True)
         await self._store.async_save(self._data())
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
-        await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+        """Forget the kept state when the site is removed. What the hand-back at the unload could not give back is
+        the last record of it: logged first, so it can be set back by hand. An SG Ready switch SpotNav turned on is
+        turned off here where the mode reads normal (the stop leaves it on for the next start)."""
+        store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(entry_id))
+        try:
+            kept = await store.async_load()
+        except Exception:  # noqa: BLE001 - nothing to tell
+            kept = None
+        if isinstance(kept, dict) and isinstance(activation := kept.get("activation"), dict):
+            switch, mode = hass.states.get(str(activation.get("entity"))), hass.states.get(str(activation.get("mode")))
+            if switch is not None and switch.state == "on" and mode is not None and paths.mode_of(mode.state) == paths.MODE_NORMAL:
+                try:
+                    async with asyncio.timeout(CALL_TIMEOUT_S):
+                        await hass.services.async_call("switch", "turn_off", {"entity_id": switch.entity_id}, blocking=True)
+                    kept["activation"] = None
+                except Exception:  # noqa: BLE001 - logged below
+                    _LOGGER.debug("SpotNav heat control: %s could not be turned off at the removal", switch.entity_id, exc_info=True)
+        if isinstance(kept, dict) and (kept.get("held") or kept.get("raised") or kept.get("snapshots") or kept.get("activation")):
+            _LOGGER.warning(
+                "SpotNav heat control: removed while a change of its was not handed back; set it back by hand: "
+                "lowering %s held %s, raise %s held %s, offset values found %s, SG Ready switch turned on %s",
+                kept.get("relay"),
+                kept.get("held"),
+                kept.get("raise_entity"),
+                kept.get("raised"),
+                kept.get("snapshots"),
+                kept.get("activation"),
+            )
+        await store.async_remove()
 
     # ---- looks
 
@@ -466,10 +569,10 @@ class HeatControl:
     def _watch_contacts(self) -> None:
         """Watch the contacts SpotNav may write (the chosen ones, and those it still holds): a change it did not make
         is looked at within `CONTACT_DEBOUNCE_S`, not at the next look."""
-        from .runtime import relay_entity  # noqa: PLC0415 - the runtime imports this module
-
         config = self.shadow.config()
-        wanted = tuple(sorted({e for e in (relay_entity(config), raise_entity(config), self.relay, self.raise_entity) if e}))
+        keys = (lower_entity(config), raise_entity(config), self.relay, self.raise_entity)
+        switches = (paths.activation_switch(config), None if self.activation is None else self.activation["entity"])
+        wanted = tuple(sorted({paths.entity_of(key) for key in keys if key} | {entity for entity in switches if entity}))
         if wanted == self._watched and (self._watch_cancel is not None or not wanted):
             return
         if self._watch_cancel is not None:
@@ -495,12 +598,19 @@ class HeatControl:
         old, new = event.data["old_state"], event.data["new_state"]
         if old is not None and new is not None and old.state == new.state:
             return
-        closed = None if new is None or new.state in ("unavailable", "unknown") else new.state in CLOSED
-        if closed is not False:
-            self._open_since.pop(entity_id, None)
-        own = (entity_id == self.relay and self.pending is not None and self.pending.closed == closed) or (
-            entity_id == self.raise_entity and self.pending_b is not None and self.pending_b.closed == closed
-        )
+        config = self.shadow.config()
+        own = False
+        # The state machine holds the new state already: each contact on the entity is read as the looks read it.
+        for key in {lower_entity(config), raise_entity(config), self.relay, self.raise_entity}:
+            if key is None or paths.entity_of(key) != entity_id:
+                continue
+            closed = self._read(key)
+            if closed is not False:
+                self._open_since.pop(key, None)
+            if (key == self.relay and self.pending is not None and self.pending.closed == closed) or (
+                key == self.raise_entity and self.pending_b is not None and self.pending_b.closed == closed
+            ):
+                own = True
         if own or self._closed or self._debounce_cancel is not None:
             return
         self._debounce_cancel = async_call_later(self.hass, CONTACT_DEBOUNCE_S, self._contact_look)
@@ -522,6 +632,8 @@ class HeatControl:
 
     async def async_look(self, now: datetime) -> None:
         """One look (see the module). Never raises."""
+        self._forget(now)
+        self._safe_track_home()
         try:
             await self._async_look(now)
         except asyncio.CancelledError:
@@ -543,16 +655,26 @@ class HeatControl:
                 await self._async_release_b(now, "error")
             except Exception:  # noqa: BLE001 - tried again at the next look
                 _LOGGER.warning("SpotNav heat control: the raise contact could not be opened", exc_info=True)
+        try:
+            await self._async_renew(now)
+            if (self.held and self._open_failures >= OPEN_TRIES) or (self.raised and self._b_open_failures >= OPEN_TRIES):
+                # Openings that keep failing: on the SG Ready API the switch ends the block or the raise by itself.
+                await self._async_fallback_off(now, "open_failed")
+            await self._async_deactivate(now)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - the next look tries again
+            _LOGGER.warning("SpotNav heat control: the path's upkeep failed", exc_info=True)
         self._trim(now)
+        # Again after the writes, so the line says what holds now.
+        self._safe_track_home()
         self._save()
         if not self._closed:
             self._watch_contacts()
 
     async def _async_look(self, now: datetime) -> None:
         config = self.shadow.config()
-        from .runtime import relay_entity  # noqa: PLC0415 - the runtime imports this module
-
-        relay = relay_entity(config)
+        relay = lower_entity(config)
         for entity_id in {relay, raise_entity(config), self.relay, self.raise_entity}:
             if entity_id is not None:
                 self._seen_open(entity_id, now)
@@ -560,15 +682,16 @@ class HeatControl:
             # The old relay is given back first: opened where SpotNav holds it, read back at the next looks.
             if self.pending is not None and self._read(self.relay) == self.pending.closed:
                 self._confirm(self.pending, now)
-            if self.held and (self.hass.states.get(self.relay) is None or self._open_failures >= OPEN_TRIES):
+            if self.held and (self._gone(self.relay) or self._open_failures >= OPEN_TRIES):
                 # Removed, or it does not open: let go (logged) rather than stay stuck on it; the new relay is taken
                 # up. Nothing more can be written to it.
-                gone = self.hass.states.get(self.relay) is None
+                gone = self._gone(self.relay)
                 _LOGGER.warning(
                     "SpotNav heat control: %s, held closed, %s; let go", self.relay, "is gone" if gone else "did not open"
                 )
                 self._log(now, "relay_let_go", relay=self.relay)
                 self.pending = None
+                await self._async_fallback_off(now, "let_go")
                 self._end_lowering(now)
             if self.held:
                 if self.pending is None or now - self.pending.at > READ_BACK:
@@ -713,6 +836,7 @@ class HeatControl:
                 lowered_24h=self.lowered_24h(now),
                 writes_today=self.writes.get(self._day(now), 0),
                 safety=safety,
+                max_writes=paths.max_writes(relay),
             )
         )
         self._set(STATE_RUNNING, self.decision.reason)
@@ -737,7 +861,7 @@ class HeatControl:
             self._set(STATE_WAITING, WAIT_NO_SIGNAL)
             return
         blocked = None if safety in (None, SAFETY_SETTLING) else safety
-        room = self.writes.get(self._day(now), 0) + 2 <= MAX_WRITES_DAY
+        room = self.writes.get(self._day(now), 0) + 2 <= paths.max_writes(relay)
         step = self.check.step(now, sample, read, blocked, measured=self._measured(), may_start=room)
         if step.outcome is not None:
             self._log(now, "check", outcome=step.outcome)
@@ -750,16 +874,216 @@ class HeatControl:
 
     # ---- reads
 
-    def _read(self, entity_id: str) -> bool | None:
+    def _read(self, key: str) -> bool | None:
+        """A contact as read now: closed, open, or `None` where it does not read (`paths`: a switch's state, the SG
+        Ready API's mode, an offset against what SpotNav wrote)."""
+        entity_id, kind, role = paths.parse(key)
+        state = self.hass.states.get(entity_id)
+        if kind == paths.KIND_SWITCH:
+            if state is None or state.state in ("unavailable", "unknown"):
+                return None
+            return state.state in CLOSED
+        if state is None or state.state == "unavailable":
+            return None
+        if kind == paths.KIND_MODE:
+            mode = paths.mode_of(state.state)
+            return None if mode is None else paths.mode_closed(mode, role)
+        return paths.offset_closed(paths.number_of(state.state), role, self.snapshots.get(key), self._volatile(key))
+
+    def _gone(self, key: str) -> bool:
+        """Whether a contact's entity is no longer in Home Assistant."""
+        return self.hass.states.get(paths.entity_of(key)) is None
+
+    def _volatile(self, key: str) -> bool:
+        """Whether the controller forgets an offset's value by itself: as kept with SpotNav's move, else by what the
+        entity is."""
+        from .detect import offset_capability  # noqa: PLC0415 - read only when it matters
+
+        snapshot = self.snapshots.get(key)
+        if snapshot is not None:
+            return snapshot.volatile
+        known = offset_capability(self.hass, paths.entity_of(key))
+        return known is not None and known[1]
+
+    def _switch_state(self, entity_id: str) -> bool | None:
         state = self.hass.states.get(entity_id)
         if state is None or state.state in ("unavailable", "unknown"):
             return None
-        return state.state in CLOSED
+        return state.state == "on"
+
+    def _forget(self, now: datetime) -> None:
+        """Drop a kept offset move once it is over: nothing held or on its way on its contact, and its closing can
+        no longer take late (`OWN_WINDOW`). From then on the value the number holds is the household's own."""
+        for key in list(self.snapshots):
+            if key == self.relay:
+                busy, unseen = self.held or self.pending is not None, self._a_close_unseen_at
+            elif key == self.raise_entity:
+                busy, unseen = self.raised or self.pending_b is not None, self._b_close_unseen_at
+            else:
+                busy, unseen = False, None
+            if busy or (unseen is not None and now - unseen <= OWN_WINDOW):
+                continue
+            del self.snapshots[key]
+            self._renewed_at.pop(key, None)
+            self._renew_ok.pop(key, None)
+
+    def _prepare_close(self, key: str, now: datetime) -> str | None:
+        """Before an offset's closing: read the value found, work out the value to write and keep both
+        (`paths.Snapshot`, saved before the write goes out). The reason when no closing is possible, else `None`;
+        nothing to prepare on the other paths."""
+        from .detect import offset_capability  # noqa: PLC0415 - read only when it matters
+
+        entity_id, kind, role = paths.parse(key)
+        if kind != paths.KIND_OFFSET:
+            return None
+        state = self.hass.states.get(entity_id)
+        known = offset_capability(self.hass, entity_id)
+        volatile = known is not None and known[1]
+        found = None if state is None else paths.number_of(state.state)
+        if state is None or (found is None and not (volatile and state.state == "unknown")):
+            return "offset_unreadable"
+
+        def limit(name: str) -> float | None:
+            value = state.attributes.get(name)
+            return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+        coldest = self.coldest_outdoor(self.shadow.config(), now)
+        target = paths.offset_target(
+            role,
+            found,
+            paths.depth_of(None if known is None else known[0]),
+            cold=coldest is not None and coldest < paths.COLD_BELOW_C,
+            minimum=limit("min"),
+            maximum=limit("max"),
+            step=limit("step"),
+            # A stored offset never moves further than `MAX_SHIFT` from the household's own value, whatever it reads.
+            home=None if volatile else self.home_value(entity_id),
+        )
+        if target is None:
+            return "offset_no_room"
+        self.snapshots[key] = paths.Snapshot(found, target, volatile, now)
+        self._renewed_at.pop(key, None)
+        self._renew_ok.pop(key, None)
+        return None
+
+    # ---- the stored offset's own value
+
+    def _stored_offset(self, config: HeatConfig) -> str | None:
+        """The stored offset number the settings steer; `None` on any other path and for a volatile offset."""
+        key = lower_entity(config)
+        if key is None or paths.parse(key)[1] != paths.KIND_OFFSET or self._volatile(key):
+            return None
+        return paths.entity_of(key)
+
+    def home_value(self, entity_id: str) -> float | None:
+        """The household's own value of a stored offset, as kept in the site's entry (`CONF_HEAT_OFFSET_HOME`)."""
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        kept = None if entry is None else entry.data.get(CONF_HEAT_OFFSET_HOME)
+        value = kept.get(entity_id) if isinstance(kept, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None
+        return float(value)
+
+    def _set_home(self, entity_id: str, value: float) -> None:
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        if entry is None:
+            return
+        _LOGGER.info("SpotNav heat control: %s's own value is now %s", entity_id, value)
+        self.hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_HEAT_OFFSET_HOME: {entity_id: value}})
+
+    def _offset_busy(self, entity_id: str) -> bool:
+        """Whether SpotNav holds a move on the offset, writes one, or may still own one (a kept move, a reopening)."""
+        for key, held, pending, reopen in (
+            (self.relay, self.held, self.pending, self._reopen),
+            (self.raise_entity, self.raised, self.pending_b, self._reopen_b),
+        ):
+            if key is not None and paths.entity_of(key) == entity_id and (held or pending is not None or reopen):
+                return True
+        return any(paths.entity_of(key) == entity_id for key in self.snapshots)
+
+    def _safe_track_home(self) -> None:
+        try:
+            self._track_home(self.shadow.config())
+        except Exception:  # noqa: BLE001 - the bound falls back to the plan's -3..+3
+            _LOGGER.warning("SpotNav heat control: the offset's own value could not be kept", exc_info=True)
+
+    def _track_home(self, config: HeatConfig) -> None:
+        """Keep the stored offset's own value (the household's, in the site's entry, so a lost or old store still
+        knows it): taken when the path is first seen, and again only when the offset changes between two readings
+        while SpotNav holds nothing on it. A value that differs from it without such a change (after a lost store
+        left a lowering standing, or a change while Home Assistant was down) is never taken as the household's and
+        never written back by itself: the card's line asks (`offset_home`), and clears once the two agree."""
+        entity_id = self._stored_offset(config)
+        if entity_id is None:
+            self.offset_home = None
+            self._offset_seen.clear()
+            return
+        if self._offset_busy(entity_id):
+            # What it reads now is SpotNav's (or may be): no change of the household's can be told from it.
+            self.offset_home = None
+            self._offset_seen.pop(entity_id, None)
+            return
+        state = self.hass.states.get(entity_id)
+        value = None if state is None or state.state == "unavailable" else paths.number_of(state.state)
+        if value is None:
+            return
+        seen = self._offset_seen.get(entity_id)
+        self._offset_seen = {entity_id: value}
+        home = self.home_value(entity_id)
+        if home is None or (seen is not None and not paths.same(seen, value)):
+            if home is None or not paths.same(home, value):
+                self._set_home(entity_id, value)
+            self.offset_home = None
+            return
+        self.offset_home = None if paths.same(value, home) else {"entity_id": entity_id, "value": value, "home": home}
+
+    async def async_offset_home(self, choice: str) -> str | None:
+        """The person's answer to the offset's line: `restore` writes the household's own value back, `keep` takes
+        the value the offset reads as the household's. An error code, `None` when done."""
+        if choice not in ("restore", "keep"):
+            return "invalid_choice"
+        line = self.offset_home
+        if line is None:
+            return "nothing_to_do"
+        entity_id = line["entity_id"]
+        if self._offset_busy(entity_id):
+            return "busy"
+        if choice == "keep":
+            self._set_home(entity_id, line["value"])
+            self._offset_seen[entity_id] = line["value"]
+            self.offset_home = None
+            return None
+        now = dt_util.utcnow()
+        day = self._day(now)
+        self.writes[day] = self.writes.get(day, 0) + 1
+        self._log(now, "offset_home_restore", entity=entity_id, value=line["home"])
+        self.offset_moves.append((now, 1 if line["home"] > line["value"] else -1))
+        try:
+            await self._async_set_number(entity_id, line["home"])
+        except Exception as err:  # noqa: BLE001 - the line stays; the person may try again
+            _LOGGER.warning("SpotNav heat control: putting %s back failed: %s", entity_id, err)
+            return "write_failed"
+        finally:
+            self._save()
+        # Read again at the next look: the line clears once the offset reads its own value.
+        self._offset_seen.pop(entity_id, None)
+        self._track_home(self.shadow.config())
+        return None
 
     def _blocker(self, config: HeatConfig, relay: str) -> str | None:
-        from .detect import other_controllers, read_heat_pumps  # noqa: PLC0415 - read only when it matters
+        from .detect import cloud_entity, other_controllers, read_heat_pumps, sg_ready_api_fits  # noqa: PLC0415 - read only when it matters
 
-        watched = [relay] + ([config.control_entity_b] if config.control_entity_b else [])
+        watched = list(dict.fromkeys([paths.entity_of(relay)] + ([config.control_entity_b] if config.control_entity_b else [])))
+        if any(cloud_entity(self.hass, entity_id) for entity_id in watched):
+            # An entity behind the maker's cloud is read only (plan section 4), on every path: nothing to steer.
+            return WAIT_NO_RELAY
+        if paths.parse(relay)[1] == paths.KIND_MODE and not (
+            sg_ready_api_fits(self.hass, paths.entity_of(relay), "number")
+            and config.control_entity_b is not None
+            and sg_ready_api_fits(self.hass, config.control_entity_b, "switch")
+        ):
+            # The SG Ready API writes 0..2 to its mode: never to a number that is not the pump's own SG Ready mode.
+            return WAIT_NO_RELAY
         self.automation = next(iter(steering_automations(self.hass, watched)), None)
         if self.automation is not None:
             return WAIT_AUTOMATION
@@ -806,14 +1130,32 @@ class HeatControl:
             return SAFETY_STALE
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
-        if config.control_path == PATH_SG_READY and config.control_entity_b is not None:
+        if paths.blocks_hot_water(config) and self._boost_on(config):
+            # A block may stop hot water too: a boost someone started is never cut off, and no block starts on it.
+            return SAFETY_HOT_WATER
+        b = raise_entity(config)
+        if b is not None:
             # B closed by SpotNav's own raise is no safety reason: the interlock opens it before A closes.
-            own = config.control_entity_b == self.raise_entity and (self.raised or self.pending_b is not None)
-            if self._read(config.control_entity_b) is not False and not own:
+            own = b == self.raise_entity and (self.raised or self.pending_b is not None)
+            if self._read(b) is not False and not own:
                 return SAFETY_SG_READY_B
         if now - self._good_since < GOOD_FOR:
             return SAFETY_SETTLING
         return None
+
+    def _boost_on(self, config: HeatConfig) -> bool:
+        """Whether a hot-water boost runs: the settings' hot-water entity, or the pump's own boost (its adapter's
+        `hot_water_boost` entities), reads on (`paths.boost_on`)."""
+        from .detect import read_heat_pumps  # noqa: PLC0415 - read only when it matters
+
+        entities = [config.hot_water_entity] if config.hot_water_entity else []
+        for pump in read_heat_pumps(self.hass):
+            entities.extend(item.entity_id for item in pump.capabilities if item.kind == "hot_water_boost")
+        for entity_id in entities:
+            state = self.hass.states.get(entity_id)
+            if state is not None and paths.boost_on(entity_id, state.state):
+                return True
+        return False
 
     async def async_sample(self, now: datetime) -> Sample:
         """The check's readings now: the meter's power and what the pump does by it, the calculated supply."""
@@ -865,12 +1207,182 @@ class HeatControl:
 
     # ---- writes
 
-    async def _async_call(self, entity_id: str, closed: bool) -> None:
+    async def _async_call(self, key: str, closed: bool) -> None:
+        """Write a contact (`paths`): a switch on or off; the SG Ready API's mode (blocked or the raise for a
+        closing, with its activation switch on first; normal for every opening, never the forced raise); an offset
+        as kept (`_prepare_close`): the value written for a closing, the value found, or the release, for an
+        opening."""
+        entity_id, kind, role = paths.parse(key)
+        if kind == paths.KIND_SWITCH:
+            await self._async_switch(entity_id, closed)
+            return
+        if kind == paths.KIND_MODE:
+            if closed:
+                await self._async_activate(key, dt_util.utcnow())
+            mode = paths.mode_to_write(role, closed)
+            assert mode != paths.MODE_FORCED
+            await self._async_set_number(entity_id, float(mode))
+            return
+        snapshot = self.snapshots.get(key)
+        if closed:
+            value = None if snapshot is None else snapshot.written
+        elif snapshot is not None:
+            value = snapshot.restore()
+        else:
+            # Nothing kept: a volatile value is let go; of a stored one SpotNav knows nothing to put back.
+            value = paths.RELEASE if self._volatile(key) else None
+        if value is None:
+            raise RuntimeError(f"no value kept to write to {entity_id}")
+        await self._async_set_number(entity_id, value)
+
+    async def _async_switch(self, entity_id: str, on: bool) -> None:
         domain = entity_id.split(".", 1)[0]
         async with asyncio.timeout(CALL_TIMEOUT_S):
-            await self.hass.services.async_call(
-                domain, "turn_on" if closed else "turn_off", {"entity_id": entity_id}, blocking=True
-            )
+            await self.hass.services.async_call(domain, "turn_on" if on else "turn_off", {"entity_id": entity_id}, blocking=True)
+
+    async def _async_set_number(self, entity_id: str, value: float) -> None:
+        domain = entity_id.split(".", 1)[0]
+        async with asyncio.timeout(CALL_TIMEOUT_S):
+            await self.hass.services.async_call(domain, "set_value", {"entity_id": entity_id, "value": value}, blocking=True)
+
+    async def _async_activate(self, key: str, now: datetime) -> None:
+        """The SG Ready API's activation switch on before a mode is written: left alone where it is on already (then
+        it is not SpotNav's to turn off); else kept as SpotNav's, turned on and read back. Raises where it cannot be
+        (the closing is then a write not taken)."""
+        switch = paths.activation_switch(self.shadow.config())
+        if switch is None:
+            raise RuntimeError("the SG Ready API has no activation switch chosen")
+        state = self._switch_state(switch)
+        if state is True:
+            return
+        if state is None:
+            raise RuntimeError(f"{switch} does not read")
+        day = self._day(now)
+        if self.activations.get(day, 0) >= paths.ACTIVATION_WRITES_DAY:
+            raise RuntimeError(f"{switch} was turned on {paths.ACTIVATION_WRITES_DAY} times today already")
+        self.activations[day] = self.activations.get(day, 0) + 1
+        self.activation = {"entity": switch, "mode": paths.entity_of(key)}
+        self._deactivate_at = None
+        if not await self._async_save_now():
+            self.activation = None
+            raise RuntimeError("the activation could not be kept")
+        self._log(now, "activate", entity=switch)
+        await self._async_switch(switch, True)
+        async with asyncio.timeout(ACTIVATE_WAIT_S):
+            while self._switch_state(switch) is not True:
+                await asyncio.sleep(0.2)
+
+    async def _async_deactivate(self, now: datetime, *, stopping: bool = False) -> None:
+        """The SG Ready API handed back: the activation switch SpotNav turned on is turned off once control no
+        longer runs on that path, nothing is held or on its way and the mode reads normal (mode first, then the
+        switch). A mode that is not normal while SpotNav holds nothing is someone else's: left as it is."""
+        held = self.activation
+        if held is None:
+            return
+        switch = held["entity"]
+        config = self.shadow.config()
+        chosen = paths.activation_switch(config) == switch
+        running = self.state in (STATE_RUNNING, STATE_VERIFYING) and chosen and not stopping
+        if running or self.held or self.raised or self.pending is not None or self.pending_b is not None:
+            self._idle_since = None
+            return
+        if self._idle_since is None:
+            self._idle_since = now
+        if chosen and config.control_enabled and not stopping and now - self._idle_since < RETRY_OPEN:
+            # A short wait (a reading gone for a moment, a change being confirmed) is no hand-back yet.
+            return
+        state = self._switch_state(switch)
+        if state is False or self.hass.states.get(switch) is None:
+            # Off already, or gone: no longer SpotNav's.
+            self.activation, self._deactivate_at = None, None
+            return
+        mode = self.hass.states.get(held["mode"])
+        if state is None or mode is None or paths.mode_of(mode.state) != paths.MODE_NORMAL:
+            return
+        if self._deactivate_at is not None and now < self._deactivate_at:
+            return
+        self._deactivate_at = now + RETRY_OPEN
+        self._log(now, "deactivate", entity=switch)
+        await self._async_switch(switch, False)
+        if stopping:
+            try:
+                async with asyncio.timeout(SHUTDOWN_WAIT_S):
+                    while self._switch_state(switch) is True:
+                        await asyncio.sleep(0.2)
+            except TimeoutError:
+                return
+        if self._switch_state(switch) is False:
+            self.activation, self._deactivate_at = None, None
+
+    def _activation_stays(self) -> bool:
+        """Whether the stop leaves the SG Ready API's switch on: control still runs on that path, nothing is held and
+        the mode reads normal (the pump runs as without SpotNav). Kept, so a day of restarts does not use up
+        `paths.ACTIVATION_WRITES_DAY`; turned off when control stops at a later look or at the site's removal."""
+        held = self.activation
+        if held is None or self.held or self.raised:
+            return False
+        config = self.shadow.config()
+        mode = self.hass.states.get(held["mode"])
+        return (
+            config.control_enabled
+            and paths.activation_switch(config) == held["entity"]
+            and mode is not None
+            and paths.mode_of(mode.state) == paths.MODE_NORMAL
+        )
+
+    async def _async_fallback_off(self, now: datetime, why: str, *, stopping: bool = False) -> None:
+        """The SG Ready API's second way back: where SpotNav turned the activation switch on and the mode does not read
+        normal (a stop that could not wait for it, openings that keep failing, a contact let go), the switch is
+        turned off, which ends the block or the raise by itself through another register. The mode still reads as
+        SpotNav's closing and is put back to normal at a later look or the next start. Never raises."""
+        held = self.activation
+        if held is None or self._switch_state(held["entity"]) is not True:
+            return
+        mode = self.hass.states.get(held["mode"])
+        if mode is not None and paths.mode_of(mode.state) == paths.MODE_NORMAL:
+            return
+        switch = held["entity"]
+        self._log(now, "deactivate_fallback", entity=switch, why=why)
+        _LOGGER.warning("SpotNav heat control: the SG Ready mode did not go back to normal (%s); turning %s off", why, switch)
+        try:
+            await self._async_switch(switch, False)
+            if stopping:
+                async with asyncio.timeout(SHUTDOWN_WAIT_S):
+                    while self._switch_state(switch) is True:
+                        await asyncio.sleep(0.2)
+        except Exception:  # noqa: BLE001 - tried again at the next look, or the next start
+            _LOGGER.warning("SpotNav heat control: %s could not be turned off either", switch, exc_info=True)
+            return
+        if self._switch_state(switch) is False:
+            self.activation, self._deactivate_at = None, None
+
+    async def _async_renew(self, now: datetime) -> None:
+        """The renewal of a volatile offset: the value SpotNav holds is written again every `paths.RENEW`, well
+        inside the controller's five minutes. A renewal that has failed for `paths.EXPIRY` (the controller has
+        forgotten the value by then), or a day's `paths.RENEWALS_DAY` reached, ends the lowering as a write not
+        taken (released, control paused for the day)."""
+        for key, held, pending, failed in (
+            (self.relay, self.held, self.pending, self._async_failed),
+            (self.raise_entity, self.raised, self.pending_b, self._async_failed_b),
+        ):
+            snapshot = None if key is None else self.snapshots.get(key)
+            if key is None or snapshot is None or not snapshot.volatile or not held or pending is not None:
+                continue
+            if self._read(key) is not True or now - self._renewed_at.get(key, snapshot.at) < paths.RENEW:
+                continue
+            day = self._day(now)
+            if self.renewals.get(day, 0) >= paths.RENEWALS_DAY:
+                await failed(now, "renew_cap")
+                continue
+            self.renewals[day] = self.renewals.get(day, 0) + 1
+            try:
+                await self._async_set_number(paths.entity_of(key), snapshot.written)
+            except Exception as err:  # noqa: BLE001 - tried again at the next look, until the value has expired
+                _LOGGER.warning("SpotNav heat control: renewing %s failed: %s", paths.entity_of(key), err)
+                if now - self._renew_ok.get(key, snapshot.at) >= paths.EXPIRY:
+                    await failed(now, "renew_failed")
+                continue
+            self._renewed_at[key] = self._renew_ok[key] = now
 
     async def _async_write(self, closed: bool, now: datetime, *, why: str) -> None:
         """Switch the relay and wait for the read-back at the next looks. An opening is never refused."""
@@ -886,6 +1398,14 @@ class HeatControl:
                 return
         if not closed and self._retry_open_at is not None and now < self._retry_open_at:
             return
+        if closed and self._spaced(relay, closed, now):
+            # A stored offset moved within the write spacing: the closing waits for a later look.
+            self._log_wait(now, "close_waits_for_spacing", why)
+            return
+        if closed and (blocked := self._prepare_close(relay, now)) is not None:
+            # An offset that does not read, or has no room left to move: nothing is written.
+            self._log_wait(now, "close_not_possible", blocked)
+            return
         self.pending = Pending(closed, now)
         day = self._day(now)
         self.writes[day] = self.writes.get(day, 0) + 1
@@ -893,20 +1413,23 @@ class HeatControl:
             self.held, self.held_since = True, now
             self.lowerings.append([now, None])
             # Kept before the closing goes out: a crash right after it still knows SpotNav holds A (opened at the
-            # next start); B is read again after the wait.
+            # next start, an offset put back to the value found); B is read again after the wait.
             if not await self._async_save_now() or not self._b_clear(now):
                 self.pending = None
                 self.writes[day] -= 1
                 self.held, self.held_since = False, None
                 self.lowerings.pop()
+                self.snapshots.pop(relay, None)
                 self._log(now, "close_not_written", why=why)
                 self._save()
                 return
         self._waits.pop("close_waits_for_b", None)
+        self._waits.pop("close_waits_for_spacing", None)
         if closed:
             self._own_reopen_at = None
             self._a_close_unseen_at = now
         self._log(now, "close" if closed else "open", why=why)
+        self._moved(relay, closed, now)
         self._save()
         try:
             await self._async_call(relay, closed)
@@ -916,6 +1439,21 @@ class HeatControl:
             return
         if self._read(relay) == closed:
             self._confirm(self.pending, now)
+
+    def _is_stored_offset(self, key: str) -> bool:
+        return paths.parse(key)[1] == paths.KIND_OFFSET and not self._volatile(key)
+
+    def _spaced(self, key: str, closed: bool, now: datetime) -> bool:
+        """Whether a closing of a stored offset waits for the plan's write spacing (`paths.move_waits`). An opening
+        never waits: a hand-back (a room gone cold, any safety reason or exit) goes at once."""
+        if not closed or not self._is_stored_offset(key):
+            return False
+        return paths.move_waits(self.offset_moves, paths.move_direction(paths.parse(key)[2], closed), now)
+
+    def _moved(self, key: str, closed: bool, now: datetime) -> None:
+        """Keep a stored offset's write for the spacing (before it goes out: a write that fails may still take)."""
+        if self._is_stored_offset(key):
+            self.offset_moves.append((now, paths.move_direction(paths.parse(key)[2], closed)))
 
     def _own_late(self, now: datetime) -> bool:
         """Whether a closed reading now is SpotNav's own closing read late (see `OWN_WINDOW`), not opened yet."""
@@ -1030,12 +1568,10 @@ class HeatControl:
 
     def _b_clear(self, now: datetime) -> bool:
         """Whether A may close: B is open (`_b_open`) and has read open for `DEAD_TIME`."""
-        config = self.shadow.config()
         if not self._b_open(now):
             return False
-        if config.control_path != PATH_SG_READY or config.control_entity_b is None:
-            return True
-        return self._open_long_enough(config.control_entity_b, now)
+        b = raise_entity(self.shadow.config())
+        return b is None or self._open_long_enough(b, now)
 
     def _b_open(self, now: datetime) -> bool:
         """SpotNav holds no B and nothing is pending on it, the chosen B (if any) reads open, and no closing of B that
@@ -1046,10 +1582,8 @@ class HeatControl:
             if now - self._b_close_unseen_at <= OWN_WINDOW:
                 return False
             self._b_close_unseen_at = None
-        config = self.shadow.config()
-        if config.control_path != PATH_SG_READY or config.control_entity_b is None:
-            return True
-        return self._read(config.control_entity_b) is False
+        b = raise_entity(self.shadow.config())
+        return b is None or self._read(b) is False
 
     async def _async_raise_look(self, now: datetime) -> None:
         """B's look, after A's (see the module, 7)."""
@@ -1060,10 +1594,11 @@ class HeatControl:
             old = self.raise_entity
             if self.pending_b is not None and self._read(old) == self.pending_b.closed:
                 self._confirm_b(self.pending_b, now)
-            if self.raised and (self.hass.states.get(old) is None or self._b_open_failures >= OPEN_TRIES):
+            if self.raised and (self._gone(old) or self._b_open_failures >= OPEN_TRIES):
                 _LOGGER.warning("SpotNav heat control: the raise contact %s, held closed, could not be opened; let go", old)
                 self._log(now, "raise_let_go", relay=old)
                 self.pending_b = None
+                await self._async_fallback_off(now, "let_go")
                 self._end_raise(now)
             if self.raised:
                 if self.pending_b is None or now - self.pending_b.at > READ_BACK or self.pending_b.closed:
@@ -1177,13 +1712,17 @@ class HeatControl:
                 raised_24h=self.raised_24h(now),
                 writes_today=self.writes.get(self._day(now), 0),
                 block=self._raise_block(config, now),
+                max_writes=paths.max_writes(self.relay),
             )
         )
 
     def _raise_block(self, config: HeatConfig, now: datetime) -> str | None:
         """A reason that ends any raise and starts none (`relay_control.RAISE_*`), `None` when raising may go on."""
-        for entity_id in (self.relay, self.raise_entity):
-            state = None if entity_id is None else self.hass.states.get(entity_id)
+        inputs = {paths.entity_of(key) for key in (self.relay, self.raise_entity) if key is not None}
+        if (switch := paths.activation_switch(config)) is not None:
+            inputs.add(switch)
+        for entity_id in sorted(inputs):
+            state = self.hass.states.get(entity_id)
             if state is not None and state.attributes.get("assumed_state") is True:
                 # Its state only says what was last sent, never that it opened: the interlock cannot be trusted.
                 return RAISE_ASSUMED_STATE
@@ -1241,6 +1780,12 @@ class HeatControl:
             return
         if not closed and self._b_retry_open_at is not None and now < self._b_retry_open_at:
             return
+        if closed and self._spaced(b, closed, now):
+            self._log_wait(now, "raise_waits_for_spacing", why)
+            return
+        if closed and (blocked := self._prepare_close(b, now)) is not None:
+            self._log_wait(now, "raise_not_possible", blocked)
+            return
         self.pending_b = Pending(closed, now)
         day = self._day(now)
         self.writes[day] = self.writes.get(day, 0) + 1
@@ -1253,14 +1798,17 @@ class HeatControl:
                 self.writes[day] -= 1
                 self.raised, self.raised_since = False, None
                 self.raisings.pop()
+                self.snapshots.pop(b, None)
                 self._log(now, "raise_not_written", why=why)
                 self._save()
                 return
         self._waits.pop("raise_waits_for_a", None)
+        self._waits.pop("raise_waits_for_spacing", None)
         if closed:
             self._b_own_reopen_at = None
             self._b_close_unseen_at = now
         self._log(now, "raise" if closed else "raise_end", why=why)
+        self._moved(b, closed, now)
         self._save()
         try:
             await self._async_call(b, closed)
@@ -1386,6 +1934,7 @@ class HeatControl:
             writes=self.writes,
             day_of=self._day,
             safety=self.safety,
+            max_writes=paths.max_writes(self.relay),
         )
 
     def _set(self, state: str, reason: str | None) -> None:
@@ -1409,14 +1958,27 @@ class HeatControl:
         first = self._day(oldest)
         self.writes = {day: count for day, count in self.writes.items() if day >= first}
         self.raisings = [item for item in self.raisings if item[1] is None or item[1] >= oldest]  # type: ignore[operator]
+        self.renewals = {day: count for day, count in self.renewals.items() if day >= first}
+        self.offset_moves = [(at, direction) for at, direction in self.offset_moves if now - at < paths.REVERSAL_SPACING]
+        self.activations = {day: count for day, count in self.activations.items() if day >= first}
 
     # ---- what is shown
 
     def status(self) -> dict[str, Any]:
         """The card's `control` block (see `heat/view.py`)."""
         result = None if self.relay is None else self.checks.get(self.relay)
+        config = self.shadow.config()
+        path = config.control_path if lower_entity(config) is not None else None
         return {
-            "enabled": self.shadow.config().control_enabled,
+            "enabled": config.control_enabled,
+            # The path steered (`heat/paths.py`), whether it has yet to run on a real heat pump, and the path's
+            # entities that are disabled in their integration (the opt-in's confirm enables them, `heat/optin.py`).
+            "path": path,
+            "untested": path in paths.UNTESTED,
+            "enable_entities": optin.describe(self.hass, config),
+            # A stored offset that reads other than the household's own value while SpotNav holds nothing (see
+            # `_track_home`): `{entity_id, value, home}`, or `None`.
+            "offset_home": None if self.offset_home is None else dict(self.offset_home),
             "state": self.state,
             "reason": self.reason,
             "automation": None if self.automation is None or self.reason != WAIT_AUTOMATION else {"entity_id": self.automation.entity_id, "name": self.automation.name},
@@ -1437,11 +1999,25 @@ class HeatControl:
             else self.raise_decision.until.isoformat(),
         }
 
+    def _write_classes(self) -> dict[str, Any]:
+        """The day's writes per class for the diagnostics: the path's cap and what is used (closings and openings;
+        a volatile offset's renewals apart)."""
+        today = self._day(dt_util.utcnow())
+        volatile = self.relay is not None and paths.parse(self.relay)[1] == paths.KIND_OFFSET and self._volatile(self.relay)
+        return {
+            "class": None if self.relay is None else paths.write_class(self.relay, volatile),
+            "cap": paths.max_writes(self.relay),
+            "used": self.writes.get(today, 0),
+            "renewals": {"cap": paths.RENEWALS_DAY, "used": self.renewals.get(today, 0)},
+            "activations": {"cap": paths.ACTIVATION_WRITES_DAY, "used": self.activations.get(today, 0)},
+        }
+
     def diagnostics(self) -> dict[str, Any]:
         return {
             "status": self.status(),
             "kept": self._data(),
             "pending": None if self.pending is None else {"closed": self.pending.closed, "at": self.pending.at.isoformat()},
+            "writes": self._write_classes(),
             "levels": None if self._levels is None else {"running_kw": self._levels.running_kw, "baseline_kw": self._levels.baseline_kw},
             "raise": {
                 "entity": self.raise_entity,

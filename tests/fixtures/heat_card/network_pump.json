@@ -427,14 +427,18 @@
   "control": {
     "automation": null,
     "check": null,
+    "enable_entities": null,
     "enabled": false,
     "lowered": false,
+    "offset_home": null,
+    "path": "relay",
     "paused_until": null,
     "raise_until": null,
     "raised": false,
     "reason": null,
     "since": null,
     "state": "off",
+    "untested": false,
     "until": null
   },
   "indoor": {
@@ -496,6 +500,7 @@
     "immersion_on": null,
     "integration": "nibe_heatpump",
     "label": "NIBE F750",
+    "paths": [],
     "price_control": "active",
     "priority": "heating",
     "supply_c": 34.0
