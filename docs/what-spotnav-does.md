@@ -40,7 +40,8 @@ Read more: [The house card](house-card.md), [Forecasts](forecasts.md).
 **Shadow by default.** Control is opt-in and still in testing.
 
 - SpotNav plans the battery for the next day or two: when to charge from the grid, when to hold, when to cover the
-  house. You choose the mode: **Self-consumption**, **Balanced** (the default) or **Max profit**.
+  house. You choose the mode: **Self-consumption**, **Balanced** (the default) or **Max profit**. Only Max profit
+  also sells from the battery back to the grid in the dearest hours, where the price gap is worth the battery's wear.
 - Each night it compares the plan with what the battery really did. If your battery has its own optimiser (such as
   Sigenergy's AI mode), this is a benchmark against it.
 - **Battery control** lets SpotNav run the plan on the battery. It starts only after a check that the battery obeys
