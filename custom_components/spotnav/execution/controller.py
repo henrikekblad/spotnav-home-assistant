@@ -155,6 +155,9 @@ from ..core.ownership import (
     NO_CAR_FACTS,
     automatic_allowed,
     owner_as_sent,
+    PERSON_HOLD_MAX_STOPS,
+    PERSON_HOLD_STOP_GAP_S,
+    PERSON_HOLD_WINDOW_S,
     SENT_START,
     SENT_STOP,
     spotnav_owned,
@@ -268,13 +271,8 @@ START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
 #: purpose, so a fuse that keeps needing the stop never cycles the charger.
 UNHELD_CHECK_S: Final = 90.0
 UNHELD_CHECK_TRIES: Final = 3
-#: Under a person's Stop, a charge the charger begins by itself is stopped at most once per this many
-#: seconds, and at most `PERSON_HOLD_MAX_STOPS` times in any `PERSON_HOLD_WINDOW_S` of the plug-in (every stop
-#: sent counts, taken or not): then SpotNav gives up and says so (`ChargingController.ignores_person_stop`)
-#: rather than cycle the charger or send a stop per report.
-PERSON_HOLD_STOP_GAP_S: Final = 30.0
-PERSON_HOLD_MAX_STOPS: Final = 3
-PERSON_HOLD_WINDOW_S: Final = 600.0
+# The stops under a person's Stop (`PERSON_HOLD_STOP_GAP_S`, `PERSON_HOLD_MAX_STOPS`, `PERSON_HOLD_WINDOW_S`) are
+# defined once, in `core/ownership.py`, and imported above: the controller times and logs what the core enforces.
 
 
 class AutomaticGate(Protocol):

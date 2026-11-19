@@ -140,8 +140,11 @@ GATE_STOP: Final = "stop"
 GATE_BALANCING_RESUME: Final = "balancing_resume"
 GATE_PERSON_RESUME: Final = "person_resume"
 
-#: The stops under a person's Stop (C7): the controller's own constants (`execution/controller.py`, which logs and times
-#: them; a test keeps the two equal).
+#: Under a person's Stop (C7), a charge the charger begins by itself is stopped at most once per
+#: `PERSON_HOLD_STOP_GAP_S` seconds, and at most `PERSON_HOLD_MAX_STOPS` times in any `PERSON_HOLD_WINDOW_S` of the
+#: plug-in (every stop sent counts, taken or not): then SpotNav gives up and says so
+#: (`ChargingController.ignores_person_stop`) rather than cycle the charger or send a stop per report. The controller
+#: (`execution/controller.py`) imports these to time and log the same stops.
 PERSON_HOLD_STOP_GAP_S: Final = 30.0
 PERSON_HOLD_MAX_STOPS: Final = 3
 PERSON_HOLD_WINDOW_S: Final = 600.0
