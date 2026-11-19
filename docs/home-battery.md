@@ -33,9 +33,9 @@ settings popover's **Home battery** section, shown when SpotNav finds a battery:
 card's gear or the charging card's **Settings** (administrators only). The section also has:
 
 * one line under the switch saying what control does now (off, test mode, checking, waiting for a suitable moment and
-  why, on, stopped, or only watching while the AI mode is not yet accepted);
+  why, on, stopped, or only watching while the AI mode, or a battery's own strategy SpotNav cannot read, is not yet accepted);
 * the checklist of what you still have to do (enable an entity, turn on the firmware sensor, accept the AI-mode
-  takeover), each in plain words;
+  takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy), each in plain words;
 * the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
   passed, failed or not judged yet) with what SpotNav may then do;
 * the reminder to turn AI mode on again after a takeover ended, and **Allow selling from the battery** (off by
@@ -70,6 +70,25 @@ administrators can confirm, and never over the webhook. The entities per brand:
 * Solinteg (the Solinteg plugin of SolaX Modbus): Working Mode and EMS BattCtrl Charge Discharge Power Target, and for
   the per-phase control EMS ACCtrl AC Power Scheduling Mode, Grid Unbalanced Output (read by SpotNav) and the EMS
   ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
+* Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
+  discharge and autocharge services.
+
+**Ferroamp (EnergyHub), untested.** Control goes through the `ferroamp` integration's services (Ferroamp's MQTT API,
+which Ferroamp's support enables): a charge or discharge request with a power in watts for the whole system (steps of
+500 W), and `autocharge`, which hands the batteries back to the hub. A hold is a charge request of 0 W (the check also
+tries a discharge request of 0 W; neither is documented by Ferroamp, so the hub may refuse it), covering the house is
+`auto`, and every hand-back is `auto`. Things to know: the API has no timeout for a request, so a command stays if
+Home Assistant stops, and SpotNav caps a grid charge for that case as for Sigenergy; the integration shows the
+last request seen on the bus and, beside it, the hub's answer to it: SpotNav counts a request as taken only once the
+hub has acknowledged it, and sends a refused hand-back again (the battery's power is still judged as for every
+brand); the hub takes one request at a time and refuses a second while one is running; and SpotNav does not start while another request
+(Ferroamp's own app, an automation) is standing. The strategy set for the hub in EnergyCloud (peak shaving, FerroAI,
+a grid service) is not shown in Home Assistant, so SpotNav cannot tell whether one runs: the checklist asks you to
+accept that SpotNav's requests override it while SpotNav controls the battery (every hand-back gives the hub back to
+it), and nothing is sent before you do. Leave control off if the hub takes part in a grid service. The hub's ACE moves energy between the phases to keep each grid
+phase under the threshold set in EnergyCloud (set it at the main fuse). It runs inside the hub, but Ferroamp documents neither whether it acts on a grid charge nor how the hub spreads a
+charge over its three phases, so SpotNav's cap for a grid charge counts it all on one phase, as for a brand that
+does not say, and does not depend on ACE.
 
 **Read only: Sofar and Growatt.** SpotNav reads these two through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see

@@ -102,6 +102,7 @@ def _entity_fact(entry: er.RegistryEntry, hass: HomeAssistant) -> EntityFact:
         state=None if state is None else state.state,
         unit=None if state is None else state.attributes.get("unit_of_measurement"),
         step=_step(None if state is None else state.attributes.get("step")),
+        attributes={} if state is None else state.attributes,
     )
 
 

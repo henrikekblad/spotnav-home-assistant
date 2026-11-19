@@ -10,6 +10,7 @@ from datetime import timedelta
 import pytest
 
 from custom_components.spotnav.battery.commands import (
+    FERROAMP_CONTROL,
     HUAWEI_CONTROL,
     SIGENERGY_CONTROL,
     SOLAREDGE_CONTROL,
@@ -73,13 +74,13 @@ def _held(executor: Executor, battery: FakeBattery) -> object:
 
 
 def test_every_brand_with_a_control_has_a_command_for_every_planned_action_and_the_rest_have_none() -> None:
-    assert {control.brand for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL)} == {
-        "sigenergy", "solaredge", "huawei", "solax"
+    assert {control.brand for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, FERROAMP_CONTROL)} == {
+        "sigenergy", "solaredge", "huawei", "solax", "ferroamp"
     }
     for brand in ("victron", "goodwe", "enphase", None):
         assert control_for(brand) is None
     rows = table()
-    for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL):
+    for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, FERROAMP_CONTROL):
         actions = {row["action"] for row in rows if row["brand"] == control.brand}
         assert actions == {"hold", "grid_charge", "discharge_house", "export_discharge", "self_consume"}
     # Sigenergy: Remote EMS with the limits; never the discharge cut-off SoC.

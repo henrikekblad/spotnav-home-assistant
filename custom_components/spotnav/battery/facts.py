@@ -10,7 +10,7 @@ A brand without an adapter gets its level from a `battery` sensor on the battery
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
@@ -37,6 +37,8 @@ class EntityFact:
     unit: str | None = None
     #: A number entity's step (its `step` attribute), `None` when it names none.
     step: float | None = None
+    #: The state's attributes, for a control role whose device answers in them (`commands.answered`).
+    attributes: Mapping[str, Any] = field(default_factory=dict, compare=False)
 
     @property
     def domain(self) -> str:

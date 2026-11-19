@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
-from custom_components.spotnav.battery.commands import BrandControl
+from custom_components.spotnav.battery.commands import BrandControl, answered
 from custom_components.spotnav.battery.executor import ExecInputs, Executor, Op, RoleRead, StepResult
 from custom_components.spotnav.battery.facts import BatteryFacts, Management
 
@@ -31,6 +31,7 @@ SOLAREDGE_STATES = {
     "command_timeout": "3600",
 }
 HUAWEI_STATES = {"forcible": "Stopped", "discharge_power": "5000", "charge_power": "5000"}
+FERROAMP_STATES = {"command": "unknown"}
 SOLAX_STATES = {"power_control": "Disabled", "active_power": "0", "autorepeat": "0", "trigger": "unknown"}
 
 STEPS = {"charge_limit": 0.001, "discharge_limit": 0.001}
@@ -60,6 +61,10 @@ class FakeBattery:
     register_40031: str = "PCS Remote Control"
     # SolaX sends on the trigger; this is what the inverter got.
     sent: dict[str, str] = field(default_factory=dict)
+    #: The attributes per role of a device that answers each request in them (Ferroamp's ack or nak).
+    attributes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: How many of the next requests a device that answers them refuses (`nak`).
+    refuse_next: int = 0
 
     def reads(self) -> dict[str, RoleRead]:
         out: dict[str, RoleRead] = {}
@@ -68,7 +73,8 @@ class FakeBattery:
                 continue
             entity_id = f"{role.method if role.method != 'service' else 'sensor'}.{self.control.brand}_{role.name}"
             out[role.name] = RoleRead(
-                entity_id=entity_id, state=self.states.get(role.name), found=True, enabled=True,
+                entity_id=entity_id, state=answered(role, self.states.get(role.name), self.attributes.get(role.name)),
+                found=True, enabled=True,
                 step=STEPS.get(role.name) if self.control.brand == "sigenergy" else role.step, device_id="DEVICE",
             )
         return out
@@ -92,7 +98,14 @@ class FakeBattery:
             self.sent = dict(self.states)
         elif op.method == "service":
             value = str(op.value)
-            if value == "stop":
+            if brand == "ferroamp":
+                kind, _, power = value.partition(":")
+                self.states[op.role] = f"{kind} ({power})" if power else kind
+                # The hub answers on the response topic; the integration keeps it beside the request.
+                status = "nak" if self.refuse_next > 0 else "ack"
+                self.refuse_next = max(0, self.refuse_next - 1)
+                self.attributes[op.role] = {"transId": str(len(self.writes)), "status": status}
+            elif value == "stop":
                 self.states[op.role] = "Stopped"
             else:
                 kind, _, power = value.partition(":")
@@ -114,7 +127,7 @@ class FakeBattery:
             mode = self.states["control_mode"]
             state = "free" if mode == "Remote Control" else "self_managed"
             return Management(state, "self_consumption", {"storage control mode": mode})
-        if brand == "huawei":
+        if brand in ("huawei", "ferroamp"):
             return Management("free", "self_consumption", {"working mode": "maximise_self_consumption"})
         mode = self.states["power_control"]
         state = "free" if mode == "Disabled" else "self_managed"

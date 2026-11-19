@@ -43,6 +43,11 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   100, a battery monitor or BMS at 225 by default.
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
 * Enphase, core `enphase_envoy`: `<serial>_<key>`.
+* Ferroamp, `ferroamp` (henricm/ha-ferroamp `b18097f`, 1.18.0, read 2026-11-18): `<slug>_ehub-<key>` on the EnergyHub
+  and `<slug>_ehub-<key>-L1..L3` per phase (`sensor.py` `KeyedFerroampSensor`, `SinglePhaseFerroampSensor`); the
+  ESOs and ESMs carry `<slug>_eso_<id>-<key>` and are not read. `soc` (%) and `ratedcap` (Wh) are the whole system's
+  and exist only when the hub sends them. `pinv-L1..L3` is the hub's inverter power per phase on the grid's sign
+  (import positive, so negative while it delivers): `plant_phase_sign` -1. Nothing is disabled by default.
 
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
@@ -471,8 +476,24 @@ ENPHASE: Final = Adapter(
     ),
 )
 
+def _ehub(key: str, *domains: str) -> Match:
+    """Ferroamp's EnergyHub entity: `<slug>_ehub-<key>` (the ESOs' and ESMs' `<slug>_eso_<id>-<key>` never match)."""
+    return Match(domains or ("sensor",), re.compile(rf"_ehub-{re.escape(key)}$"))
+
+
+FERROAMP: Final = Adapter(
+    brand="ferroamp",
+    label="Ferroamp EnergyHub",
+    platforms=("ferroamp",),
+    facts={"soc": _ehub("soc"), "capacity": _ehub("ratedcap")},
+    # The hub's inverter power per phase, import-positive like its grid power (`pext - pinv` is each phase's load).
+    plant_phase_power=(_ehub("pinv-l1"), _ehub("pinv-l2"), _ehub("pinv-l3")),
+    plant_phase_sign=-1.0,
+    # No mode entity: the hub's own control (FerroAI, the person's EnergyCloud settings) is not readable here.
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
-    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, ENPHASE,
+    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, ENPHASE, FERROAMP,
 )
 
 

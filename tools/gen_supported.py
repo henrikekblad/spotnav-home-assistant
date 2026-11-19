@@ -867,9 +867,10 @@ OVERVIEW: tuple[Overview, ...] = (
         "Ferroamp (EnergyHub)",
         "`ferroamp`, HACS (henricm/ha-ferroamp)",
         keys=("ferroamp",),
-        control="Not mapped. The integration has charge, discharge and auto services",
-        note="The EnergyHub balances load by itself and may fight active control. MQTT is enabled by Ferroamp's "
-        "support. Pools batteries for grid services with Ntricity.",
+        adapter="ferroamp",
+        note="Control sends the integration's charge, discharge and auto requests (whole-system power, no timeout "
+        "documented; a request counts once the hub has acked it). The charge cap counts it on one phase: how the hub "
+        "spreads it is not documented, and SpotNav does not count on ACE. MQTT is enabled by Ferroamp's support. Pools batteries for grid services with Ntricity.",
     ),
     Overview(
         "Homevolt (Tibber)",

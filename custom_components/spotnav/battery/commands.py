@@ -149,6 +149,29 @@ The entity keys, options and services below were checked against each integratio
   sensor"), so it does not need Remote EMS, but it needs the plant's grid sensor. Its never-set all-ones value reads
   `unknown` as the battery limits do; it is restored as the plant's maximum output (`plant_max_active_power`), the most
   the plant can export anyway, and the export control is not started without that figure.
+* **Ferroamp**, `ferroamp`, henricm/ha-ferroamp `b18097f914abdc30d33beef0da1bdfd79674130f` (1.18.0, read 2026-11-18;
+  the ExtApi spec is Rev E, 2021-03): services `ferroamp.charge` and `ferroamp.discharge` (`power` W, the whole
+  system's, not per battery or phase; the service form's slider is 500-30000 W in steps of 500) and
+  `ferroamp.autocharge` (hands the batteries back to the hub), each with `target`, the EnergyHub's device id
+  (`__init__.py`, `services.yaml`). They publish to `extapi/control/request` and read nothing back; the sensor
+  `<slug>_ehub_last_cmd` (`sensor.py`, state `charge (1000)`, `discharge (500)` or `auto`, kept over a restart)
+  shows the last request on the topic, whoever sent it, set when the request is published; its attributes
+  `transId` and `status` (`add_request`, `add_response`) carry the hub's `ack` or `nak` for that request. The state
+  alone proves only that a request was published, so the role reads it only once the attributes show the hub's
+  `ack` (`Role.answer`, `answered`): until then, and after a `nak`, it is no reading, so a write is confirmed by the
+  hub's answer and a refused one (a hand-back to `auto` among them) is retried or handed back like any write that
+  does not read back. The attributes are not restored over a restart: with no `transId` the state is read as it is.
+  The battery's power judges the effect besides (`local_readback`). The spec documents no timeout for a request (nothing renews it, no watchdog is mapped) and
+  no value that holds: a hold is `charge` at 0 W, `discharge` at 0 W the second variant for the verification to try
+  (not verified on a hub; the hub may nak a 0). One request at a time: a new one while another runs is nak'd (no error
+  to the service call; the `nak` is what shows it). A discharge to the house is `auto`, the hub's own
+  strategy (`discharge` at a power may export); a person who has FerroAI or a peak-shaving strategy on in EnergyCloud
+  gets that strategy there. That strategy cannot be read (the adapter has no mode rule), so the control waits for
+  the person's acknowledgement that SpotNav's requests override it (`strategy_unread`). **ACE** (adaptive current equalisation) moves
+  energy between the phases in the hub to keep each grid phase under the threshold set in EnergyCloud; it runs in
+  the hub, but its reach (20 A per hub) and whether it acts on the batteries' own grid charge are not documented, nor is
+  how the hub spreads a total over its three phases, so the grid charge cap counts the charge on one phase
+  (`grid_charge_phases` 1) until a hub has shown an even split, and does not count on ACE.
 * Victron, GoodWe, Enphase and brands without an adapter: **none**. (Victron's discharge cap is a setting stored on
   the GX; GoodWe's and Enphase's controls in core are whole-mode switches or a reserve trick, see
   `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
@@ -164,7 +187,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
-from .adapters import HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, Adapter, Match, _key
+from .adapters import FERROAMP, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, Adapter, Match, _key
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -207,6 +230,16 @@ Native = float | str | bool
 
 
 @dataclass(frozen=True, slots=True)
+class Answer:
+    """Where a device answers each request in the entity's attributes (`Role.answer`): the attribute that names the
+    request's transaction, the one that holds the device's answer to it, and the answers that mean it was taken."""
+
+    transaction: str
+    status: str
+    taken: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
 class Role:
     """One entity the control writes (or, for a service, reads back)."""
 
@@ -221,6 +254,10 @@ class Role:
     restored: bool = True
     #: For a service role: `(write, service)` pairs by the kind of value wanted (`charge`, `discharge`, `stop`).
     services: Mapping[str, str] = field(default_factory=dict)
+    #: For a service role: the call's field that names the battery's device (Huawei `device_id`, Ferroamp `target`),
+    #: and whether a call with a power carries the watchdog as its `duration` in minutes (`service_call`).
+    device_field: str = "device_id"
+    duration: bool = True
     #: A read that is the register's "never set" (restored as the rating): its kind (`charge`, `discharge`).
     unset_as_rating: str | None = None
     #: Read as unset when `unknown` (Sigenergy 2.0.1 shows the all-ones value as `unknown`).
@@ -231,6 +268,9 @@ class Role:
     idle_when: frozenset[str] = frozenset()
     #: Which daily write budget its writes count against (`BrandControl.write_cap`).
     write_class: WriteClass = "setting"
+    #: A role whose state shows the last request, not that the device took it (Ferroamp's last command): the
+    #: device's answer in the attributes, without which the state is no reading (`answered`).
+    answer: Answer | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,6 +384,11 @@ class BrandControl:
     #: once the person acknowledged it (`ExecInputs.takeover`, the site's `battery_control_ai_takeover_ack`):
     #: Sigenergy's AI mode. Its hand-back lands in the brand's plain mode, not back in the optimiser.
     takeover: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    #: The plant's own strategy cannot be read (no mode rule shows an optimiser, peak shaving or a grid service), so
+    #: it always reads free: nothing is written until the person acknowledged that SpotNav's commands override
+    #: whatever strategy runs (the same acknowledgement as `takeover`, `ExecInputs.takeover`); the hand-back gives
+    #: the plant back to that strategy.
+    strategy_unread: bool = False
     #: The roles renewed to keep a watchdog alive (`WATCHDOG_RENEW_S`); empty when the brand has none.
     watchdog_roles: tuple[str, ...] = ()
     #: Roles that must read a value before anything is written (`(role, allowed states, reason)`).
@@ -513,6 +558,20 @@ def reading(role: Role, state: str | None) -> str | None:
     return state
 
 
+def answered(role: Role, state: str | None, attributes: Mapping[str, Any] | None) -> str | None:
+    """The state a role is read by (before `reading`). For a role whose state shows the last request whoever sent it
+    and whose device answers each request in the attributes (`Role.answer`), the state counts only once the device
+    took that request: while the answer is awaited, and after a refusal, the read is `unavailable`, no evidence, so a
+    write is never confirmed by its own request (the ledger waits, then retries or hands back) and a refused one is
+    never someone else's change. Without a transaction in the attributes (no request seen since the integration
+    started; a restart does not restore the attributes) the state is read as it is."""
+    spec = role.answer
+    if spec is None or state is None or not attributes or attributes.get(spec.transaction) is None:
+        return state
+    answer = attributes.get(spec.status)
+    return state if isinstance(answer, str) and answer.strip().lower() in spec.taken else "unavailable"
+
+
 # --- Huawei's summary sensor ---------------------------------------------------------------------------------
 
 _HUAWEI_RUN: Final = re.compile(r"^(Charging|Discharging) at (\d+)W")
@@ -528,6 +587,21 @@ def huawei_forcible(state: str | None) -> str | None:
     if found is None:
         return None
     return f"{'charge' if found.group(1) == 'Charging' else 'discharge'}:{int(found.group(2))}"
+
+
+# --- Ferroamp's last request ---------------------------------------------------------------------------------
+
+_FERROAMP_RUN = re.compile(r"^(charge|discharge) \((\d+(?:\.\d+)?)\)$")
+
+
+def ferroamp_last_cmd(state: str | None) -> str | None:
+    """"charge (1000)" -> `charge:1000`, "auto" -> `auto`; a sensor that never saw a request ("unknown") reads
+    `auto`, the hub's own state; `None` for anything else (unavailable, a command not known)."""
+    text = "" if state is None else state.strip().lower()
+    if text in ("", "unknown", "none", "auto"):
+        return "auto"
+    found = _FERROAMP_RUN.match(text)
+    return None if found is None else f"{found.group(1)}:{int(float(found.group(2)))}"
 
 
 # --- the brands --------------------------------------------------------------------------------------------------
@@ -928,6 +1002,62 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
     " limit is restored as the plant's maximum output.",
 )
 
+_FA_CMD = Role(
+    "command", "service", _key("last_cmd"), scale=1000.0, step=500.0, restored=False,
+    services={"charge": "ferroamp.charge", "discharge": "ferroamp.discharge", "auto": "ferroamp.autocharge"},
+    # `target` is the EnergyHub's device id; a request has no duration (nothing renews it).
+    device_field="target", duration=False,
+    normalize=ferroamp_last_cmd, write_class="setpoint",
+    # The state is the request as published; only the hub's ack for that transaction shows it was taken.
+    answer=Answer("transId", "status", frozenset({"ack"})),
+)
+
+
+def _fa(kind: str) -> Callable[[float, int], tuple[Want, ...]]:
+    def build(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+        return (Want("command", f"{kind}:{int(native(_FA_CMD, rate_kw))}"),)
+
+    return build
+
+
+#: Ferroamp's holds, in the order the verification tries them: a request of 0 W either way (neither is documented).
+FERROAMP_HOLDS: Final = (
+    HoldVariant("charge_zero", lambda _r, _w: (Want("command", "charge:0"),), ("command",), "charge at 0 W", idle=True),
+    HoldVariant(
+        "discharge_zero", lambda _r, _w: (Want("command", "discharge:0"),), ("command",), "discharge at 0 W", idle=True
+    ),
+)
+
+FERROAMP_CONTROL: Final = BrandControl(
+    brand="ferroamp",
+    adapter=FERROAMP,
+    roles=(_FA_CMD,),
+    states={
+        ACTION_HOLD: FERROAMP_HOLDS[0].build,
+        ACTION_GRID_CHARGE: _fa("charge"),
+        # The hub's own strategy covers the house from the battery: `discharge` at a power could export.
+        ACTION_DISCHARGE_HOUSE: lambda _r, _w: (Want("command", "auto"),),
+        ACTION_EXPORT_DISCHARGE: _fa("discharge"),
+    },
+    enter_order=("command",),
+    restore_order=("command",),
+    # Someone else's request left standing (Ferroamp's own app, an automation) is not overwritten.
+    requires=(("command", frozenset({"auto"}), "ferroamp_command_running"),),
+    peak_first={ACTION_HOLD: ("command",), ACTION_GRID_CHARGE: ("command",)},
+    # The strategy set in EnergyCloud (peak shaving, FerroAI, a grid service) is not shown in Home Assistant.
+    strategy_unread=True,
+    local_readback=True,
+    # The cap counts the whole charge on one phase (the default): the API takes the system's total and nobody
+    # documents how the hub spreads it, nor whether ACE acts on it. Raise it only once a hub has shown the split
+    # (the adapter reads the inverter's power per phase).
+    grid_charge_phases=1,
+    hold_variants=FERROAMP_HOLDS,
+    variant=FERROAMP_HOLDS[0].name,
+    # The spec says nothing of how often a request may be sent, nor of a timeout: the moderate cap.
+    write_caps={"setpoint": SETPOINT_WRITES_UNSTATED},
+    note="Untested. A request stays until another one or `auto`; one request at a time, a second is nak'd.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -935,10 +1065,11 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
     "huawei": {"forcible": "stop"},
     "solax": {"trigger": True},
     "solinteg": _SOLINTEG_NORMAL,
+    "ferroamp": {"command": "auto"},
 }
 
 CONTROLS: Final[tuple[BrandControl, ...]] = (
-    SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL,
+    SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
 )
 
 
@@ -1037,14 +1168,16 @@ def export_table() -> list[dict[str, Any]]:
 
 def service_call(
     method: RoleMethod, entity_id: str | None, value: Native, *, device_id: str | None = None,
-    services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S,
+    services: Mapping[str, str] | None = None, watchdog_s: int = WATCHDOG_S, device_field: str = "device_id",
+    duration: bool = True,
 ) -> tuple[str, str, dict[str, Any]]:
     """The Home Assistant service call `(domain, service, data)` that writes `value` to a role.
 
     Numbers, selects, switches and buttons use HA's own entity services (core `number.set_value`,
-    `select.select_option`, `switch.turn_on`/`turn_off`, `button.press`). A service role (Huawei's forcible charge)
-    turns `charge:<W>` / `discharge:<W>` / `stop` into its integration's service, for the battery's device, with the
-    watchdog as the duration in minutes."""
+    `select.select_option`, `switch.turn_on`/`turn_off`, `button.press`). A service role (Huawei's forcible charge,
+    Ferroamp's requests) turns `charge:<W>` / `discharge:<W>` / a kind without a power (`stop`, `auto`) into its
+    integration's service, for the battery's device in the role's `device_field`, with the power where the value has
+    one and, where the role says so (`Role.duration`), the watchdog as the duration in minutes."""
     if method == "number":
         return "number", "set_value", {"entity_id": entity_id, "value": value}
     if method == "select":
@@ -1060,7 +1193,9 @@ def service_call(
     if full is None:
         raise ValueError(f"no service for {kind!r}")
     domain, service = full.split(".", 1)
-    data: dict[str, Any] = {"device_id": device_id}
-    if kind != "stop":
-        data |= {"power": int(power), "duration": max(1, min(1440, watchdog_s // 60))}
+    data: dict[str, Any] = {device_field: device_id}
+    if power:
+        data["power"] = int(power)
+        if duration:
+            data["duration"] = max(1, min(1440, watchdog_s // 60))
     return domain, service, data

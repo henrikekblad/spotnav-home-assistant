@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_RESTORED
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
@@ -97,6 +97,7 @@ from .commands import (
     WATCHDOG_S,
     BrandControl,
     Phases,
+    answered,
     control_for,
     export_control_for,
     reading,
@@ -192,21 +193,33 @@ def _float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _state_of(control: BrandControl, name: str, state: State | None) -> str | None:
+    """A stored control's state as its role reads it (`commands.answered`); `None` when the entity is gone."""
+    if state is None:
+        return None
+    try:
+        role = control.role(name)
+    except KeyError:
+        return state.state
+    return answered(role, state.state, state.attributes)
+
+
 def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]:
     """Each control the executor wrote, read by its stored entity (no registry lookup)."""
     reads: dict[str, RoleRead] = {}
     for name, entity_id in executor.state.entities.items():
         state = hass.states.get(entity_id)
-        reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+        reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                found=state is not None, enabled=state is not None, device_id=executor.state.device_id)
     return reads
 
 
 async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> bool:
     """One write as a service call; `False` when it raised (the executor counts it as not taken)."""
+    role = executor.control.role(op.role)
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-        services=executor.control.role(op.role).services, watchdog_s=watchdog_s,
+        services=role.services, watchdog_s=watchdog_s, device_field=role.device_field, duration=role.duration,
     )
     try:
         await hass.services.async_call(domain, service, data, blocking=True)
@@ -1771,7 +1784,7 @@ class BatteryControl:
             for name, entity_id in executor.state.entities.items():
                 if name not in reads:
                     state = self.hass.states.get(entity_id)
-                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                    reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                            found=state is not None, enabled=state is not None)
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
@@ -1815,7 +1828,7 @@ class BatteryControl:
             for name, entity_id in executor.state.entities.items():
                 if name not in reads:
                     state = self.hass.states.get(entity_id)
-                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                    reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                            found=state is not None, enabled=state is not None,
                                            device_id=executor.state.device_id)
         return reads
@@ -2031,9 +2044,11 @@ class BatteryControl:
             _LOGGER.warning("SpotNav battery control: a write of %s was refused by the gate", op.role)
             self._log([{"at": dt_util.now().isoformat(), "kind": "refused", "reason": op.role}])
             return False
+        role = executor.control.role(op.role)
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-            services=executor.control.role(op.role).services, watchdog_s=self._watchdog_s,
+            services=role.services, watchdog_s=self._watchdog_s, device_field=role.device_field,
+            duration=role.duration,
         )
         try:
             await self.hass.services.async_call(domain, service, data, blocking=True)
@@ -2102,6 +2117,8 @@ class BatteryControl:
         elif taken_over(facts, control) or self._takeover_withdrawn(self.options()):
             if not self.options().ai_takeover_ack:
                 needs.append("ai_takeover_ack")
+        elif control.strategy_unread and not self.options().ai_takeover_ack:
+            needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
         return needs
@@ -2146,6 +2163,8 @@ class BatteryControl:
             return f"blocked:{executor.state.blocked}"
         if state == "on" and "ai_takeover_ack" in self._needs():
             return "watching:ai_mode"
+        if state == "on" and "strategy_ack" in self._needs():
+            return "watching:strategy"
         return state
 
     def status(self) -> dict[str, Any]:
