@@ -699,3 +699,32 @@ async def test_fuse_s3_a_standing_boost_or_raise_comes_off_each_phases_ha_down_c
     # The household's own boost is in the learned peak already: nothing more.
     monkeypatch.setattr(hot_water.ledger, "owner", lambda _entity_id, _now: None)
     assert control._phase_caps_kw(now) == pytest.approx(caps)
+
+
+# --- fuse review S4: the hardware test reads the house with the targets at 0 only after they settled ---------------
+
+
+async def test_fuse_s4_the_hardware_test_reads_the_house_baseline_after_the_zeros_settled(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """A battery that was charging just before must not show in the house per phase that the mapping is judged
+    against: the zeros are read back, then `ZERO_SETTLE_S` passes before that reading, and the test still ends
+    within its ten minutes."""
+    from custom_components.spotnav.battery.verify import ZERO_SETTLE_S, Timing, Verification
+
+    assert Timing.quick().zero_settle_s == ZERO_SETTLE_S >= 10.0
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    baselines: list[float] = []
+    original = Verification._read_phase
+
+    def read_phase(self, now, result, sample, commanded):
+        if self.probe_index < 0 and result.taken_at is not None:
+            baselines.append((now - result.taken_at).total_seconds())
+        return original(self, now, result, sample, commanded)
+
+    monkeypatch.setattr(Verification, "_read_phase", read_phase)
+    report = await _hardware_test(control, hass, site)
+    assert report["modes"]["charge"]["outcome"] == "obeyed"
+    assert baselines and min(baselines) >= ZERO_SETTLE_S
