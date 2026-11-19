@@ -938,7 +938,8 @@ class HotWater:
     def block_delta(self, now: datetime) -> dict[datetime, float]:
         """The pump's own runs the heat control's closings ahead will hold (on a path that blocks hot water): each
         peak's expected reheat (`Peak.run_at`, its learned kWh over the run's length) that falls in a closing moves to
-        the closing's end. A peak a live boost fills is the boost's (`boost_delta`). Scaled by what the house profile
+        the closing's end; where it was, only the part the relay's own change (`lower_share` of the heat, hot water
+        included) does not already take out. A peak a live boost fills is the boost's (`boost_delta`). Scaled by what the house profile
         does not hold of it yet (days with a block of SpotNav's, `learned_live_share`)."""
         control = self.shadow.control
         closings = None if control is None else control.closings_ahead(now)
@@ -955,9 +956,15 @@ class HotWater:
 
         zone = self.zone
         today = now.astimezone(zone).date()
-        boosted = {pick.peak for pick in self.picks} if self.boost_delta(now) else set()
+        # A peak a boost fills is the boost's (`boost_delta`): one written, or one it still counts on.
+        boosted = self.filled_peaks()
+        if self.boost_delta(now):
+            boosted |= {pick.peak for pick in self.picks if now < pick.start + START_LATE}
         run_h = max(self.run_len.total_seconds() / 3600.0, 0.25)
         scale = 1.0 - learned_live_share(self.days, today, key="blocked")
+        # The relay's own change takes `lower_share` of the block hour's heat out, the pump's hot water included
+        # (`HeatShadow.heat_kw` is the meter's whole forecast): only the rest of the held run is taken out here.
+        kept = 1.0 - min(1.0, max(0.0, float(self.shadow.effect.lower_share)))
         out: dict[datetime, float] = {}
         for day in (today, today + timedelta(days=1)):
             for peak in self.peaks:
@@ -969,7 +976,7 @@ class HotWater:
                     continue
                 kw = peak.kwh / run_h * scale
                 for hour, share in hour_shares(run_at, run_at + self.run_len):
-                    out[hour] = out.get(hour, 0.0) - kw * share
+                    out[hour] = out.get(hour, 0.0) - kw * kept * share
                 for hour, share in hour_shares(held, held + self.run_len):
                     out[hour] = out.get(hour, 0.0) + kw * share
         return {hour: kw for hour, kw in out.items() if abs(kw) > 1e-9}

@@ -211,7 +211,11 @@ async def test_the_runs_a_block_will_hold_move_in_the_house_forecast(hass: HomeA
     # A closing 19:00-21:00 ahead holds tomorrow evening's reheat (19:30) to 21:00.
     monkeypatch.setattr(control, "closings_ahead", lambda _now: [(reheat, reheat + 2 * H)])
     delta = shadow.forecast_delta(now)
-    assert delta[reheat] == pytest.approx(-0.8)
+    # Review S5: the relay's own change already takes `lower_share` of the hour's heat out, hot water included; only
+    # the rest of the run is taken out here, the whole run added at the block's end.
+    share = shadow.effect.lower_share
+    assert 0 < share < 1
+    assert delta[reheat] == pytest.approx(-(1 - share) * 0.8)
     assert delta[reheat + 2 * H] == pytest.approx(0.8)
     # No closings ahead (control not running): nothing moves.
     monkeypatch.setattr(control, "closings_ahead", lambda _now: None)
