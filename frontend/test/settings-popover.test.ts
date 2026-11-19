@@ -11,7 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { HOUSE_CARD_ELEMENT, SpotnavHouseCard } from "../src/house-card";
 import { registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
-import { batteryLine, batteryNeed, outcomeVerdict } from "../src/settings-popover";
+import { batteryLine, batteryNeed, batteryOutsideClearable, outcomeVerdict } from "../src/settings-popover";
 import { decodeBatteryControl, decodeSiteList, decodeSiteView } from "../src/site-model";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -119,6 +119,9 @@ describe("the popover from the house card", () => {
             return options.heat ?? read("heat_card", "villa.json");
           case "spotnav/battery_control": {
             const changes = message["changes"] as Record<string, boolean> | undefined;
+            if (message["clear_outside_control"] === true) {
+              battery = { ...battery, status: { ...(battery["status"] as object), needs: [] } };
+            }
             if (message["enable_control_entities"] === true) {
               battery = { ...battery, status: { ...(battery["status"] as object), enable_entities: null } };
             }
@@ -351,6 +354,29 @@ describe("the popover from the house card", () => {
     expect(messages.filter((message) => message["enable_control_entities"] !== undefined)).toEqual([
       { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", enable_control_entities: true },
     ]);
+  });
+
+  it("lets an administrator clear an outside-control mark from the battery's own settings: it was them", async () => {
+    const { root, messages } = await mount({ battery: "outside_control.json" });
+    const popover = await open(root);
+    const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
+    expect(battery.querySelector("[data-need='outside_control']")!.textContent).toBe(translate("sv", "battery.need.outsideControl"));
+    expect(battery.querySelector("[data-need-help='outside_control']")!.textContent).toBe(translate("sv", "battery.outsideClear.help"));
+    const clear = battery.querySelector<HTMLButtonElement>("button[data-action='clear-outside-control']")!;
+    expect(clear.textContent).toBe("Det var jag – rensa");
+    clear.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["clear_outside_control"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", clear_outside_control: true },
+    ]);
+    expect(root.querySelector("[data-need='outside_control']")).toBeNull();
+  });
+
+  it("offers no clear for a planner's or an integration's mark", () => {
+    expect(batteryOutsideClearable("outside_control:settings_changed")).toBe(true);
+    expect(batteryOutsideClearable("outside_control:grid_charge_behaviour")).toBe(true);
+    expect(batteryOutsideClearable("outside_control:planner:predbat")).toBe(false);
+    expect(batteryOutsideClearable("outside_control:integration:checkwatt")).toBe(false);
   });
 
   it("keeps the plain on/off choice when no control entity is disabled", async () => {

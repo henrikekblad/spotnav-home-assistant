@@ -29,7 +29,7 @@ afterEach(() => {
 describe("decodeBetaAnswer", () => {
   it("reads every fixture the backend wrote", () => {
     const names = readdirSync(FIXTURES).filter((name) => name.endsWith(".json"));
-    expect(names.sort()).toEqual(["ended.json", "off_idle.json", "on_done_failed.json", "on_running.json"]);
+    expect(names.sort()).toEqual(["ended.json", "off_idle.json", "on_done_failed.json", "on_done_partial.json", "on_running.json"]);
     for (const name of names) {
       expect(decodeBetaAnswer(fixture(name)), name).not.toBeNull();
     }
@@ -37,6 +37,8 @@ describe("decodeBetaAnswer", () => {
     expect(failed.test?.result).toBe("failed");
     expect(failed.test?.sentRef).toBe("SN-7KQ4");
     expect(decodeBetaAnswer(fixture("ended.json"))!.beta).toMatchObject({ on: false, ended: true });
+    const partial = decodeBetaAnswer(fixture("on_done_partial.json"))!;
+    expect(partial.test).toMatchObject({ result: "partial", blocked: null });
   });
 
   it("refuses an unknown key, another version or a wrong type", () => {
@@ -163,6 +165,17 @@ describe("betaBox", () => {
     expect(q(root, "[data-beta=runTest]").hidden).toBe(false);
     expect((q(root, "[data-beta=runTest]") as HTMLButtonElement).disabled).toBe(true);
     expect(q(root, "[data-beta=blocked]").textContent).toMatch(/^Nästa test kan köras /);
+  });
+
+  it("says when a part was skipped or nothing ran, and leaves Run open", async () => {
+    const partial = fixture("on_done_partial.json");
+    const skipped = { ...partial, test: { ...(partial.test as Record<string, unknown>), result: "skipped" } };
+    const { root } = box([partial]);
+    await settle();
+    expect(q(root, "[data-beta=result]").textContent).toContain(translate("sv", "test.result.partial"));
+    expect((q(root, "[data-beta=runTest]") as HTMLButtonElement).disabled).toBe(false);
+    expect(decodeBetaAnswer(skipped)!.test?.result).toBe("skipped");
+    expect(decodeBetaAnswer({ ...partial, test: { ...(partial.test as Record<string, unknown>), result: "half" } })).toBeNull();
   });
 
   it("offers Send for a finished test when beta is off", async () => {

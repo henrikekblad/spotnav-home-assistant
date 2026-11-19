@@ -26,7 +26,8 @@ The signals, each judged on what the shell hands over (`Observation`):
   activations do not mark: they are too short.
 
 The verdict (`verdict`) holds from the first signal; it ends `CLEAR_AFTER` after the last one (an integration's at
-once when it is gone). Each stretch is one **occurrence**: its start and its end are each an event (`observe`),
+once when it is gone). An administrator may end one found by the battery's settings or behaviour at once
+("Det var jag", `clear_by_person`): the changes counted so far are forgotten with it. Each stretch is one **occurrence**: its start and its end are each an event (`observe`),
 which the shell logs once at INFO; nothing is raised in Repairs, as nothing there is for the person to do. `told`
 marks an occurrence found by the battery's settings or behaviour (news); one from an integration or a planner the
 person set up is not. Both are kept in the diagnostics and shown in what SpotNav detected. While SpotNav itself acts
@@ -177,9 +178,27 @@ class OutsideControlWatch:
         events.append({"at": now.isoformat(), "kind": "started"} | self.verdict.as_dict())
         return events
 
-    def _end(self, now: datetime) -> dict[str, Any]:
+    @property
+    def clearable(self) -> bool:
+        """Whether a person may clear the verdict (`clear_by_person`): one from the battery's settings or behaviour,
+        never one from an integration or a planner (that lasts while it is there)."""
+        return self.verdict.active and not _standing_reason(self.verdict.reason)
+
+    def clear_by_person(self, now: datetime) -> dict[str, Any] | None:
+        """An administrator's "it was me": the occurrence ends now, logged as cleared by a person, and the changes
+        counted so far are forgotten, so the same old changes do not mark again (new ones are counted afresh). The
+        `ended` event; `None` when there is nothing a person may clear."""
+        if not self.clearable:
+            return None
+        self._changes.clear()
+        self._behaviour = None
+        return self._end(now, cleared_by="person")
+
+    def _end(self, now: datetime, cleared_by: str | None = None) -> dict[str, Any]:
         verdict = self.verdict
         record = verdict.as_dict() | {"ended": now.isoformat()}
+        if cleared_by is not None:
+            record["cleared_by"] = cleared_by
         self.history.append(record)
         self.verdict = Verdict()
         self._last_signal = None

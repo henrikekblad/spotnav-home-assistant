@@ -331,6 +331,14 @@ export function perPhaseLine(language: Language, status: BatteryStatus): string 
   });
 }
 
+/** The outside-control reasons a person may clear ("it was me"): the battery's own settings or behaviour, never an
+ * integration or a planner (`outside_control.TOLD_REASONS`). */
+const OUTSIDE_CLEARABLE = ["settings_changed", "grid_charge_behaviour", "export_discharge_behaviour"];
+
+export function batteryOutsideClearable(need: string): boolean {
+  return need.startsWith("outside_control:") && OUTSIDE_CLEARABLE.includes(need.slice("outside_control:".length));
+}
+
 export function batteryNeed(language: Language, need: string): string {
   const [kind, param] = need.split(":");
   switch (kind) {
@@ -465,7 +473,11 @@ export class SiteSections {
 
   // ---- battery
 
-  async writeBattery(changes: Record<string, boolean | string>, enableControlEntities = false): Promise<string | null> {
+  async writeBattery(
+    changes: Record<string, boolean | string>,
+    enableControlEntities = false,
+    clearOutsideControl = false,
+  ): Promise<string | null> {
     const hass = this.input.hass();
     const target = this.input.target();
     const language = this.language;
@@ -474,7 +486,7 @@ export class SiteSections {
     }
     try {
       const decoded = decodeBatteryControl(
-        await batteryControl(hass, target, Object.keys(changes).length === 0 ? null : changes, enableControlEntities),
+        await batteryControl(hass, target, Object.keys(changes).length === 0 ? null : changes, enableControlEntities, clearOutsideControl),
       );
       if (!decoded.ok) {
         return translate(language, "battery.error.generic");
@@ -650,6 +662,26 @@ export class SiteSections {
       const line = element(doc, "p", C.settingRowHelp, batteryNeed(language, need));
       line.dataset["need"] = need.split(":")[0]!;
       wrap.append(line);
+      if (admin && batteryOutsideClearable(need)) {
+        // The person's "it was me" (say a mode tried by hand): the mark ends, the changes counted are forgotten.
+        const help = element(doc, "p", C.settingRowHelp, translate(language, "battery.outsideClear.help"));
+        help.dataset["needHelp"] = "outside_control";
+        const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.outsideClear.button")) as HTMLButtonElement;
+        button.type = "button";
+        button.dataset["action"] = "clear-outside-control";
+        button.addEventListener("click", () => {
+          button.disabled = true;
+          void this.writeBattery({}, false, true).then((error) => {
+            if (error !== null) {
+              help.textContent = error;
+              button.disabled = false;
+            } else {
+              this.input.repaint();
+            }
+          });
+        });
+        wrap.append(help, button);
+      }
     }
     if (steps.length > 0) {
       const box = element(doc, "div", C.batteryNeeds);

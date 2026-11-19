@@ -224,6 +224,42 @@ def test_a_restart_keeps_the_occurrence_and_does_not_tell_it_again() -> None:
     assert OutsideControlWatch.from_dict(None).verdict.active is False
 
 
+def test_a_person_clears_a_settings_verdict_and_the_old_changes_do_not_mark_again() -> None:
+    watch = OutsideControlWatch()
+    watch.observe(_obs(T0))
+    watch.observe(_obs(T0 + timedelta(minutes=1), controls={LIMIT: "0.0"}))
+    watch.observe(_obs(T0 + timedelta(minutes=2), controls={LIMIT: "23.04"}))
+    [started] = watch.observe(_obs(T0 + timedelta(minutes=3), controls={LIMIT: "0.0"}))
+    # One more change after the mark: counted, then forgotten by the clear.
+    watch.observe(_obs(T0 + timedelta(minutes=4), controls={LIMIT: "5.0"}))
+    at = T0 + timedelta(minutes=5)
+    ended = watch.clear_by_person(at)
+    assert ended is not None and ended["kind"] == "ended" and ended["cleared_by"] == "person"
+    assert ended["reason"] == "settings_changed" and ended["ended"] == at.isoformat()
+    assert not watch.verdict.active and watch.history[-1]["cleared_by"] == "person"
+    assert watch.clear_by_person(at) is None, "nothing to clear"
+    # The same settings read again, and two new changes: no new mark (the third would be).
+    assert watch.observe(_obs(at + timedelta(minutes=1), controls={LIMIT: "5.0"})) == []
+    assert watch.observe(_obs(at + timedelta(minutes=2), controls={LIMIT: "6.0"})) == []
+    assert watch.observe(_obs(at + timedelta(minutes=3), controls={LIMIT: "7.0"})) == []
+    assert not watch.verdict.active
+    # Kept across a restart, in the history the diagnostics show.
+    again = OutsideControlWatch.from_dict(watch.as_dict())
+    assert not again.verdict.active and again.history[-1]["cleared_by"] == "person"
+
+
+def test_a_person_clears_a_behaviour_verdict_but_never_an_integration_or_a_planner() -> None:
+    watch = OutsideControlWatch()
+    _charging_from_grid(watch, T0, 10)
+    assert watch.verdict.reason == "grid_charge_behaviour"
+    assert watch.clear_by_person(T0 + timedelta(hours=1)) is not None and not watch.verdict.active
+    for kwargs in ({"integrations": frozenset({"checkwatt"})}, {"planner": "predbat"}):
+        watch = OutsideControlWatch()
+        watch.observe(_obs(T0, **kwargs))
+        assert watch.clear_by_person(T0 + timedelta(minutes=1)) is None
+        assert watch.verdict.active and not watch.clearable
+
+
 # --- the facts ----------------------------------------------------------------------------------------------------
 
 

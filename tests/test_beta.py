@@ -325,6 +325,43 @@ def test_a_test_runs_once_a_day_and_once_more_after_an_update_or_a_firmware_chan
     assert result_of([{"status": "passed"}, {"status": "failed"}]) == "failed"
 
 
+def test_the_result_says_when_a_part_did_not_run() -> None:
+    skipped = {"part": "battery", "step": "battery", "status": "skipped", "reason": "needs:outside_control"}
+    ran = [{"part": "heat", "step": "engage", "status": "passed"}, {"part": "heat", "step": "release", "status": "passed"}]
+    assert result_of([skipped, *ran]) == "partial"
+    assert result_of([skipped, {"part": "heat", "step": "heat", "status": "skipped"}]) == "skipped"
+    assert result_of([skipped, {"part": "heat", "step": "engage", "status": "failed"}]) == "failed"
+    # A step skipped inside a part that ran (a mode after a failure, a release with nothing engaged) is no part skipped.
+    assert result_of([{"part": "battery", "step": "charge", "status": "skipped"}, *ran]) == "passed"
+    assert result_of([]) == "skipped"
+
+
+async def test_a_partial_or_skipped_test_leaves_the_day_s_slot(hass: HomeAssistant) -> None:
+    battery = _FakeBattery(refusal="needs:outside_control:settings_changed")
+    runner = await _runner(hass, battery, _FakeHeat())
+    assert await runner.async_start() is None
+    await _finished(runner)
+    view = runner.view()
+    assert view["result"] == "partial" and view["blocked"] is None and view["next_at"] is None
+    battery.refusal = None
+    assert await runner.async_start() is None, "the battery ready again: the test runs again the same day"
+    await _finished(runner)
+    assert runner.view()["result"] == "passed" and runner.view()["blocked"] == "once_a_day"
+
+
+async def test_a_kept_test_from_before_is_judged_again_at_the_load(hass: HomeAssistant, hass_storage) -> None:
+    now = dt_util.now()
+    hass_storage[hardware_test.store_key("site_1")] = {"version": 1, "key": hardware_test.store_key("site_1"), "data": {
+        "last": {"at": now.isoformat(), "version": "3.0.0", "firmware_key": None},
+        "record": {"started_at": now.isoformat(), "finished_at": now.isoformat(), "result": "passed", "steps": [
+            {"part": "battery", "step": "battery", "status": "skipped", "reason": "needs:outside_control"},
+            {"part": "heat", "step": "engage", "status": "passed", "reason": None}]},
+        "sent_ref": None}}
+    runner = await _runner(hass, _FakeBattery(), _FakeHeat())
+    assert runner.record is not None and runner.record["result"] == "partial"
+    assert runner.view()["blocked"] is None
+
+
 async def test_a_passed_test_shows_every_step_and_is_offered_to_send_when_beta_is_off(hass: HomeAssistant) -> None:
     runner = await _runner(hass, _FakeBattery(), _FakeHeat())
     assert runner.view()["blocked"] is None
@@ -392,7 +429,7 @@ async def test_parts_that_are_not_there_or_not_ready(hass: HomeAssistant) -> Non
     await _finished(runner)
     steps = runner.view()["steps"]
     assert steps[0] == {"part": "battery", "step": "battery", "status": "skipped", "reason": "needs:ai_takeover_ack"}
-    assert runner.view()["result"] == "passed"
+    assert runner.view()["result"] == "partial"
 
 
 async def test_a_running_test_is_ended_at_the_unload(hass: HomeAssistant) -> None:
@@ -452,6 +489,10 @@ async def test_the_card_s_fixtures(hass: HomeAssistant, freezer, monkeypatch: py
     assert await failed.async_start() is None
     await _finished(failed)
     _write_or_compare("on_done_failed.json", _answer(beta, failed))
+    partial = await _runner(hass, _FakeBattery(refusal="needs:outside_control:settings_changed"), _FakeHeat())
+    assert await partial.async_start() is None
+    await _finished(partial)
+    _write_or_compare("on_done_partial.json", _answer(beta, partial))
     freezer.move_to("2026-12-04T03:00:00+01:00")
     _write_or_compare("ended.json", _answer(beta, None))
     await beta.async_stop()
