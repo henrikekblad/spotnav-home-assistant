@@ -46,9 +46,13 @@ grid only in a mode that sells (Balanced, Max profit) on top of that (and `charg
 power target: the house step, the plant's own mode, says nothing about its sign). The export limit needs no routine of its own: it starts
 on its live check (the executor's monitor hands it back and blocks it when the export does not stop).
 
-The fast shedding order on the fuse (`battery_yields`): heat loads first (when the site has them, later), then the
-battery's grid charge, then the car; the car earlier when its departure has room. The site's solar priority still
-orders car against battery: with "battery first" the car backs off before the battery does.
+The order in which loads give way when a phase nears the fuse, as it runs: the car first (the site's load balancing
+lowers it within seconds), the battery next (the executor's 10 s look; a full hand-back under `RESTORE_HEADROOM_A`),
+SpotNav's own hot-water boost last (shed after two hot-water looks over the fuse, a minute apart:
+`heat/dhw_runtime.py`), and a heat raise never (it only drives the compressor; the car and the battery give way).
+Who gets the room when it is short (`battery_yields`): with the solar priority "car first" the battery's grid
+charge yields to a held car, unless every held car's departure has room; with "battery first" the battery keeps
+its rate and the car backs off.
 
 Pure: no Home Assistant import; times are aware datetimes from the caller.
 """
@@ -750,5 +754,6 @@ def departure_has_room(
 def battery_yields(car_first: bool, held_cars_have_room: bool) -> bool:
     """Whether the battery's grid charge gives way to a held car (the executor's `car_first`): with the solar
     priority "car first", unless every held car's departure has room (then the car backs off first); with "battery
-    first", never (the site's load balancing backs the car off). Heat loads, when a site has them, go before both."""
+    first", never (the site's load balancing backs the car off). SpotNav's own hot-water boost is shed after both
+    (see the module)."""
     return car_first and not held_cars_have_room
