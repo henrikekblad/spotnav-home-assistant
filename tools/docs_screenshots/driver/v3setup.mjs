@@ -89,7 +89,16 @@ async function seedHouse(api) {
   await waitForState(api, "sensor.demo_heat_pump_energy");
   await waitForState(api, "sensor.sigen_plant_ess_soc");
   await api.post("/api/services/demo_house/docs_seed", {});
-  await sleep(4000);
+  // The recorder imports in its own thread: the site must not read before the last hour and the last five-minute
+  // rows are in, or it keeps what it read of a half-finished import.
+  const start = new Date(Date.now() - 3 * 3600_000).toISOString(), end = new Date().toISOString();
+  for (let i = 0; i < 120; i++) {
+    const hours = await api.ws({ type: "recorder/statistics_during_period", start_time: start, end_time: end, statistic_ids: ["sensor.demo_heat_pump_energy", "sensor.demo_solar_energy"], period: "hour", types: ["change"] });
+    const five = await api.ws({ type: "recorder/statistics_during_period", start_time: start, end_time: end, statistic_ids: ["sensor.demo_heat_pump_energy", "sensor.demo_solar_energy"], period: "5minute", types: ["change"] });
+    if ((hours["sensor.demo_solar_energy"]?.length ?? 0) >= 2 && (five["sensor.demo_solar_energy"]?.length ?? 0) >= 20) break;
+    await sleep(2000);
+  }
+  await sleep(3000);
   await api.ws({
     type: "energy/save_prefs",
     energy_sources: [

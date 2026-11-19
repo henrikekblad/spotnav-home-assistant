@@ -34,7 +34,9 @@ class DemoHouseSensor(SensorEntity):
         self.entity_id = f"sensor.{object_id}"
         self._attr_unique_id = f"demo_house_{object_id}"
         self._attr_name = name
-        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, device)})
+        if device != "rooms":
+            # The room sensors stand alone, as a thermometer on a shelf does: the card names them by their own names.
+            self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, device)})
         self._attr_device_class = device_class
         self._attr_native_unit_of_measurement = unit
         self._attr_state_class = state_class
