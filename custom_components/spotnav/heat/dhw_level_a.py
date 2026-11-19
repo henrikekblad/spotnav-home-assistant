@@ -26,12 +26,16 @@ and the level-A gate, `dhw_review.GATES`):
 these rules, which protects less. The rules widen instead (`PEAK_GUARD_STRICT`, the day's cap one hour less) until
 `CLEAN_DAYS` reviewed days in a row without a cold risk; meanwhile the gate counts no day.
 
+A lowered hour kept free may be a tight one (the joint load at the import cap): the heat is not lowered there, and
+the cars' regulator keeps the site under the fuse as at any other hour.
+
 A lowered hour the rules take out is shown as cut (`cuts`): the price rule then lowers the next dearest hour it may,
 so a block may move rather than go.
 
 **The rules that only end or hold off a block** are fixed and apply whenever SpotNav steers (`heat/control.py`): no
-block starts while the pump makes hot water, a held block ends at the next look once the pump is seen making hot
-water under it (a run the closing caught as it began), and with a tank sensor the tank rule (`TankGuard`): below
+block starts while the pump makes hot water, a held block ends at the look that sees a run within
+`control.CAUGHT_WITHIN` of its closing (a run the closing caught as it began; one seen later runs under a block that
+lets it), and with a reporting tank sensor the tank rule (`TankGuard`): below
 `TANK_LOW_C` no block starts and a held one ends, until it reads `TANK_BACK_C` again. With the heat plan's own rest
 after each block (`relay_control.MIN_NORMAL`), a run is delayed by at most one block.
 

@@ -430,9 +430,9 @@ stricter rules after late reheats apply there too.
 block's end in the house's expected load, so the cars' and the battery's plans see it there.
 
 **What SpotNav never does.** It never turns off the pump's own periodic increase (NIBE's "periodisk höjning", CTC's
-legionella programme): keep it on, hygiene is the pump's. It never stops a hot-water run for longer than the look that
-sees it under a block. What it cannot promise without seeing it: an increase it has not recognised can be held by one
-block, as any run.
+legionella programme): keep it on, hygiene is the pump's. A run a block holds waits at most one block (three hours at
+most), and a run caught by a closing as it began ends that block at once. An increase SpotNav has not recognised can be
+held by one block, as any run.
 
 The diagnostics (`heat_settings.shadow.hot_water`) show the boost route, the mode, the gate, the peaks, the picks, the
 days kept with their reviews, SpotNav's own writes and the blocks' rules (`level_a`: mode, gate and the hours cut).
