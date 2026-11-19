@@ -160,6 +160,30 @@ def test_a_goodwe_hold_sets_the_cut_off_to_the_level_and_hands_the_depth_back() 
     assert battery.states["depth_of_discharge"] == "80"
 
 
+@dataclass
+class _GoodweModes(_Fake):
+    """GoodWe with the adapter's own mode rule: free only in `general` (`adapters.GOODWE`, as `facts._management`
+    reads it)."""
+
+    def management(self) -> Management:
+        mode = self.states["operation_mode"]
+        state = "free" if mode == "general" else "self_managed"
+        return Management(state, "self_consumption" if state == "free" else "operating mode", {"operating mode": mode})
+
+
+def test_a_goodwe_grid_charge_is_not_taken_for_the_plants_own_management() -> None:
+    executor, battery = Executor(GOODWE_CONTROL), _GoodweModes(GOODWE_CONTROL, dict(GOODWE_STATES), soc_pct=42.7)
+    _now, results = run(executor, battery, T0, 30, "grid_charge", 4.0)
+    assert battery.states["operation_mode"] == "eco_charge"
+    assert executor.state.phase == "active" and not events(results, "hand_back")
+    # An eco charge found at the start is someone else's: refused.
+    executor = Executor(GOODWE_CONTROL)
+    battery = _GoodweModes(GOODWE_CONTROL, dict(GOODWE_STATES) | {"operation_mode": "eco_charge"}, soc_pct=42.7)
+    _now, results = run(executor, battery, T0, 4, "grid_charge", 4.0)
+    assert written(results) == []
+    assert events(results, "not_started")[0]["reason"].startswith("self_managed")
+
+
 def test_goodwe_without_a_battery_rating_does_not_start_a_grid_charge() -> None:
     executor, battery = _goodwe(rated_kw=None)
     _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0)

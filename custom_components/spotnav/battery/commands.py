@@ -891,6 +891,9 @@ GOODWE_CONTROL: Final = BrandControl(
     },
     enter_order=("eco_soc", "eco_power", "depth_of_discharge", "operation_mode"),
     restore_order=("operation_mode", "eco_power", "eco_soc", "depth_of_discharge"),
+    # The adapter's mode rule is free only in `general`: the grid charge's own `eco_charge` is SpotNav's, not the
+    # plant's own management, while SpotNav runs it (one found there at the start is still refused).
+    own_states={"operating mode": frozenset({"eco_charge"})},
     # A grid charge stops with the mode back to general; no peak cover under a hold (the cut-off is a stored setting).
     peak_first={ACTION_GRID_CHARGE: ("operation_mode",)},
     local_readback=True,
