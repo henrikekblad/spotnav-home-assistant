@@ -662,3 +662,69 @@ async def test_the_charge_per_phase_is_judged_at_what_the_live_room_leaves_and_n
         assert row["phases"][1]["target_kw"] == pytest.approx(0.923)
         assert [reading["target_kw"] for reading in row["phases"][1]["readings"]] == [pytest.approx(0.69)] * 2
         assert (TARGETS[0], -0.69) in _charge_targets(plant)
+
+
+# --- fuse review S3: what SpotNav itself adds to the house stands in the HA-down cap ---------------------------------
+
+
+async def test_fuse_s3_a_standing_boost_or_raise_comes_off_each_phases_ha_down_cap(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """The owner's L1 cap is 1.0 kW (20 A less 2 A, less the learned 13.6 A). A raise held drives the compressor
+    1 kW above anything learned, a boost SpotNav started its learned power on one phase: each comes off every phase's
+    cap (and off the balanced cap's room), since either stays if Home Assistant stops."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.heat.dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN
+
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage, peaks={"L1": 13.6, "L2": 9.0, "L3": 9.0})
+    control = await _control(hass, site, controller, _charge)
+    now = dt_util.now()
+    caps = control._phase_caps_kw(now)
+    balanced = control._grid_charge_cap_kw(now, control.options())
+    assert caps[0] == pytest.approx(4.4 * VOLTS / 1000)
+    raise_a = 1000.0 / VOLTS
+    monkeypatch.setattr(controller.heat_control, "raised", True)
+    held = control._phase_caps_kw(now)
+    assert held == pytest.approx(tuple(cap - raise_a * VOLTS / 1000 for cap in caps))
+    assert control._grid_charge_cap_kw(now, control.options()) == pytest.approx(balanced - 3 * 1.0)
+    monkeypatch.setattr(controller.heat_control, "raised", False)
+    # A boost SpotNav (or the button) started may run: 2 kW on one phase, 8.7 A off each phase.
+    hot_water = controller.heat_shadow.hot_water
+    hot_water.boost_kw = 2.0
+    monkeypatch.setattr(hot_water, "route", lambda *args, **kwargs: SimpleNamespace(kind="one_shot", entity_id="select.x"))
+    for source in (SOURCE_PLAN, SOURCE_BUTTON):
+        monkeypatch.setattr(hot_water.ledger, "owner", lambda _entity_id, _now, source=source: source)
+        assert control._phase_caps_kw(now) == pytest.approx((0.0, caps[1] - 2.0, caps[2] - 2.0))
+    # The household's own boost is in the learned peak already: nothing more.
+    monkeypatch.setattr(hot_water.ledger, "owner", lambda _entity_id, _now: None)
+    assert control._phase_caps_kw(now) == pytest.approx(caps)
+
+
+# --- fuse review S4: the hardware test reads the house with the targets at 0 only after they settled ---------------
+
+
+async def test_fuse_s4_the_hardware_test_reads_the_house_baseline_after_the_zeros_settled(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """A battery that was charging just before must not show in the house per phase that the mapping is judged
+    against: the zeros are read back, then `ZERO_SETTLE_S` passes before that reading, and the test still ends
+    within its ten minutes."""
+    from custom_components.spotnav.battery.verify import ZERO_SETTLE_S, Timing, Verification
+
+    assert Timing.quick().zero_settle_s == ZERO_SETTLE_S >= 10.0
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    baselines: list[float] = []
+    original = Verification._read_phase
+
+    def read_phase(self, now, result, sample, commanded):
+        if self.probe_index < 0 and result.taken_at is not None:
+            baselines.append((now - result.taken_at).total_seconds())
+        return original(self, now, result, sample, commanded)
+
+    monkeypatch.setattr(Verification, "_read_phase", read_phase)
+    report = await _hardware_test(control, hass, site)
+    assert report["modes"]["charge"]["outcome"] == "obeyed"
+    assert baselines and min(baselines) >= ZERO_SETTLE_S

@@ -22,8 +22,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   (`snapshot`) and the shell persists it before it writes. The battery is handed back (every role to its snapshot,
   in the brand's restore order, each read back) when: the part is stopped or unloaded; the plan wants plain
   self-consumption, has no slot now or names an action the brand cannot do; a reading is stale or the site's
-  measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` (or a grid
-  charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
+  measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` under a hold,
+  a grid charge or a sale (`_FUSE_HANDED_BACK`; or a grid charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
   an app taking Remote EMS back: blocked, the block clears by itself after `MANAGEMENT_BLOCK_S`) or reads unknown
   past `MANAGEMENT_GRACE_S` (handed back as stale data is, not blocked) or the site's battery is no longer that brand
   (a plant in its own optimiser is taken only when the person acknowledged the takeover, `ExecInputs.takeover`); someone else changes a control
@@ -47,7 +47,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
   grid (at most its charge, the commanded rate and the site's import) plus the least phase's headroom less
   `HEADROOM_MARGIN_A`, counted on the phases the plant spreads its charge over (`ExecInputs.charge_phases`): a plant
-  that charges on one phase gets that one phase's room, not three.
+  that charges on one phase gets that one phase's room, not three. A sale (`export_discharge`) starts, also as a
+  change of action, only under the hold's start rule less its own share on each phase (`hold_headroom_ok`): in a
+  commanded discharge the plant may spread its output evenly and stop covering the loaded phase.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
   charger held below what it asked makes the battery yield (`YIELD_STEP_KW` below its measured grid charge, one step
   per `RATE_UP_DWELL_S`, so the car's regulator has time to follow); with "battery first" the
@@ -328,6 +330,9 @@ _SELF_CLEARING: Final = (
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
+#: Handed back at once under `RESTORE_HEADROOM_A`: what adds import, and a sale (in a commanded discharge the plant
+#: may spread its output evenly and stop covering the loaded phase).
+_FUSE_HANDED_BACK: Final = _RAISES_IMPORT | {ACTION_EXPORT_DISCHARGE}
 #: Hand-backs for the fuse: every role is written at once, without waiting for the last one's read-back.
 _FUSE_REASONS: Final = frozenset({"fuse_headroom"})
 _MONITORED: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
@@ -855,18 +860,24 @@ def phase_charge_kw(
     return rates, None
 
 
-def hold_headroom_ok(inputs: ExecInputs) -> bool:
-    """Whether a hold may start (or a lifted one hold again): the headroom keeps `HEADROOM_MARGIN_A` once the
-    battery stops covering what it discharges now.
+def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0) -> bool:
+    """Whether a hold may start (or a lifted one hold again, or a hold be changed into): the headroom keeps
+    `HEADROOM_MARGIN_A` once the battery stops covering what it discharges now.
 
     The discharge is counted as if it were all on one phase (kW·1000 / the phase voltage): a SigenStor covers each
-    phase on its own, so what it gives may be one phase's load, and the battery's power per phase is not known."""
+    phase on its own, so what it gives may be one phase's load, and the battery's power per phase is not known.
+
+    A sale (`sale_kw`, its rate) uses the same rule less the sale's own share on each phase: spread evenly over a
+    plant's three phases it still gives that back on the loaded one. A plant on fewer phases gets no share (the
+    phase it puts out on is not known)."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
     extra_a = 0.0
     power = inputs.facts.power_kw
     if power is not None and power < 0:
         extra_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
+    if sale_kw > 0 and inputs.charge_phases >= 3:
+        extra_a = max(extra_a - sale_kw * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases), 0.0)
     return inputs.headroom_a - extra_a >= HEADROOM_MARGIN_A
 
 
@@ -1465,7 +1476,10 @@ class Executor:
             return "stale_data"
         if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
-        if (action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT) and inputs.headroom_a < RESTORE_HEADROOM_A:
+        if (
+            (action in _FUSE_HANDED_BACK or self.state.action in _FUSE_HANDED_BACK)
+            and inputs.headroom_a is not None and inputs.headroom_a < RESTORE_HEADROOM_A
+        ):
             return "fuse_headroom"
         if self._hold_charges(inputs):
             return f"not_obeyed:{ACTION_HOLD}:charging"
@@ -1832,6 +1846,12 @@ class Executor:
         room = _kw(inputs.headroom_a - covered_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
         return "fuse_headroom" if fixed > room + RATE_TOLERANCE_KW else None
 
+    def _sale_headroom_ok(self, inputs: ExecInputs) -> bool:
+        """A sale's start rule (from idle or as a change): the hold's, less the sale's own share on each phase at the
+        rate it would run (`hold_headroom_ok`)."""
+        rate, _why = self._rate(inputs, 0.0)
+        return hold_headroom_ok(inputs, rate)
+
     def _blocker(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
         action = inputs.action
@@ -1853,6 +1873,8 @@ class Executor:
         if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
         if action == ACTION_HOLD and not hold_headroom_ok(inputs):
+            return "headroom_too_small"
+        if action == ACTION_EXPORT_DISCHARGE and not self._sale_headroom_ok(inputs):
             return "headroom_too_small"
         if action == ACTION_HOLD:
             self._sense(inputs)
@@ -2028,6 +2050,13 @@ class Executor:
         ):
             # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
             return events
+        if action != state.action and (
+            (action == ACTION_HOLD and not hold_headroom_ok(inputs))
+            or (action == ACTION_EXPORT_DISCHARGE and not self._sale_headroom_ok(inputs))
+        ):
+            # A change into a hold or a sale is held to that action's start rule: the cover the battery gives now
+            # must not come off a phase that cannot carry it. Handed back (plain self-consumption) instead.
+            return events + self._begin_restore(now, "headroom_too_small")
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
             self.state = replace(

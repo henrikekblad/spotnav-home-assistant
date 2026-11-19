@@ -47,6 +47,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
+from ..battery.plan_model import ACTION_GRID_CHARGE, ACTION_HOLD
 from ..pricing.period_prices import period_price_slots
 from ..site.history_period import PERIOD_DAY, midnight_utc, period_of
 from .config import HeatConfig
@@ -484,6 +485,9 @@ class HotWater:
         meter = self.shadow.site.house_forecast.heat.meter
         if not meter.found:
             return
+        if "recorder" not in self.hass.config.components:
+            # No recorder loaded: no history this hour (its `get_instance` would raise).
+            return
         from ..site.heat_meter import async_heat_hours  # noqa: PLC0415 - the site imports this module
 
         rows = await async_heat_hours(self.hass, meter, now - timedelta(hours=26), now, "5minute")
@@ -882,6 +886,21 @@ class HotWater:
         entry = self._pulse_entry(route, now)
         return None if entry is None else entry.source
 
+    def standing_boost_kw(self, now: datetime | None = None) -> float:
+        """The boost SpotNav or the button started that may run now (kW, its learned power; 0 for none): a write
+        under way, a read-back boost not ended (`Ledger.owner`) or a pulse run (`pulse_owner`). The battery's
+        HA-down cap takes it off each phase: it stands if Home Assistant stops. A household's own boost is in the
+        learned house peak."""
+        now = dt_util.utcnow() if now is None else now
+        route = self.route()
+        if route is None:
+            return 0.0
+        if self._pending is not None and not self._pending.done():
+            return self.boost_kw
+        if route.kind == "pulse":
+            return self.boost_kw if self.pulse_owner(now) is not None else 0.0
+        return self.boost_kw if self.ledger.owner(route.entity_id, now) in (SOURCE_PLAN, SOURCE_BUTTON) else 0.0
+
     def _backstop(self, now: datetime, config: HeatConfig) -> None:
         """A boost not verified to end by itself that SpotNav or the button started and that still reads on once
         its run should be over (`run_len` and `BACKSTOP`): one stop write, so the pump is never left forcing hot
@@ -1089,11 +1108,11 @@ class HotWater:
 
     def _fuse_blocker(self) -> str | None:
         """Why the boost does not fit the site now, `None` when it does. Fails closed: the site's measurements must
-        be healthy and every phase known (a battery holding the grid counts as what it would yield); without phase
+        be healthy and every phase known (SpotNav's own battery charge or hold counts as what it would yield); without phase
         sensors, the site's total import against its cap; and the import target's level for the running hour."""
         state = self._site_state()
         if state == "observing":
-            margins = self._margins()
+            margins = self._margins(start=True)
             if not margins or any(value is None for value in margins.values()):
                 return "no_phase_data"
             if not fits_fuse(margins, self.boost_kw):
@@ -1130,13 +1149,24 @@ class HotWater:
     def _site_state(self) -> str | None:
         return getattr(self._site_result(), "state", None)
 
-    def _margins(self) -> dict[str, float | None]:
-        """Each phase's room now (A): what a battery holding the grid would yield where that is known, else the
-        measured margin."""
+    def _margins(self, *, start: bool = False) -> dict[str, float | None]:
+        """Each phase's room now (A): the measured margin. For a start only, what the battery would yield where
+        that is known, and only while SpotNav's own executor runs a grid charge or a hold (`_own_battery_yields`):
+        that one hands back per phase under 1 A of headroom. A battery in its own mode does not yield (or only on
+        its total), so its charge is no room. The shed and the button's refusal read the measured margin alone: an
+        own charge has yielded within two looks, so a phase still over then is over."""
         result = self._site_result()
         measured = dict(getattr(result, "measured_margin_a", None) or {})
+        if not start or not self._own_battery_yields():
+            return measured
         estimated = dict(getattr(result, "estimated_headroom_if_battery_yields_a", None) or {})
         return {phase: estimated.get(phase) if estimated.get(phase) is not None else value for phase, value in measured.items()}
+
+    def _own_battery_yields(self) -> bool:
+        """SpotNav's own battery executor is active in a grid charge or a hold: it hands back for the fuse."""
+        control = getattr(self.shadow.site, "battery_control", None)
+        state = getattr(getattr(control, "executor", None), "state", None)
+        return getattr(state, "phase", None) == "active" and getattr(state, "action", None) in (ACTION_GRID_CHARGE, ACTION_HOLD)
 
     def _grid_kw(self) -> float | None:
         from ..execution.solar_execution import site_net_grid_w  # noqa: PLC0415 - it imports the site

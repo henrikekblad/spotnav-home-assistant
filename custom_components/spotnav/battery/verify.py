@@ -38,7 +38,8 @@ another meter phase would be wrong from the start). Then, for each phase in turn
 phase alone (`PROBE_KW`; the other two at 0). A discharge
 because it lowers that phase's import whatever the house does, so it needs no room under the fuse and can be tried
 on a phase that has none, which is the phase that matters; the recipe's sign makes a charge the same target
-negated. After `PHASE_SETTLE_S` (a target settles in seconds; the hardware test's `Timing.phase_settle_s`)
+negated. The house per phase with every target at 0 is read after the zeros were read back and `ZERO_SETTLE_S` at
+least (`Timing.zero_settle_s`). After `PHASE_SETTLE_S` (a target settles in seconds; the hardware test's `Timing.phase_settle_s`)
 each of `READINGS` readings `PHASE_READING_GAP_S` apart (the hardware test's fewer and closer ones) must show the plant's own power on that phase at the target and about nothing on the other two (the sign and
 that the target acts alone), and the house on that phase, reckoned as the meter's import plus the plant's output
 there, unchanged from before the probe (the mapping: with the plant's phase on another of the meter's phases the
@@ -135,6 +136,10 @@ VARIANT_WAIT_S: Final = 300.0
 PROBE_KW: Final = 1.0
 PHASE_SETTLE_S: Final = 60.0
 PHASE_READING_GAP_S: Final = 20.0
+#: The least settle of the step with every target at 0, also in the hardware test (s): the house per phase the
+#: mapping is judged against is read only once a battery that was charging or covering just before has stopped and
+#: the meter's phase readings have caught up with the plant's.
+ZERO_SETTLE_S: Final = 10.0
 PROBE_POWER_TOLERANCE_KW: Final = 0.3
 PROBE_HOUSE_TOLERANCE_KW: Final = 0.4
 #: The least charge on one phase the mode `charge` tries per phase (kW): below it a reading at the target cannot be
@@ -171,15 +176,21 @@ class Timing:
     command_timeout_s: float = COMMAND_TIMEOUT_S
     #: A phased mode's step (a target per phase settles in seconds).
     phase_settle_s: float = PHASE_SETTLE_S
+    #: The step with every target at 0, before the house per phase is read (never under `ZERO_SETTLE_S`).
+    zero_settle_s: float = PHASE_SETTLE_S
 
     @classmethod
     def quick(cls) -> Timing:
         """The hardware test's: hold, charge, discharge and the hand-back in about nine minutes. A mode after a
         hand-back waits for the executor's re-arm (`executor.REARM_S`, never shortened) before its writes are
-        taken, so the time to take them stays generous; the settle and the readings are what is shortened. A target
+        taken, so the time to take them stays generous; the settle and the readings are what is shortened (the
+        settle to 10 s, a look, which pays for the zeros' settle within the ten minutes). A target
         per phase is taken only once read back, a look after it was written, and settles in seconds: its readings
-        start at once."""
-        return cls(settle_s=20.0, readings=2, reading_gap_s=10.0, command_timeout_s=240.0, phase_settle_s=0.0)
+        start at once, except the house per phase with every target at 0, read after `ZERO_SETTLE_S`."""
+        return cls(
+            settle_s=10.0, readings=2, reading_gap_s=10.0, command_timeout_s=240.0, phase_settle_s=0.0,
+            zero_settle_s=ZERO_SETTLE_S,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -484,7 +495,7 @@ class Verification:
             if taken:
                 result.taken_at = now
                 self._enter(now, "settle")
-                if not (result.phased and self.timing.phase_settle_s <= 0):
+                if not (result.phased and self._settle_s(result) <= 0):
                     return
             elif result.phased and self._unraised(now, state, step):
                 # The executor could raise the charge and kept it too small: not enough live room on its phase.
@@ -498,8 +509,7 @@ class Verification:
             if self.stage != "settle":
                 return
         if self.stage == "settle":
-            settle = self.timing.phase_settle_s if result.phased else self.timing.settle_s
-            if (now - self.stage_at).total_seconds() >= settle:
+            if (now - self.stage_at).total_seconds() >= self._settle_s(result):
                 self._enter(now, "read")
             else:
                 return
@@ -526,6 +536,15 @@ class Verification:
                 self._enter(now, "command")
                 return
             self._next(now)
+
+    def _settle_s(self, result: ModeResult) -> float:
+        """How long the step just taken settles before its readings (s): the step with every target at 0 at least
+        `ZERO_SETTLE_S`, so a battery that was charging just before cannot show in the house per phase."""
+        if not result.phased:
+            return self.timing.settle_s
+        if self.probe_index < 0:
+            return max(self.timing.zero_settle_s, ZERO_SETTLE_S)
+        return self.timing.phase_settle_s
 
     def _read(self, now: datetime, result: ModeResult, sample: Sample, capability: Capability) -> None:
         if self.last_reading_at is not None and (now - self.last_reading_at).total_seconds() < self.timing.reading_gap_s:

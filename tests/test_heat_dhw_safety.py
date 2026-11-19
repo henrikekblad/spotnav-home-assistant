@@ -228,9 +228,8 @@ async def _fuse_site(hass: HomeAssistant, freezer: Any, monkeypatch: pytest.Monk
         ("observing", {}, None, False),
         # A stale meter: the cars are in their failsafe; no boost either.
         ("stale_measurements", {"l1": 20.0, "l2": 20.0, "l3": 20.0}, None, False),
-        # The battery holds the grid at the fuse: it would yield, so the boost fits.
-        ("observing", {"l1": 0.5, "l2": 0.5, "l3": 0.5}, {"l1": 18.0, "l2": 18.0, "l3": 18.0}, True),
-        ("observing", {"l1": 0.5, "l2": 0.5, "l3": 0.5}, {"l1": 18.0, "l2": 5.0, "l3": 18.0}, False),
+        # A battery charging in its own mode is no room: only SpotNav's own charge yields (`test_fuse_b1_*`).
+        ("observing", {"l1": 0.5, "l2": 0.5, "l3": 0.5}, {"l1": 18.0, "l2": 18.0, "l3": 18.0}, False),
     ],
 )
 async def test_s2_the_fuse_check_fails_closed_and_counts_the_battery(
@@ -269,18 +268,6 @@ async def test_s2_the_import_target_holds_a_boost(hass: HomeAssistant, freezer, 
     assert len(writes.calls) == 1
 
 
-async def test_s2_shed_counts_what_the_battery_would_yield(hass: HomeAssistant, freezer, monkeypatch) -> None:
-    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
-    _fuse(monkeypatch, hot_water, "observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0})
-    hot_water.tick(at)
-    await settle(hass)
-    assert len(writes.calls) == 1
-    # The battery charges up to the fuse: measured over, but it would yield.
-    _fuse(monkeypatch, hot_water, "observing", {"l1": -1.0, "l2": 2.0, "l3": 2.0}, {"l1": 10.0, "l2": 12.0, "l3": 12.0})
-    for minute in (1, 2, 3):
-        hot_water.tick(at + timedelta(minutes=minute))
-        await settle(hass)
-    assert len(writes.calls) == 1
 
 
 # ---- S3: the button refuses only while a phase is already over the fuse
@@ -725,3 +712,113 @@ async def test_a_pulse_that_closes_late_is_opened_at_each_look_until_it_reads_of
     hot_water.tick(now + timedelta(minutes=4))
     await settle(hass)
     assert len(writes.calls) == calls, "once off, nothing more"
+
+
+# ---- Fuse review B1: a charging battery is room only while SpotNav's own executor runs the charge or hold
+
+
+def _own_battery(monkeypatch: pytest.MonkeyPatch, controller: Any, phase: str | None, action: str | None = None) -> None:
+    """SpotNav's own battery executor in `phase` running `action`; `None`: no executor (control off)."""
+    from types import SimpleNamespace
+
+    executor = None if phase is None else SimpleNamespace(state=SimpleNamespace(phase=phase, action=action))
+    monkeypatch.setattr(controller.battery_control, "executor", executor)
+
+
+# The owner's shape: 20 A fuse, margin 1 A, the battery charging 5 kW (7.2 A a phase), L1 at 16.2 A on the meter.
+_OWNER_MEASURED = {"l1": 2.8, "l2": 8.8, "l3": 8.8}
+_OWNER_ESTIMATE = {"l1": 10.0, "l2": 16.0, "l3": 16.0}
+
+
+@pytest.mark.parametrize(
+    ("phase", "action", "starts"),
+    [
+        # The plant's own schedule (control off, shadow only, a brand not supported): it never yields.
+        (None, None, False),
+        ("idle", None, False),
+        # SpotNav's executor runs something that does not draw from the grid: the charge is not its own.
+        ("active", "discharge_house", False),
+        # SpotNav's own grid charge or hold: handed back under 1 A of headroom, per phase.
+        ("active", "grid_charge", True),
+        ("active", "hold", True),
+    ],
+)
+async def test_fuse_b1_a_boost_counts_only_spotnavs_own_charge_as_room(
+    hass: HomeAssistant, freezer, monkeypatch, phase: str | None, action: str | None, starts: bool
+) -> None:
+    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
+    hot_water.boost_kw = 2.0  # 8.7 A on one phase: over L1's measured 2.8 A, inside the estimate's 10 A
+    _own_battery(monkeypatch, controller, phase, action)
+    _fuse(monkeypatch, hot_water, "observing", _OWNER_MEASURED, _OWNER_ESTIMATE)
+    hot_water.tick(at)
+    await settle(hass)
+    assert bool(writes.calls) is starts
+
+
+async def test_fuse_b1_a_boost_is_shed_on_the_measured_margin(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
+    _own_battery(monkeypatch, controller, None)
+    _fuse(monkeypatch, hot_water, "observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0})
+    hot_water.tick(at)
+    await settle(hass)
+    assert len(writes.calls) == 1
+    # A battery charging in its own mode puts L1 over the fuse; the estimate says it would yield, it does not.
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -5.9, "l2": 2.0, "l3": 2.0}, {"l1": 1.3, "l2": 9.2, "l3": 9.2})
+    for minute in (1, 2, 3):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert len(writes.calls) == 2  # the stop
+    assert hot_water.shed_day is not None
+
+
+async def test_fuse_b1_the_shed_does_not_wait_on_spotnavs_own_charge(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """SpotNav's own charge has yielded within two looks: a phase still over then is over."""
+    controller, hot_water, at, writes = await _fuse_site(hass, freezer, monkeypatch)
+    _own_battery(monkeypatch, controller, "active", "grid_charge")
+    _fuse(monkeypatch, hot_water, "observing", {"l1": 20.0, "l2": 20.0, "l3": 20.0})
+    hot_water.tick(at)
+    await settle(hass)
+    assert len(writes.calls) == 1
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -1.0, "l2": 2.0, "l3": 2.0}, {"l1": 10.0, "l2": 12.0, "l3": 12.0})
+    for minute in (1, 2, 3):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert len(writes.calls) == 2
+
+
+async def test_fuse_b1_the_button_refuses_on_the_measured_margin(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hot_water = controller.heat_shadow.hot_water
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    writes = Writes(hass)
+    _own_battery(monkeypatch, controller, "active", "grid_charge")
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -3.0, "l2": 10.0, "l3": 10.0}, {"l1": 14.2, "l2": 27.0, "l3": 27.0})
+    answer = (await press(hass, "start", site_id=site.entry_id))["result"]
+    assert answer["error"] == "spotnav_no_headroom" and writes.calls == []
+
+
+# ---- R1: no recorder loaded is no history, never a raise
+
+
+async def test_r1_the_runs_are_not_read_without_the_recorder(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import custom_components.spotnav.site.heat_meter as heat_meter
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hot_water = controller.heat_shadow.hot_water
+    meter = SimpleNamespace(found=True, entity_id="sensor.heat_pump_power", kind=None)
+    monkeypatch.setattr(controller.house_forecast.heat, "meter", meter)
+    calls: list[Any] = []
+
+    async def heat_hours(*args: Any, **kwargs: Any) -> dict:
+        calls.append(args)
+        raise KeyError("recorder")  # what `get_instance` does when the recorder is not loaded
+
+    monkeypatch.setattr(heat_meter, "async_heat_hours", heat_hours)
+    assert "recorder" not in hass.config.components
+    runs = dict(hot_water.runs)
+    await hot_water._async_read_runs(controller.demand.now())
+    assert calls == [] and hot_water.runs == runs
