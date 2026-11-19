@@ -11,10 +11,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 VENV="$HERE/.venv"
-CONFIG="$HERE/.config"
-LOGS="$HERE/.logs"
-HA_PORT=8129
-STUB_PORT=8130
+CONFIG="${DOCS_CONFIG:-$HERE/.config}"
+LOGS="${DOCS_LOGS:-$HERE/.logs}"
+HA_PORT="${HA_PORT:-8129}"
+STUB_PORT="${STUB_PORT:-8130}"
 KEEP_HA=0
 SHOTS=()
 for arg in "$@"; do

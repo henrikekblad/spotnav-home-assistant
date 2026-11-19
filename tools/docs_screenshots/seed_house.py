@@ -69,6 +69,43 @@ def _hot_water(result):
     return body
 
 
+def _battery_plan(result):
+    """The battery plan's store with a month of reviewed days (the plan's day against the battery's own way and
+    against self-consumption) and the battery's day money, as a month in test mode would have left them: the battery
+    ran under its own control, SpotNav only worked out what its plan would have done."""
+    import math
+    from datetime import timedelta
+
+    from custom_components.demo_house import model
+
+    now = datetime.now(timezone.utc)
+    today = now.astimezone(model.ZONE).date()
+    body = dict(result or {})
+    reviews, days = [], {}
+    for back in range(1, 30):
+        day = today - timedelta(days=back)
+        wave = 0.5 + 0.5 * math.sin(back * 1.7)
+        base = 3900 + 700 * math.sin(back * 0.9)
+        own = 170 + 230 * wave
+        extra = 90 + 130 * (1 - wave)
+        run = lambda cost: {"cost": round(cost, 2), "end_soc_pct": 40.0, "net": round(cost, 2)}  # noqa: E731
+        reviews.append({
+            "date": day.isoformat(), "reviewed_at": (datetime.combine(day + timedelta(days=1), datetime.min.time(), tzinfo=model.ZONE) + timedelta(hours=3)).isoformat(),
+            "quarters": 96, "covered": 96, "unplanned": 0, "start_soc_pct": 40.0, "end_value": 80.0, "usable_kwh": 15.0,
+            "actual": run(base - own), "mode": "balanced", "plan": run(base - own - extra),
+            "modes": {"self_consumption": run(base - own + 40), "balanced": run(base - own - extra),
+                      "max_profit": run(base - own - extra - 30)},
+            "self_consumption": run(base), "soc_mae": 4.1,
+            "curtail": {"kwh": 0.0, "saving": 0.0},
+            "baselines": {"no_battery_cost": round(base + 520 + 90 * wave, 2), "sun_gave": 0.0, "sun_quarters": None},
+        })
+        days[day.isoformat()] = {"sold": 0.0, "bought": round(base, 2), "arbitrage": round(own, 2),
+                                  "battery_export_kwh": 0.0, "quarters": 96}
+    body["reviews"] = reviews
+    body["stored_value"] = {"kwh": 9.6, "cost": 760.0, "estimated": False, "last": now.isoformat(), "days": days}
+    return body
+
+
 def install() -> None:
     """Patch the integration's house-history restore once a site's load-forecast store is read, and give the heat
     store its hot-water shadow."""
@@ -81,6 +118,8 @@ def install() -> None:
         key = str(getattr(self, "key", ""))
         if key.startswith("spotnav.load_forecast."):
             _patch()
+        elif key.startswith("spotnav.battery_plan.") and not (result or {}).get("reviews"):
+            result = _battery_plan(result)
         elif key.startswith("spotnav.heat_shadow.") and not (result or {}).get("hot_water"):
             result = _hot_water(result)
         return result
