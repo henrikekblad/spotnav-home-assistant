@@ -114,6 +114,8 @@ async def test_an_unambiguous_detection_is_confirmed_and_equals_the_form_path(ha
         form["flow_id"], {"measured_source": source_candidate(wiring, hass, charger_ids[0])}
     )
     form_data = dict(via_form["data"])
+    # Each site gets its own webhook secret.
+    assert form_data.pop("webhook_id") != data.pop("webhook_id")
     for key in ("battery_aggregate_power_entity", "battery_discharge_power_entity", "battery_power_inverted"):
         data.pop(key, None)
     assert form_data == data

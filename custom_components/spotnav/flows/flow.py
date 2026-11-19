@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import secrets
 from typing import Any
 
 import voluptuous as vol
@@ -23,6 +22,7 @@ from homeassistant.util import slugify
 
 from ..api.entity_fields import duplicate_placeholders, validate_charger_entities
 from ..api.pairing import PairingRegister
+from ..entry_migration import new_webhook_id
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_CHARGE_CONTROL,
@@ -56,6 +56,7 @@ from ..const import (
     CONF_SITE_CURRENT_SOURCE,
     CONF_WEBHOOK_ID,
     CONF_YIELD_STEPPING_ENABLED,
+    CONFIG_ENTRY_MINOR_VERSION,
     CONFIG_ENTRY_VERSION,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
     CURRENT_CONTROL_EASEE,
@@ -173,6 +174,7 @@ class SpotNavChargingConfigFlow(
     """Configure SpotNav charging control."""
 
     VERSION = CONFIG_ENTRY_VERSION
+    MINOR_VERSION = CONFIG_ENTRY_MINOR_VERSION
 
     def __init__(self) -> None:
         self._mode = MODE_OCPP
@@ -881,7 +883,7 @@ class SpotNavChargingConfigFlow(
                 else None
             ),
             CONF_CHARGER_CURRENT_ENTITIES: list(detected.current_entities),
-            CONF_WEBHOOK_ID: secrets.token_urlsafe(32),
+            CONF_WEBHOOK_ID: new_webhook_id(),
         }
         if chose_none:
             data[CONF_ENERGY_REGISTER_NONE] = True
@@ -956,7 +958,7 @@ class SpotNavChargingConfigFlow(
             CONF_CURRENT_LIMIT: user_input.get(CONF_CURRENT_LIMIT, ""),
             CONF_CURRENT_CONTROL: user_input.get(CONF_CURRENT_CONTROL) or "",
             CONF_ENERGY_REGISTER_ENTITY: user_input.get(CONF_ENERGY_REGISTER_ENTITY) or "",
-            CONF_WEBHOOK_ID: secrets.token_urlsafe(32),
+            CONF_WEBHOOK_ID: new_webhook_id(),
         }
         if user_input.get(CONF_POWER_ENTITY):
             data[CONF_POWER_ENTITY] = user_input[CONF_POWER_ENTITY]
@@ -1416,6 +1418,8 @@ class SpotNavChargingConfigFlow(
             CONF_DIRECT_ENTITIES: direct_entities,
             CONF_DERIVED_ENTITIES: derived_entities,
             CONF_SITE_CURRENT_SOURCE: self._site_current_source,
+            # The site webhook's secret (`api/site_entry_webhook.py`), as a charger's.
+            CONF_WEBHOOK_ID: new_webhook_id(),
             **parse_site_flags(pending.details, pending.mode),
             CONF_MAX_AGE_S: DEFAULT_MAX_AGE_S,
             # Yield-verified stepping: off by default and set from the options flow.

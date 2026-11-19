@@ -22,6 +22,7 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .api.dashboard import async_setup_dashboard_api
+from .entry_migration import async_migrate_entry  # noqa: F401 - Home Assistant's hook, found by name
 from .api.blueprints import async_setup_blueprints_api
 from .api.site_view import async_setup_site_view_api
 from .api.beta import async_setup_beta_api
