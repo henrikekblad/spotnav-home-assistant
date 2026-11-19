@@ -2,6 +2,7 @@
 title: Notifications
 description: What SpotNav tells your phone, through the Home Assistant app or the SpotNav app.
 order: 55
+section: App and notifications
 ---
 
 # Notifications

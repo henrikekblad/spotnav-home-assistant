@@ -2,6 +2,7 @@
 title: Home batteries
 description: SpotNav's battery control (opt-in, in testing), the grid-charge signal for other planners, and export at negative prices.
 order: 30
+section: House and battery
 ---
 
 # Home batteries

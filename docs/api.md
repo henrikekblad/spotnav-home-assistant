@@ -2,6 +2,7 @@
 title: Apps and API
 description: The pairing, webhook and WebSocket contracts, for developers of apps and clients.
 order: 92
+section: Advanced
 ---
 
 # Apps and API

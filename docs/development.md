@@ -2,6 +2,7 @@
 title: Development
 description: Run the tests, build the card, and contribute code or translations.
 order: 97
+section: Advanced
 ---
 
 # Development

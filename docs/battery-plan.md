@@ -2,6 +2,7 @@
 title: The battery plan
 description: How SpotNav plans a home battery in shadow, its three modes and the nightly review.
 order: 31
+section: House and battery
 ---
 
 # The battery plan (shadow)

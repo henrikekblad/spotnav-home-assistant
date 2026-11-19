@@ -2,6 +2,7 @@
 title: Beta testing
 description: The beta tester mode and the hardware test. What they unlock, what they never skip, and what is sent.
 order: 81
+section: Help
 ---
 
 # Beta testing

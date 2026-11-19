@@ -2,6 +2,7 @@
 title: Site and load balancing
 description: The main fuse, the grid meter, active load balancing, charger priority and the import target.
 order: 63
+section: Settings
 ---
 
 # Site and load balancing

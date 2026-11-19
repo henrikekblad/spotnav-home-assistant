@@ -2,6 +2,7 @@
 title: "Target state of charge"
 description: "Charge to a level instead of an amount of energy: what it needs and how it stops at the target."
 order: 12
+section: Charging
 ---
 
 # Target state of charge

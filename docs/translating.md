@@ -2,6 +2,7 @@
 title: Translating SpotNav
 description: Where the texts are, how to add a language, and the glossary for each language.
 order: 96
+section: Advanced
 ---
 
 # Translating SpotNav

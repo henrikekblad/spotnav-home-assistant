@@ -2,6 +2,7 @@
 title: Troubleshooting
 description: Diagnostics, the debug info for a bug report, and fixes for common problems.
 order: 80
+section: Help
 ---
 
 # Diagnostics and troubleshooting

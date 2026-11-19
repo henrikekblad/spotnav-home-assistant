@@ -2,6 +2,7 @@
 title: OCPP chargers
 description: How SpotNav drives a charger through the OCPP integration.
 order: 93
+section: Advanced
 ---
 
 # OCPP chargers

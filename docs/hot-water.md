@@ -2,6 +2,7 @@
 title: Hot water
 description: How SpotNav learns when you use hot water, plans the tank's reheat into cheap hours, and the Hot water now button.
 order: 41
+section: Heating and hot water
 ---
 
 # Hot water

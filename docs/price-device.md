@@ -2,6 +2,7 @@
 title: "The electricity price"
 description: "One price device for the whole installation: its entities, several prices, and the spotnav.get_prices action."
 order: 62
+section: Settings
 ---
 
 # The electricity price

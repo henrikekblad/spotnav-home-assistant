@@ -2,6 +2,7 @@
 title: Setup in detail
 description: Every setup dialog for chargers and sites, the manual path, special chargers, and what to do when detection finds nothing.
 order: 90
+section: Advanced
 ---
 
 # Setup in detail

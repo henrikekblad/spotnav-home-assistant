@@ -2,6 +2,7 @@
 title: Settings
 description: Where SpotNav's settings live, which ones apply to the whole site, and who may change them.
 order: 60
+section: Settings
 ---
 
 # Settings

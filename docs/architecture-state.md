@@ -2,6 +2,7 @@
 title: "Charge ownership: the session model"
 description: "How charger control is structured inside the integration. For developers."
 order: 95
+section: Advanced
 ---
 
 # Charge ownership: the session model

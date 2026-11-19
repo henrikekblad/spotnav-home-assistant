@@ -2,6 +2,7 @@
 title: "Which car is plugged in?"
 description: "How SpotNav tells several cars at one charger apart, and when it asks."
 order: 13
+section: Charging
 ---
 
 # Which car is plugged in?

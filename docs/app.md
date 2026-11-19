@@ -2,6 +2,7 @@
 title: The SpotNav app
 description: Pair the SpotNav Android app with Home Assistant, and what it can see and change.
 order: 56
+section: App and notifications
 ---
 
 # The SpotNav app

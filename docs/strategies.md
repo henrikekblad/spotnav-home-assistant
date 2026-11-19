@@ -2,6 +2,7 @@
 title: "Charging strategies"
 description: "Cheapest, Solar and Hybrid: how SpotNav plans a charge with each."
 order: 11
+section: Charging
 ---
 
 # Charging strategies

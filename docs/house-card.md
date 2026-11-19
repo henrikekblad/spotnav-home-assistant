@@ -2,6 +2,7 @@
 title: "The house card"
 description: "The whole house on one card: live flows, the energy history, earnings and the battery plan."
 order: 20
+section: House and battery
 ---
 
 # The house card

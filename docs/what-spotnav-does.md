@@ -2,6 +2,7 @@
 title: What SpotNav does
 description: Charging, the house, the home battery, heating, hot water and solar. What each part does, what it needs, and whether it acts or runs in shadow.
 order: 3
+section: Get started
 ---
 
 # What SpotNav does

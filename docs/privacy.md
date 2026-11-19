@@ -2,6 +2,7 @@
 title: Privacy
 description: What leaves your Home Assistant, when, and what is kept.
 order: 82
+section: Help
 ---
 
 # Privacy

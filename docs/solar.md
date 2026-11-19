@@ -2,6 +2,7 @@
 title: Solar
 description: How SpotNav uses your solar panels and the solar forecast, for the car, the battery plan and the house.
 order: 50
+section: Solar and forecasts
 ---
 
 # Solar

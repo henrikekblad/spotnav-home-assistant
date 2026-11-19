@@ -2,6 +2,7 @@
 title: SpotNav
 description: SpotNav is a home energy management system (HEMS) for Home Assistant. It plans your EV, home battery and heating around spot prices, solar and weather.
 order: 1
+section: Get started
 ---
 
 # SpotNav

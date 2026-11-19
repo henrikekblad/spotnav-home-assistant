@@ -2,6 +2,7 @@
 title: "How the forecasts are tested"
 description: "The backtests behind the house load and solar forecasts: what was kept and what was rejected."
 order: 94
+section: Advanced
 ---
 
 # How the forecasts are tested

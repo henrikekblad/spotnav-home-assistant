@@ -2,6 +2,7 @@
 title: Prices
 description: Where the spot prices come from, what you pay on top, and how SpotNav uses them.
 order: 61
+section: Settings
 ---
 
 # Prices

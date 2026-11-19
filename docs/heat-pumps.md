@@ -2,6 +2,7 @@
 title: Heat pumps
 description: Which heat pumps SpotNav reads, the heat card, and SpotNav's own heat control behind Control the heat.
 order: 40
+section: Heating and hot water
 ---
 
 # Heat pumps

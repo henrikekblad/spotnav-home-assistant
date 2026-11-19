@@ -2,6 +2,7 @@
 title: Get started
 description: Install SpotNav, add a charger or a site, add a price source and put the cards on a dashboard.
 order: 2
+section: Get started
 ---
 
 # Get started
