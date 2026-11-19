@@ -57,6 +57,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Final, Literal
 
+from ..core.electric import phase_volts
 from .commands import ACTION_CURTAIL_EXPORT
 from .plan_model import (
     DEFAULT_MODE,
@@ -435,16 +436,6 @@ def suitable(moment: Moment, *, evening: bool) -> str | None:
 # --- the grid charge cap -----------------------------------------------------------------------------------------------
 
 
-def fuse_kw(main_fuse_a: float | None, volts_between_phases: float, margin_a: float) -> float | None:
-    """The fuse as three-phase power (kW), less `margin_a` per phase; `None` when the fuse is unknown."""
-    if main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0:
-        return None
-    return max(main_fuse_a - margin_a, 0.0) * math.sqrt(3.0) * volts_between_phases / 1000.0
-
-
-def phase_volts(volts_between_phases: float) -> float:
-    """One phase's voltage to neutral."""
-    return volts_between_phases / math.sqrt(3.0)
 
 
 def _usable(value: float | None) -> bool:

@@ -66,10 +66,10 @@ from .. import time_zones
 from ..const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_MAIN_FUSE_A,
-    CONF_SAFETY_MARGIN_A,
     CONF_SOLAR_FORECAST_ENTRIES,
     DOMAIN,
 )
+from ..core.electric import power_kw, stored_safety_margin_a
 from ..planning.demand_charge import hour_start
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.forecast_band import FORM_ADDITIVE, FORM_RATIO, BandView, ErrorBand, learn, pairs_from_log, view
@@ -293,12 +293,13 @@ def site_car_windows(hass: HomeAssistant, site: SiteCapacityController) -> list[
     from ..runtime import controller_for  # noqa: PLC0415 - the charger side imports the site
 
     windows: list[tuple[datetime, datetime, float]] = []
+    volts = stored_voltage_between_phases_v(site.config)
     for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
         charger = controller_for(hass, charger_entry_id)
         plan = None if charger is None else getattr(charger, "plan", None)
         if plan is None:
             continue
-        kw = plan.power_kw if plan.power_kw else plan.amps * plan.phases * 230.0 / 1000.0
+        kw = plan.power_kw if plan.power_kw else power_kw(plan.amps, plan.phases, volts)
         try:
             windows.extend((start, end, float(kw)) for start, end in plan.windows)
         except (TypeError, ValueError):
@@ -315,7 +316,7 @@ def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> flo
     config = site.config
     return import_cap_kw(
         config.get(CONF_MAIN_FUSE_A),
-        config.get(CONF_SAFETY_MARGIN_A),
+        stored_safety_margin_a(config),
         stored_voltage_between_phases_v(config),
         stored_import_target_kw(config if entry is None else entry.data),
     )

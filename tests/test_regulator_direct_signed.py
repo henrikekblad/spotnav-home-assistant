@@ -11,8 +11,8 @@ from custom_components.spotnav.site.regulator import (
     decide_charging_current,
     magnitude_overload_lowering,
 )
+from custom_components.spotnav.core.electric import PHASE_V
 from custom_components.spotnav.site.site_capacity import (
-    DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
     PHASES,
     ChargerRequest,
     DerivedPhaseInput,
@@ -25,7 +25,7 @@ from custom_components.spotnav.site.site_capacity import (
 
 AGE = 0.5
 MAX_AGE = 30.0
-V = DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+V = PHASE_V
 
 
 def _three(values, age: float = AGE) -> DirectPhaseMeasurement:

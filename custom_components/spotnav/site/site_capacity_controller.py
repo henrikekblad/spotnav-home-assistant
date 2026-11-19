@@ -54,7 +54,6 @@ from ..const import (
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_MEASUREMENT_MODE,
     CONF_PHASE_WIRING,
-    CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SOLAR_PRIORITY,
@@ -88,7 +87,6 @@ from .import_target import (
     effective_target,
     EffectiveTarget,
     held_level_kw,
-    HOLD_VOLTAGE_V,
     hour_budget,
     hour_end_lock_a,
     HourBudget,
@@ -117,6 +115,7 @@ from ..execution.chargers.base import WRITE_SESSION_START, WRITE_SOLAR
 from ..execution.min_soc_floor import ORIGIN_MIN_SOC
 from ..execution.switched_current import measured_amps
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
+from ..core.electric import PHASE_V, site_fuse_kw, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
@@ -200,7 +199,6 @@ from .site_capacity import (
     classify_power,
     classify_signed_current,
     classify_voltage,
-    DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
     DerivedPhaseInput,
     DerivedPhaseMeasurement,
     DirectPhaseMeasurement,
@@ -1819,7 +1817,7 @@ class SiteCapacityController:
             rises[phase] = now_a - before_a - theirs_by_phase.get(phase, 0.0)
         if before_phase is not None and now_phase is not None:
             return {phase: rises[phase] + before_phase[phase] - now_phase[phase] for phase in car_phases}
-        fall_a = (before_w - now_w) / DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+        fall_a = (before_w - now_w) / PHASE_V
         shared = (sum(rises.values()) + fall_a) / len(car_phases)
         return {phase: min(rises[phase] + max(0.0, fall_a), shared) for phase in car_phases}
 
@@ -4986,7 +4984,7 @@ class SiteCapacityController:
         direct_signed = self._read_direct_signed_entities() if mode == MEASUREMENT_MODE_DIRECT else None
         return SiteCalculationConfig(
             main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else None,
-            safety_margin_a=float(self.config.get(CONF_SAFETY_MARGIN_A, 0.0)),
+            safety_margin_a=stored_safety_margin_a(self.config),
             measurement_mode=mode if mode in (MEASUREMENT_MODE_DIRECT, MEASUREMENT_MODE_DERIVED) else "unavailable",
             max_age_s=float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S)),
             direct=direct,
@@ -5233,7 +5231,7 @@ class SiteCapacityController:
             if config.measurement_mode == MEASUREMENT_MODE_DERIVED and config.derived is not None
             else {
                 # A direct site's signed current stands in for power at the nominal voltage it was multiplied by.
-                phase: DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+                phase: PHASE_V
                 if self.result.phase_direction_source.get(phase) == "signed_current"
                 else None
                 for phase in PHASES
@@ -5341,11 +5339,9 @@ class SiteCapacityController:
         return tuple(stat for stat, value in belongs.items() if value == BELONG_HEAT)
 
     def _main_fuse_kw(self) -> float | None:
-        """The main fuse's capacity (kW, three phases at 230 V); `None` where it is not set."""
-        fuse = self.config.get(CONF_MAIN_FUSE_A)
-        if isinstance(fuse, bool) or not isinstance(fuse, (int, float)) or fuse <= 0:
-            return None
-        return float(fuse) * 3 * 230.0 / 1000.0
+        """The main fuse's capacity (kW, three phases on the site's network, `site_fuse_kw`); `None` where it is not
+        set, 0 kW where it is stored but unusable."""
+        return site_fuse_kw(self.config)
 
     def _heat_meter_setting(self) -> str | None:
         """The heat pump meter chosen in the site settings (`None`: found by itself or none), read from the entry: it
@@ -5447,17 +5443,21 @@ class SiteCapacityController:
             if typical_kw is not None:
                 house_w = min(house_w, max(0.0, typical_kw) * 1000.0)
         running = self.demand.tracker.running_hour(now)
-        main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
-        ceiling_w = float("inf") if main_fuse_a is None else float(main_fuse_a) * len(PHASES) * HOLD_VOLTAGE_V
         return hour_budget(
             target_kw=target_kw,
             running=running,
             now=now,
             house_w=house_w,
-            ceiling_w=ceiling_w,
+            ceiling_w=self._import_ceiling_w(),
             extra_wh=0.0 if running is None else running.discharge_wh,
             extra_covered_s=(None if running is None else running.discharge_covered_s) if battery_counts else None,
         )
+
+    def _import_ceiling_w(self) -> float:
+        """The most the import target's budget lets the chargers draw (W): the main fuse as three-phase power on the
+        site's network (`site_fuse_kw`); unbounded without a fuse, 0 W for one that is stored but unusable."""
+        fuse_kw = site_fuse_kw(self.config)
+        return float("inf") if fuse_kw is None else fuse_kw * 1000.0
 
     def _target_member(
         self,
@@ -6024,7 +6024,7 @@ class SiteCapacityController:
             return None
         found = [cast(GridSignReading, reading) for reading in readings]
         return GridSignReading(
-            sum(reading.value for reading in found) * DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
+            sum(reading.value for reading in found) * PHASE_V,
             min(reading.at for reading in found),
         )
 
@@ -6046,14 +6046,14 @@ class SiteCapacityController:
                 return None
             found = [cast(GridSignReading, reading) for reading in readings]
             return GridSignReading(
-                sum(reading.value for reading in found) * DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
+                sum(reading.value for reading in found) * PHASE_V,
                 min(reading.at for reading in found),
             )
         phases, _phase = self.reckoned_phases(charger_entry_id)
         own = self._switched_own_reading(charger_controller, phases)
         if own is None or own[1] > max_age_s:
             return None
-        return GridSignReading(own[0] * phases * DIRECTION_NOMINAL_PHASE_VOLTAGE_V, now - own[1])
+        return GridSignReading(own[0] * phases * PHASE_V, now - own[1])
 
     def _observe_grid_sign(self) -> None:
         """Give the step test this recompute's readings."""

@@ -32,10 +32,10 @@ from ..const import (
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
     CONF_PHASE_WIRING,
-    CONF_SAFETY_MARGIN_A,
     DOMAIN,
     ENTRY_TYPE_SITE,
 )
+from ..core.electric import stored_safety_margin_a
 from ..execution.controller import (
     CURRENT_RANGE_MIN_A,
     CURRENT_RANGE_SOURCE_DEFAULT,
@@ -258,12 +258,9 @@ def site_limit_a(site: ConfigEntry | None) -> int | None:
     if site is None:
         return None
     fuse = site.data.get(CONF_MAIN_FUSE_A)
-    margin = site.data.get(CONF_SAFETY_MARGIN_A, 0.0)
     if isinstance(fuse, bool) or not isinstance(fuse, (int, float)) or not math.isfinite(fuse):
         return None
-    if isinstance(margin, bool) or not isinstance(margin, (int, float)) or not math.isfinite(margin):
-        margin = 0.0
-    return math.floor(fuse - margin)
+    return math.floor(fuse - stored_safety_margin_a(site.data))
 
 
 def first_run_defaults(

@@ -23,6 +23,7 @@ from typing import Any, Final, Literal
 
 
 from .. import time_zones
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES, power_kw
 from ..pricing.relay_contract import PriceDocument
 
 
@@ -357,26 +358,10 @@ def effective_minor_per_kwh(local_major_per_kwh: float, fiscal: FiscalChoice, st
     return minor
 
 
-#: The voltage between two phases on a TN network, what the planner assumed before it was a setting.
-DEFAULT_VOLTAGE_BETWEEN_PHASES_V: Final = 400.0
-
-
-def power_kw(amps: int, phases: int, voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V) -> float:
-    """The power a connector draws: 230 V single phase, or three-phase at the voltage between phases
-    (400 V on a TN network, 230 V on an IT network).
-
-    Three-phase uses `sqrt(3)` times that voltage times the line current, not a "230 x 3" shortcut. A
-    single-phase charger sees 230 V either way (on an IT network between two phases).
-    """
-    if phases == 1:
-        return 230.0 * amps / 1000.0
-    return math.sqrt(3.0) * voltage_between_phases_v * amps / 1000.0
-
-
 def capped_power_kw(
     amps: int,
     phases: int,
-    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
+    voltage_between_phases_v: float = TN_VOLTS_BETWEEN_PHASES,
     cap_kw: float | None = None,
 ) -> float:
     """[power_kw], or the power the car is known to really draw at that current when that is lower
@@ -388,7 +373,7 @@ def capped_power_kw(
 def energy_per_slot_kwh(
     amps: int,
     phases: int,
-    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
+    voltage_between_phases_v: float = TN_VOLTS_BETWEEN_PHASES,
     cap_kw: float | None = None,
 ) -> float:
     """What one whole 15-minute slot delivers at that power (no more than `cap_kw`, when given)."""
@@ -408,7 +393,7 @@ def slots_needed(
     requested_kwh: float,
     amps: int,
     phases: int,
-    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
+    voltage_between_phases_v: float = TN_VOLTS_BETWEEN_PHASES,
     cap_kw: float | None = None,
 ) -> int:
     """How many whole slots the request needs, and never fewer than one.
@@ -544,7 +529,7 @@ class PlanRequest:
     #: Lets `planning/price_wait.py` plan inside the priced part of the window.
     window_end: datetime | None = None
     #: The voltage between two phases (400 V TN, 230 V IT): what three-phase power is figured from.
-    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+    voltage_between_phases_v: float = TN_VOLTS_BETWEEN_PHASES
     #: The power this car is known to really draw at this current (`planning/learned_power.py`), or `None`:
     #: the plan counts on the lower of it and the current's power (`planned_kw`).
     power_cap_kw: float | None = None

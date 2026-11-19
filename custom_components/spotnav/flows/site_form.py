@@ -11,6 +11,7 @@ from homeassistant.helpers import selector
 
 from ..api.entity_fields import MAIN_FUSE_MIN_A
 from ..const import (
+    DEFAULT_SAFETY_MARGIN_A,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_GRID_POWER_INVERTED,
@@ -159,9 +160,6 @@ def site_current_suggestions_schema(
         }
     )
 
-
-#: The safety margin a new site starts on.
-DEFAULT_SAFETY_MARGIN_A = 1.0
 
 #: The phase choice of a single-phase charger that follows the phase it charges on (stored as no phase).
 PHASE_AUTOMATIC = "auto"

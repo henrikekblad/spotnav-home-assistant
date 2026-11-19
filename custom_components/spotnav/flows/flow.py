@@ -84,6 +84,7 @@ from ..execution.charger_profiles import (
 from ..repairs import async_sync_resolution_repairs
 from ..runtime import domain_data
 from ..planning.first_run import charger_phases_from_entry
+from ..core.electric import stored_safety_margin_a
 from ..planning.grid_voltage import default_voltage_between_phases_v, stored_voltage_between_phases_v
 from ..site.measurement_source import grid_power_source_to_dict, source_to_dict
 from ..site.site_join import queue_site_join
@@ -1407,7 +1408,7 @@ class SpotNavChargingConfigFlow(
             # (see `CONF_ACTIVE_CONTROL_ENABLED` in const.py).
             CONF_ACTIVE_CONTROL_ENABLED: False,
             CONF_MAIN_FUSE_A: self._site_basic[CONF_MAIN_FUSE_A],
-            CONF_SAFETY_MARGIN_A: self._site_basic.get(CONF_SAFETY_MARGIN_A, 0.0),
+            CONF_SAFETY_MARGIN_A: stored_safety_margin_a(self._site_basic),
             CONF_VOLTAGE_BETWEEN_PHASES_V: voltage_between_phases_from_form(self._site_basic),
             CONF_MEASUREMENT_MODE: pending.mode,
             CONF_CHARGER_ENTRY_IDS: pending.charger_entry_ids,

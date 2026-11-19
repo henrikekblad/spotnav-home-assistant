@@ -36,6 +36,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from ..const import (
     BATTERY_OUTSIDE_CONTROL_ISSUE,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
@@ -541,7 +542,7 @@ class BatteryShadow:
     def _apply(
         self, part: str, memory: HoldMemory, decision: HoldDecision | None, now: datetime, *,
         reads: Mapping[str, RoleRead] | None = None, age_s: float | None = None, headroom_a: float | None = None,
-        volts: float = 400.0,
+        volts: float = TN_VOLTS_BETWEEN_PHASES,
     ) -> None:
         # When the hold last counted changes at every look: alone it is no change worth a write.
         changed = _without_count_time(memory.as_dict()) != _without_count_time(self.book.memory(part))

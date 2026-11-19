@@ -73,7 +73,6 @@ from ..const import (
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
-    CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_MODE,
@@ -90,6 +89,7 @@ from ..const import (
 )
 from ..planning.first_run import charger_phases_from_entry, site_for_charger
 from ..planning.phases import charger_wiring, dc_charger, DEFAULT_WIRING_PHASES
+from ..core.electric import stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
 from ..site.heat_meter import needs_setting
@@ -1059,8 +1059,8 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
         FIELD_GRID_POWER_SOURCE_POWER: "" if grid_total is None else grid_total.power,
         FIELD_GRID_POWER_SOURCE_EXPORT: "" if grid_total is None else (grid_total.power_export or ""),
         FIELD_MAIN_FUSE_A: entry.data.get(CONF_MAIN_FUSE_A),
-        # Absent is zero, as the calculation reads it.
-        FIELD_SAFETY_MARGIN_A: entry.data.get(CONF_SAFETY_MARGIN_A, 0.0),
+        # Absent is the form's default, as the calculation reads it.
+        FIELD_SAFETY_MARGIN_A: stored_safety_margin_a(entry.data),
         FIELD_IMPORT_TARGET_KW: stored_import_target_kw(entry.data),
         FIELD_MEASUREMENT_MODE: entry.data.get(CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT),
         FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),

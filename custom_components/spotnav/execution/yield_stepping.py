@@ -33,6 +33,7 @@ import math
 from dataclasses import dataclass, replace
 from typing import Literal, Mapping
 
+from ..core.electric import PHASE_V
 from ..site.battery_probe import held_band_extra_a
 from ..site.site_capacity import PhaseName
 
@@ -104,8 +105,6 @@ YieldReason = Literal[
     "revert_probe_not_seen",
 ]
 
-# Nominal phase voltage (V) that turns a step's amps into the battery power it needs to give up.
-NOMINAL_PHASE_VOLTAGE_V = 230.0
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -847,7 +846,7 @@ class YieldStepper:
             not observation.credit_allowed
             or not observation.battery_fresh
             or watts is None
-            or watts < cfg.step_a * NOMINAL_PHASE_VOLTAGE_V * len(observation.phases)
+            or watts < cfg.step_a * PHASE_V * len(observation.phases)
         ):
             return False
         return not self._over_allowance(

@@ -26,7 +26,6 @@ Pure: no Home Assistant import.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime
@@ -37,6 +36,7 @@ from .executor import RoleRead
 from .facts import BatteryFacts
 from .hold import HoldDecision
 from .ledger import Ledger
+from ..core.electric import three_phase_kw
 from .monitor import Capability, Command, Monitor, MonitorEvent, Reading
 from .shadow import PART_HOLD_FOR_CAR, ShadowEntry
 
@@ -50,7 +50,7 @@ def site_cap_kw(headroom_a: float | None, volts_between_phases: float) -> float 
     """The fuse headroom (A per phase, three phases) as kW."""
     if headroom_a is None or volts_between_phases <= 0:
         return None
-    return max(headroom_a, 0.0) * math.sqrt(3.0) * volts_between_phases / 1000.0
+    return three_phase_kw(max(headroom_a, 0.0), volts_between_phases)
 
 
 def _judged(event: MonitorEvent | None) -> list[ShadowEntry]:

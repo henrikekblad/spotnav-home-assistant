@@ -28,7 +28,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .site_capacity import DIRECTION_NOMINAL_PHASE_VOLTAGE_V, PHASES, PhaseName
+from ..core.electric import PHASE_V
+from .site_capacity import PHASES, PhaseName
 
 # Share of the phases' summed |I| x V that the total may differ from their signed sum.
 DEFAULT_SIGN_TOLERANCE_FRACTION = 0.25
@@ -43,7 +44,7 @@ class CurrentSignCheck:
         zero_margin_w: float,
         min_agreements: int,
         tolerance_fraction: float = DEFAULT_SIGN_TOLERANCE_FRACTION,
-        voltage_v: float = DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
+        voltage_v: float = PHASE_V,
     ) -> None:
         self._zero_margin_w = zero_margin_w
         self._min_agreements = max(1, min_agreements)

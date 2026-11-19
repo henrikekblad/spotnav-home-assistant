@@ -25,7 +25,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MEASURED_CURRENT_SOURCE, CONF_PHASE_WIRING
+from ..const import (
+    CONF_CHARGER_ENTRY_IDS,
+    CONF_MEASURED_CURRENT_SOURCE,
+    CONF_PHASE_WIRING,
+    VOLTAGE_BETWEEN_PHASES_IT_V,
+)
 from ..execution.charger_entities import EntityMatcher
 from ..execution.charger_profiles import profile_for
 from ..planning.grid_voltage import stored_voltage_between_phases_v
@@ -34,8 +39,6 @@ from .site_capacity import PHASES, PhaseName
 
 #: The prefix of an offer's id, followed by the charger's entry id (`apply_detection` takes it).
 OFFER_PREFIX: Final = "charger_current:"
-#: Network voltage between phases that selects a profile's IT attribute names (Norway's 230 V IT grid).
-_IT_VOLTAGE_V: Final = 230
 _TRAILING_NUMBER: Final = re.compile(r"^(.*?)(\d+)$")
 
 
@@ -128,7 +131,7 @@ def own_current_sensors(
         matcher = EntityMatcher(hass, [entry for entry in entries if entry.platform == platform], profile)
         attribute_names = (
             profile.current_attributes_it
-            if voltage_between_phases_v == _IT_VOLTAGE_V and profile.current_attributes_it
+            if voltage_between_phases_v == VOLTAGE_BETWEEN_PHASES_IT_V and profile.current_attributes_it
             else profile.current_attributes
         )
         if profile.current_attribute_sensor_key and len(attribute_names) == len(PHASES):
@@ -137,7 +140,7 @@ def own_current_sensors(
                 continue
             if not _usable(found):
                 return None
-            if phases == 1 and voltage_between_phases_v == _IT_VOLTAGE_V:
+            if phases == 1 and voltage_between_phases_v == VOLTAGE_BETWEEN_PHASES_IT_V:
                 return None  # a one-phase charger on an IT network uses two terminals: not mapped here
             return OwnCurrentSensors(
                 integration=profile.name,

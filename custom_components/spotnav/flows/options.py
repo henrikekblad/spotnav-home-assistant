@@ -57,6 +57,7 @@ from ..const import (
     MODE_OCPP,
     SOLAR_PRIORITY_CHOICES,
 )
+from ..core.electric import stored_safety_margin_a
 from ..execution.charger_profiles import profile_for
 from ..execution.controller import RESTORE_FAILED
 from ..planning.hybrid_forecast import async_forecast_capable_domains
@@ -335,7 +336,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         defaults = {
             "name": self._entry.title,
             CONF_MAIN_FUSE_A: self._entry.data[CONF_MAIN_FUSE_A],
-            CONF_SAFETY_MARGIN_A: self._entry.data.get(CONF_SAFETY_MARGIN_A, 0.0),
+            CONF_SAFETY_MARGIN_A: stored_safety_margin_a(self._entry.data),
             CONF_VOLTAGE_BETWEEN_PHASES_V: self._entry.data.get(
                 CONF_VOLTAGE_BETWEEN_PHASES_V, DEFAULT_VOLTAGE_BETWEEN_PHASES_V
             ),
@@ -755,7 +756,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                 else {}
             ),
             CONF_MAIN_FUSE_A: self._pending_basic[CONF_MAIN_FUSE_A],
-            CONF_SAFETY_MARGIN_A: self._pending_basic.get(CONF_SAFETY_MARGIN_A, 0.0),
+            CONF_SAFETY_MARGIN_A: stored_safety_margin_a(self._pending_basic),
             CONF_MEASUREMENT_MODE: mode,
             CONF_CHARGER_ENTRY_IDS: charger_entry_ids,
             CONF_PHASE_WIRING: phase_wiring,

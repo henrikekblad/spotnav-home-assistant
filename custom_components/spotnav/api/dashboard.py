@@ -32,6 +32,7 @@ from homeassistant.helpers.translation import async_get_cached_translations
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGE_CONTROL,
@@ -559,7 +560,7 @@ class CapturedDashboard:
     #: A smart plug's measured power now, in kW (`ChargingController.measured_power_w`).
     measured_power_kw: float | None = None
     #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
-    voltage_between_phases_v: float = 400.0
+    voltage_between_phases_v: float = TN_VOLTS_BETWEEN_PHASES
     #: 1 while the sun switched the charge to one phase (`ChargingController.switched_phases`), else `None`.
     switched_phases: int | None = None
     #: The open charge session, `None` while none runs.

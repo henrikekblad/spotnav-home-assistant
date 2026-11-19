@@ -56,6 +56,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Final
 
 from .. import time_zones
+from ..core.electric import three_phase_kw
 from ..planning.demand_charge import hour_start
 from ..planning.planner import FiscalChoice
 from .export_curtail import curtail_slots, curtails, would_save
@@ -233,11 +234,14 @@ def import_cap_kw(
     main_fuse_a: float | None, margin_a: float | None, volts_between_phases: float, target_kw: float | None
 ) -> float | None:
     """The most the plan may import (kW): the main fuse less its safety margin as three-phase power, and the import
-    target's held level where one is set (the lower of the two); `None` when neither is known."""
+    target's held level where one is set (the lower of the two); `None` when neither is known. A fuse that is given
+    but unusable (0, negative, not a finite number) fails closed: 0 kW."""
     caps: list[float] = []
     if _finite(main_fuse_a) and (main_fuse_a or 0) > 0:
         amps = max(0.0, float(main_fuse_a) - (float(margin_a) if _finite(margin_a) else 0.0))  # type: ignore[arg-type]
-        caps.append(amps * math.sqrt(3) * volts_between_phases / 1000.0)
+        caps.append(three_phase_kw(amps, volts_between_phases))
+    elif main_fuse_a is not None:
+        caps.append(0.0)
     if _finite(target_kw) and (target_kw or 0) > 0:
         from ..site.import_target import held_level_kw  # noqa: PLC0415 - pure, kept beside its only use
 

@@ -103,7 +103,6 @@ from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_MAIN_FUSE_A,
     CONF_MEASURED_CURRENT_SOURCE,
-    CONF_SAFETY_MARGIN_A,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_GRID_POWER_SOURCE,
@@ -115,6 +114,7 @@ from ..const import (
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
 )
+from ..core.electric import PHASE_V, TN_VOLTS_BETWEEN_PHASES, stored_safety_margin_a
 from ..core.ownership import SOC_DROP_PCT as CORE_SOC_DROP_PCT
 from ..planning.phases import effective_phases
 from ..planning.grid_voltage import stored_voltage_between_phases_v
@@ -341,13 +341,6 @@ def _phase_unknown(site: SiteCapacityController, charger_entry_id: str, *, force
 STAND_IN_PHASE: Final[PhaseName] = "L1"
 
 
-#: The phase voltage assumed for a site with no voltage readings (direct measurement), the Nordic
-#: nominal one.
-NOMINAL_PHASE_VOLTAGE_V: Final = 230.0
-#: The voltage between two phases that `NOMINAL_PHASE_VOLTAGE_V` goes with (a TN network).
-NOMINAL_VOLTAGE_BETWEEN_PHASES_V: Final = 400.0
-
-
 def nominal_phase_voltage_v(voltage_between_phases_v: float, car_phases: int) -> float:
     """The per-phase voltage the surplus reasons with on a direct site. Three-phase power is
     `sqrt(3) x U x I`, which at the nominal 230 V per phase (400 V between phases) is figured as
@@ -355,8 +348,8 @@ def nominal_phase_voltage_v(voltage_between_phases_v: float, car_phases: int) ->
     scales with it. One phase is 230 V on either network.
     """
     if car_phases != 3:
-        return NOMINAL_PHASE_VOLTAGE_V
-    return NOMINAL_PHASE_VOLTAGE_V * voltage_between_phases_v / NOMINAL_VOLTAGE_BETWEEN_PHASES_V
+        return PHASE_V
+    return PHASE_V * voltage_between_phases_v / TN_VOLTS_BETWEEN_PHASES
 
 
 def _split_total(
@@ -378,7 +371,7 @@ def _fuse_limit_a(site: SiteCapacityController) -> float | None:
     main_fuse_a = site.config.get(CONF_MAIN_FUSE_A)
     if main_fuse_a is None:
         return None
-    return float(main_fuse_a) - float(site.config.get(CONF_SAFETY_MARGIN_A, 0.0))
+    return float(main_fuse_a) - stored_safety_margin_a(site.config)
 
 
 def _phase_headroom_a(result: Any, phase: PhaseName, fuse_limit_a: float | None) -> float | None:

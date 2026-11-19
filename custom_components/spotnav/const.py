@@ -125,6 +125,9 @@ VOLTAGE_BETWEEN_PHASES_IT_V = 230
 VOLTAGE_BETWEEN_PHASES_CHOICES = (VOLTAGE_BETWEEN_PHASES_TN_V, VOLTAGE_BETWEEN_PHASES_IT_V)
 DEFAULT_VOLTAGE_BETWEEN_PHASES_V = VOLTAGE_BETWEEN_PHASES_TN_V
 CONF_SAFETY_MARGIN_A = "safety_margin_a"
+#: The safety margin (A per phase) a new site starts on, and what a site whose entry holds none runs with
+#: (`core/electric.stored_safety_margin_a`).
+DEFAULT_SAFETY_MARGIN_A = 1.0
 #: The site's import target (kW, an hourly mean of net import; absent is none). Measured and shown against the
 #: running hour (`site/demand_tracker.py`); nothing holds a charger for it yet.
 CONF_IMPORT_TARGET_KW = "import_target_kw"

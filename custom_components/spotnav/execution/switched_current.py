@@ -5,7 +5,7 @@ own, so load balancing and the sun reckon it as a switchable load of that size. 
 from the first source that has anything to say:
 
 1. **Its own measurement.** The charger's own current sensors (the highest phase), or a smart plug's power over
-   `phases x NOMINAL_VOLTAGE_V`, read while it charges and the car draws (`DRAWING_FROM_A`). Smoothed: a rise is
+   `phases x PHASE_V`, read while it charges and the car draws (`DRAWING_FROM_A`). Smoothed: a rise is
    taken quickly (`RISE_WEIGHT`), a fall slowly (`FALL_WEIGHT`), so a car tapering off at the end of a charge does
    not make the next charge look small.
 2. **The site meter's step**, only for a charger with no measurement of its own: when SpotNav switches it on or off,
@@ -28,12 +28,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping, Sequence
 
+from ..core.electric import PHASE_V
+
 PhaseKey = Literal["L1", "L2", "L3"]
 PHASE_KEYS: tuple[PhaseKey, ...] = ("L1", "L2", "L3")
 
 SwitchedSource = Literal["measured", "site_step", "charging_current", "default"]
 
-NOMINAL_VOLTAGE_V = 230.0
 # A reading below this is a car not drawing (yet), not a charge current.
 DRAWING_FROM_A = 2.0
 RISE_WEIGHT = 0.5
@@ -78,11 +79,11 @@ def measured_amps(
     *, current_a: float | None, power_w: float | None, phases: int
 ) -> tuple[float | None, str | None]:
     """The charger's own draw in amps and which reading it came from: its current sensors' highest phase, else a
-    smart plug's power over `phases x NOMINAL_VOLTAGE_V`; `(None, None)` with neither."""
+    smart plug's power over `phases x PHASE_V`; `(None, None)` with neither."""
     if current_a is not None:
         return max(0.0, float(current_a)), "current"
     if power_w is not None and phases > 0:
-        return max(0.0, float(power_w)) / (phases * NOMINAL_VOLTAGE_V), "power"
+        return max(0.0, float(power_w)) / (phases * PHASE_V), "power"
     return None, None
 
 
