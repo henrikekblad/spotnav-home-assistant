@@ -25,7 +25,7 @@ SpotNav learns what your house draws, hour by hour, and forecasts the next 48 ho
 **What it reads.** The house's measured load per hour over the last six weeks, newer days counting more (a day two weeks ago
 counts half as much as yesterday), with weekdays and weekends kept apart. A day that is a public holiday counts as a weekend
 day where Home Assistant's Holiday integration provides a calendar. A car's plan counts on a figure with some room (three in four hours the load is below it), not the average:
-counting on too little room costs a late car, counting on too much a slightly dearer plan. The battery plan counts on the
+counting on too little room costs a late car, counting on too much a slightly more expensive plan. The battery plan counts on the
 typical hour instead, the median, without the in-day adjustment below; the cars use the figure with room and with it. On a site with a home battery or
 solar production in the Energy dashboard it uses the house's *whole* load (the grid less the car less the battery, plus what
 the sun produced), so the battery's own cycling is not mistaken for the house. With a battery it uses that from the first

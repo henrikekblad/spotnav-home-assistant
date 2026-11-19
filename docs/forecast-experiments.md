@@ -17,7 +17,7 @@ Read them as one data point, not as a promise (see [Caveats](#caveats)).
 ## Why the forecast matters, and how much
 
 A plan is only as good as what it expects. If the plan expects the house to draw 1 kWh less than it does during one
-of the day's dearest hours, the battery has too little left for that hour and the house buys the difference at the
+of the day's most expensive hours, the battery has too little left for that hour and the house buys the difference at the
 top price. The error is real, but it is small money. The question is how small, and whether a better forecast is
 worth its extra code.
 
@@ -131,7 +131,7 @@ The battery's own optimiser cycles the most, 0.84 a day, 26 % more than the perf
   no better than a plain 50/50 (the difference was under 0.1 %).
 * **A fading correction from the last hours.** It helps for the next few hours and does nothing for tomorrow,
   which is what the battery plan needs.
-* **Planning on the 60th or 70th percentile instead of the median.** It lowers the error over the dearest hours,
+* **Planning on the 60th or 70th percentile instead of the median.** It lowers the error over the most expensive hours,
   but in the money it is not a robust win: +3 kr in winter, -2 kr or worse in autumn. Today's median is kept.
 * **A correction of the forecast's typical bias, on by default.** It helps a house whose temperature history and
   forecast come from different sources, but less than fixing the temperatures themselves (0.372 against 0.363 kW),

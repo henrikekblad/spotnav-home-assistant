@@ -149,14 +149,14 @@ again after checking the wiring.
 
 **The rules** (fixed, no settings):
 
-* SpotNav lowers only where its plan lowers (the dear hours, the hours the import target or the fuse is tight, or
+* SpotNav lowers only where its plan lowers (the expensive hours, the hours the import target or the fuse is tight, or
   while the house is too warm: below), and each lowering lasts at least **45 minutes** (no quarter-hour blips), at most **3 hours in a row**, with at least
   **1 hour** of normal heat between lowerings and at most **6 hours a day**.
 * **Too warm indoors lowers too, whatever the price.** When the coldest counted room (its offset counted) has been
   above the comfort band (the wanted temperature plus half a degree) for **an hour**, the plan lowers the running hour
   and the next, until the room is back **0.2 °C** inside the band; then the lowering ends once its 45 minutes have
   passed. A room whose own sensor rises fast (0.6 °C in half an hour: a sensor warmed by sun or a stove) does not
-  count as warm while it rises, also with a single sensor. All the other rules hold, and an hour both dear and warm
+  count as warm while it rises, also with a single sensor. All the other rules hold, and an hour both expensive and warm
   is one lowering, not two. The day's band shows these hours as lowered with the reason **too warm indoors**, as "would lower" while the switch is off. The hour above the band is counted in memory and starts again
   after a restart.
 * Never at **−15 °C or colder** outdoors.

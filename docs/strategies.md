@@ -72,7 +72,7 @@ cheapest with those starts counted. Each period is at least half an hour; a need
 quarter-hour is one quarter-hour.
 
 - Two cheap stretches split by a quarter-hour that costs only a little more become one period: at
-  11 kW that is up to about 9 % dearer than the quarter-hour it replaces, at 3.7 kW about 27 %.
+  11 kW that is up to about 9 % more expensive than the quarter-hour it replaces, at 3.7 kW about 27 %.
 - A clearly expensive peak in between is never bridged: the charge stops for it and starts again.
 
 Choose **1 period** to **8 periods** instead and the planner keeps to at most that many periods, with

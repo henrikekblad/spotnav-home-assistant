@@ -128,7 +128,7 @@ safe.
   after its usual length. Until SpotNav has seen it three times, and on a pump that runs it at varying times, a block
   can still delay it by one block (at most three hours), after which the pump runs it.
 
-A lowered hour these rules take out may move to the next dear hour the plan allows, or simply go. In shadow the plan
+A lowered hour these rules take out may move to the next expensive hour the plan allows, or simply go. In shadow the plan
 SpotNav steers by still has the hour: *Plan*'s readout says what would change ("would shorten the block before the
 06:00 shower") and the review under the chart counts yesterday's hours and the **late reheats**: a peak whose
 pump run a block held until after its ready time ("06:00 reheated late after a block"). The progress line

@@ -121,7 +121,7 @@ block is not there yet.
 
 ## Example: a bathroom floor
 
-Warmer while power is cheap, cooler while it is dear, and the normal setpoint in between:
+Warmer while power is cheap, cooler while it is expensive, and the normal setpoint in between:
 
 ```yaml
 automation:
