@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 
-from ..core.electric import TN_VOLTS_BETWEEN_PHASES
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES, phase_volts
 from ..planning.planner import (
     AUTO_PERIODS,
     STEP_MINUTES,
@@ -124,7 +124,7 @@ class SwitchLoadConfig:
 
     def phase_amps(self, volts_between_phases: float) -> float:
         """The current the load draws on each phase it uses (`SINGLE_PHASE_MAX_KW` decides how many)."""
-        phase_v = volts_between_phases / math.sqrt(3)
+        phase_v = phase_volts(volts_between_phases)
         return self.rated_kw * 1000.0 / (phase_v * self.phases)
 
     def as_dict(self) -> dict[str, Any]:
