@@ -14,7 +14,7 @@ is decided on the measured magnitude alone (`magnitude_decision`): a phase over 
 lowers it to the room |I| leaves, and a charger below its request is raised within that room, since a
 raise of d on a phase reading |I| gives at most |I| + d whichever way the phase flows. Only a
 lowering that is not an overload needs the direction. A direct site's signed current stands in
-for active power as `I x DIRECTION_NOMINAL_PHASE_VOLTAGE_V` and goes through the same rules and
+for active power as `I x PHASE_V` and goes through the same rules and
 thresholds; since |I| also carries any reactive part, a decrease there additionally keeps the
 triangle-inequality worst case `|net| + drop` within the ceiling.
 

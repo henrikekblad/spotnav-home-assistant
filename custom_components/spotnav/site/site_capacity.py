@@ -54,6 +54,7 @@ from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import cast, Literal
 
+from ..core.electric import PHASE_V
 from ..const import (
     CHARGER_PRIORITY_FIRST,
     CHARGER_PRIORITY_LAST,
@@ -81,17 +82,11 @@ MeasurementMode = Literal["direct_phase_current", "derived_phase_current", "unav
 # grid power. `None`: the direction is unknown and the regulator decides nothing on that phase.
 PhaseDirectionSource = Literal["active_power", "signed_current"]
 
-# The phase voltage a direct site's signed current is multiplied by to compare its direction with the
-# regulator's zero band in watts (a direct site measures no voltage). Every other use of it divides out.
-DIRECTION_NOMINAL_PHASE_VOLTAGE_V = 230.0
-
 # A reading beyond this many times what the main fuse carries is a meter or integration fault, not a load:
 # a SolaX register read 1000 times too high, an EDL21 spike, an AMS current mis-decoded as +408 A. It is
 # `invalid`, never a value. A fuse never holds twice its rating for long, so a real overload stays far
 # below the bound and is still read and cut as one.
 IMPLAUSIBLE_FUSE_MULTIPLE = 2.0
-# The phase voltage the bound on a power reading is reckoned at.
-IMPLAUSIBLE_BOUND_PHASE_VOLTAGE_V = 230.0
 
 # Site-level: whether configuration and measurements are healthy enough to compute.
 SiteState = Literal[
@@ -459,7 +454,7 @@ class SiteCapacityResult:
     )
     # Signed active power in watts (negative = exporting) that the regulator judges a phase's
     # direction on; `None` when not usable (see `_phase_signed_active_power`). Derived mode's active
-    # power, or on a direct site a confirmed signed current times `DIRECTION_NOMINAL_PHASE_VOLTAGE_V`
+    # power, or on a direct site a confirmed signed current times `PHASE_V`
     # (`phase_direction_source` says which).
     phase_signed_active_power_w: Mapping[PhaseName, float | None] = field(
         default_factory=lambda: {phase: None for phase in PHASES}
@@ -638,7 +633,7 @@ def implausible_power(power_w: float, main_fuse_a: float | None, phases: int = 1
     all three)."""
     if main_fuse_a is None or main_fuse_a <= 0:
         return False
-    return abs(power_w) > IMPLAUSIBLE_FUSE_MULTIPLE * main_fuse_a * phases * IMPLAUSIBLE_BOUND_PHASE_VOLTAGE_V
+    return abs(power_w) > IMPLAUSIBLE_FUSE_MULTIPLE * main_fuse_a * phases * PHASE_V
 
 
 def _is_absent(raw: object) -> bool:
@@ -1556,7 +1551,7 @@ def _signed_active_power_by_phase(
     dict[PhaseName, float | None],
 ]:
     """Signed power `values`/`ages`/`reasons`/`diagnostic` per phase: derived mode's active power,
-    or a direct site's confirmed signed current times `DIRECTION_NOMINAL_PHASE_VOLTAGE_V`.
+    or a direct site's confirmed signed current times `PHASE_V`.
 
     On a direct site a phase whose sign is not confirmed is `None` with reason `"missing"`, and the
     `diagnostic` stays `None` throughout: it is read as measured active power elsewhere (solar), which
@@ -1576,7 +1571,7 @@ def _signed_active_power_by_phase(
         power = (
             current
             if current.value is None
-            else replace(current, value=current.value * DIRECTION_NOMINAL_PHASE_VOLTAGE_V)
+            else replace(current, value=current.value * PHASE_V)
         )
         values[phase], ages[phase], reasons[phase] = _phase_signed_active_power(power, config.max_age_s)
     return values, ages, reasons, diagnostic

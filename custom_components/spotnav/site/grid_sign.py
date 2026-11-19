@@ -35,6 +35,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from ..core.electric import PHASE_V
+
 #: The grid power (signed, positive = import), as the site reads it with `grid_power_inverted`.
 KIND_POWER: Final = "grid_power"
 #: A direct site's phase currents with their sign (`site_current_signed`), summed at the nominal voltage.
@@ -43,9 +45,8 @@ KINDS: Final = (KIND_POWER, KIND_CURRENT)
 Kind = Literal["grid_power", "grid_current"]
 Outcome = Literal["inverted", "consistent"]
 
-NOMINAL_VOLTAGE_V: Final = 230.0
 #: The smallest charger change that counts: 6 A on one phase.
-STEP_MIN_W: Final = 6.0 * NOMINAL_VOLTAGE_V
+STEP_MIN_W: Final = 6.0 * PHASE_V
 #: A charger reading within this of its previous one has not moved.
 STABLE_W: Final = 300.0
 #: How long the charger's reading must hold its new value before the step is read.

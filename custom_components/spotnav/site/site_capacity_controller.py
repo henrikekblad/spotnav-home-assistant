@@ -116,7 +116,7 @@ from ..execution.chargers.base import WRITE_SESSION_START, WRITE_SOLAR
 from ..execution.min_soc_floor import ORIGIN_MIN_SOC
 from ..execution.switched_current import measured_amps
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
-from ..core.electric import site_fuse_kw
+from ..core.electric import PHASE_V, site_fuse_kw
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
@@ -200,7 +200,6 @@ from .site_capacity import (
     classify_power,
     classify_signed_current,
     classify_voltage,
-    DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
     DerivedPhaseInput,
     DerivedPhaseMeasurement,
     DirectPhaseMeasurement,
@@ -1819,7 +1818,7 @@ class SiteCapacityController:
             rises[phase] = now_a - before_a - theirs_by_phase.get(phase, 0.0)
         if before_phase is not None and now_phase is not None:
             return {phase: rises[phase] + before_phase[phase] - now_phase[phase] for phase in car_phases}
-        fall_a = (before_w - now_w) / DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+        fall_a = (before_w - now_w) / PHASE_V
         shared = (sum(rises.values()) + fall_a) / len(car_phases)
         return {phase: min(rises[phase] + max(0.0, fall_a), shared) for phase in car_phases}
 
@@ -5233,7 +5232,7 @@ class SiteCapacityController:
             if config.measurement_mode == MEASUREMENT_MODE_DERIVED and config.derived is not None
             else {
                 # A direct site's signed current stands in for power at the nominal voltage it was multiplied by.
-                phase: DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+                phase: PHASE_V
                 if self.result.phase_direction_source.get(phase) == "signed_current"
                 else None
                 for phase in PHASES
@@ -6026,7 +6025,7 @@ class SiteCapacityController:
             return None
         found = [cast(GridSignReading, reading) for reading in readings]
         return GridSignReading(
-            sum(reading.value for reading in found) * DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
+            sum(reading.value for reading in found) * PHASE_V,
             min(reading.at for reading in found),
         )
 
@@ -6048,14 +6047,14 @@ class SiteCapacityController:
                 return None
             found = [cast(GridSignReading, reading) for reading in readings]
             return GridSignReading(
-                sum(reading.value for reading in found) * DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
+                sum(reading.value for reading in found) * PHASE_V,
                 min(reading.at for reading in found),
             )
         phases, _phase = self.reckoned_phases(charger_entry_id)
         own = self._switched_own_reading(charger_controller, phases)
         if own is None or own[1] > max_age_s:
             return None
-        return GridSignReading(own[0] * phases * DIRECTION_NOMINAL_PHASE_VOLTAGE_V, now - own[1])
+        return GridSignReading(own[0] * phases * PHASE_V, now - own[1])
 
     def _observe_grid_sign(self) -> None:
         """Give the step test this recompute's readings."""

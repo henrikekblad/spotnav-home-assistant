@@ -27,9 +27,9 @@ from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, CONF_MEASURE
 from custom_components.spotnav.execution.solar_execution import (
     _build_observation,
     _split_total,
-    NOMINAL_PHASE_VOLTAGE_V,
     site_supports_solar,
 )
+from custom_components.spotnav.core.electric import PHASE_V
 from custom_components.spotnav.planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from custom_components.spotnav.planning.strategy_options import strategy_options_for
 from custom_components.spotnav.runtime import domain_data
@@ -317,7 +317,7 @@ async def test_the_observation_of_a_direct_site_splits_the_total_and_caps_by_hea
     observation = _build_observation(site, charger.entry_id, now=0.0)
 
     assert observation.signed_grid_w == {"L1": -1400.0, "L2": -1400.0, "L3": -1400.0}
-    assert observation.voltage_v == {phase: NOMINAL_PHASE_VOLTAGE_V for phase in PHASES}
+    assert observation.voltage_v == {phase: PHASE_V for phase in PHASES}
     # 25 A fuse, 1 A margin, 10 A measured on the phase: 14 A of headroom on top of the car's 4 A.
     assert observation.phase_cap_a == {"L1": 18.0, "L2": 18.0, "L3": 18.0}
 

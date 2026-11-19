@@ -118,7 +118,7 @@ import math
 from typing import TYPE_CHECKING, Any, Final
 
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S, DOMAIN
-from ..core.electric import phase_volts
+from ..core.electric import PHASE_V, phase_volts
 from .site_capacity import PHASES
 
 if TYPE_CHECKING:
@@ -169,8 +169,6 @@ MAX_A: Final = 1000.0
 #: An exact sample whose house reads below this on a phase (A, negative) is not counted exactly (see the module).
 PLANT_MISMATCH_A: Final = 3.0
 
-#: Only to tell a broken plant reading (`MAX_A`); the sample's own voltage is used for the current.
-_NOMINAL_PHASE_V: Final = 230.0
 _HOUR_S: Final = 3600
 _MINUTE_S: Final = 60
 
@@ -947,7 +945,7 @@ def _plant_phase_w(site: SiteCapacityController, max_age_s: float, now: float) -
         if kw is None or reported is None or not 0.0 <= now - reported.timestamp() <= max_age_s:
             return None
         watts = kw * 1000.0 * sign
-        if abs(watts) / _NOMINAL_PHASE_V > MAX_A:  # a broken reading
+        if abs(watts) / PHASE_V > MAX_A:  # a broken reading
             return None
         values.append(watts)
     return (values[0], values[1], values[2])

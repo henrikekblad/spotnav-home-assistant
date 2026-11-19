@@ -34,6 +34,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.recorder import DATA_INSTANCE, get_instance
 from homeassistant.util import dt as dt_util
 
+from ..const import VOLTAGE_BETWEEN_PHASES_IT_V
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from ..execution.charger_entities import EntityMatcher
 from ..execution.charger_profiles import profile_for
 from ..site.measurement_source import PhaseMeasurementSource
@@ -287,10 +289,6 @@ def _profile_phase_entity_candidates(
     return results
 
 
-#: The voltage between phases that means an IT network, where a platform may map its terminals differently.
-_IT_VOLTAGE_BETWEEN_PHASES_V = 230.0
-#: The voltage between phases a power is spread at when none is given (a TN network).
-_TN_VOLTAGE_BETWEEN_PHASES_V = 400.0
 
 
 def profile_attribute_source(
@@ -325,11 +323,11 @@ def profile_attribute_source(
             return PhaseMeasurementSource(
                 kind="power",
                 entity_id=output.entity_id,
-                voltage_between_phases_v=float(voltage_between_phases_v or _TN_VOLTAGE_BETWEEN_PHASES_V),
+                voltage_between_phases_v=float(voltage_between_phases_v or TN_VOLTS_BETWEEN_PHASES),
             )
         if profile is None or not profile.current_attribute_sensor_key:
             continue
-        is_it = voltage_between_phases_v == _IT_VOLTAGE_BETWEEN_PHASES_V
+        is_it = voltage_between_phases_v == VOLTAGE_BETWEEN_PHASES_IT_V
         names = (profile.current_attributes_it if is_it else profile.current_attributes) or profile.current_attributes
         if len(names) != len(PHASES):
             continue

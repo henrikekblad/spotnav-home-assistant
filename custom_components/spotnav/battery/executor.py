@@ -183,6 +183,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     NORMAL,
@@ -374,7 +375,7 @@ class ExecInputs:
     #: The phases the plant spreads a balanced grid charge over (`BrandControl.grid_charge_phases`, or the plant's
     #: Output Type): the live clamp counts the least headroom on that many phases, as the HA-down cap does.
     charge_phases: int = 3
-    volts_between_phases: float = 400.0
+    volts_between_phases: float = TN_VOLTS_BETWEEN_PHASES
     #: The site's grid import now (kW, + import), `None` when unknown.
     grid_import_kw: float | None = None
     #: The site's solar priority: `True` for "car first" (the battery yields to a held car).

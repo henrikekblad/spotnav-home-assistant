@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from ..planning.planner import (
     AUTO_PERIODS,
     STEP_MINUTES,
@@ -411,7 +412,7 @@ class SwitchInputs:
     headroom_a: float | None = None
     #: Whether the switch reads on now (its draw is then in the headroom already).
     switch_on: bool = False
-    volts_between_phases: float = 400.0
+    volts_between_phases: float = TN_VOLTS_BETWEEN_PHASES
 
 
 @dataclass(frozen=True, slots=True)

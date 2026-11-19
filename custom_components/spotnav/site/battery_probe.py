@@ -9,7 +9,7 @@ up the amps the car takes. Two things follow, both only under `car_first` with y
   within `HELD_BAND_A` above the limit (fuse less margin), the grid sitting at the limit is the
   battery's own regulation, not an overload, and the car is not stepped down for it. A phase above the
   band is a real excess and is dealt with exactly as before. A battery that limits the grid by power
-  (the limit at `NOMINAL_VOLTAGE_V`) holds more amps on a phase whose voltage is low: there the band
+  (the limit at `PHASE_V`) holds more amps on a phase whose voltage is low: there the band
   is wider by what that power draws at the phase's own voltage (`held_band_extra_a`, at most
   `HELD_BAND_MAX_EXTRA_FRACTION` of the limit), on a voltage the site measures itself and reads fresh.
 * The *probe*: with the car held at 0 A while the plan wants it charging, the car is started at its
@@ -42,14 +42,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
-from .grid_sign import NOMINAL_VOLTAGE_V
+from ..core.electric import PHASE_V
 from .site_capacity import PhaseName
 
 #: How far above the limit (amperes per phase) a battery-held grid may read before it is a real
 #: excess. A battery regulating the grid to its setpoint reads a few hundredths over.
 HELD_BAND_A: Final = 0.5
 
-#: A battery that limits the grid by power holds `limit x NOMINAL_VOLTAGE_V` watts per phase, which at a low
+#: A battery that limits the grid by power holds `limit x PHASE_V` watts per phase, which at a low
 #: phase voltage is more amps than the limit (the morning of 2026-11-13: 20 A at 224-225 V read 20.3-20.66 A). The
 #: band widens by those amps only on a plausible voltage, and by no more than this fraction of the limit (230/219 V:
 #: 1 A at a 20 A limit).
@@ -125,8 +125,8 @@ def car_minimum_power_w(
 
 
 def held_band_extra_a(limit_a: float | None, voltage_v: float | None) -> float:
-    """How much wider (A) the held band is on a phase whose voltage is below `NOMINAL_VOLTAGE_V`: the amps a
-    battery holding `limit_a x NOMINAL_VOLTAGE_V` watts draws above `limit_a` at `voltage_v`, capped at
+    """How much wider (A) the held band is on a phase whose voltage is below `PHASE_V`: the amps a
+    battery holding `limit_a x PHASE_V` watts draws above `limit_a` at `voltage_v`, capped at
     `HELD_BAND_MAX_EXTRA_FRACTION` of the limit. 0 with no voltage (the caller passes one only where the site
     measures it and reads it fresh), an implausible one, one at or above nominal, or no limit."""
     if (
@@ -135,10 +135,10 @@ def held_band_extra_a(limit_a: float | None, voltage_v: float | None) -> float:
         or not math.isfinite(limit_a)
         or limit_a <= 0.0
         or not HELD_BAND_MIN_VOLTAGE_V <= voltage_v <= HELD_BAND_MAX_VOLTAGE_V
-        or voltage_v >= NOMINAL_VOLTAGE_V
+        or voltage_v >= PHASE_V
     ):
         return 0.0
-    extra = limit_a * (NOMINAL_VOLTAGE_V / voltage_v - 1.0)
+    extra = limit_a * (PHASE_V / voltage_v - 1.0)
     return max(0.0, min(extra, HELD_BAND_MAX_EXTRA_FRACTION * limit_a))
 
 

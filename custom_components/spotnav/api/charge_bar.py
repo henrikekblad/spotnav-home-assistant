@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from ..planning.planner import power_kw as planned_power_kw
 from ..util import aware_iso, finite_number
 from ..vehicles.soc_estimate import CHARGE_EFFICIENCY
@@ -96,7 +97,7 @@ class ProgressFacts:
     measured_current_a: float | None = None
     #: The phases the charge uses (the installed schedule's, else the effective count).
     phases: int | None = None
-    voltage_between_phases_v: float = 400.0
+    voltage_between_phases_v: float = TN_VOLTS_BETWEEN_PHASES
     #: The sun switched the charge to one phase (`ChargingController.switched_phases == 1`): the measured and the
     #: assigned current are reckoned on one phase, whatever the wiring or the installed schedule says.
     switched_one_phase: bool = False

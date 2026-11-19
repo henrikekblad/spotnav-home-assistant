@@ -7,9 +7,10 @@ from custom_components.spotnav.site.regulator import (
     DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS,
     DEFAULT_ZERO_MARGIN_W,
 )
-from custom_components.spotnav.site.site_capacity import DIRECTION_NOMINAL_PHASE_VOLTAGE_V, PHASES
+from custom_components.spotnav.core.electric import PHASE_V
+from custom_components.spotnav.site.site_capacity import PHASES
 
-V = DIRECTION_NOMINAL_PHASE_VOLTAGE_V
+V = PHASE_V
 # L1 and L2 exporting, L3 importing (a household with solar).
 USER_SITE = (-4.9, -6.1, 12.4)
 

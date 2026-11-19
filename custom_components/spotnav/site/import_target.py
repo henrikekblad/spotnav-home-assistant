@@ -57,10 +57,9 @@ import math
 from typing import Final
 
 from ..const import REGULATOR_DWELL_S
+from ..core.electric import PHASE_V
 from .demand_tracker import GAP_MAX_S, HOUR_S, RunningHour
 
-#: The nominal phase voltage a charger's amps are turned into power with (as the regulator's steps are).
-HOLD_VOLTAGE_V: Final = 230.0
 #: The least time left of the hour the budget is spread over: the division explodes in the last seconds.
 MIN_REMAINING_S: Final = 60.0
 #: In the hour's last ten minutes the target raises no charger above what it is given (`SiteCapacityController.
@@ -294,7 +293,7 @@ def hour_end_lock_a(
     return held_cap_a
 
 
-def member_w(phases: int, amps: float, voltage_v: float = HOLD_VOLTAGE_V) -> float:
+def member_w(phases: int, amps: float, voltage_v: float = PHASE_V) -> float:
     return max(0.0, amps) * max(1, phases) * voltage_v
 
 
@@ -345,7 +344,7 @@ def _slow_wait(
 def share_budget(
     allowed_w: float,
     members: Sequence[TargetMember],
-    voltage_v: float = HOLD_VOLTAGE_V,
+    voltage_v: float = PHASE_V,
     remaining_s: float | None = None,
 ) -> dict[str, TargetShare]:
     """Share `allowed_w` among `members`, in the order given (the site's `allocation_order`; see the module).
@@ -481,7 +480,7 @@ def lowering_floor_a(
     for phase in phases:
         measured = measured_a.get(phase)
         power = signed_power_w.get(phase)
-        voltage = voltage_v.get(phase) or HOLD_VOLTAGE_V
+        voltage = voltage_v.get(phase) or PHASE_V
         if measured is None or power is None or not math.isfinite(power) or voltage <= 0:
             return None
         drop = max(0.0, power / voltage)
@@ -497,7 +496,7 @@ def lowering_floor_a(
     if battery_discharge_w > 0 and math.isfinite(battery_discharge_w) and fuse_margin_a is not None:
         margins = [fuse_margin_a.get(phase) for phase in phases]
         if all(margin is not None and math.isfinite(margin) for margin in margins):
-            volts = sum(voltage_v.get(phase) or HOLD_VOLTAGE_V for phase in phases)
+            volts = sum(voltage_v.get(phase) or PHASE_V for phase in phases)
             covered_a = battery_discharge_w / volts if volts > 0 else 0.0
             covered_a = min(covered_a, min(max(0.0, margin) for margin in margins))  # type: ignore[type-var]
     return max(floors) - covered_a

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
 
+from ..core.electric import PHASE_V
 from .dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN
 from .dhw_plan import ROUTE_CLOUD, ROUTE_ONE_SHOT, ROUTE_PULSE, ROUTE_VOLATILE
 
@@ -39,8 +40,6 @@ FAILED_FOR: Final = timedelta(minutes=2)
 #: A pulse's run must show on the meter this soon after the press, or the press is taken as ended.
 PULSE_RUN_WITHIN: Final = timedelta(minutes=10)
 
-#: The phase voltage a boost's current is reckoned at.
-VOLTAGE_V: Final = 230.0
 
 STATE_IDLE: Final = "idle"
 STATE_STARTING: Final = "starting"
@@ -155,7 +154,7 @@ def fits_fuse(margins: Mapping[str, float | None], boost_kw: float, phases: int 
     known = [value for value in margins.values() if value is not None]
     if not known:
         return None
-    need_a = boost_kw * 1000.0 / (VOLTAGE_V * max(1, phases))
+    need_a = boost_kw * 1000.0 / (PHASE_V * max(1, phases))
     return min(known) >= need_a
 
 

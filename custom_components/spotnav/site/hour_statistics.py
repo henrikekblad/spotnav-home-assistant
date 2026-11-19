@@ -11,7 +11,7 @@ anything a charger is told, and an hour read from the statistics lifts the impor
   entity or an import/export pair, negated where the site says the meter is export-positive; a derived site's
   per-phase power, less each phase's export entity) and, per member charger, what it drew: its energy register's
   hourly `change` (kWh in an hour is its mean kW), else its power sensor's hourly `mean`, else its measured current's
-  `mean` per phase times `NOMINAL_VOLTAGE_V`. Only entities with long-term statistics (a `measurement` sensor has a
+  `mean` per phase times `PHASE_V`. Only entities with long-term statistics (a `measurement` sensor has a
   mean, a `total`/`total_increasing` one a sum) and a unit this module knows (W, kW, MW; A, mA; Wh, kWh, MWh) are
   read; each is converted to W here. A charger with none is named (`chargers_without_statistics`) and the grid
   alone stands for the house.
@@ -27,7 +27,7 @@ anything a charger is told, and an hour read from the statistics lifts the impor
 * **The suggestion** (`suggest_target`): the house's typical daily peak, the median over the days of each day's
   highest hourly mean (only within the hours a demand-charge part counts when every part has its own hours, else
   all hours), plus the car's minimum power on this site (the smallest member charger's minimum current x its phases
-  x `NOMINAL_VOLTAGE_V`), rounded up to the next `SUGGEST_STEP_KW`. On the few evenings the house alone goes above
+  x `PHASE_V`), rounded up to the next `SUGGEST_STEP_KW`. On the few evenings the house alone goes above
   it the car is paused, and the month's free level then lifts the target for the rest of the month: a target at
   the highest peak would pay for a level only that evening needed. Beside it the house's highest hour and what the
   car gets at the suggestion in a typical charging hour (the suggestion less the house's median hourly mean in the
@@ -50,11 +50,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
+from ..core.electric import PHASE_V
 from ..planning.auto_settings import DemandComponent
 from ..planning.demand_charge import counted_day, HourMean
 
-#: The phase voltage a measured current is turned into power with (as the import target's hold does).
-NOMINAL_VOLTAGE_V: Final = 230.0
 #: How far back the statistics are read: three months, fewer where less exists.
 PERIOD_DAYS: Final = 92
 #: The fewest days of statistics a suggestion is made from.
@@ -80,7 +79,7 @@ KIND_ENERGY: Final = "energy"
 #: Per kind, a unit's factor to W (an energy's per hour: Wh in an hour is its mean W).
 UNIT_FACTORS: Final[dict[str, dict[str, float]]] = {
     KIND_POWER: {"W": 1.0, "kW": 1000.0, "MW": 1_000_000.0},
-    KIND_CURRENT: {"A": NOMINAL_VOLTAGE_V, "mA": NOMINAL_VOLTAGE_V / 1000.0},
+    KIND_CURRENT: {"A": PHASE_V, "mA": PHASE_V / 1000.0},
     KIND_ENERGY: {"Wh": 1.0, "kWh": 1000.0, "MWh": 1_000_000.0},
 }
 
@@ -556,7 +555,7 @@ def site_series(hass: HomeAssistant, site_data: Mapping[str, Any]) -> SiteSeries
         phases = wiring.get("phases") if wiring.get("phases") in (1, 3) else 3
         min_a = wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)
         min_a = float(min_a) if isinstance(min_a, (int, float)) and not isinstance(min_a, bool) else DEFAULT_MIN_CURRENT_A
-        min_kw = min_a * phases * NOMINAL_VOLTAGE_V / 1000.0
+        min_kw = min_a * phases * PHASE_V / 1000.0
         terms: tuple[Term, ...] = ()
         source: str | None = None
         controller = controller_for(hass, charger_entry_id)

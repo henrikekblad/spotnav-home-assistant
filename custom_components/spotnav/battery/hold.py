@@ -46,6 +46,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Final, Literal
 
+from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from .commands import SNAPSHOT, Native, control_for
 from .executor import (
     BATTERY_MAX_AGE_S,
@@ -82,7 +83,7 @@ class HoldInputs:
     measurement_ok: bool = True
     #: The least headroom on any phase now (A), `None` when unknown.
     headroom_a: float | None = None
-    volts_between_phases: float = 400.0
+    volts_between_phases: float = TN_VOLTS_BETWEEN_PHASES
     charger_ids: tuple[str, ...] = ()
     #: What the chargers charging from the grid draw together (kW), `None` when unknown.
     car_kw: float | None = None
