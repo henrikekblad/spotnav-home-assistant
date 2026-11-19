@@ -30,6 +30,7 @@ from custom_components.spotnav.api.site_view import websocket_get_site_settings_
 from custom_components.spotnav.api.site_webhook import SITE_ACTIONS
 from custom_components.spotnav.battery import gate
 from custom_components.spotnav.const import CONF_HEAT
+from .helpers import answers_of
 
 from .test_demand_site import pilot_site, run
 from .test_webhook_parity import _pin, _pinned, post
@@ -57,8 +58,7 @@ async def socket(hass: HomeAssistant, command: Any, admin: bool = True, **reques
     """The WebSocket command's answer for the pilot's charger, as the socket would carry it."""
     connection = _Connection(admin)
     command(hass, connection, {"id": 1, "type": "x", "api_version": 1, "charger_id": "entry_a", **request})
-    await hass.async_block_till_done()
-    (answer,) = connection.answers
+    (answer,) = await answers_of(hass, connection)
     return answer
 
 

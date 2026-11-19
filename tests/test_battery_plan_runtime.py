@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
+from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
@@ -60,6 +61,15 @@ from tests.test_price_device import add_price
 def _frozen_budget_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     """The modes budget reads a frozen clock: how long the solve took on this machine never skips a mode."""
     monkeypatch.setattr(plan_runtime, "budget_clock", lambda: 0.0)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_wall_clock(hass: HomeAssistant) -> Any:
+    """The tests plan from "now": a fixed instant (a Tuesday at 10:20 Stockholm time), so where the real clock stands in
+    its hour or its day never changes what the plan is made of."""
+    with freeze_time("2026-09-22 08:20:00"):
+        yield
+
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 

@@ -21,6 +21,7 @@ from custom_components.spotnav.site.house_now import (
     house_now,
     recent_kw,
 )
+from .helpers import answers_of
 
 from .test_demand_site import pilot_site, run
 
@@ -135,8 +136,7 @@ class _Connection:
 async def ask(hass: HomeAssistant, message_id: int, **request: Any) -> dict[str, Any]:
     connection = _Connection()
     websocket_get_house_now(hass, connection, {"id": message_id, "type": "spotnav/get_house_now", **request})  # type: ignore[arg-type]
-    await hass.async_block_till_done()
-    (answer,) = connection.answers
+    (answer,) = await answers_of(hass, connection)
     return answer
 
 
