@@ -294,6 +294,20 @@ async def test_removing_the_entries_removes_their_stores(hass: HomeAssistant, ha
     assert store_key(charger.entry_id) not in hass_storage and store_key(site.entry_id) not in hass_storage
 
 
+async def test_removing_a_charger_removes_its_controllers_store(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.execution.controller import store_key as controller_key
+
+    charger, _site = await setup_charger_and_site(hass, site=False)
+    await charger_data(hass, charger.entry_id).controller._store.async_save({"own_stop": True})  # noqa: SLF001
+    assert controller_key(charger.entry_id) in hass_storage
+
+    assert await hass.config_entries.async_remove(charger.entry_id)
+    await hass.async_block_till_done()
+    assert controller_key(charger.entry_id) not in hass_storage
+
+
 # ---------------------------------------------------------------------------------------------- size
 
 

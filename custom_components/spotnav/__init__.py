@@ -83,7 +83,7 @@ from .debug_day import ChargerDay
 from .log_buffer import attach_log_buffer
 from .execution.charger_handback import async_hand_back_charger
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
-from .execution.controller import ChargingController
+from .execution.controller import async_remove_controller_store, ChargingController
 from .execution.min_soc_floor import FloorInputs, MinSocFloor
 from .execution.solar_execution import (
     async_rebind_solar_execution,
@@ -983,6 +983,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # The charger is given back as SpotNav found it, as far as SpotNav knows: the current it had before SpotNav,
     # and a stop of SpotNav's own undone. Read before the stores below go (it is kept in the controller's).
     await async_hand_back_charger(hass, entry)
+    await async_remove_controller_store(hass, entry.entry_id)
     async_leave_sites(hass, entry.entry_id)
     if (price_store := domain_data(hass).price_store) is not None:
         price_store.forget(entry.entry_id)
