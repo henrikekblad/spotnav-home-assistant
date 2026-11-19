@@ -19,7 +19,6 @@ from custom_components.spotnav.heat.history import (
     BASE_C,
     CAUSE_DRAW,
     CAUSE_STANDBY,
-    HISTORY_KEYS,
     HeatHistoryInputs,
     BUCKET_KEYS,
     HISTORY_KEYS,
