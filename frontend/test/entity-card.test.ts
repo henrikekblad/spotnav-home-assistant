@@ -183,7 +183,8 @@ describe("the Settings page's charger and site cards", () => {
     await settle();
     const site = openDialog(element)?.querySelector<HTMLElement>("[data-section='site']");
     expect(site?.textContent).not.toContain(translate("en", "site.applies.one"));
-    expect(sectionRows(element, "site")).toEqual(["main_fuse_a", "import_target_kw", "measurement_mode", "battery", "heat_meter", "solar_priority", "active-control"]);
+    // No home battery and no total grid power: car or battery first has nothing to choose between.
+    expect(sectionRows(element, "site")).toEqual(["main_fuse_a", "import_target_kw", "measurement_mode", "battery", "heat_meter", "active-control"]);
     expect(rowText(element, "main_fuse_a")).toContain("25 A");
     // The import target beside the fuse: off until set, and no hour line without one.
     expect(rowText(element, "import_target_kw")).toContain(translate("en", "settings.value.off"));

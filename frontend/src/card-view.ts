@@ -3215,6 +3215,12 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** The friendly name an entity field states, or `null` when it names none. */
+  /** Whether the site has a home battery: its power entity chosen, or found by itself. */
+  function siteHasBattery(config: EntityConfig): boolean {
+    const field = fieldsOf(config, "site").find((entry) => entry.field === "battery_aggregate_power_entity");
+    return field !== undefined && field.kind === "entity" && (field.current !== null || field.effective !== null);
+  }
+
   function fieldEntityName(config: EntityConfig, scope: EntityScope, name: string): string | null {
     const field = fieldsOf(config, scope).find((entry) => entry.field === name);
     if (field === undefined || field.kind !== "entity" || field.current === null) {
@@ -3927,7 +3933,11 @@ export function createCardView(input: CardViewInput): CardView {
     }
     // Beside the fuse: the import target, and the hour running now against it.
     const target = fieldsOf(config, "site").find((entry) => entry.field === "import_target_kw");
-    if (target !== undefined && target.kind === "number") {
+    if (
+      target !== undefined &&
+      target.kind === "number" &&
+      importTargetShown(model.gridTariff?.demand ?? null, target.value)
+    ) {
       const label = translate(model.language, "site.importTarget");
       const current = target.value;
       const shown = current === null ? translate(model.language, "settings.value.off") : kwText(model.language, current);
@@ -3994,7 +4004,12 @@ export function createCardView(input: CardViewInput): CardView {
         ),
       );
     }
-    if (model.site !== null) {
+    // Car or battery first chooses between two solar sinks: only with a home battery and a site that can follow solar.
+    if (
+      model.site !== null &&
+      siteHasBattery(config) &&
+      siteFollowsSolar(model.strategy.rows)
+    ) {
       nodes.push(priorityRow(model.site));
     }
     if (config.site !== null) {
