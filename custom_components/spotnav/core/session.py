@@ -355,15 +355,26 @@ class ChargeSession:
     @classmethod
     def from_store(cls, raw: Any) -> ChargeSession:
         """A session from `to_store`'s output (the transient fields at their defaults), or `SessionError`: another
-        version, a missing or unknown field, or a field of the wrong shape."""
+        version, a missing field, or a field of the wrong shape. A field this release does not know is a later
+        release's of the same version (3.0 keeps version 2): read past, so going back to this release still reads
+        who owns the charge (3.0 no longer writes the ownership keys a refused record would be read from). The
+        record is written whole at every save, so it is not kept."""
         if not isinstance(raw, dict):
             raise SessionError("a stored session is an object")
         if raw.get("version") not in READ_VERSIONS or isinstance(raw.get("version"), bool):
             raise SessionError(f"stored session version {raw.get('version')!r} is not one of {READ_VERSIONS}")
         raw = upgraded(raw)
         expected = {"version"} | {item.name for item in fields(cls) if item.name not in TRANSIENT_FIELDS}
-        if not expected - STORED_WHEN_SET <= set(raw) <= expected:
-            raise SessionError(f"stored session fields differ: {sorted(set(raw) ^ expected)}")
+        if not expected - STORED_WHEN_SET <= set(raw):
+            raise SessionError(f"stored session fields differ: {sorted(expected - STORED_WHEN_SET - set(raw))}")
+        raw = {key: value for key, value in raw.items() if key in expected}
+        car_ended = raw.get("car_ended")
+        if isinstance(car_ended, dict):
+            # Likewise in the car-ended record and its wait.
+            car_ended = {key: value for key, value in car_ended.items() if key in _CAR_ENDED_KEYS}
+            if isinstance(car_ended.get("wait"), dict):
+                car_ended["wait"] = {key: value for key, value in car_ended["wait"].items() if key in _WAIT_KEYS}
+            raw["car_ended"] = car_ended
         full = ChargeSession().to_dict()
         full.update({key: value for key, value in raw.items() if key != "version"})
         full["version"] = SESSION_VERSION
@@ -400,14 +411,18 @@ def upgraded(raw: Any) -> dict[str, Any]:
     return upgraded_raw
 
 
+_CAR_ENDED_KEYS: Final = frozenset({"at", "soc", "vehicle", "wait"})
+_WAIT_KEYS: Final = frozenset({"target", "level", "estimated"})
+
+
 def _car_ended(raw: Any) -> CarEnded | None:
     if raw is None:
         return None
-    if not isinstance(raw, dict) or set(raw) != {"at", "soc", "vehicle", "wait"}:
+    if not isinstance(raw, dict) or set(raw) != _CAR_ENDED_KEYS:
         raise SessionError("car_ended is not a car-ended record")
     wait = raw["wait"]
     if wait is not None:
-        if not isinstance(wait, dict) or set(wait) != {"target", "level", "estimated"}:
+        if not isinstance(wait, dict) or set(wait) != _WAIT_KEYS:
             raise SessionError("car_ended.wait is not a wait")
         wait = CarEndedWait(
             target=_number(wait["target"], "car_ended.wait.target"),
