@@ -13,6 +13,7 @@ overload is measured against the charger's own fresh reading when that is a step
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 
 import pytest
@@ -243,3 +244,18 @@ async def test_a_slow_charger_after_the_regulators_cut_is_not_raised_by_the_chec
     _site_a(hass, halo.site, 14.63, 13.92, 21.0)  # 1 A over: 13 + -1 = 12 A, above the 10 A written
     await halo.tick()
     assert all(value == "1.10,2.10" for value in halo.written()), halo.written()
+
+
+async def test_a_resend_and_a_session_write_queued_behind_a_shutdown_send_nothing(hass: HomeAssistant) -> None:
+    """A resend and a deferred session write wait for the lock while the charger is unloaded: neither is a hand-back,
+    so neither goes out once the shutdown has begun."""
+    controller, limits, _notes = await _easee(hass, None)
+    limits.clear()
+    async with controller._lock:  # noqa: SLF001 - a command in flight holds it
+        resend = asyncio.ensure_future(controller._async_resend_current())  # noqa: SLF001
+        write = asyncio.ensure_future(controller._async_write_after_start())  # noqa: SLF001
+        shutdown = asyncio.ensure_future(controller.async_shutdown())
+        await asyncio.sleep(0)
+    await asyncio.gather(resend, write, shutdown)
+    await hass.async_block_till_done()
+    assert list(limits) == []

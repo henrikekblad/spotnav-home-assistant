@@ -3281,8 +3281,11 @@ class ChargingController:
     async def _async_write_after_start(self) -> None:
         """Write the requested current now that the session exists; a refusal is not retried. Under the
         operation lock, so it never lands inside a stop, and no more than the site allows now
-        (`_site_capped_amps`): the start that deferred it may be long past."""
+        (`_site_capped_amps`): the start that deferred it may be long past. Nothing once the controller shuts down:
+        a queued write is not a hand-back."""
         async with self._lock:
+            if self._shut_down:
+                return
             amps = self._requested_current_a
             if amps is None or not self.adapter.capabilities.set_current:
                 return
@@ -3291,8 +3294,11 @@ class ChargingController:
     async def _async_resend_current(self) -> None:
         """Send the last requested current again, the limit having been cleared by the charger. Under the
         operation lock, so it never lands inside a stop. No more than the site allows now: the request may
-        be far above what load balancing has the charger at (`_site_capped_amps`)."""
+        be far above what load balancing has the charger at (`_site_capped_amps`). Nothing once the controller shuts
+        down: a queued write is not a hand-back."""
         async with self._lock:
+            if self._shut_down:
+                return
             amps = self._requested_current_a
             if amps is None:
                 return
