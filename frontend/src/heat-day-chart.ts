@@ -56,6 +56,18 @@ export interface DaySpan {
   endMs: number;
 }
 
+/** A hot-water boost SpotNav plans (or would plan, in shadow): a hollow droplet at its start, a thin bar over its
+ * length, and its words in the readout ("Skulle värma varmvatten 04:15–04:45 · 42 öre/kWh · klart till 06:00"). */
+export interface DayPlannedWater extends DaySpan {
+  text: string;
+}
+
+/** A hot-water peak: a small tick on the time axis, its words in the readout ("dusch 06:00"). */
+export interface DayPeak {
+  ms: number;
+  label: string;
+}
+
 export interface DayChartInput {
   doc: Document;
   language: Language;
@@ -70,6 +82,9 @@ export interface DayChartInput {
   high_c: number;
   hours: DayHour[];
   water: DaySpan[];
+  /** The boosts planned, and the peaks they fill; absent in a history day. */
+  planned?: DayPlannedWater[];
+  peaks?: DayPeak[];
   width: number;
   nowMs: number | null;
   /** SpotNav only watches (its control does not run): a planned raise reads "would raise". */
@@ -228,6 +243,16 @@ export function dayFigures(input: DayChartInput, ms: number): string {
   const end = at + stepOf(input);
   if (input.water.some((span) => span.startMs < end && at < span.endMs)) {
     parts.push(translate(language, "heat.chart.hotWater"));
+  }
+  for (const span of input.planned ?? []) {
+    if (span.startMs < end && at < span.endMs) {
+      parts.push(span.text);
+    }
+  }
+  for (const peak of input.peaks ?? []) {
+    if (peak.ms >= at && peak.ms < end) {
+      parts.push(peak.label);
+    }
   }
   if (hour?.car === true) {
     parts.push(translate(language, "heat.chart.car"));
@@ -401,6 +426,31 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
     mark.dataset["mark"] = "hot_water";
     picture.append(mark);
   }
+  // The boosts planned: a thin bar over the run on the axis, a hollow droplet at its start.
+  for (const span of input.planned ?? []) {
+    if (span.endMs <= firstMs || span.startMs >= lastMs) {
+      continue;
+    }
+    const from = x(Math.max(firstMs, span.startMs));
+    const bar = svg(doc, "rect", { x: from.toFixed(2), y: plotBottom - 2, width: Math.max(1, x(Math.min(lastMs, span.endMs)) - from).toFixed(2), height: 2, class: X.dayMark });
+    bar.dataset["mark"] = "hot_water_bar";
+    const drop = svg(doc, "path", { d: droplet(x(span.startMs), plotBottom), class: X.dayMark });
+    drop.dataset["mark"] = "hot_water_planned";
+    picture.append(bar, drop);
+  }
+  // The peaks: a small tick under the axis.
+  for (const peak of input.peaks ?? []) {
+    if (peak.ms < firstMs || peak.ms >= lastMs) {
+      continue;
+    }
+    const at = x(peak.ms).toFixed(2);
+    const tick = svg(doc, "line", { x1: at, x2: at, y1: plotBottom, y2: plotBottom + 4, class: X.dayMark });
+    tick.dataset["mark"] = "hot_water_peak";
+    const title = svg(doc, "title", {});
+    title.textContent = peak.label;
+    tick.append(title);
+    picture.append(tick);
+  }
   const every = drawWidth >= 480 ? 3 : 6;
   for (let ms = firstMs; ms < lastMs; ms += HOUR_MS) {
     const hourOfDay = Number(hourLabel(ctx, ms));
@@ -541,7 +591,7 @@ export function dayChart(input: DayChartInput): HTMLElement | null {
   if (lowerings.some((lowering) => lowering.relayExpected)) {
     legend.append(legendItem(doc, "relay_expected", translate(language, "heat.band.relayExpected")));
   }
-  if (input.water.length > 0) {
+  if (input.water.length > 0 || (input.planned ?? []).length > 0) {
     legend.append(legendItem(doc, "hot_water", translate(language, "heat.band.hotWater")));
   }
   if (sorted.some((hour) => hour.car)) {

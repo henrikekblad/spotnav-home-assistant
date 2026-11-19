@@ -9,7 +9,7 @@
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
 import { isRelayPath, roomName, type HeatAheadHour, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
-import { dayChart, hoursOf } from "./heat-day-chart";
+import { dayChart, hoursOf, type DayPeak, type DayPlannedWater, type DaySpan } from "./heat-day-chart";
 import type { HeatHistory } from "./heat-history";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { heatTabList, heatTabPanel, type HeatTab, type HeatTabFit, type UseUnit } from "./heat-tabs";
@@ -69,6 +69,10 @@ export interface HeatUi {
   bar?: string | null;
   /** In a box of fixed height: the height (px) the shown tab's picture takes; `null` in a plain column. */
   fill?: number | null;
+  /** A sentence beside the Boost button after a refused press (`null`: none). */
+  boostError?: string | null;
+  /** A press of the Boost button is on its way. */
+  boostBusy?: boolean;
 }
 
 export interface HeatHandlers {
@@ -89,6 +93,8 @@ export interface HeatHandlers {
   onUnit?(unit: UseUnit): void;
   onUsePart?(hidden: string[]): void;
   onBar?(key: string | null): void;
+  /** The Boost button: start the hot water now, or stop the household's own boost. */
+  onBoost?(action: "start" | "stop"): void;
 }
 
 export interface HeatRenderInput {
@@ -612,6 +618,140 @@ export function reviewLines(language: Language, answer: HeatAnswer): { key: stri
   ];
 }
 
+/** A sentence's first letter in lower case, for a part after "·". */
+function lowerFirst(language: Language, text: string): string {
+  return text.length === 0 ? text : text.charAt(0).toLocaleLowerCase(language) + text.slice(1);
+}
+
+/**
+ * The hot water's lines under the heat's review: where the plan stands (in shadow, the gate's progress: "Varmvatten i
+ * skuggning: dag 5 av 7, 8 av 10 toppar träffade"; steered; back in shadow), yesterday's review ("Varmvatten i går:
+ * 1,1 kWh flyttade · 0,61 kr sparade (skuggning)") and each peak against what the pump did. Nothing where the pump has
+ * no way to make hot water at SpotNav's word.
+ */
+export function hotWaterLines(language: Language, answer: HeatAnswer): { key: string; text: string }[] {
+  const hotWater = answer.hot_water;
+  if (hotWater === null || hotWater.level === null || hotWater.mode === "watch") {
+    return [];
+  }
+  const out: { key: string; text: string }[] = [];
+  const gate = hotWater.gate;
+  if (hotWater.mode === "live") {
+    out.push({ key: "water-live", text: translate(language, "heat.water.live") });
+  } else if (hotWater.level === "B") {
+    if (gate.open) {
+      out.push({ key: "water-gate", text: translate(language, "heat.water.gateReady") });
+    } else {
+      let text = translate(language, "heat.water.gate", {
+        days: String(Math.min(gate.days, gate.days_needed)),
+        needed: String(gate.days_needed),
+        hits: String(gate.hits),
+        peaks: String(Math.max(gate.peaks, gate.peaks_needed)),
+      });
+      if (gate.days >= gate.days_needed && gate.weekdays < 7) {
+        text += ` · ${translate(language, "heat.water.gateWeekdays", { weekdays: String(gate.weekdays) })}`;
+      }
+      out.push({ key: "water-gate", text });
+    }
+    if (gate.backed_off !== null) {
+      out.push({ key: "water-backed-off", text: translate(language, "heat.water.backedOff") });
+    }
+  }
+  const review = hotWater.review;
+  if (review === null) {
+    return out;
+  }
+  const money = answer.today?.money ?? null;
+  let line = review.moved_kwh > 0
+    ? translate(language, "heat.water.review", { kwh: kwh(language, review.moved_kwh), value: amount(language, review.saved, money) })
+    : translate(language, "heat.water.reviewNone");
+  if (review.mode === "shadow") {
+    line += ` ${translate(language, "heat.water.shadow")}`;
+  }
+  out.push({ key: "water-review", text: line });
+  const ctx = context(language, answer);
+  const peaks = review.per_peak.map((item) => {
+    const key = item.miss ? "heat.water.peakMiss" : item.hit ? "heat.water.peakHit" : "heat.water.peakNoUse";
+    const parts = [translate(language, key, { peak: item.peak })];
+    if (item.pick !== null && review.mode === "shadow") {
+      parts.push(lowerFirst(language, translate(language, "heat.chart.waterWouldPast", { time: clock(ctx, Date.parse(item.pick)) })));
+      if (item.pump_run !== null) {
+        parts.push(translate(language, "heat.chart.waterPumpRan", { time: clock(ctx, Date.parse(item.pump_run)) }));
+      }
+    }
+    return parts.join(" · ");
+  });
+  if (peaks.length > 0) {
+    out.push({ key: "water-peaks", text: translate(language, "heat.water.peaks", { list: peaks.join("; ") }) });
+  }
+  return out;
+}
+
+/** The Boost button's words now, and what pressing does (`null`: no button, only the words). */
+export function boostWords(language: Language, answer: HeatAnswer, nowMs: number): { text: string | null; action: "start" | "stop" | null; label: string | null } | null {
+  const boost = answer.hot_water?.boost ?? null;
+  if (boost === null) {
+    return null;
+  }
+  const left = boost.ends === null ? null : Math.max(1, Math.ceil((Date.parse(boost.ends) - nowMs) / 60_000));
+  switch (boost.state) {
+    case "starting":
+      return { text: null, action: null, label: translate(language, "heat.boost.starting") };
+    case "running": {
+      if (boost.source === "user") {
+        const text = left === null
+          ? translate(language, "heat.boost.on")
+          : translate(language, boost.ends_estimated ? "heat.boost.left" : "heat.boost.leftExact", { minutes: String(left) });
+        return { text, action: boost.stoppable ? "stop" : null, label: boost.stoppable ? translate(language, "heat.boost.stop") : null };
+      }
+      const text = left === null ? translate(language, "heat.boost.heatingOn") : translate(language, "heat.boost.heating", { minutes: String(left) });
+      return { text, action: null, label: null };
+    }
+    case "failed":
+      return { text: translate(language, "heat.boost.failed"), action: "start", label: translate(language, "heat.boost.start") };
+    default:
+      return { text: null, action: "start", label: translate(language, "heat.boost.start") };
+  }
+}
+
+const DROP_PATH = "M7 1 C8.5 4 12 6.5 12 9.5 A5 5 0 0 1 2 9.5 C2 6.5 5.5 4 7 1 Z";
+
+/** The Boost button with its state (Now, under the status lines); `null` where the pump has no self-ending boost. */
+function boostRow(doc: Document, language: Language, answer: HeatAnswer, ui: HeatUi, handlers: HeatHandlers, nowMs: number): HTMLElement | null {
+  const words = boostWords(language, answer, nowMs);
+  if (words === null || handlers.onBoost === undefined) {
+    return null;
+  }
+  const row = element(doc, "div", X.boost);
+  row.dataset["block"] = "boost";
+  row.dataset["state"] = answer.hot_water?.boost?.state ?? "idle";
+  if (words.text !== null) {
+    const line = element(doc, "p", X.boostLine, words.text);
+    line.dataset["line"] = "boost";
+    row.append(line);
+  }
+  if (words.label !== null) {
+    const button = element(doc, "button", X.boostButton);
+    button.type = "button";
+    const icon = svg(doc, "svg", { viewBox: "0 0 14 14", "aria-hidden": "true" });
+    icon.append(svg(doc, "path", { d: DROP_PATH }));
+    button.append(icon, doc.createTextNode(ui.boostBusy === true && words.action === "start" ? translate(language, "heat.boost.starting") : words.label));
+    const action = words.action;
+    button.disabled = action === null || ui.boostBusy === true;
+    if (action !== null) {
+      button.dataset["action"] = `boost-${action}`;
+      button.addEventListener("click", () => handlers.onBoost?.(action));
+    }
+    row.append(button);
+  }
+  if (ui.boostError !== undefined && ui.boostError !== null) {
+    const line = element(doc, "p", `${X.boostLine} ${C.muted}`, ui.boostError);
+    line.dataset["line"] = "boost-error";
+    row.append(line);
+  }
+  return row;
+}
+
 // ------------------------------------------------------------------------------------------------ the hours ahead
 
 /** How many hours the strip under the dial spans. */
@@ -656,9 +796,14 @@ export function aheadLine(language: Language, answer: HeatAnswer): string | null
       text: translate(language, `heat.ahead.${key}` as TranslationKey, { from: clock(ctx, hours[first]!.startMs), to: clock(ctx, hours[last]!.startMs + HOUR_MS) }),
     });
   }
+  // Hot water at its planned boost's own time where there is one ("varmvatten 04:15"), else at its hour.
+  const nowMs = Date.parse(answer.now);
+  const lastMs = hours[hours.length - 1]!.startMs + HOUR_MS;
+  const planned = (answer.hot_water?.planned ?? []).map((item) => Date.parse(item.start)).filter((ms) => ms >= nowMs && ms < lastMs);
   const water = hours.find((hour) => hour.hot_water);
-  if (water !== undefined) {
-    parts.push({ at: water.startMs, text: translate(language, "heat.ahead.water", { time: clock(ctx, water.startMs) }) });
+  const waterMs = planned.length > 0 ? Math.min(...planned) : water?.startMs;
+  if (waterMs !== undefined) {
+    parts.push({ at: waterMs, text: translate(language, "heat.ahead.water", { time: clock(ctx, waterMs) }) });
   }
   if (parts.length === 0) {
     return translate(language, "heat.ahead.none");
@@ -705,6 +850,69 @@ function aheadStrip(doc: Document, language: Language, answer: HeatAnswer): HTML
 
 // ------------------------------------------------------------------------------------------------ the day
 
+/** A price per kWh in the minor unit ("42 öre"). */
+function perKwh(language: Language, minor: number, money: { minor_unit: string } | null): string {
+  return money === null ? formatFixed(language, minor, 0) : `${formatFixed(language, minor, 0)} ${money.minor_unit}`;
+}
+
+/** One planned boost in words: what SpotNav does or would do, and once past in shadow, what the pump did itself
+ * ("Skulle ha värmt varmvatten 04:15 · pumpen körde själv 06:20"). */
+export function plannedWaterText(language: Language, answer: HeatAnswer, item: { start: string; end: string; price: number; reason: string; peak: string; live: boolean; pump_run: string | null }): string {
+  const ctx = context(language, answer);
+  const startMs = Date.parse(item.start);
+  const past = startMs <= Date.parse(answer.now);
+  const parts: string[] = [];
+  if (!item.live && past) {
+    parts.push(translate(language, "heat.chart.waterWouldPast", { time: clock(ctx, startMs) }));
+  } else {
+    parts.push(
+      translate(language, item.live ? "heat.chart.water" : "heat.chart.waterWould", {
+        from: clock(ctx, startMs),
+        to: clock(ctx, Date.parse(item.end)),
+        price: perKwh(language, item.price, answer.today?.money ?? null),
+        peak: item.peak,
+      }),
+    );
+  }
+  if (item.reason === "sun") {
+    parts.push(translate(language, "heat.chart.waterSun"));
+  }
+  if (!item.live && item.pump_run !== null) {
+    parts.push(translate(language, "heat.chart.waterPumpRan", { time: clock(ctx, Date.parse(item.pump_run)) }));
+  }
+  return parts.join(" · ");
+}
+
+/** The day chart's hot water: the measured runs (filled droplets), the boosts planned (hollow ones) and the peaks
+ * (ticks); without the hot-water block, the band's hours marked hot water. */
+function waterOf(
+  language: Language,
+  answer: HeatAnswer,
+  hours: HeatBandHour[],
+  startMs: number,
+  endMs: number,
+): { water: DaySpan[]; planned: DayPlannedWater[]; peaks: DayPeak[] } {
+  const hotWater = answer.hot_water;
+  if (hotWater === null) {
+    return { water: hours.filter((hour) => hour.hot_water).map((hour) => ({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS })), planned: [], peaks: [] };
+  }
+  const runs = hotWater.runs_today.length > 0 ? hotWater.runs_today : (answer.today?.runs ?? []);
+  const water = runs.map((run) => ({ startMs: Date.parse(run.start), endMs: Date.parse(run.end) }));
+  const planned = hotWater.planned
+    .map((item) => ({ startMs: Date.parse(item.start), endMs: Date.parse(item.end), text: plannedWaterText(language, answer, item) }))
+    .filter((item) => item.endMs > startMs && item.startMs < endMs);
+  const date = instantToLocal(Date.parse(answer.now), answer.time_zone).date;
+  const ctx = context(language, answer);
+  const peaks: DayPeak[] = [];
+  for (const peak of hotWater.peaks) {
+    const ms = localToInstant(date, peak.ready_by, answer.time_zone);
+    if (ms !== null && ms >= startMs && ms < endMs) {
+      peaks.push({ ms, label: translate(language, "heat.chart.peak", { time: clock(ctx, ms) }) });
+    }
+  }
+  return { water, planned, peaks };
+}
+
 /** Today's chart (`heat-day-chart.ts`) from the answer's band and rooms; `null` with nothing to draw. */
 function todayChart(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | null {
   const { doc, language, ui, handlers } = input;
@@ -732,7 +940,7 @@ function todayChart(input: HeatRenderInput, answer: HeatAnswer): HTMLElement | n
       relay_expected: hour.relay_expected,
       car: hour.car,
     })),
-    water: hours.filter((hour) => hour.hot_water).map((hour) => ({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS })),
+    ...waterOf(language, answer, hours, startMs, endMs),
     width: input.width,
     nowMs: input.nowMs,
     shadow: answer.shadow,
@@ -897,6 +1105,10 @@ function nowPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElement
   if (lines.childElementCount > 0) {
     panel.append(lines);
   }
+  const boost = boostRow(doc, language, answer, input.ui, input.handlers, input.nowMs);
+  if (boost !== null) {
+    panel.append(boost);
+  }
   const strip = aheadStrip(doc, language, answer);
   if (strip !== null) {
     panel.append(strip);
@@ -942,7 +1154,7 @@ function planPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElemen
   if (boxed(input)) {
     return;
   }
-  for (const review of reviewLines(language, answer)) {
+  for (const review of [...reviewLines(language, answer), ...hotWaterLines(language, answer)]) {
     const line = element(doc, "p", `${H.line} ${C.muted}`, review.text);
     line.dataset["line"] = review.key;
     panel.append(line);

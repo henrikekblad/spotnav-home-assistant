@@ -785,6 +785,23 @@ export async function updateHeat(
   });
 }
 
+/**
+ * The Boost button (`spotnav/heat_boost`): start or stop the household's own hot-water boost; `unknown` until
+ * `decodeHeatBoost()` decodes it. A person's own action, like the dial.
+ */
+export async function heatBoost(
+  hass: HomeAssistantLike,
+  target: { site: string } | { charger: string },
+  action: "start" | "stop",
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/heat_boost",
+    api_version: HEAT_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    action,
+  });
+}
+
 /** The shared settings popover's target: a site by its own id, or the site of a charger in it. */
 export type SiteTarget = { site: string } | { charger: string };
 

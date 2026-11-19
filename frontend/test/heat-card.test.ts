@@ -849,6 +849,7 @@ describe("the rooms in the day chart", () => {
       ...value,
       band: { ...value.band, hours: value.band.hours.map((hour) => ({ ...hour, action: "normal", target_c: 21, relay_min: null, hot_water: false, car: false })) },
       indoor_day: { ...value.indoor_day!, points: value.indoor_day!.points.map((point) => ({ ...point, coldest_c: point.mean_c })) },
+      hot_water: null,
     };
     const block = planBody(flat, "en").querySelector("[data-block='day']")!;
     const legend = [...block.querySelectorAll(".spotnav-heat-legend-item")].map((item) => item.textContent);
