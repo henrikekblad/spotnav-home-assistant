@@ -115,7 +115,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   change of the targets does not start that count again; `CONFIRM_READINGS` in a row hand the charge back and block
   the control (`not_obeyed:grid_charge:phase_over`). One that takes nothing does so as any charge without effect. A change between the two kinds of charge while one
   runs hands back first (`per_phase_changed`). `ExecInputs.phase_probe_kw` is the verification's: targets written
-  as given (a discharge on one phase), a charge among them still within its cap.
+  as given (a discharge on one phase, or a charge on one phase where the balanced charge has no room), a charge
+  among them in whole amps within its cap and its live room, down at once and up only after `RATE_UP_DWELL_S`, and
+  judged for the runaway as any charge per phase (the rest the verification judges itself).
 * **Targets that are the grid's** (`PhaseControl.target_kind` `grid`, with sensors at the target's point,
   `PhaseControl.grid_phases`; the shell reads them into `ExecInputs.phase_behind_kw` and `phase_point_kw`). Such a
   target is the power at the plant's grid-side point on that phase, so a charge per phase is written as the load
@@ -811,8 +813,8 @@ def phase_charge_kw(
     plan's power and the battery's own limit, spread as evenly as the rooms allow (`gate.phase_split_kw`). With "car
     first" and a car held the sum yields as the balanced charge does (`grid_charge_cap_kw`). `live` false: the caps
     alone, for what the charge would be with the house quiet. The verification's probe
-    (`ExecInputs.phase_probe_kw`) is taken as it is: a charge on a phase still within that phase's room, a discharge
-    at most `PHASE_PROBE_MAX_KW`."""
+    (`ExecInputs.phase_probe_kw`) is taken as it is: a charge on a phase still within that phase's room, in whole
+    amps, a discharge at most `PHASE_PROBE_MAX_KW`."""
     room = _phase_room_kw(inputs, commanded, grid=grid)
     if room is None:
         return None, "headroom_unknown"
@@ -821,16 +823,17 @@ def phase_charge_kw(
             inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
         )
         room = (max(caps[0], 0.0), max(caps[1], 0.0), max(caps[2], 0.0))  # type: ignore[index]
+    # Whole amps on each phase: a room that wobbles by a fraction of an amp changes nothing.
+    amp_kw = PHASE_STEP_A * inputs.volts_between_phases / math.sqrt(3.0) / 1000.0
     probe = inputs.phase_probe_kw
     if probe is not None:
         if not _finite3(probe):
             return None, "probe_unknown"
         return _floored([
-            min(value, room[index]) if value > 0 else max(value, -PHASE_PROBE_MAX_KW)
+            math.floor(min(value, room[index]) / amp_kw + _AMP_SLACK) * amp_kw if value > 0
+            else max(value, -PHASE_PROBE_MAX_KW)
             for index, value in enumerate(probe)
         ]), None
-    # Whole amps on each phase: a room that wobbles by a fraction of an amp changes nothing.
-    amp_kw = PHASE_STEP_A * inputs.volts_between_phases / math.sqrt(3.0) / 1000.0
     room = (*(math.floor(value / amp_kw + _AMP_SLACK) * amp_kw for value in room),)  # type: ignore[assignment]
     total = min(abs(inputs.rate_kw), sum(room))
     limit = inputs.facts.max_charge_kw
@@ -1281,8 +1284,8 @@ class Executor:
         every `PHASE_OVER_GAP_S`, each phase against the larger of its target and the one before the last change
         while that change settles (`PHASE_GRACE_S`); a change of the targets does not start the count again.
         **Taking nothing or too little**: after `PHASE_GRACE_S` since the last change, every `PHASE_GAP_S`, not near
-        full. `CONFIRM_READINGS` in a row hand the charge back, blocked. Nothing is judged while a write is awaited,
-        without the reading, or for the verification's probe (it judges that itself)."""
+        full. `CONFIRM_READINGS` in a row hand the charge back, blocked. Nothing is judged while a write is awaited
+        or without the reading; for the verification's probe only the runaway (the rest it judges itself)."""
         state = self.state
         now = inputs.now
         measured = self._phase_measured(inputs)
@@ -1290,7 +1293,7 @@ class Executor:
         phases = state.phase_kw
         entered = state.entered_at
         if (
-            phases is None or inputs.phase_probe_kw is not None or state.priming or state.pending is not None
+            phases is None or state.priming or state.pending is not None
             or self._next_role(state, inputs) is not None or measured is None or changed is None or entered is None
         ):
             if state.phase_bad:
@@ -1315,7 +1318,7 @@ class Executor:
                            plant_kw=[round(value, 3) for value in measured]),
                     *self._begin_restore(now, f"not_obeyed:{ACTION_GRID_CHARGE}:phase_over"),
                 ]
-        if settling:
+        if settling or inputs.phase_probe_kw is not None:
             if state.phase_bad:
                 self.state = replace(state, phase_bad=())
             return []
@@ -2095,7 +2098,7 @@ class Executor:
         """A running charge per phase: a phase whose room fell under its target goes down at once (every phase then
         takes its new value, each within its own room); the charge goes up after `RATE_UP_DWELL_S`, by at least
         `RATE_STEP_KW` in all or back to what the caps allow with the house quiet. The verification's probe is
-        written as it changes."""
+        written as it changes, a charge in it raised only after the dwell too."""
         state = self.state
         now = inputs.now
         old = state.phase_kw
@@ -2108,6 +2111,11 @@ class Executor:
             and any(abs(new - was) > PHASE_TRACK_KW for new, was in zip(behind, old_behind, strict=True))
         )
         if inputs.phase_probe_kw is not None:
+            # A charge in it goes up, as any charge per phase, only `RATE_UP_DWELL_S` after the last change.
+            if since < RATE_UP_DWELL_S:
+                held = [min(new, max(was, 0.0)) if new > 0 else new for new, was in zip(phases, old, strict=True)]
+                phases = (held[0], held[1], held[2])
+                rate = round(sum(max(value, 0.0) for value in phases), 3)
             change = any(abs(new - was) > 1e-9 for new, was in zip(phases, old, strict=True))
         else:
             gain = sum(phases) - sum(old)
