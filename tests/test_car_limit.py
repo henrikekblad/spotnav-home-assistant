@@ -278,3 +278,25 @@ async def test_a_limit_kept_before_midnight_is_found_after_it_without_a_plug_in_
             patch.setattr(preview, "_now", lambda: start + timedelta(minutes=90))
             limit = preview._session_limit_kw(settings)  # noqa: SLF001
         assert limit == pytest.approx(TAKEN_KW)
+
+
+async def test_the_replan_for_a_car_limit_is_a_task_of_the_chargers_entry(
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bound to the config entry, so an unload waits for it instead of leaving it running."""
+    from homeassistant.config_entries import ConfigEntry
+
+    serve(transport, rising=True)
+    _record_starts_and_stops(hass)
+    tasks: list[tuple[str, str | None]] = []
+    original = ConfigEntry.async_create_task
+
+    def recording(self: ConfigEntry, hass_: HomeAssistant, target: Any, name: str | None = None, **kwargs: Any) -> Any:
+        tasks.append((self.entry_id, name))
+        return original(self, hass_, target, name, **kwargs)
+
+    monkeypatch.setattr(ConfigEntry, "async_create_task", recording)
+    with freeze_time(NOW) as frozen:
+        charger, _device_id, _ = await charger_and_car(hass, soc_percent="70", amps=20, phases=3)
+        await _charge(hass, frozen, 12, 1000.0, TAKEN_KW)
+    assert (charger.entry_id, "car limit replan") in tasks

@@ -13,6 +13,7 @@ proposal is delegated to the injected `AutoExecutor`; without one this only calc
 from __future__ import annotations
 
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Final, Literal
@@ -1876,6 +1877,14 @@ class AutoPlannerController:
         self._watch_due = when
         self._watch_cancel = self._manager.schedule_at(when, self._on_watch_due)
 
+    def _create_entry_task(self, target: Coroutine[Any, Any, Any], name: str) -> None:
+        """Run `target` as a task of this charger's config entry (waited for on unload), else of Home Assistant."""
+        entry = self._hass.config_entries.async_get_entry(self._entry_id)
+        if entry is None:
+            self._hass.async_create_task(target, name)
+        else:
+            entry.async_create_task(self._hass, target, name)
+
     def _cancel_watch(self) -> None:
         if self._watch_cancel is not None:
             self._watch_cancel()
@@ -1901,7 +1910,7 @@ class AutoPlannerController:
                 None if measure is None else round(measure.drawn_kw, 2),
                 None if measure is None else round(measure.offered_kw, 2),
             )
-            self._hass.async_create_task(self._async_replan_behind(rebase=True))
+            self._create_entry_task(self._async_replan_behind(rebase=True), "car limit replan")
         elif decision is not None:
             check = self._watch.last_check
             # Said once per window; a car that keeps falling behind is not news each time.
@@ -1913,7 +1922,7 @@ class AutoPlannerController:
                 None if check is None else round(check.expected_kwh, 2),
                 " after the window" if decision == DECISION_END_REPLAN else "",
             )
-            self._hass.async_create_task(self._async_replan_behind())
+            self._create_entry_task(self._async_replan_behind(), "behind-plan replan")
         self._arm_watch()
 
     async def _async_replan_behind(self, *, rebase: bool = False) -> None:
