@@ -27,7 +27,8 @@
      control: {enabled, state: "off" | "verifying" | "running" | "waiting", reason, automation: {entity_id, name} | null,
                check: "passed" | "failed" | null, lowered, since, until, paused_until, raised, raise_until,
                path: the control path steered | null, untested: bool,
-               enable_entities: {integration, entities: [{entity_id, name}]} | null} | null,
+               enable_entities: {integration, entities: [{entity_id, name}]} | null,
+               offset_home: {entity_id, value, home} | null} | null,
      ahead: [{start, action, target_c, reason, hot_water}]}
 
 `ahead` is the plan from the running hour on, `AHEAD_HOURS` of them at most (the card's strip under the dial): the
@@ -39,7 +40,9 @@ phase while verifying, the rules' reason while running (`heat/relay_control.py`)
 `path` is the settings' control path once it has what it needs to steer (`heat/paths.py`), `untested` that the path
 has not run on a real heat pump yet (the card says so), `enable_entities` the path's entities that are disabled in
 their integration: the card lists them when "Styr värmen" is turned on and the write's `enable_control_entities`
-enables them (`heat/optin.py`). `pump.paths` are the control paths the pump's own entities offer
+enables them (`heat/optin.py`). `offset_home` is a stored offset that reads other than the household's own value
+while SpotNav holds nothing (`HeatControl._track_home`): the card asks to put it back or keep it (the write's
+`offset_home`). `pump.paths` are the control paths the pump's own entities offer
 (`paths.detected_paths`): the card fills a chosen path's entities in from them.
 Each band hour's `executed_min` is the minutes SpotNav itself held the relay closed (`null` without the control), its
 `raised_min` the minutes SpotNav held SG Ready's second contact (B, the raise) closed: `null` where the pump cannot be
