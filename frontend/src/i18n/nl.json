@@ -1586,7 +1586,7 @@
   "battery.need.noBatteryControl": "SpotNav kan batterijen van dit merk nog niet aansturen.",
   "battery.need.firmwareUnknown": "Schakel de firmwaresensor van de batterij in Home Assistant in.",
   "battery.need.controlNotFound": "De besturing {role} van de batterij is niet gevonden in Home Assistant.",
-  "battery.need.needsHacs": "De besturing van de batterij vereist de HACS-integratie (mletenay/home-assistant-goodwe-inverter); de ingebouwde GoodWe-integratie van Home Assistant heeft die niet.",
+  "battery.need.needsHacs": "De besturing van de batterij vereist de HACS-integratie ({repo}); de ingebouwde integratie van Home Assistant heeft die niet.",
   "battery.need.controlDisabled": "Schakel de besturing {role} van de batterij in Home Assistant in (standaard uitgeschakeld).",
   "battery.need.outsideControl": "Iets anders stuurt de batterij nu aan, dus SpotNav stuurt niets.",
   "battery.need.aiTakeoverAck": "Accepteer dat SpotNav het overneemt van de AI-modus van de batterij.",

@@ -212,5 +212,5 @@ async def test_core_goodwe_without_the_hacs_numbers_gets_one_note_in_the_checkli
     registry.async_remove(found["eco_mode_soc"])
     _s, control = await _site(hass, battery)
     needs = control.status()["needs"]
-    assert needs.count("needs_hacs_integration") == 1
+    assert needs.count("needs_hacs_integration:mletenay/home-assistant-goodwe-inverter") == 1
     assert not any(need.startswith("control_not_found") for need in needs)

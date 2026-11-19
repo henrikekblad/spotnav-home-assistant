@@ -1586,7 +1586,7 @@
   "battery.need.noBatteryControl": "SpotNav kan inte styra batterier av det här märket ännu.",
   "battery.need.firmwareUnknown": "Aktivera batteriets firmware-sensor i Home Assistant.",
   "battery.need.controlNotFound": "Batteriets styrning {role} hittas inte i Home Assistant.",
-  "battery.need.needsHacs": "Batteriets styrning kräver HACS-integrationen (mletenay/home-assistant-goodwe-inverter); Home Assistants inbyggda GoodWe-integration saknar den.",
+  "battery.need.needsHacs": "Batteriets styrning kräver HACS-integrationen ({repo}); Home Assistants inbyggda integration saknar den.",
   "battery.need.controlDisabled": "Aktivera batteriets styrning {role} i Home Assistant (den är avstängd från början).",
   "battery.need.outsideControl": "Något annat styr batteriet just nu, så SpotNav styr inget.",
   "battery.need.aiTakeoverAck": "Godkänn att SpotNav tar över från batteriets AI-läge.",

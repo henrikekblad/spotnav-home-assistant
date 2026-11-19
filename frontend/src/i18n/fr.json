@@ -1586,7 +1586,7 @@
   "battery.need.noBatteryControl": "SpotNav ne sait pas encore piloter les batteries de cette marque.",
   "battery.need.firmwareUnknown": "Activez le capteur de micrologiciel de la batterie dans Home Assistant.",
   "battery.need.controlNotFound": "La commande {role} de la batterie est introuvable dans Home Assistant.",
-  "battery.need.needsHacs": "La commande de la batterie nécessite l'intégration HACS (mletenay/home-assistant-goodwe-inverter) ; l'intégration GoodWe intégrée à Home Assistant ne l'a pas.",
+  "battery.need.needsHacs": "La commande de la batterie nécessite l'intégration HACS ({repo}) ; l'intégration intégrée à Home Assistant ne l'a pas.",
   "battery.need.controlDisabled": "Activez la commande {role} de la batterie dans Home Assistant (désactivée par défaut).",
   "battery.need.outsideControl": "Autre chose pilote la batterie en ce moment, SpotNav ne pilote donc rien.",
   "battery.need.aiTakeoverAck": "Acceptez que SpotNav prenne le relais du mode IA de la batterie.",

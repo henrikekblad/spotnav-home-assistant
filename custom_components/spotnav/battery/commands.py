@@ -407,6 +407,8 @@ class BrandControl:
     #: Roles that exist only in a custom integration: not found, the status says `needs_hacs_integration` (GoodWe's
     #: eco power and SoC numbers are the HACS fork's, not core's).
     hacs_roles: tuple[str, ...] = ()
+    #: The custom integration those roles come from (`owner/repository`), named in the status' need.
+    hacs_repo: str = ""
     #: Percentage points a floor set to the SoC now (`SOC_FLOOR`, `SOC_DEPTH`) is kept below it: a SoC read late (a
     #: cloud's, up to a minute old, while the battery discharges) must not put the floor above the real level, where
     #: the plant charges from the grid to reach it.
@@ -964,6 +966,7 @@ GOODWE_CONTROL: Final = BrandControl(
     # The numbers and the select do not poll, so only a reload shows a refused restore; watched as any echo is.
     settle_s=900.0,
     hacs_roles=("eco_power", "eco_soc"),
+    hacs_repo="mletenay/home-assistant-goodwe-inverter",
     # Unconfirmed whether the inverter charges from the grid to a cut-off at the SoC: a hold that does is handed back.
     hold_grid_guard=True,
     note="Needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core has no eco charge mode or eco"

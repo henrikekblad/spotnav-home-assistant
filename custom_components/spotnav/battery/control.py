@@ -2113,8 +2113,9 @@ class BatteryControl:
             if read is None or not read.found:
                 if role.name in control.hacs_roles:
                     # Core's integration lacks it: one note the person can act on, not one line per control.
-                    if "needs_hacs_integration" not in needs:
-                        needs.append("needs_hacs_integration")
+                    need = f"needs_hacs_integration:{control.hacs_repo}"
+                    if need not in needs:
+                        needs.append(need)
                 elif not role.optional:
                     needs.append(f"control_not_found:{role.name}")
             elif role.method != "service" and not read.enabled:
