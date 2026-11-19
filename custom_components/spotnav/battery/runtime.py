@@ -298,6 +298,14 @@ class BatteryShadow:
         memory, decision = restart(self._hold, self.facts, now)
         self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
 
+    @callback
+    def halt(self) -> None:
+        """The site shuts down: no tick and no plan solve from here (the book is saved by `async_shutdown`)."""
+        if self._timer_cancel is not None:
+            self._timer_cancel()
+            self._timer_cancel = None
+        self.plan.halt()
+
     async def async_shutdown(self) -> None:
         if self._timer_cancel is not None:
             self._timer_cancel()

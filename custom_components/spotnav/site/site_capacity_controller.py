@@ -308,6 +308,11 @@ RESUME_BACKOFF_S = 900.0
 #: operations they cancel to end.
 RETIRE_TIMEOUT_S = 5.0
 
+#: Where each site's shutdown in progress is kept, per entry id (`async_wait_for_shutdown`): a site set up again (a
+#: reload, a retried setup) or removed waits for the copy before it to have handed back and saved, so two copies
+#: never write to the plant at once and the old one never saves over the new one's stores.
+SHUTDOWNS_KEY = f"{DOMAIN}_site_shutdowns"
+
 # Battery charge power (W) from which the battery counts as charging for the limit explanation, and
 # the remaining fuse margin (A) at or below which the site counts as sitting at its limit.
 LIMIT_BATTERY_CHARGING_W = 300.0
@@ -526,6 +531,21 @@ DETAIL_HELD_METER_TOO_SLOW = "meter_too_slow"
 _LOGGER = logging.getLogger(__name__)
 
 
+def _shutdowns(hass: HomeAssistant) -> dict[str, asyncio.Task[None]]:
+    return hass.data.setdefault(SHUTDOWNS_KEY, {})
+
+
+async def async_wait_for_shutdown(hass: HomeAssistant, entry_id: str, timeout: float) -> bool:
+    """Wait (at most `timeout` seconds) for a shutdown of the site still in progress (an earlier copy's hand-back);
+    `True` once none runs."""
+    task = _shutdowns(hass).get(entry_id)
+    if task is None or task.done():
+        return True
+    _LOGGER.info("SpotNav site %s: waiting for the copy before to finish handing back", entry_id)
+    done, _pending = await asyncio.wait({task}, timeout=timeout)
+    return bool(done)
+
+
 #: Stable codes of the active-control transitions that are not a charger's own restore code.
 RESTORE_CHARGER_NOT_LOADED = "charger_not_loaded"
 RESTORE_MEMBERSHIP_CONFLICT = "membership_conflict"
@@ -616,6 +636,8 @@ class SiteCapacityController:
         # down) controller is refused.
         self.transition_lock = asyncio.Lock()
         self._closed = False
+        # The one shutdown (`async_shutdown`): every caller awaits the same task.
+        self._shutdown_task: asyncio.Task[None] | None = None
         # The back-fill from Home Assistant's statistics while it runs (`async_start_backfill`), cancelled at shutdown.
         self._backfill_task: asyncio.Task[None] | None = None
         # Per-charger damping state (`site/regulator_damping.py`).
@@ -921,42 +943,36 @@ class SiteCapacityController:
         """The last 24 hours' minute rows, the site's and each member charger's (`site/site_history.py`)."""
         return self._history.samples
 
-    async def async_shutdown(self) -> None:
-        """Hand the home battery and the export limit back first (bounded: `BatteryControl.async_shutdown`), then
-        cancel the timer and listeners, then close each part (one failing does not skip the rest), then any
-        unfinished apply pass."""
-        self._closed = True
-        try:
-            await self.hardware_test.async_shutdown()
-        except Exception:  # noqa: BLE001 - the battery and the heat path below hand back what it engaged
-            _LOGGER.warning("SpotNav site: ending the hardware test failed", exc_info=True)
-        try:
-            await self.battery_control.async_shutdown()
-        except Exception:  # noqa: BLE001 - the rest of the site must still shut down; the state is stored
-            _LOGGER.warning("SpotNav site: handing the battery back failed", exc_info=True)
-        try:
-            await self.heat_control.async_shutdown()
-        except Exception:  # noqa: BLE001 - the relay still held is opened at the next start
-            _LOGGER.warning("SpotNav site: opening the heat relay failed", exc_info=True)
-        self._cancel_probe_timer()
-        if self._history_cancel is not None:
-            self._history_cancel()
-            self._history_cancel = None
-        if self._phase_peaks_cancel is not None:
-            self._phase_peaks_cancel()
-            self._phase_peaks_cancel = None
-        if self._timer_cancel is not None:
-            self._timer_cancel()
-            self._timer_cancel = None
-        if self._state_listener_cancel is not None:
-            self._state_listener_cancel()
-            self._state_listener_cancel = None
-        if self._report_listener_cancel is not None:
-            self._report_listener_cancel()
-            self._report_listener_cancel = None
-        for cancel in self._controller_listener_cancels:
-            cancel()
-        self._controller_listener_cancels.clear()
+    async def async_shutdown(self, deadline: float | None = None) -> None:
+        """Shut the site down, once: every caller (the entry's unload, Home Assistant's stop, a failed setup's
+        clean-up) awaits the same run, kept per entry (`async_wait_for_shutdown`) and not cancelled with its caller.
+
+        The order: every timer, listener and part that could act stops first (`_halt`), and the apply passes end;
+        then the hardware test, the home battery and the heat path are handed back, each within its own bounds and,
+        when given, by `deadline` (the event loop's clock: Home Assistant's stop); then every part saves and closes.
+        What a hand-back cut short still holds stays stored and is handed back at the next start."""
+        task = self._shutdown_task
+        if task is None:
+            task = self.hass.async_create_background_task(
+                self._async_shutdown(deadline), f"spotnav site shutdown {self.entry_id}"
+            )
+            self._shutdown_task = task
+            shutdowns = _shutdowns(self.hass)
+            shutdowns[self.entry_id] = task
+
+            def _forget(done: asyncio.Task[None]) -> None:
+                if shutdowns.get(self.entry_id) is done:
+                    del shutdowns[self.entry_id]
+
+            task.add_done_callback(_forget)
+        await asyncio.shield(task)
+
+    async def _async_shutdown(self, deadline: float | None) -> None:
+        self._halt()
+        await self._async_retire_operations()
+        cut = await self._async_hand_back(deadline)
+        if cut:
+            await self._async_keep_after_cut()
         await self._async_cancel_backfill()
         parts: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
             ("history", self._history.async_close),
@@ -975,7 +991,86 @@ class SiteCapacityController:
                 await close()
             except Exception:  # noqa: BLE001 - one part's failure must not leave the others running
                 _LOGGER.warning("SpotNav site: closing the %s failed", name, exc_info=True)
-        await self._async_retire_operations()
+
+    @callback
+    def _halt(self) -> None:
+        """Nothing new starts from here: the site's timers and listeners end, and every part that runs on a timer
+        stops (the battery plan, a live hot-water boost, the switched load, the shadows; the battery control's
+        looks). The heat control keeps looking until the hardware test is handed back (`_async_hand_back`)."""
+        self._closed = True
+        self._cancel_probe_timer()
+        for name in ("_history_cancel", "_phase_peaks_cancel", "_timer_cancel", "_state_listener_cancel",
+                     "_report_listener_cancel"):
+            cancel = getattr(self, name)
+            if cancel is not None:
+                cancel()
+                setattr(self, name, None)
+        for cancel in self._controller_listener_cancels:
+            cancel()
+        self._controller_listener_cancels.clear()
+        if self._backfill_task is not None and not self._backfill_task.done():
+            self._backfill_task.cancel()
+        halts: tuple[tuple[str, Callable[[], None]], ...] = (
+            ("battery control", self.battery_control.halt),
+            ("battery", self.battery_shadow.halt),
+            ("switched load", self.switch_load.halt),
+            ("solar correction", self.solar_correction.halt),
+            ("solar shadow", self.solar_shadow.halt),
+            ("heat shadow", self.heat_shadow.halt),
+            ("house forecast", self.house_forecast.halt),
+        )
+        for name, halt in halts:
+            try:
+                halt()
+            except Exception:  # noqa: BLE001 - one part's failure must not leave the others running
+                _LOGGER.warning("SpotNav site: stopping the %s failed", name, exc_info=True)
+
+    async def _async_hand_back(self, deadline: float | None) -> bool:
+        """The hardware test, then the home battery and the export limit, then the heat path, handed back; each
+        bounded by itself and by `deadline` when given. `True` when the deadline cut it short."""
+        steps: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
+            ("ending the hardware test", self.hardware_test.async_shutdown),
+            ("handing the battery back", self._async_battery_hand_back),
+            ("opening the heat relay", self.heat_control.async_shutdown),
+        )
+        loop = asyncio.get_running_loop()
+        for name, step in steps:
+            if deadline is not None and loop.time() >= deadline:
+                return True
+            try:
+                async with asyncio.timeout_at(deadline):
+                    await step()
+            except TimeoutError:
+                return True
+            except Exception:  # noqa: BLE001 - the rest is still handed back; what is held stays stored
+                _LOGGER.warning("SpotNav site: %s failed", name, exc_info=True)
+        return False
+
+    async def _async_battery_hand_back(self) -> None:
+        # The test is over: the heat control's own looks end too, so nothing of it writes during the battery's
+        # hand-back (its shutdown, next, opens what it holds).
+        self.heat_control.halt()
+        await self.battery_control.async_shutdown()
+
+    async def _async_keep_after_cut(self) -> None:
+        """The hand-back was cut short (Home Assistant's stop ran out of time): what is still held is saved as it
+        stands and logged; the next start hands it back."""
+        self.heat_control.halt()
+        _LOGGER.warning(
+            "SpotNav site %s: the hand-back did not finish by the stop's deadline; left for the next start: hardware"
+            " test running %s, home battery or export limit held %s, heat relay held %s, raise held %s",
+            self.entry_id,
+            self.hardware_test.running,
+            self.battery_control.holds_anything(),
+            self.heat_control.held,
+            self.heat_control.raised,
+        )
+        for name, save in (("battery control", self.battery_control.async_save),
+                           ("heat control", self.heat_control.async_save)):
+            try:
+                await save()
+            except Exception:  # noqa: BLE001 - what was stored before stands
+                _LOGGER.warning("SpotNav site: saving the %s failed", name, exc_info=True)
 
     async def _async_cancel_backfill(self) -> None:
         """A back-fill still reading the statistics ends before the demand's stores close: it never files into a

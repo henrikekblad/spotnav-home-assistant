@@ -462,10 +462,15 @@ class SiteHouseForecast:
         if self._store is not None:
             self._store.changed()
 
-    async def async_close(self) -> None:
+    @callback
+    def halt(self) -> None:
+        """The site shuts down: no refresh from here (the stores are closed by `async_close`)."""
         self._closed = True
         if self._task is not None and not self._task.done():
             self._task.cancel()
+
+    async def async_close(self) -> None:
+        self.halt()
         if self._store is not None:
             await self._store.async_close()
         if self._temperature_store is not None:

@@ -357,13 +357,20 @@ class HeatShadow:
             self.days = {day: value for day, value in days.items() if isinstance(day, str) and isinstance(value, dict)}
         self.hot_water.restore(raw.get("hot_water"))
 
-    async def async_shutdown(self) -> None:
+    @callback
+    def halt(self) -> None:
+        """The site shuts down: no look, no hourly plan and no hot-water boost from here; a boost being started or
+        stopped is cancelled (its pulse's switch is opened on the way out). Saved by `async_shutdown`."""
         self._closed = True
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
         if self._task is not None and not self._task.done():
             self._task.cancel()
+        self.hot_water.halt()
+
+    async def async_shutdown(self) -> None:
+        self.halt()
         await self.hot_water.async_shutdown()
         if self._loaded:
             await self._store.async_save(self._data())

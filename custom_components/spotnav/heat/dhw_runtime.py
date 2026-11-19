@@ -112,6 +112,8 @@ SHED_LOOKS: Final = 2
 #: no timeout of its own, and a hung pump integration must not hold a stop task, so a later shed or backstop runs.
 #: Long enough for a cloud route.
 CALL_TIMEOUT_S: Final = 30.0
+#: How long (s) the site's shutdown waits for a cancelled write (a pulse's switch opened on the way out) to end.
+SHUTDOWN_WAIT_S: Final = 10.0
 #: A pulse switch SpotNav wrote within `PULSE_WATCH` that reads on for longer than `PULSE_LEFT_ON` is opened.
 PULSE_LEFT_ON: Final = timedelta(minutes=1)
 PULSE_WATCH: Final = timedelta(hours=2)
@@ -204,6 +206,8 @@ class HotWater:
         self._pending: asyncio.Task[None] | None = None
         #: A stop SpotNav writes of its own (the backstop, a shed), apart from a start's write and read-back.
         self._side: asyncio.Task[None] | None = None
+        #: The site shuts down (`halt`): no boost is written from here.
+        self._halted = False
         self._failed_at: datetime | None = None
         self._retry_at: dict[str, datetime] = {}
         self._over_looks = 0
@@ -776,6 +780,8 @@ class HotWater:
     def tick(self, now: datetime) -> None:
         """Shed SpotNav's own running boost under fuse pressure; start a live pick whose time has come (see the
         module)."""
+        if self._halted:
+            return
         config = self.shadow.config()
         self._observe(now, config)
         if self._side is None or self._side.done():
@@ -952,12 +958,22 @@ class HotWater:
             return False
         return True
 
-    async def async_shutdown(self) -> None:
-        """The site unloads: a pending write and its read-back end with it (a pulse's switch is opened on the way
-        out, `_async_write`)."""
+    def halt(self) -> None:
+        """The site shuts down: a pending write and its read-back end now (a pulse's switch is opened on the way
+        out, `_async_write`), and the button starts nothing more."""
+        self._halted = True
         for task in (self._pending, self._side):
             if task is not None and not task.done():
                 task.cancel()
+
+    async def async_shutdown(self) -> None:
+        """The site unloads: as `halt`, and the cancelled writes have ended (bounded) before the site saves."""
+        self.halt()
+        tasks = {task for task in (self._pending, self._side) if task is not None and not task.done()}
+        if tasks:
+            _done, pending = await asyncio.wait(tasks, timeout=SHUTDOWN_WAIT_S)
+            if pending:
+                _LOGGER.warning("SpotNav hot water: a cancelled write did not end at the shutdown")
 
     def _shed_check(self, now: datetime, config: HeatConfig) -> None:
         """SpotNav's own planned boost running while a phase is over the fuse for `SHED_LOOKS` looks: ended, and not
@@ -1316,7 +1332,7 @@ class HotWater:
         route = self.route()
         if route is None:
             return "spotnav_not_supported", None
-        if self._pending is not None and not self._pending.done():
+        if self._halted or (self._pending is not None and not self._pending.done()):
             return "spotnav_busy", self.boost(now)
         state = self.boost(now) or {}
         if action == "stop":

@@ -17,6 +17,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
@@ -156,7 +157,11 @@ from .site.solar_correction_shadow import SiteSolarCorrection
 from .site.solar_shadow import SiteSolarShadow
 from .heat.control import HeatControl
 from .heat.runtime import HeatShadow
-from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
+from .site.site_capacity_controller import (
+    async_release_held_charges,
+    async_wait_for_shutdown,
+    SiteCapacityController,
+)
 from .site.site_history import charger_alone_values, SiteHistory
 from .site.phase_peaks import SitePhasePeaks
 from .site.demand_tracker import SiteDemand
@@ -175,8 +180,15 @@ from .vehicles.vehicle_properties import consumption_kwh_per_10km, stored_capaci
 
 
 _LOGGER = logging.getLogger(__name__)
-#: The longest Home Assistant's stop waits for every site's home battery to be handed back (s).
-BATTERY_STOP_TOTAL_S = 45.0
+#: By when (s after Home Assistant's stop began) every site's hand-back (hardware test, home battery, heat path) is
+#: done; the sites hand back side by side, and what is not handed back by then is at the next start.
+SITE_STOP_HAND_BACK_S = 45.0
+#: The longest Home Assistant's stop waits for all the sites' shutdowns (hand-back and saves) together (s): well
+#: inside Home Assistant's 100 s stop stage, leaving room for the stores flushed after them.
+SITE_STOP_TOTAL_S = 60.0
+#: The longest a site's setup waits for the copy before it (a reload, a retried setup) to finish its hand-back (s);
+#: longer than any hand-back's own bounds. Past it the setup is retried later.
+SITE_SHUTDOWN_WAIT_S = 180.0
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -282,9 +294,10 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
     stop charging. A site's controller is shut down as its unload would (no entry is unloaded): its timers and
     listeners end, and no apply pass of it reaches a charger while Home Assistant stops.
 
-    The chargers' sessions are saved first, then every site's home battery is handed back at once, all of them
-    within `BATTERY_STOP_TOTAL_S` (a hand-back not finished is finished at the next start), so a slow plant
-    neither costs the sessions nor holds Home Assistant's stop.
+    The chargers' sessions are saved first, then every site shuts down at once: each hands back its hardware test,
+    home battery and heat path by `SITE_STOP_HAND_BACK_S`, then saves, all of them within `SITE_STOP_TOTAL_S` (what
+    is not handed back stays stored and is handed back at the next start, and is logged), so a slow plant neither
+    costs the sessions nor holds Home Assistant's stop.
     """
     loaded = [
         data
@@ -296,18 +309,29 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
             await data.controller.async_flush_session()
         except Exception:  # noqa: BLE001 - saved again below; the battery's hand-back must still run
             _LOGGER.warning("SpotNav: saving a charge session at stop failed", exc_info=True)
+    if (sessions := getattr(domain_data(hass), "session_store", None)) is not None:
+        # Saved before the sites too: their shutdown may use up the stop's time.
+        try:
+            await sessions.async_flush()
+        except Exception:  # noqa: BLE001 - flushed again at the end
+            _LOGGER.warning("SpotNav: saving the sessions at stop failed", exc_info=True)
     sites = [
         site for entry in hass.config_entries.async_entries(DOMAIN) if (site := site_data(hass, entry.entry_id)) is not None
     ]
+    deadline = asyncio.get_running_loop().time() + SITE_STOP_HAND_BACK_S
     try:
-        async with asyncio.timeout(BATTERY_STOP_TOTAL_S):
-            await asyncio.gather(
-                *(site.controller.battery_control.async_shutdown() for site in sites), return_exceptions=True
+        async with asyncio.timeout(SITE_STOP_TOTAL_S):
+            results = await asyncio.gather(
+                *(site.controller.async_shutdown(deadline) for site in sites), return_exceptions=True
             )
+        for site, result in zip(sites, results, strict=True):
+            if isinstance(result, BaseException):
+                _LOGGER.warning("SpotNav site %s: the shutdown at stop failed", site.controller.entry_id, exc_info=result)
     except TimeoutError:
-        _LOGGER.warning("SpotNav: the home batteries' hand-back did not finish at stop; it is finished at the next start")
-    for site in sites:
-        await site.controller.async_shutdown()
+        _LOGGER.warning(
+            "SpotNav: the sites' shutdown did not finish within %ss of the stop; what they still hold is handed back at"
+            " the next start", SITE_STOP_TOTAL_S,
+        )
     for data in loaded:
         if data.executor is not None:
             await data.executor.async_shutdown()
@@ -861,6 +885,10 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     # Registered whatever the load state (a new or just migrated site here; every known one at the integration's
     # setup) and kept across unloads: a site not loaded answers `spotnav_site_unloaded`, never "gone".
     async_ensure_site_webhook(hass, entry)
+    # A copy of this site before (a reload, a setup retried after a failure) hands back and saves first: the two
+    # never write to the plant at once, and the old one never saves over what this one reads and writes.
+    if not await async_wait_for_shutdown(hass, entry.entry_id, SITE_SHUTDOWN_WAIT_S):
+        raise ConfigEntryNotReady("the site's previous run is still handing its devices back")
     if hass.state is not CoreState.running:
         # At boot every entry is known once Home Assistant has started: then drop members a former
         # version left behind when their charger was deleted, and reload if any were.
@@ -883,9 +911,10 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
         hass.config_entries.async_update_entry(entry, data=filled)
     controller = SiteCapacityController(hass, entry.entry_id, dict(entry.data))
     entry.runtime_data = SiteData(controller)
+    # The shutdown runs from `async_unload_entry`, awaited in full; these two only clean up a setup that failed
+    # (the shutdown runs once, whoever asks). Unbound first (unload callbacks run last first): no member charger's
+    # sun reads this controller once it is going.
     entry.async_on_unload(controller.async_shutdown)
-    # Run before the shutdown above (unload callbacks run last first): no member charger's sun reads this controller
-    # once it is going.
     entry.async_on_unload(partial(async_unbind_solar_execution, hass, controller))
     entry.async_on_unload(partial(forget_cached_flow, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_heat, hass, entry.entry_id))
@@ -944,10 +973,15 @@ def _platforms_for(entry: ConfigEntry) -> list[str]:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a SpotNav entry.
 
-    Only the platforms are unloaded here; everything else stops through `async_on_unload`. A failed
-    platform unload leaves the entry loaded and running. An unload is not an instruction to stop
-    charging.
+    A site shuts down here first, before its platforms: Home Assistant awaits this in full (an `async_on_unload`
+    task only about ten seconds), so its hardware test, home battery and heat path are handed back and its stores
+    saved before a reload sets it up again or a removal forgets its stores. Everything else stops through
+    `async_on_unload`. An unload is not an instruction to stop charging.
     """
+    if entry_kind(entry) == ENTRY_TYPE_SITE and (site := site_data(hass, entry.entry_id)) is not None:
+        # No member charger's sun reads the controller once it is going.
+        async_unbind_solar_execution(hass, site.controller)
+        await site.controller.async_shutdown()
     return await hass.config_entries.async_unload_platforms(entry, _platforms_for(entry))
 
 
@@ -969,6 +1003,10 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         async_drop_site_webhook(hass, entry.entry_id)
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+        # Its last run has handed back and saved (its unload awaited that; a setup that failed may still be at it):
+        # the stores below are read and removed after it, never written again by it.
+        if not await async_wait_for_shutdown(hass, entry.entry_id, SITE_SHUTDOWN_WAIT_S):
+            _LOGGER.warning("SpotNav site %s: removed while its last run was still handing back", entry.entry_id)
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
