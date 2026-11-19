@@ -10,6 +10,7 @@
 
 import { localDayKey } from "./chart";
 import { decodeSettingsRecord } from "./settings";
+import { hasAllKeys, hasUnknownKeys } from "./contract";
 import {
   ACTION_PAUSE,
   ACTION_RESUME,
@@ -866,15 +867,13 @@ export function isValidTimeZone(timeZone: string): boolean {
 }
 
 /**
- * Exact-key guard: every key present, no key outside the contract, so what the card shows and what
- * the contract states stay the same set.
+ * Key guard: every key of the contract present; a key outside it is ignored (rejected only in the
+ * tests' strict mode, see `contract.ts`).
  */
 function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
   presentKeys(source, keys);
-  for (const key of Object.keys(source)) {
-    if (!keys.includes(key)) {
-      bad();
-    }
+  if (hasUnknownKeys(source, keys)) {
+    bad();
   }
 }
 
@@ -2475,10 +2474,8 @@ function oneOfValues<T extends string>(value: string, allowed: readonly T[]): T 
 function decodeSource(raw: unknown): IdentificationSource {
   const source = record(raw);
   presentKeys(source, ["entity_id", "name", "chosen", "candidates"]);
-  for (const key of Object.keys(source)) {
-    if (!["entity_id", "name", "chosen", "candidates", "others", "reading"].includes(key)) {
-      bad();
-    }
+  if (hasUnknownKeys(source, ["entity_id", "name", "chosen", "candidates", "others", "reading"])) {
+    bad();
   }
   if (typeof source.chosen !== "boolean") {
     return bad();
@@ -2486,10 +2483,8 @@ function decodeSource(raw: unknown): IdentificationSource {
   const choices = (key: string): SourceChoice[] =>
     arrayValue(source, key).map((entry) => {
       const item = record(entry);
-      for (const name of Object.keys(item)) {
-        if (!["entity_id", "name", "state"].includes(name)) {
-          bad();
-        }
+      if (hasUnknownKeys(item, ["entity_id", "name", "state"])) {
+        bad();
       }
       return {
         entity_id: text(item, "entity_id"),

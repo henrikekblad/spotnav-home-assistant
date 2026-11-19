@@ -1,7 +1,10 @@
 // The heat card's answers (`spotnav/get_heat` and `spotnav/update_heat`, API v1), decoded strictly. The backend's
 // shapes are `custom_components/spotnav/heat/view.py` and `api/heat.py`; their fixtures are `tests/fixtures/heat_card/`.
-// Every object is exact-key: a missing, mistyped or unknown key makes the whole answer unreadable, never half-shown
-// (the card and the integration ship together, so a key the card does not know is a mismatch to fix, not to skip).
+// Every named key must be present and right: a missing or mistyped one makes the whole answer unreadable, never
+// half-shown. A key the card does not know is ignored (an additive backend key must not blank the card); the tests
+// reject it (see `contract.ts`).
+
+import { hasAllKeys, hasUnknownKeys } from "./contract";
 
 export const HEAT_API_VERSION = 1;
 /** `spotnav/get_heat_history`'s version (`heat-history.ts`). */
@@ -20,7 +23,7 @@ export const N = (spec: Spec): Spec => ({ nullable: spec });
 export const A = (spec: Spec): Spec => ({ array: spec });
 export const O = (fields: Record<string, Spec>): Spec => ({ object: fields });
 
-/** Whether `value` has exactly the shape `spec` names (every object exact-key). */
+/** Whether `value` has the shape `spec` names (every named key present; unknown keys ignored, see `contract.ts`). */
 export function fits(value: unknown, spec: Spec): boolean {
   if (spec === "any") {
     return true;
@@ -42,7 +45,7 @@ export function fits(value: unknown, spec: Spec): boolean {
   }
   const record = value as Record<string, unknown>;
   const keys = Object.keys(spec.object);
-  if (Object.keys(record).length !== keys.length || !Object.keys(record).every((key) => keys.includes(key))) {
+  if (!hasAllKeys(record, keys) || hasUnknownKeys(record, keys)) {
     return false;
   }
   return keys.every((key) => fits(record[key], spec.object[key]!));
