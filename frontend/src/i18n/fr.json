@@ -1658,6 +1658,8 @@
   "battery.need.needsHacs": "La commande de la batterie nécessite l'intégration HACS ({repo}) ; l'intégration intégrée à Home Assistant ne l'a pas.",
   "battery.need.controlDisabled": "Activez la commande {role} de la batterie dans Home Assistant (désactivée par défaut).",
   "battery.need.outsideControl": "Autre chose pilote la batterie en ce moment, SpotNav ne pilote donc rien.",
+  "battery.outsideClear.button": "C'était moi – effacer",
+  "battery.outsideClear.help": "Avez-vous changé vous-même les modes de la batterie, par exemple pendant un test ? Effacez alors le marquage et SpotNav reprend la main.",
   "battery.need.aiTakeoverAck": "Acceptez que SpotNav prenne le relais du mode IA de la batterie.",
   "battery.need.strategyAck": "Acceptez que les commandes de SpotNav passent avant la stratégie que la batterie suit dans son propre cloud.",
   "battery.need.selfManaged": "La batterie suit sa propre optimisation. Passez-la en autoconsommation dans son application si SpotNav doit la piloter.",

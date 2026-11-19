@@ -846,13 +846,15 @@ export async function getSiteSettingsView(hass: HomeAssistantLike, target: SiteT
  * The site's battery control status (`spotnav/battery_control`), after writing `changes` when given (administrators
  * only); `unknown` until `decodeBatteryControl()` decodes it. The changes are SpotNav's own settings for the site.
  * `enableControlEntities` is the person's confirm in the opt-in dialog: the backend enables the brand's disabled
- * control entities and reloads their integration once, before it writes `changes`.
+ * control entities and reloads their integration once, before it writes `changes`. `clearOutsideControl` is the
+ * person's "it was me": the outside-control mark found by the battery's own settings or behaviour ends.
  */
 export async function batteryControl(
   hass: HomeAssistantLike,
   target: SiteTarget,
   changes: Record<string, boolean | string> | null = null,
   enableControlEntities = false,
+  clearOutsideControl = false,
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/battery_control",
@@ -860,6 +862,7 @@ export async function batteryControl(
     ...siteKey(target),
     ...(changes === null ? {} : { changes }),
     ...(enableControlEntities ? { enable_control_entities: true } : {}),
+    ...(clearOutsideControl ? { clear_outside_control: true } : {}),
   });
 }
 

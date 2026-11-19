@@ -1,0 +1,80 @@
+{
+  "api_version": 1,
+  "ok": true,
+  "error": null,
+  "status": {
+    "options": {
+      "battery_control_enabled": true,
+      "battery_control_shadow_only": false,
+      "battery_control_ai_takeover_ack": true,
+      "battery_control_allow_sell": false,
+      "battery_control_import_limit_acts": true,
+      "battery_mode": "balanced"
+    },
+    "state": "on",
+    "line": "on",
+    "key": "SIGEN-FW 2.1 | sigen 1.4.0",
+    "report": {
+      "key": "SIGEN-FW 2.1 | sigen 1.4.0",
+      "brand": "sigenergy",
+      "firmware": "SIGEN-FW 2.1",
+      "first_run_at": "2026-11-12T18:02:00+01:00",
+      "last_run_at": "2026-11-12T18:02:00+01:00",
+      "updated_at": "2026-11-12T18:44:00+01:00",
+      "attempts": 1,
+      "modes": {
+        "hold": {
+          "outcome": "obeyed"
+        },
+        "charge": {
+          "outcome": "obeyed"
+        },
+        "discharge_house": {
+          "outcome": "not_judgeable:nearly_full"
+        },
+        "normal": {
+          "outcome": "restored"
+        }
+      }
+    },
+    "allowed_actions": [
+      "grid_charge",
+      "hold"
+    ],
+    "verification": null,
+    "waiting_for": null,
+    "needs": [
+      "outside_control:settings_changed"
+    ],
+    "device_id": null,
+    "enable_entities": null,
+    "notes": [],
+    "trial": null,
+    "grid_charge_cap": {
+      "cap_kw": null,
+      "rule": "import_limit",
+      "main_fuse_a": null,
+      "cap_conservative_kw": null,
+      "cap_learned_kw": null,
+      "learned": null,
+      "import_limit": {
+        "value_kw": 4.0,
+        "max_kw": 4.47,
+        "suggested_kw": 4.4,
+        "holds": true,
+        "why": null
+      }
+    },
+    "per_phase": {
+      "state": "unavailable",
+      "why": "control_disabled:phase_l1_target",
+      "used": false,
+      "caps_kw": {
+        "L1": 0.16,
+        "L2": 0.16,
+        "L3": 0.16
+      },
+      "charging_kw": null
+    }
+  }
+}

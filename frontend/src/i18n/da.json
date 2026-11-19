@@ -1658,6 +1658,8 @@
   "battery.need.needsHacs": "Batteriets styring kræver HACS-integrationen ({repo}); Home Assistants indbyggede integration mangler den.",
   "battery.need.controlDisabled": "Aktivér batteriets styring {role} i Home Assistant (den er slået fra som standard).",
   "battery.need.outsideControl": "Noget andet styrer batteriet lige nu, så SpotNav styrer ikke noget.",
+  "battery.outsideClear.button": "Det var mig – ryd",
+  "battery.outsideClear.help": "Ændrede du selv batteriets tilstande, fx under en test? Så kan du rydde markeringen, så SpotNav styrer igen.",
   "battery.need.aiTakeoverAck": "Godkend, at SpotNav overtager fra batteriets AI-tilstand.",
   "battery.need.strategyAck": "Godkend, at SpotNavs kommandoer går forud for den strategi, batteriet kører i sin egen sky.",
   "battery.need.selfManaged": "Batteriet styres af sin egen optimering. Skift til egetforbrug i batteriets app, hvis SpotNav skal styre det.",

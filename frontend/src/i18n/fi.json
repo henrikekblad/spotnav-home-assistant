@@ -1658,6 +1658,8 @@
   "battery.need.needsHacs": "Akun ohjaus vaatii HACS-integraation ({repo}); Home Assistantin sisäänrakennetusta integraatiosta se puuttuu.",
   "battery.need.controlDisabled": "Ota akun ohjaus {role} käyttöön Home Assistantissa (se on oletuksena pois käytöstä).",
   "battery.need.outsideControl": "Jokin muu ohjaa akkua nyt, joten SpotNav ei ohjaa mitään.",
+  "battery.outsideClear.button": "Se olin minä – tyhjennä",
+  "battery.outsideClear.help": "Muutitko akun tiloja itse, esimerkiksi testin aikana? Tyhjennä silloin merkintä, niin SpotNav ohjaa taas.",
   "battery.need.aiTakeoverAck": "Hyväksy, että SpotNav ottaa ohjauksen akun AI-tilalta.",
   "battery.need.strategyAck": "Hyväksy, että SpotNavin komennot ohittavat strategian, jota akku ajaa omassa pilvessään.",
   "battery.need.selfManaged": "Akkua ohjaa sen oma optimointi. Vaihda akun sovelluksessa omakäyttötilaan, jos SpotNavin halutaan ohjaavan sitä.",

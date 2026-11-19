@@ -1658,6 +1658,8 @@
   "battery.need.needsHacs": "This battery's control needs the HACS integration ({repo}); Home Assistant's built-in integration lacks it.",
   "battery.need.controlDisabled": "Enable the battery's control {role} in Home Assistant (it is disabled by default).",
   "battery.need.outsideControl": "Something else runs the battery now, so SpotNav controls nothing.",
+  "battery.outsideClear.button": "It was me – clear",
+  "battery.outsideClear.help": "Did you change the battery's modes yourself, say during a test? Then clear the mark and SpotNav controls it again.",
   "battery.need.aiTakeoverAck": "Accept that SpotNav takes over from the battery's AI mode.",
   "battery.need.strategyAck": "Accept that SpotNav's commands override the strategy the battery runs in its own cloud.",
   "battery.need.selfManaged": "The battery runs its own optimiser. Switch it to self-consumption in the battery's app if SpotNav is to run it.",
