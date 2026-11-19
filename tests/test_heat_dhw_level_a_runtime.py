@@ -308,3 +308,25 @@ async def test_a_fourteen_day_periodic_increase_is_told_past_the_peaks_window(ha
         kept, _cap = water.level_a_rules(now, config, [today])
         increase = datetime(today.year, today.month, today.day, 2, tzinfo=hot_water.zone).astimezone(timezone.utc) + timedelta(days=13)
         assert kept.get(increase) == ("hygiene", None)
+
+
+@pytest.mark.parametrize(("state", "age"), [("51.0", timedelta(minutes=45)), ("unavailable", timedelta(0)), ("51.0", timedelta(minutes=10))])
+async def test_a_stale_tank_reading_counts_as_no_tank_sensor(hass: HomeAssistant, freezer, monkeypatch, state: str, age: timedelta) -> None:
+    """Review S6: a tank sensor that stopped reporting (or does not read) is no tank sensor: the day's four-hour cap
+    applies again."""
+    from types import SimpleNamespace
+
+    _site_, controller, _relay, hot_water, now = await _villa(hass, freezer, monkeypatch)
+    entity = "sensor.nibe_hot_water_top"
+    hass.states.async_set(entity, state, {"unit_of_measurement": "°C"})
+    freezer.tick(age)
+    now = now + age
+    pump = SimpleNamespace(
+        capabilities=(), cloud=False, price_control=SimpleNamespace(state="off"), priority=None,
+        hot_water_temp_c=51.0, sources={"hot_water_temp": entity},
+    )
+    monkeypatch.setattr(type(hot_water), "_pump", lambda _self: pump)
+    fresh = state != "unavailable" and age < timedelta(minutes=30)
+    assert (hot_water.tank_c() is not None) is fresh
+    _kept, cap = hot_water.level_a_rules(now, controller.heat_shadow.config(), [now.astimezone(hot_water.zone).date()])
+    assert cap == (None if fresh else 4)

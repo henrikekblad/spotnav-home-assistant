@@ -95,6 +95,8 @@ DAYS_KEPT: Final = 35
 START_LATE: Final = timedelta(minutes=10)
 RETRY: Final = timedelta(minutes=5)
 DATA_FRESH: Final = timedelta(minutes=10)
+#: A tank sensor that has not reported for this long is no tank sensor.
+TANK_FRESH: Final = timedelta(minutes=30)
 POLL_S: Final = 5.0
 #: The heat control's safety reasons under which no planned boost starts (the compressor goes to the house).
 UNSAFE: Final = frozenset({"too_cold", "room_cold", "stale"})
@@ -416,10 +418,24 @@ class HotWater:
         return state_now(kw, levels_, kw) == STATE_HOT_WATER
 
     def tank_c(self, pump: Any = None) -> float | None:
-        """The tank sensor's reading (°C), `None` without one."""
+        """The tank sensor's reading (°C), `None` without one, and also where its entity does not read or has not
+        reported within `TANK_FRESH`: a stale tank is no tank sensor (the day's cap applies, the 40 °C rule is not
+        trusted to allow a block)."""
         pump = self._pump() if pump is None else pump
         value = None if pump is None else getattr(pump, "hot_water_temp_c", None)
-        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return None
+        source = (getattr(pump, "sources", None) or {}).get("hot_water_temp")
+        if isinstance(source, str) and source:
+            now = dt_util.utcnow()
+            for entity_id in source.split(" + "):
+                state = self.hass.states.get(entity_id.strip())
+                if state is None or state.state in ("unavailable", "unknown"):
+                    return None
+                reported = getattr(state, "last_reported", None) or state.last_updated
+                if now - reported > TANK_FRESH:
+                    return None
+        return float(value)
 
     def tank_low(self) -> bool:
         """The tank rule (`dhw_level_a.TankGuard`) stepped on the tank's reading now: whether no block may hold the
