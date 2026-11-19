@@ -116,8 +116,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   the control (`not_obeyed:grid_charge:phase_over`). One that takes nothing does so as any charge without effect. A change between the two kinds of charge while one
   runs hands back first (`per_phase_changed`). `ExecInputs.phase_probe_kw` is the verification's: targets written
   as given (a discharge on one phase, or a charge on one phase where the balanced charge has no room), a charge
-  among them in whole amps within its cap and its live room, down at once and up only after `RATE_UP_DWELL_S`, and
-  judged for the runaway as any charge per phase (the rest the verification judges itself).
+  among them in whole amps within its cap and its live room, down at once (except within `PHASE_RAISE_SETTLE_S` of
+  a raise), up again only `RATE_UP_DWELL_S` after its room took it down, from a discharge only through 0, and judged for the runaway as any charge per phase (the rest the verification judges itself).
 * **Targets that are the grid's** (`PhaseControl.target_kind` `grid`, with sensors at the target's point,
   `PhaseControl.grid_phases`; the shell reads them into `ExecInputs.phase_behind_kw` and `phase_point_kw`). Such a
   target is the power at the plant's grid-side point on that phase, so a charge per phase is written as the load
@@ -2111,11 +2111,30 @@ class Executor:
             and any(abs(new - was) > PHASE_TRACK_KW for new, was in zip(behind, old_behind, strict=True))
         )
         if inputs.phase_probe_kw is not None:
-            # A charge in it goes up, as any charge per phase, only `RATE_UP_DWELL_S` after the last change.
-            if since < RATE_UP_DWELL_S:
-                held = [min(new, max(was, 0.0)) if new > 0 else new for new, was in zip(phases, old, strict=True)]
-                phases = (held[0], held[1], held[2])
-                rate = round(sum(max(value, 0.0) for value in phases), 3)
+            # A charge in it goes up again, as any charge per phase, only `RATE_UP_DWELL_S` after its room took it
+            # down (the last change lowered a charge on that phase); and from a discharge only through 0, so that
+            # its room is read without the discharge that eased the phase.
+            lowered = state.phase_was_kw
+            held = []
+            for index, (new, was) in enumerate(zip(phases, old, strict=True)):
+                if new > 0 and was < 0:
+                    new = 0.0
+                elif (
+                    new > max(was, 0.0) and since < RATE_UP_DWELL_S and lowered is not None
+                    and lowered[index] > max(was, 0.0) + 1e-9
+                ):
+                    new = max(was, 0.0)
+                held.append(new)
+            phases = (held[0], held[1], held[2])
+            raised = state.phase_raised_at
+            if raised is not None and (now - raised).total_seconds() < PHASE_RAISE_SETTLE_S:
+                # Just raised: the plant's own power does not show it yet, so the room reads too small. A charge
+                # the probe itself lowers (the verification's next step) still goes down at once.
+                asked = inputs.phase_probe_kw
+                kept = [was if 0 <= new < was and new < want - 1e-9 else new
+                        for new, was, want in zip(phases, old, asked, strict=True)]
+                phases = (kept[0], kept[1], kept[2])
+            rate = round(sum(max(value, 0.0) for value in phases), 3)
             change = any(abs(new - was) > 1e-9 for new, was in zip(phases, old, strict=True))
         else:
             gain = sum(phases) - sum(old)
