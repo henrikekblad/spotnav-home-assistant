@@ -402,9 +402,10 @@ safe.
 **In the plan, shadow first.** SpotNav also shapes which hours it lowers:
 
 * No lowered hour in the **two hours before each peak's ready time** (the peaks above; 05:00 and 17:00 until learned),
-  so the pump's reheat for the showers is never held into them. Not where the pump has already run since the
-  previous peak ended (the tank was filled after its last use), and not where a planned run of SpotNav's fills the
-  peak.
+  so the pump's reheat for the showers is never held into them. Not where the pump has already made a real run (more than a standby
+  reheat) since the previous peak ended (the tank was filled after its last use), and not where a run of SpotNav's
+  was written and read back for the peak, or a boost already ran when it came due (a run only planned keeps the
+  guard).
 * Without a tank sensor, at most **four lowered hours a day** (the heat's own limit is six), so the pump gets its
   reheats between the blocks. With a tank sensor the 40 °C rule stands in for this.
 * The pump's **periodic increase**, where the meter shows it: a run at least twice the usual one (energy and length)

@@ -378,7 +378,8 @@ class HotWater:
         pump = self._pump()
         runs = list(self.runs.values())
         strict = self.a_strict()
-        found = guards(self.peaks, days, self.zone, runs, now, self.filled_peaks(), PEAK_GUARD_STRICT if strict else PEAK_GUARD)
+        guard = PEAK_GUARD_STRICT if strict else PEAK_GUARD
+        found = guards(self.peaks, days, self.zone, runs, now, self.filled_peaks(), guard, self.standby)
         hygiene = next_hygiene(runs, self.zone, now, list(self.night_runs.values()))
         return kept_hours(found, hygiene), max_day_hours(self.tank_c(pump) is not None, strict)
 

@@ -125,7 +125,7 @@ def main() -> None:
         hours = day_hours(midnight.astimezone(timezone.utc), zone)
         now = midnight.astimezone(timezone.utc)
         raw, _ = band(config, hours, prices, now, zone)
-        guards = dhw_level_a.guards(peaks, [day], zone, before, now)
+        guards = dhw_level_a.guards(peaks, [day], zone, before, now, cutoff=cutoff)
         kept = dhw_level_a.kept_hours(guards, dhw_level_a.next_hygiene(before, zone, now))
         shaped, _ = band(config, hours, prices, now, zone, keep_normal=kept, max_day=dhw_level_a.max_day_hours(False))
         cuts = dhw_level_a.cuts(raw, shaped, kept)

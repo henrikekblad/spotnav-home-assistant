@@ -295,3 +295,12 @@ def test_a_block_over_the_periodic_increase_is_cut() -> None:
     kept = kept_hours([], (local(6, 30), local(9, 30)))
     shaped, _ = band(config, HOURS, prices, now, ZONE, keep_normal=kept)
     assert [(c.start, c.kind) for c in cuts(raw, shaped, kept)] == [(local(7), "hygiene"), (local(8), "hygiene")]
+
+
+def test_a_standby_reheat_does_not_drop_the_morning_guard() -> None:
+    """Review NIT: the owner's small 20:20 run (standby loss) after the evening peak's end does not show the tank was
+    filled after its use; a real run does."""
+    late = run(21, 20, 10, DAY - timedelta(days=1))
+    small = type(late)(late.start, late.end, 0.3)
+    assert [g.ready for g in guards(PEAKS, [DAY], ZONE, [small], local(3), cutoff=0.35)] == [local(6), local(18)]
+    assert [g.ready for g in guards(PEAKS, [DAY], ZONE, [late], local(3), cutoff=0.35)] == [local(18)]

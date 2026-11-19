@@ -7,8 +7,9 @@ and the level-A gate, `dhw_review.GATES`):
 
 * **Before a peak** (`guards`): no lowered hour in the `PEAK_GUARD` before each learned peak's `ready_by`, so the
   pump's own run that fills the tank for it is never held into the peak. Not where the pump already ran since the
-  previous peak's end (`until`): the tank was filled after the last use, so a block there delays nothing the peak
-  needs; nor where a planned boost (level B) fills the peak.
+  previous peak's end (`until`) with more than a standby reheat: the tank was filled after the last use, so a block
+  there delays nothing the peak needs; nor where a boost (level B) written and read back, or already running,
+  fills the peak.
 * **A day's blocked time** (`max_day_hours`): without a tank sensor nothing shows how the tank stands, so a local day
   lowers at most `MAX_DAY_NO_TANK` hours (the heat plan's own cap is `shadow_rule.MAX_LOWERED_DAY`): the pump gets its
   reheats between the blocks. With a tank sensor the tank rule stands in for it.
@@ -121,12 +122,15 @@ def _instants(peaks: Sequence[Peak], days: Iterable[date], zone: tzinfo) -> list
     return sorted(out)
 
 
-def served(previous_until: datetime | None, ready: datetime, runs: Sequence[RunLike], now: datetime) -> bool:
+def served(
+    previous_until: datetime | None, ready: datetime, runs: Sequence[RunLike], now: datetime, cutoff: float = 0.0
+) -> bool:
     """Whether the pump already ran since the previous peak's end (and before `ready`), by `now`: the tank was filled
-    after its last use."""
+    after its last use. A standby reheat (under `cutoff`, `dhw_peaks.standby_kwh`) does not count: draws after the
+    peak's end may still have left the tank short."""
     if previous_until is None or previous_until > now:
         return False
-    return any(previous_until <= run.start < ready and run.end <= now for run in runs)
+    return any(previous_until <= run.start < ready and run.end <= now and run.kwh >= cutoff for run in runs)
 
 
 def guards(
@@ -137,6 +141,7 @@ def guards(
     now: datetime,
     boosted: Iterable[datetime] = (),
     guard: timedelta = PEAK_GUARD,
+    cutoff: float = 0.0,
 ) -> list[Guard]:
     """The times kept free of blocks on the days given (see the module): one per peak, none for a peak already
     served by a run or filled by a planned boost (`boosted`: their `ready`), none that has passed."""
@@ -148,7 +153,7 @@ def guards(
         if ready.astimezone(zone).date() not in wanted or ready <= now or ready in filled:
             continue
         previous = instants[index - 1][1] if index > 0 else None
-        if served(previous, ready, runs, now):
+        if served(previous, ready, runs, now, cutoff):
             continue
         out.append(Guard(ready - guard, ready))
     return out
