@@ -62,6 +62,12 @@ export interface DayPlannedWater extends DaySpan {
   text: string;
 }
 
+/** A span said in the readout only: an hour the hot water's rules took out of the heat plan ("blockering förkortad
+ * före duschen 06:00"). */
+export interface DayNote extends DaySpan {
+  text: string;
+}
+
 /** A hot-water peak: a small tick on the time axis, its words in the readout ("dusch 06:00"). */
 export interface DayPeak {
   ms: number;
@@ -85,6 +91,8 @@ export interface DayChartInput {
   /** The boosts planned, and the peaks they fill; absent in a history day. */
   planned?: DayPlannedWater[];
   peaks?: DayPeak[];
+  /** The hours the hot water's rules took out of the heat plan, said in the readout; absent in a history day. */
+  notes?: DayNote[];
   width: number;
   nowMs: number | null;
   /** SpotNav only watches (its control does not run): a planned raise reads "would raise". */
@@ -234,6 +242,11 @@ export function dayFigures(input: DayChartInput, ms: number): string {
     }
     if (lowering.planned && hour.reason === "room_warm") {
       parts.push(translate(language, "heat.chart.roomWarm"));
+    }
+    for (const note of input.notes ?? []) {
+      if (note.startMs < at + stepOf(input) && at < note.endMs) {
+        parts.push(note.text);
+      }
     }
     const key = ACTION_KEYS[hour.action];
     if (key !== undefined) {

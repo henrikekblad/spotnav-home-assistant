@@ -9,7 +9,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { boostErrorKey } from "../src/heat-card";
 import { decodeHeat, decodeHeatBoost, type HeatAnswer, type HeatBoost } from "../src/heat-model";
-import { aheadLine, boostWords, heatBody, hotWaterLines, plannedWaterText, type HeatState } from "../src/heat-view";
+import { dayFigures, type DayChartInput, type DayNote } from "../src/heat-day-chart";
+import { aheadLine, boostWords, controlLine, cutText, heatBody, hotWaterLines, plannedWaterText, type HeatState } from "../src/heat-view";
 import { registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 
@@ -27,6 +28,26 @@ function answer(name = "villa.json"): HeatAnswer {
 
 function withBoost(value: HeatAnswer, boost: HeatBoost | null): HeatAnswer {
   return { ...value, hot_water: { ...value.hot_water!, boost } };
+}
+
+/** The day chart's input on the villa's band with readout notes. */
+function chartInput(value: HeatAnswer, notes: DayNote[]): DayChartInput {
+  const hours = value.band.hours;
+  return {
+    doc: document,
+    language: "sv",
+    ctx: { language: "sv", timeZone: value.time_zone, unit: "kWh", currency: null, majorUnit: null },
+    startMs: hours[0]!.startMs,
+    endMs: hours[hours.length - 1]!.startMs + 3_600_000,
+    day: null,
+    low_c: 20.5,
+    high_c: 21.5,
+    hours: hours.map((hour) => ({ ...hour, executed_min: hour.executed_min, relay_expected: hour.relay_expected })),
+    water: [],
+    notes,
+    width: 360,
+    nowMs: NOW,
+  };
 }
 
 const IDLE: HeatBoost = { state: "idle", source: null, started: null, ends: null, ends_estimated: false, stoppable: false };
@@ -139,10 +160,14 @@ describe("the plan", () => {
 
   it("shows yesterday's review per peak and the gate's progress", () => {
     const lines = hotWaterLines("sv", answer());
-    expect(lines.map((line) => line.key)).toEqual(["water-gate", "water-review", "water-peaks"]);
+    expect(lines.map((line) => line.key)).toEqual(["water-gate", "water-blocking-gate", "water-review", "water-peaks", "water-blocking-review"]);
     expect(lines[0]!.text).toBe("Varmvatten i skuggning: dag 5 av 7, 8 av 10 toppar träffade");
-    expect(lines[1]!.text).toBe("Varmvatten i går: 1,1 kWh flyttade · 0,61 kr sparade (skuggning)");
-    expect(lines[2]!.text).toBe("Toppar: 05:00 träffad · skulle ha värmt varmvatten 03:15 · pumpen körde själv 05:10; 17:00 ingen tappning");
+    expect(lines[1]!.text).toBe("Blockeringar kring varmvattnet i skuggning: dag 5 av 14, 8 av 10 toppar träffade");
+    expect(lines[2]!.text).toBe("Varmvatten i går: 1,1 kWh flyttade · 0,61 kr sparade (skuggning)");
+    expect(lines[3]!.text).toBe(
+      "Toppar: 05:00 värmdes sent efter en blockering · skulle ha värmt varmvatten 03:15 · pumpen körde själv 05:10; 17:00 ingen tappning",
+    );
+    expect(lines[4]!.text).toBe("Blockeringar i går: 2 h skulle ha förkortats för varmvattnet · 1 sena uppvärmningar före en topp");
     const panel = render(answer(), "plan");
     expect(panel.querySelector("[data-line='water-gate']")).not.toBeNull();
     // Watch only (the pump's own price control): nothing about SpotNav's hot water.
@@ -154,3 +179,46 @@ describe("the plan", () => {
     expect(hotWaterLines("sv", ready)[0]!.text).toBe("Varmvatten: redo att styras med ”Styr värmen”");
   });
 });
+
+describe("blocks kept clear of the hot water (level A)", () => {
+  it("says the cut hour in the day chart's readout: what it would do in shadow, what it did once live", () => {
+    const value = answer();
+    const card = render(value, "plan");
+    const surface = card.querySelector<HTMLElement>("[data-block='day'] [tabindex='0']")!;
+    expect(surface).not.toBeNull();
+    const cut = value.hot_water!.blocking!.cuts[0]!;
+    expect(cutText("sv", cut)).toBe("skulle förkorta blockeringen före duschen 17:00");
+    expect(cutText("sv", { ...cut, live: true })).toBe("blockering förkortad före duschen 17:00");
+    expect(cutText("sv", { ...cut, reason: "day_cap", peak: null, live: true })).toBe("blockering förkortad så att varmvattnet hinner värmas");
+    expect(cutText("sv", { ...cut, reason: "hygiene", peak: null })).toBe("skulle förkorta blockeringen för varmvattnets periodiska höjning");
+    expect(dayFigures(chartInput(value, [{ startMs: Date.parse(cut.start), endMs: Date.parse(cut.end), text: cutText("sv", cut) }]), Date.parse(cut.start) + 60_000)).toContain(
+      "skulle förkorta blockeringen före duschen 17:00",
+    );
+  });
+
+  it("shows level A's gate, steering and back-off, and nothing where the path leaves hot water alone", () => {
+    const value = answer();
+    const blocking = value.hot_water!.blocking!;
+    const live = { ...value, hot_water: { ...value.hot_water!, blocking: { ...blocking, mode: "live" } } };
+    expect(hotWaterLines("sv", live).find((line) => line.key === "water-blocking-live")!.text).toBe("SpotNav håller sina blockeringar undan varmvattnet");
+    const ready = { ...value, hot_water: { ...value.hot_water!, blocking: { ...blocking, gate: { ...blocking.gate, open: true } } } };
+    expect(hotWaterLines("sv", ready).find((line) => line.key === "water-blocking-gate")!.text).toBe("Blockeringar kring varmvattnet: redo att styras med ”Styr värmen”");
+    const backed = { ...value, hot_water: { ...value.hot_water!, blocking: { ...blocking, gate: { ...blocking.gate, backed_off: "2026-11-15" } } } };
+    expect(hotWaterLines("sv", backed).map((line) => line.key)).toContain("water-blocking-backed-off");
+    const none = { ...value, hot_water: { ...value.hot_water!, blocking: null } };
+    expect(hotWaterLines("sv", none).map((line) => line.key)).toEqual(["water-gate", "water-review", "water-peaks"]);
+  });
+
+  it("decodes strictly: an unknown key in a cut is refused", () => {
+    const raw = JSON.parse(readFileSync(join(FIXTURES, "villa.json"), "utf8"));
+    raw.hot_water.blocking.cuts[0].extra = 1;
+    expect(decodeHeat(raw).ok).toBe(false);
+  });
+
+  it("says the tank rule on the control line", () => {
+    const value = answer("controlled.json");
+    const control = { ...value.control!, state: "running", lowered: false, reason: "hot_water_low" };
+    expect(controlLine("sv", { ...value, control })).toBe("Styr: varmvattnet är svalt, ingen sänkning.");
+  });
+});
+

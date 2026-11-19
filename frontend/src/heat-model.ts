@@ -122,6 +122,20 @@ export const BOOST = O({
   ends_estimated: "boolean",
   stoppable: "boolean",
 });
+/** A hot-water level's gate to live (`heat/dhw_review.gate`). */
+const GATE = O({
+  level: "string",
+  days: "number",
+  days_needed: "number",
+  weekdays: "number",
+  peaks: "number",
+  peaks_needed: "number",
+  hits: "number",
+  hit_needed: "number",
+  saved: "number",
+  open: "boolean",
+  backed_off: N("string"),
+});
 /** The site's hot water (`heat/dhw_runtime.py`): peaks, the boosts planned, today's runs, the last review, the gate. */
 export const HOT_WATER = O({
   boost: N(BOOST),
@@ -150,24 +164,25 @@ export const HOT_WATER = O({
       hits: "number",
       peaks: "number",
       misses: "number",
-      per_peak: A(O({ peak: "string", hit: "boolean", pick: N("string"), pump_run: N("string"), miss: "boolean" })),
+      cold_risks: "number",
+      blocks_cut: "number",
+      a_mode: "string",
+      per_peak: A(
+        O({ peak: "string", hit: "boolean", pick: N("string"), pump_run: N("string"), miss: "boolean", cold_risk: "boolean" }),
+      ),
     }),
   ),
-  gate: O({
-    level: "string",
-    days: "number",
-    days_needed: "number",
-    weekdays: "number",
-    peaks: "number",
-    peaks_needed: "number",
-    hits: "number",
-    hit_needed: "number",
-    saved: "number",
-    open: "boolean",
-    backed_off: N("string"),
-  }),
+  gate: GATE,
   level: N("string"),
   mode: "string",
+  blocking: N(
+    O({
+      mode: "string",
+      gate: GATE,
+      cuts: A(O({ start: "string", end: "string", reason: "string", peak: N("string"), live: "boolean" })),
+      tank: "boolean",
+    }),
+  ),
 });
 const BOOST_ANSWER = O({ api_version: "number", ok: "boolean", error: N("string"), boost: N(BOOST) });
 
@@ -602,7 +617,13 @@ export interface HeatHotWaterReview {
   hits: number;
   peaks: number;
   misses: number;
-  per_peak: { peak: string; hit: boolean; pick: string | null; pump_run: string | null; miss: boolean }[];
+  /** Peaks a block held the pump's run into (level A). */
+  cold_risks: number;
+  /** Hours level A took out of the heat plan that day. */
+  blocks_cut: number;
+  /** Level A's mode that day: "shadow" or "live". */
+  a_mode: string;
+  per_peak: { peak: string; hit: boolean; pick: string | null; pump_run: string | null; miss: boolean; cold_risk: boolean }[];
 }
 
 export interface HeatHotWaterGate {
@@ -631,6 +652,29 @@ export interface HeatHotWater {
   level: string | null;
   /** "shadow", "live" or "watch". */
   mode: string;
+  /** Level A, where the path blocks hot water too; `null` elsewhere. */
+  blocking: HeatHotWaterBlocking | null;
+}
+
+/** An hour level A takes out of the heat plan (`heat/dhw_level_a.py`). */
+export interface HeatBlockingCut {
+  start: string;
+  end: string;
+  /** "peak" (before the shower at `peak`), "day_cap" (the day's blocked time) or "hygiene" (the periodic increase). */
+  reason: string;
+  peak: string | null;
+  /** Out of the plan steered by; else what SpotNav would do (shadow). */
+  live: boolean;
+}
+
+/** Level A: the heat plan's blocks kept clear of the hot water. */
+export interface HeatHotWaterBlocking {
+  /** "shadow", "live" or "watch". */
+  mode: string;
+  gate: HeatHotWaterGate;
+  cuts: HeatBlockingCut[];
+  /** A tank sensor reads: the tank rule stands in for the day's cap. */
+  tank: boolean;
 }
 
 export interface HeatBoostAnswer {

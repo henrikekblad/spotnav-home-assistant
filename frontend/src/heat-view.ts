@@ -8,8 +8,17 @@
 
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
-import { isRelayPath, roomName, type HeatAheadHour, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
-import { dayChart, hoursOf, type DayPeak, type DayPlannedWater, type DaySpan } from "./heat-day-chart";
+import {
+  isRelayPath,
+  roomName,
+  type HeatAheadHour,
+  type HeatAnswer,
+  type HeatBandHour,
+  type HeatBlockingCut,
+  type HeatChoice,
+  type HeatHotWaterBlocking,
+} from "./heat-model";
+import { dayChart, hoursOf, type DayNote, type DayPeak, type DayPlannedWater, type DaySpan } from "./heat-day-chart";
 import type { HeatHistory } from "./heat-history";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { heatTabList, heatTabPanel, type HeatTab, type HeatTabFit, type UseUnit } from "./heat-tabs";
@@ -657,6 +666,10 @@ export function hotWaterLines(language: Language, answer: HeatAnswer): { key: st
       out.push({ key: "water-backed-off", text: translate(language, "heat.water.backedOff") });
     }
   }
+  const blocking = hotWater.blocking;
+  if (blocking !== null && blocking.mode !== "watch") {
+    out.push(...blockingLines(language, blocking));
+  }
   const review = hotWater.review;
   if (review === null) {
     return out;
@@ -671,7 +684,13 @@ export function hotWaterLines(language: Language, answer: HeatAnswer): { key: st
   out.push({ key: "water-review", text: line });
   const ctx = context(language, answer);
   const peaks = review.per_peak.map((item) => {
-    const key = item.miss ? "heat.water.peakMiss" : item.hit ? "heat.water.peakHit" : "heat.water.peakNoUse";
+    const key = item.cold_risk
+      ? "heat.water.peakCold"
+      : item.miss
+        ? "heat.water.peakMiss"
+        : item.hit
+          ? "heat.water.peakHit"
+          : "heat.water.peakNoUse";
     const parts = [translate(language, key, { peak: item.peak })];
     if (item.pick !== null && review.mode === "shadow") {
       parts.push(lowerFirst(language, translate(language, "heat.chart.waterWouldPast", { time: clock(ctx, Date.parse(item.pick)) })));
@@ -683,6 +702,41 @@ export function hotWaterLines(language: Language, answer: HeatAnswer): { key: st
   });
   if (peaks.length > 0) {
     out.push({ key: "water-peaks", text: translate(language, "heat.water.peaks", { list: peaks.join("; ") }) });
+  }
+  if (blocking !== null && (review.blocks_cut > 0 || review.cold_risks > 0)) {
+    out.push({
+      key: "water-blocking-review",
+      text: translate(language, review.a_mode === "live" ? "heat.water.blockingReview" : "heat.water.blockingReviewWould", {
+        hours: String(review.blocks_cut),
+        risks: String(review.cold_risks),
+      }),
+    });
+  }
+  return out;
+}
+
+/** Level A's lines: steered, or in shadow its gate's progress ("Blockeringar kring varmvattnet i skuggning: dag 5 av
+ * 14, 8 av 10 toppar träffade"), and back in shadow after too many late reheats. */
+function blockingLines(language: Language, blocking: HeatHotWaterBlocking): { key: string; text: string }[] {
+  const out: { key: string; text: string }[] = [];
+  const gate = blocking.gate;
+  if (blocking.mode === "live") {
+    out.push({ key: "water-blocking-live", text: translate(language, "heat.water.blockingLive") });
+  } else if (gate.open) {
+    out.push({ key: "water-blocking-gate", text: translate(language, "heat.water.blockingReady") });
+  } else {
+    out.push({
+      key: "water-blocking-gate",
+      text: translate(language, "heat.water.blockingGate", {
+        days: String(Math.min(gate.days, gate.days_needed)),
+        needed: String(gate.days_needed),
+        hits: String(gate.hits),
+        peaks: String(Math.max(gate.peaks, gate.peaks_needed)),
+      }),
+    });
+  }
+  if (gate.backed_off !== null) {
+    out.push({ key: "water-blocking-backed-off", text: translate(language, "heat.water.blockingBackedOff") });
   }
   return out;
 }
@@ -891,10 +945,15 @@ function waterOf(
   hours: HeatBandHour[],
   startMs: number,
   endMs: number,
-): { water: DaySpan[]; planned: DayPlannedWater[]; peaks: DayPeak[] } {
+): { water: DaySpan[]; planned: DayPlannedWater[]; peaks: DayPeak[]; notes: DayNote[] } {
   const hotWater = answer.hot_water;
   if (hotWater === null) {
-    return { water: hours.filter((hour) => hour.hot_water).map((hour) => ({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS })), planned: [], peaks: [] };
+    return {
+      water: hours.filter((hour) => hour.hot_water).map((hour) => ({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS })),
+      planned: [],
+      peaks: [],
+      notes: [],
+    };
   }
   const runs = hotWater.runs_today.length > 0 ? hotWater.runs_today : (answer.today?.runs ?? []);
   const water = runs.map((run) => ({ startMs: Date.parse(run.start), endMs: Date.parse(run.end) }));
@@ -910,7 +969,23 @@ function waterOf(
       peaks.push({ ms, label: translate(language, "heat.chart.peak", { time: clock(ctx, ms) }) });
     }
   }
-  return { water, planned, peaks };
+  const notes = (hotWater.blocking?.cuts ?? [])
+    .map((cut) => ({ startMs: Date.parse(cut.start), endMs: Date.parse(cut.end), text: cutText(language, cut) }))
+    .filter((note) => note.endMs > startMs && note.startMs < endMs);
+  return { water, planned, peaks, notes };
+}
+
+const CUT_KEYS: Record<string, [TranslationKey, TranslationKey]> = {
+  peak: ["heat.chart.cutPeak", "heat.chart.cutPeakWould"],
+  day_cap: ["heat.chart.cutDay", "heat.chart.cutDayWould"],
+  hygiene: ["heat.chart.cutHygiene", "heat.chart.cutHygieneWould"],
+};
+
+/** An hour level A took out of the heat plan, in words: "blockering förkortad före duschen 06:00" (live) or "skulle
+ * förkorta blockeringen före duschen 06:00" (shadow). */
+export function cutText(language: Language, cut: HeatBlockingCut): string {
+  const keys = CUT_KEYS[cut.reason] ?? CUT_KEYS["day_cap"]!;
+  return translate(language, cut.live ? keys[0] : keys[1], { time: cut.peak ?? "" });
 }
 
 /** Today's chart (`heat-day-chart.ts`) from the answer's band and rooms; `null` with nothing to draw. */
@@ -1235,7 +1310,7 @@ const CONTROL_WAITS = [
   "automation", "other_controller", "pump_price_control", "relay_unavailable", "relay_closed", "no_relay", "no_signal",
   "check_failed", "foreign_change", "no_read_back",
 ];
-const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b", "hot_water"];
+const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b", "hot_water", "hot_water_low"];
 /** The waits whose words name the relay: the other paths have their own (`heat.control.path.wait.*`). */
 const PATH_WAITS = ["relay_unavailable", "relay_closed", "no_relay", "no_signal", "check_failed", "foreign_change", "no_read_back"];
 const STEERED_PATHS = ["relay", "sg_ready", "sg_ready_api", "offset"];
