@@ -390,8 +390,10 @@ safe.
 
 **Always, while SpotNav steers the relay:**
 
-* No block starts while the pump makes hot water (the meter's hot-water level, or the pump's own state), and a block
-  already held ends at the look that sees a run under it (every 30 seconds; the meter may show a run a little late).
+* No block starts while the pump makes hot water (the meter's hot-water level, or the pump's own state). A run that
+  shows within five minutes of a closing was caught by it as it began: the block ends at that look (every 30
+  seconds). A run that shows later under a block means the block lets hot water run on this pump (a relay that
+  only lowers the curve): the block stays.
 * After a block the pump has at least an hour back to normal before the next one, so a reheat the block held runs
   then: a run waits at most one block (three hours at most), and no new block starts while it runs.
 * With a tank temperature sensor in the pump's integration: below 40 °C no block starts and a held one ends, until the

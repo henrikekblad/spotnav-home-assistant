@@ -90,3 +90,18 @@ async def test_the_tank_rule_without_a_tank_sensor_holds_nothing(hass: HomeAssis
     monkeypatch.setattr(type(hot_water), "_pump", lambda _self: _pump(None))
     await control.async_look(now)
     assert relay.calls == ["on"]
+
+
+async def test_a_run_seen_under_a_block_long_held_keeps_the_block(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Review S4: a run the meter shows under a block held for a while proves the block does not stop hot water there
+    (a relay that only lowers the curve, a pump whose menu lets hot water run): the lowering stays, its writes and
+    savings with it. Only a run caught at the closing ends it."""
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    hot_water = control.shadow.hot_water
+    making = {"now": False}
+    monkeypatch.setattr(hot_water, "making_now", lambda: making["now"])
+    await control.async_look(now)
+    assert relay.calls == ["on"]
+    making["now"] = True
+    await control.async_look(now + 20 * MIN)
+    assert relay.calls == ["on"] and control.held and control.status()["reason"] == "planned"
