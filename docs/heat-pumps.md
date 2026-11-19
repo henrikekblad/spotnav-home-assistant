@@ -1,7 +1,13 @@
+---
+title: Heat pumps
+description: Which heat pumps SpotNav reads, the heat card, and SpotNav's own heat control behind Control the heat.
+order: 40
+---
+
 # Heat pumps
 
 SpotNav finds a heat pump by its Home Assistant integration, with no setting, and reads what the pump reports. It
-writes nothing to a heat pump unless you turn on **Styr värmen** (see
+writes nothing to a heat pump unless you turn on **Control the heat** (see
 [below](#spotnavs-own-heat-control-relay-off-by-default)). Then it steers through the one control path you chose: a
 **relay** that lowers the pump's curve, SG Ready's two contacts, or, on some pumps, SG Ready or the heating curve
 offset through the pump's own integration (see
@@ -43,18 +49,20 @@ a pump to it and only watch.
 ## The heat card
 
 The heat card (`type: custom:spotnav-heat-card`, with `site:` or `charger:`) has a header and three tabs. The header
-says after the card's name what the heating does now: **Värmer 2,1 kW**, **Varmvatten 2,9 kW** or **Vilar** from the
-heat pump's own facts or its meter, and **Sänkt till 06:00** or **Höjd till 15:00** while SpotNav's own control holds
+says after the card's name what the heating does now: **Heating 2.1 kW**, **Hot water 2.9 kW** or **Resting** from the
+heat pump's own facts or its meter, and **Lowered until 06:00** or **Raised until 15:00** while SpotNav's own control holds
 the heat down or up. Before SpotNav controls anything, **Test** stands first (tap it for what that means). The **i**
 opens the details, the gear (administrators) the settings.
 
-* **Now**: the dial for the wanted temperature with its band, the coldest room and the outdoor temperature, **Hemma**
-  or **Borta**, what SpotNav would do (or does) and what the relay does, a thin strip of **the plan's next twelve
+![The heat card's Now tab: the dial, Home or Away and the next twelve hours](images/heat-card-now.png)
+
+* **Now**: the dial for the wanted temperature with its band, the coldest room and the outdoor temperature, **Home**
+  or **Away**, what SpotNav would do (or does) and what the relay does, a thin strip of **the plan's next twelve
   hours** (a cell an hour: a lowering, a pre-heat or raise, the cooler night, hot water as a dot) with the same in
   words under it, and today's heat, hot water and cost. The strip ends at midnight until tomorrow's prices are in.
   The sensors, the zones and how the pump is controlled are in the gear's settings.
-  **Borta** holds the house **3 °C below the wanted temperature** (never below 16 °C) until two hours before the
-  return time, then warms it up. The gear's **Setback when away** (*Sänkning när borta*) sets those degrees, 1 to 6
+  **Away** holds the house **3 °C below the wanted temperature** (never below 16 °C) until two hours before the
+  return time, then warms it up. The gear's **Setback when away** sets those degrees, 1 to 6
   in half degrees; the warm-up before the return is the same.
 * **Plan**: the day's chart: the rooms, the comfort band, the setpoint, SpotNav's lowerings (what it did solid, what it
   plans lighter), the relay, hot water and the car. The arrows step back through past days (tap the day to choose
@@ -119,7 +127,7 @@ comfort figures of the day's review and the heat history. The card still shows e
 
 With the heat pump's lowering input wired to a relay in Home Assistant (NIBE's external contact set to shift the curve
 down, or an SG Ready pump's first contact), SpotNav can switch that relay itself on its own heat plan, the same plan
-the heat card's day chart shows. **It is off by default.** The switch, **Styr värmen**, is in the **Heating** section of
+the heat card's day chart shows. **It is off by default.** The switch, **Control the heat**, is in the **Heating** section of
 the settings popover (administrators only) and is shown when the control path is **Relay**, **SG Ready**, **SG Ready
 through the integration** or **Heating curve offset**. Off, nothing is written and SpotNav only shows what it would
 do. A setpoint written to the pump is not part of this. What follows is written for the relay; the two paths through
@@ -148,8 +156,7 @@ again after checking the wiring.
   and the next, until the room is back **0.2 °C** inside the band; then the lowering ends once its 45 minutes have
   passed. A room whose own sensor rises fast (0.6 °C in half an hour: a sensor warmed by sun or a stove) does not
   count as warm while it rises, also with a single sensor. All the other rules hold, and an hour both dear and warm
-  is one lowering, not two. The day's band shows these hours as lowered with the reason **för varmt inne** (too warm
-  indoors), as "would lower" while the switch is off. The hour above the band is counted in memory and starts again
+  is one lowering, not two. The day's band shows these hours as lowered with the reason **too warm indoors**, as "would lower" while the switch is off. The hour above the band is counted in memory and starts again
   after a restart.
 * Never at **−15 °C or colder** outdoors.
 * **Released at once** when a counted room (its offset counted) falls below the comfort band, when the plan or the
@@ -158,7 +165,7 @@ again after checking the wiring.
   (the hot-water entity in the settings, or the pump's own boost such as NIBE's temporary lux): a block can stop hot
   water too, so a boost you started is never cut off and no lowering starts while it runs. On those paths also while
   the pump makes hot water by itself, and while a tank sensor reads under 40 °C (until it reads 45 °C): see
-  [Blocks and the hot water](#blocks-and-the-hot-water). A curve offset does not touch hot water and goes on beside
+  [Blocks and the hot water](hot-water.md#blocks-and-the-hot-water). A curve offset does not touch hot water and goes on beside
   it.
 * At most 6 switchings a day (both SG Ready contacts together).
 * On the relay path pre-heating stays planning only: one relay can lower the curve, not raise it. SG Ready with both
@@ -196,9 +203,9 @@ not observed** in the diagnostics (`heat_settings.control.raise`); SpotNav then 
 without a note on the card. The power alone never fails the check (the compressor starts and stops by itself), and
 it passes only after two raises that both show it. Turning the switch off and on tries the raise again.
 
-The day chart shows SpotNav's raises as solid warm columns (**SpotNav höjde**) and the planned ones lighter
-(**Planerad höjning**, or **Skulle höja** while the switch is off), and the line under the switch says **Styr: höjer
-värmen till …** while a raise runs.
+The day chart shows SpotNav's raises as solid warm columns (**SpotNav raised**) and the planned ones lighter
+(**Planned raise**, or **Would raise** while the switch is off), and the line under the switch says **Controlling: raising
+the heat until …** while a raise runs.
 
 **Every write is read back**: the relay must show the new state within 90 seconds. A switching that fails or is not
 seen pauses control for the rest of the day; an opening is tried again every five minutes until the relay reads open.
@@ -210,9 +217,9 @@ SpotNav never turns an automation off. Another heat optimiser (EffektGuard) or t
 control from starting.
 
 **What you see**: the line under the switch (off; checking; controlling and until when; or what it waits for), the
-heat card's header saying what the control does now after its name (**· Sänkt till 19:00**, **· Höjd till 15:00**
+heat card's header saying what the control does now after its name (**· Lowered until 19:00**, **· Raised until 15:00**
 for SG Ready's raise, else what the heat pump does) with no **Test** before it, and SpotNav's own lowerings as solid
-columns in the Plan tab's chart (**SpotNav sänkte**), beside the plan's lighter ones, the rooms and the setpoint. Tap
+columns in the Plan tab's chart (**SpotNav lowered**), beside the plan's lighter ones, the rooms and the setpoint. Tap
 or point at the chart for a time's figures. The diagnostics (`heat_settings.control`) keep the switchings, the check's
 results and why each decision was made.
 
@@ -223,7 +230,7 @@ integration. **None of them has run on a real heat pump yet.** The registers, th
 do with them are read from the integrations' sources, and the settings say under the switch that the path is untried.
 If you run one, watch the first days and tell us what you see.
 
-Everything in the section above holds for them as well: off by default behind **Styr värmen**, the check before
+Everything in the section above holds for them as well: off by default behind **Control the heat**, the check before
 control starts, the same plan and rules (45 minutes to 3 hours, 6 hours a day, never at −15 °C, released when a room
 gets cold), every write read back, and someone else's change wins: a value you or another automation set is left as
 it is and SpotNav pauses until the next day. "Closed" in that section is the lowering as SpotNav wrote it, "open" the
@@ -240,7 +247,7 @@ SpotNav finds these entities on the pump: under **Control** a path the pump has 
 and choosing it fills its entities in. Through NIBE's cloud (myUplink) nothing is steered, and CTC Local Easyconf
 (`ctc_ecozenith`) has no curve adjustment among its controls, so it has no offset path.
 
-**NIBE's entities are disabled by default.** When you turn **Styr värmen** on, the dialog lists the path's entities
+**NIBE's entities are disabled by default.** When you turn **Control the heat** on, the dialog lists the path's entities
 that are still disabled in NIBE Heat Pump (the ones written, and the calculated supply the check reads). Saving
 enables exactly those and reloads the integration once. Nothing is enabled before you save, and turning control off
 leaves them enabled.
@@ -322,117 +329,6 @@ offset moves (`kept.snapshots`) and whether SpotNav holds the SG Ready switch (`
 
 ## Hot water
 
-SpotNav learns when the household uses hot water and plans the tank's reheating into the cheap hours before it. It
-starts in shadow: it shows what it would do and what that would have saved, and writes nothing until it has shown
-that it hits your peaks. There is no setting of its own beyond **Styr värmen**.
-
-**The peaks.** A peak is a time of day by which a full tank is wanted, for example the morning showers. SpotNav finds
-them in the heat pump meter: each hot-water run (the meter's plateau of about three times the heating level) follows a
-draw, so the draw is placed 20 minutes before the run. Runs under half your pump's median run (at least 0.2 kWh)
-are the tank's standby loss, not use: on a pump whose runs are 0.4–1.0 kWh that is about 0.35 kWh. Over
-the last 21 days the draws are grouped by time of day; a group that holds at least a fifth of the hot water used, and
-at least five draws, is a peak, at most three a day and at least three hours apart. Until a week has been seen, the
-peaks are **05:00–07:00** and **17:00–20:00** (ready by 05:00 and 17:00); a learned peak replaces the nearest of them.
-Runs that SpotNav or the button started are left out, so a boost does not teach SpotNav that nobody showers.
-
-**The plan.** Before each peak, SpotNav looks for the cheapest quarter-hours for one run that ends by itself: from the
-end of the previous peak, at most eight hours ahead, done before the peak. Spare sun counts at the sell price. A run
-never goes where the house, the cars' charging and the battery's grid charging leave no room under the fuse or your
-import target, nor into an hour where SpotNav lowers the heat on a path that also blocks hot water, nor while it is
-too cold outdoors. It is planned only where it saves at least 0.10 kr (the same in your area's currency, about one
-euro cent) against the pump's own reheat after the peak, counted with the tank's standby loss; otherwise the pump
-does it itself. A cloud route gets at most two planned runs a
-day, a local one three.
-
-**On the heat card.** *Plan* shows the planned runs as hollow droplets with a thin bar over their length and the
-peaks as small ticks on the time axis ("dusch 06:00"); the measured runs stay filled droplets. Tap a run: "Skulle värma
-varmvatten 04:15–04:45 · 42 öre/kWh · klart till 06:00", and once it has passed, what the pump did instead ("Skulle
-ha värmt varmvatten 04:15 · pumpen körde själv 06:20"). The strip on *Nu* says "varmvatten 04:15". Under the chart:
-yesterday's review (kWh moved and money saved, in shadow), each peak hit or not, and the shadow's progress ("dag 5 av
-7, 8 av 10 toppar träffade").
-
-**From shadow to steering.** Planned runs are written only with **Styr värmen** on and after at least seven shadow
-days, one of each weekday, at least ten peaks seen, 70 % of them hit (the pump ran within 45 minutes of the peak) and
-a saving above zero. Once open, the gate stays open while SpotNav steers; if the pump reheats within 90 minutes after
-a peak despite the run three times in a week, SpotNav goes back to shadow and the week starts again. A run is not
-started while a boost already runs (yours, the button's or the pump's own run: that fills the peak), while the house
-needs the compressor (too cold outdoors, a room below the band, outdoor or room readings missing), without a meter
-reading in the last ten minutes (or, without a meter, the pump's own state), or after a write that was not read back
-(that ends planned hot water for the day; a local route is tried once more after five minutes, a cloud route never).
-A pulse is read back by the run it asks for: the meter must show it within ten minutes.
-
-**With the cars and the battery.** A run that will be written is part of the house's expected load, so the cars'
-charging plans and the battery plan see it, and the pump's own reheat it replaces is taken out where it was expected.
-What the house profile has already learned of these runs is not counted twice. At its start, the run needs room on
-the fuse's tightest phase now (its whole power on one phase, the worst case; what a battery holding the grid would
-yield counts as room) and room under your import target for the hour: if a car has started since, it waits. With a
-phase reading missing or stale it does not start at all. If a phase goes over the fuse while SpotNav's own run is
-going, SpotNav ends that run (where the pump has a way to end it) and starts no more that day. Your own boost and the
-button's are never ended.
-
-**Varmvatten nu.** Where the pump has a hot-water boost that ends by itself (NIBE's temporary lux "one time", myUplink's
-temporary lux, CTC's extra hot water for an hour) or you chose a **hot water entity**
-wired to the pump's hot-water input (SpotNav gives it a short pulse), the *Nu* tab has a **Varmvatten nu** button for
-anyone who sees the card. It shows *Startar…* until the pump reads the start back, then the time left (exact on a
-timer, about on a one-time run) and, where the boost can be ended early, **Avbryt**. One start per ten minutes (a
-start that failed does not count). While a phase is already over the main fuse the button says so and starts nothing:
-turn something off and press again. The button is your own start: SpotNav never stops it, never sheds it for the fuse,
-and a heat block ends at once and starts no more until its run is over. HeishaMon's force hot water is offered to the
-button only, since whether it ends by itself is not verified: SpotNav turns it off 15 minutes after the expected run.
-Without such a boost the button is not shown.
-
-### Blocks and the hot water
-
-On a relay, SG Ready or SG Ready API path a heat block stops the compressor, and with it the pump's own hot-water
-runs. Where the pump has no boost SpotNav can start (a NIBE without a network on a relay, for example) this is the
-only way SpotNav touches the hot water: it moves the pump's own reheat to after the block. These rules keep that
-safe.
-
-**Always, while SpotNav steers the relay:**
-
-* No block starts while the pump makes hot water (the meter's hot-water level, or the pump's own state). A run that
-  shows within five minutes of a closing was caught by it as it began: the block ends at that look (every 30
-  seconds). A run that shows later under a block means the block lets hot water run on this pump (a relay that
-  only lowers the curve): the block stays.
-* After a block the pump has at least an hour back to normal before the next one, so a reheat the block held runs
-  then: a run waits at most one block (three hours at most), and no new block starts while it runs.
-* With a tank temperature sensor in the pump's integration: below 40 °C no block starts and a held one ends, until the
-  tank reads 45 °C again.
-
-**In the plan, shadow first.** SpotNav also shapes which hours it lowers:
-
-* No lowered hour in the **two hours before each peak's ready time** (the peaks above; 05:00 and 17:00 until learned),
-  so the pump's reheat for the showers is never held into them. Not where the pump has already made a real run (more than a standby
-  reheat) since the previous peak ended (the tank was filled after its last use), and not where a run of SpotNav's
-  was written and read back for the peak, or a boost already ran when it came due (a run only planned keeps the
-  guard).
-* Without a tank sensor, at most **four lowered hours a day** (the heat's own limit is six), so the pump gets its
-  reheats between the blocks. With a tank sensor the 40 °C rule stands in for this.
-* The pump's **periodic increase**, where the meter shows it: a run at least twice the usual one (energy and length)
-  at night, seen three times at the same time of day at equal intervals of 2 to 30 days (NIBE's default is 14, so
-  about four weeks of meter readings first). Its next one is kept free of blocks from an hour before to half an hour
-  after its usual length. Until SpotNav has seen it three times, and on a pump that runs it at varying times, a block
-  can still delay it by one block (at most three hours), after which the pump runs it.
-
-A lowered hour these rules take out may move to the next dear hour the plan allows, or simply go. In shadow the plan
-SpotNav steers by still has the hour: *Plan*'s readout says what would change ("skulle förkorta blockeringen före
-duschen 06:00") and the review under the chart counts yesterday's hours and the **late reheats**: a peak whose
-pump run a block held until after its ready time ("06:00 värmdes sent efter en blockering"). The progress line
-reads "Blockeringar kring varmvattnet i skuggning: dag 5 av 14, 8 av 10 toppar träffade". These rules steer the plan
-once **Styr värmen** is on and after at least 14 shadow days with at least ten peaks seen and 70 % of them hit (no
-saving is asked: the rules only give up lowered hours). Three late reheats within a week of steering never send them back
-to shadow, which would protect less: they get stricter instead (three hours kept free before each peak, one
-lowered hour less a day) until seven days in a row without a late reheat, and the card says so ("Blockeringarna
-hålls längre från varmvattnet …"). On a beta site the shadow days are skipped, as for the planned runs, but the
-stricter rules after late reheats apply there too.
-
-**With the cars and the battery.** A peak's expected reheat that falls in a block SpotNav will hold is moved to the
-block's end in the house's expected load, so the cars' and the battery's plans see it there.
-
-**What SpotNav never does.** It never turns off the pump's own periodic increase (NIBE's "periodisk höjning", CTC's
-legionella programme): keep it on, hygiene is the pump's. A run a block holds waits at most one block (three hours at
-most), and a run caught by a closing as it began ends that block at once. An increase SpotNav has not recognised can be
-held by one block, as any run.
-
-The diagnostics (`heat_settings.shadow.hot_water`) show the boost route, the mode, the gate, the peaks, the picks, the
-days kept with their reviews, SpotNav's own writes and the blocks' rules (`level_a`: mode, gate and the hours cut).
+SpotNav learns when the household uses hot water and plans the tank's reheat into the cheap hours before it, in
+shadow first. Where the pump can start a run that ends by itself, the heat card has a **Hot water now** button.
+See [Hot water](hot-water.md).
