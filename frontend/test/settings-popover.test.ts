@@ -67,6 +67,10 @@ describe("the battery's words", () => {
       "Aktivera batteriets styrning Remote EMS i Home Assistant (den är avstängd från början).",
     );
     expect(batteryNeed("en", "ai_takeover_ack")).toBe("Accept that SpotNav takes over from the battery's AI mode.");
+    expect(batteryNeed("en", "strategy_ack")).toBe(
+      "Accept that SpotNav's commands override the strategy the battery runs in its own cloud.",
+    );
+    expect(batteryLine("sv", "watching:strategy")).toBe("Styr inget än: godkänn att SpotNav går före batteriets egen strategi.");
     expect(["obeyed", "restored", "ignored", "aborted:no_effect", "aborted:fuse", "not_judgeable:nearly_full"].map(outcomeVerdict)).toEqual([
       "passed", "passed", "failed", "failed", "pending", "pending",
     ]);
@@ -262,6 +266,25 @@ describe("the popover from the house card", () => {
     expect(form.textContent).toContain(
       "SpotNav tar över styrningen av batteriet. När du stänger av hamnar batteriet i Maximal egenförbrukning — slå på AI-läget i Sigenergy-appen igen om du vill tillbaka.",
     );
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["changes"] !== undefined).map((message) => message["changes"])).toEqual([
+      { battery_control_ai_takeover_ack: true },
+    ]);
+  });
+
+  it("explains that SpotNav overrides a battery's own strategy it cannot read and writes the acknowledgement", async () => {
+    const { root, messages } = await mount({ battery: "needs_strategy_ack.json" });
+    const popover = await open(root);
+    const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
+    expect(battery.querySelector("[data-help='battery_control_enabled']")!.textContent).toBe(
+      "Styr inget än: godkänn att SpotNav går före batteriets egen strategi.",
+    );
+    expect(battery.querySelector("[data-need='strategy_ack']")!.textContent).toContain("Godkänn att SpotNavs kommandon");
+    battery.querySelector<HTMLButtonElement>("button[data-edit='battery_control_ai_takeover_ack']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form[data-battery-ack]")!;
+    expect(form.textContent).toContain("SpotNav kan inte se vilken strategi batteriet kör i sitt eget moln");
+    expect(form.textContent).not.toContain("Sigenergy");
     form.requestSubmit();
     await vi.advanceTimersByTimeAsync(0);
     expect(messages.filter((message) => message["changes"] !== undefined).map((message) => message["changes"])).toEqual([

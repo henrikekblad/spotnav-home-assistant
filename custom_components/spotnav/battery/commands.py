@@ -118,7 +118,8 @@ The entity keys, options and services below were checked against each integratio
   (not verified on a hub; the hub may nak a 0). One request at a time: a new one while another runs is nak'd (no error
   to the service call; the `nak` is what shows it). A discharge to the house is `auto`, the hub's own
   strategy (`discharge` at a power may export); a person who has FerroAI or a peak-shaving strategy on in EnergyCloud
-  gets that strategy there. **ACE** (adaptive current equalisation) moves
+  gets that strategy there. That strategy cannot be read (the adapter has no mode rule), so the control waits for
+  the person's acknowledgement that SpotNav's requests override it (`strategy_unread`). **ACE** (adaptive current equalisation) moves
   energy between the phases in the hub to keep each grid phase under the threshold set in EnergyCloud; it runs in
   the hub, but its reach (20 A per hub) and whether it acts on the batteries' own grid charge are not documented, nor is
   how the hub spreads a total over its three phases, so the grid charge cap counts the charge on one phase
@@ -325,6 +326,11 @@ class BrandControl:
     #: once the person acknowledged it (`ExecInputs.takeover`, the site's `battery_control_ai_takeover_ack`):
     #: Sigenergy's AI mode. Its hand-back lands in the brand's plain mode, not back in the optimiser.
     takeover: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    #: The plant's own strategy cannot be read (no mode rule shows an optimiser, peak shaving or a grid service), so
+    #: it always reads free: nothing is written until the person acknowledged that SpotNav's commands override
+    #: whatever strategy runs (the same acknowledgement as `takeover`, `ExecInputs.takeover`); the hand-back gives
+    #: the plant back to that strategy.
+    strategy_unread: bool = False
     #: The roles renewed to keep a watchdog alive (`WATCHDOG_RENEW_S`); empty when the brand has none.
     watchdog_roles: tuple[str, ...] = ()
     #: Roles that must read a value before anything is written (`(role, allowed states, reason)`).
@@ -850,6 +856,8 @@ FERROAMP_CONTROL: Final = BrandControl(
     # Someone else's request left standing (Ferroamp's own app, an automation) is not overwritten.
     requires=(("command", frozenset({"auto"}), "ferroamp_command_running"),),
     peak_first={ACTION_HOLD: ("command",), ACTION_GRID_CHARGE: ("command",)},
+    # The strategy set in EnergyCloud (peak shaving, FerroAI, a grid service) is not shown in Home Assistant.
+    strategy_unread=True,
     local_readback=True,
     # The cap counts the whole charge on one phase (the default): the API takes the system's total and nobody
     # documents how the hub spreads it, nor whether ACE acts on it. Raise it only once a hub has shown the split

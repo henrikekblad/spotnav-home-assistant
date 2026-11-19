@@ -2107,6 +2107,8 @@ class BatteryControl:
         elif taken_over(facts, control) or self._takeover_withdrawn(self.options()):
             if not self.options().ai_takeover_ack:
                 needs.append("ai_takeover_ack")
+        elif control.strategy_unread and not self.options().ai_takeover_ack:
+            needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
         return needs
@@ -2151,6 +2153,8 @@ class BatteryControl:
             return f"blocked:{executor.state.blocked}"
         if state == "on" and "ai_takeover_ack" in self._needs():
             return "watching:ai_mode"
+        if state == "on" and "strategy_ack" in self._needs():
+            return "watching:strategy"
         return state
 
     def status(self) -> dict[str, Any]:

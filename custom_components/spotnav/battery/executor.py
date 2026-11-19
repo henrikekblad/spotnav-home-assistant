@@ -767,7 +767,11 @@ def management_problem(
     facts: BatteryFacts, control: BrandControl, active: bool, *, takeover: bool = False
 ) -> str | None:
     """Why the battery is not SpotNav's to run now; `unknown` when a setting cannot be read. `takeover`: the person
-    acknowledged that SpotNav may take the plant over from its own optimiser (`taken_over`)."""
+    acknowledged that SpotNav may take the plant over from its own optimiser (`taken_over`), and for a plant whose
+    own strategy cannot be read (`BrandControl.strategy_unread`) that SpotNav overrides whatever strategy runs:
+    without it such a plant is never SpotNav's to run (`strategy_unread`)."""
+    if control.strategy_unread and not takeover:
+        return "strategy_unread"
     management = facts.management
     if management.state == "free":
         return None

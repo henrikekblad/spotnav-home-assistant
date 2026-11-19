@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -19,7 +20,13 @@ from custom_components.spotnav.battery.commands import (
     table,
 )
 from custom_components.spotnav.battery.executor import Executor
-from tests.battery_control_fakes import FERROAMP_STATES, T0, FakeBattery, events, run, written
+from tests.battery_control_fakes import FERROAMP_STATES, T0, FakeBattery, events, written
+from tests.battery_control_fakes import run as _run
+
+
+def run(*args: Any, **overrides: Any) -> Any:
+    """The fakes' run, with the acknowledgement that SpotNav overrides the hub's own strategy given."""
+    return _run(*args, **({"takeover": True} | overrides))
 
 
 def test_the_recipe_is_in_the_table_and_covers_the_house_with_auto() -> None:
@@ -165,3 +172,18 @@ def test_the_shell_reads_the_hubs_answer_from_the_attributes() -> None:
     assert role_reads(FERROAMP_CONTROL, [fact], fact)["command"].state == "unavailable"
     acked = replace(fact, attributes=attrs | {"status": "ack"})
     assert role_reads(FERROAMP_CONTROL, [acked], acked)["command"].state == "auto"
+
+
+def test_nothing_is_sent_until_the_person_accepts_that_spotnav_overrides_the_hubs_own_strategy() -> None:
+    """The strategy set in EnergyCloud (peak shaving, FerroAI, a grid service) is not shown in Home Assistant."""
+    assert FERROAMP_CONTROL.strategy_unread
+    executor = Executor(FERROAMP_CONTROL)
+    battery = FakeBattery(FERROAMP_CONTROL, dict(FERROAMP_STATES))
+    now, results = run(executor, battery, T0, 4, "grid_charge", 3.0, takeover=False)
+    assert written(results) == [] and executor.state.phase != "active"
+    now, results = run(executor, battery, now, 4, "grid_charge", 3.0)
+    assert written(results) == [("command", "charge:3000")] and executor.state.phase == "active"
+    # The acknowledgement withdrawn while it runs: the hub is handed back.
+    _now, results = run(executor, battery, now, 6, "grid_charge", 3.0, takeover=False)
+    assert ("command", "auto") in written(results) and executor.state.phase != "active"
+    assert events(results, "hand_back")[0]["reason"] == "management_changed:strategy_unread"

@@ -33,9 +33,9 @@ settings popover's **Home battery** section, shown when SpotNav finds a battery:
 card's gear or the charging card's **Settings** (administrators only). The section also has:
 
 * one line under the switch saying what control does now (off, test mode, checking, waiting for a suitable moment and
-  why, on, stopped, or only watching while the AI mode is not yet accepted);
+  why, on, stopped, or only watching while the AI mode, or a battery's own strategy SpotNav cannot read, is not yet accepted);
 * the checklist of what you still have to do (enable an entity, turn on the firmware sensor, accept the AI-mode
-  takeover), each in plain words;
+  takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy), each in plain words;
 * the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
   passed, failed or not judged yet) with what SpotNav may then do;
 * the reminder to turn AI mode on again after a takeover ended, and **Allow selling from the battery** (off by
@@ -79,7 +79,10 @@ Home Assistant stops, and SpotNav caps a grid charge for that case as for Sigene
 last request seen on the bus and, beside it, the hub's answer to it: SpotNav counts a request as taken only once the
 hub has acknowledged it, and sends a refused hand-back again (the battery's power is still judged as for every
 brand); the hub takes one request at a time and refuses a second while one is running; and SpotNav does not start while another request
-(Ferroamp's own app, an automation) is standing. The hub's ACE moves energy between the phases to keep each grid
+(Ferroamp's own app, an automation) is standing. The strategy set for the hub in EnergyCloud (peak shaving, FerroAI,
+a grid service) is not shown in Home Assistant, so SpotNav cannot tell whether one runs: the checklist asks you to
+accept that SpotNav's requests override it while SpotNav controls the battery (every hand-back gives the hub back to
+it), and nothing is sent before you do. Leave control off if the hub takes part in a grid service. The hub's ACE moves energy between the phases to keep each grid
 phase under the threshold set in EnergyCloud (set it at the main fuse). It runs inside the hub, but Ferroamp documents neither whether it acts on a grid charge nor how the hub spreads a
 charge over its three phases, so SpotNav's cap for a grid charge counts it all on one phase, as for a brand that
 does not say, and does not depend on ACE.
