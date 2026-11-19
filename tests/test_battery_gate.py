@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from custom_components.spotnav.battery.commands import control_for
+from custom_components.spotnav.core.electric import fuse_kw
 from custom_components.spotnav.battery.gate import (
     CONF_ENABLED,
     CONF_SHADOW_ONLY,
@@ -22,7 +23,6 @@ from custom_components.spotnav.battery.gate import (
     export_discharge_cap_kw,
     failed_mode,
     firmware_key,
-    fuse_kw,
     grid_charge_cap_kw,
     grid_charge_phase_caps_kw,
     import_limit_holds,

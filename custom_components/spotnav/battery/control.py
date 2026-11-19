@@ -87,6 +87,7 @@ from ..const import (
     DOMAIN,
     SOLAR_PRIORITY_CAR_FIRST,
 )
+from ..core.electric import phase_volts
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.energy_statistics import async_energy_prefs, energy_statistic_ids
 from ..site.measurement_problem import UNHEALTHY_STATES
@@ -1784,7 +1785,7 @@ class BatteryControl:
             and executor.state.action == ACTION_EXPORT_DISCHARGE and battery_kw is not None and battery_kw < 0
         ):
             # What the battery measurably discharges, at most what it was told: never more of the export than its own.
-            share_a = min(executor.state.rate_kw, -battery_kw) * 1000.0 / (phases * gate.phase_volts(volts))
+            share_a = min(executor.state.rate_kw, -battery_kw) * 1000.0 / (phases * phase_volts(volts))
         return gate.export_discharge_cap_kw(
             self._main_fuse_a(), volts, margin_a=HEADROOM_MARGIN_A, phase_export_a=exports, battery_share_a=share_a,
             plant_phases=phases,
@@ -1795,7 +1796,7 @@ class BatteryControl:
         signed = list(self.site.result.phase_signed_active_power_w.values())
         if not signed or not all(value is not None and math.isfinite(value) for value in signed):
             return None
-        volts = gate.phase_volts(volts_between_phases)
+        volts = phase_volts(volts_between_phases)
         return [max(-float(value), 0.0) / volts for value in signed]  # type: ignore[arg-type]
 
     def _cars_allowed_a(self, *, without: str | None = None) -> float:

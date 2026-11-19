@@ -7,27 +7,11 @@ Norway), where three-phase power is `sqrt(3) x 230 V x I`, not `sqrt(3) x 400 V 
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
-
 from homeassistant.core import HomeAssistant
 
-from ..const import (
-    CONF_VOLTAGE_BETWEEN_PHASES_V,
-    DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
-    DOMAIN,
-    VOLTAGE_BETWEEN_PHASES_CHOICES,
-    VOLTAGE_BETWEEN_PHASES_IT_V,
-)
+from ..const import DEFAULT_VOLTAGE_BETWEEN_PHASES_V, DOMAIN, VOLTAGE_BETWEEN_PHASES_IT_V
+from ..core.electric import stored_voltage_between_phases_v
 from .first_run import site_for_charger
-
-
-def stored_voltage_between_phases_v(data: Mapping[str, Any] | None) -> float:
-    """The stored choice of an entry's data; anything but a known choice is the default."""
-    value = None if data is None else data.get(CONF_VOLTAGE_BETWEEN_PHASES_V)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return float(DEFAULT_VOLTAGE_BETWEEN_PHASES_V)
-    return float(value) if value in VOLTAGE_BETWEEN_PHASES_CHOICES else float(DEFAULT_VOLTAGE_BETWEEN_PHASES_V)
 
 
 def voltage_between_phases_v(hass: HomeAssistant, charger_entry_id: str) -> float:

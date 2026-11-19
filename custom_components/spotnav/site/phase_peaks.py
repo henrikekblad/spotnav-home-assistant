@@ -118,6 +118,7 @@ import math
 from typing import TYPE_CHECKING, Any, Final
 
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S, DOMAIN
+from ..core.electric import phase_volts
 from .site_capacity import PHASES
 
 if TYPE_CHECKING:
@@ -967,7 +968,6 @@ def _finite_any(value: Any) -> float | None:
 def read_site(site: SiteCapacityController, now: float) -> Reading:
     """One sample's inputs from what the site holds now. The one reading there is: the recorder's history is run
     through it too, as a site that holds the states of then (`site/phase_backfill.py` `SiteAt`, `from_history`)."""
-    from ..battery.gate import phase_volts  # noqa: PLC0415 - the battery package imports the site
     from ..planning.grid_voltage import stored_voltage_between_phases_v  # noqa: PLC0415
 
     result = site.result
