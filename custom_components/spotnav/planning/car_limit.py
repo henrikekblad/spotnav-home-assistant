@@ -7,9 +7,10 @@ This watch measures, once a minute while a window of the plan charges (`AutoPlan
 the car draws against what it is offered, and says so once that is clearly less:
 
 * **Offered.** The power at the current in force on the charger now (its current-limit entity, else the plan's
-  current for a charger whose current is not set), on today's phases and voltage. A current that load balancing,
-  the import target or the sun holds below the plan's is what the car is offered: a car taking clearly less than a
-  held current is at its own limit, while a car taking what a held current gives says nothing (it may take more).
+  current for a charger whose current is not set), on today's phases and voltage, and only when that is the plan's
+  own current: nothing is judged while load balancing, the import target or the sun holds the current below the
+  plan's (a car taking less than a low held current, a 6 A pilot taken as about 5.3 A, says nothing of the car), nor
+  when the plan's current is within `_CAR_LIMIT_MIN_MARGIN_A` of the charger's least current.
 * **Steady.** A stretch is checks a minute apart of the same plug-in and the same current in force, written no
   later than the stretch's first check. It measures from the first post of the count (the energy register, or the
   energy integrated from the charger's power) `SETTLE_S` after the stretch began or the current was last written

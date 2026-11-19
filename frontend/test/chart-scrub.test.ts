@@ -3,7 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { attachScrub, indexAtClientX } from "../src/chart-scrub";
+import { attachScrub, indexAtClientX, scrubBars } from "../src/chart-scrub";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "../src/visual-styles";
 
 function send(target: EventTarget, type: string, clientX: number, clientY: number, pointerType = "touch"): PointerEvent {
@@ -57,6 +57,30 @@ describe("attachScrub", () => {
     scrub.detach();
     send(host, "pointerdown", 10, 10);
     expect(handlers.press).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the bar a scrub ends on, and nothing of a scrub the platform cancels", () => {
+    const plot = document.createElement("div");
+    const bars = [0, 1, 2].map((index) => {
+      const bar = document.createElement("button");
+      bar.getBoundingClientRect = () => ({ left: index * 10, right: index * 10 + 8, top: 0, bottom: 5, width: 8, height: 5, x: index * 10, y: 0, toJSON: () => ({}) });
+      return bar;
+    });
+    const show = vi.fn();
+    const choose = vi.fn();
+    const restore = vi.fn();
+    scrubBars(plot, bars, show, choose, restore);
+    send(plot, "pointerdown", 2, 2);
+    send(plot, "pointermove", 24, 2);
+    send(plot, "pointercancel", 24, 2);
+    expect(show).toHaveBeenLastCalledWith(2);
+    expect(choose).not.toHaveBeenCalled();
+    expect(restore).toHaveBeenCalledTimes(1);
+    send(plot, "pointerdown", 2, 2);
+    send(plot, "pointermove", 14, 2);
+    send(plot, "pointerup", 14, 2);
+    expect(choose).toHaveBeenCalledWith(1);
+    expect(restore).toHaveBeenCalledTimes(1);
   });
 
   it("picks the element whose horizontal span is nearest", () => {

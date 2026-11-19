@@ -157,13 +157,15 @@ export function indexAtClientX(nodes: readonly Element[], clientX: number): numb
 
 /**
  * A row of bar buttons (the history charts): a horizontal touch drag over the row shows the bar under the
- * finger as it moves and keeps the one it ends on. A mouse hovers the full-height buttons themselves.
+ * finger as it moves and keeps the one it ends on. A scrub the platform cancels (a system gesture) keeps
+ * nothing: `restore` puts back what was shown before it. A mouse hovers the full-height buttons themselves.
  */
 export function scrubBars(
   plot: HTMLElement,
   bars: readonly Element[],
   show: (index: number) => void,
   choose: (index: number) => void,
+  restore?: () => void,
 ): Scrub {
   let scrubbed: number | null = null;
   return attachScrub(plot, {
@@ -174,8 +176,10 @@ export function scrubBars(
         show(index);
       }
     },
-    end() {
-      if (scrubbed !== null) {
+    end(_event, cancelled) {
+      if (cancelled) {
+        restore?.();
+      } else if (scrubbed !== null) {
         choose(scrubbed);
       }
       scrubbed = null;

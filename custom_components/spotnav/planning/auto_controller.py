@@ -13,6 +13,7 @@ proposal is delegated to the injected `AutoExecutor`; without one this only calc
 from __future__ import annotations
 
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Final, Literal
@@ -185,6 +186,9 @@ _ENDING_REASONS: Final = (REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING, REASON_POWER
 DECISION_CAR_LIMIT: Final = "car_limit"
 #: A car limit plans again when the plan counts on more than this share above it.
 _CAR_LIMIT_REPLAN_SHARE: Final = 0.95
+#: A car limit is measured only at a plan current at least this far above the charger's least current: near it a
+#: car's own draw (a 6 A pilot taken as about 5.3 A) is no limit of the car's.
+_CAR_LIMIT_MIN_MARGIN_A: Final = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1762,7 +1766,12 @@ class AutoPlannerController:
             return None
         vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
         controller = self._executor.controller
-        session = self._learning_session(controller, controller.plan, self._now())
+        plan = controller.plan
+        now = self._now()
+        # The same day the limit was kept under (`_check_car_limit`: the open window's start), so a window that
+        # runs past midnight finds it for a charger that reports no plug-in.
+        at = next((start for start, end in plan.windows if start <= now < end), now) if plan is not None else now
+        session = self._learning_session(controller, plan, at)
         low_kw, high_kw = self._power_bounds(settings, wiring, vehicle_id)
         return self._learned.session_limit_kw(subject_for(vehicle_id), wiring, session, low_kw, high_kw)
 
@@ -1868,6 +1877,14 @@ class AutoPlannerController:
         self._watch_due = when
         self._watch_cancel = self._manager.schedule_at(when, self._on_watch_due)
 
+    def _create_entry_task(self, target: Coroutine[Any, Any, Any], name: str) -> None:
+        """Run `target` as a task of this charger's config entry (waited for on unload), else of Home Assistant."""
+        entry = self._hass.config_entries.async_get_entry(self._entry_id)
+        if entry is None:
+            self._hass.async_create_task(target, name)
+        else:
+            entry.async_create_task(self._hass, target, name)
+
     def _cancel_watch(self) -> None:
         if self._watch_cancel is not None:
             self._watch_cancel()
@@ -1893,7 +1910,7 @@ class AutoPlannerController:
                 None if measure is None else round(measure.drawn_kw, 2),
                 None if measure is None else round(measure.offered_kw, 2),
             )
-            self._hass.async_create_task(self._async_replan_behind(rebase=True))
+            self._create_entry_task(self._async_replan_behind(rebase=True), "car limit replan")
         elif decision is not None:
             check = self._watch.last_check
             # Said once per window; a car that keeps falling behind is not news each time.
@@ -1905,7 +1922,7 @@ class AutoPlannerController:
                 None if check is None else round(check.expected_kwh, 2),
                 " after the window" if decision == DECISION_END_REPLAN else "",
             )
-            self._hass.async_create_task(self._async_replan_behind())
+            self._create_entry_task(self._async_replan_behind(), "behind-plan replan")
         self._arm_watch()
 
     async def _async_replan_behind(self, *, rebase: bool = False) -> None:
@@ -2005,6 +2022,8 @@ class AutoPlannerController:
                 _LOGGER.debug("Watching the car's own limit failed", exc_info=True)
                 limit = None
             # A car limit plans with the power it takes: before a behind-plan replan, which would plan with the same.
+            # It may stand in for an end-of-window replan of the same look: that one replans too, so all it gives up
+            # is its log line (`PlanWatch.tell`), which the car limit's own line replaces.
             decision = limit or decision
         if self._energy_sampler is not None and not guest:
             # Nothing is learned of a guest car (`vehicles/guest.py`).
@@ -2087,6 +2106,11 @@ class AutoPlannerController:
         offered = None if plan is None else self._offered_amps(controller, plan.amps, held)
         if (
             offered
+            # Only at the plan's own current: a current held back (load balancing, the import target, the sun) is
+            # never measured, so a hold cannot become the car's limit, for this plug-in or the next.
+            and held in (None, "balancing_limit")
+            and offered >= plan.amps
+            and self._above_least_current(settings, plan.amps)
             and window is not None
             and wiring is not None
             and reading is not None
@@ -2122,6 +2146,13 @@ class AutoPlannerController:
             return None
         self._limit_replanned_at = now
         return DECISION_CAR_LIMIT
+
+    def _above_least_current(self, settings: AutoSettings, amps: int) -> bool:
+        """`amps` at least `_CAR_LIMIT_MIN_MARGIN_A` above the charger's least current (`charge_power_limits`)."""
+        _high_kw, low_w = hybrid_execution.charge_power_limits(self._hass, self._entry_id, settings)
+        phases = effective_phases(self._hass, self._entry_id)
+        per_amp_w = power_kw(1, phases, voltage_between_phases_v(self._hass, self._entry_id)) * 1000.0
+        return per_amp_w > 0 and amps >= low_w / per_amp_w + _CAR_LIMIT_MIN_MARGIN_A - 1e-6
 
     def _offered_amps(self, controller: Any, amps: int, held: str | None) -> float | None:
         """The current in force on the charger: its current-limit entity's, else the last one assigned to it, else the
