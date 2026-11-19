@@ -1886,6 +1886,7 @@ class BatteryControl:
             failed=self._failed,
             other_writes_today=self._export_writes_today(now),
             takeover=options.ai_takeover_ack,
+            charge_phases=self._plant_phases(control),
         )
 
     def _shedding(self, now: datetime, config: dict[str, Any]) -> tuple[bool, bool]:

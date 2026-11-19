@@ -63,6 +63,10 @@ def _sigenergy(**kwargs) -> tuple[Executor, FakeBattery]:
     return Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), **kwargs)
 
 
+def _solaredge(**kwargs) -> tuple[Executor, FakeBattery]:
+    return Executor(SOLAREDGE_CONTROL), FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES), **kwargs)
+
+
 def _held(executor: Executor, battery: FakeBattery) -> object:
     now, results = run(executor, battery, T0, 6, "hold")
     assert executor.state.phase == "active"
@@ -423,6 +427,19 @@ def test_a_grid_charge_is_clamped_by_the_live_headroom_and_the_battery_charge_co
     _now, results = run(executor, battery, T0, 6, "grid_charge", 8.0, headroom_a=6.0, grid_import_kw=1.0)
     assert executor.state.rate_kw == pytest.approx(2.771, abs=0.001)
     assert ("charge_limit", 2.771) in written(results)
+
+
+def test_the_live_clamp_counts_the_charge_on_the_phases_the_plant_spreads_it_over() -> None:
+    # A recipe that does not say how its plant spreads a charge counts it on one phase (`grid_charge_phases` 1):
+    # 6 A less the margin on one phase at 230.9 V is about 0.92 kW, a third of the balanced three-phase figure.
+    executor, battery = _solaredge()
+    _now, _results = run(executor, battery, T0, 6, "grid_charge", 8.0, headroom_a=6.0, grid_import_kw=1.0)
+    assert executor.state.rate_kw == pytest.approx(0.924, abs=0.001)
+    # The shell's reading of the plant (its Output Type) overrides the recipe's figure.
+    executor, battery = _solaredge()
+    _now, _results = run(executor, battery, T0, 6, "grid_charge", 8.0, headroom_a=6.0, grid_import_kw=1.0,
+                         charge_phases=3)
+    assert executor.state.rate_kw == pytest.approx(2.771, abs=0.001)
 
 
 def test_the_counted_back_charge_is_never_above_the_site_import() -> None:

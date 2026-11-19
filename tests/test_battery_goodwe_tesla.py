@@ -210,7 +210,7 @@ def test_a_tesla_hold_and_grid_charge_and_the_hand_back_order() -> None:
     _now, results = run(executor, battery, now, 12, "self_consume")
     assert written(results) == [("reserve", 20.0)]
     now += timedelta(hours=1)
-    now, results = run(executor, battery, now, 10, "grid_charge", 3.0)
+    now, results = run(executor, battery, now, 10, "grid_charge", 3.0, headroom_a=30.0)
     assert written(results) == [("grid_charging", True), ("reserve", 100.0)]
     _now, results = run(executor, battery, now, 12, "self_consume")
     assert written(results) == [("reserve", 20.0), ("grid_charging", "off")]
@@ -218,8 +218,8 @@ def test_a_tesla_hold_and_grid_charge_and_the_hand_back_order() -> None:
 
 
 def test_a_tesla_site_without_solar_has_no_grid_charging_switch_and_still_charges_by_the_reserve() -> None:
-    executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5)
-    _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0)
+    executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
+    _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
     assert written(results) == [("reserve", 100.0)]
     assert not events(results, "not_started")
 
@@ -239,10 +239,10 @@ def test_a_slow_recipe_has_no_peak_cover_and_a_fixed_charge_judged_only_on_charg
 def test_the_slow_recipe_changes_its_action_no_sooner_than_its_minimum() -> None:
     executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
     now, _ = run(executor, battery, T0, 8, "hold")
-    now, results = run(executor, battery, now, 6, "grid_charge", 3.0)
+    now, results = run(executor, battery, now, 6, "grid_charge", 3.0, headroom_a=30.0)
     assert not events(results, "change"), "held back within min_change_s"
     now += timedelta(seconds=TESLA_CONTROL.min_change_s)
-    _now, results = run(executor, battery, now, 4, "grid_charge", 3.0)
+    _now, results = run(executor, battery, now, 4, "grid_charge", 3.0, headroom_a=30.0)
     assert events(results, "change")[0]["reason"] == "grid_charge"
 
 
@@ -296,6 +296,20 @@ def test_the_executor_refuses_a_fixed_charge_over_the_live_headroom() -> None:
     executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
     assert executor.state.phase == "active" and executor.state.rate_kw == 5.0
+
+
+def test_the_live_check_counts_a_fixed_charge_on_one_phase() -> None:
+    # 5 kW on one phase is 21.7 A: 9.5 A of headroom (7.5 A once the margin is kept) is far too little, though as
+    # three-phase power it would be 5.2 kW.
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0, headroom_a=9.5)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "fuse_headroom"
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0, headroom_a=23.0)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "fuse_headroom"
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=24.0)
+    assert executor.state.phase == "active"
 
 
 def test_the_reads_of_an_absent_optional_role_are_not_needed() -> None:

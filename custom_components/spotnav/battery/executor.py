@@ -37,7 +37,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   retry, and a write made for the action that is still awaited when the hand-back begins is no restore retry: every
   hand-back ends.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
-  grid (at most its charge, the commanded rate and the site's import) plus the headroom less `HEADROOM_MARGIN_A`.
+  grid (at most its charge, the commanded rate and the site's import) plus the least phase's headroom less
+  `HEADROOM_MARGIN_A`, counted on the phases the plant spreads its charge over (`ExecInputs.charge_phases`, else the
+  recipe's `grid_charge_phases`): a plant that charges on one phase gets that one phase's room, not three.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
   charger held below what it asked makes the battery yield (`YIELD_STEP_KW` below its measured grid charge, one step
   per `RATE_UP_DWELL_S`, so the car's regulator has time to follow); with "battery first" the
@@ -334,6 +336,10 @@ class ExecInputs:
     #: The verification's probe: the charge to command on each phase as it is (kW, negative for a discharge), a
     #: charge among them still within its phase's cap and room.
     phase_probe_kw: Phases | None = None
+    #: The phases the plant spreads a balanced grid charge over (the shell's reading of its Output Type, else the
+    #: recipe's `BrandControl.grid_charge_phases`); `None`: the recipe's. The live clamp counts the charge on these
+    #: phases only (`grid_charge_cap_kw`).
+    charge_phases: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,17 +581,21 @@ class StepResult:
 # --- fuse ----------------------------------------------------------------------------------------------------------
 
 
-def _kw(amps: float, volts: float) -> float:
-    """Amps per phase over three phases as kW (signed)."""
-    return amps * math.sqrt(3.0) * volts / 1000.0
+def _kw(amps: float, volts: float, phases: int = 3) -> float:
+    """Amps per phase over `phases` phases as kW (signed); `volts` is the voltage between phases."""
+    return amps * min(max(phases, 1), 3) * volts / math.sqrt(3.0) / 1000.0
 
 
-def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True) -> float | None:
+def grid_charge_cap_kw(
+    inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True, phases: int = 3
+) -> float | None:
     """The most the battery may charge from the grid now (kW), `None` when the headroom is unknown.
 
-    What the battery already takes from the grid is counted back (it is in the measured import): at most its own
-    charge, the rate commanded and the site's import, and nothing when the import is unknown, so the figure is never
-    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse. With "car first" and a car held, the
+    The least phase's headroom (less `HEADROOM_MARGIN_A`) is counted on the `phases` the plant spreads its charge
+    over: a plant that charges on one phase gets a third of what a balanced three-phase one does, as the gate's
+    HA-down cap reckons it. What the battery already takes from the grid is counted back (it is in the measured
+    import): at most its own charge, the rate commanded and the site's import, and nothing when the import is
+    unknown, so the figure is never above the truth. With "car first" and a car held, the
     battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
     it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
@@ -595,7 +605,7 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
     if inputs.grid_import_kw is not None and battery is not None:
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
         measured = max(min(battery, inputs.grid_import_kw), 0.0)
-    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases)
+    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases, phases)
     if inputs.car_first and inputs.car_held:
         cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap
@@ -1395,7 +1405,7 @@ class Executor:
         if action == ACTION_GRID_CHARGE and self.control.fixed_charge:
             # The plant charges at its own rate: it must fit under the fuse cap as it is, never lowered.
             fixed = fixed_rate_kw(self.control, facts)
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False)
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False, phases=self._charge_phases(inputs))
             if cap is None:
                 return 0.0, "headroom_unknown"
             if fixed is None or fixed > cap + RATE_TOLERANCE_KW:
@@ -1410,7 +1420,7 @@ class Executor:
                 self.state.phase != "active" or changed is None
                 or (inputs.now - changed).total_seconds() >= RATE_UP_DWELL_S
             )
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now)
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now, phases=self._charge_phases(inputs))
             if cap is None:
                 return 0.0, "headroom_unknown"
             rate = min(rate, cap)
@@ -1423,6 +1433,11 @@ class Executor:
             if rate < MIN_RATE_KW:
                 return 0.0, "rate_too_small"
         return round(rate, 3), None
+
+    def _charge_phases(self, inputs: ExecInputs) -> int:
+        """The phases a balanced grid charge is spread over: the shell's reading, else the recipe's."""
+        phases = inputs.charge_phases if inputs.charge_phases is not None else self.control.grid_charge_phases
+        return min(max(int(phases), 1), 3)
 
     def _blocker(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
