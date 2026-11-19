@@ -200,7 +200,9 @@ def test_review_hits_saving_and_what_the_pump_did() -> None:
     )
     assert (review["hits"], review["peaks"], review["misses"]) == (1, 2, 0)
     assert review["per_peak"][0]["pump_run"] == morning_run.start.isoformat()
-    assert review["per_peak"][1] == {"peak": "17:00", "hit": False, "pick": None, "pump_run": None, "miss": False}
+    assert review["per_peak"][1] == {
+        "peak": "17:00", "hit": False, "pick": None, "pump_run": None, "miss": False, "cold_risk": False
+    }
     assert review["moved_kwh"] == 1.0 and review["actual_cost"] == 150.0
     # 1 kWh at 50 plus 1.5 h of standby loss at the pick's price.
     assert review["would_cost"] == round(50.0 + 0.04 * 1.5 * 50.0, 2) and review["saved"] > 0

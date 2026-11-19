@@ -175,3 +175,51 @@ def test_no_cold_risk_without_a_held_run() -> None:
     assert cold_risk(local(6), previous, [(local(3), local(4, 30))], [run(4, 40)]) is False
     # No block at all.
     assert cold_risk(local(6), previous, [], [run(6, 20)]) is False
+
+
+# ---- the day's review and the level-A gate
+
+
+def _day_peaks():
+    from custom_components.spotnav.heat.dhw_review import DayPeak
+
+    return [DayPeak(local(6), local(8)), DayPeak(local(18), local(21))]
+
+
+def test_the_review_counts_a_peak_a_block_made_cold() -> None:
+    from custom_components.spotnav.heat.dhw_review import review_day
+
+    previous = local(21, day=DAY - timedelta(days=1))
+    blocks = [(local(4), local(6, 15)), (local(9), local(11))]
+    runs = [run(6, 20), run(18, 30)]
+    review = review_day(
+        DAY, ZONE, _day_peaks(), [], runs, lambda _q: 100.0, mode="shadow", cutoff=0.2,
+        blocks=blocks, previous_until=previous, blocks_cut=2,
+    )
+    assert review["cold_risks"] == 1 and review["blocks_cut"] == 2 and review["a_mode"] == "shadow"
+    assert [item["cold_risk"] for item in review["per_peak"]] == [True, False]
+    # The evening peak looks back to the morning one's end: the 09:00 block came after it, with no run held into
+    # the evening peak.
+    assert review["hits"] == 2
+
+
+def test_the_level_a_gate_counts_its_own_shadow_days_and_asks_no_saving() -> None:
+    from custom_components.spotnav.heat.dhw_review import back_off, gate
+
+    first = DAY
+    days = [
+        {"date": (first + timedelta(days=i)).isoformat(), "mode": "shadow", "hits": 2, "peaks": 2, "saved": 0.0}
+        for i in range(14)
+    ]
+    assert gate(days, "A")["open"] and not gate(days, "B")["open"]
+    # A day level A steered is no shadow day for it, whatever the boost did.
+    live = [{**item, "a_mode": "live"} for item in days]
+    assert not gate(live, "A")["open"]
+    # Three cold risks within a week of steering close it again; a boost's misses do not.
+    today = first + timedelta(days=20)
+    risky = [
+        {"date": (today - timedelta(days=d)).isoformat(), "a_mode": "live", "mode": "shadow", "cold_risks": 1, "misses": 0}
+        for d in (1, 2, 4)
+    ]
+    assert back_off(risky, today, "A") and not back_off(risky, today)
+    assert not back_off(risky[:2], today, "A")
