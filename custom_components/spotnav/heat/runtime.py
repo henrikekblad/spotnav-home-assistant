@@ -348,6 +348,7 @@ class HeatShadow:
             self._timer_cancel = None
         if self._task is not None and not self._task.done():
             self._task.cancel()
+        await self.hot_water.async_shutdown()
         if self._loaded:
             await self._store.async_save(self._data())
 

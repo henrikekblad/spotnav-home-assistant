@@ -38,9 +38,10 @@ async def settle(hass: HomeAssistant) -> None:
     await hass.async_block_till_done()
     for entry in hass.config_entries.async_entries("spotnav"):
         controller = site_controller_for(hass, entry.entry_id)
-        pending = None if controller is None else controller.heat_shadow.hot_water._pending  # noqa: SLF001
-        if pending is not None:
-            await pending
+        hot_water = None if controller is None else controller.heat_shadow.hot_water
+        for task in () if hot_water is None else (hot_water._pending, hot_water._side):  # noqa: SLF001
+            if task is not None:
+                await task
     await hass.async_block_till_done()
 
 

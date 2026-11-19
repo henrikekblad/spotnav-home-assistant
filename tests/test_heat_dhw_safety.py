@@ -497,3 +497,55 @@ async def test_s8_a_skipped_pick_leaves_the_forecast(hass: HomeAssistant, freeze
     # Its start window passed without a write (the fuse, a safety reason): no longer counted.
     hot_water._delta_key = None  # noqa: SLF001
     assert hot_water.forecast_delta(pick.start + timedelta(minutes=11)) == {}
+
+
+# ---- NITs: a failed press is no start, a failed shed is tried again, the pending write ends with the site
+
+
+async def test_nit_a_failed_press_does_not_hold_the_next(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(CTC_BMS, CTC))
+    hass.states.async_set(CTC, "0")
+    writes = Writes(hass, seen=False)
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    assert controller.heat_shadow.hot_water.boost()["state"] == "failed"
+    writes.seen = True
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    assert len(writes.calls) == 2
+
+
+async def test_nit_a_failed_shed_is_tried_again(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    writes = Writes(hass)
+    hot_water.tick(at)
+    await settle(hass)
+    assert len(writes.calls) == 1
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -2.0, "l2": 10.0, "l3": 10.0})
+    writes.fail = True
+    for minute in (1, 2):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert hot_water.shed_day is None
+    writes.fail = False
+    for minute in (3, 4):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert writes.calls[-1] == ("select", "select_option", {"entity_id": LUX, "option": "Off"})
+    assert hot_water.shed_day is not None
+
+
+async def test_nit_the_pending_write_ends_with_the_site(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    import asyncio
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hot_water = controller.heat_shadow.hot_water
+
+    async def forever() -> None:
+        await asyncio.Event().wait()
+
+    hot_water._pending = hass.async_create_background_task(forever(), "test pending")  # noqa: SLF001
+    await controller.heat_shadow.async_shutdown()
+    await asyncio.sleep(0)
+    assert hot_water._pending.cancelled() or hot_water._pending.done()  # noqa: SLF001

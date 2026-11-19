@@ -174,6 +174,8 @@ class HotWater:
         self.made_at: datetime | None = None
         self.log: list[dict[str, Any]] = []
         self._pending: asyncio.Task[None] | None = None
+        #: A stop SpotNav writes of its own (the backstop, a shed), apart from a start's write and read-back.
+        self._side: asyncio.Task[None] | None = None
         self._failed_at: datetime | None = None
         self._retry_at: dict[str, datetime] = {}
         self._over_looks = 0
@@ -575,12 +577,14 @@ class HotWater:
     def tick(self, now: datetime) -> None:
         """Shed SpotNav's own running boost under fuse pressure; start a live pick whose time has come (see the
         module)."""
-        if self._pending is not None and not self._pending.done():
-            return
         config = self.shadow.config()
         self._observe(now, config)
-        self._backstop(now, config)
-        self._shed_check(now, config)
+        if self._side is None or self._side.done():
+            # A stop (the backstop, a shed) is its own task: a start's read-back never holds it back.
+            self._backstop(now, config)
+            self._shed_check(now, config)
+        if self._pending is not None and not self._pending.done():
+            return
         if not config.control_enabled or not self.picks:
             # Nothing planned is written without the opt-in: no need to read the pump each look.
             return
@@ -696,17 +700,29 @@ class HotWater:
         call = stop_call(route, self._options(route))
         if call is None:
             return
-        self.ledger.close(route.entity_id, now)
         _LOGGER.info("SpotNav hot water: %s still on after its run; stopping it", route.entity_id)
-        self._pending = self.hass.async_create_background_task(
-            self._async_call_quietly(call), f"spotnav hot water backstop {self.shadow.site.entry_id}"
-        )
 
-    async def _async_call_quietly(self, call: tuple[str, str, dict[str, Any]]) -> None:
+        async def stop() -> None:
+            if await self._async_call_quietly(call):
+                self.ledger.close(route.entity_id, now)
+
+        self._side = self.hass.async_create_background_task(stop(), f"spotnav hot water backstop {self.shadow.site.entry_id}")
+
+    async def _async_call_quietly(self, call: tuple[str, str, dict[str, Any]]) -> bool:
+        """One service call, its failure logged (the next look tries again where it still applies)."""
         try:
             await self.hass.services.async_call(call[0], call[1], call[2], blocking=True)
-        except Exception:  # noqa: BLE001 - logged; the next look tries again where it still applies
+        except Exception:  # noqa: BLE001 - logged
             _LOGGER.info("SpotNav hot water: the stop through %s failed", call[2].get("entity_id"), exc_info=True)
+            return False
+        return True
+
+    async def async_shutdown(self) -> None:
+        """The site unloads: a pending write and its read-back end with it (a pulse's switch is opened on the way
+        out, `_async_write`)."""
+        for task in (self._pending, self._side):
+            if task is not None and not task.done():
+                task.cancel()
 
     def _shed_check(self, now: datetime, config: HeatConfig) -> None:
         """SpotNav's own planned boost running while a phase is over the fuse for `SHED_LOOKS` looks: ended, and not
@@ -730,11 +746,14 @@ class HotWater:
         if call is None:
             return
         self._over_looks = 0
-        self.shed_day = now.astimezone(self.zone).date().isoformat()
-        _LOGGER.info("SpotNav hot water: its own boost ended for the fuse; not started again today")
-        self._pending = self.hass.async_create_background_task(
-            self.hass.services.async_call(call[0], call[1], call[2], blocking=True), f"spotnav hot water shed {self.shadow.site.entry_id}"
-        )
+        day = now.astimezone(self.zone).date().isoformat()
+
+        async def shed() -> None:
+            if await self._async_call_quietly(call):
+                self.shed_day = day
+                _LOGGER.info("SpotNav hot water: its own boost ended for the fuse; not started again today")
+
+        self._side = self.hass.async_create_background_task(shed(), f"spotnav hot water shed {self.shadow.site.entry_id}")
 
     def forecast_delta(self, now: datetime) -> dict[datetime, float]:
         """The change SpotNav's own boosts bring to the house's load per hour (kW), what the cars' and the battery's
@@ -992,7 +1011,8 @@ class HotWater:
                 _LOGGER.info("SpotNav hot water: stopping the boost failed", exc_info=True)
                 return "spotnav_write_failed", self.boost(now)
             return None, self.boost(now)
-        last = self.ledger.last(SOURCE_BUTTON)
+        # A start that was not taken or not read back is no start: the next press is not held for it.
+        last = next((entry for entry in reversed(self.ledger.entries) if entry.source == SOURCE_BUTTON and entry.read_back is not False), None)
         if last is not None and now - last.at < RATE:
             return "spotnav_rate_limited", state
         if state.get("state") == "running" and state.get("source") in ("user", "plan"):
