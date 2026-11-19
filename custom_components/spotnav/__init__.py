@@ -88,6 +88,7 @@ from .execution.min_soc_floor import FloorInputs, MinSocFloor
 from .execution.solar_execution import (
     async_rebind_solar_execution,
     async_setup_solar_execution,
+    async_unbind_solar_execution,
     solar_execution_state,
 )
 from .execution.target_stop import (
@@ -882,6 +883,9 @@ async def _async_setup_site_entry(hass: HomeAssistant, entry: SiteConfigEntry) -
     controller = SiteCapacityController(hass, entry.entry_id, dict(entry.data))
     entry.runtime_data = SiteData(controller)
     entry.async_on_unload(controller.async_shutdown)
+    # Run before the shutdown above (unload callbacks run last first): no member charger's sun reads this controller
+    # once it is going.
+    entry.async_on_unload(partial(async_unbind_solar_execution, hass, controller))
     entry.async_on_unload(partial(forget_cached_flow, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_heat, hass, entry.entry_id))
     entry.async_on_unload(partial(forget_cached_history, hass, entry.entry_id))

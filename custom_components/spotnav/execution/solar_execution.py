@@ -941,6 +941,12 @@ class SolarExecutionCoordinator:
             self._site_unsub = None
         self._site = None
 
+    def release_site(self, site: SiteCapacityController) -> None:
+        """`site` shuts down (unloaded, disabled, deleted, reloaded): drop it if it is the one bound, so nothing reads
+        its readings frozen at shutdown. A site set up again rebinds (`async_rebind_solar_execution`)."""
+        if self._site is site:
+            self.async_stop()
+
     @callback
     def _on_site_update(self) -> None:
         site = self._site
@@ -2088,3 +2094,12 @@ def async_rebind_solar_execution(hass: HomeAssistant, charger_entry_ids: list[st
         data = charger_data(hass, charger_entry_id)
         if data is not None and data.solar is not None:
             data.solar.async_start()
+
+
+def async_unbind_solar_execution(hass: HomeAssistant, site: SiteCapacityController) -> None:
+    """Every loaded charger's coordinator bound to `site` lets go of it, as the site shuts down. Every charger, not
+    only the site's members now: one taken out of the site may still hold it until its next rebind."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        data = charger_data(hass, entry.entry_id)
+        if data is not None and data.solar is not None:
+            data.solar.release_site(site)
