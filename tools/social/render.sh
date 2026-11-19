@@ -3,12 +3,14 @@
 #
 #   tools/social/render.sh
 #
-# Writes assets/spotnav-social-preview.png (1280x640) and docs/images/card-and-app.png (900 px wide) from
-# banner.html and card-and-app.html with headless chromium. No Home Assistant needed: the pages use two
+# Writes assets/spotnav-social-preview.png (1280x640), docs/images/card-and-app.png (900 px wide) and
+# feature-graphic.png (1024x500, here in tools/social: it is the app repository's Google Play feature graphic,
+# fastlane/metadata/android/en-US/images/featureGraphic.png, and assets/spotnav-social-preview.png there is the banner)
+# from banner.html, card-and-app.html and feature-graphic.html with headless chromium. No Home Assistant needed: the pages use two
 # pictures kept in this folder. Refresh them when the card or the app changes, then run this again:
 #
-#   card-light.png  the card in Home Assistant's light theme at twice the pixels:
-#                   tools/docs_screenshots/run.sh social-card
+#   card-light.png  the house card in Home Assistant's light theme at twice the pixels:
+#                   DRIVER=v3shots.mjs tools/docs_screenshots/run.sh social-card
 #   app-main.png    the app's English store screenshot, copied from the app repository
 #                   (fastlane/metadata/android/en-US/images/phoneScreenshots/1_main.png)
 set -euo pipefail
@@ -30,3 +32,4 @@ render() { # page width height output
 
 render banner.html 1280 640 "$REPO/assets/spotnav-social-preview.png"
 render card-and-app.html 900 580 "$REPO/docs/images/card-and-app.png"
+render feature-graphic.html 1024 500 "$HERE/feature-graphic.png"
