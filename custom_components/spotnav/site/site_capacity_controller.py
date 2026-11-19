@@ -615,6 +615,8 @@ class SiteCapacityController:
         # down) controller is refused.
         self.transition_lock = asyncio.Lock()
         self._closed = False
+        # The back-fill from Home Assistant's statistics while it runs (`async_start_backfill`), cancelled at shutdown.
+        self._backfill_task: asyncio.Task[None] | None = None
         # Per-charger damping state (`site/regulator_damping.py`).
         self._dampers: dict[str, RegulatorDamper] = {}
         # Per-charger step guard (`site/step_guard.py`): no step to the edge, no cut on a stale reading.
@@ -954,6 +956,7 @@ class SiteCapacityController:
         for cancel in self._controller_listener_cancels:
             cancel()
         self._controller_listener_cancels.clear()
+        await self._async_cancel_backfill()
         parts: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
             ("history", self._history.async_close),
             ("phase peaks", self.phase_peaks.async_close),
@@ -972,6 +975,16 @@ class SiteCapacityController:
             except Exception:  # noqa: BLE001 - one part's failure must not leave the others running
                 _LOGGER.warning("SpotNav site: closing the %s failed", name, exc_info=True)
         await self._async_retire_operations()
+
+    async def _async_cancel_backfill(self) -> None:
+        """A back-fill still reading the statistics ends before the demand's stores close: it never files into a
+        closed store, nor runs on beside the next controller's after a reload. One cancelled files nothing and
+        leaves no marker, so the next controller runs it again."""
+        task, self._backfill_task = self._backfill_task, None
+        if task is None or task.done():
+            return
+        task.cancel()
+        await asyncio.wait((task,), timeout=RETIRE_TIMEOUT_S)
 
     async def _async_save_grid_sign(self) -> None:
         if self._grid_sign_unsaved:
@@ -1334,7 +1347,7 @@ class SiteCapacityController:
             self.demand._backfill_running = False  # noqa: SLF001 - async_backfill sets it again
             await self.demand.async_backfill(RecorderReader(self.hass), series, components)
 
-        self.hass.async_create_background_task(run(), f"spotnav_site_backfill_{self.entry_id}")
+        self._backfill_task = self.hass.async_create_background_task(run(), f"spotnav_site_backfill_{self.entry_id}")
         return True
 
     def _target_mark(self) -> TargetMark | None:
