@@ -115,12 +115,14 @@ async def test_a_not_supported_answer_without_a_number_shows_the_form(hass: Home
 async def test_a_probe_that_times_out_is_unreachable_and_never_picks_the_number(
     hass: HomeAssistant, monkeypatch
 ) -> None:
+    never = asyncio.Event()  # the charge point never answers; only the timeout ends the wait
+
     async def slow(call):
-        await asyncio.sleep(5)
+        await never.wait()
         return {"value": "1.16"}
 
     hass.services.async_register("ocpp", "get_configuration", slow, supports_response=SupportsResponse.ONLY)
-    monkeypatch.setattr("custom_components.spotnav.flows.flow.PROBE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr("custom_components.spotnav.flows.flow.PROBE_TIMEOUT_S", 0)
     device_id, _ = _connector(hass)
 
     result = await _step(hass, device_id)

@@ -199,10 +199,10 @@ async def test_every_failure_is_a_code_never_an_exception(answer: Any, error: st
 async def test_a_hanging_server_meets_the_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     class Slow(_Response):
         async def __aenter__(self) -> _Response:
-            await asyncio.sleep(10)
+            await asyncio.Event().wait()  # never answers
             return self
 
-    monkeypatch.setattr(om, "REQUEST_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(om, "REQUEST_TIMEOUT_S", 0)
     result = await om.async_fetch_json(_Session(Slow(200, b"{}")), om.FORECAST_URL, {}, "ua")  # type: ignore[arg-type]
     assert result.error == om.ERROR_TIMEOUT
 
