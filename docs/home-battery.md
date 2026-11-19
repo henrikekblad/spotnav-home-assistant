@@ -610,7 +610,9 @@ system runs.
 * **The battery's settings change three times within 24 hours without SpotNav writing them, or in plain
   self-consumption it charges from the grid or discharges into export by more than 1 kW for ten minutes in a
   row** (and its level moves the same way): something outside SpotNav drives it, and SpotNav marks it watch-only. This ends by itself 48 hours after the
-  battery last showed it. Tibber or Greenely set up in Home Assistant is named as the likely source but
+  battery last showed it. If it was you (you changed the battery's modes yourself, say during a test), an
+  administrator can end it at once with **Det var jag – rensa** (It was me – clear) beside the note in the battery's
+  settings; the changes counted so far are forgotten with it. Tibber or Greenely set up in Home Assistant is named as the likely source but
   never marks the battery by itself.
 
 The behaviour rule is deliberately narrow: the site must also import (or export) more than 1 kW, the level must move at

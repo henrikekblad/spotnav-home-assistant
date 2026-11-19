@@ -334,6 +334,21 @@ class BatteryShadow:
         verdict = self.outside.verdict
         return with_outside_control(facts, verdict.active, verdict.reason)
 
+    def clear_outside_by_person(self, now: datetime) -> bool:
+        """An administrator's "it was me" (`OutsideControlWatch.clear_by_person`): the verdict from the battery's
+        settings or behaviour ends now, logged and kept; `False` when there is none a person may clear."""
+        event = self.outside.clear_by_person(now)
+        if event is None:
+            return False
+        _LOGGER.info(
+            "SpotNav battery: an administrator cleared the outside-control verdict (%s); SpotNav may control the "
+            "battery again", event.get("reason"),
+        )
+        self.book.set_section(SECTION_OUTSIDE, self.outside.as_dict())
+        self._save()
+        self.facts = self._read_facts()
+        return True
+
     def _grid_kw(self) -> float | None:
         """The site's grid power (kW, + import) from its signed phase powers, `None` when one is not known."""
         signed = list(self.site.result.phase_signed_active_power_w.values())

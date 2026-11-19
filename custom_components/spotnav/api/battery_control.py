@@ -17,6 +17,12 @@ SpotNav enables the brand's control entities that are disabled in the entity reg
 lists them: `{integration, entities: [{entity_id, name}]}`, `null` when none is) and reloads their integration once,
 before `changes` (when given) is written. Turning control off leaves them enabled. A failed reload is
 `spotnav_enable_failed`.
+
+`clear_outside_control: true` (administrators only, never over the webhook) is the person's "Det var jag – rensa":
+the outside-control verdict found by the battery's own settings or behaviour ends now, logged as cleared by a person
+(the diagnostics' `outside_control.history`), and the changes counted so far are forgotten. A verdict from an
+integration or a planner lasts while it is there: `spotnav_not_clearable`, as when none stands. It runs before
+`changes`.
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ BATTERY_CONTROL_API_VERSION: Final = 1
 ERROR_NO_SITE: Final = "spotnav_no_site"
 ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 ERROR_ENABLE_FAILED: Final = "spotnav_enable_failed"
+ERROR_NOT_CLEARABLE: Final = "spotnav_not_clearable"
 
 
 def _answer(status: dict[str, Any] | None = None, error: str | None = None) -> dict[str, Any]:
@@ -66,6 +73,7 @@ async def async_battery_control_answer(
     admin: bool,
     over_webhook: bool = False,
     enable_entities: bool = False,
+    clear_outside_control: bool = False,
 ) -> dict[str, Any]:
     """The answer for one site (the WebSocket command and the webhook's `battery_control` alike): its status, after
     writing `changes` when given. `over_webhook`: only `WEBHOOK_WRITABLE` may be named; another option is
@@ -74,6 +82,12 @@ async def async_battery_control_answer(
     if controller is None:
         return _answer(error=ERROR_NO_SITE)
     control = controller.battery_control
+    if clear_outside_control:
+        # A person's "it was me": never over the webhook, never without an administrator.
+        if over_webhook or not admin:
+            return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
+        if not control.clear_outside_control():
+            return _answer(error=ERROR_NOT_CLEARABLE)
     if enable_entities:
         # The person's confirm of the opt-in dialog: never over the webhook, never without an administrator.
         if over_webhook or not admin:
@@ -120,6 +134,7 @@ def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
         vol.Optional("charger_id"): object,
         vol.Optional("changes"): object,
         vol.Optional("enable_control_entities"): bool,
+        vol.Optional("clear_outside_control"): bool,
     }
 )
 @websocket_api.async_response
@@ -137,6 +152,7 @@ async def websocket_battery_control(
         msg.get("changes"),
         admin=is_admin(connection),
         enable_entities=msg.get("enable_control_entities") is True,
+        clear_outside_control=msg.get("clear_outside_control") is True,
     )
     connection.send_result(msg["id"], answer)
 

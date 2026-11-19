@@ -2321,6 +2321,15 @@ class BatteryControl:
         `None` when none is."""
         return optin.describe(self.hass, self.site.config, self.facts.brand)
 
+    def clear_outside_control(self) -> bool:
+        """An administrator's "it was me" for the outside-control verdict (`BatteryShadow.clear_outside_by_person`):
+        `False` when none a person may clear stands (none, or an integration's or a planner's)."""
+        battery_shadow = getattr(self.site, "battery_shadow", None)
+        if battery_shadow is None or not battery_shadow.clear_outside_by_person(dt_util.now()):
+            return False
+        self.facts = self._read_facts()
+        return True
+
     async def async_enable_entities(self) -> list[str]:
         """Enable the control entities `enable_entities` lists and reload their integration once; only ever called
         on the person's confirm (an administrator, never over the webhook). Answers the entity ids enabled."""

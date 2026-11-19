@@ -141,3 +141,38 @@ async def test_the_battery_mode_is_written_validated_and_the_legacy_sell_option_
     )
     assert answer["options"]["battery_mode"] == "balanced"
     assert plant.calls == []
+
+
+async def test_an_administrator_clears_an_outside_control_verdict_from_the_battery_s_own_signals(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], hass_ws_client: Any,
+    hass_read_only_access_token: str,
+) -> None:
+    from custom_components.spotnav.battery.outside_control import Verdict  # noqa: PLC0415
+
+    site, controller, _plant = await _site(hass, monkeypatch, hass_storage, own=True)
+    await hass.async_block_till_done()
+    control, shadow = controller.battery_control, controller.battery_shadow
+    shadow.outside.verdict = Verdict(True, "settings_changed", dt_util.now() - timedelta(hours=1), None, told=True)
+    control.facts = control._read_facts()  # noqa: SLF001
+    assert "outside_control:settings_changed" in control.status()["needs"]
+    clear = {"type": "spotnav/battery_control", "api_version": 1, "site_id": site.entry_id,
+             "clear_outside_control": True}
+    reader = await hass_ws_client(hass, hass_read_only_access_token)
+    await reader.send_json({"id": 1, **clear})
+    assert (await reader.receive_json())["result"]["error"] == "spotnav_not_admin"
+    assert shadow.outside.verdict.active
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, **clear})
+    result = (await client.receive_json())["result"]
+    assert result["ok"] and not any(need.startswith("outside_control") for need in result["status"]["needs"])
+    assert not shadow.outside.verdict.active
+    history = shadow.snapshot()["outside_control"]["history"]
+    assert history[-1]["cleared_by"] == "person" and history[-1]["reason"] == "settings_changed"
+    assert shadow.book.section("outside_control")["history"][-1]["cleared_by"] == "person", "kept in the store"
+    await client.send_json({"id": 2, **clear})
+    assert (await client.receive_json())["result"]["error"] == "spotnav_not_clearable"
+    # A planner's verdict lasts while it is there.
+    shadow.outside.verdict = Verdict(True, "planner:predbat", dt_util.now(), "Predbat")
+    await client.send_json({"id": 3, **clear})
+    assert (await client.receive_json())["result"]["error"] == "spotnav_not_clearable"
+    assert shadow.outside.verdict.active
