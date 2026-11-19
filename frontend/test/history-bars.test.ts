@@ -104,7 +104,7 @@ describe("the house history's chart", () => {
     expect(grows(reviewed)).toEqual({ saving: 400, cost: 3342 });
     expect(height(reviewed)).toBe(100);
     expect(reviewed.querySelector<HTMLElement>(".spotnav-history-bar-fill")!.style.getPropertyValue("--spotnav-day-dear")).toBe("");
-    expect(reviewed.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,0 kr");
+    expect(reviewed.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,00 kr");
     // A swatch per part the bars hold.
     const legendParts = (root: HTMLElement): string[] => Array.from(root.querySelectorAll("[data-part='legend'] li")).map((item) => `${item.querySelector("span")!.dataset["part"]}:${item.textContent}`);
     expect(legendParts(body)).toEqual(["cost:Kostnad", "saving:Sparat av batteriet"]);
@@ -127,7 +127,7 @@ describe("the house history's chart", () => {
     const body = houseBody(house((answer) => (answer.buckets.find((item) => item.key === "2026-11-05")!.battery_saving = -342)));
     const worse = bar(body, "2026-11-05");
     expect(grows(worse)).toEqual({ extra: 342, cost: 3000 });
-    expect(worse.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 30 kr, batteriet gjorde det 3,4 kr dyrare");
+    expect(worse.getAttribute("aria-label")).toBe("tors 5 nov.: kostnad 33 kr, utan batteri 30 kr, batteriet gjorde det 3,42 kr dyrare");
     expect(Array.from(body.querySelectorAll("[data-part='legend'] li")).map((item) => item.textContent)).toContain("Dyrare med batteriet");
   });
 
@@ -268,7 +268,7 @@ describe("what SpotNav saved in the house history", () => {
     expect(block.querySelector("[data-row='battery']")).toBeNull();
     expect(rows.length).toBe(3);
     // SpotNav's saving per part is the card's Earnings tab: a bar here says the cost against no battery alone.
-    expect(bar(body, "2026-11-12").getAttribute("aria-label")).toBe("tors 12 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,0 kr");
+    expect(bar(body, "2026-11-12").getAttribute("aria-label")).toBe("tors 12 nov.: kostnad 33 kr, utan batteri 37 kr, sparat 4,00 kr");
   });
 
   it("is left out without any part, and an older answer without it still decodes", () => {

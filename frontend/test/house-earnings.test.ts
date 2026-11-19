@@ -202,7 +202,7 @@ describe("the tab", () => {
     const toggles = Array.from(panel.querySelectorAll<HTMLButtonElement>("button[data-legend]"));
     expect(toggles.map((toggle) => `${toggle.dataset["legend"]}:${toggle.getAttribute("aria-pressed")}:${toggle.textContent}`)).toEqual([
       "earn-own:true:Batteri, egen styrning 26 kr",
-      "earn-heat:true:Värme 1,2 kr",
+      "earn-heat:true:Värme 1,20 kr",
       "earn-car:true:Bil 20 kr",
       "earn-would:true:SpotNav skulle ha sparat 32 kr",
     ]);
@@ -237,11 +237,11 @@ describe("the tab", () => {
     });
     const card = render(day, { choice: { period: "day", date: "2026-11-15" } });
     // The heat is in the headline and its toggle, in no hour's bar.
-    expect(card.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 7,4 kr");
+    expect(card.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 7,35 kr");
     expect(Array.from(card.querySelectorAll<HTMLElement>("button[data-legend]")).map((toggle) => toggle.dataset["legend"])).toEqual(["earn-own", "earn-heat", "earn-car"]);
     expect(card.querySelector(".spotnav-house-pbar-part[data-series='earn-heat']")).toBeNull();
     expect(card.querySelector("[data-line='earn-notes']")?.textContent).toBe(
-      "På batteriet skulle SpotNav ha sparat 4,8 kr den här dagen. Bilens besparing ligger på timmen då laddningen startade. Värmens besparing är en uppskattning för hela dagen och ritas inte per timme.",
+      "På batteriet skulle SpotNav ha sparat 4,75 kr den här dagen. Bilens besparing ligger på timmen då laddningen startade. Värmens besparing är en uppskattning för hela dagen och ritas inte per timme.",
     );
     // The running day is reviewed tonight.
     const running = { ...day, today: day.date, own_control: { ...day.own_control!, would: null, would_days: 0 } };
@@ -250,7 +250,7 @@ describe("the tab", () => {
     const old = { ...day, buckets: day.buckets.map((bucket) => ({ ...bucket, saving: null, saving_car: null, own_battery: null })) };
     const kept = render(old, { choice: { period: "day", date: "2026-11-15" } });
     expect(kept.querySelector("[data-part='earn-bars']")).toBeNull();
-    expect(kept.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 7,4 kr");
+    expect(kept.querySelector("[data-line='earn-total']")?.textContent).toBe("Intäkt 7,35 kr");
     expect(kept.querySelector("[data-line='earn-notes']")?.textContent).toMatch(/^Den här dagen saknar timvärden \(de sparas i 40 dagar\)\./);
   });
 

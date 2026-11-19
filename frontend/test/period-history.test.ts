@@ -156,7 +156,7 @@ describe("the house history", () => {
     const body_ = body;
     body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: before }, ui: ui({ period: "day" }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
     expect(body.querySelector("[data-part='perfect']")).toBeNull();
-    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,0 kr");
+    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,00 kr");
     // Self-consumption is the zero the others are measured against, not a row.
     expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")).toBeNull();
     expect(body.querySelector("[data-part='modes'] [data-row='own']")?.textContent).toContain("Batteriets egen styrning");

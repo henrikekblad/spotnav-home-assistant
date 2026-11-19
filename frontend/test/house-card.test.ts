@@ -100,7 +100,7 @@ describe("decoding the backend's own answer", () => {
 describe("the lines", () => {
   it("word money in the area's major unit", () => {
     const value = answer();
-    expect(amount("sv", 812.4, value.money)).toBe("8,1 kr");
+    expect(amount("sv", 812.4, value.money)).toBe("8,12 kr");
   });
 
   it("name an hour's figures: measured beside the forecast in the past, expected and planned ahead", () => {
@@ -331,7 +331,7 @@ describe("what SpotNav saved", () => {
   it("splits a day with more than one part, leaving out a part the day does not have", () => {
     const past = answer("house/villa_past_day.json");
     // SpotNav controlled the battery all that day: no "own control" on its headline.
-    expect(todayLine("sv", past)).toBe("tors 12 nov.: batteriet tjänade 8,8 kr");
+    expect(todayLine("sv", past)).toBe("tors 12 nov.: batteriet tjänade 8,75 kr");
     expect(savingTotalLine("sv", past)).toBe("tors 12 nov.: SpotNav sparade 54 kr · batteri 35 · bil 17 · värme 1,6");
     const noHeat = { ...past, saving: { ...past.saving!, heat: null, total: 5210 } };
     expect(savingTotalLine("en", noHeat)).toMatch(/: SpotNav saved 52 kr · battery 35 · car 17$/);
@@ -347,7 +347,7 @@ describe("the battery app's views, calm", () => {
     expect(todayLine("sv", answer("house/house_learning.json"))).toBeNull();
     expect(todayDetail("sv", answer())).toBe("Elkostnad 38 kr");
     const value = answer();
-    expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,2 kr");
+    expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,20 kr");
     // Nothing above the tabs but the header: the day's money is Now's line.
     for (const tab of ["flow", "graph", "price"] as const) {
       expect(body(answer(), { tab }, "sv").querySelector("[data-line='today']")).toBeNull();
