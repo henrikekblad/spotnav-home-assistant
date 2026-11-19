@@ -2043,7 +2043,7 @@
   "heat.water.blockingGate": "Käyttöveden huomioivat estot varjossa: päivä {days}/{needed}, {hits}/{peaks} huippua osui",
   "heat.water.blockingReady": "Käyttöveden huomioivat estot: valmiina ohjattavaksi ”Ohjaa lämmitystä” -valinnalla",
   "heat.water.blockingLive": "SpotNav pitää estonsa erossa käyttövedestä",
-  "heat.water.blockingBackedOff": "Käyttöveden huomioivat estot palasivat varjoon liian monen myöhäisen lämmityksen jälkeen",
+  "heat.water.blockingBackedOff": "Estot pidetään kauempana käyttövedestä liian monen myöhäisen lämmityksen jälkeen",
   "heat.water.blockingReview": "Estot eilen: {hours} h lyhennetty käyttöveden vuoksi · {risks} myöhäistä lämmitystä ennen huippua",
   "heat.water.blockingReviewWould": "Estot eilen: {hours} h olisi lyhennetty käyttöveden vuoksi · {risks} myöhäistä lämmitystä ennen huippua",
   "heat.boost.noHeadroom": "Pääsulake on nyt täysin kuormitettu; sammuta jotain ja yritä uudelleen"

@@ -716,7 +716,7 @@ export function hotWaterLines(language: Language, answer: HeatAnswer): { key: st
 }
 
 /** Level A's lines: steered, or in shadow its gate's progress ("Blockeringar kring varmvattnet i skuggning: dag 5 av
- * 14, 8 av 10 toppar träffade"), and back in shadow after too many late reheats. */
+ * 14, 8 av 10 toppar träffade"), and its stricter rules after too many late reheats. */
 function blockingLines(language: Language, blocking: HeatHotWaterBlocking): { key: string; text: string }[] {
   const out: { key: string; text: string }[] = [];
   const gate = blocking.gate;
@@ -735,7 +735,7 @@ function blockingLines(language: Language, blocking: HeatHotWaterBlocking): { ke
       }),
     });
   }
-  if (gate.backed_off !== null) {
+  if (blocking.strict) {
     out.push({ key: "water-blocking-backed-off", text: translate(language, "heat.water.blockingBackedOff") });
   }
   return out;

@@ -181,6 +181,7 @@ export const HOT_WATER = O({
       gate: GATE,
       cuts: A(O({ start: "string", end: "string", reason: "string", peak: N("string"), live: "boolean" })),
       tank: "boolean",
+      strict: "boolean",
     }),
   ),
 });
@@ -675,6 +676,8 @@ export interface HeatHotWaterBlocking {
   cuts: HeatBlockingCut[];
   /** A tank sensor reads: the tank rule stands in for the day's cap. */
   tank: boolean;
+  /** After a back-off: the stricter rules hold (a wider guard, a lower cap) until a clean week. */
+  strict: boolean;
 }
 
 export interface HeatBoostAnswer {

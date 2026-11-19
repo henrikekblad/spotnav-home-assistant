@@ -141,15 +141,65 @@ async def test_a_day_s_cold_risk_is_reviewed_and_three_in_a_week_close_the_gate(
     review = record["review"]
     assert (review["cold_risks"], review["blocks_cut"], review["a_mode"]) == (1, 1, "shadow")
     assert review["per_peak"][0]["cold_risk"] is True and review["per_peak"][1]["cold_risk"] is False
-    # Live days with three cold risks in a week: level A goes back to shadow, its days count again from today.
-    _open_a_gate(hot_water, today)
+
+
+async def _backed_off(hass: HomeAssistant, freezer: Any, monkeypatch: pytest.MonkeyPatch, *, beta: bool = False) -> tuple[Any, Any, Any, datetime]:
+    """Level A steering, then three live days with a cold risk each in the last week."""
+    from custom_components.spotnav.heat import dhw_runtime
+
+    if beta:
+        monkeypatch.setattr(dhw_runtime, "beta_gate_open", lambda *_args: True)
+    _site_, controller, _relay, hot_water, now = await _villa(hass, freezer, monkeypatch)
+    today = now.astimezone(hot_water.zone).date()
+    monkeypatch.setattr("custom_components.spotnav.api.house_history.period_price_slots", lambda *_args: [])
+    if not beta:
+        _open_a_gate(hot_water, today)
+        hot_water.a_opened = (today - timedelta(days=5)).isoformat()
     for index in (1, 2, 3):
         day = (today - timedelta(days=index)).isoformat()
-        hot_water.days[day]["review"].update({"a_mode": "live", "cold_risks": 1})
-    hot_water.a_opened = (today - timedelta(days=5)).isoformat()
+        record = hot_water.days.setdefault(day, {"peaks": [], "picks": {}, "live": []})
+        record["review"] = {"date": day, "mode": "shadow", "hits": 2, "peaks": 2, "saved": 0.0, "misses": 0, "a_mode": "live", "cold_risks": 1}
     await hot_water._async_review(_local(hot_water, now, 5))  # noqa: SLF001
-    assert hot_water.a_opened is None and hot_water.a_since == today.isoformat() == hot_water.a_backed_off
-    assert hot_water.a_gate_state()["open"] is False and hot_water.a_gate_state()["backed_off"] == today.isoformat()
+    return controller, hot_water, today, now
+
+
+@pytest.mark.parametrize("beta", [False, True])
+async def test_a_back_off_keeps_level_a_and_makes_it_stricter(hass: HomeAssistant, freezer, monkeypatch, beta: bool) -> None:
+    """Review S3 (decided): three cold risks in a week never send the relay back to the plan without level A, which
+    protects less. Level A stays and widens: three hours before each peak, a day lowering one hour less; its gate
+    counts no day until seven clean ones. A beta site backs off as well."""
+    controller, hot_water, today, now = await _backed_off(hass, freezer, monkeypatch, beta=beta)
+    config = controller.heat_shadow.config()
+    assert hot_water.a_strict() and hot_water.a_backed_off == today.isoformat()
+    assert hot_water.a_mode(config) == "live"
+    tomorrow = today + timedelta(days=1)
+    kept, cap = hot_water.level_a_rules(now, config, [tomorrow])
+    ready = _local(hot_water, now, 18, 1)
+    assert [hour for hour, why in sorted(kept.items()) if why == ("peak", ready)] == [ready - 3 * H, ready - 2 * H, ready - H]
+    assert cap == 3
+    # The plan steered by keeps level A's cuts.
+    await controller.heat_shadow._async_plan(now)  # noqa: SLF001
+    assert hot_water.cuts_live is True and ready - H not in _lowered(controller.heat_shadow.plan)
+    # A second look the same week does not back off again.
+    await hot_water._async_review(_local(hot_water, now, 6))  # noqa: SLF001
+    assert hot_water.a_backed_off == today.isoformat()
+    # Seven clean days after it: back to the usual rules.
+    for index in range(1, 8):
+        day = (today + timedelta(days=index)).isoformat()
+        hot_water.days[day] = {"peaks": [], "picks": {}, "live": [], "review": {"date": day, "mode": "shadow", "hits": 2, "peaks": 2, "saved": 0.0, "misses": 0, "a_mode": "live", "cold_risks": 0}}
+    later = now + timedelta(days=8)
+    await hot_water._async_review(later)  # noqa: SLF001
+    assert not hot_water.a_strict()
+    kept, cap = hot_water.level_a_rules(later, config, [(later + timedelta(days=1)).astimezone(hot_water.zone).date()])
+    assert cap == 4
+
+
+async def test_strict_days_do_not_count_toward_the_gate(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    _controller, hot_water, today, _now = await _backed_off(hass, freezer, monkeypatch)
+    for index in range(1, 4):
+        day = (today + timedelta(days=index)).isoformat()
+        hot_water.days[day] = {"review": {"date": day, "mode": "shadow", "hits": 2, "peaks": 2, "a_mode": "shadow", "cold_risks": 0}}
+    assert [review["date"] for review in hot_water.a_gate_reviews()] == []
 
 
 async def test_the_runs_a_block_will_hold_move_in_the_house_forecast(hass: HomeAssistant, freezer, monkeypatch) -> None:

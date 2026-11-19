@@ -39,7 +39,7 @@
                  gate: {level, days, days_needed, weekdays, peaks, peaks_needed, hits, hit_needed, saved, open,
                         backed_off},
                  level: "A" | "B" | null, mode: "shadow" | "live" | "watch",
-                 blocking: {mode: "shadow" | "live" | "watch", gate: {as gate}, tank: bool,
+                 blocking: {mode: "shadow" | "live" | "watch", gate: {as gate}, tank: bool, strict: bool,
                             cuts: [{start, end, reason: "peak" | "day_cap", peak: "HH:MM" | null, live}]} | null}
 
 `hot_water` is the site's hot water (`heat/dhw_runtime.py`, plan `plans/v3_dhw_plan.md`): the Boost button's state
@@ -49,7 +49,8 @@ run the boost would have replaced, once seen), today's measured runs and who sta
 and the gate to live. Money in the minor unit, as `today.cost`. `blocking` is level A where the path blocks hot water
 too (`heat/dhw_level_a.py`): the heat plan's hours its rules take out (`cuts`: before the peak at `peak`, or over the
 day's cap; `live` when the plan steered by has them out, else what it would do), its own mode and gate, and whether a
-tank sensor reads (`tank`: the tank rule then stands in for the day's cap). The review's `cold_risks` are the peaks a
+tank sensor reads (`tank`: the tank rule then stands in for the day's cap), and whether its stricter rules hold
+after a back-off (`strict`). The review's `cold_risks` are the peaks a
 block held the pump's run into, `blocks_cut` the hours level A took out that day, `a_mode` level A's mode that day. The band's `hot_water_pick` is the first planned
 boost ahead (an alias kept one release), and an hour with a planned boost is marked `hot_water` as a measured run's.
 

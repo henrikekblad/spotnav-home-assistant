@@ -2043,7 +2043,7 @@
   "heat.water.blockingGate": "Blocks around the hot water in shadow: day {days} of {needed}, {hits} of {peaks} peaks hit",
   "heat.water.blockingReady": "Blocks around the hot water: ready to be steered with “Control the heat”",
   "heat.water.blockingLive": "SpotNav keeps its blocks clear of the hot water",
-  "heat.water.blockingBackedOff": "Blocks around the hot water back in shadow after too many late reheats",
+  "heat.water.blockingBackedOff": "Blocks kept further from the hot water after too many late reheats",
   "heat.water.blockingReview": "Blocks yesterday: {hours} h shortened for the hot water · {risks} late reheats before a peak",
   "heat.water.blockingReviewWould": "Blocks yesterday: {hours} h would have been shortened for the hot water · {risks} late reheats before a peak",
   "heat.boost.noHeadroom": "The main fuse is fully loaded right now; turn something off and try again"

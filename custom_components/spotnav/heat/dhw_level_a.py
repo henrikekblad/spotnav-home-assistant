@@ -21,6 +21,10 @@ and the level-A gate, `dhw_review.GATES`):
   usual length. Until it has been seen three times (and
   where the pump runs it at varying times) it is not known, and a block may delay it by up to one block, as any run.
 
+**Back-off** (`dhw_review.back_off`, three cold risks within a week of steering): never back to the plan without
+these rules, which protects less. The rules widen instead (`PEAK_GUARD_STRICT`, the day's cap one hour less) until
+`CLEAN_DAYS` reviewed days in a row without a cold risk; meanwhile the gate counts no day.
+
 A lowered hour the rules take out is shown as cut (`cuts`): the price rule then lowers the next dearest hour it may,
 so a block may move rather than go.
 
@@ -44,9 +48,12 @@ from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, Final
 
 from .dhw_peaks import Peak, RunLike, peak_instant, standby, standby_kwh
-from .shadow_rule import ACTION_LOWER, BandHour
+from .shadow_rule import ACTION_LOWER, MAX_LOWERED_DAY, BandHour
 
 PEAK_GUARD: Final = timedelta(hours=2)
+#: After a back-off (cold risks in a week): the wider guard and one lowered hour less a day, until `CLEAN_DAYS`.
+PEAK_GUARD_STRICT: Final = timedelta(hours=3)
+CLEAN_DAYS: Final = 7
 #: The hours a local day lowers at most on a path that blocks hot water and no tank sensor.
 MAX_DAY_NO_TANK: Final = 4
 TANK_LOW_C: Final = 40.0
@@ -129,6 +136,7 @@ def guards(
     runs: Sequence[RunLike],
     now: datetime,
     boosted: Iterable[datetime] = (),
+    guard: timedelta = PEAK_GUARD,
 ) -> list[Guard]:
     """The times kept free of blocks on the days given (see the module): one per peak, none for a peak already
     served by a run or filled by a planned boost (`boosted`: their `ready`), none that has passed."""
@@ -142,7 +150,7 @@ def guards(
         previous = instants[index - 1][1] if index > 0 else None
         if served(previous, ready, runs, now):
             continue
-        out.append(Guard(ready - PEAK_GUARD, ready))
+        out.append(Guard(ready - guard, ready))
     return out
 
 
@@ -157,9 +165,12 @@ def guard_hours(items: Sequence[Guard]) -> dict[datetime, datetime]:
     return out
 
 
-def max_day_hours(tank_sensor: bool) -> int | None:
-    """The hours a local day may lower at most by the hot water's rule, `None` where the tank rule stands in."""
-    return None if tank_sensor else MAX_DAY_NO_TANK
+def max_day_hours(tank_sensor: bool, strict: bool = False) -> int | None:
+    """The hours a local day may lower at most by the hot water's rule, `None` where the tank rule stands in; after a
+    back-off (`strict`) one hour less, also with a tank sensor (the heat plan's own cap less one)."""
+    if not strict:
+        return None if tank_sensor else MAX_DAY_NO_TANK
+    return (MAX_LOWERED_DAY if tank_sensor else MAX_DAY_NO_TANK) - 1
 
 
 def is_night(moment: datetime, zone: tzinfo) -> bool:
@@ -293,7 +304,9 @@ __all__ = [
     "CUT_PEAK",
     "DELAYED_WITHIN",
     "MAX_DAY_NO_TANK",
+    "CLEAN_DAYS",
     "PEAK_GUARD",
+    "PEAK_GUARD_STRICT",
     "TANK_BACK_C",
     "TANK_LOW_C",
     "Cut",

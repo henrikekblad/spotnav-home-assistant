@@ -2043,7 +2043,7 @@
   "heat.water.blockingGate": "Blokkeringen rond het warme water in schaduw: dag {days} van {needed}, {hits} van {peaks} pieken geraakt",
   "heat.water.blockingReady": "Blokkeringen rond het warme water: klaar om te sturen met ‘Verwarming sturen’",
   "heat.water.blockingLive": "SpotNav houdt zijn blokkeringen weg van het warme water",
-  "heat.water.blockingBackedOff": "Blokkeringen rond het warme water terug in schaduw na te vaak laat opwarmen",
+  "heat.water.blockingBackedOff": "Blokkeringen blijven verder weg van het warme water na te vaak laat opwarmen",
   "heat.water.blockingReview": "Blokkeringen gisteren: {hours} u ingekort voor het warme water · {risks} keer laat opgewarmd vóór een piek",
   "heat.water.blockingReviewWould": "Blokkeringen gisteren: {hours} u zouden zijn ingekort voor het warme water · {risks} keer laat opgewarmd vóór een piek",
   "heat.boost.noHeadroom": "De hoofdzekering is nu volledig belast; zet iets uit en probeer het opnieuw"

@@ -591,6 +591,7 @@
         "weekdays": 5
       },
       "mode": "shadow",
+      "strict": false,
       "tank": false
     },
     "boost": {

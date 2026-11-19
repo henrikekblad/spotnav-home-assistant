@@ -2043,7 +2043,7 @@
   "heat.water.blockingGate": "Blokeringer omkring det varme vand i skygge: dag {days} af {needed}, {hits} af {peaks} toppe ramt",
   "heat.water.blockingReady": "Blokeringer omkring det varme vand: klar til at blive styret med »Styr varmen«",
   "heat.water.blockingLive": "SpotNav holder sine blokeringer væk fra det varme vand",
-  "heat.water.blockingBackedOff": "Blokeringer omkring det varme vand tilbage i skygge efter for mange sene opvarmninger",
+  "heat.water.blockingBackedOff": "Blokeringerne holdes længere væk fra det varme vand efter for mange sene opvarmninger",
   "heat.water.blockingReview": "Blokeringer i går: {hours} t forkortet for det varme vand · {risks} sene opvarmninger før en top",
   "heat.water.blockingReviewWould": "Blokeringer i går: {hours} t ville være forkortet for det varme vand · {risks} sene opvarmninger før en top",
   "heat.boost.noHeadroom": "Hovedsikringen er fuldt belastet lige nu; sluk for noget og prøv igen"

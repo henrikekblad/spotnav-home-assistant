@@ -417,8 +417,11 @@ duschen 06:00") and the review under the chart counts yesterday's hours and the 
 pump run a block held until after its ready time ("06:00 värmdes sent efter en blockering"). The progress line
 reads "Blockeringar kring varmvattnet i skuggning: dag 5 av 14, 8 av 10 toppar träffade". These rules steer the plan
 once **Styr värmen** is on and after at least 14 shadow days with at least ten peaks seen and 70 % of them hit (no
-saving is asked: the rules only give up lowered hours). Three late reheats within a week of steering send them back
-to shadow. On a beta site the shadow days are skipped, as for the planned runs.
+saving is asked: the rules only give up lowered hours). Three late reheats within a week of steering never send them back
+to shadow, which would protect less: they get stricter instead (three hours kept free before each peak, one
+lowered hour less a day) until seven days in a row without a late reheat, and the card says so ("Blockeringarna
+hålls längre från varmvattnet …"). On a beta site the shadow days are skipped, as for the planned runs, but the
+stricter rules after late reheats apply there too.
 
 **With the cars and the battery.** A peak's expected reheat that falls in a block SpotNav will hold is moved to the
 block's end in the house's expected load, so the cars' and the battery's plans see it there.

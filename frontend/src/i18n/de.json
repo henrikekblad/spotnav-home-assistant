@@ -2043,7 +2043,7 @@
   "heat.water.blockingGate": "Sperren mit Rücksicht aufs Warmwasser im Schattenbetrieb: Tag {days} von {needed}, {hits} von {peaks} Spitzen getroffen",
   "heat.water.blockingReady": "Sperren mit Rücksicht aufs Warmwasser: bereit für „Heizung steuern“",
   "heat.water.blockingLive": "SpotNav hält seine Sperren vom Warmwasser fern",
-  "heat.water.blockingBackedOff": "Sperren mit Rücksicht aufs Warmwasser nach zu vielem spätem Nachheizen wieder im Schattenbetrieb",
+  "heat.water.blockingBackedOff": "Sperren halten nach zu vielem spätem Nachheizen mehr Abstand zum Warmwasser",
   "heat.water.blockingReview": "Sperren gestern: {hours} h fürs Warmwasser verkürzt · {risks}-mal spät nachgeheizt vor einer Spitze",
   "heat.water.blockingReviewWould": "Sperren gestern: {hours} h wären fürs Warmwasser verkürzt worden · {risks}-mal spät nachgeheizt vor einer Spitze",
   "heat.boost.noHeadroom": "Die Hauptsicherung ist gerade voll belastet; etwas ausschalten und erneut versuchen"

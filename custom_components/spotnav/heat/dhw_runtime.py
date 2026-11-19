@@ -64,7 +64,7 @@ from .dhw_boost import (
     stop_call,
 )
 from .dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN, Entry, Ledger
-from .dhw_level_a import HYGIENE_KEEP, Cut, TankGuard, guards, is_night, kept_hours, max_day_hours, next_hygiene
+from .dhw_level_a import CLEAN_DAYS, HYGIENE_KEEP, PEAK_GUARD, PEAK_GUARD_STRICT, Cut, TankGuard, guards, is_night, kept_hours, max_day_hours, next_hygiene
 from .dhw_peaks import PEAK_DAYS, Peak, draws_from_runs, learn_peaks, peak_instant, standby, standby_kwh
 from .dhw_plan import (
     BUDGETS,
@@ -206,6 +206,8 @@ class HotWater:
         self.a_since: str | None = None
         self.a_opened: str | None = None
         self.a_backed_off: str | None = None
+        #: Since a back-off: level A steers with its stricter rules until `CLEAN_DAYS` clean days.
+        self.a_strict_since: str | None = None
         #: The heat plan's hours level A takes out (`dhw_level_a.cuts`) and whether the plan steered by has them out.
         self.cuts: list[Cut] = []
         self.cuts_live = False
@@ -228,6 +230,7 @@ class HotWater:
             "a_since": self.a_since,
             "a_opened": self.a_opened,
             "a_backed_off": self.a_backed_off,
+            "a_strict_since": self.a_strict_since,
         }
 
     def restore(self, raw: Any) -> None:
@@ -245,7 +248,7 @@ class HotWater:
         days = raw.get("days")
         if isinstance(days, dict):
             self.days = {key: value for key, value in days.items() if isinstance(key, str) and isinstance(value, dict)}
-        for name in ("gate_since", "backed_off", "opened", "ended_day", "a_since", "a_opened", "a_backed_off"):
+        for name in ("gate_since", "backed_off", "opened", "ended_day", "a_since", "a_opened", "a_backed_off", "a_strict_since"):
             value = raw.get(name)
             setattr(self, name, value if isinstance(value, str) else None)
         self.picks = [pick for item in raw.get("picks") or [] if (pick := Pick.from_stored(item)) is not None]
@@ -337,7 +340,12 @@ class HotWater:
             review = self.days[key].get("review")
             if isinstance(review, dict) and (self.a_since is None or key > self.a_since):
                 out.append(review)
-        return out
+        # While stricter after a back-off, no day counts toward the gate.
+        return [] if self.a_strict() else out
+
+    def a_strict(self) -> bool:
+        """Whether level A steers with its stricter rules after a back-off."""
+        return self.a_strict_since is not None
 
     def a_gate_state(self) -> dict[str, Any]:
         state = gate(self.a_gate_reviews(), LEVEL_A)
@@ -351,7 +359,8 @@ class HotWater:
         """Level A's mode: `watch` as the boost's, `live` with "Styr värmen" and its gate open, else `shadow`."""
         if self.watched(self._pump() if pump is None else pump):
             return MODE_WATCH
-        if config.control_enabled and self.a_gate_state()["open"]:
+        if config.control_enabled and (self.a_gate_state()["open"] or self.a_strict()):
+            # After a back-off level A keeps steering, stricter: never back to the plan without its rules.
             return MODE_LIVE
         return MODE_SHADOW
 
@@ -365,9 +374,10 @@ class HotWater:
             return None
         pump = self._pump()
         runs = list(self.runs.values())
-        found = guards(self.peaks, days, self.zone, runs, now, self.filled_peaks())
+        strict = self.a_strict()
+        found = guards(self.peaks, days, self.zone, runs, now, self.filled_peaks(), PEAK_GUARD_STRICT if strict else PEAK_GUARD)
         hygiene = next_hygiene(runs, self.zone, now, list(self.night_runs.values()))
-        return kept_hours(found, hygiene), max_day_hours(self.tank_c(pump) is not None)
+        return kept_hours(found, hygiene), max_day_hours(self.tank_c(pump) is not None, strict)
 
     def filled_peaks(self) -> set[datetime]:
         """The peaks a boost fills for certain: SpotNav's written and read back (`live`), or one already running when
@@ -683,14 +693,26 @@ class HotWater:
             # days, and live days are no shadow days.
             self.opened = today.isoformat()
             _LOGGER.info("SpotNav hot water: the shadow gate opened")
-        if self.a_gate_state()["open"] and back_off(reviews, today, LEVEL_A) and self.a_backed_off != today.isoformat():
-            self.a_since = today.isoformat()
-            self.a_backed_off = today.isoformat()
-            self.a_opened = None
-            _LOGGER.info("SpotNav hot water: blocks held the pump's run into a peak too often in a week; level A back to shadow")
+        if self.a_strict():
+            self._a_strict_end(reviews)
+        elif self.a_gate_state()["open"] and back_off(reviews, today, LEVEL_A):
+            # Also on a beta site: this is a safety net, not a learning gate. Level A stays and widens.
+            self.a_since = self.a_strict_since = self.a_backed_off = today.isoformat()
+            _LOGGER.info("SpotNav hot water: blocks held the pump's run into a peak too often in a week; level A stricter")
         elif self.a_opened is None and gate(self.a_gate_reviews(), LEVEL_A)["open"]:
             self.a_opened = today.isoformat()
             _LOGGER.info("SpotNav hot water: level A's shadow gate opened")
+
+    def _a_strict_end(self, reviews: Sequence[Mapping[str, Any]]) -> None:
+        """`CLEAN_DAYS` reviewed days in a row after the back-off without a cold risk end the stricter rules; the gate
+        counts its days from then."""
+        since = self.a_strict_since or ""
+        after = sorted((review for review in reviews if str(review.get("date", "")) > since), key=lambda review: review["date"])
+        clean = after[-CLEAN_DAYS:]
+        if len(clean) == CLEAN_DAYS and all(int(review.get("cold_risks", 0)) == 0 for review in clean):
+            self.a_since = str(clean[-1]["date"])
+            self.a_strict_since = None
+            _LOGGER.info("SpotNav hot water: a week without a late reheat; level A back to its usual rules")
 
     def _previous_until(self, key: str) -> datetime | None:
         """The end of the last peak the day before `key` kept."""
@@ -1334,6 +1356,7 @@ class HotWater:
             "gate": self.a_gate_state(),
             "cuts": [shown[key] for key in sorted(shown)],
             "tank": self.tank_c(pump) is not None,
+            "strict": self.a_strict(),
         }
 
     def diagnostics(self) -> dict[str, Any]:

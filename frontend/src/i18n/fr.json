@@ -2043,7 +2043,7 @@
   "heat.water.blockingGate": "Blocages autour de l'eau chaude en observation : jour {days} sur {needed}, {hits} pics sur {peaks} atteints",
   "heat.water.blockingReady": "Blocages autour de l'eau chaude : prêts à être pilotés avec « Piloter le chauffage »",
   "heat.water.blockingLive": "SpotNav tient ses blocages à l'écart de l'eau chaude",
-  "heat.water.blockingBackedOff": "Blocages autour de l'eau chaude de retour en observation après trop de réchauffes tardives",
+  "heat.water.blockingBackedOff": "Blocages tenus plus loin de l'eau chaude après trop de réchauffes tardives",
   "heat.water.blockingReview": "Blocages hier : {hours} h raccourcies pour l'eau chaude · {risks} réchauffes tardives avant un pic",
   "heat.water.blockingReviewWould": "Blocages hier : {hours} h auraient été raccourcies pour l'eau chaude · {risks} réchauffes tardives avant un pic",
   "heat.boost.noHeadroom": "Le disjoncteur principal est à pleine charge ; éteignez un appareil et réessayez"

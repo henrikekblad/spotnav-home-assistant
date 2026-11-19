@@ -316,6 +316,7 @@ def villa_hot_water() -> dict[str, Any]:
                 {"start": _at(4, 1), "end": _at(5, 1), "reason": "peak", "peak": "05:00", "live": False},
             ],
             "tank": False,
+            "strict": False,
         },
     }
 

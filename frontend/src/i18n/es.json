@@ -2043,7 +2043,7 @@
   "heat.water.blockingGate": "Bloqueos según el agua caliente en sombra: día {days} de {needed}, {hits} de {peaks} picos acertados",
   "heat.water.blockingReady": "Bloqueos según el agua caliente: listos para controlarse con «Controlar la calefacción»",
   "heat.water.blockingLive": "SpotNav mantiene sus bloqueos lejos del agua caliente",
-  "heat.water.blockingBackedOff": "Bloqueos según el agua caliente de vuelta en sombra tras demasiados recalentamientos tardíos",
+  "heat.water.blockingBackedOff": "Bloqueos más alejados del agua caliente tras demasiados recalentamientos tardíos",
   "heat.water.blockingReview": "Bloqueos ayer: {hours} h acortadas por el agua caliente · {risks} recalentamientos tardíos antes de un pico",
   "heat.water.blockingReviewWould": "Bloqueos ayer: {hours} h se habrían acortado por el agua caliente · {risks} recalentamientos tardíos antes de un pico",
   "heat.boost.noHeadroom": "El fusible principal está a plena carga ahora; apaga algo e inténtalo de nuevo"

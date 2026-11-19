@@ -203,8 +203,13 @@ describe("blocks kept clear of the hot water (level A)", () => {
     expect(hotWaterLines("sv", live).find((line) => line.key === "water-blocking-live")!.text).toBe("SpotNav håller sina blockeringar undan varmvattnet");
     const ready = { ...value, hot_water: { ...value.hot_water!, blocking: { ...blocking, gate: { ...blocking.gate, open: true } } } };
     expect(hotWaterLines("sv", ready).find((line) => line.key === "water-blocking-gate")!.text).toBe("Blockeringar kring varmvattnet: redo att styras med ”Styr värmen”");
-    const backed = { ...value, hot_water: { ...value.hot_water!, blocking: { ...blocking, gate: { ...blocking.gate, backed_off: "2026-11-15" } } } };
-    expect(hotWaterLines("sv", backed).map((line) => line.key)).toContain("water-blocking-backed-off");
+    const backed = { ...value, hot_water: { ...value.hot_water!, blocking: { ...blocking, mode: "live", strict: true } } };
+    expect(hotWaterLines("sv", backed).find((line) => line.key === "water-blocking-backed-off")!.text).toBe(
+      "Blockeringarna hålls längre från varmvattnet efter för många sena uppvärmningar",
+    );
+    // A back-off long over is no line.
+    const over = { ...value, hot_water: { ...value.hot_water!, blocking: { ...blocking, gate: { ...blocking.gate, backed_off: "2026-11-01" } } } };
+    expect(hotWaterLines("sv", over).map((line) => line.key)).not.toContain("water-blocking-backed-off");
     const none = { ...value, hot_water: { ...value.hot_water!, blocking: null } };
     expect(hotWaterLines("sv", none).map((line) => line.key)).toEqual(["water-gate", "water-review", "water-peaks"]);
   });
