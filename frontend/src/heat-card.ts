@@ -151,6 +151,11 @@ export class SpotnavHeatCard extends HTMLElement {
   private wantedLanguage: Language | null = null;
   private timer: number | null = null;
   private settle: ReturnType<typeof setTimeout> | null = null;
+  /** The boost poll's next look, and how many looks are left (kept over a disconnect, picked up again on connect). */
+  private boostTimer: number | null = null;
+  private boostLeft = 0;
+  /** Counts the reads of the answer; only the newest one's result is used. */
+  private refreshSeq = 0;
   private connected = false;
   private generation = 0;
   private width = HEAT_FALLBACK_WIDTH;
@@ -245,6 +250,10 @@ export class SpotnavHeatCard extends HTMLElement {
       clearTimeout(this.settle);
       this.settle = null;
     }
+    if (this.boostTimer !== null) {
+      window.clearTimeout(this.boostTimer);
+      this.boostTimer = null;
+    }
     this.settingsPopover?.destroy();
     this.settingsPopover = null;
     this.historyDialog?.destroy();
@@ -332,9 +341,12 @@ export class SpotnavHeatCard extends HTMLElement {
       this.timer = window.setInterval(() => void this.refresh(), HEAT_REFRESH_MS);
     }
     void this.refresh();
+    if (this.boostLeft > 0 && this.boostTimer === null) {
+      this.pollBoost(this.boostLeft);
+    }
   }
 
-  /** Read the answer once; an older read that comes back after a newer config is dropped. */
+  /** Read the answer once; an older read that comes back after a newer one, or after a newer config, is dropped. */
   async refresh(): Promise<void> {
     const hass = this.hassObject;
     const target = this.target();
@@ -342,6 +354,7 @@ export class SpotnavHeatCard extends HTMLElement {
       return;
     }
     const generation = this.generation;
+    const seq = ++this.refreshSeq;
     let next: HeatState;
     try {
       const decoded = decodeHeat(await getHeat(hass, target));
@@ -353,7 +366,7 @@ export class SpotnavHeatCard extends HTMLElement {
       const unsupported = code === UNSUPPORTED_API_VERSION || code === "unknown_command";
       next = { kind: "failed", sentenceKey: unsupported ? "heat.unsupported" : "heat.failed", code };
     }
-    if (generation !== this.generation) {
+    if (generation !== this.generation || seq !== this.refreshSeq) {
       return;
     }
     if (next.kind === "failed" && this.state.kind === "ready") {
@@ -518,11 +531,22 @@ export class SpotnavHeatCard extends HTMLElement {
   }
 
   private pollBoost(left: number): void {
-    if (left <= 0 || this.answer()?.hot_water?.boost?.state !== "starting") {
+    if (this.boostTimer !== null) {
+      window.clearTimeout(this.boostTimer);
+      this.boostTimer = null;
+    }
+    this.boostLeft = left;
+    if (left <= 0 || !this.connected || this.answer()?.hot_water?.boost?.state !== "starting") {
+      this.boostLeft = 0;
       return;
     }
-    window.setTimeout(() => {
-      void this.refresh().then(() => this.pollBoost(left - 1));
+    this.boostTimer = window.setTimeout(() => {
+      this.boostTimer = null;
+      void this.refresh().then(() => {
+        if (this.connected) {
+          this.pollBoost(left - 1);
+        }
+      });
     }, BOOST_POLL_MS);
   }
 

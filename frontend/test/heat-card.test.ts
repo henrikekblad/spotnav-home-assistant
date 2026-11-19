@@ -868,3 +868,91 @@ describe("the rooms in the day chart", () => {
     expect(decodeHeat({ ...raw, indoor_day: { ...day, outdoor_c: 4 } }).ok).toBe(false);
   });
 });
+
+describe("the element's reads and timers", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: NOW });
+    defineCard();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  });
+
+  /** A hass whose `get_heat` answers wait for the test: `ask` lists the resolvers in the order asked. */
+  function deferredHass() {
+    const ask: ((value: unknown) => void)[] = [];
+    const hass = {
+      language: "en",
+      locale: { language: "en" },
+      states: {},
+      user: { is_admin: true },
+      callWS: (message: Record<string, unknown>): Promise<unknown> =>
+        message["type"] === "spotnav/get_heat" ? new Promise((resolve) => ask.push(resolve)) : new Promise(() => undefined),
+    };
+    return { hass, ask };
+  }
+
+  function mountDeferred() {
+    const { hass, ask } = deferredHass();
+    const element = document.createElement(HEAT_CARD_ELEMENT) as SpotnavHeatCard;
+    element.setConfig({ type: "custom:spotnav-heat-card", site: "site_villa" });
+    element.hass = hass as never;
+    document.body.append(element);
+    return { element, ask };
+  }
+
+  const withTarget = (target: number, boost: string = "idle") => {
+    const raw = read("villa.json");
+    const water = raw["hot_water"] as Record<string, unknown>;
+    return {
+      ...raw,
+      config: { ...(raw["config"] as object), target_c: target },
+      hot_water: { ...water, boost: { ...(water["boost"] as object), state: boost, ends: null, source: null, started: null } },
+    };
+  };
+  const shownTarget = (element: SpotnavHeatCard): number => (element as never as { state: { answer: { config: { target_c: number } } } }).state.answer.config.target_c;
+
+  it("keeps the newer answer when an older read arrives after it", async () => {
+    const { element, ask } = mountDeferred();
+    await vi.advanceTimersByTimeAsync(0);
+    ask[0]!(withTarget(21));
+    await vi.advanceTimersByTimeAsync(0);
+    const older = element.refresh();
+    const newer = element.refresh();
+    expect(ask).toHaveLength(3);
+    ask[2]!(withTarget(23));
+    await vi.advanceTimersByTimeAsync(0);
+    ask[1]!(withTarget(19));
+    await Promise.all([older, newer]);
+    expect(shownTarget(element)).toBe(23);
+  });
+
+  it("stops the boost poll on disconnect and picks it up again on connect", async () => {
+    const { element, ask } = mountDeferred();
+    await vi.advanceTimersByTimeAsync(0);
+    ask[0]!(withTarget(21, "starting"));
+    await vi.advanceTimersByTimeAsync(0);
+    (element as never as { pollBoost(left: number): void }).pollBoost(5);
+    element.remove();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(ask).toHaveLength(1);
+    document.body.append(element);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ask).toHaveLength(2);
+    ask[1]!(withTarget(21, "starting"));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(ask).toHaveLength(3);
+  });
+
+  it("does not start a poll when the boost call returns after the card left", async () => {
+    const { element, ask } = mountDeferred();
+    await vi.advanceTimersByTimeAsync(0);
+    ask[0]!(withTarget(21, "starting"));
+    await vi.advanceTimersByTimeAsync(0);
+    element.remove();
+    (element as never as { pollBoost(left: number): void }).pollBoost(5);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
