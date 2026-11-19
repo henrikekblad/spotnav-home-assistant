@@ -181,41 +181,60 @@ def discover_vehicles(hass: HomeAssistant) -> list[VehicleCandidate]:
     vehicles: list[VehicleCandidate] = []
     # Sorted by id so the result does not depend on registry insertion order.
     for device in sorted(device_registry.devices, key=lambda entry: entry.id):
-        if decisions is not None and decisions.is_dismissed(DECISION_DOMAIN_VEHICLE, device.id):
-            continue
-        entities = _device_entities(hass, entity_registry, device.id)
-        soc_entity_id = _soc_entity_id(
-            entities, _confirmed_soc_entity_id(entity_registry, decisions, device.id)
-        )
-        if soc_entity_id is None:
-            continue
-        soc_percent = valid_soc_percent(hass.states.get(soc_entity_id))
-        range_entity_ids = _range_signal_entity_ids(entities)
-        if soc_percent is None or not range_entity_ids:
-            continue
-        capacity_kwh = _battery_capacity_kwh(entities)
-        vehicles.append(
-            VehicleCandidate(
-                id=device.id,
-                name=_device_name(device),
-                soc_percent=soc_percent,
-                target_soc_percent_max=_target_soc_percent_max(
-                    entities,
-                    _confirmed_charge_limit_entity_id(
-                        entity_registry, decisions, device.id
-                    ),
-                ),
-                battery_capacity_kwh=capacity_kwh,
-                capacity_source="detected" if capacity_kwh is not None else "unknown",
-                entity_ids=_reading_entity_ids(
-                    soc_entity_id,
-                    range_entity_ids,
-                    _charge_limit_readings(entities),
-                    _capacity_readings(entities),
-                ),
-            )
-        )
+        vehicle = _vehicle_candidate(hass, entity_registry, decisions, device)
+        if vehicle is not None:
+            vehicles.append(vehicle)
     return vehicles
+
+
+def discover_vehicle(hass: HomeAssistant, device_id: str) -> VehicleCandidate | None:
+    """`discover_vehicles`' entry for `device_id` alone, reading only that device's entities.
+
+    The same answer as looking `device_id` up in `discover_vehicles`, without the sweep over every device.
+    """
+    device = dr.async_get(hass).async_get(device_id)
+    if device is None:
+        return None
+    return _vehicle_candidate(hass, er.async_get(hass), domain_data(hass).decision_store, device)
+
+
+def _vehicle_candidate(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    decisions: Any,
+    device: dr.DeviceEntry,
+) -> VehicleCandidate | None:
+    """`device` as a vehicle candidate, or `None` when dismissed or not vehicle-like."""
+    if decisions is not None and decisions.is_dismissed(DECISION_DOMAIN_VEHICLE, device.id):
+        return None
+    entities = _device_entities(hass, entity_registry, device.id)
+    soc_entity_id = _soc_entity_id(
+        entities, _confirmed_soc_entity_id(entity_registry, decisions, device.id)
+    )
+    if soc_entity_id is None:
+        return None
+    soc_percent = valid_soc_percent(hass.states.get(soc_entity_id))
+    range_entity_ids = _range_signal_entity_ids(entities)
+    if soc_percent is None or not range_entity_ids:
+        return None
+    capacity_kwh = _battery_capacity_kwh(entities)
+    return VehicleCandidate(
+        id=device.id,
+        name=_device_name(device),
+        soc_percent=soc_percent,
+        target_soc_percent_max=_target_soc_percent_max(
+            entities,
+            _confirmed_charge_limit_entity_id(entity_registry, decisions, device.id),
+        ),
+        battery_capacity_kwh=capacity_kwh,
+        capacity_source="detected" if capacity_kwh is not None else "unknown",
+        entity_ids=_reading_entity_ids(
+            soc_entity_id,
+            range_entity_ids,
+            _charge_limit_readings(entities),
+            _capacity_readings(entities),
+        ),
+    )
 
 
 def vehicle_reading_entity_ids(hass: HomeAssistant, vehicle_id: object) -> list[str] | None:

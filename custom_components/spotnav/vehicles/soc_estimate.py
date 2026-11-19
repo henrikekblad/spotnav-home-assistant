@@ -71,7 +71,7 @@ from ..util import finite_number
 from .vehicle_discovery import (
     _device_name,
     charger_vehicle_ids,
-    discover_vehicles,
+    discover_vehicle,
     resolve_target_vehicle,
     vehicle_soc_entity_id,
 )
@@ -1062,11 +1062,12 @@ class SocReader:
             return (cached[1], cached[2])
         capacity: float | None = None
         ceiling: float | None = None
-        for candidate in discover_vehicles(self._hass):
-            if candidate.id == vehicle_id:
-                capacity = candidate.battery_capacity_kwh
-                ceiling = candidate.target_soc_percent_max
-                break
+        # This car's device alone: a fact or level change forces this read, and a sweep over every device on each
+        # of a charging car's sensor ticks would cost loop time that grows with the install.
+        candidate = discover_vehicle(self._hass, vehicle_id)
+        if candidate is not None:
+            capacity = candidate.battery_capacity_kwh
+            ceiling = candidate.target_soc_percent_max
         if capacity is None and cached is not None:
             # A sleeping car drops out of discovery; its pack size has not changed.
             capacity = cached[1]

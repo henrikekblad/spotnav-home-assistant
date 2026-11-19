@@ -327,3 +327,50 @@ async def test_fill_plans_again_when_the_cars_level_arrives(hass: HomeAssistant,
         snapshot = preview.snapshot()
         assert snapshot.fill == "battery"
         assert snapshot.proposal.requested_kwh == pytest.approx(80.7 * 0.89 / 0.9, abs=0.01)
+
+
+async def test_a_cars_sensor_tick_reads_that_car_alone(hass: HomeAssistant, transport: Any) -> None:
+    """A charging car posts kWh and % sensors every few seconds: each tick re-reads that car's own device, never
+    every device in the registry."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    from custom_components.spotnav.vehicles import vehicle_discovery
+
+    serve_prices(transport, rising=True)
+    with freeze_time(NOW):
+        charger, device_id, _ = await charger_and_car(
+            hass, capacity=None, soc_percent="11", driver=DRIVER_MANUAL_KWH, requested_kwh=22.4,
+            target=TargetSocIntent(), amps=16, phases=3, fill_to_limit=True,
+        )
+        preview = preview_for(hass, charger.entry_id)
+        _capacity_sensor(hass, device_id, "80.7")
+        added = er.async_get(hass).async_get_or_create(
+            "sensor", "test", "ev6_energy_added", device_id=device_id, suggested_object_id="ev6_energy_added",
+            original_name="charge energy added",
+        )
+        hass.states.async_set(added.entity_id, "0.5", {"unit_of_measurement": "kWh"})
+        # Other devices in the install, which a sweep would read.
+        config_entry_id = dr.async_get(hass).async_get(device_id).config_entries
+        for index in range(5):
+            dr.async_get(hass).async_get_or_create(
+                config_entry_id=next(iter(config_entry_id)), identifiers={("test", f"other_{index}")}
+            )
+        await preview.async_recalculate()
+        await hass.async_block_till_done()
+
+        read: list[str] = []
+        original = vehicle_discovery._vehicle_candidate
+
+        def spy(hass_: Any, registry: Any, decisions: Any, device: Any) -> Any:
+            read.append(device.id)
+            return original(hass_, registry, decisions, device)
+
+        vehicle_discovery._vehicle_candidate = spy
+        try:
+            for value in ("0.6", "0.7", "0.8"):
+                hass.states.async_set(added.entity_id, value, {"unit_of_measurement": "kWh"})
+                await hass.async_block_till_done()
+        finally:
+            vehicle_discovery._vehicle_candidate = original
+        assert read and set(read) == {device_id}
+        assert len(read) == 3
