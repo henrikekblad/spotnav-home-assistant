@@ -5,7 +5,7 @@
 import { updateHeat, type SiteTarget } from "./api";
 import { decodeHeatWrite, isRelayPath, roomName, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
-import { instantToLocal, localToInstant, namesOf, type HeatSettingKey } from "./heat-view";
+import { instantToLocal, localToInstant, namesOf, offsetValue, type HeatSettingKey } from "./heat-view";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
 import { multiEditor, numberEditor, onOffEditor, shell, singleEditor, type ChoiceOption, type EditorHandlers } from "./value-editors";
@@ -28,6 +28,8 @@ export interface HeatEditorInput {
 
 export interface HeatWriteOptions {
   enable?: boolean;
+  /** The answer to the stored offset's line (`HeatControl.offset_home`). */
+  offsetHome?: "restore" | "keep";
 }
 
 const NUMBERS = /^(number|input_number)\./;
@@ -68,7 +70,7 @@ export async function writeHeat(
   }
   let raw: unknown;
   try {
-    raw = await updateHeat(hass, target, changes, expected, options.enable === true);
+    raw = await updateHeat(hass, target, changes, expected, options.enable === true, options.offsetHome ?? null);
   } catch {
     return { error: translate(language, "heat.error.generic"), config: null };
   }
@@ -121,6 +123,33 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
       body: onOffEditor(doc, language, { intro: parts.join(" "), on: config.control_enabled, idPrefix: prefix }, async (on) =>
         on === config.control_enabled ? null : await input.write({ control_enabled: on }, { enable: on && found !== null }),
       handlers),
+    };
+  }
+  if (key === "offsetHome") {
+    // The stored offset reads other than the household's own value: put it back, or keep it. Nothing is written
+    // without this answer.
+    const line = answer.control?.offset_home ?? null;
+    if (line === null) {
+      return null;
+    }
+    const words = { value: offsetValue(language, line.value), home: offsetValue(language, line.home) };
+    return {
+      title: t("heat.settings.offsetHome"),
+      body: singleEditor(
+        doc,
+        language,
+        {
+          intro: t("heat.settings.offsetHomeHelp", words),
+          options: [
+            { value: "restore", label: t("heat.settings.offsetHomeRestore", words) },
+            { value: "keep", label: t("heat.settings.offsetHomeKeep", words) },
+          ],
+          selected: null,
+          idPrefix: prefix,
+        },
+        (value) => input.write({}, { offsetHome: value === "keep" ? "keep" : "restore" }),
+        handlers,
+      ),
     };
   }
   if (choices === null) {

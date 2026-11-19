@@ -777,6 +777,28 @@ describe("the control paths through the pump's own settings", () => {
     await vi.waitFor(() => expect(relayWrite).toHaveBeenCalledWith({ control_enabled: true }, { enable: false }));
   });
 
+  it("asks to put back an offset that was not put back, and sends the answer", async () => {
+    const value = answer("sg_api_pump.json");
+    const line = { entity_id: "number.s1155_heating_offset_climate_system_1_40031", value: -2, home: 0 };
+    const shown: HeatAnswer = {
+      ...value,
+      config: { ...value.config, control_path: "offset", control_entity: line.entity_id, control_entity_b: null, control_enabled: true },
+      control: { ...value.control!, path: "offset", offset_home: line },
+    };
+    const section = heatSettingsSection(document, "sv", shown, () => undefined);
+    const rows = Object.fromEntries([...section.querySelectorAll<HTMLElement>("[data-row]")].map((row) => [row.dataset["row"], row.textContent]));
+    expect(rows["offsetHome"]).toBe("Kurvjusteringen är inte tillbaka−2 (var 0)");
+    const write = vi.fn(async () => null);
+    const editor = heatEditor(editorInput(shown, write) as never, "offsetHome", handlers as never)!;
+    expect(editor.body.textContent).toContain("Kurvjusteringen står på −2; den var 0 innan SpotNav.");
+    choose(editor.body as HTMLFormElement, "restore");
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith({}, { offsetHome: "restore" }));
+    // Once the two agree there is no row and nothing to open.
+    expect(heatSettingsSection(document, "sv", value, () => undefined).querySelector("[data-row='offsetHome']")).toBeNull();
+    expect(heatEditor(editorInput(value) as never, "offsetHome", handlers as never)).toBeNull();
+    expect(value.control!.offset_home).toBeNull();
+  });
+
   it("words the waits for the pump's own setting, not for a relay", () => {
     const value = answer("sg_api_pump.json");
     const waiting = (reason: string, state = "waiting"): HeatAnswer => ({ ...value, control: { ...value.control!, enabled: true, state, reason } });

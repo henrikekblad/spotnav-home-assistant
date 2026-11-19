@@ -179,6 +179,14 @@ function signedDegrees(language: Language, value: number): string {
   return `${value > 0 ? "+" : "−"}${formatFixed(language, Math.abs(value), 1)} °C`;
 }
 
+/** A heating curve offset as the pump shows it: signed, no unit ("0", "+1", "−2", "−1.5"). */
+export function offsetValue(language: Language, value: number): string {
+  if (value === 0) {
+    return "0";
+  }
+  return `${value > 0 ? "+" : "−"}${formatFixed(language, Math.abs(value), Number.isInteger(value) ? 0 : 1)}`;
+}
+
 function kw(language: Language, value: number): string {
   return `${formatFixed(language, value, 1)} kW`;
 }
@@ -1074,6 +1082,7 @@ export type HeatSettingKey =
   | `zone:${string}`
   | `sensor:${string}`
   | "steer"
+  | "offsetHome"
   | "night"
   | "awayDelta";
 
@@ -1117,6 +1126,16 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
       const untested = element(doc, "p", C.settingRowHelp, translate(language, "heat.settings.untested"));
       untested.dataset["help"] = "untested";
       section.append(untested);
+    }
+    const home = answer.control?.offset_home ?? null;
+    if (home !== null) {
+      // The stored offset was not put back (a lost store, a change while Home Assistant was down): one row that
+      // asks, gone once the offset reads the household's own value again.
+      row(
+        "offsetHome",
+        translate(language, "heat.settings.offsetHome"),
+        translate(language, "heat.settings.offsetHomeValue", { value: offsetValue(language, home.value), home: offsetValue(language, home.home) }),
+      );
     }
   }
   const sensors = config.indoor_sensors;

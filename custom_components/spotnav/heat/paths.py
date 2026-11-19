@@ -204,7 +204,8 @@ def number_of(text: Any) -> float | None:
     return value if math.isfinite(value) else None
 
 
-def _same(a: float, b: float) -> bool:
+def same(a: float, b: float) -> bool:
+    """Whether two offset values are the same value (a float read back is never exact)."""
     return abs(a - b) < 1e-6
 
 
@@ -274,7 +275,7 @@ def offset_closed(value: float | None, role: str, snapshot: Snapshot | None, vol
     if value is None:
         return False if volatile else None
     if snapshot is not None:
-        return _same(value, snapshot.written) and not _same(value, snapshot.found if snapshot.found is not None else RELEASE)
+        return same(value, snapshot.written) and not same(value, snapshot.found if snapshot.found is not None else RELEASE)
     if volatile:
         return value < 0.0 if role == ROLE_LOWER else value > 0.0
     return False
@@ -289,23 +290,28 @@ def offset_target(
     minimum: float | None = None,
     maximum: float | None = None,
     step: float | None = None,
+    home: float | None = None,
 ) -> float | None:
     """The value a closing writes: the value found less the depth (A) or plus the raise step (B), on the entity's
-    step, inside its range and within `MAX_SHIFT` of the value found; `None` where that leaves no move at all (an
-    offset already at the end of its range)."""
+    step, inside its range, within `MAX_SHIFT` of the value found and, whatever was found, within `MAX_SHIFT` of the
+    household's own value (`home`; `RELEASE` where none is known: the plan's -3..+3), so a value SpotNav left
+    standing is never taken as the start of a deeper move; `None` where that leaves no move at all (an offset already
+    at the end of its range or of that bound)."""
     base = RELEASE if found is None else found
+    anchor = RELEASE if home is None else home
     move = min(MAX_SHIFT, depth.raise_by if role == ROLE_RAISE else depth.lower_cold if cold else depth.lower)
     target = base + move if role == ROLE_RAISE else base - move
     if minimum is not None:
         target = max(target, minimum)
     if maximum is not None:
         target = min(target, maximum)
+    target = min(max(target, anchor - MAX_SHIFT), anchor + MAX_SHIFT)
     if step is not None and step > 0:
         # Towards the value found, so a step never makes the move deeper than asked.
         steps = (target - base) / step
         target = base + (math.floor(steps + 1e-9) if steps > 0 else math.ceil(steps - 1e-9)) * step
     target = round(target, 4)
-    if _same(target, base) or (target > base) != (role == ROLE_RAISE):
+    if same(target, base) or (target > base) != (role == ROLE_RAISE):
         return None
     return target
 
@@ -373,6 +379,7 @@ __all__ = [
     "offset_closed",
     "offset_target",
     "parse",
+    "same",
     "raise_contact",
     "write_class",
 ]

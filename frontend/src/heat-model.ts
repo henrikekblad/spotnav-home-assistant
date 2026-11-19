@@ -259,6 +259,7 @@ const ANSWER = O({
       path: N("string"),
       untested: "boolean",
       enable_entities: N(O({ integration: "string", entities: A(O({ entity_id: "string", name: "string" })) })),
+      offset_home: N(O({ entity_id: "string", value: "number", home: "number" })),
     }),
   ),
   ahead: A(O({ start: "string", action: "string", target_c: "number", reason: "string", hot_water: "boolean" })),
@@ -392,6 +393,9 @@ export interface HeatControl {
   untested: boolean;
   /** The path's entities that are disabled in their integration: enabled on the person's confirm; `null` when none is. */
   enable_entities: { integration: string; entities: { entity_id: string; name: string }[] } | null;
+  /** A stored offset that reads other than the household's own value while SpotNav holds nothing: the settings
+   * show it with "put it back" and "keep" (`update_heat`'s `offset_home`); `null` when the two agree. */
+  offset_home: { entity_id: string; value: number; home: number } | null;
 }
 
 export interface HeatZone {

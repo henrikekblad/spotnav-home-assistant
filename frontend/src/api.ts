@@ -770,6 +770,7 @@ export async function updateHeat(
   changes: Record<string, unknown>,
   expected: Record<string, unknown>,
   enableControlEntities = false,
+  offsetHome: "restore" | "keep" | null = null,
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/update_heat",
@@ -779,6 +780,8 @@ export async function updateHeat(
     expected,
     // The person's confirm of the opt-in's question: the control path's disabled entities are enabled first.
     ...(enableControlEntities ? { enable_control_entities: true } : {}),
+    // The person's answer to the stored offset's line: put the household's own value back, or keep what it reads.
+    ...(offsetHome === null ? {} : { offset_home: offsetHome }),
   });
 }
 

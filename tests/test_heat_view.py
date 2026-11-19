@@ -284,6 +284,7 @@ def control_status(state: str, reason: str | None, **extra: Any) -> dict[str, An
         "path": "relay",
         "untested": False,
         "enable_entities": None,
+        "offset_home": None,
         **extra,
     }
 

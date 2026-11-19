@@ -121,6 +121,8 @@ INDOOR_CHOICE: Final = (10.0, 30.0)
 ERROR_CONFLICT: Final = "spotnav_conflict"
 ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 ERROR_ENABLE_FAILED: Final = "spotnav_enable_failed"
+#: The person's answer to the stored offset's line (`heat/control.HeatControl.async_offset_home`) was not carried out.
+ERROR_OFFSET_HOME_FAILED: Final = "spotnav_offset_home_failed"
 
 F_METER: Final = "heat_meter_entity"
 WRITABLE: Final = (*FIELDS, F_METER)
@@ -308,6 +310,7 @@ def write_envelope(site: ConfigEntry | None, error: str | None = None, field_err
         vol.Optional("changes"): object,
         vol.Optional("expected"): object,
         vol.Optional("enable_control_entities"): bool,
+        vol.Optional("offset_home"): vol.In(("restore", "keep")),
     }
 )
 @websocket_api.async_response
@@ -322,6 +325,21 @@ async def websocket_update_heat(hass: HomeAssistant, connection: websocket_api.A
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return
+    if (choice := msg.get("offset_home")) is not None:
+        # The person's answer to the stored offset's line: put the household's own value back, or keep what it reads.
+        if not is_admin(connection):
+            connection.send_result(msg["id"], write_envelope(site, ERROR_NOT_ADMIN))
+            return
+        controller = site_controller_for(hass, site.entry_id)
+        control = getattr(controller, "heat_control", None)
+        failed = "no_control" if control is None else await control.async_offset_home(choice)
+        if failed is not None:
+            _LOGGER.info("SpotNav heat control: the offset's answer %s was not carried out: %s", choice, failed)
+            connection.send_result(msg["id"], write_envelope(site, ERROR_OFFSET_HOME_FAILED))
+            return
+        if not msg.get("changes"):
+            connection.send_result(msg["id"], write_envelope(site))
+            return
     if msg.get("enable_control_entities") is True:
         # The person's confirm of the opt-in's question: an administrator's only.
         if not is_admin(connection):

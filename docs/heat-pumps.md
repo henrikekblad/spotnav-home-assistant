@@ -260,8 +260,9 @@ not said in the integration's register list, so they are written as stored setti
 
 ### The heating curve offset
 
-SpotNav moves the offset from the value it finds, in whole steps, never further than 3 steps from that value and
-never outside the number's own range (an offset already at the end of its range is not moved at all).
+SpotNav moves the offset from the value it finds, in whole steps, never further than 3 steps from that value, never
+further than 3 steps from your own value (below) whatever it finds, and never outside the number's own range (an
+offset already at the end of its range is not moved at all).
 
 Why 2 steps: the plan lets the house move half a degree around its temperature in runs of at most three hours. One
 NIBE offset step is about 1 °C of room temperature once the house has settled, and a house follows slowly, so three
@@ -274,8 +275,16 @@ purpose since the path is new, and still twice what the check needs to see on th
 value it found before it writes, and writes it back when the lowering ends, when control is turned off, paused or
 blocked, when SpotNav is unloaded and when Home Assistant stops. If Home Assistant went down without that (a crash, a
 power cut), the value is put back at the next start, before anything else. If the offset is no longer the value
-SpotNav wrote (you changed it meanwhile), nothing is put back: your value stands. Should SpotNav's kept state itself
-be lost while a lowering stands, SpotNav cannot know the value to put back; set the offset by hand then.
+SpotNav wrote (you changed it meanwhile), nothing is put back: your value stands.
+
+SpotNav also keeps **your own value** of the offset in the site's settings, not beside its kept state: the value it
+read when the path was first chosen, and again each time the offset changes while SpotNav holds nothing on it (you
+or the pump's menu changed it). Should SpotNav's kept state be lost while a lowering stands (an old backup restored,
+a dead SD card), SpotNav does not write anything by itself. The settings then show a row, **Offset not put back**,
+with the value it reads and yours ("−2 (was 0)"); open it to put your value back or to keep the one it reads as your
+own. The row also shows when the offset was changed while Home Assistant was down, and it goes away by itself once
+the offset reads your value again. A lowering never goes further than 3 steps below your value, so a lowering left
+standing is never the start of a deeper one.
 
 **CTC (volatile).** CTC's controller forgets the override five minutes after the last write, and CTC Heat Pump (BMS)
 rewrites a held override every minute by itself while Home Assistant runs. SpotNav also writes its value again every

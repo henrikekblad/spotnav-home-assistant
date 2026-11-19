@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -82,7 +83,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
-from ..const import DOMAIN
+from ..const import CONF_HEAT_OFFSET_HOME, DOMAIN
 from . import optin, paths
 from .automations import SteeringAutomation, steering_automations
 from .config import BAND_C, HeatConfig
@@ -260,6 +261,12 @@ class HeatControl:
         self.renewals: dict[str, int] = {}
         self.activations: dict[str, int] = {}
         # Seen.
+        #: A stored offset's value as last read while SpotNav held nothing on it, since this start: a change between
+        #: two such readings is the household's own (`_track_home`).
+        self._offset_seen: dict[str, float] = {}
+        #: The stored offset reads other than the household's own value while SpotNav holds nothing:
+        #: `{entity_id, value, home}`, the card's line asks to put it back or keep it (`async_offset_home`).
+        self.offset_home: dict[str, Any] | None = None
         #: Per contact: when its volatile value was last written, and last written with success.
         self._renewed_at: dict[str, datetime] = {}
         self._renew_ok: dict[str, datetime] = {}
@@ -583,6 +590,7 @@ class HeatControl:
     async def async_look(self, now: datetime) -> None:
         """One look (see the module). Never raises."""
         self._forget(now)
+        self._safe_track_home()
         try:
             await self._async_look(now)
         except asyncio.CancelledError:
@@ -612,6 +620,8 @@ class HeatControl:
         except Exception:  # noqa: BLE001 - the next look tries again
             _LOGGER.warning("SpotNav heat control: the path's upkeep failed", exc_info=True)
         self._trim(now)
+        # Again after the writes, so the line says what holds now.
+        self._safe_track_home()
         self._save()
         if not self._closed:
             self._watch_contacts()
@@ -899,12 +909,117 @@ class HeatControl:
             minimum=limit("min"),
             maximum=limit("max"),
             step=limit("step"),
+            # A stored offset never moves further than `MAX_SHIFT` from the household's own value, whatever it reads.
+            home=None if volatile else self.home_value(entity_id),
         )
         if target is None:
             return "offset_no_room"
         self.snapshots[key] = paths.Snapshot(found, target, volatile, now)
         self._renewed_at.pop(key, None)
         self._renew_ok.pop(key, None)
+        return None
+
+    # ---- the stored offset's own value
+
+    def _stored_offset(self, config: HeatConfig) -> str | None:
+        """The stored offset number the settings steer; `None` on any other path and for a volatile offset."""
+        key = lower_entity(config)
+        if key is None or paths.parse(key)[1] != paths.KIND_OFFSET or self._volatile(key):
+            return None
+        return paths.entity_of(key)
+
+    def home_value(self, entity_id: str) -> float | None:
+        """The household's own value of a stored offset, as kept in the site's entry (`CONF_HEAT_OFFSET_HOME`)."""
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        kept = None if entry is None else entry.data.get(CONF_HEAT_OFFSET_HOME)
+        value = kept.get(entity_id) if isinstance(kept, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return None
+        return float(value)
+
+    def _set_home(self, entity_id: str, value: float) -> None:
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        if entry is None:
+            return
+        _LOGGER.info("SpotNav heat control: %s's own value is now %s", entity_id, value)
+        self.hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_HEAT_OFFSET_HOME: {entity_id: value}})
+
+    def _offset_busy(self, entity_id: str) -> bool:
+        """Whether SpotNav holds a move on the offset, writes one, or may still own one (a kept move, a reopening)."""
+        for key, held, pending, reopen in (
+            (self.relay, self.held, self.pending, self._reopen),
+            (self.raise_entity, self.raised, self.pending_b, self._reopen_b),
+        ):
+            if key is not None and paths.entity_of(key) == entity_id and (held or pending is not None or reopen):
+                return True
+        return any(paths.entity_of(key) == entity_id for key in self.snapshots)
+
+    def _safe_track_home(self) -> None:
+        try:
+            self._track_home(self.shadow.config())
+        except Exception:  # noqa: BLE001 - the bound falls back to the plan's -3..+3
+            _LOGGER.warning("SpotNav heat control: the offset's own value could not be kept", exc_info=True)
+
+    def _track_home(self, config: HeatConfig) -> None:
+        """Keep the stored offset's own value (the household's, in the site's entry, so a lost or old store still
+        knows it): taken when the path is first seen, and again only when the offset changes between two readings
+        while SpotNav holds nothing on it. A value that differs from it without such a change (after a lost store
+        left a lowering standing, or a change while Home Assistant was down) is never taken as the household's and
+        never written back by itself: the card's line asks (`offset_home`), and clears once the two agree."""
+        entity_id = self._stored_offset(config)
+        if entity_id is None:
+            self.offset_home = None
+            self._offset_seen.clear()
+            return
+        if self._offset_busy(entity_id):
+            # What it reads now is SpotNav's (or may be): no change of the household's can be told from it.
+            self.offset_home = None
+            self._offset_seen.pop(entity_id, None)
+            return
+        state = self.hass.states.get(entity_id)
+        value = None if state is None or state.state == "unavailable" else paths.number_of(state.state)
+        if value is None:
+            return
+        seen = self._offset_seen.get(entity_id)
+        self._offset_seen = {entity_id: value}
+        home = self.home_value(entity_id)
+        if home is None or (seen is not None and not paths.same(seen, value)):
+            if home is None or not paths.same(home, value):
+                self._set_home(entity_id, value)
+            self.offset_home = None
+            return
+        self.offset_home = None if paths.same(value, home) else {"entity_id": entity_id, "value": value, "home": home}
+
+    async def async_offset_home(self, choice: str) -> str | None:
+        """The person's answer to the offset's line: `restore` writes the household's own value back, `keep` takes
+        the value the offset reads as the household's. An error code, `None` when done."""
+        if choice not in ("restore", "keep"):
+            return "invalid_choice"
+        line = self.offset_home
+        if line is None:
+            return "nothing_to_do"
+        entity_id = line["entity_id"]
+        if self._offset_busy(entity_id):
+            return "busy"
+        if choice == "keep":
+            self._set_home(entity_id, line["value"])
+            self._offset_seen[entity_id] = line["value"]
+            self.offset_home = None
+            return None
+        now = dt_util.utcnow()
+        day = self._day(now)
+        self.writes[day] = self.writes.get(day, 0) + 1
+        self._log(now, "offset_home_restore", entity=entity_id, value=line["home"])
+        try:
+            await self._async_set_number(entity_id, line["home"])
+        except Exception as err:  # noqa: BLE001 - the line stays; the person may try again
+            _LOGGER.warning("SpotNav heat control: putting %s back failed: %s", entity_id, err)
+            return "write_failed"
+        finally:
+            self._save()
+        # Read again at the next look: the line clears once the offset reads its own value.
+        self._offset_seen.pop(entity_id, None)
+        self._track_home(self.shadow.config())
         return None
 
     def _blocker(self, config: HeatConfig, relay: str) -> str | None:
@@ -1721,6 +1836,9 @@ class HeatControl:
             "path": path,
             "untested": path in paths.UNTESTED,
             "enable_entities": optin.describe(self.hass, config),
+            # A stored offset that reads other than the household's own value while SpotNav holds nothing (see
+            # `_track_home`): `{entity_id, value, home}`, or `None`.
+            "offset_home": None if self.offset_home is None else dict(self.offset_home),
             "state": self.state,
             "reason": self.reason,
             "automation": None if self.automation is None or self.reason != WAIT_AUTOMATION else {"entity_id": self.automation.entity_id, "name": self.automation.name},

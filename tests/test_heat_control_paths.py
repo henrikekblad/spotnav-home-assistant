@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.spotnav.const import CONF_HEAT
+from custom_components.spotnav.const import CONF_HEAT, CONF_HEAT_OFFSET_HOME
 from custom_components.spotnav.heat import optin, paths
 from custom_components.spotnav.heat.adapters import ADAPTERS
 from custom_components.spotnav.heat.config import HeatConfig, apply_changes, read_config
@@ -189,9 +189,17 @@ def test_the_offsets_depth_keeps_to_the_step_the_range_and_three_steps() -> None
     assert paths.offset_target("lower", -1.0, nibe, cold=True, minimum=-10, maximum=10, step=1) == -2.0
     assert paths.offset_target("raise", -1.0, nibe, minimum=-10, maximum=10, step=1) == 0.0
     # At the end of the range there is less room, and none at all is no move.
-    assert paths.offset_target("lower", -9.0, nibe, minimum=-10, maximum=10, step=1) == -10.0
-    assert paths.offset_target("lower", -10.0, nibe, minimum=-10, maximum=10, step=1) is None
-    assert paths.offset_target("raise", 10.0, nibe, minimum=-10, maximum=10, step=1) is None
+    assert paths.offset_target("lower", -9.0, nibe, minimum=-10, maximum=10, step=1, home=-9.0) == -10.0
+    assert paths.offset_target("lower", -10.0, nibe, minimum=-10, maximum=10, step=1, home=-10.0) is None
+    assert paths.offset_target("raise", 10.0, nibe, minimum=-10, maximum=10, step=1, home=10.0) is None
+    # Never further than three steps from the household's own value, whatever was found: a lowering SpotNav left
+    # standing (found -2 where the household's is 0) is no start for a deeper one.
+    assert paths.offset_target("lower", -2.0, nibe, minimum=-10, maximum=10, step=1, home=0.0) == -3.0
+    assert paths.offset_target("lower", -3.0, nibe, minimum=-10, maximum=10, step=1, home=0.0) is None
+    assert paths.offset_target("raise", 3.0, nibe, minimum=-10, maximum=10, step=1, home=0.0) is None
+    # Without a known own value the bound is the plan's -3..+3.
+    assert paths.offset_target("lower", -2.0, nibe, minimum=-10, maximum=10, step=1) == -3.0
+    assert paths.offset_target("lower", -5.0, nibe, minimum=-10, maximum=10, step=1) is None
     # CTC's adjustment is in °C of supply, from "nothing held".
     assert paths.offset_target("lower", None, ctc, minimum=-10, maximum=10, step=0.1) == -3.0
     assert paths.offset_target("lower", None, ctc, cold=True, minimum=-10, maximum=10, step=0.1) == -2.0
@@ -542,6 +550,90 @@ async def test_a_lowering_changed_by_hand_meanwhile_is_not_undone_at_the_next_st
     fresh._loaded = True  # noqa: SLF001
     await _look(fresh, now + 5 * MIN, {})
     assert pump.calls == [(NIBE, -3.0)] and pump.value(NIBE) == "1" and not fresh.held
+
+
+def _homes(hass: HomeAssistant, site: Any) -> Any:
+    entry = hass.config_entries.async_get_entry(site.entry_id)
+    return entry.data.get(CONF_HEAT_OFFSET_HOME)
+
+
+async def _store_lost(control: HeatControl, now: datetime) -> HeatControl:
+    """Home Assistant comes back with the heat control's store gone (an old backup, a dead card) while a lowering
+    stands: the kept move is lost, the household's own value is in the site's entry."""
+    control.held = False  # the old one's stop writes nothing more
+    await control.async_shutdown()
+    fresh = HeatControl(control.hass, control.shadow)
+    fresh._open_unknown()  # noqa: SLF001
+    fresh._loaded = True  # noqa: SLF001
+    key = lower_entity(control.shadow.config())
+    assert key is not None
+    fresh.checks[key] = {"result": "passed"}
+    return fresh
+
+
+async def test_a_lost_store_never_lowers_the_offset_further_and_asks_to_put_it_back(hass: HomeAssistant, freezer) -> None:
+    site, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {0: "lower", 1: "lower"})
+    # The household's own value is kept in the site's entry when the path is first seen.
+    assert _homes(hass, site) == {NIBE: -1.0}
+    await _look(control, now)
+    assert pump.calls == [(NIBE, -3.0)]
+    fresh = await _store_lost(control, now)
+    # Nothing is written back by itself: the value SpotNav would need is not in its store.
+    await _look(fresh, now + 5 * MIN, {})
+    await _look(fresh, now + 6 * MIN, {})
+    assert pump.calls == [(NIBE, -3.0)] and not fresh.held and _homes(hass, site) == {NIBE: -1.0}
+    assert fresh.status()["offset_home"] == {"entity_id": NIBE, "value": -3.0, "home": -1.0}
+    # The next lowering goes from what it reads, but never past three steps below the household's value.
+    await _look(fresh, now + 2 * H, {0: "lower", 1: "lower"})
+    assert pump.calls[-1] == (NIBE, -4.0) and fresh.status()["offset_home"] is None
+    await _look(fresh, now + 4 * H, {})
+    await _look(fresh, now + 4 * H + 6 * MIN, {})
+    assert pump.calls[-1] == (NIBE, -3.0) and fresh.status()["offset_home"] == {"entity_id": NIBE, "value": -3.0, "home": -1.0}
+    # A second loss of the same kind ends at the same bound, never lower.
+    await _look(fresh, now + 6 * H, {0: "lower", 1: "lower"})
+    again = await _store_lost(fresh, now + 6 * H)
+    await _look(again, now + 6 * H + 5 * MIN, {})
+    await _look(again, now + 8 * H, {0: "lower", 1: "lower"})
+    assert min(value for _entity, value in pump.calls) == -4.0
+    await again.async_shutdown()
+
+
+async def test_the_offsets_line_is_answered_by_putting_it_back_or_keeping_it(hass: HomeAssistant, freezer) -> None:
+    site, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {0: "lower", 1: "lower"})
+    await _look(control, now)
+    fresh = await _store_lost(control, now)
+    site_controller_for(hass, site.entry_id).heat_control = fresh  # type: ignore[union-attr]
+    await _look(fresh, now + 5 * MIN, {})
+    await _look(fresh, now + 6 * MIN, {})
+    assert fresh.offset_home is not None
+    # Only an administrator answers it.
+    refused = await update(hass, admin=False, api_version=1, site_id=site.entry_id, changes={}, expected={}, offset_home="restore")
+    assert refused["result"]["error"] == "spotnav_not_admin" and pump.calls == [(NIBE, -3.0)]
+    done = await update(hass, api_version=1, site_id=site.entry_id, changes={}, expected={}, offset_home="restore")
+    assert done["result"]["ok"] is True and pump.calls == [(NIBE, -3.0), (NIBE, -1.0)]
+    await _look(fresh, now + 7 * MIN, {})
+    assert fresh.offset_home is None and _homes(hass, site) == {NIBE: -1.0}
+    # Nothing left to answer: refused, nothing written.
+    again = await update(hass, api_version=1, site_id=site.entry_id, changes={}, expected={}, offset_home="keep")
+    assert again["result"]["error"] == "spotnav_offset_home_failed" and len(pump.calls) == 2
+    # Changed while Home Assistant was down: shown, and kept as the household's own on the answer.
+    hass.states.async_set(NIBE, "2", dict(hass.states.get(NIBE).attributes))  # type: ignore[union-attr]
+    fresh._offset_seen.clear()  # noqa: SLF001 - as after a restart
+    await _look(fresh, now + 8 * MIN, {})
+    assert fresh.offset_home == {"entity_id": NIBE, "value": 2.0, "home": -1.0}
+    kept = await update(hass, api_version=1, site_id=site.entry_id, changes={}, expected={}, offset_home="keep")
+    assert kept["result"]["ok"] is True and _homes(hass, site) == {NIBE: 2.0} and len(pump.calls) == 2
+    await _look(fresh, now + 9 * MIN, {})
+    assert fresh.offset_home is None
+    await fresh.async_shutdown()
+
+
+async def test_an_offset_changed_by_hand_while_spotnav_holds_nothing_is_the_households_own(hass: HomeAssistant, freezer) -> None:
+    site, control, pump, now = await _running(hass, freezer, _nibe(hass, "-1"), {})
+    await _look(control, now)
+    hass.states.async_set(NIBE, "1", dict(hass.states.get(NIBE).attributes))  # type: ignore[union-attr]
+    await _look(control, now + MIN)
+    assert _homes(hass, site) == {NIBE: 1.0} and control.offset_home is None and pump.calls == []
 
 
 async def test_an_offset_someone_else_changed_pauses_control_and_is_left_alone(hass: HomeAssistant, freezer) -> None:
