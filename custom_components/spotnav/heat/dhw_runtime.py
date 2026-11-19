@@ -57,6 +57,7 @@ from .dhw_boost import (
     stop_call,
 )
 from .dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN, Entry, Ledger
+from .dhw_level_a import TankGuard
 from .dhw_peaks import PEAK_DAYS, Peak, draws_from_runs, learn_peaks, peak_instant, standby, standby_kwh
 from .dhw_plan import (
     BUDGETS,
@@ -186,6 +187,8 @@ class HotWater:
         self._pulse_ran = False
         #: A planned pulse waiting for its read-back: its write's time (ISO) to its peak (ISO).
         self._pulse_peaks: dict[str, str] = {}
+        #: The tank rule (level A): stepped at each of the heat control's looks.
+        self.tank = TankGuard()
 
     # ---- store
 
@@ -314,6 +317,17 @@ class HotWater:
         unit = state.attributes.get("unit_of_measurement")
         kw = kw / 1000.0 if unit == "W" else kw
         return state_now(kw, levels_, kw) == STATE_HOT_WATER
+
+    def tank_c(self, pump: Any = None) -> float | None:
+        """The tank sensor's reading (°C), `None` without one."""
+        pump = self._pump() if pump is None else pump
+        value = None if pump is None else getattr(pump, "hot_water_temp_c", None)
+        return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    def tank_low(self) -> bool:
+        """The tank rule (`dhw_level_a.TankGuard`) stepped on the tank's reading now: whether no block may hold the
+        hot water. Without a tank sensor never."""
+        return self.tank.step(self.tank_c())
 
     def _meter_fresh(self, now: datetime) -> bool:
         meter = self.shadow.site.house_forecast.heat.meter

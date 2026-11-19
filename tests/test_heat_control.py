@@ -1021,10 +1021,6 @@ async def test_no_block_starts_while_the_pump_makes_hot_water_and_a_boost_is_nev
     monkeypatch.setattr(hot_water, "making_now", lambda: False)
     await control.async_look(now + 5 * MIN)
     assert relay.calls == ["on"] and control.held
-    # The pump starting its own run while held does not open the block (the run waits, step 8 bounds it).
-    monkeypatch.setattr(hot_water, "making_now", lambda: True)
-    await control.async_look(now + 10 * MIN)
-    assert relay.calls == ["on"]
     # A boost turned on: the block opens at once.
     hass.states.async_set("switch.vv_puls", "on")
     await control.async_look(now + 15 * MIN)
