@@ -84,6 +84,7 @@ from .plan import plan_mode, self_consumption
 from .plan_model import (
     DEFAULT_CYCLE_COST,
     DEFAULT_MODE,
+    DEFAULT_SELL_MARGIN,
     MODE_DEFS,
     MODES,
     BatteryParams,
@@ -91,6 +92,7 @@ from .plan_model import (
     PlanRequest,
     PlanSlot,
     mode_named,
+    sell_margin_minor_per_kwh,
     wear_minor_per_kwh,
 )
 from .plan_shadow import (
@@ -371,6 +373,7 @@ def _solve(
     keeps: dict[str, tuple[str, float] | None],
     misses: tuple[list[tuple[datetime, float, float]], list[tuple[datetime, float, float]], frozenset[date] | None]
     | None = None,
+    sell_margin: float = DEFAULT_SELL_MARGIN,
 ) -> Solved:
     """The executor's part: the slots, and each mode's plan, the site's [mode] first; then, from the logged
     [misses] (house, sun, holidays), the error bands and the defensive variant. What is left when the solve took
@@ -393,7 +396,8 @@ def _solve(
             skipped.append(name)
             continue
         plans[name] = plan_mode(
-            request, MODE_DEFS[name], wear, keep=keeps.get(name), keep_min_gain=threshold, baseline=baseline
+            request, MODE_DEFS[name], wear, sell_margin=sell_margin, keep=keeps.get(name), keep_min_gain=threshold,
+            baseline=baseline,
         )
     if misses is None:
         return Solved(plans, tuple(skipped), slots, estimates)
@@ -412,6 +416,7 @@ def _solve(
         request,
         MODE_DEFS[mode],
         wear,
+        sell_margin=sell_margin,
         keep=keeps.get(VARIANT_DEFENSIVE),
         keep_min_gain=keep_min_gain(baseline.cost, sum(slot.hours for slot in guarded)),
         baseline=baseline,
@@ -442,6 +447,7 @@ def work_facit(
     day_quarters: int,
     wear: float,
     now: datetime,
+    sell_margin: float = DEFAULT_SELL_MARGIN,
 ) -> Facit | None:
     """The executor's part of a day's perfect plan (`hindsight.py`): the energy left at midnight valued at the next
     day's mean buy price where held, else at the review's own end value; then the plans and the shares."""
@@ -454,6 +460,7 @@ def work_facit(
         actual_end_soc_pct=review.actual.end_soc_pct,
         mode=review.mode,
         wear=wear,
+        sell_margin=sell_margin,
         end_value=review.end_value if value is None else value,
         basis=BASIS_DAY if value is None else BASIS_NEXT_DAY,
         no_battery_cost=no_battery_cost(usable),
@@ -839,7 +846,10 @@ class BatteryPlanShadow:
                 _LOGGER.debug("SpotNav battery plan: the cell temperature could not be read", exc_info=True)
                 temperature = review.cell_temperature
             made: Facit | None = await self.hass.async_add_executor_job(
-                partial(work_facit, usable, params, review, prices, end, next_end, day_quarters(day, self._tz), wear, now)
+                partial(
+                    work_facit, usable, params, review, prices, end, next_end, day_quarters(day, self._tz), wear, now,
+                    sell_margin=self._sell_margin(),
+                )
             )
             if made is None:
                 return
@@ -940,6 +950,11 @@ class BatteryPlanShadow:
         currency = None if source is None or source.area is None else source.area.currency
         wear = wear_minor_per_kwh(currency)
         return (DEFAULT_CYCLE_COST, True) if wear is None else (wear, False)
+
+    def _sell_margin(self) -> float:
+        """The spread gate's margin per kWh sold in the area's currency (the SEK figure for one not listed)."""
+        source = self._price_source()
+        return sell_margin_minor_per_kwh(None if source is None or source.area is None else source.area.currency)
 
     def _car_windows(self) -> list[tuple[datetime, datetime, float]]:
         return site_car_windows(self.hass, self.site)
@@ -1072,7 +1087,8 @@ class BatteryPlanShadow:
         )
         solved = await self.hass.async_add_executor_job(
             partial(
-                _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses
+                _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses,
+                sell_margin=self._sell_margin(),
             )
         )
         if self._closed:
