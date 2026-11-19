@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Crear el hogar",
   "makeHome.error.exists": "Esta instalación ya tiene un hogar. Añade el cargador en los ajustes del hogar.",
   "makeHome.error.fuse": "No se ha aceptado ese fusible general. Indica su calibre en amperios.",
-  "makeHome.error.range": "El fusible general está entre {min} y {max} A."
+  "makeHome.error.range": "El fusible general está entre {min} y {max} A.",
+  "phones.disconnect.notificationsLeft": "Todos los teléfonos están desconectados, pero no se han podido desactivar las notificaciones de {count} cargadores. Pulsa Desconectar de nuevo para reintentarlo."
 }

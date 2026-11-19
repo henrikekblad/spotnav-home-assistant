@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Woning maken",
   "makeHome.error.exists": "Deze installatie heeft al een woning. Voeg de laadpaal daaraan toe in de instellingen van de woning.",
   "makeHome.error.fuse": "Die hoofdzekering werd niet geaccepteerd. Vul de waarde van de zekering in ampère in.",
-  "makeHome.error.range": "De hoofdzekering ligt tussen {min} en {max} A."
+  "makeHome.error.range": "De hoofdzekering ligt tussen {min} en {max} A.",
+  "phones.disconnect.notificationsLeft": "Alle telefoons zijn ontkoppeld, maar de meldingen van {count} laadpalen konden niet worden uitgezet. Druk nogmaals op Ontkoppelen om het opnieuw te proberen."
 }

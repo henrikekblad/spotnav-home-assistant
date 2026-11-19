@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Make the home",
   "makeHome.error.exists": "This installation has a home already. Add the charger to it in the home's settings.",
   "makeHome.error.fuse": "That main fuse was not accepted. Enter the fuse's rating in amperes.",
-  "makeHome.error.range": "The main fuse is between {min} and {max} A."
+  "makeHome.error.range": "The main fuse is between {min} and {max} A.",
+  "phones.disconnect.notificationsLeft": "Every phone is disconnected, but the notifications of {count} chargers could not be turned off. Press Disconnect again to retry."
 }

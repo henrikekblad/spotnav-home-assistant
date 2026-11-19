@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Gör hemmet",
   "makeHome.error.exists": "Den här installationen har redan ett hem. Lägg till laddaren i det i hemmets inställningar.",
   "makeHome.error.fuse": "Den huvudsäkringen godtogs inte. Ange säkringens storlek i ampere.",
-  "makeHome.error.range": "Huvudsäkringen är mellan {min} och {max} A."
+  "makeHome.error.range": "Huvudsäkringen är mellan {min} och {max} A.",
+  "phones.disconnect.notificationsLeft": "Alla telefoner är bortkopplade, men aviseringarna för {count} laddare kunde inte stängas av. Tryck på Koppla bort igen för att försöka på nytt."
 }

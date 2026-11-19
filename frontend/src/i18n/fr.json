@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Créer la maison",
   "makeHome.error.exists": "Cette installation a déjà une maison. Ajoutez-y la borne dans les réglages de la maison.",
   "makeHome.error.fuse": "Ce fusible principal n'a pas été accepté. Indiquez son calibre en ampères.",
-  "makeHome.error.range": "Le fusible principal est entre {min} et {max} A."
+  "makeHome.error.range": "Le fusible principal est entre {min} et {max} A.",
+  "phones.disconnect.notificationsLeft": "Tous les téléphones sont déconnectés, mais les notifications de {count} bornes n'ont pas pu être coupées. Appuyez de nouveau sur Déconnecter pour réessayer."
 }

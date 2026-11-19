@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Tee koti",
   "makeHome.error.exists": "Tällä asennuksella on jo koti. Lisää laturi siihen kodin asetuksista.",
   "makeHome.error.fuse": "Pääsulaketta ei hyväksytty. Anna sulakkeen koko ampeereina.",
-  "makeHome.error.range": "Pääsulake on välillä {min}–{max} A."
+  "makeHome.error.range": "Pääsulake on välillä {min}–{max} A.",
+  "phones.disconnect.notificationsLeft": "Kaikkien puhelinten yhteys on katkaistu, mutta {count} laturin ilmoituksia ei voitu poistaa käytöstä. Yritä uudelleen painamalla Katkaise."
 }

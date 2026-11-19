@@ -42,7 +42,8 @@ How a phone gets the ids:
 
 How to take them back: **Disconnect all phones** (the cards' Settings, Support; administrators only) gives every
 charger and home a new webhook id. Every old id stops answering at once, every phone's notifications are cleared and
-every phone has to be paired again. Charging and heating go on; nothing is reloaded. Removing a charger or home entry
+every phone has to be paired again, and waiting approval items are withdrawn. Charging and heating go on; nothing
+is reloaded. Removing a charger or home entry
 also ends its id.
 
 Both kinds of webhook id are `secrets.token_urlsafe(32)` (256 bits), registered with Home Assistant's webhook
@@ -136,9 +137,12 @@ it answers the same. Examples: `get_site_access_success.json`, `get_site_access_
 
 ### For administrators
 
-* `spotnav/disconnect_phones {"api_version": 1}`: Disconnect all phones (above). Answers
-  `{"api_version": 1, "ok", "error", "chargers", "sites"}`, the counts of webhook ids replaced; anyone but an
-  administrator gets `ok: false`, `error: "spotnav_not_admin"` and nothing changes.
+* `spotnav/disconnect_phones {"api_version": 1}`: Disconnect all phones (above). Every id is replaced first, all at
+  once; then the pending pairings and their approval items in Devices & services are withdrawn; then each charger's
+  phone notifications are cleared, each on its own. Answers `{"api_version": 1, "ok", "error", "chargers", "sites",
+  "notifications_not_cleared"}`: the counts of webhook ids replaced (always all) and of chargers whose notifications
+  could not be cleared (logged; press again to retry). Anyone but an administrator gets `ok: false`,
+  `error: "spotnav_not_admin"` and nothing changes.
 * `spotnav/make_home {"api_version": 1, "charger_id", "main_fuse_a"}`: "Make a home of this", the card's one action
   in the Settings of a charger whose installation has no home. The card says what it does and asks for the main fuse
   first; the home is made around that charger through the config flow with the fuse given, the default safety margin

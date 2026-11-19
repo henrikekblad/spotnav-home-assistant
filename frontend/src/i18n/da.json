@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Lav hjemmet",
   "makeHome.error.exists": "Denne installation har allerede et hjem. Tilføj laderen til det i hjemmets indstillinger.",
   "makeHome.error.fuse": "Den hovedsikring blev ikke godtaget. Angiv sikringens størrelse i ampere.",
-  "makeHome.error.range": "Hovedsikringen er mellem {min} og {max} A."
+  "makeHome.error.range": "Hovedsikringen er mellem {min} og {max} A.",
+  "phones.disconnect.notificationsLeft": "Alle telefoner er afbrudt, men notifikationerne for {count} ladere kunne ikke slås fra. Tryk på Afbryd igen for at prøve igen."
 }

@@ -20,7 +20,9 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 export const MAIN_FUSE_MIN_A = 2;
 export const MAIN_FUSE_MAX_A = 1000;
 
-export type DisconnectAnswer = { ok: true; chargers: number; sites: number } | { ok: false; code: string | null };
+export type DisconnectAnswer =
+  | { ok: true; chargers: number; sites: number; notificationsNotCleared: number }
+  | { ok: false; code: string | null };
 export type MakeHomeAnswer = { ok: true; siteId: string } | { ok: false; code: string | null };
 
 function record(raw: unknown): Record<string, unknown> | null {
@@ -31,7 +33,7 @@ function count(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
-/** `{api_version: 1, ok, error, chargers, sites}`, or `null` for anything else. */
+/** `{api_version: 1, ok, error, chargers, sites, notifications_not_cleared?}`, or `null` for anything else. */
 export function decodeDisconnectAnswer(raw: unknown): DisconnectAnswer | null {
   const answer = record(raw);
   if (answer === null || answer.api_version !== PHONES_API_VERSION || typeof answer.ok !== "boolean") {
@@ -42,7 +44,10 @@ export function decodeDisconnectAnswer(raw: unknown): DisconnectAnswer | null {
   }
   const chargers = count(answer.chargers);
   const sites = count(answer.sites);
-  return chargers === null || sites === null ? null : { ok: true, chargers, sites };
+  const left = answer.notifications_not_cleared === undefined ? 0 : count(answer.notifications_not_cleared);
+  return chargers === null || sites === null || left === null
+    ? null
+    : { ok: true, chargers, sites, notificationsNotCleared: left };
 }
 
 /** `{api_version: 1, ok, error, site_id}`, or `null` for anything else. */
@@ -66,7 +71,10 @@ export async function runDisconnectPhones(hass: HomeAssistantLike, language: Lan
     decoded = { ok: false, code: error instanceof SpotnavApiError ? error.code : null };
   }
   if (decoded !== null && decoded.ok) {
-    return null;
+    // Every id is replaced; say so truthfully when some notifications are still on (a second press clears them).
+    return decoded.notificationsNotCleared === 0
+      ? null
+      : translate(language, "phones.disconnect.notificationsLeft", { count: String(decoded.notificationsNotCleared) });
   }
   const key: TranslationKey =
     decoded !== null && decoded.code === "spotnav_not_admin" ? "phones.error.notAdmin" : "phones.error.generic";

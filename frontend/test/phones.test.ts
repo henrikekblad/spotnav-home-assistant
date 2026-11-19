@@ -66,7 +66,11 @@ describe("the answers", () => {
       ok: true,
       chargers: 2,
       sites: 1,
+      notificationsNotCleared: 0,
     });
+    expect(
+      decodeDisconnectAnswer({ api_version: 1, ok: true, error: null, chargers: 2, sites: 1, notifications_not_cleared: 1 }),
+    ).toMatchObject({ ok: true, notificationsNotCleared: 1 });
     expect(decodeDisconnectAnswer({ api_version: 1, ok: false, error: "spotnav_not_admin", chargers: 0, sites: 0 })).toEqual({
       ok: false,
       code: "spotnav_not_admin",
@@ -120,6 +124,22 @@ describe("Disconnect all phones", () => {
     openDialog(element)?.querySelector<HTMLButtonElement>("button[type='submit']")?.click();
     await settle();
     expect(openDialog(element)?.querySelector("[role='alert']")?.textContent).toBe(translate("en", "phones.error.generic"));
+  });
+
+  it("says truthfully when some notifications could not be turned off", async () => {
+    const { element } = await mounted(fixture("start_idle"), true, async (message) =>
+      message.type === "spotnav/disconnect_phones"
+        ? { api_version: 1, ok: true, error: null, chargers: 2, sites: 1, notifications_not_cleared: 1 }
+        : { api_version: 1, sites: [] },
+    );
+    await openSettings(element);
+    shadow(element).querySelector<HTMLButtonElement>("[data-disconnect-phones='open']")?.click();
+    await settle();
+    openDialog(element)?.querySelector<HTMLButtonElement>("button[type='submit']")?.click();
+    await settle();
+    expect(openDialog(element)?.querySelector("[role='alert']")?.textContent).toBe(
+      translate("en", "phones.disconnect.notificationsLeft", { count: "1" }),
+    );
   });
 
   it("is not offered to anyone else", async () => {

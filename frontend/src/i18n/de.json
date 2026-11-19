@@ -2039,5 +2039,6 @@
   "makeHome.confirm": "Zuhause anlegen",
   "makeHome.error.exists": "Diese Installation hat schon ein Zuhause. Füge die Ladestation in dessen Einstellungen hinzu.",
   "makeHome.error.fuse": "Diese Hauptsicherung wurde nicht angenommen. Gib ihre Größe in Ampere an.",
-  "makeHome.error.range": "Die Hauptsicherung liegt zwischen {min} und {max} A."
+  "makeHome.error.range": "Die Hauptsicherung liegt zwischen {min} und {max} A.",
+  "phones.disconnect.notificationsLeft": "Alle Telefone sind getrennt, aber die Benachrichtigungen von {count} Ladestationen ließen sich nicht abschalten. Tippe noch einmal auf Trennen, um es erneut zu versuchen."
 }

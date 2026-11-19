@@ -69,7 +69,10 @@ async def test_every_webhook_is_replaced_and_the_old_ones_stop_answering(hass: H
 
     answer = await _disconnect(hass)
 
-    assert answer == {"success": True, "result": {"api_version": 1, "ok": True, "error": None, "chargers": 1, "sites": 2}}
+    assert answer == {
+        "success": True,
+        "result": {"api_version": 1, "ok": True, "error": None, "chargers": 1, "sites": 2, "notifications_not_cleared": 0},
+    }
     for entry in (charger, site, home):
         new = entry.data[CONF_WEBHOOK_ID]
         assert new != old[entry.entry_id] and len(new) >= 43
@@ -130,7 +133,9 @@ async def test_only_an_administrator_may_and_nothing_changes_otherwise(hass: Hom
     charger, site, home = await _world(hass)
     before = [entry.data[CONF_WEBHOOK_ID] for entry in (charger, site, home)]
     answer = await _disconnect(hass, admin=False)
-    assert answer["result"] == {"api_version": 1, "ok": False, "error": "spotnav_not_admin", "chargers": 0, "sites": 0}
+    assert answer["result"] == {
+        "api_version": 1, "ok": False, "error": "spotnav_not_admin", "chargers": 0, "sites": 0, "notifications_not_cleared": 0,
+    }
     answer = await _disconnect(hass, api_version=2)
     assert answer == {"success": False, "error": {"code": "spotnav_unsupported_api_version"}}
     assert [entry.data[CONF_WEBHOOK_ID] for entry in (charger, site, home)] == before
@@ -196,3 +201,48 @@ async def test_a_charger_disconnected_before_its_setup_registers_takes_the_new_i
     status, _body = await post(client, charger.data[CONF_WEBHOOK_ID], {"action": "get_site_access"})
     assert status == 200
     assert await _gone(client, old)
+
+
+async def test_every_id_is_replaced_even_when_clearing_a_phones_notifications_fails(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The ids first, then the rest, each on its own: a failed notification store never leaves an old id answering,
+    and the answer says what was not cleared."""
+    from custom_components.spotnav.notifications.push import ChargerPush
+
+    charger, site, home = await _world(hass)
+    second, _ = await setup_charger_and_site(hass, "entry_b", site=False)
+    client = await hass_client_no_auth()
+    old = [entry.data[CONF_WEBHOOK_ID] for entry in (charger, second, site, home)]
+    domain_data(hass).pairing.open("123456", "Pixel")
+
+    async def broken(self: Any, registration: Any) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(ChargerPush, "async_register", broken)
+    answer = await _disconnect(hass)
+
+    assert answer["result"] == {
+        "api_version": 1, "ok": True, "error": None, "chargers": 2, "sites": 2, "notifications_not_cleared": 2,
+    }
+    for webhook_id in old:
+        assert await _gone(client, webhook_id)
+    assert domain_data(hass).pairing.pending_count() == 0
+    assert "could not be cleared" in caplog.text
+
+
+async def test_the_waiting_approval_cards_go_too(hass: HomeAssistant, hass_client_no_auth) -> None:
+    """A phone that asked a moment ago is no longer offered for approval in Devices & services."""
+    from custom_components.spotnav.api.pairing import PAIRING_WEBHOOK_ID
+
+    await _world(hass)
+    hass.config.external_url = "https://ha.example.com"
+    client = await hass_client_no_auth()
+    response = await client.post(
+        f"/api/webhook/{PAIRING_WEBHOOK_ID}", json={"version": 1, "action": "request", "code": "123456", "device": "Pixel"}
+    )
+    assert response.status == 200
+    await hass.async_block_till_done()
+    assert hass.config_entries.flow.async_progress_by_handler("spotnav")
+    await _disconnect(hass)
+    assert not hass.config_entries.flow.async_progress_by_handler("spotnav")
