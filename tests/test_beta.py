@@ -321,7 +321,7 @@ def test_a_test_runs_once_a_day_and_once_more_after_an_update_or_a_firmware_chan
     assert allowance(last, T0 + timedelta(hours=24), "3.0.0", "fw1") == (None, None)
     assert allowance(last, T0 + timedelta(hours=3), "3.0.1", "fw1") == (None, None)
     assert allowance(last, T0 + timedelta(hours=3), "3.0.0", "fw2") == (None, None)
-    assert result_of([{"status": "passed"}, {"status": "not_judgeable"}]) == "passed"
+    assert result_of([{"status": "passed"}, {"status": "not_judgeable"}]) == "partial", "an unjudged step is no pass"
     assert result_of([{"status": "passed"}, {"status": "failed"}]) == "failed"
 
 

@@ -163,12 +163,15 @@ def _part_skipped(step: Mapping[str, Any]) -> bool:
 
 def result_of(steps: list[dict[str, Any]]) -> str:
     """`failed` when any step failed (the relay flags these); else `skipped` when no part ran, `partial` when a part
-    was skipped, `passed` when every part ran."""
+    was skipped or a step could not be judged (a check that could not be made is not a pass), `passed` when every
+    part ran and every step was judged."""
     if any(step.get("status") == "failed" for step in steps):
         return "failed"
     if not steps or all(_part_skipped(step) for step in steps):
         return "skipped"
-    return "partial" if any(_part_skipped(step) for step in steps) else "passed"
+    if any(_part_skipped(step) or step.get("status") == "not_judgeable" for step in steps):
+        return "partial"
+    return "passed"
 
 
 #: Results that leave the day's slot (a part did not run: it may be run again once ready).
