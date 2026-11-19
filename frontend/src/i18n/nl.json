@@ -1930,6 +1930,7 @@
   "house.plan.then.self": "dekt ze het huis en slaat de zon op",
   "house.nowTab.money": "Vandaag: {parts}",
   "house.nowTab.moneyBattery": "de batterij verdiende {amount}",
+  "house.nowTab.moneyBatteryOwn": "de batterij verdiende {amount} (eigen sturing)",
   "house.nowTab.moneySaved": "SpotNav bespaarde {amount}",
   "house.nowTab.carToday": "{kwh} vandaag",
   "house.nowTab.today": "vandaag",

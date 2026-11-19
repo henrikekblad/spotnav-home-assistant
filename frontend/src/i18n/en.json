@@ -1930,6 +1930,7 @@
   "house.plan.then.self": "it covers the house and stores the sun",
   "house.nowTab.money": "Today: {parts}",
   "house.nowTab.moneyBattery": "the battery earned {amount}",
+  "house.nowTab.moneyBatteryOwn": "the battery earned {amount} (own control)",
   "house.nowTab.moneySaved": "SpotNav saved {amount}",
   "house.nowTab.carToday": "{kwh} today",
   "house.nowTab.today": "today",

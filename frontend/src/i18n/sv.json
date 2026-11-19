@@ -1930,6 +1930,7 @@
   "house.plan.then.self": "täcker det huset och lagrar solen",
   "house.nowTab.money": "I dag: {parts}",
   "house.nowTab.moneyBattery": "batteriet tjänade {amount}",
+  "house.nowTab.moneyBatteryOwn": "batteriet tjänade {amount} (egen styrning)",
   "house.nowTab.moneySaved": "SpotNav sparade {amount}",
   "house.nowTab.carToday": "{kwh} i dag",
   "house.nowTab.today": "i dag",

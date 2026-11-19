@@ -1930,6 +1930,7 @@
   "house.plan.then.self": "se kattaa talon ja varastoi auringon",
   "house.nowTab.money": "Tänään: {parts}",
   "house.nowTab.moneyBattery": "akku tienasi {amount}",
+  "house.nowTab.moneyBatteryOwn": "akku tienasi {amount} (oma ohjaus)",
   "house.nowTab.moneySaved": "SpotNav säästi {amount}",
   "house.nowTab.carToday": "{kwh} tänään",
   "house.nowTab.today": "tänään",

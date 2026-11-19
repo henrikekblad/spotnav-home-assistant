@@ -1930,6 +1930,7 @@
   "house.plan.then.self": "elle couvre la maison et stocke le soleil",
   "house.nowTab.money": "Aujourd'hui : {parts}",
   "house.nowTab.moneyBattery": "la batterie a rapporté {amount}",
+  "house.nowTab.moneyBatteryOwn": "la batterie a rapporté {amount} (pilotage propre)",
   "house.nowTab.moneySaved": "SpotNav a économisé {amount}",
   "house.nowTab.carToday": "{kwh} auj.",
   "house.nowTab.today": "auj.",

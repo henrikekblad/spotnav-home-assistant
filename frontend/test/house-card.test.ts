@@ -320,7 +320,11 @@ describe("what SpotNav saved", () => {
   it("leaves the battery under its own control out of the total, and shows a single part without a split", () => {
     expect(savingTotalLine("sv", answer())).toBe("SpotNav sparade 17 kr i dag");
     // On the card, in Now's money line.
-    expect(body(answer(), { tab: "now" }, "sv").querySelector("[data-line='today']")?.textContent).toBe("I dag: batteriet tjänade 11 kr · SpotNav sparade 17 kr");
+    expect(body(answer(), { tab: "now" }, "sv").querySelector("[data-line='today']")?.textContent).toBe("I dag: batteriet tjänade 11 kr (egen styrning) · SpotNav sparade 17 kr");
+    // Under SpotNav's control the battery's figure has no "(egen styrning)": it is part of what SpotNav saved.
+    const steered = answer();
+    const steeredAnswer = { ...steered, saving: { ...steered.saving!, battery_share: 1 } };
+    expect(body(steeredAnswer, { tab: "now" }, "sv").querySelector("[data-line='today']")?.textContent).toMatch(/^I dag: batteriet tjänade 11 kr · SpotNav sparade /);
     expect(savingTotalLine("sv", answer("house/house_learning.json"))).toBeNull();
   });
 
@@ -349,7 +353,7 @@ describe("the battery app's views, calm", () => {
       expect(body(answer(), { tab }, "sv").querySelector("[data-line='today']")).toBeNull();
     }
     const now = body(answer(), { tab: "now" }, "sv");
-    expect(now.querySelector("[data-line='today']")?.textContent).toBe("I dag: batteriet tjänade 11 kr · SpotNav sparade 17 kr");
+    expect(now.querySelector("[data-line='today']")?.textContent).toBe("I dag: batteriet tjänade 11 kr (egen styrning) · SpotNav sparade 17 kr");
     // What it counts and the day's cost under Price and battery's heading: a Sigenergy battery's app is verified to
     // show the same measure, so the subline names it.
     const card = body(answer(), { tab: "price" }, "sv", { onSelect: vi.fn() });

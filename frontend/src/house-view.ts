@@ -800,11 +800,14 @@ function statusParagraph(doc: Document, language: Language, key: TranslationKey,
   return paragraph;
 }
 
-/** Today's money in Now, one line: "I dag: batteriet tjänade 11 kr · SpotNav sparade 17 kr"; `null` with neither. */
+/** Today's money in Now, one line: "I dag: batteriet tjänade 11 kr · SpotNav sparade 17 kr", with "(egen styrning)" after
+ * the battery's figure when it ran under its own control; `null` with neither. */
 export function nowMoneyLine(language: Language, answer: HouseAnswer): string | null {
   const parts: string[] = [];
   if (answer.battery !== null && answer.today !== null) {
-    parts.push(translate(language, "house.nowTab.moneyBattery", { amount: amount(language, answer.today.arbitrage, answer.money) }));
+    // Under its own control (SpotNav off or in test, Sigenergy's AI) the battery's earnings are its own, not SpotNav's.
+    const key = ownControl(answer) ? "house.nowTab.moneyBatteryOwn" : "house.nowTab.moneyBattery";
+    parts.push(translate(language, key, { amount: amount(language, answer.today.arbitrage, answer.money) }));
   }
   if (answer.saving !== null && answer.saving.total !== null) {
     parts.push(translate(language, "house.nowTab.moneySaved", { amount: amount(language, answer.saving.total, answer.money) }));
