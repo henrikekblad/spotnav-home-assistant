@@ -26,6 +26,7 @@ from custom_components.spotnav.planning.auto_settings import (
     AutoSettingsError,
     AutoSettingsStore,
     FiscalOverride,
+    PauseIntent,
     StoredProposal,
     TargetSocIntent,
     async_setup_auto_settings,
@@ -203,7 +204,6 @@ def test_a_target_needs_a_percentage() -> None:
         {"enabled": "true", "value": 12.0},
         {"value": None},
         {"enabled": True},
-        {"enabled": True, "value": None, "extra": 1},
         None,
         "off",
     ],
@@ -214,7 +214,6 @@ def test_a_target_needs_a_percentage() -> None:
         "string-true",
         "missing-enabled",
         "missing-value",
-        "unknown-key",
         "null",
         "text",
     ],
@@ -224,6 +223,11 @@ def test_a_stored_fiscal_component_must_be_a_real_boolean_and_a_full_shape(compo
     with pytest.raises(AutoSettingsError) as refused:
         FiscalOverride.from_stored(component, "vat")
     assert refused.value.code in ("invalid_fiscal", "missing_field", "unknown_field")
+
+
+def test_a_stored_fiscal_component_reads_past_a_later_releases_key() -> None:
+    """A key a later release stores beside the two is read past (going back to this release keeps the fee)."""
+    assert FiscalOverride.from_stored({"enabled": True, "value": 2.5, "extra": 1}, "vat") == FiscalOverride(True, 2.5)
 
 
 def test_a_stored_fiscal_component_reads_back_exactly() -> None:
@@ -241,14 +245,13 @@ OFF = {"enabled": False, "value": None}
     ("raw", "code"),
     [
         ({"area_id": "SE4"}, "missing_field"),
-        ({"area_id": "SE4", "vat": OFF, "tax": OFF, "transfer": OFF, "extra": 1}, "unknown_field"),
         ({"area_id": "SE4", "vat": {}, "tax": OFF, "transfer": OFF}, "missing_field"),
         ({"area_id": "", "vat": OFF, "tax": OFF, "transfer": OFF}, "invalid_area"),
         ({"area_id": 4, "vat": OFF, "tax": OFF, "transfer": OFF}, "invalid_area"),
     ],
 )
 def test_a_stored_area_override_is_read_by_shape(raw: Any, code: str) -> None:
-    """An area record is exactly its four fields, and its id is a non-empty name."""
+    """An area record has its four fields, and its id is a non-empty name."""
     with pytest.raises(AutoSettingsError) as refused:
         AreaAutoSettings.from_stored(raw)
     assert refused.value.code == code
@@ -258,8 +261,6 @@ def test_a_stored_area_override_is_read_by_shape(raw: Any, code: str) -> None:
     ("raw", "code"),
     [
         ({}, "missing_field"),
-        ({"vehicle_id": "v", "target_percent": 80, "z": 1}, "unknown_field"),
-        ({"vehicle_id": "v", "target_percent": 80, "remembered_capacity_kwh": 60.0}, "unknown_field"),
         ({"vehicle_id": "v"}, "missing_field"),
         ({"vehicle_id": 7, "target_percent": 80}, "invalid_target"),
         ({"vehicle_id": None, "target_percent": "80"}, "invalid_target"),
@@ -271,6 +272,16 @@ def test_a_stored_target_is_read_by_shape(raw: Any, code: str) -> None:
     with pytest.raises(AutoSettingsError) as refused:
         TargetSocIntent.from_stored(raw)
     assert refused.value.code == code
+
+
+def test_stored_nested_records_read_past_a_later_releases_keys() -> None:
+    """An area override, a target and a pause with a key a later release added still read (3.0 and on)."""
+    area = AreaAutoSettings.from_stored({"area_id": "SE4", "vat": OFF, "tax": OFF, "transfer": OFF, "extra": 1})
+    assert area == AreaAutoSettings(area_id="SE4")
+    target = TargetSocIntent.from_stored({"vehicle_id": "v", "target_percent": 80, "z": 1})
+    assert target == TargetSocIntent(vehicle_id="v", target_percent=80.0)
+    pause = AutoSettings().pause
+    assert PauseIntent.from_stored({**pause.as_dict(), "later": True}) == pause
 
 
 def stored_settings(**changes: Any) -> dict[str, Any]:
@@ -314,14 +325,13 @@ def test_a_stored_settings_record_is_never_coerced(changes: dict, code: str) -> 
     ("drop", "add", "code"),
     [
         ("amps", None, "missing_field"),
-        (None, {"amperage": 10}, "unknown_field"),
         ("target", None, "missing_field"),
     ],
 )
-def test_a_stored_settings_record_needs_every_field_and_no_others(
+def test_a_stored_settings_record_needs_every_field(
     drop: str | None, add: dict | None, code: str
 ) -> None:
-    """The shape is what `as_dict` writes: a misspelled or absent key is not this release."""
+    """The shape is what `as_dict` writes: an absent key is not this release."""
     raw = stored_settings()
     if drop is not None:
         del raw[drop]
@@ -330,6 +340,22 @@ def test_a_stored_settings_record_needs_every_field_and_no_others(
     with pytest.raises(AutoSettingsError) as refused:
         AutoSettings.from_stored(raw)
     assert refused.value.code == code
+
+
+def test_a_record_with_any_later_release_field_still_loads_and_keeps_it() -> None:
+    """Whatever a later release adds to the record is read past and written back as it was, through a save, a
+    change and a full replacement; a field of this release's own is never written over by one."""
+    raw = AutoSettings(revision=2, area_id="SE4", amps=10).as_dict()
+    raw["battery_first"] = {"enabled": True, "kw": 3.5}
+    raw["later_flag"] = True
+    settings = AutoSettings.from_stored(raw)
+    assert settings == AutoSettings(revision=2, area_id="SE4", amps=10)
+    saved = replace(settings, amps=16, revision=3).validated().as_dict()
+    assert saved["battery_first"] == {"enabled": True, "kw": 3.5} and saved["later_flag"] is True
+    assert saved["amps"] == 16
+    assert AutoSettings.from_stored(saved).as_dict() == saved
+    replaced = replacement_mutator(AutoSettings(area_id="SE4", amps=13))(settings).as_dict()
+    assert replaced["later_flag"] is True and replaced["amps"] == 13
 
 
 def test_a_record_with_a_later_release_departure_calendar_still_loads() -> None:
@@ -378,13 +404,12 @@ def test_a_complete_stored_record_round_trips_exactly() -> None:
 
 
 @pytest.mark.parametrize("retired", ["consumption_kwh_per_10km", "allow_estimated_fallback"])
-def test_a_stored_record_with_a_retired_field_is_refused(retired: str) -> None:
-    """The record is exactly what `as_dict` writes: a field this release dropped is not this release."""
-    stored = AutoSettings(area_id="SE4", phases=3, amps=16).validated().as_dict()
+def test_a_stored_record_with_a_field_this_release_does_not_read_plays_no_part(retired: str) -> None:
+    """A field this release does not read (a retired one, or a later release's) changes nothing it plans with."""
+    settings = AutoSettings(area_id="SE4", phases=3, amps=16).validated()
+    stored = settings.as_dict()
     stored[retired] = 2.0
-    with pytest.raises(AutoSettingsError) as refused:
-        AutoSettings.from_stored(stored)
-    assert refused.value.code == "unknown_field"
+    assert AutoSettings.from_stored(stored) == settings
 
 
 # ----------------------------------------------------- a stored proposal, read strictly
@@ -450,7 +475,6 @@ def a_proposal(**changes: Any) -> StoredProposal:
             },
             "invalid_proposal",
         ),
-        ({"unknown": 1}, "unknown_field"),
     ],
 )
 def test_a_stored_proposal_is_read_strictly(changes: dict, code: str) -> None:
@@ -587,9 +611,10 @@ async def test_the_warnings_name_a_code_and_never_a_value(
     hass: HomeAssistant, flaky: FlakyStore, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A log line about stored data must be useful without quoting what was stored."""
-    # A complete record with two extra keys: the shape is what is refused, so this is the
-    # unknown-field warning, and neither the names nor the value may be quoted back.
+    # A record missing a field and carrying a secret: the shape is what is refused, so this is the
+    # missing-field warning, and neither the names nor the value may be quoted back.
     bogus = AutoSettings().validated().as_dict() | {"amperage": 10, "secret": "s3cr3t"}
+    del bogus["amps"]
     flaky.payload = stored_document(**{"entry-a": record(bogus)})
     store = AutoSettingsStore(hass, store=flaky)
 
@@ -597,7 +622,7 @@ async def test_the_warnings_name_a_code_and_never_a_value(
         await store.async_load()
 
     text = caplog.text
-    assert "unknown_field" in text
+    assert "missing_field" in text
     assert "s3cr3t" not in text
     assert "amperage" not in text, "a warning must not quote the shape it refused"
 
