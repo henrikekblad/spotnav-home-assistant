@@ -669,6 +669,7 @@ class BatteryPlanShadow:
         try:
             return control.state() == "on"
         except Exception:  # noqa: BLE001 - a state that cannot be read is no control
+            _LOGGER.debug("controlled: ignored failure (a state that cannot be read is no control)", exc_info=True)
             return False
 
     def _quarter_turned(self, now: datetime) -> None:
@@ -800,6 +801,7 @@ class BatteryPlanShadow:
         try:
             points = price_points(documents, currency=source.area.currency, fiscal=source.fiscal)
         except Exception:  # noqa: BLE001 - prices that cannot be read are no prices
+            _LOGGER.debug("prices_after: ignored failure (prices that cannot be read are no prices)", exc_info=True)
             return []
         return price_slots(((p.start, p.end, p.spot) for p in points), source.fiscal)
 
