@@ -967,7 +967,14 @@ class SiteCapacityController:
                     del shutdowns[self.entry_id]
 
             task.add_done_callback(_forget)
-        await asyncio.shield(task)
+        try:
+            await asyncio.shield(task)
+        except Exception:
+            # A hand-back that failed is over all the same: the caps must not point at a site that is gone. A
+            # waiter that is cancelled (not an Exception) lets go of nothing: the shielded hand-back still runs.
+            if deadline is None:
+                self.release_start_caps()
+            raise
         if deadline is None:
             # The chargers stay live while the site hands back: until then a start, a resend or a session's write
             # is still capped by the site. At Home Assistant's stop (`deadline`) nothing unloads and the chargers

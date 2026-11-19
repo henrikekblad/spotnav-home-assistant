@@ -501,7 +501,9 @@ class HourTracker:
 
 
 #: The month document's keys this release writes (`HourTracker.month_dict`).
-_MONTH_DOCUMENT_KEYS: Final = frozenset({"tz", "month", "hours", "previous_month", "previous", "complete"})
+_MONTH_DOCUMENT_KEYS: Final = frozenset(
+    {"tz", "month", "hours", "previous_month", "previous", "complete", "outdoor_c", "ex_battery_kw"}
+)
 
 
 def _complete_starts(raw: Any) -> set[datetime]:

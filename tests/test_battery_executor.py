@@ -719,12 +719,20 @@ def test_a_change_from_a_grid_charge_into_a_hold_is_not_held_to_the_start_rule()
     assert executor.state.action == "hold"
 
 
-def test_a_change_from_a_sale_into_a_hold_is_not_held_to_the_start_rule() -> None:
-    """A sale's own output is no cover of the house: ending it into a hold takes nothing off a phase."""
+def test_a_change_from_a_sale_into_a_hold_is_held_to_the_start_rule() -> None:
+    """A sale covers the house and the cars behind the meter before it exports: ending it into a hold can put that
+    load back on a phase, so the hold's start rule judges it, and without room the battery is handed back."""
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 8, "export_discharge", 5.0)
     assert executor.state.action == "export_discharge"
+    # 5 kW can all be on one phase: about 22 A, more than 12 A of headroom carries.
     _now, results = run(executor, battery, now, 6, "hold", headroom_a=12.0, power_kw=-5.0)
+    assert events(results, "change") == []
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+    # With room for all of it the change is made directly.
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "export_discharge", 5.0)
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=30.0, power_kw=-5.0)
     assert events(results, "hand_back") == []
     assert events(results, "change")[0]["reason"] == "hold"
 
