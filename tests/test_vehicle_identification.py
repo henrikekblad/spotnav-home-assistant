@@ -656,7 +656,17 @@ def test_a_session_keeps_how_its_car_was_decided() -> None:
     assert session.public()["vehicle_decided_by"] == "answered"
     plain = replace(session, vehicle_decided_by=None).as_dict()
     assert "vehicle_decided_by" not in plain and ChargeSession.from_dict(plain).vehicle_decided_by is None
-    assert ChargeSession.from_dict({**stored, "vehicle_decided_by": "camera"}) is None
+    # Every way identification decides a car is read back, the camera's included.
+    from custom_components.spotnav.vehicles.identification import METHODS
+
+    for method in METHODS:
+        assert ChargeSession.from_dict({**stored, "vehicle_decided_by": method}).vehicle_decided_by == method
+    # A way a later release knows and this one does not: the session is kept (nothing decided it, here), and its
+    # record is written back as it was.
+    later = ChargeSession.from_dict({**stored, "vehicle_decided_by": "telepathy"})
+    assert later is not None and later.vehicle_decided_by is None
+    assert later.as_dict()["vehicle_decided_by"] == "telepathy"
+    assert ChargeSession.from_dict({**stored, "vehicle_decided_by": 7}) is None
 
 
 def _silent_retirement(payload: dict[str, Any], question: dict[str, Any], message: str) -> None:

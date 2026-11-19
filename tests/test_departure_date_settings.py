@@ -63,11 +63,12 @@ def test_a_stored_date_that_is_not_a_date_is_refused_by_name(stored: Any) -> Non
     assert error.value.code == "invalid_departure"
 
 
-def test_a_record_still_refuses_a_field_this_release_does_not_know() -> None:
-    record = AutoSettings(area_id="SE4", amps=10, phases=3).as_dict() | {"departure_day": "2026-09-27"}
-    with pytest.raises(AutoSettingsError) as error:
-        AutoSettings.from_stored(record)
-    assert error.value.code == "unknown_field"
+def test_a_record_reads_past_a_field_this_release_does_not_know_and_keeps_it() -> None:
+    settings = AutoSettings(area_id="SE4", amps=10, phases=3)
+    record = settings.as_dict() | {"departure_day": "2026-09-27"}
+    read = AutoSettings.from_stored(record)
+    assert read == settings.validated() and read.departure_date is None
+    assert read.as_dict()["departure_day"] == "2026-09-27"
 
 
 def test_validation_wants_a_calendar_date_not_a_datetime() -> None:

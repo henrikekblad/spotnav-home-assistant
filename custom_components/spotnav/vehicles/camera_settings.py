@@ -133,6 +133,18 @@ class CameraSettings:
             frame=normalised(None if raw["frame"] is None else Frame.from_wire(raw["frame"])),
         )
 
+    @classmethod
+    def from_stored(cls, raw: Any) -> CameraSettings | None:
+        """`from_wire` for the store: a field a later release stored beside these (3.0 and on) is read past, in
+        the frame too, so going back to this release keeps the camera. Every field this release knows is checked as
+        a client's would be."""
+        if isinstance(raw, dict):
+            raw = {key: value for key, value in raw.items() if key in _CAMERA_KEYS}
+            frame = raw.get("frame")
+            if isinstance(frame, dict):
+                raw["frame"] = {key: value for key, value in frame.items() if key in _FRAME_KEYS}
+        return cls.from_wire(raw)
+
     def validated(self) -> CameraSettings:
         """The same settings, checked as a client's would be."""
         checked = CameraSettings.from_wire(self.as_dict())

@@ -1,0 +1,268 @@
+{
+ "auto_settings": {
+  "chargers": {
+   "charger_a": {
+    "energy_baseline": null,
+    "proposal": null,
+    "settings": {
+     "amps": 16,
+     "area_id": "SE4",
+     "departure": "08:00",
+     "departure_calendar": "calendar.work",
+     "departure_calendar_only": true,
+     "departure_enabled": true,
+     "driver": "manual_kwh",
+     "overrides": [],
+     "pause": {
+      "admitted_at": null,
+      "choice": null,
+      "expires_at": null
+     },
+     "periods": null,
+     "phases": null,
+     "requested_kwh": 20.0,
+     "revision": 4,
+     "strategy": "cheapest",
+     "target": {
+      "target_percent": 80.0,
+      "vehicle_id": "car-1"
+     }
+    },
+    "suggested": []
+   }
+  },
+  "schema": 1
+ },
+ "core_session": {
+  "balancing_paused": false,
+  "car_ended": {
+   "at": "2026-11-18T22:00:00+00:00",
+   "soc": 80.0,
+   "vehicle": "car-1",
+   "wait": null
+  },
+  "held": false,
+  "manual": null,
+  "overridden": false,
+  "owner": "plan",
+  "paused_origin": null,
+  "plugged": null,
+  "span_pause": null,
+  "version": 2
+ },
+ "demand_month": {
+  "complete": [],
+  "ex_battery_kw": {
+   "2026-11-18T22:00:00+00:00": 1.1,
+   "2026-11-18T23:00:00+00:00": 0.9
+  },
+  "hours": [
+   [
+    "2026-11-18T22:00:00+00:00",
+    2.5,
+    1.2,
+    0,
+    0,
+    0,
+    2.5
+   ],
+   [
+    "2026-11-18T23:00:00+00:00",
+    1.5,
+    1.0,
+    0,
+    0,
+    0,
+    1.5
+   ]
+  ],
+  "month": "2026-11",
+  "outdoor_c": {
+   "2026-11-18T22:00:00+00:00": 3.4,
+   "2026-11-18T23:00:00+00:00": 3.1
+  },
+  "previous": [],
+  "previous_month": null,
+  "tz": "Europe/Stockholm"
+ },
+ "demand_running": {
+  "running": {
+   "covered_s": 900.0,
+   "discharge_covered_s": 0.0,
+   "discharge_wh": 0.0,
+   "ex_battery_covered_s": 900.0,
+   "ex_battery_wh": 200.0,
+   "held": false,
+   "house_covered_s": 900.0,
+   "house_wh": 300.0,
+   "import_wh": 500.0,
+   "last_at": null,
+   "outdoor_n": 2,
+   "outdoor_sum": 6.0,
+   "paused": false,
+   "start": "2026-11-19T00:00:00+00:00"
+  }
+ },
+ "price_grid_tariff": {
+  "demand_components": [],
+  "high_load_window": null,
+  "sell_adjustment": {
+   "enabled": true,
+   "value": -2.0
+  },
+  "supplier_markup": {
+   "enabled": true,
+   "value": 4.5
+  },
+  "transfer_high": {
+   "enabled": false,
+   "value": null
+  },
+  "transfer_percent": {
+   "enabled": true,
+   "value": 5.0
+  }
+ },
+ "sessions_big": {
+  "imports": {
+   "charger_a": {
+    "status": "done"
+   }
+  },
+  "open": {},
+  "sessions": {
+   "charger_a": [
+    {
+     "area_id": "SE4",
+     "charger_id": "charger_a",
+     "currency": "SEK",
+     "end": "2026-11-18T23:00:00+00:00",
+     "energy_kwh": 6.0,
+     "energy_source": "register",
+     "id": "A-1",
+     "intervals": [
+      [
+       1795039200,
+       1795042800,
+       6.0,
+       0.05,
+       11.2,
+       0.06,
+       "2026-11-18"
+      ]
+     ],
+     "last_register_kwh": null,
+     "last_sample_at": null,
+     "major_unit": "kr",
+     "minor_unit": "öre",
+     "plugged_in_at": "2026-11-18T21:20:00+00:00",
+     "solar_known_kwh": 0.0,
+     "solar_kwh": 0.0,
+     "start": "2026-11-18T22:00:00+00:00",
+     "started_by": "plan_window",
+     "strategy": "cheapest",
+     "vehicle_decided_by": "camera",
+     "vehicle_id": "car-1",
+     "vehicle_name": "Kia"
+    },
+    {
+     "area_id": "SE4",
+     "charger_id": "charger_a",
+     "currency": "SEK",
+     "end": "2026-11-19T02:00:00+00:00",
+     "energy_kwh": 6.0,
+     "energy_source": "register",
+     "id": "A-2",
+     "intervals": [
+      [
+       1795050000,
+       1795053600,
+       6.0,
+       0.05,
+       11.2,
+       0.06,
+       "2026-11-18"
+      ]
+     ],
+     "last_register_kwh": null,
+     "last_sample_at": null,
+     "major_unit": "kr",
+     "minor_unit": "öre",
+     "plugged_in_at": "2026-11-19T00:00:00+00:00",
+     "solar_known_kwh": 0.0,
+     "solar_kwh": 0.0,
+     "start": "2026-11-19T01:00:00+00:00",
+     "started_by": "plan_window",
+     "strategy": "cheapest",
+     "vehicle_id": "car-1",
+     "vehicle_name": "Kia"
+    }
+   ]
+  }
+ },
+ "sessions_small": {
+  "closing": {
+   "charger_a": [
+    {
+     "area_id": "SE4",
+     "charger_id": "charger_a",
+     "currency": "SEK",
+     "end": "2026-11-19T02:00:00+00:00",
+     "energy_kwh": 6.0,
+     "energy_source": "register",
+     "id": "A-2",
+     "intervals": [
+      [
+       1795050000,
+       1795053600,
+       6.0,
+       0.05,
+       11.2,
+       0.06,
+       "2026-11-18"
+      ]
+     ],
+     "last_register_kwh": null,
+     "last_sample_at": null,
+     "major_unit": "kr",
+     "minor_unit": "öre",
+     "plugged_in_at": "2026-11-19T00:00:00+00:00",
+     "solar_known_kwh": 0.0,
+     "solar_kwh": 0.0,
+     "start": "2026-11-19T01:00:00+00:00",
+     "started_by": "plan_window",
+     "strategy": "cheapest",
+     "vehicle_id": "car-1",
+     "vehicle_name": "Kia"
+    }
+   ]
+  },
+  "open": {
+   "charger_a": {
+    "area_id": "SE4",
+    "charger_id": "charger_a",
+    "currency": "SEK",
+    "end": null,
+    "energy_kwh": 6.0,
+    "energy_source": "register",
+    "id": "A-3",
+    "intervals": [],
+    "last_register_kwh": 1234.5,
+    "last_sample_at": "2026-11-19T04:30:00+00:00",
+    "major_unit": "kr",
+    "minor_unit": "öre",
+    "plugged_in_at": "2026-11-19T03:50:00+00:00",
+    "register_entity": "sensor.charger_energy",
+    "solar_known_kwh": 0.0,
+    "solar_kwh": 0.0,
+    "start": "2026-11-19T04:00:00+00:00",
+    "start_soc_percent": 42.0,
+    "started_by": "plan_window",
+    "strategy": "cheapest",
+    "vehicle_decided_by": "answered",
+    "vehicle_id": "car-1",
+    "vehicle_name": "Kia"
+   }
+  }
+ }
+}

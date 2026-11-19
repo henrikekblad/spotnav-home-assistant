@@ -149,12 +149,17 @@ def _exact_shape(
     what: str,
     *,
     optional: frozenset[str] = frozenset(),
+    later_fields: bool = False,
 ) -> dict[str, Any]:
     """A stored record carrying exactly these keys, or a refusal naming the wrong shape.
 
     `as_dict` is the only writer and emits every key, so a missing or unknown key means
     the record is not this schema's. Which keys are required is defined by `as_dict` itself;
     `optional` names the keys a later release added, which `as_dict` writes only when set.
+
+    `later_fields`: a key named in neither is a later release's (3.0's), read past rather than refused. Only for a
+    record that keeps such keys and writes them back unchanged (`later_release_fields`): the charger's settings
+    record. A nested record stays exact, since a later release may mean something else by a key beside its values.
     """
     if not isinstance(raw, dict):
         _refuse(code, f"{what} must be a stored object")
@@ -163,9 +168,18 @@ def _exact_shape(
         # Counted, not listed: a log line about stored data must not quote it.
         _refuse("missing_field", f"{what} is missing {len(missing)} field(s) of its shape")
     unknown = set(raw) - expected - optional
-    if unknown:
+    if unknown and not later_fields:
         _refuse("unknown_field", f"{what} has {len(unknown)} field(s) this release does not know")
     return raw
+
+
+def later_release_fields(
+    stored: dict[str, Any], expected: frozenset[str], optional: frozenset[str] = frozenset()
+) -> tuple[tuple[str, Any], ...]:
+    """The keys of a stored record (`_exact_shape`) this release does not know, as they were: a later release's."""
+    return tuple(
+        (key, value) for key, value in stored.items() if key not in expected and key not in optional
+    )
 
 
 def _finite(value: Any, code: SettingsCode, what: str) -> float:
@@ -661,11 +675,6 @@ def _stored_instant(value: Any, what: str) -> datetime | None:
 ALL_WEEKDAYS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
 
 
-#: Written by 3.0 once a departure calendar is chosen. Read past here, so going back keeps the charger's record:
-#: the calendar is not used, and a save in this release writes it back as it was (`AutoSettings._later_release`).
-_LATER_RELEASE_FIELDS: Final = ("departure_calendar", "departure_calendar_only")
-
-
 @dataclass(frozen=True, slots=True)
 class AutoSettings:
     """One charger's Auto settings, as stored. Frozen, so a revision is a new value.
@@ -720,8 +729,9 @@ class AutoSettings:
     users_change_plan: bool = False
     #: If the car cannot be ready by the departure under the site's import target (`IF_NOT_READY_CHOICES`).
     if_not_ready: str = IF_NOT_READY_ASK
-    #: Fields a later release stored that this one reads past (`_LATER_RELEASE_FIELDS`), as they were: not used
-    #: here, but written back so a save in this release does not lose them. Not part of equality or the repr.
+    #: Fields a later release stored that this one does not know (3.0's `departure_calendar` and
+    #: `departure_calendar_only`, and any other), as they were: not used here, but written back so a save in this
+    #: release does not lose them. Not part of equality or the repr.
     _later_release: tuple[tuple[str, Any], ...] = field(default=(), compare=False, repr=False)
 
     @property
@@ -909,29 +919,29 @@ class AutoSettings:
         if self.if_not_ready != IF_NOT_READY_ASK:
             # Additive: written only once chosen.
             stored["if_not_ready"] = self.if_not_ready
-        # What a later release stored and this one leaves alone, written back as it was read.
-        stored.update(self._later_release)
+        # What a later release stored and this one leaves alone, written back as it was read. Never over a field of
+        # this release's own: a key it knows is never kept there (`from_stored`).
+        for key, value in self._later_release:
+            stored.setdefault(key, value)
         return stored
 
     @classmethod
     def from_stored(cls, raw: Any) -> AutoSettings:
         """A stored record, or a refusal; the caller logs it once and uses the defaults.
 
-        Unknown fields are refused: a newer release may mean something different by them.
+        A field this release does not know is a later release's (3.0's departure calendar): it plays no part
+        here and is kept as it was (`_later_release`), so going back to this release, and forward again, keeps it.
         """
+        # `periods` (this release) or `max_periods` (before automatic periods, migrated below).
+        expected = frozenset(cls().as_dict()) - {"periods"}
+        optional = frozenset(
+            {
+                "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
+                "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
+            }
+        )
         stored = _exact_shape(
-            raw,
-            # `periods` (this release) or `max_periods` (before automatic periods, migrated below).
-            frozenset(cls().as_dict()) - {"periods"},
-            "unknown_field",
-            "a stored settings record",
-            optional=frozenset(
-                {
-                    "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
-                    "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
-                    *_LATER_RELEASE_FIELDS,
-                }
-            ),
+            raw, expected, "unknown_field", "a stored settings record", optional=optional, later_fields=True
         )
         revision = stored["revision"]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
@@ -970,7 +980,7 @@ class AutoSettings:
         if vehicle_ids is not None and not isinstance(vehicle_ids, list):
             _refuse("invalid_vehicles", "stored vehicle ids must be a list")
         try:
-            identify_camera = CameraSettings.from_wire(stored.get("identify_camera"))
+            identify_camera = CameraSettings.from_stored(stored.get("identify_camera"))
         except CameraSettingsError:
             # Only the camera is lost (it is chosen again), never the rest of the record.
             _LOGGER.warning("SpotNav could not read a charger's stored camera; it is no longer used")
@@ -1000,7 +1010,7 @@ class AutoSettings:
             identify_camera=identify_camera,
             users_change_plan=stored.get("users_change_plan", False),
             if_not_ready=stored.get("if_not_ready", IF_NOT_READY_ASK),
-            _later_release=tuple((key, stored[key]) for key in _LATER_RELEASE_FIELDS if key in stored),
+            _later_release=later_release_fields(stored, expected, optional),
         ).validated()
 
 
@@ -1383,8 +1393,10 @@ class AutoSettingsStore:
     async def async_load(self) -> None:
         """Read the file once. Bad content is ignored, never fatal.
 
-        A missing file, other schema, malformed record, unknown field or invalid enum value
-        each logs one warning and leaves that entry at its defaults.
+        A missing file, other schema, malformed record, missing field or invalid value each logs one
+        warning and leaves that entry at its defaults. A field a later release added to a charger's settings record
+        is kept and written back (`AutoSettings.from_stored`); one beside a charger's four parts is read past and not
+        kept (3.0 writes none).
         """
         async with self._lock:
             if self._loaded:
@@ -1407,9 +1419,9 @@ class AutoSettingsStore:
                 if not isinstance(entry_id, str) or not entry_id:
                     _LOGGER.warning("Ignoring a stored Auto settings record with no entry id")
                     continue
-                if not isinstance(record, dict) or set(record) - {
-                    "settings", "proposal", "energy_baseline", "suggested",
-                }:
+                # A key beside these four is a later release's: read past (not kept on save; 3.0 writes none), never
+                # a reason to drop the charger's settings when going back to this release.
+                if not isinstance(record, dict):
                     _LOGGER.warning("Ignoring a malformed stored Auto settings record")
                     continue
                 try:
