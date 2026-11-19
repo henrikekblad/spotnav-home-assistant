@@ -103,7 +103,6 @@ from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_MAIN_FUSE_A,
     CONF_MEASURED_CURRENT_SOURCE,
-    CONF_SAFETY_MARGIN_A,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     CONF_GRID_POWER_SOURCE,
@@ -115,7 +114,7 @@ from ..const import (
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
 )
-from ..core.electric import PHASE_V, TN_VOLTS_BETWEEN_PHASES
+from ..core.electric import PHASE_V, TN_VOLTS_BETWEEN_PHASES, stored_safety_margin_a
 from ..core.ownership import SOC_DROP_PCT as CORE_SOC_DROP_PCT
 from ..planning.phases import effective_phases
 from ..planning.grid_voltage import stored_voltage_between_phases_v
@@ -372,7 +371,7 @@ def _fuse_limit_a(site: SiteCapacityController) -> float | None:
     main_fuse_a = site.config.get(CONF_MAIN_FUSE_A)
     if main_fuse_a is None:
         return None
-    return float(main_fuse_a) - float(site.config.get(CONF_SAFETY_MARGIN_A, 0.0))
+    return float(main_fuse_a) - stored_safety_margin_a(site.config)
 
 
 def _phase_headroom_a(result: Any, phase: PhaseName, fuse_limit_a: float | None) -> float | None:

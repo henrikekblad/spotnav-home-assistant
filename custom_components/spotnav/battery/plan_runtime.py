@@ -66,11 +66,10 @@ from .. import time_zones
 from ..const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_MAIN_FUSE_A,
-    CONF_SAFETY_MARGIN_A,
     CONF_SOLAR_FORECAST_ENTRIES,
     DOMAIN,
 )
-from ..core.electric import power_kw
+from ..core.electric import power_kw, stored_safety_margin_a
 from ..planning.demand_charge import hour_start
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.forecast_band import FORM_ADDITIVE, FORM_RATIO, BandView, ErrorBand, learn, pairs_from_log, view
@@ -317,7 +316,7 @@ def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> flo
     config = site.config
     return import_cap_kw(
         config.get(CONF_MAIN_FUSE_A),
-        config.get(CONF_SAFETY_MARGIN_A),
+        stored_safety_margin_a(config),
         stored_voltage_between_phases_v(config),
         stored_import_target_kw(config if entry is None else entry.data),
     )

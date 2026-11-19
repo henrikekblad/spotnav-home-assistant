@@ -17,6 +17,7 @@ from ..const import (
     CONF_MAIN_FUSE_A,
     CONF_SAFETY_MARGIN_A,
     CONF_VOLTAGE_BETWEEN_PHASES_V,
+    DEFAULT_SAFETY_MARGIN_A,
     DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
     VOLTAGE_BETWEEN_PHASES_CHOICES,
 )
@@ -26,8 +27,6 @@ from ..const import (
 PHASE_V: Final = 230.0
 #: The voltage between phases where none is known: a TN network.
 TN_VOLTS_BETWEEN_PHASES: Final = float(DEFAULT_VOLTAGE_BETWEEN_PHASES_V)
-#: The safety margin (A per phase) a site runs with when its entry holds none: what the site form offers.
-DEFAULT_SAFETY_MARGIN_A: Final = 1.0
 
 
 def _number(value: Any) -> float | None:

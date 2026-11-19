@@ -41,7 +41,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from . import time_zones
-from .const import CONF_CHARGER_ENTRY_IDS, CONF_MAIN_FUSE_A, CONF_SAFETY_MARGIN_A
+from .const import CONF_CHARGER_ENTRY_IDS, CONF_MAIN_FUSE_A
 
 #: The record's shape; a reader checks it.
 SCHEMA: Final = 1
@@ -335,6 +335,7 @@ def settings_part(hass: HomeAssistant, entry: ConfigEntry, controller: Any, sour
     from .battery.plan_runtime import limited_params, site_import_cap_kw  # noqa: PLC0415
     from .battery.learned import with_learned  # noqa: PLC0415
     from .battery.plan_shadow import battery_params  # noqa: PLC0415
+    from .core.electric import stored_safety_margin_a  # noqa: PLC0415
     from .planning.grid_voltage import stored_voltage_between_phases_v  # noqa: PLC0415
 
     config = controller.config
@@ -349,7 +350,7 @@ def settings_part(hass: HomeAssistant, entry: ConfigEntry, controller: Any, sour
     return {
         "as_of": "export",
         "main_fuse_a": config.get(CONF_MAIN_FUSE_A),
-        "safety_margin_a": config.get(CONF_SAFETY_MARGIN_A),
+        "safety_margin_a": stored_safety_margin_a(config),
         "volts_between_phases": stored_voltage_between_phases_v(config),
         "import_target_kw": stored_import_target_kw(entry.data),
         "import_cap_kw": _round(site_import_cap_kw(hass, controller)),

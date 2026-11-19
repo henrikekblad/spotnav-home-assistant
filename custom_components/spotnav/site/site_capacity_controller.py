@@ -54,7 +54,6 @@ from ..const import (
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_MEASUREMENT_MODE,
     CONF_PHASE_WIRING,
-    CONF_SAFETY_MARGIN_A,
     CONF_SITE_CURRENT_SIGNED,
     CONF_SITE_CURRENT_SOURCE,
     CONF_SOLAR_PRIORITY,
@@ -116,7 +115,7 @@ from ..execution.chargers.base import WRITE_SESSION_START, WRITE_SOLAR
 from ..execution.min_soc_floor import ORIGIN_MIN_SOC
 from ..execution.switched_current import measured_amps
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
-from ..core.electric import PHASE_V, site_fuse_kw
+from ..core.electric import PHASE_V, site_fuse_kw, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
@@ -4985,7 +4984,7 @@ class SiteCapacityController:
         direct_signed = self._read_direct_signed_entities() if mode == MEASUREMENT_MODE_DIRECT else None
         return SiteCalculationConfig(
             main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else None,
-            safety_margin_a=float(self.config.get(CONF_SAFETY_MARGIN_A, 0.0)),
+            safety_margin_a=stored_safety_margin_a(self.config),
             measurement_mode=mode if mode in (MEASUREMENT_MODE_DIRECT, MEASUREMENT_MODE_DERIVED) else "unavailable",
             max_age_s=float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S)),
             direct=direct,

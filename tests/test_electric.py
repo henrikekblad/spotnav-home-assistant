@@ -140,3 +140,20 @@ def test_battery_plan_car_windows_follow_the_network(
     found = site_car_windows(None, site)  # type: ignore[arg-type]
     # A plan that knows its power keeps it; one that does not is counted at its current on the site's network.
     assert [round(k, 4) for _, _, k in found] == [pytest.approx(kw, abs=1e-4), 5.5]
+
+
+# --- the safety margin's readers: a missing key is the form's 1.0 A everywhere ----------------------------------------
+
+
+@pytest.mark.parametrize(("data", "margin"), [({}, 1.0), ({CONF_SAFETY_MARGIN_A: 0.0}, 0.0), ({CONF_SAFETY_MARGIN_A: 2.0}, 2.0)])
+def test_every_reader_takes_a_missing_margin_as_one_amp(monkeypatch: pytest.MonkeyPatch, data: dict, margin: float) -> None:
+    from custom_components.spotnav.battery import plan_runtime
+    from custom_components.spotnav.execution.solar_execution import _fuse_limit_a
+    from custom_components.spotnav.planning.first_run import site_limit_a
+
+    config = {**TN, **data}
+    assert site_limit_a(SimpleNamespace(data=config)) == math.floor(20 - margin)  # type: ignore[arg-type]
+    assert _fuse_limit_a(_site(config)) == 20 - margin  # type: ignore[arg-type]
+    hass = SimpleNamespace(config_entries=SimpleNamespace(async_get_entry=lambda _entry_id: None))
+    site = SimpleNamespace(entry_id="site", config=config)
+    assert plan_runtime.site_import_cap_kw(hass, site) == pytest.approx(three_phase_kw(20 - margin, 400))  # type: ignore[arg-type]
