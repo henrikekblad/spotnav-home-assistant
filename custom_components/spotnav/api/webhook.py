@@ -32,7 +32,7 @@ from ..execution.auto_execution import (
     AutoControlError,
     EXECUTION_RECONCILE_FAILED,
 )
-from ..execution.controller import ChargingExecutionError
+from ..execution.controller import ABSOLUTE_MAX_AMPS, ABSOLUTE_MIN_AMPS, ChargingExecutionError
 from ..planning.auto_settings import AutoSettingsError, MAX_PERIODS
 from ..planning.status_compose import status_tone
 from ..runtime import ChargerConfigEntry, domain_data
@@ -81,6 +81,7 @@ type Handler = Callable[[HomeAssistant, ChargerConfigEntry, dict[str, Any]], Awa
 #: Warning-level log budget for rejected commands; the rest are debug lines.
 _REJECTED_WARNING_INTERVAL_S: Final = 60.0
 _last_rejected_warning: float | None = None
+_last_failure_traceback: float | None = None
 
 
 #: Settings fields the paired Android app does not read yet. Its decoder refuses a settings record
@@ -402,6 +403,17 @@ def _log_rejected(error: Exception) -> None:
         _LOGGER.debug("Rejected SpotNav webhook command: %s", error)
 
 
+def _log_failure(error: Exception) -> None:
+    """An unexpected failure: the traceback once per interval, the rest as one debug line."""
+    global _last_failure_traceback  # noqa: PLW0603 - one process-wide rate limit
+    now = time.monotonic()
+    if _last_failure_traceback is None or now - _last_failure_traceback >= _REJECTED_WARNING_INTERVAL_S:
+        _last_failure_traceback = now
+        _LOGGER.error("SpotNav charger command failed", exc_info=error)
+    else:
+        _LOGGER.debug("SpotNav charger command failed: %r", error)
+
+
 async def async_manual_action(
     entry: ChargerConfigEntry,
     action: str,
@@ -456,9 +468,25 @@ async def _executed_command(entry: ChargerConfigEntry, action: str, **kwargs: An
     return None
 
 
+ERROR_INVALID_AMPS: Final = "invalid_amps"
+
+
+def _start_amps(payload: dict[str, Any]) -> int | None:
+    """The `amps` of a start: absent, or a whole number inside the supported range, else a stable refusal before
+    anything changes (a bool, a float, `inf` and a number out of range are all refused)."""
+    if "amps" not in payload or payload["amps"] is None:
+        return None
+    amps = payload["amps"]
+    if isinstance(amps, float) and amps.is_integer():
+        amps = int(amps)
+    if isinstance(amps, bool) or not isinstance(amps, int) or not ABSOLUTE_MIN_AMPS <= amps <= ABSOLUTE_MAX_AMPS:
+        raise ValueError(ERROR_INVALID_AMPS)
+    return amps
+
+
 async def _start(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
     """A human deciding to charge; a reading at or above the target does not veto it."""
-    amps = int(payload["amps"]) if "amps" in payload else None
+    amps = _start_amps(payload)
     return await _executed_command(entry, "start", amps=amps)
 
 
@@ -700,8 +728,8 @@ async def async_answer_webhook(hass: HomeAssistant, request: web.Request, resolv
         # The charger could not be brought to it (a stop its control did not take): the stable code.
         _LOGGER.warning("SpotNav charger command failed: %s", failure.code)
         return web.json_response({"ok": False, "error": failure.code}, status=502)
-    except Exception:
-        _LOGGER.exception("SpotNav charger command failed")
+    except Exception as error:  # noqa: BLE001 - the last net, on the same budget as a rejection
+        _log_failure(error)
         return web.json_response({"ok": False, "error": "Charger command failed"}, status=502)
 
 

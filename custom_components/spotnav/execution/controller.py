@@ -5550,6 +5550,10 @@ class ChargingController:
         for listener in list(self._listeners):
             listener()
 
+    def validate_amps(self, amps: int) -> None:
+        """Refuse a current outside the supported range and the charger's own limit (`ValueError`), changing nothing."""
+        self._validate_amps(amps)
+
     def _validate_amps(self, amps: int) -> None:
         if amps < ABSOLUTE_MIN_AMPS or amps > ABSOLUTE_MAX_AMPS:
             raise ValueError("Charging current is outside the supported range")

@@ -1360,6 +1360,11 @@ class AutoExecutor:
         Inside the boundary because it mutates the plan: the attempt is invalidated and any waiting change
         dropped, so a manual decision cannot be overwritten by an Auto installation.
         """
+        if amps is not None:
+            # Refused before anything changes: the start path ends a Stop and clears the plan's attempt.
+            validate = getattr(self._controller, "validate_amps", None)
+            if validate is not None:
+                validate(amps)
         async with self._lock:
             await self._manual_start_locked(amps)
 
