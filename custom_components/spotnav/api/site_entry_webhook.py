@@ -51,6 +51,7 @@ from ..const import (
     ENTRY_TYPE_CHARGER,
     ENTRY_TYPE_SITE,
 )
+from ..runtime import domain_data
 from .common import (
     ERROR_CHARGER_REQUIRED,
     ERROR_CHARGER_UNLOADED,
@@ -227,10 +228,6 @@ def site_webhook_handler(site_id: str) -> Callable[..., Awaitable[web.Response]]
     return async_handle_webhook
 
 
-#: hass.data key: site entry id -> the webhook id registered for it now.
-_REGISTERED: Final = "spotnav_site_webhooks"
-
-
 def async_ensure_site_webhook(hass: HomeAssistant, site: ConfigEntry) -> None:
     """Register this site's webhook under the id its data holds now, whatever the entry's load state: from the
     integration's setup for every site entry, from the site's own setup (a new or just migrated one), and after
@@ -238,7 +235,7 @@ def async_ensure_site_webhook(hass: HomeAssistant, site: ConfigEntry) -> None:
     reloads and failed setups, which answer `spotnav_site_unloaded`; only `async_drop_site_webhook` (the entry
     removed) takes it away."""
     webhook_id = site.data.get(CONF_WEBHOOK_ID)
-    registered: dict[str, str] = hass.data.setdefault(_REGISTERED, {})
+    registered = domain_data(hass).webhook_ids
     current = registered.get(site.entry_id)
     if current == webhook_id:
         return
@@ -261,7 +258,7 @@ def async_ensure_site_webhook(hass: HomeAssistant, site: ConfigEntry) -> None:
 
 def async_drop_site_webhook(hass: HomeAssistant, site_id: str) -> None:
     """The site entry is removed: its webhook id answers nothing any more (Home Assistant's empty 200)."""
-    current = hass.data.setdefault(_REGISTERED, {}).pop(site_id, None)
+    current = domain_data(hass).webhook_ids.pop(site_id, None)
     if current is not None:
         webhook.async_unregister(hass, current)
 

@@ -14,6 +14,7 @@ Everything an entry starts is stopped with `entry.async_on_unload` where it is s
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -128,6 +129,13 @@ class SpotNavData:
     beta: Beta | None = None
     #: When the integration loaded; the start-up grace (`startup.py`) counts from here.
     started_at: datetime = field(default_factory=dt_util.utcnow)
+    #: Entry id -> the webhook id registered for it now, chargers and sites alike (`api/webhook.py`,
+    #: `api/site_entry_webhook.py`); what an unload, a removal and "Disconnect all phones" unregister.
+    webhook_ids: dict[str, str] = field(default_factory=dict)
+    #: Charger entry id -> when it asked `get_site_access` within the last window (`api/site_access.py`).
+    site_access_asks: dict[str, deque[float]] = field(default_factory=dict)
+    #: Held while "Make a home of this" makes a home (`api/make_home.py`), so two presses cannot make two.
+    make_home_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 DATA_KEY: HassKey[SpotNavData] = HassKey(DOMAIN)

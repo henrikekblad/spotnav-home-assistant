@@ -31,6 +31,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_WEBHOOK_ID
+from ..runtime import domain_data
 from ..vehicles.charger_inventory import site_pairing_entry
 from .common import ERROR_NO_SITE, ERROR_UNSUPPORTED_VERSION, site_of_charger
 
@@ -42,13 +43,11 @@ ERROR_SITE_UNLOADED: Final = "spotnav_site_unloaded"
 #: At most this many asks per charger in `ACCESS_WINDOW_S`.
 ACCESS_LIMIT: Final = 6
 ACCESS_WINDOW_S: Final = 60.0
-_ASKS_KEY: Final = "spotnav_site_access_asks"
 
 
 def _retry_after_s(hass: HomeAssistant, charger_id: str, now: float) -> float:
     """`0` when this ask may go ahead (and it is counted), else how long to wait."""
-    asks: dict[str, deque[float]] = hass.data.setdefault(_ASKS_KEY, {})
-    times = asks.setdefault(charger_id, deque())
+    times = domain_data(hass).site_access_asks.setdefault(charger_id, deque())
     while times and times[0] <= now - ACCESS_WINDOW_S:
         times.popleft()
     if len(times) >= ACCESS_LIMIT:
