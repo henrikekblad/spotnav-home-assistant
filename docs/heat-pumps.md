@@ -5,6 +5,9 @@ writes no setting, no offset and no setpoint on any heat pump. The one thing it 
 the pump's curve, and only when you turn on **Styr värmen** (see [below](#spotnavs-own-heat-control-relay-off-by-default)).
 What it reads is shown in the diagnostics (`heat_pump`).
 
+Which other pumps and Home Assistant integrations can be controlled, and which can make hot water on command, is
+in [Supported heat pumps](supported.md#supported-heat-pumps).
+
 ## Which pumps are read
 
 | Pump | Integration | Notes |
