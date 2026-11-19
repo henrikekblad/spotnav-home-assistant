@@ -1264,3 +1264,66 @@ describe("a learning period that holds something back", () => {
     }
   });
 });
+
+describe("reads that come back out of order", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    if (customElements.get(HOUSE_CARD_ELEMENT) === undefined) {
+      customElements.define(HOUSE_CARD_ELEMENT, SpotnavHouseCard);
+    }
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.replaceChildren();
+  });
+
+  const labelled = (label: string) => {
+    const raw = read("house/villa_battery_sun.json");
+    return { ...raw, battery: { ...(raw["battery"] as object), label } };
+  };
+  const shownLabel = (element: SpotnavHouseCard): string => (element as never as { state: { answer: { battery: { label: string } } } }).state.answer.battery.label;
+
+  it("keeps the newer answer when an older read arrives after it", async () => {
+    const hass = new FakeHass();
+    const element = document.createElement(HOUSE_CARD_ELEMENT) as SpotnavHouseCard;
+    element.setConfig({ type: "custom:spotnav-house-card", charger: "entry_a" });
+    element.hass = hass.snapshot("s", "en");
+    document.body.append(element);
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveNext(labelled("first"));
+    await vi.advanceTimersByTimeAsync(0);
+    const older = element.refresh();
+    const newer = element.refresh();
+    expect(hass.outstanding).toBe(2);
+    hass.resolveAt(1, labelled("newer"));
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveAt(0, labelled("older"));
+    await Promise.all([older, newer]);
+    expect(shownLabel(element)).toBe("newer");
+  });
+
+  it("keeps the newer live reading when an older one arrives after it", async () => {
+    const hass = new FakeHass();
+    const resolvers: ((value: unknown) => void)[] = [];
+    hass.liveHandler = () => new Promise((resolve) => resolvers.push(resolve));
+    const element = document.createElement(HOUSE_CARD_ELEMENT) as SpotnavHouseCard;
+    element.setConfig({ type: "custom:spotnav-house-card", charger: "entry_a" });
+    element.hass = hass.snapshot("s", "en");
+    document.body.append(element);
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveNext(read("house/villa_battery_sun.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resolvers).toHaveLength(1);
+    const older = element.readLive();
+    expect(resolvers).toHaveLength(2);
+    const base = read("house_now/villa_car.json");
+    resolvers[1]!({ ...base, house_kw: 9.9 });
+    await vi.advanceTimersByTimeAsync(0);
+    resolvers[0]!({ ...base, house_kw: 1.1 });
+    await older;
+    await vi.advanceTimersByTimeAsync(0);
+    const live = (element as never as { live: Record<string, unknown> }).live;
+    expect(Object.values(live)).toContain(9.9);
+    expect(Object.values(live)).not.toContain(1.1);
+  });
+});

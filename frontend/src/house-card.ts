@@ -133,6 +133,9 @@ export class SpotnavHouseCard extends HTMLElement {
   private wantedLanguage: Language | null = null;
   private timer: number | null = null;
   private liveTimer: number | null = null;
+  /** Count the reads of the answer and of the live flows; only the newest one's result is used. */
+  private refreshSeq = 0;
+  private liveSeq = 0;
   private live: HouseNow | null = null;
   /** The backend has no live flows (older than the tabs): Now shows the day's figures only, and nothing is polled. */
   private liveUnsupported = false;
@@ -427,6 +430,7 @@ export class SpotnavHouseCard extends HTMLElement {
       return;
     }
     const generation = this.generation;
+    const seq = ++this.refreshSeq;
     let next: HouseState;
     try {
       const decoded = decodeHouse(await getHouse(hass, target));
@@ -438,7 +442,7 @@ export class SpotnavHouseCard extends HTMLElement {
       const unsupported = code === UNSUPPORTED_API_VERSION || code === "unknown_command";
       next = { kind: "failed", sentenceKey: unsupported ? "house.unsupported" : "house.failed", code };
     }
-    if (generation !== this.generation) {
+    if (generation !== this.generation || seq !== this.refreshSeq) {
       return;
     }
     // A failed read keeps what was shown, unless nothing was.
@@ -630,10 +634,11 @@ export class SpotnavHouseCard extends HTMLElement {
       return;
     }
     const generation = this.generation;
+    const seq = ++this.liveSeq;
     const had = this.live !== null;
     try {
       const decoded = decodeHouseNow(await getHouseNow(hass, target));
-      if (generation !== this.generation) {
+      if (generation !== this.generation || seq !== this.liveSeq) {
         return;
       }
       if (decoded.ok) {
@@ -646,7 +651,7 @@ export class SpotnavHouseCard extends HTMLElement {
         this.stopLive();
       }
     } catch (error) {
-      if (generation !== this.generation) {
+      if (generation !== this.generation || seq !== this.liveSeq) {
         return;
       }
       const code = error instanceof SpotnavApiError ? error.code : null;
