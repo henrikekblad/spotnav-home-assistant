@@ -91,6 +91,9 @@ _LOGGER = logging.getLogger(__name__)
 TICK_S: Final = 300.0
 #: A refresh that could not read a source it found tries again after this long (s).
 RETRY_S: Final = 900.0
+#: How long a weather read may take before it counts as not read (s): Home Assistant has no timeout of its own,
+#: and a hung integration must not hold the refresh.
+READ_TIMEOUT_S: Final = 20.0
 #: The nightly update waits for this local hour (the last day's statistics are compiled by then).
 NIGHTLY_HOUR: Final = 1
 #: Statistics are read this many days back: the window and the day before it.
@@ -334,13 +337,14 @@ class SiteSolarCorrection:
         if entity_id is None:
             return None, {}, True
         try:
-            response = await self.hass.services.async_call(
-                "weather",
-                "get_forecasts",
-                {"entity_id": entity_id, "type": "hourly"},
-                blocking=True,
-                return_response=True,
-            )
+            async with asyncio.timeout(READ_TIMEOUT_S):
+                response = await self.hass.services.async_call(
+                    "weather",
+                    "get_forecasts",
+                    {"entity_id": entity_id, "type": "hourly"},
+                    blocking=True,
+                    return_response=True,
+                )
         except Exception:  # noqa: BLE001 - no hourly forecast (or not yet): every hour counts as clear
             _LOGGER.debug("SpotNav solar correction: no hourly forecast from %s", entity_id, exc_info=True)
             return entity_id, {}, False

@@ -350,3 +350,25 @@ async def test_a_running_read_of_the_quarters_is_cancelled_at_shutdown(
     await correction.async_shutdown()
     await asyncio.sleep(0)
     assert task.cancelled()
+
+
+async def test_a_weather_entity_that_never_answers_counts_as_not_read(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    from homeassistant.core import ServiceCall, SupportsResponse
+
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    monkeypatch.setattr(shell, "READ_TIMEOUT_S", 0.05)
+    hass.states.async_set("weather.forecast_home", "cloudy")
+
+    async def hangs(call: ServiceCall) -> dict[str, Any]:
+        # The test's clock is frozen: the hung call moves it on, so the read's timeout is due.
+        freezer.tick(timedelta(seconds=1))
+        await asyncio.Event().wait()
+        return {}
+
+    hass.services.async_register("weather", "get_forecasts", hangs, supports_response=SupportsResponse.ONLY)
+    assert await controller.solar_correction._async_clouds() == ("weather.forecast_home", {}, False)  # noqa: SLF001

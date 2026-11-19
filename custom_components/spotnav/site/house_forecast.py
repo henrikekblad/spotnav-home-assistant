@@ -123,6 +123,9 @@ DEFAULT_WEATHER: Final = "weather.forecast_home"
 HOLIDAY_PLATFORM: Final = "holiday"
 #: A refresh that could not read a source it found tries again after this long.
 RETRY_S: Final = 600.0
+#: How long a weather or calendar read may take before it counts as not read (s): Home Assistant has no timeout of
+#: its own, and a hung integration must not hold the refresh.
+READ_TIMEOUT_S: Final = 20.0
 #: The sensor's `forecast` attribute shows this many hours.
 ATTRIBUTE_HOURS: Final = 24
 #: The log's store waits this long before it is written (it changes once an hour).
@@ -549,13 +552,14 @@ class SiteHouseForecast:
         state = self.hass.states.get(entity_id)
         unit = None if state is None else state.attributes.get("temperature_unit")
         try:
-            response = await self.hass.services.async_call(
-                "weather",
-                "get_forecasts",
-                {"entity_id": entity_id, "type": "hourly"},
-                blocking=True,
-                return_response=True,
-            )
+            async with asyncio.timeout(READ_TIMEOUT_S):
+                response = await self.hass.services.async_call(
+                    "weather",
+                    "get_forecasts",
+                    {"entity_id": entity_id, "type": "hourly"},
+                    blocking=True,
+                    return_response=True,
+                )
         except Exception:  # noqa: BLE001 - no hourly forecast (or not yet): the profile runs without the term
             _LOGGER.debug("SpotNav house forecast: no hourly forecast from %s", entity_id, exc_info=True)
             self.weather_status = WEATHER_NO_FORECAST
@@ -580,13 +584,14 @@ class SiteHouseForecast:
         start = datetime.combine(today - timedelta(days=WINDOW_DAYS + 1), dt_time.min, zone)
         end = datetime.combine(today + timedelta(days=4), dt_time.min, zone)
         try:
-            response = await self.hass.services.async_call(
-                "calendar",
-                "get_events",
-                {"entity_id": entity_id, "start_date_time": start.isoformat(), "end_date_time": end.isoformat()},
-                blocking=True,
-                return_response=True,
-            )
+            async with asyncio.timeout(READ_TIMEOUT_S):
+                response = await self.hass.services.async_call(
+                    "calendar",
+                    "get_events",
+                    {"entity_id": entity_id, "start_date_time": start.isoformat(), "end_date_time": end.isoformat()},
+                    blocking=True,
+                    return_response=True,
+                )
         except Exception:  # noqa: BLE001 - weekday/weekend until the calendar answers
             _LOGGER.debug("SpotNav house forecast: %s could not be read", entity_id, exc_info=True)
             return False
