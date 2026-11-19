@@ -1863,6 +1863,7 @@
   "house.tab.flow": "Energiestroom",
   "house.tab.graph": "Energiegrafiek",
   "house.tab.price": "Prijs en batterij",
+  "house.tab.priceOnly": "Prijs",
   "house.plan.next": "De batterij {act} tot {time}, daarna {then}.",
   "house.plan.whole": "De batterij {act} zo ver als het plan reikt.",
   "house.plan.wouldNext": "{who} · SpotNav zou tot {time} {act}, daarna {then}.",

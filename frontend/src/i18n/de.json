@@ -1863,6 +1863,7 @@
   "house.tab.flow": "Energiefluss",
   "house.tab.graph": "Energiediagramm",
   "house.tab.price": "Preis und Batterie",
+  "house.tab.priceOnly": "Preis",
   "house.plan.next": "Die Batterie {act} bis {time}, dann {then}.",
   "house.plan.whole": "Die Batterie {act}, so weit der Plan reicht.",
   "house.plan.wouldNext": "{who} · SpotNav würde bis {time} {act}, dann {then}.",

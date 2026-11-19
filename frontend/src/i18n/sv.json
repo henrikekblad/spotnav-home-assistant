@@ -1863,6 +1863,7 @@
   "house.tab.flow": "Energiflöde",
   "house.tab.graph": "Energigraf",
   "house.tab.price": "Pris och batteri",
+  "house.tab.priceOnly": "Pris",
   "house.plan.next": "Batteriet {act} till {time}, sedan {then}.",
   "house.plan.whole": "Batteriet {act} så långt planen räcker.",
   "house.plan.wouldNext": "{who} · SpotNav skulle {act} till {time}, sedan {then}.",

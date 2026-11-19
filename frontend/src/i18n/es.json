@@ -1863,6 +1863,7 @@
   "house.tab.flow": "Flujo de energía",
   "house.tab.graph": "Gráfico de energía",
   "house.tab.price": "Precio y batería",
+  "house.tab.priceOnly": "Precio",
   "house.plan.next": "La batería {act} hasta las {time}, después {then}.",
   "house.plan.whole": "La batería {act} hasta donde llega el plan.",
   "house.plan.wouldNext": "{who} · SpotNav {act} hasta las {time}, después {then}.",

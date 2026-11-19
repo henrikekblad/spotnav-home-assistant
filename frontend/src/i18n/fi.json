@@ -1863,6 +1863,7 @@
   "house.tab.flow": "Energiavirta",
   "house.tab.graph": "Energiakaavio",
   "house.tab.price": "Hinta ja akku",
+  "house.tab.priceOnly": "Hinta",
   "house.plan.next": "Akku {act} klo {time} asti, sitten {then}.",
   "house.plan.whole": "Akku {act} niin pitkälle kuin suunnitelma ulottuu.",
   "house.plan.wouldNext": "{who} · SpotNav {act} klo {time} asti, sitten {then}.",

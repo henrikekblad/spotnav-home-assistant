@@ -68,6 +68,9 @@ tablist for screen readers). The row says the long names while they fit the card
 short ones ("Now · Flow · Chart · Earned · Price"), and in a very narrow card an icon each. The card measures the row as
 drawn, so this follows the language and the font, and choosing a tab never changes the wording. A short name and an
 icon keep the long name as their tooltip and for screen readers. The card remembers the tab per card in this browser.
+A tab that can never fill on the site is left out: **Energy flow** without the day's energy flow, **Earnings** without
+a battery, a heat pump meter, a saving or a car, and **Price and battery** without a battery and without prices. Without
+a battery that tab is called **Price**.
 
 ### Now
 

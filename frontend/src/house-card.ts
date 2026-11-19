@@ -19,7 +19,7 @@ import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from ".
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
-import { dayOnly, fitTabs, HOUSE_TABS, isHouseTab, readTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
+import { dayOnly, fitTabs, HOUSE_TABS, houseTabs, isHouseTab, readTab, shownHouseTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
 import { decodeHouseHistory, houseHistoryBody, type HouseHistory } from "./house-history";
@@ -469,7 +469,8 @@ export class SpotnavHouseCard extends HTMLElement {
   // -------------------------------------------------------------------------------------------- the tabs' data
 
   private shownTab(): HouseTab {
-    return this.ui.locked ?? this.ui.tab ?? "now";
+    const tabs = this.state.kind === "ready" ? houseTabs(this.state.answer) : HOUSE_TABS;
+    return shownHouseTab(this.ui.locked ?? null, this.ui.tab ?? null, tabs);
   }
 
   private periodKey(choice: PeriodChoice): string {
