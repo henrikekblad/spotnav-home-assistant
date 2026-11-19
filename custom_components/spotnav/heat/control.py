@@ -50,7 +50,10 @@ SpotNav did not make), never raises:
    has not reported for `runtime.STALE_AFTER` does not read), outdoors at or below -15 °C (the lowest of the chosen
    sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)
    below the band, SG Ready's second contact on or unreadable, a hot-water boost on where the path blocks the
-   compressor (`paths.blocks_hot_water`: a block may stop hot water too, and a boost someone started is never cut off).
+   compressor (`paths.blocks_hot_water`: a block may stop hot water too, and a boost someone started is never cut off),
+   on such a path the pump making hot water (no block starts during its run; a held one ends where the run is seen
+   within `CAUGHT_WITHIN` of the closing, which caught it, and stays where it is seen later: the block lets it run)
+   and the tank under 40 °C where a tank sensor reads (`hot_water_low`, until 45 °C: `heat/dhw_level_a.py`).
 
 7. **SG Ready's raise** (contact B, where SG Ready has both contacts): after the lowering's look,
    `relay_control.decide_raise` on the plan's raise hours (the cheap hour before a lowered run, the warm-up before the
@@ -116,6 +119,7 @@ from .relay_control import (
     PHASE_WAIT,
     RAISE_ASSUMED_STATE,
     SAFETY_HOT_WATER,
+    SAFETY_HOT_WATER_LOW,
     SAFETY_ROOM_COLD,
     SAFETY_SETTLING,
     SAFETY_SG_READY_B,
@@ -142,6 +146,8 @@ _LOGGER = logging.getLogger(__name__)
 
 STORE_VERSION: Final = 1
 LOOK_S: Final = 30.0
+#: A hot-water run seen this soon after SpotNav's closing was caught by it: the block ends (`_safety`).
+CAUGHT_WITHIN: Final = timedelta(minutes=5)
 #: A contact's change SpotNav did not make is looked at this soon (changes within it make one look).
 CONTACT_DEBOUNCE_S: Final = 1.0
 #: A write not seen on the relay within this long is a failure.
@@ -1264,14 +1270,24 @@ class HeatControl:
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
         if paths.blocks_hot_water(config):
+            # Stepped at every look, also while a boost or a run answers first: a tank reheated meanwhile is seen.
+            tank_low = self.shadow.hot_water.tank_low()
             self.boost_source = self._boost_source(config)
             if self.boost_source is not None:
                 # A block may stop hot water too: a boost is never cut off (the household's, the Boost button's or
                 # SpotNav's own planned one), and no block starts on it.
                 return SAFETY_HOT_WATER
-            if not self.held and self.shadow.hot_water.making_now():
-                # The pump makes hot water by itself: no block starts during its run (review S5).
+            if self.shadow.hot_water.making_now() and (
+                not self.held or self.held_since is None or now - self.held_since <= CAUGHT_WITHIN
+            ):
+                # The pump makes hot water by itself: no block starts during its run (review S5), and a run the
+                # closing caught as it began ends the block at this look (plan `v3_dhw_plan.md` 5.3). A run seen
+                # later under a held block shows the block does not stop hot water here (a relay that only lowers
+                # the curve): the lowering stays.
                 return SAFETY_HOT_WATER
+            if tank_low:
+                # The tank rule (`dhw_level_a.TankGuard`): below 40 °C no block, until it reads 45 °C again.
+                return SAFETY_HOT_WATER_LOW
         b = raise_entity(config)
         if b is not None:
             # B closed by SpotNav's own raise is no safety reason: the interlock opens it before A closes.

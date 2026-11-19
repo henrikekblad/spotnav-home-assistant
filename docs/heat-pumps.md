@@ -156,8 +156,10 @@ again after checking the wiring.
   outdoor reading is missing or old (and nothing starts again until they have been good for 10 minutes), when SG
   Ready's second contact is on by someone else, or, on the relay and SG Ready paths, when a hot-water boost is on
   (the hot-water entity in the settings, or the pump's own boost such as NIBE's temporary lux): a block can stop hot
-  water too, so a boost you started is never cut off and no lowering starts while it runs. A curve offset does not
-  touch hot water and goes on beside it.
+  water too, so a boost you started is never cut off and no lowering starts while it runs. On those paths also while
+  the pump makes hot water by itself, and while a tank sensor reads under 40 °C (until it reads 45 °C): see
+  [Blocks and the hot water](#blocks-and-the-hot-water). A curve offset does not touch hot water and goes on beside
+  it.
 * At most 6 switchings a day (both SG Ready contacts together).
 * On the relay path pre-heating stays planning only: one relay can lower the curve, not raise it. SG Ready with both
   contacts can raise as well (below).
@@ -379,11 +381,58 @@ and a heat block ends at once and starts no more until its run is over. HeishaMo
 button only, since whether it ends by itself is not verified: SpotNav turns it off 15 minutes after the expected run.
 Without such a boost the button is not shown.
 
+### Blocks and the hot water
+
+On a relay, SG Ready or SG Ready API path a heat block stops the compressor, and with it the pump's own hot-water
+runs. Where the pump has no boost SpotNav can start (a NIBE without a network on a relay, for example) this is the
+only way SpotNav touches the hot water: it moves the pump's own reheat to after the block. These rules keep that
+safe.
+
+**Always, while SpotNav steers the relay:**
+
+* No block starts while the pump makes hot water (the meter's hot-water level, or the pump's own state). A run that
+  shows within five minutes of a closing was caught by it as it began: the block ends at that look (every 30
+  seconds). A run that shows later under a block means the block lets hot water run on this pump (a relay that
+  only lowers the curve): the block stays.
+* After a block the pump has at least an hour back to normal before the next one, so a reheat the block held runs
+  then: a run waits at most one block (three hours at most), and no new block starts while it runs.
+* With a tank temperature sensor in the pump's integration: below 40 °C no block starts and a held one ends, until the
+  tank reads 45 °C again.
+
+**In the plan, shadow first.** SpotNav also shapes which hours it lowers:
+
+* No lowered hour in the **two hours before each peak's ready time** (the peaks above; 05:00 and 17:00 until learned),
+  so the pump's reheat for the showers is never held into them. Not where the pump has already made a real run (more than a standby
+  reheat) since the previous peak ended (the tank was filled after its last use), and not where a run of SpotNav's
+  was written and read back for the peak, or a boost already ran when it came due (a run only planned keeps the
+  guard).
+* Without a tank sensor, at most **four lowered hours a day** (the heat's own limit is six), so the pump gets its
+  reheats between the blocks. With a tank sensor the 40 °C rule stands in for this.
+* The pump's **periodic increase**, where the meter shows it: a run at least twice the usual one (energy and length)
+  at night, seen three times at the same time of day at equal intervals of 2 to 30 days (NIBE's default is 14, so
+  about four weeks of meter readings first). Its next one is kept free of blocks from an hour before to half an hour
+  after its usual length. Until SpotNav has seen it three times, and on a pump that runs it at varying times, a block
+  can still delay it by one block (at most three hours), after which the pump runs it.
+
+A lowered hour these rules take out may move to the next dear hour the plan allows, or simply go. In shadow the plan
+SpotNav steers by still has the hour: *Plan*'s readout says what would change ("skulle förkorta blockeringen före
+duschen 06:00") and the review under the chart counts yesterday's hours and the **late reheats**: a peak whose
+pump run a block held until after its ready time ("06:00 värmdes sent efter en blockering"). The progress line
+reads "Blockeringar kring varmvattnet i skuggning: dag 5 av 14, 8 av 10 toppar träffade". These rules steer the plan
+once **Styr värmen** is on and after at least 14 shadow days with at least ten peaks seen and 70 % of them hit (no
+saving is asked: the rules only give up lowered hours). Three late reheats within a week of steering never send them back
+to shadow, which would protect less: they get stricter instead (three hours kept free before each peak, one
+lowered hour less a day) until seven days in a row without a late reheat, and the card says so ("Blockeringarna
+hålls längre från varmvattnet …"). On a beta site the shadow days are skipped, as for the planned runs, but the
+stricter rules after late reheats apply there too.
+
+**With the cars and the battery.** A peak's expected reheat that falls in a block SpotNav will hold is moved to the
+block's end in the house's expected load, so the cars' and the battery's plans see it there.
+
 **What SpotNav never does.** It never turns off the pump's own periodic increase (NIBE's "periodisk höjning", CTC's
-legionella programme): keep it on, hygiene is the pump's. On a relay or SG Ready path it starts no heat block while
-the pump makes hot water, and a boost (yours, the button's or its own) ends a block at once. A heat block already
-held when the pump's own increase falls due can still delay it until the block ends (at most three hours); keeping
-blocks clear of the pump's own runs is a later step.
+legionella programme): keep it on, hygiene is the pump's. A run a block holds waits at most one block (three hours at
+most), and a run caught by a closing as it began ends that block at once. An increase SpotNav has not recognised can be
+held by one block, as any run.
 
 The diagnostics (`heat_settings.shadow.hot_water`) show the boost route, the mode, the gate, the peaks, the picks, the
-days kept with their reviews and SpotNav's own writes.
+days kept with their reviews, SpotNav's own writes and the blocks' rules (`level_a`: mode, gate and the hours cut).

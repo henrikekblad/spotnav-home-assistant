@@ -1160,7 +1160,8 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "A switch entity for each of the two inputs",
         "Local",
         "SG Ready (never the forced state)",
-        "Only if the installer wired the input to extra hot water",
+        "Only if the installer wired the input to extra hot water. Where the block also holds hot water, SpotNav "
+        "keeps its blocks clear of the pump's own hot-water runs (in shadow first)",
         "",
     ),
     (
@@ -1169,7 +1170,8 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "Local",
         "Relay: lowers the curve",
         "A contact on an external hot water input, if the pump has one. Chosen as the hot water entity, SpotNav "
-        "pulses it for the hot water button; planned boosts in shadow first",
+        "pulses it for the hot water button; planned boosts in shadow first. A relay that blocks the compressor "
+        "holds the pump's own hot-water runs too: SpotNav keeps its blocks clear of them (in shadow first)",
         "",
     ),
     (
@@ -1200,7 +1202,10 @@ def heat_pumps_section() -> list[str]:
         "source we read says. Where a boost ends by itself, SpotNav uses it for the **Varmvatten nu** button on the "
         "heat card (your own start, any user). SpotNav also plans boosts before the household's hot water peaks, in "
         "shadow first: they are written only with **Styr värmen** on, after a week of shadow that hit the peaks "
-        "(see [Heat pumps](heat-pumps.md#hot-water)). Setpoints are not written.",
+        "(see [Heat pumps](heat-pumps.md#hot-water)). Setpoints are not written. On a relay or SG Ready path whose "
+        "block also stops hot water, SpotNav never starts a block during the pump's own run, ends one that caught a "
+        "run as it began, and, after two weeks of shadow, keeps blocks out of the two hours before each peak (see "
+        "[Blocks and the hot water](heat-pumps.md#blocks-and-the-hot-water)).",
         "- Cloud routes are rate limited. They get at most two planned hot water actions a day (before the morning and the evening showers), never a loop; a local route is bounded only by wear.",
         "",
         *table(HEAT_PUMP_HEADER, [row for row in HEAT_PUMPS]),

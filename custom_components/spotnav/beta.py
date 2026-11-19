@@ -22,7 +22,8 @@ have learned something (the hot-water shadow gate's days and peaks, learned prof
 `learning_gate_open(hass, site)` and opens when it answers true; the home battery's untested recipes leave shadow
 only by default on a beta site (`battery/gate.py`, `commands.BrandControl.field_tested`). Never skipped, beta or
 not: fuse caps (the learned per-phase house peak and its conservative default included), write caps, the brand's
-verification routine, acknowledgements, opt-in entity enabling, heat safety reasons, a person's own boost. Control a
+verification routine, acknowledgements, opt-in entity enabling, heat safety reasons, a person's own boost, the hot
+water's level-A back-off (its stricter rules after cold risks, `heat/dhw_level_a.py`). Control a
 period started stays on after it ended by itself (the owner's decision of 2026-11-19): the gate stays open once a
 period was `completed`. A period ended early by unticking closes it again.
 """

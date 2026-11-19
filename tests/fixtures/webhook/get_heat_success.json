@@ -481,6 +481,7 @@
     "until": null
   },
   "hot_water": {
+    "blocking": null,
     "boost": null,
     "gate": {
       "backed_off": null,

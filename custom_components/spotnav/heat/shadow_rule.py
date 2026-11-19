@@ -165,9 +165,11 @@ def dear_hours(
     blocked: set[datetime],
     tight: Iterable[datetime] = (),
     already: Iterable[datetime] = (),
+    max_day: int = MAX_LOWERED_DAY,
 ) -> set[datetime]:
     """The hours the rule lowers in (see the module), never one in `blocked`: `already` (lowered for another reason,
-    counted in the day's hours and runs), then the tight hours, then the dear ones, dearest first."""
+    counted in the day's hours and runs), then the tight hours, then the dear ones, dearest first; at most `max_day`
+    (the hot water's cap, `dhw_level_a`, may be lower than the plan's own)."""
     chosen: set[datetime] = set(already)
     if len(prices) < 6:
         return chosen
@@ -182,7 +184,7 @@ def dear_hours(
     pressed = {start for start in tight if start in prices and prices[start] >= median}
     candidates = [s for s in starts if (prices[s] >= bar or s in pressed) and s not in blocked and s not in chosen]
     for start in sorted(candidates, key=lambda s: (s not in pressed, -prices[s], s)):
-        if len(chosen) >= MAX_LOWERED_DAY:
+        if len(chosen) >= max_day:
             break
         trial = chosen | {start}
         if _longest_run(trial, starts, index) > MAX_LOWERED_RUN:
@@ -225,10 +227,14 @@ def band(
     tight: Iterable[datetime] = (),
     outdoor_by_hour: Mapping[datetime, float] | None = None,
     room_warm: bool = False,
+    keep_normal: Iterable[datetime] = (),
+    max_day: int | None = None,
 ) -> tuple[list[BandHour], str | None]:
     """The day's band (see the module) and the guard that stood lowering down (`None` when none did). `tight` are the
     hours whose joint load reaches the import cap, `outdoor_by_hour` the outdoor forecast (°C, UTC hour starts),
-    `room_warm` whether the house is too warm now (`RoomWarm`)."""
+    `room_warm` whether the house is too warm now (`RoomWarm`). The hot water's level A (`dhw_level_a`) may keep
+    hours from lowering (`keep_normal`, before a peak: not even when too warm) and cap the day's lowered hours
+    (`max_day`)."""
     target = config.target_c
     away_end = config.away_end()
     current = now.replace(minute=0, second=0, microsecond=0)
@@ -254,6 +260,7 @@ def band(
         start for start in hours if outdoor_by_hour is not None and outdoor_by_hour.get(start, 99.0) <= NO_LOWER_BELOW_C
     }
     blocked |= cold_hours
+    blocked |= set(keep_normal)
     if guard is None and coldest_c is not None and coldest_c < target - ROOM_COLD_C:
         guard = REASON_ROOM_COLD
         blocked |= {start for start in hours if current <= start < current + timedelta(hours=ROOM_COLD_HOURS)}
@@ -262,14 +269,17 @@ def band(
     if room_warm and guard not in (REASON_TOO_COLD, REASON_ROOM_COLD):
         # Too warm lowers whatever the price, with prices or without.
         warm = {start for start in hours if current <= start < current + timedelta(hours=ROOM_WARM_HOURS) and start not in blocked}
+    cap = MAX_LOWERED_DAY if max_day is None else min(MAX_LOWERED_DAY, max_day)
+    if warm and len(warm) > cap:
+        warm = set(sorted(warm)[:cap])
     if guard == REASON_TOO_COLD:
         lowered: set[datetime] = set()
     elif guard == REASON_NO_PRICES:
         lowered = set(warm)
     else:
-        lowered = dear_hours(day_prices, blocked, pressed, warm)
+        lowered = dear_hours(day_prices, blocked, pressed, warm, cap)
     # A warm hour the prices alone would lower keeps its price reason.
-    priced_low = dear_hours(day_prices, blocked, pressed) if warm and guard is None else set()
+    priced_low = dear_hours(day_prices, blocked, pressed, max_day=cap) if warm and guard is None else set()
 
     preheat: set[datetime] = set()
     starts = sorted(hours)

@@ -20,6 +20,13 @@ per site, owned by its heat shadow (`heat/runtime.py`), kept in the heat shadow'
   the heat control's safety reason is `too_cold`, `room_cold` or `stale`, the meter has not reported within
   `DATA_FRESH`, the day's budget is used, or the day ended. A write not read back ends planned hot water for the day;
   a local route is tried once more after `RETRY` first, a cloud's never. SpotNav's own run is never stopped by it.
+* **Level A** (`heat/dhw_level_a.py`, a path that blocks the compressor, so hot water too): each hour the heat plan
+  asks for the time kept free before each peak and the day's cap (`level_a_rules`); the hours they take out of the
+  plan are its cuts, shown in shadow ("would") and applied to the plan the heat control steers by once level A is
+  live: "Styr värmen" and its own gate (`dhw_review.GATES`, two weeks), closed again by three cold risks in a week.
+  The rules that only end or hold off a block (a run under way, the tank rule) are the heat control's and always
+  apply. Each day's review counts the peaks a block made cold and the hours cut. The pump's own runs the planned
+  blocks will hold go into the house forecast at the block's end (`forecast_delta`).
 * **The Boost button** (`async_press`): a person's own start or stop through the same route, outside the plan's
   budget (a press on a cloud route leaves the day at most one planned action), one start per `dhw_boost.RATE`,
   read back; a stop only of the household's own boost.
@@ -57,6 +64,7 @@ from .dhw_boost import (
     stop_call,
 )
 from .dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN, Entry, Ledger
+from .dhw_level_a import CLEAN_DAYS, HYGIENE_KEEP, PEAK_GUARD, PEAK_GUARD_STRICT, Cut, TankGuard, guards, is_night, kept_hours, max_day_hours, next_hygiene
 from .dhw_peaks import PEAK_DAYS, Peak, draws_from_runs, learn_peaks, peak_instant, standby, standby_kwh
 from .dhw_plan import (
     BUDGETS,
@@ -87,6 +95,8 @@ DAYS_KEPT: Final = 35
 START_LATE: Final = timedelta(minutes=10)
 RETRY: Final = timedelta(minutes=5)
 DATA_FRESH: Final = timedelta(minutes=10)
+#: A tank sensor that has not reported for this long is no tank sensor.
+TANK_FRESH: Final = timedelta(minutes=30)
 POLL_S: Final = 5.0
 #: The heat control's safety reasons under which no planned boost starts (the compressor goes to the house).
 UNSAFE: Final = frozenset({"too_cold", "room_cold", "stale"})
@@ -97,10 +107,11 @@ BACKSTOP: Final = timedelta(minutes=15)
 SHED_LOOKS: Final = 2
 
 
-def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date) -> float:
+def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date, key: str = "live") -> float:
     """The share of the house profile's weight (`site/load_forecast.py`: `WINDOW_DAYS`, halved every
-    `HALF_LIFE_DAYS`) that lies on days with a live boost: the profile already holds that much of the boosts and of
-    the reheats they moved, so the forecast's change is scaled by what is left."""
+    `HALF_LIFE_DAYS`) that lies on days with a live boost (`key`: `blocked` for days with a block of SpotNav's): the
+    profile already holds that much of the boosts and of the reheats they moved, so the forecast's change is scaled
+    by what is left."""
     from ..site.load_forecast import HALF_LIFE_DAYS, WINDOW_DAYS  # noqa: PLC0415 - the site imports this module
 
     total = live = 0.0
@@ -108,7 +119,7 @@ def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date) -> fl
         weight = 0.5 ** (age / HALF_LIFE_DAYS)
         total += weight
         record = days.get((today - timedelta(days=age)).isoformat())
-        if record is not None and record.get("live"):
+        if record is not None and record.get(key):
             live += weight
     return 0.0 if total <= 0 else live / total
 
@@ -153,6 +164,8 @@ class HotWater:
         self.shadow = shadow
         self.ledger = Ledger()
         self.runs: dict[str, HotWaterRun] = {}
+        #: The night's runs, kept longer (`dhw_level_a.HYGIENE_KEEP`) to tell the pump's periodic increase.
+        self.night_runs: dict[str, HotWaterRun] = {}
         #: Local days the meter had rows for (the peaks' warm start).
         self.seen: set[str] = set()
         self.peaks: list[Peak] = learn_peaks([], timezone.utc, 0)
@@ -182,10 +195,24 @@ class HotWater:
         self.shed_day: str | None = None
         self._delta_key: Any = None
         self._delta: dict[datetime, float] = {}
+        self._block_key: Any = None
+        self._block: dict[datetime, float] = {}
         #: The meter has shown the run a pulse asked for (its end then ends the pulse's boost).
         self._pulse_ran = False
         #: A planned pulse waiting for its read-back: its write's time (ISO) to its peak (ISO).
         self._pulse_peaks: dict[str, str] = {}
+        #: The tank rule (level A): stepped at each of the heat control's looks.
+        self.tank = TankGuard()
+        #: Level A's gate, as the boost's: its shadow days count after `a_since`, it stays open from `a_opened` until
+        #: cold risks close it (`a_backed_off`).
+        self.a_since: str | None = None
+        self.a_opened: str | None = None
+        self.a_backed_off: str | None = None
+        #: Since a back-off: level A steers with its stricter rules until `CLEAN_DAYS` clean days.
+        self.a_strict_since: str | None = None
+        #: The heat plan's hours level A takes out (`dhw_level_a.cuts`) and whether the plan steered by has them out.
+        self.cuts: list[Cut] = []
+        self.cuts_live = False
 
     # ---- store
 
@@ -193,6 +220,7 @@ class HotWater:
         return {
             "ledger": self.ledger.stored(),
             "runs": [run.as_dict() for run in sorted(self.runs.values(), key=lambda run: run.start)],
+            "night_runs": [run.as_dict() for run in sorted(self.night_runs.values(), key=lambda run: run.start)],
             "seen": sorted(self.seen),
             "peaks": [peak.stored() for peak in self.peaks],
             "days": self.days,
@@ -201,6 +229,10 @@ class HotWater:
             "opened": self.opened,
             "ended_day": self.ended_day,
             "picks": [pick.stored() for pick in self.picks],
+            "a_since": self.a_since,
+            "a_opened": self.a_opened,
+            "a_backed_off": self.a_backed_off,
+            "a_strict_since": self.a_strict_since,
         }
 
     def restore(self, raw: Any) -> None:
@@ -209,6 +241,8 @@ class HotWater:
         self.ledger = Ledger.from_stored(raw.get("ledger"))
         runs = [run for item in raw.get("runs") or [] if (run := _run_of(item)) is not None]
         self.runs = {run.start.isoformat(): run for run in runs}
+        night = [run for item in raw.get("night_runs") or [] if (run := _run_of(item)) is not None]
+        self.night_runs = {run.start.isoformat(): run for run in night}
         self.seen = {day for day in raw.get("seen") or [] if isinstance(day, str)}
         peaks = [peak for item in raw.get("peaks") or [] if (peak := Peak.from_stored(item)) is not None]
         if peaks:
@@ -216,7 +250,7 @@ class HotWater:
         days = raw.get("days")
         if isinstance(days, dict):
             self.days = {key: value for key, value in days.items() if isinstance(key, str) and isinstance(value, dict)}
-        for name in ("gate_since", "backed_off", "opened", "ended_day"):
+        for name in ("gate_since", "backed_off", "opened", "ended_day", "a_since", "a_opened", "a_backed_off", "a_strict_since"):
             value = raw.get(name)
             setattr(self, name, value if isinstance(value, str) else None)
         self.picks = [pick for item in raw.get("picks") or [] if (pick := Pick.from_stored(item)) is not None]
@@ -294,6 +328,76 @@ class HotWater:
             return MODE_LIVE
         return MODE_SHADOW
 
+    # ---- level A
+
+    def a_applies(self, config: HeatConfig) -> bool:
+        """Whether the settings' path lowers by blocking the compressor, so hot water too (`paths.blocks_hot_water`)."""
+        from .paths import blocks_hot_water  # noqa: PLC0415
+
+        return blocks_hot_water(config) and config.control_entity is not None
+
+    def a_gate_reviews(self) -> list[dict[str, Any]]:
+        out = []
+        for key in sorted(self.days):
+            review = self.days[key].get("review")
+            # Only a review made with level A's figures counts: one kept before them would open it unseen.
+            if isinstance(review, dict) and "a_mode" in review and (self.a_since is None or key > self.a_since):
+                out.append(review)
+        # While stricter after a back-off, no day counts toward the gate.
+        return [] if self.a_strict() else out
+
+    def a_strict(self) -> bool:
+        """Whether level A steers with its stricter rules after a back-off."""
+        return self.a_strict_since is not None
+
+    def a_gate_state(self) -> dict[str, Any]:
+        state = gate(self.a_gate_reviews(), LEVEL_A)
+        if self.a_opened is not None:
+            state["open"] = True
+        if not state["open"] and beta_gate_open(self.hass, self.shadow.site):
+            state["open"] = True
+        return {**state, "backed_off": self.a_backed_off}
+
+    def a_mode(self, config: HeatConfig, pump: Any = None) -> str:
+        """Level A's mode: `watch` as the boost's, `live` with "Styr värmen" and its gate open, else `shadow`."""
+        if self.watched(self._pump() if pump is None else pump):
+            return MODE_WATCH
+        if config.control_enabled and (self.a_gate_state()["open"] or self.a_strict()):
+            # After a back-off level A keeps steering, stricter: never back to the plan without its rules.
+            return MODE_LIVE
+        return MODE_SHADOW
+
+    def level_a_rules(
+        self, now: datetime, config: HeatConfig, days: Sequence[date]
+    ) -> tuple[dict[datetime, tuple[str, datetime | None]], int | None] | None:
+        """Level A's rules for the heat plan of the local days given (`dhw_level_a`): the hours kept free (before each
+        peak, the pump's periodic increase where the meter shows it) and the day's cap; `None` where the path does not
+        block hot water."""
+        if not self.a_applies(config):
+            return None
+        pump = self._pump()
+        runs = list(self.runs.values())
+        strict = self.a_strict()
+        guard = PEAK_GUARD_STRICT if strict else PEAK_GUARD
+        found = guards(self.peaks, days, self.zone, runs, now, self.filled_peaks(), guard, self.standby)
+        hygiene = next_hygiene(runs, self.zone, now, list(self.night_runs.values()))
+        return kept_hours(found, hygiene), max_day_hours(self.tank_c(pump) is not None, strict)
+
+    def filled_peaks(self) -> set[datetime]:
+        """The peaks a boost fills for certain: SpotNav's written and read back (`live`), or one already running when
+        the pick came due (`filled`). A pick only planned, skipped or never written fills nothing."""
+        out: set[datetime] = set()
+        for record in self.days.values():
+            for key in [*(record.get("live") or []), *(record.get("filled") or [])]:
+                try:
+                    out.add(datetime.fromisoformat(key))
+                except (TypeError, ValueError):
+                    continue
+        return out
+
+    def set_cuts(self, cuts: Sequence[Cut], live: bool) -> None:
+        self.cuts, self.cuts_live = list(cuts), live
+
     def making_now(self) -> bool:
         """Whether the pump makes hot water now: its own priority, else the meter's power against its levels."""
         pump = self._pump()
@@ -314,6 +418,31 @@ class HotWater:
         unit = state.attributes.get("unit_of_measurement")
         kw = kw / 1000.0 if unit == "W" else kw
         return state_now(kw, levels_, kw) == STATE_HOT_WATER
+
+    def tank_c(self, pump: Any = None) -> float | None:
+        """The tank sensor's reading (°C), `None` without one, and also where its entity does not read or has not
+        reported within `TANK_FRESH`: a stale tank is no tank sensor (the day's cap applies, the 40 °C rule is not
+        trusted to allow a block)."""
+        pump = self._pump() if pump is None else pump
+        value = None if pump is None else getattr(pump, "hot_water_temp_c", None)
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return None
+        source = (getattr(pump, "sources", None) or {}).get("hot_water_temp")
+        if isinstance(source, str) and source:
+            now = dt_util.utcnow()
+            for entity_id in source.split(" + "):
+                state = self.hass.states.get(entity_id.strip())
+                if state is None or state.state in ("unavailable", "unknown"):
+                    return None
+                reported = getattr(state, "last_reported", None) or state.last_updated
+                if now - reported > TANK_FRESH:
+                    return None
+        return float(value)
+
+    def tank_low(self) -> bool:
+        """The tank rule (`dhw_level_a.TankGuard`) stepped on the tank's reading now: whether no block may hold the
+        hot water. Without a tank sensor never."""
+        return self.tank.step(self.tank_c())
 
     def _meter_fresh(self, now: datetime) -> bool:
         meter = self.shadow.site.house_forecast.heat.meter
@@ -352,7 +481,12 @@ class HotWater:
         for run in hot_water_runs(periods, found):
             # A run still going at the window's end is taken again, whole, next hour.
             if run.end <= now - timedelta(minutes=5):
-                self.runs[run.start.isoformat()] = run
+                self._keep_run(run)
+
+    def _keep_run(self, run: HotWaterRun) -> None:
+        self.runs[run.start.isoformat()] = run
+        if is_night(run.start, self.zone):
+            self.night_runs[run.start.isoformat()] = run
 
     def _learn(self, now: datetime) -> None:
         first = now - timedelta(days=PEAK_DAYS)
@@ -380,7 +514,7 @@ class HotWater:
         sell = quarters_of([(slot.start, slot.end, slot.sell) for slot in slots])
         forecast = site.house_forecast
         # The house with the heat's change, less the boosts' own (they are placed here again, not counted twice).
-        own = self.forecast_delta(now)
+        own = self.boost_delta(now)
         load = hourly_to_quarters(
             {hour: max(0.0, kw - own.get(hour, 0.0)) for hour, kw in forecast.plan_kw_by_hour(now, heat=True).items()}
         )
@@ -489,6 +623,17 @@ class HotWater:
             kept = Pick.from_stored(picks.get(pick.peak.isoformat()))
             if kept is None or kept.start > now:
                 picks[pick.peak.isoformat()] = pick.stored()
+        # Level A: each cut hour as it stood when it began; whether level A steered that day; whether SpotNav blocked.
+        for cut in self.cuts:
+            if cut.start <= now:
+                record = self._record(cut.start.astimezone(zone).date().isoformat())
+                record.setdefault("cuts", {}).setdefault(cut.start.isoformat(), [*cut.stored(), self.cuts_live])
+        today_record = self._record(today.isoformat())
+        if self.cuts_live:
+            today_record["a_live"] = True
+        control = self.shadow.control
+        if control is not None and any(item[0] is not None and (item[1] is None or item[1] > now - timedelta(hours=1)) for item in control.lowerings):
+            today_record["blocked"] = True
         # A pick no longer planned whose run has not begun is dropped from its day.
         planned = {pick.peak.isoformat() for pick in self.picks}
         for record in self.days.values():
@@ -536,16 +681,21 @@ class HotWater:
                 except (TypeError, ValueError, IndexError):
                     continue
             live = frozenset(datetime.fromisoformat(item) for item in record.get("live") or [])
+            blocks = [(s, e) for s, e in self.shadow.relay_intervals(now)[0] if e > start - timedelta(hours=3) and s < end + timedelta(hours=3)]
             record["review"] = review_day(
                 day,
                 self.zone,
                 peaks,
                 self.day_picks(key),
-                self.pump_runs(start, end + timedelta(hours=3)),
+                self.pump_runs(start - timedelta(hours=12), end + timedelta(hours=3)),
                 prices.get,
                 mode=MODE_LIVE if live else MODE_SHADOW,
                 live_peaks=live,
                 cutoff=self.standby,
+                blocks=blocks,
+                previous_until=self._previous_until(key),
+                a_mode=MODE_LIVE if record.get("a_live") else MODE_SHADOW,
+                blocks_cut=len(record.get("cuts") or {}),
             )
             _LOGGER.info("SpotNav hot water: %s reviewed: %s", key, {k: v for k, v in record["review"].items() if k != "per_peak"})
         today = now.astimezone(self.zone).date()
@@ -561,6 +711,37 @@ class HotWater:
             # days, and live days are no shadow days.
             self.opened = today.isoformat()
             _LOGGER.info("SpotNav hot water: the shadow gate opened")
+        if self.a_strict():
+            self._a_strict_end(reviews)
+        elif self.a_gate_state()["open"] and back_off(reviews, today, LEVEL_A):
+            # Also on a beta site: this is a safety net, not a learning gate. Level A stays and widens.
+            self.a_since = self.a_strict_since = self.a_backed_off = today.isoformat()
+            _LOGGER.info("SpotNav hot water: blocks held the pump's run into a peak too often in a week; level A stricter")
+        elif self.a_opened is None and gate(self.a_gate_reviews(), LEVEL_A)["open"]:
+            self.a_opened = today.isoformat()
+            _LOGGER.info("SpotNav hot water: level A's shadow gate opened")
+
+    def _a_strict_end(self, reviews: Sequence[Mapping[str, Any]]) -> None:
+        """`CLEAN_DAYS` reviewed days in a row after the back-off without a cold risk end the stricter rules; the gate
+        counts its days from then."""
+        since = self.a_strict_since or ""
+        after = sorted((review for review in reviews if str(review.get("date", "")) > since), key=lambda review: review["date"])
+        clean = after[-CLEAN_DAYS:]
+        if len(clean) == CLEAN_DAYS and all(int(review.get("cold_risks", 0)) == 0 for review in clean):
+            self.a_since = str(clean[-1]["date"])
+            self.a_strict_since = None
+            _LOGGER.info("SpotNav hot water: a week without a late reheat; level A back to its usual rules")
+
+    def _previous_until(self, key: str) -> datetime | None:
+        """The end of the last peak the day before `key` kept."""
+        previous = self.days.get((date.fromisoformat(key) - timedelta(days=1)).isoformat()) or {}
+        ends = []
+        for item in previous.get("peaks") or []:
+            try:
+                ends.append(datetime.fromisoformat(item[1]))
+            except (TypeError, ValueError, IndexError):
+                continue
+        return max(ends) if ends else None
 
     def _trim(self, now: datetime) -> None:
         oldest = (now - timedelta(days=DAYS_KEPT)).astimezone(self.zone).date().isoformat()
@@ -568,6 +749,7 @@ class HotWater:
             del self.days[key]
         first = now - timedelta(days=PEAK_DAYS + 1)
         self.runs = {key: run for key, run in self.runs.items() if run.start >= first}
+        self.night_runs = {key: run for key, run in self.night_runs.items() if run.start >= now - HYGIENE_KEEP}
         self.seen = {day for day in self.seen if day >= first.astimezone(self.zone).date().isoformat()}
         self.ledger.trim(now)
 
@@ -755,10 +937,72 @@ class HotWater:
         self._side = self.hass.async_create_background_task(shed(), f"spotnav hot water shed {self.shadow.site.entry_id}")
 
     def forecast_delta(self, now: datetime) -> dict[datetime, float]:
-        """The change SpotNav's own boosts bring to the house's load per hour (kW), what the cars' and the battery's
-        plans count on (`HeatShadow.forecast_delta`): each boost that will be written (live) adds its power over its
-        run, and the pump's own reheat it replaces is taken out at its expected time. Nothing in shadow: there the
-        pump runs as it always has. Kept per 5 minutes."""
+        """The change the hot water brings to the house's load per hour (kW), what the cars' and the battery's plans
+        count on (`HeatShadow.forecast_delta`): SpotNav's own boosts (`boost_delta`) and the pump's own runs its
+        planned blocks hold (`block_delta`)."""
+        boosts = self.boost_delta(now)
+        try:
+            held = self.block_delta(now)
+        except Exception:  # noqa: BLE001 - the boosts' change stands without it
+            _LOGGER.debug("SpotNav hot water: the blocks' change to the forecast could not be made", exc_info=True)
+            held = {}
+        if not held:
+            return boosts
+        out = dict(boosts)
+        for hour, kw in held.items():
+            out[hour] = out.get(hour, 0.0) + kw
+        return out
+
+    def block_delta(self, now: datetime) -> dict[datetime, float]:
+        """The pump's own runs the heat control's closings ahead will hold (on a path that blocks hot water): each
+        peak's expected reheat (`Peak.run_at`, its learned kWh over the run's length) that falls in a closing moves to
+        the closing's end; where it was, only the part the relay's own change (`lower_share` of the heat, hot water
+        included) does not already take out. A peak a live boost fills is the boost's (`boost_delta`). Scaled by what the house profile
+        does not hold of it yet (days with a block of SpotNav's, `learned_live_share`)."""
+        control = self.shadow.control
+        closings = None if control is None else control.closings_ahead(now)
+        if not closings:
+            return {}
+        key = (int(now.timestamp() // 300), tuple(closings), tuple(self.peaks), self.run_len, len(self.days))
+        if key == self._block_key:
+            return self._block
+        self._block_key, self._block = key, self._held_runs(now, closings)
+        return self._block
+
+    def _held_runs(self, now: datetime, closings: Sequence[tuple[datetime, datetime]]) -> dict[datetime, float]:
+        from .relay_effect import hour_shares  # noqa: PLC0415
+
+        zone = self.zone
+        today = now.astimezone(zone).date()
+        # A peak a boost fills is the boost's (`boost_delta`): one written, or one it still counts on.
+        boosted = self.filled_peaks()
+        if self.boost_delta(now):
+            boosted |= {pick.peak for pick in self.picks if now < pick.start + START_LATE}
+        run_h = max(self.run_len.total_seconds() / 3600.0, 0.25)
+        scale = 1.0 - learned_live_share(self.days, today, key="blocked")
+        # The relay's own change takes `lower_share` of the block hour's heat out, the pump's hot water included
+        # (`HeatShadow.heat_kw` is the meter's whole forecast): only the rest of the held run is taken out here.
+        kept = 1.0 - min(1.0, max(0.0, float(self.shadow.effect.lower_share)))
+        out: dict[datetime, float] = {}
+        for day in (today, today + timedelta(days=1)):
+            for peak in self.peaks:
+                ready, _until, run_at = peak_instant(peak, day, zone)
+                if run_at < now or ready in boosted:
+                    continue
+                held = next((end for start, end in closings if start <= run_at < end), None)
+                if held is None:
+                    continue
+                kw = peak.kwh / run_h * scale
+                for hour, share in hour_shares(run_at, run_at + self.run_len):
+                    out[hour] = out.get(hour, 0.0) - kw * kept * share
+                for hour, share in hour_shares(held, held + self.run_len):
+                    out[hour] = out.get(hour, 0.0) + kw * share
+        return {hour: kw for hour, kw in out.items() if abs(kw) > 1e-9}
+
+    def boost_delta(self, now: datetime) -> dict[datetime, float]:
+        """The change SpotNav's own boosts bring to the house's load per hour (kW): each boost that will be written
+        (live) adds its power over its run, and the pump's own reheat it replaces is taken out at its expected time.
+        Nothing in shadow: there the pump runs as it always has. Kept per 5 minutes."""
         filled_count = sum(len(record.get("filled") or []) + len(record.get("live") or []) for record in self.days.values())
         key = (int(now.timestamp() // 300), tuple(pick.start for pick in self.picks), self.shed_day, self.ended_day, filled_count)
         if key == self._delta_key:
@@ -1095,7 +1339,14 @@ class HotWater:
         for key in sorted(self.days, reverse=True):
             candidate = self.days[key].get("review")
             if key < today.isoformat() and isinstance(candidate, dict):
-                review = candidate
+                # A review kept before level A's figures has none of them: none were counted.
+                review = {
+                    "cold_risks": 0,
+                    "blocks_cut": 0,
+                    "a_mode": MODE_SHADOW,
+                    **candidate,
+                    "per_peak": [{"cold_risk": False, **item} for item in candidate.get("per_peak") or []],
+                }
                 break
         return {
             "boost": self.boost(now),
@@ -1106,6 +1357,31 @@ class HotWater:
             "gate": self.gate_state(),
             "level": self.level(config, route),
             "mode": mode,
+            "blocking": self._blocking_view(now, config, pump),
+        }
+
+    def _blocking_view(self, now: datetime, config: HeatConfig, pump: Any) -> dict[str, Any] | None:
+        """`hot_water.blocking`: level A where the path blocks hot water (see `heat/view.py`)."""
+        if not self.a_applies(config):
+            return None
+        zone = self.zone
+        shown: dict[str, dict[str, Any]] = {}
+        today = now.astimezone(zone).date().isoformat()
+        for key, value in (self.days.get(today, {}).get("cuts") or {}).items():
+            try:
+                start = datetime.fromisoformat(key)
+                ready = None if value[1] is None else datetime.fromisoformat(value[1])
+                shown[key] = Cut(start, str(value[0]), ready).as_dict(zone, bool(value[2]))
+            except (TypeError, ValueError, IndexError):
+                continue
+        for cut in self.cuts:
+            shown.setdefault(cut.start.isoformat(), cut.as_dict(zone, self.cuts_live))
+        return {
+            "mode": self.a_mode(config, pump),
+            "gate": self.a_gate_state(),
+            "cuts": [shown[key] for key in sorted(shown)],
+            "tank": self.tank_c(pump) is not None,
+            "strict": self.a_strict(),
         }
 
     def diagnostics(self) -> dict[str, Any]:
@@ -1116,6 +1392,9 @@ class HotWater:
             "route": None if route is None else route.as_dict(),
             "mode": self.mode(config, route, pump),
             "gate": self.gate_state(),
+            "level_a": None
+            if not self.a_applies(config)
+            else {"mode": self.a_mode(config, pump), "gate": self.a_gate_state(), "cuts": [cut.as_dict(self.zone, self.cuts_live) for cut in self.cuts]},
             "ended_day": self.ended_day,
             "shed_day": self.shed_day,
             "standby_kwh": round(self.standby, 3),

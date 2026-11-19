@@ -9,12 +9,16 @@ runs that are no standby loss and that neither SpotNav nor the Boost button star
 * **saving**: per replaced run, its kWh at the price where it ran less the same kWh at the pick's price and the
   tank's standby loss from the pick to the peak;
 * **miss** (a live day): a reload run starting within `MISS_AFTER` after a peak that had a live boost: the boost
-  came too small or too early.
+  came too small or too early;
+* **cold risk** (level A, `dhw_level_a.cold_risk`): a block held the pump's run for the peak into the peak; and the
+  hours the level-A rules took out of the heat plan (`blocks_cut`).
 
 **The gate** (`gate`), per level (`GATES`, one place: a sub-function may get a longer gate): the shadow days since
 the gate last closed must number at least `min_days` and, where `all_weekdays`, hold each weekday once; at least
-`min_peaks` peaks seen, `min_hit` of them hit, and a saving above zero. **Back off** (`back_off`): `MISS_LIMIT`
-misses within `MISS_DAYS` live days close the gate again (back to shadow).
+`min_peaks` peaks seen, `min_hit` of them hit, and, where `needs_saving`, a saving above zero. Level A's days are
+shadow or live by its own mode (`a_mode`): its rules only shorten or move blocks, so its gate asks no saving.
+**Back off** (`back_off`): `MISS_LIMIT` misses (level A: cold risks) within `MISS_DAYS` live days close the gate again
+(back to shadow).
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, Final
 
+from .dhw_level_a import cold_risk
 from .dhw_peaks import DRAW_LEAD, STANDBY_FLOOR, RunLike, standby
 from .dhw_plan import LOSS_KWH_H, Pick, quarter_of
 
@@ -45,13 +50,14 @@ class GateRule:
     all_weekdays: bool
     min_peaks: int
     min_hit: float
+    needs_saving: bool = True
 
 
 #: Level B (the boost) goes live after a week of shadow with each weekday seen; level A (blocking the pump's own
 #: runs) touches comfort more and waits two weeks.
 GATES: Final[Mapping[str, GateRule]] = {
     LEVEL_B: GateRule(min_days=7, all_weekdays=True, min_peaks=10, min_hit=0.70),
-    LEVEL_A: GateRule(min_days=14, all_weekdays=False, min_peaks=10, min_hit=0.70),
+    LEVEL_A: GateRule(min_days=14, all_weekdays=False, min_peaks=10, min_hit=0.70, needs_saving=False),
 }
 
 
@@ -72,14 +78,21 @@ def review_day(
     mode: str,
     live_peaks: frozenset[datetime] = frozenset(),
     cutoff: float = STANDBY_FLOOR,
+    blocks: Sequence[tuple[datetime, datetime]] = (),
+    previous_until: datetime | None = None,
+    a_mode: str = MODE_SHADOW,
+    blocks_cut: int = 0,
 ) -> dict[str, Any]:
     """The day's review (see the module): `runs` are the pump's own runs (SpotNav's and the button's left out),
     `price(quarter start)` the buy price, `live_peaks` the peaks a live boost filled, `cutoff` the site's standby
-    cutoff (`dhw_peaks.standby_kwh`)."""
-    own = sorted((run for run in runs if not standby(run, cutoff)), key=lambda run: run.start)
+    cutoff (`dhw_peaks.standby_kwh`); for level A the blocks held around the day, the end of the last peak before it
+    (`previous_until`), its mode and the hours its rules took out of the heat plan."""
+    every = sorted(runs, key=lambda run: run.start)
+    own = [run for run in every if not standby(run, cutoff)]
     per_peak = []
-    hits = misses = 0
+    hits = misses = risks = 0
     would = actual = saved = moved = 0.0
+    previous = previous_until
     for peak in sorted(peaks, key=lambda item: item.ready):
         hit = any(peak.ready - HIT_WINDOW <= run.start - DRAW_LEAD <= peak.until + HIT_WINDOW for run in own)
         hits += hit
@@ -98,6 +111,10 @@ def review_day(
                 moved += pump_run.kwh
         miss = peak.ready in live_peaks and any(peak.ready <= run.start <= peak.ready + MISS_AFTER for run in own)
         misses += miss
+        # Any run counts as filling the tank here, a standby reheat too.
+        risk = bool(blocks) and cold_risk(peak.ready, previous, blocks, every)
+        risks += risk
+        previous = peak.until
         per_peak.append(
             {
                 "peak": peak.ready.astimezone(zone).strftime("%H:%M"),
@@ -105,6 +122,7 @@ def review_day(
                 "pick": None if pick is None else pick.start.isoformat(),
                 "pump_run": None if pump_run is None else pump_run.start.isoformat(),
                 "miss": miss,
+                "cold_risk": risk,
             }
         )
     return {
@@ -117,20 +135,28 @@ def review_day(
         "hits": hits,
         "peaks": len(per_peak),
         "misses": misses,
+        "cold_risks": risks,
+        "blocks_cut": blocks_cut,
+        "a_mode": a_mode,
         "per_peak": per_peak,
     }
+
+
+def mode_of(review: Mapping[str, Any], level: str) -> Any:
+    """A review's mode for the level: level A's own (`a_mode`, shadow where not kept), else the boost's."""
+    return review.get("a_mode", MODE_SHADOW) if level == LEVEL_A else review.get("mode")
 
 
 def gate(reviews: Sequence[Mapping[str, Any]], level: str = LEVEL_B) -> dict[str, Any]:
     """Whether the level may go live on the shadow days' reviews since the gate last closed (see the module)."""
     rule = GATES[level]
-    shadow = [review for review in reviews if review.get("mode") == MODE_SHADOW]
+    shadow = [review for review in reviews if mode_of(review, level) == MODE_SHADOW]
     weekdays = {date.fromisoformat(review["date"]).weekday() for review in shadow}
     peaks = sum(int(review.get("peaks", 0)) for review in shadow)
     hits = sum(int(review.get("hits", 0)) for review in shadow)
     saved = sum(float(review.get("saved", 0.0)) for review in shadow)
     days_ok = len(shadow) >= rule.min_days and (not rule.all_weekdays or len(weekdays) == 7)
-    open_ = days_ok and peaks >= rule.min_peaks and hits >= rule.min_hit * peaks and saved > 0
+    open_ = days_ok and peaks >= rule.min_peaks and hits >= rule.min_hit * peaks and (saved > 0 or not rule.needs_saving)
     return {
         "level": level,
         "days": len(shadow),
@@ -145,15 +171,16 @@ def gate(reviews: Sequence[Mapping[str, Any]], level: str = LEVEL_B) -> dict[str
     }
 
 
-def back_off(reviews: Sequence[Mapping[str, Any]], today: date) -> bool:
-    """Whether the live days' misses of the last `MISS_DAYS` reach `MISS_LIMIT`."""
+def back_off(reviews: Sequence[Mapping[str, Any]], today: date, level: str = LEVEL_B) -> bool:
+    """Whether the live days' misses (level A: cold risks) of the last `MISS_DAYS` reach `MISS_LIMIT`."""
     first = today - timedelta(days=MISS_DAYS)
     recent = [
         review
         for review in reviews
-        if review.get("mode") == MODE_LIVE and first <= date.fromisoformat(review["date"]) < today
+        if mode_of(review, level) == MODE_LIVE and first <= date.fromisoformat(review["date"]) < today
     ]
-    return sum(int(review.get("misses", 0)) for review in recent) >= MISS_LIMIT
+    key = "cold_risks" if level == LEVEL_A else "misses"
+    return sum(int(review.get(key, 0)) for review in recent) >= MISS_LIMIT
 
 
 __all__ = [
@@ -168,5 +195,6 @@ __all__ = [
     "GateRule",
     "back_off",
     "gate",
+    "mode_of",
     "review_day",
 ]
