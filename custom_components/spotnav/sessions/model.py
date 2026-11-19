@@ -8,8 +8,9 @@ planner's effective price is, and shown in the major unit like the plan's estima
 could not be known stays absent: `cost_minor` is `None` for a session none of whose energy had a
 published price, never zero.
 
-A record written before that (it carries only `cost_minor`) is kept as it was, under `legacy_*` names,
-and says so with `cost_basis: "stored"` until `history_import.migrate_legacy` can re-derive its intervals.
+A record written before that (1.4 and earlier: it carries only `cost_minor`, or, from 1.5 to 2.x, the same under
+`legacy_*` names) is still read, once: it says so with `cost_basis: "stored"` until `history_import.migrate_legacy`
+re-derives its intervals or, where it cannot, drops the stored cost. Such a cost is never written again.
 
 Stored JSON is untrusted: `from_dict` reads exactly the shape `as_dict` writes and answers `None` for
 anything else, so one bad record never takes the others down.
@@ -65,7 +66,8 @@ _FIELDS: Final = frozenset(
     }
 )
 #: Written only when set: an imported session's `source`, the market's `area_id`, how the vehicle was decided
-#: at a charger more than one can charge at, and (only for a record without intervals) the cost it was stored with.
+#: at a charger more than one can charge at, and (read only, from a 2.x record without intervals) the cost it was
+#: stored with.
 _OPTIONAL_FIELDS: Final = frozenset(
     {
         "source", "area_id", "intervals", "legacy_priced_kwh", "legacy_cost_minor", "legacy_reference_cost_minor",
@@ -236,12 +238,8 @@ class ChargeSession:
             "last_register_kwh": self.last_register_kwh,
             "last_sample_at": None if self.last_sample_at is None else self.last_sample_at.isoformat(),
         }
-        if self.intervals or self.cost_minor is None:
-            record["intervals"] = [item.as_row() for item in self.intervals]
-        else:
-            record["legacy_priced_kwh"] = self.priced_kwh
-            record["legacy_cost_minor"] = self.cost_minor
-            record["legacy_reference_cost_minor"] = self.reference_cost_minor
+        # Never a cost: a record read with a stored one (`cost_basis: "stored"`) is written without it.
+        record["intervals"] = [item.as_row() for item in self.intervals]
         if self.source is not None:
             record["source"] = self.source
         if self.area_id is not None:

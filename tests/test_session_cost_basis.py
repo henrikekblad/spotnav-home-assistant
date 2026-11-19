@@ -107,15 +107,28 @@ def legacy_record() -> dict:
     return record
 
 
-async def test_an_old_record_keeps_its_cost_and_says_it_is_stored(hass: HomeAssistant, store: SessionStore) -> None:
-    old = ChargeSession.from_dict(legacy_record())
+def legacy_2x_record() -> dict:
+    """What 1.5 to 2.x wrote for a record from before intervals: its stored cost under `legacy_*` names."""
+    record = legacy_record()
+    for key in ("priced_kwh", "cost_minor", "reference_cost_minor"):
+        record[f"legacy_{key}"] = record.pop(key)
+    return record
 
-    assert old is not None and old.cost_minor == 480.0 and old.reference_cost_minor == 520.0
-    assert old.cost_basis == "stored" and old.public()["cost_basis"] == "stored"
-    written = old.as_dict()
-    assert written["legacy_cost_minor"] == 480.0 and "cost_minor" not in written
-    again = ChargeSession.from_dict(written)
-    assert again is not None and again.cost_minor == 480.0 and again.priced_kwh == 10.0
+
+async def test_an_old_record_is_read_with_its_cost_once_and_never_written_with_it(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    for raw in (legacy_record(), legacy_2x_record()):
+        old = ChargeSession.from_dict(raw)
+        assert old is not None and old.cost_minor == 480.0 and old.reference_cost_minor == 520.0
+        assert old.cost_basis == "stored" and old.public()["cost_basis"] == "stored"
+        written = old.as_dict()
+        assert written["intervals"] == [] and not {key for key in written if "cost" in key or "priced" in key}
+        again = ChargeSession.from_dict(written)
+        assert again is not None and again.cost_minor is None and again.cost_basis == "current_settings"
+
+    old = ChargeSession.from_dict(legacy_record())
+    assert old is not None
 
     store.close(old, NOW)
     store.holder["fiscal"] = FiscalChoice(vat_enabled=True, vat_percent=25.0)  # type: ignore[attr-defined]
@@ -123,8 +136,10 @@ async def test_an_old_record_keeps_its_cost_and_says_it_is_stored(hass: HomeAssi
     assert held.cost_minor == 480.0, "a stored cost is not a basis for the new settings"
 
 
-async def test_the_stored_document_round_trips_old_and_new_records(hass: HomeAssistant, store: SessionStore) -> None:
-    store.close(ChargeSession.from_dict(legacy_record()), NOW)  # type: ignore[arg-type]
+async def test_the_stored_document_keeps_an_old_record_without_its_stored_cost(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    store.close(ChargeSession.from_dict(legacy_2x_record()), NOW)  # type: ignore[arg-type]
     store.close(intervals_session(8, 4.0), NOW)
     await store.async_flush()
 
@@ -132,5 +147,5 @@ async def test_the_stored_document_round_trips_old_and_new_records(hass: HomeAss
     await reloaded.async_load()
 
     old, new = reloaded.closed_raw(CHARGER)
-    assert old.cost_basis == "stored" and old.cost_minor == 480.0
+    assert old.cost_basis == "current_settings" and old.cost_minor is None and old.energy_kwh == 10.0
     assert new.cost_basis == "current_settings" and len(new.intervals) == 1
