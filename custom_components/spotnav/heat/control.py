@@ -548,6 +548,7 @@ class HeatControl:
         try:
             kept = await store.async_load()
         except Exception:  # noqa: BLE001 - nothing to tell
+            _LOGGER.debug("async_remove_stored: ignored failure (nothing to tell)", exc_info=True)
             kept = None
         if isinstance(kept, dict) and isinstance(activation := kept.get("activation"), dict):
             switch, mode = hass.states.get(str(activation.get("entity"))), hass.states.get(str(activation.get("mode")))

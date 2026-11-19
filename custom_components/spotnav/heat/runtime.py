@@ -732,6 +732,7 @@ class HeatShadow:
         try:
             windows = site_car_windows(self.hass, self.site)
         except Exception:  # noqa: BLE001 - no car plan: none counted
+            _LOGGER.debug("joint_inputs: ignored failure (no car plan: none counted)", exc_info=True)
             windows = []
         plan = getattr(self.site.battery_shadow, "plan", None)
         slots = getattr(plan, "plan", ()) or ()
