@@ -7,7 +7,7 @@ import { chooseChartSun, chartSunNow } from "../src/card";
 import { createCardView, readoutTextFor, type CardView, type CardViewInput } from "../src/card-view";
 import { CHART_SUN_KEY, readChartSun, writeChartSun, type PreferenceStore } from "../src/chart-preference";
 import { renderChart } from "../src/chart-render";
-import { sunAt, sunRuns, sunSeries } from "../src/chart-sun";
+import { litRuns, sunAt, sunRuns, sunSeries } from "../src/chart-sun";
 import { translate } from "../src/i18n";
 import { buildModel, type CardModel } from "../src/model";
 import { decodeDashboard, sunOrNull } from "../src/validate";
@@ -490,5 +490,20 @@ describe("the sun's scale against the site's peak", () => {
 
   it("keeps today's behaviour with no peak", () => {
     expect(model({ sun: { hours: SUN_HOURS } }).sun?.peakKw).toBeNull();
+  });
+});
+
+describe("the sun's dark hours", () => {
+  const HOUR = 3_600_000;
+  const day = (kws: number[]) => kws.map((kw, index) => ({ startMs: index * HOUR, endMs: (index + 1) * HOUR, kw, measured: true, position: index }));
+
+  it("draw no line through a night at 0 kW, and start and end on the baseline beside the sun", () => {
+    const runs = litRuns(day([0, 0, 0, 0.4, 2, 3, 1, 0, 0, 0]));
+    expect(runs.map((run) => run.map((point) => point.kw))).toEqual([[0, 0.4, 2, 3, 1, 0]]);
+  });
+
+  it("draw nothing for a day without sun, and split a run at a dark stretch inside it", () => {
+    expect(litRuns(day([0, 0, 0]))).toEqual([]);
+    expect(litRuns(day([1, 0, 0, 0, 1])).map((run) => run.map((point) => point.kw))).toEqual([[1, 0], [0, 1]]);
   });
 });

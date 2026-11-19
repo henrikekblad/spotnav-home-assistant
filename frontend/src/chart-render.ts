@@ -22,7 +22,7 @@ import {
   type PlanBand,
   type PlanBands,
 } from "./chart";
-import { SUN_HEIGHT_SHARE, sunRuns, type SunPoint, type SunSeries } from "./chart-sun";
+import { SUN_HEIGHT_SHARE, litRuns, type SunPoint, type SunSeries } from "./chart-sun";
 import { CHART_DENSITY, PLAN_BAND_STYLE, VISUAL_CLASSES, type ChartDensityStyle } from "./visual-styles";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -238,7 +238,7 @@ export function sunLayer(sun: SunSeries, scale: ChartScale, peakLabel?: (kw: num
     x: xForWallClock(scale, point.position),
     y: scale.bottom - (point.kw / sun.maxKw) * height,
   });
-  for (const run of sunRuns(sun.points)) {
+  for (const run of litRuns(sun.points)) {
     const dots = run.map(place);
     const first = dots[0];
     const last = dots[dots.length - 1];

@@ -93,6 +93,30 @@ export function sunRuns(points: readonly SunPoint[]): SunPoint[][] {
   return runs;
 }
 
+/**
+ * The runs to draw: `sunRuns` without the dark hours. An hour at 0 kW is drawn only beside one with sun, so the line
+ * starts from and ends on the baseline at dawn and dusk; a night of zeros draws nothing.
+ */
+export function litRuns(points: readonly SunPoint[]): SunPoint[][] {
+  const out: SunPoint[][] = [];
+  for (const run of sunRuns(points)) {
+    let current: SunPoint[] = [];
+    run.forEach((point, index) => {
+      const lit = point.kw > 0 || (run[index - 1]?.kw ?? 0) > 0 || (run[index + 1]?.kw ?? 0) > 0;
+      if (lit) {
+        current.push(point);
+      } else if (current.length > 0) {
+        out.push(current);
+        current = [];
+      }
+    });
+    if (current.length > 0) {
+      out.push(current);
+    }
+  }
+  return out;
+}
+
 /** The hour the sun has under an instant (a price mark's start), or `null`. */
 export function sunAt(sun: SunSeries | null, instantMs: number): SunPoint | null {
   return sun?.points.find((point) => point.startMs <= instantMs && instantMs < point.endMs) ?? null;
