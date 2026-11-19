@@ -92,6 +92,43 @@ prices; `STUB_TOMORROW=0` removes tomorrow from the demo Nord Pool, but the inte
 card-charging (a running charge), card-solar (a sunny day and a forecast source), pairing-approve (a
 real app pairing).
 
+## The 3.0 pictures (`driver/v3shots.mjs`)
+
+The house card, the heat card, the hero picture with the three cards, the settings pictures of the home battery and
+the beta tester box, and the pictures for the banner are taken by a driver of their own, in Home Assistant's light
+theme (`DRIVER=v3shots.mjs tools/docs_screenshots/run.sh [--keep-ha] [shot-name ...]`; the older `shots.mjs` still
+takes the 2.x pictures of the charger flow, in the dark theme). Written: `house-card-now`, `heat-card-now`,
+`heat-card-hot-water`, `settings-home-battery`, `settings-beta`, `readme-hero` and `docs-home` (a copy of it); only
+when named: `social-card` (the house card at twice the pixels, `tools/social/card-light.png`).
+
+`driver/v3setup.mjs` sets the installation up through the config flow API (the app's screenshot tool uses it too):
+the demo integrations, a charger "Garage" with two cars, a site "Home" and the site's heating. What the site finds
+beyond the 2.x demo:
+
+- `demo_components/demo_house`: a made-up house, one deterministic simulation in five-minute steps (`model.py`: a sun, the
+  house's load, a heat pump with hot-water runs, a home battery, the grid, the rooms and the weather) behind the sensors
+  (solar, grid and battery energy counters, the heat pump's meter, three rooms and the outdoor temperature) and two
+  switches (a relay that lowers the pump's curve, a hot-water boost). Its service `demo_house.docs_seed` imports the
+  simulation's weeks as the recorder's statistics (hourly for 56 days, five-minute for ten), which `v3setup.mjs`
+  points the Energy dashboard at; `demo_house.docs_scene` pins the live power (sun, house, heat, battery in kW) for a
+  picture, so that no picture depends on the hour it is taken.
+- `demo_components/sigen` now also has the home battery: its level, ratings, work mode and the controls the battery
+  check writes (a Remote EMS switch, the control mode select and the charge and discharge limits); they move the
+  simulated battery, so the check of its control sees a plant that obeys.
+- `seed_house.py` (loaded by `ha_launch.py` with `DOCS_SEED_HOUSE`): the house-load history the forecast needs, the heat
+  store's hot-water runs and five shadow days (the progress line under the heat card's Plan), and a month of reviewed
+  battery days and the battery's day money (the earnings). In memory only, as `seed_sessions.py`.
+
+Time of day: the live figures are pinned, but SpotNav plans from the real clock. The pictures of today's energy want an
+evening or a day (not just after midnight, when today holds no hours yet). **`heat-card-hot-water` needs a boost
+planned for the rest of today**, which is in the cheap hours before the day's peaks (02:30 and 12:30 here): take it
+before about 12:00, or just after midnight; the driver waits for one for up to `HOT_WATER_WAIT_MIN` minutes (150).
+`settings-home-battery` waits for the battery's check, about twenty minutes (beta on, battery control on, a cloudy
+evening pinned so that the battery discharges). The past days' prices come with the next price refresh cycle (hourly,
+and at midnight), which is what makes the month's cost and earnings in the app's pictures: take those after one.
+
+`HA_PORT`, `STUB_PORT`, `DOCS_CONFIG` and `DOCS_LOGS` move the instance, so that two can run side by side.
+
 ## Things that can break
 
 - The driver finds elements by their text and by Home Assistant's and the card's DOM (`dialog[part~=dialog]`,
