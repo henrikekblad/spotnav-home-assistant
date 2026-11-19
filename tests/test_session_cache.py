@@ -313,7 +313,10 @@ async def test_a_record_of_todays_format_loads_and_is_written_back_unchanged(
     assert store.import_marker(CHARGER) == imports[CHARGER]
 
     await store.async_flush()
-    assert hass_storage["spotnav_sessions"]["data"] == written
+    assert hass_storage["spotnav_sessions"]["data"] == written, "nothing changed: the big store is not written"
+    store._schedule_record()  # noqa: SLF001 - a change: the big store is written again
+    await store.async_flush()
+    assert hass_storage["spotnav_sessions"]["data"] == {**written, "open": {}}, "the open session is the small one's"
 
     assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: opened.as_dict()}, "closing": {}}
 
@@ -424,14 +427,14 @@ async def test_the_big_stores_snapshot_is_the_store_as_it_stood(hass: HomeAssist
     sessions = history(60)
     store.replace_closed(CHARGER, sessions, END)
     store.set_import_marker(CHARGER, {"version": 2, "unpriced_days": ["2026-01-01"]})
-    closed, opened, imports = store._snapshot()  # noqa: SLF001
+    closed, imports = store._snapshot()  # noqa: SLF001
 
     running = replace(sessions[-1], id="open", start=END + timedelta(hours=1), end=None)
     store.set_open(running, charger_id=CHARGER)
     store.close(replace(running, end=END + timedelta(hours=2)), END + timedelta(hours=2))
     store._imports[CHARGER]["unpriced_days"].append("2026-01-02")  # noqa: SLF001
 
-    assert len(closed[CHARGER]) == 60 and opened == {}
+    assert len(closed[CHARGER]) == 60
     assert imports == {CHARGER: {"version": 2, "unpriced_days": ["2026-01-01"]}}
 
 
