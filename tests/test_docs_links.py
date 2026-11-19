@@ -18,7 +18,8 @@ def _targets(page: Path) -> list[tuple[str, str]]:
     kinds = []
     for match in LINK.finditer(page.read_text(encoding="utf-8")):
         target = match.group(1)
-        if target.startswith(("http://", "https://", "mailto:", "#")):
+        # `{{SITE_URL}}` and other `{{...}}` tokens are filled in when the website is built.
+        if target.startswith(("http://", "https://", "mailto:", "#", "{{")):
             continue
         kinds.append(("image" if match.group(0).startswith("!") else "link", target))
     return kinds
