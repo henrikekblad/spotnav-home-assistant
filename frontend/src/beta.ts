@@ -362,8 +362,9 @@ export function betaBox(input: BetaBoxInput): HTMLElement {
     }
     email.disabled = busy || beta === null;
     saveEmail.disabled = busy || beta === null;
-    testBox.hidden = test === null;
-    if (test === null) {
+    // A site with nothing to test and no earlier test shows no box: there is nothing to press and nothing to read.
+    testBox.hidden = test === null || (test.blocked === "nothing_to_test" && test.state === "idle");
+    if (testBox.hidden || test === null) {
       return;
     }
     const running = test.state === "running";

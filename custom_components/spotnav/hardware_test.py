@@ -250,12 +250,13 @@ class HardwareTest:
         """Why a test cannot start now (`running`, `once_a_day`, `nothing_to_test`), and when it may."""
         if self.running:
             return "running", None
-        blocked, next_at = allowance(self._counted_last(), now, version, self._firmware_key())
-        if blocked is not None:
-            return blocked, next_at
+        # Nothing to test comes first: the day's slot is no reason on a site where no test could run at all.
         parts = self._parts(now)
         if not parts or all(why is not None for why in parts.values()):
             return "nothing_to_test", None
+        blocked, next_at = allowance(self._counted_last(), now, version, self._firmware_key())
+        if blocked is not None:
+            return blocked, next_at
         return None, None
 
     def _counted_last(self) -> dict[str, Any] | None:

@@ -732,6 +732,7 @@ async def test_no_check_runs_while_the_firmware_was_never_read(
     _options(hass, site, enabled=True, shadow_only=False)
     await _looks(control, dt_util.now(), 20)
     status = control.status()
+    assert status["battery_found"] is True, "a plant's battery is named in the status"
     assert control.verification is None and plant.calls == []
     assert status["state"] == "waiting" and status["line"] == "waiting:firmware_unknown"
     assert "firmware_unknown" in status["needs"]

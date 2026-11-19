@@ -10,6 +10,9 @@ charger's site when a charger is named:
 * `price`: the electricity price entry the site reads (`site_price_source`): `{entry_id, title, area_id, area_name}`,
   `area_name` `null` while the area list does not name it; `null` when no price applies to the site.
 * `battery`: `{found}`, whether the site's battery facts name a battery (the battery section is shown then).
+* `import_target` (additive): `{available, reason}`, whether the site can measure an import target: `available`
+  `false` with `reason` `needs_total_grid_power` on a direct site without the meter's total grid power (the
+  dashboard's `grid_tariff.demand` says the same), where the popover hides the import target row while none is set.
 * `price_settings` (additive): what the popover's price section shows and edits, `null` exactly where `price` is:
   `market` (the area's facts: `area_id`, `area_name`, `countries`, `timezone`, `currency`, `major_unit`,
   `minor_unit`, each `null` while the area list does not name the area, `area_id` never), `fiscal` (the dashboard's
@@ -34,7 +37,14 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 
-from ..const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
+from ..const import (
+    CONF_CHARGER_ENTRY_IDS,
+    CONF_ENTRY_TYPE,
+    CONF_GRID_POWER_SOURCE,
+    CONF_MEASUREMENT_MODE,
+    DOMAIN,
+    ENTRY_TYPE_SITE,
+)
 from ..planning.auto_settings import AutoSettings
 from ..planning.hybrid_forecast import async_forecast_capable_domains
 from ..pricing.price_source import PriceSource, site_price_source
@@ -42,7 +52,8 @@ from ..runtime import domain_data
 from ..runtime import site_controller_for
 from ..setup_checklist import capture_site_setup, serialize_setup
 from .dashboard import serialize_fiscal, capture_site_block
-from .grid_tariff import capture_site_grid_tariff, serialize_grid_tariff
+from ..site.solar_capability import solar_capability
+from .grid_tariff import DEMAND_NEEDS_TOTAL_GRID_POWER, capture_site_grid_tariff, serialize_grid_tariff
 from .price_source import capture_site_price_source, serialize_price_source
 from .settings import encoded_override
 from .common import (
@@ -153,6 +164,14 @@ def battery_found(hass: HomeAssistant, site: ConfigEntry) -> bool:
     return controller is not None and bool(controller.battery_shadow.facts.battery_entity_id)
 
 
+def import_target_block(site: ConfigEntry) -> dict[str, Any]:
+    """Whether the site can measure an import target (`capture_site_demand`'s rule, without a price entry)."""
+    capability = solar_capability(site.data.get(CONF_MEASUREMENT_MODE), site.data.get(CONF_GRID_POWER_SOURCE))
+    if capability.capable:
+        return {"available": True, "reason": None}
+    return {"available": False, "reason": DEMAND_NEEDS_TOTAL_GRID_POWER}
+
+
 def site_settings_view(
     hass: HomeAssistant,
     site: ConfigEntry,
@@ -174,6 +193,7 @@ def site_settings_view(
         "writable": writable,
         "price": _price_block(hass, site),
         "battery": {"found": battery_found(hass, site)},
+        "import_target": import_target_block(site),
         "setup": serialize_setup(capture_site_setup(hass, site)),
         "price_settings": price_settings_block(
             hass, site, writable=writable if price_writable is None else price_writable

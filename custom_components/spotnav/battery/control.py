@@ -2505,6 +2505,8 @@ class BatteryControl:
         verification = self.verification
         current = None if verification is None else verification.current
         return {
+            # Whether the site's battery facts name a battery: without one a client hides its battery card (additive).
+            "battery_found": bool(self.facts.battery_entity_id),
             "options": options.as_dict(),
             "state": self.state(options),
             "line": self._line(options),

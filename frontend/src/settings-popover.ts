@@ -55,7 +55,7 @@ import { entityEditorBody, modeLabel } from "./entity-editor";
 import { formatFixed, formatNumber, type FormatContext } from "./format";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { heatEditor, writeHeat, type HeatWriteOptions } from "./heat-editors";
-import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
+import { decodeHeat, heatFound, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
 import { daysLeft, numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -473,19 +473,7 @@ export class SiteSections {
 
   /** Whether anything heat-related was found: a heat pump, a meter, climate zones, or settings already made. */
   heatFound(): boolean {
-    const answer = this.heat;
-    if (answer === null) {
-      return false;
-    }
-    return (
-      answer.pump !== null ||
-      answer.meter?.entity_id != null ||
-      answer.zones.length > 0 ||
-      (answer.choices?.zones.length ?? 0) > 0 ||
-      answer.config.control_path !== "none" ||
-      answer.config.indoor_sensors.length > 0 ||
-      answer.config.heat_meter_entity !== null
-    );
+    return this.heat !== null && heatFound(this.heat);
   }
 
   // ---- battery
@@ -1762,10 +1750,14 @@ export class SettingsPopover {
       section.append(element(doc, "p", C.muted, translate(language, view.writable ? "entity.loading" : "popover.site.readOnly")));
       return section;
     }
-    section.append(
-      ...this.numberRow("main_fuse_a", translate(language, "entity.field.mainFuse"), "A", null),
-      ...this.numberRow("import_target_kw", translate(language, "site.importTarget"), "kW", translate(language, "settings.value.off"), translate(language, "site.importTarget.help")),
-    );
+    section.append(...this.numberRow("main_fuse_a", translate(language, "entity.field.mainFuse"), "A", null));
+    // A site that cannot measure an import target hides the row while none is set (a set one stays, to clear it).
+    const target = this.field("import_target_kw");
+    if (view.import_target.available || (target?.kind === "number" && target.value !== null)) {
+      section.append(
+        ...this.numberRow("import_target_kw", translate(language, "site.importTarget"), "kW", translate(language, "settings.value.off"), translate(language, "site.importTarget.help")),
+      );
+    }
     // The same label as the charging card's site row: it is how the site is measured, not a device.
     const label = translate(language, "entity.field.measurementMode");
     const value = modeLabel(language, config.site.measurement.mode);

@@ -443,6 +443,29 @@ export interface HeatRelay {
   effect: HeatEffect;
 }
 
+/** Whether anything heat-related was found: a heat pump, a meter, climate zones, or settings already made. The
+ * heat card shows one line in place of its body without it; the settings popover collapses its heat section. */
+export function heatFound(answer: HeatAnswer): boolean {
+  return (
+    answer.pump !== null ||
+    answer.meter?.entity_id != null ||
+    answer.zones.length > 0 ||
+    (answer.choices?.zones.length ?? 0) > 0 ||
+    answer.config.control_path !== "none" ||
+    answer.config.indoor_sensors.length > 0 ||
+    answer.config.heat_meter_entity !== null
+  );
+}
+
+/** The control paths SpotNav steers itself ("Styr värmen" has a row on them). */
+export const STEERED_PATHS: readonly string[] = ["relay", "sg_ready", "sg_ready_api", "offset"];
+
+/** Whether SpotNav can steer this heating: a steered path, or control already on. Without it the comfort settings
+ * (target, Home/Away, night, away, offsets) can never act, and the card and settings leave them out. */
+export function heatSteers(config: { control_path: string; control_enabled: boolean }): boolean {
+  return STEERED_PATHS.includes(config.control_path) || config.control_enabled;
+}
+
 /** The paths steered through a switch a person wires: their words name the relay. */
 export function isRelayPath(path: string | null): boolean {
   return path === null || path === "none" || path === "relay" || path === "sg_ready";

@@ -3,6 +3,7 @@
   "ok": true,
   "error": null,
   "status": {
+    "battery_found": true,
     "options": {
       "battery_control_enabled": false,
       "battery_control_shadow_only": false,

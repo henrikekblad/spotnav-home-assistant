@@ -601,6 +601,37 @@ export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "no
 /** The strategy rows whose availability hangs on the site's solar setup. */
 const SOLAR_SETUP_ROWS: ReadonlySet<string> = new Set(["solar", "hybrid"]);
 
+/**
+ * A solar strategy held back because the site has no solar is hidden from a reader who cannot set solar up: only an
+ * administrator acts on it (the "set up solar" link). The total-grid-power case stays for everyone, with its hint.
+ */
+export function strategyRowHidden(
+  row: { id: string; available: boolean; reasonCode: string | null },
+  isAdmin: boolean,
+): boolean {
+  return !isAdmin && !row.available && SOLAR_SETUP_ROWS.has(row.id) && row.reasonCode !== STRATEGY_NEEDS_TOTAL_POWER;
+}
+
+/**
+ * Whether the site can follow solar: no solar strategy is held back for the site's measurement (the dashboard offers
+ * Sol and Hybrid then).
+ */
+export function siteFollowsSolar(rows: ReadonlyArray<{ id: string; available: boolean }>): boolean {
+  return !rows.some((row) => SOLAR_SETUP_ROWS.has(row.id) && !row.available);
+}
+
+/**
+ * The import target row is shown unless the site cannot measure it (no total grid power) and none is set: a set
+ * target stays, so it can be cleared. Without a grid tariff block (the charger prices with its own settings) the
+ * card does not know, and shows it.
+ */
+export function importTargetShown(
+  demand: { available: boolean; reason: string | null } | null,
+  value: number | null,
+): boolean {
+  return value !== null || demand === null || demand.available || demand.reason !== STRATEGY_NEEDS_TOTAL_POWER;
+}
+
 /** Each strategy's one line under its name in the strategy dialog. */
 const STRATEGY_DESCRIBE_KEYS: Readonly<Record<string, TranslationKey>> = {
   cheapest: "strategy.describe.cheapest",
@@ -2457,6 +2488,9 @@ export function createCardView(input: CardViewInput): CardView {
       body.append(element(doc, "p", C.settingsReadOnly, translate(model.language, "settings.readOnly")));
     }
     for (const row of model.strategy.rows) {
+      if (strategyRowHidden(row, input.isAdmin)) {
+        continue;
+      }
       const item = element(doc, "div", C.strategyRow);
       const selected = row.id === model.strategy.selectedId;
       // An available, non-selected row is a real button for a reader who may change the strategy (`mayPlan`). The
@@ -3181,6 +3215,12 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** The friendly name an entity field states, or `null` when it names none. */
+  /** Whether the site has a home battery: its power entity chosen, or found by itself. */
+  function siteHasBattery(config: EntityConfig): boolean {
+    const field = fieldsOf(config, "site").find((entry) => entry.field === "battery_aggregate_power_entity");
+    return field !== undefined && field.kind === "entity" && (field.current !== null || field.effective !== null);
+  }
+
   function fieldEntityName(config: EntityConfig, scope: EntityScope, name: string): string | null {
     const field = fieldsOf(config, scope).find((entry) => entry.field === name);
     if (field === undefined || field.kind !== "entity" || field.current === null) {
@@ -3893,7 +3933,11 @@ export function createCardView(input: CardViewInput): CardView {
     }
     // Beside the fuse: the import target, and the hour running now against it.
     const target = fieldsOf(config, "site").find((entry) => entry.field === "import_target_kw");
-    if (target !== undefined && target.kind === "number") {
+    if (
+      target !== undefined &&
+      target.kind === "number" &&
+      importTargetShown(model.gridTariff?.demand ?? null, target.value)
+    ) {
       const label = translate(model.language, "site.importTarget");
       const current = target.value;
       const shown = current === null ? translate(model.language, "settings.value.off") : kwText(model.language, current);
@@ -3960,7 +4004,12 @@ export function createCardView(input: CardViewInput): CardView {
         ),
       );
     }
-    if (model.site !== null) {
+    // Car or battery first chooses between two solar sinks: only with a home battery and a site that can follow solar.
+    if (
+      model.site !== null &&
+      siteHasBattery(config) &&
+      siteFollowsSolar(model.strategy.rows)
+    ) {
       nodes.push(priorityRow(model.site));
     }
     if (config.site !== null) {

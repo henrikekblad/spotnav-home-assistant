@@ -101,7 +101,15 @@ describe("the popover from the house card", () => {
     vi.useRealTimers();
   });
 
-  function fakeHass(options: { admin?: boolean; heat?: Record<string, unknown>; battery?: string } = {}) {
+  interface Options {
+    admin?: boolean;
+    heat?: Record<string, unknown>;
+    battery?: string;
+    view?: Record<string, unknown>;
+    entity?: Record<string, unknown>;
+  }
+
+  function fakeHass(options: Options = {}) {
     const messages: Record<string, unknown>[] = [];
     let battery = read("battery_control", options.battery ?? "needs_ack.json");
     const hass = {
@@ -114,7 +122,7 @@ describe("the popover from the house card", () => {
           case "spotnav/get_house":
             return read("house", "villa_battery_sun.json");
           case "spotnav/get_site_settings_view":
-            return read("site_view", "villa.json");
+            return options.view ?? read("site_view", "villa.json");
           case "spotnav/get_heat":
             return options.heat ?? read("heat_card", "villa.json");
           case "spotnav/battery_control": {
@@ -132,7 +140,7 @@ describe("the popover from the house card", () => {
             return battery;
           }
           case "spotnav/get_entity_config":
-            return { api_version: 1, ok: false, error: "spotnav_unknown_site", field_errors: [], config: null };
+            return options.entity ?? { api_version: 1, ok: false, error: "spotnav_unknown_site", field_errors: [], config: null };
           case "spotnav/disconnect_phones":
             return { api_version: 1, ok: true, error: null, chargers: 0, sites: 1 };
           case "spotnav/beta":
@@ -147,7 +155,7 @@ describe("the popover from the house card", () => {
     return { hass, messages };
   }
 
-  async function mount(options: { admin?: boolean; heat?: Record<string, unknown>; battery?: string } = {}) {
+  async function mount(options: Options = {}) {
     const { hass, messages } = fakeHass(options);
     const element = document.createElement(HOUSE_CARD_ELEMENT) as SpotnavHouseCard;
     element.setConfig({ type: "custom:spotnav-house-card", site: "site_villa" });
@@ -162,6 +170,26 @@ describe("the popover from the house card", () => {
     await vi.advanceTimersByTimeAsync(0);
     return root.querySelector<HTMLElement>("[data-popover='site']")!;
   }
+
+  it("hides the import target on a site that cannot measure it while none is set, and keeps a set one to clear", async () => {
+    const entity = read("entity_config", "v1", "get_direct.json");
+    const unmeasured = { ...read("site_view", "villa.json"), import_target: { available: false, reason: "needs_total_grid_power" } };
+    const hidden = await open((await mount({ view: unmeasured, entity })).root);
+    const site = hidden.querySelector<HTMLElement>("[data-section='site']")!;
+    expect(site.querySelector("[data-row='main_fuse_a']")).not.toBeNull();
+    expect(site.querySelector("[data-row='import_target_kw']")).toBeNull();
+    document.body.innerHTML = "";
+    const config = entity["config"] as { fields: Record<string, unknown>[] };
+    const set = {
+      ...entity,
+      config: { ...config, fields: config.fields.map((field) => (field["field"] === "import_target_kw" ? { ...field, value: 6 } : field)) },
+    };
+    const kept = await open((await mount({ view: unmeasured, entity: set })).root);
+    expect(kept.querySelector("[data-section='site'] [data-row='import_target_kw']")).not.toBeNull();
+    document.body.innerHTML = "";
+    const measured = await open((await mount({ entity })).root);
+    expect(measured.querySelector("[data-section='site'] [data-row='import_target_kw']")).not.toBeNull();
+  });
 
   it("has no gear for a household member", async () => {
     const { root } = await mount({ admin: false });

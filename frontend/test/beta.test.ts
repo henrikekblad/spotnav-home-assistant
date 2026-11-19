@@ -197,6 +197,19 @@ describe("betaBox", () => {
     expect(q(root, "[data-beta=result]").textContent).toContain("SN-ABCD");
   });
 
+  it("hides the test where there is nothing to test and no test ran, and keeps an earlier test's result", async () => {
+    const idle = fixture("off_idle.json") as { test: Record<string, unknown> };
+    const nothing = { ...idle, test: { ...idle.test, state: "idle", blocked: "nothing_to_test", next_at: null } };
+    const { root } = box([nothing]);
+    await settle();
+    expect(q(root, "[data-beta=test]").hidden).toBe(true);
+    document.body.innerHTML = "";
+    const done = fixture("on_done_failed.json") as { test: Record<string, unknown> };
+    const after = box([{ ...done, test: { ...done.test, blocked: "nothing_to_test", next_at: null } }]);
+    await settle();
+    expect(q(after.root, "[data-beta=test]").hidden).toBe(false);
+  });
+
   it("hides the test where the answer has no site", async () => {
     const { root } = box([{ ...fixture("off_idle.json"), test: null }]);
     await settle();

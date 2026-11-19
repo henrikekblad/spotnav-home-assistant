@@ -8,6 +8,10 @@
   "battery": {
     "found": false
   },
+  "import_target": {
+    "available": false,
+    "reason": "needs_total_grid_power"
+  },
   "setup": {
     "items": [
       {

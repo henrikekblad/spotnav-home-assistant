@@ -37,12 +37,27 @@ async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
 }
 
+/** The entity config of a direct site, with a home battery's power entity chosen unless `battery` is false. */
+function entityConfig(battery: boolean): Record<string, any> {
+  const config = read("entity_config", "v1", "get_direct.json");
+  if (battery) {
+    const field = config["config"]["fields"].find((entry: Record<string, any>) => entry["field"] === "battery_aggregate_power_entity");
+    field["current"] = { entity_id: "sensor.battery_power", exists: true, friendly_name: "Battery power" };
+  }
+  return config;
+}
+
+/** A site that follows solar: Sol and Hybrid offered (the site measures its total grid power). */
+const solarSite = (payload: Record<string, any>) => {
+  payload["strategy"]["available"] = ["cheapest", "solar", "hybrid"].map((strategy) => ({ strategy, available: true, reason: null }));
+};
+
 async function open(
   payload: Record<string, any>,
-  options: { admin?: boolean; language?: string } = {},
+  options: { admin?: boolean; language?: string; battery?: boolean } = {},
 ): Promise<{ hass: FakeHass; element: ReturnType<typeof mountCard> }> {
   const hass = new FakeHass();
-  hass.entityHandler = async () => read("entity_config", "v1", "get_direct.json");
+  hass.entityHandler = async () => entityConfig(options.battery !== false);
   const element = mountCard(CONFIG, hass);
   const snapshot = hass.snapshot("snapshot", options.language ?? "en");
   if (options.admin !== false) {
@@ -80,7 +95,10 @@ const choose = (element: Element, label: RegExp): HTMLInputElement =>
 /** Open the Site section's priority (one of two) or the Solar section's forecast sources (several). */
 async function openSolar(
   which: "solar_priority" | "solar_forecast" = "solar_priority",
-  payload = dashboard(withSources(["forecast_solar:roof"])),
+  payload = dashboard((raw) => {
+    withSources(["forecast_solar:roof"])(raw);
+    solarSite(raw);
+  }),
   options = {},
 ) {
   const opened = await open(payload, options);
@@ -103,7 +121,12 @@ afterEach(() => {
 
 describe("the Solar section", () => {
   it("summarises the priority and the forecast sources in words, saying nothing of the one charger it applies to", async () => {
-    const { element } = await open(dashboard(withSources(["forecast_solar:roof", "forecast_solar:garage"])));
+    const { element } = await open(
+      dashboard((raw) => {
+        withSources(["forecast_solar:roof", "forecast_solar:garage"])(raw);
+        solarSite(raw);
+      }),
+    );
     const card = solarCard(element)!;
     expect(card.querySelector("h4")?.textContent).toBe(translate("en", "settings.section.solar"));
     expect(card.querySelector("h4 svg")?.getAttribute("data-icon")).toBe("solar");
@@ -118,6 +141,15 @@ describe("the Solar section", () => {
       "solar_forecast",
     ]);
     expect(card.querySelector("input")).toBeNull();
+  });
+
+  it("leaves out car or battery first without a home battery, or on a site that cannot follow solar", async () => {
+    const noBattery = await open(dashboard(solarSite), { battery: false });
+    expect(siteCard(noBattery.element)!.querySelector("[data-row='battery']")).not.toBeNull();
+    expect(siteCard(noBattery.element)!.querySelector("[data-row='solar_priority']")).toBeNull();
+    document.body.innerHTML = "";
+    const noSolar = await open(dashboard());
+    expect(siteCard(noSolar.element)!.querySelector("[data-row='solar_priority']")).toBeNull();
   });
 
   it("says none when no forecast source is chosen", async () => {

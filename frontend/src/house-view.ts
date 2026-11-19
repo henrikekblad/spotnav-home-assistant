@@ -13,7 +13,7 @@ import { planSentence, renderSchematic, schematicHeight, type HouseNow } from ".
 import { localDayKey } from "./chart";
 import { energyChart, flowWords, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
 import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
-import { dayOnly, periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
+import { dayOnly, houseTabs, periodPicker, shownHouseTab, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
 import type { HistoryPeriod } from "./period-history";
 import { hiddenIn, type HiddenSeries } from "./house-series";
 import { cardHeader, headerButton, headerTitle } from "./card-header";
@@ -1105,10 +1105,23 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const answer = state.answer;
   card.append(header(input, answer));
   const locked = input.ui.locked ?? null;
-  const tab: HouseTab = locked ?? input.ui.tab ?? "now";
+  // A tab that can never fill on this site is not drawn; one chosen before falls back to Now.
+  const tabs = houseTabs(answer);
+  const tab: HouseTab = shownHouseTab(locked, input.ui.tab ?? null, tabs);
   card.dataset["tab"] = tab;
   if (locked === null) {
-    card.append(tabList(doc, language, tab, input.idPrefix, (next, byKey) => input.handlers.onTab?.(next, byKey), input.ui.tabFit ?? "long"));
+    card.append(
+      tabList(
+        doc,
+        language,
+        tab,
+        input.idPrefix,
+        (next, byKey) => input.handlers.onTab?.(next, byKey),
+        input.ui.tabFit ?? "long",
+        tabs,
+        answer.battery !== null,
+      ),
+    );
   }
   const panel = tabPanel(doc, tab, input.idPrefix, locked === null);
   card.append(panel);

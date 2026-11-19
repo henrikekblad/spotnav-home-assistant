@@ -98,8 +98,44 @@ const TAB_SHORT_WORDS: Record<HouseTab, TranslationKey> = {
   price: "house.tab.short.price",
 };
 
-export function tabWord(language: Language, tab: HouseTab): string {
-  return translate(language, TAB_WORDS[tab]);
+/** A tab's long name; Price and battery is "Price" on a site without a battery (`battery` false). */
+export function tabWord(language: Language, tab: HouseTab, battery = true): string {
+  return translate(language, tab === "price" && !battery ? "house.tab.priceOnly" : TAB_WORDS[tab]);
+}
+
+/** What decides which tabs a site's card has (the house answer's own fields). */
+export interface HouseTabFacts {
+  battery: unknown;
+  energy_flow: { nodes: ReadonlyArray<{ role: string }> } | null;
+  heat: { status: string } | null;
+  saving: unknown;
+  hours: ReadonlyArray<{ buy: number | null; sell: number | null }>;
+}
+
+/**
+ * The tabs a site's card draws, in their order: a tab that can never fill is left out, by the app's rules
+ * (`HouseBoxes`): Energy flow without the day's energy flow; Earnings without a battery, a found heat pump meter, a
+ * saving or a car in the flow; Price and battery without a battery and without prices. Now and Energy chart stay.
+ */
+export function houseTabs(facts: HouseTabFacts): HouseTab[] {
+  const battery = facts.battery !== null && facts.battery !== undefined;
+  return HOUSE_TABS.filter((tab) => {
+    switch (tab) {
+      case "flow":
+        return facts.energy_flow !== null;
+      case "earn":
+        return (
+          battery ||
+          facts.heat?.status === "found" ||
+          (facts.saving !== null && facts.saving !== undefined) ||
+          (facts.energy_flow?.nodes.some((node) => node.role === "car") ?? false)
+        );
+      case "price":
+        return battery || facts.hours.some((hour) => hour.buy !== null || hour.sell !== null);
+      default:
+        return true;
+    }
+  });
 }
 
 export function tabShortWord(language: Language, tab: HouseTab): string {
@@ -141,7 +177,7 @@ export function setTabFit(list: HTMLElement, language: Language, fit: TabFit): v
     if (!isHouseTab(tab)) {
       continue;
     }
-    const long = tabWord(language, tab);
+    const long = tabWord(language, tab, list.dataset["battery"] !== "false");
     button.setAttribute("aria-label", long);
     if (fit === "icons") {
       button.replaceChildren(tabIcon(button.ownerDocument, tab));
@@ -183,18 +219,18 @@ export function panelId(idPrefix: string, tab: HouseTab): string {
 }
 
 /** The tab a key moves to from `current` (wrapping), or `null` for a key the tablist does not use. */
-export function tabForKey(key: string, current: HouseTab): HouseTab | null {
-  const index = HOUSE_TABS.indexOf(current);
-  const last = HOUSE_TABS.length - 1;
+export function tabForKey(key: string, current: HouseTab, tabs: readonly HouseTab[] = HOUSE_TABS): HouseTab | null {
+  const index = tabs.indexOf(current);
+  const last = tabs.length - 1;
   switch (key) {
     case "ArrowRight":
-      return HOUSE_TABS[index === last ? 0 : index + 1]!;
+      return tabs[index === last ? 0 : index + 1]!;
     case "ArrowLeft":
-      return HOUSE_TABS[index === 0 ? last : index - 1]!;
+      return tabs[index === 0 ? last : index - 1]!;
     case "Home":
-      return HOUSE_TABS[0]!;
+      return tabs[0]!;
     case "End":
-      return HOUSE_TABS[last]!;
+      return tabs[last]!;
     default:
       return null;
   }
@@ -209,12 +245,16 @@ export function tabList(
   idPrefix: string,
   onSelect: (tab: HouseTab, byKey: boolean) => void,
   fit: TabFit = "long",
+  tabs: readonly HouseTab[] = HOUSE_TABS,
+  battery = true,
 ): HTMLElement {
   const list = doc.createElement("div");
   list.className = T.list;
   list.setAttribute("role", "tablist");
   list.setAttribute("aria-label", translate(language, "house.tabs"));
-  for (const tab of HOUSE_TABS) {
+  // Read by `setTabFit`, which words the row again once it is measured.
+  list.dataset["battery"] = String(battery);
+  for (const tab of tabs) {
     const button = doc.createElement("button");
     button.type = "button";
     button.className = T.tab;
@@ -230,7 +270,7 @@ export function tabList(
       }
     });
     button.addEventListener("keydown", (event) => {
-      const next = tabForKey(event.key, tab);
+      const next = tabForKey(event.key, tab, tabs);
       if (next === null) {
         return;
       }
@@ -257,6 +297,14 @@ export function tabPanel(doc: Document, tab: HouseTab, idPrefix: string, labelle
 }
 
 // ------------------------------------------------------------------------------------------------ the period
+
+/** The tab shown: a YAML-locked one as it is; else the chosen one while the site has it, else Now. */
+export function shownHouseTab(locked: HouseTab | null, chosen: HouseTab | null, tabs: readonly HouseTab[]): HouseTab {
+  if (locked !== null) {
+    return locked;
+  }
+  return chosen !== null && tabs.includes(chosen) ? chosen : "now";
+}
 
 /** The period the tabs Energy flow, Energy chart and Price and battery show: its kind and a day inside it, `null`
  * for the one running now. */

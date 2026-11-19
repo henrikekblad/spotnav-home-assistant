@@ -7,6 +7,10 @@
   "charger_ids": [
     "entry_a"
   ],
+  "import_target": {
+    "available": true,
+    "reason": null
+  },
   "name": "Site",
   "ok": true,
   "price": {
