@@ -1024,7 +1024,7 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "Local (MQTT, needs the HeishaMon board)",
         "Read; relay or SG Ready contact; an offset number if you pick one, untested",
         "Boost: force hot water (switch); hot water setpoint 40-75. SpotNav uses force hot water for the hot water "
-        "button (whether it ends by itself is unverified); planned boosts in shadow first",
+        "button only and turns it off after the expected run: whether it ends by itself is unverified",
         "Whether HeishaMon's commands survive a power cut is unverified.",
     ),
     (

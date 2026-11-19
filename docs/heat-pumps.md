@@ -351,28 +351,39 @@ yesterday's review (kWh moved and money saved, in shadow), each peak hit or not,
 
 **From shadow to steering.** Planned runs are written only with **Styr värmen** on and after at least seven shadow
 days, one of each weekday, at least ten peaks seen, 70 % of them hit (the pump ran within 45 minutes of the peak) and
-a saving above zero. If, while steering, the pump reheats within 90 minutes after a peak despite the run three times
-in a week, SpotNav goes back to shadow and the week starts again. A run is not started while the heat control holds
-back for a cold house or stale data, without a fresh meter reading, or after a write that was not read back (that
-ends planned hot water for the day; a local route is tried once more after five minutes, a cloud route never).
+a saving above zero. Once open, the gate stays open while SpotNav steers; if the pump reheats within 90 minutes after
+a peak despite the run three times in a week, SpotNav goes back to shadow and the week starts again. A run is not
+started while a boost already runs (yours, the button's or the pump's own run: that fills the peak), while the house
+needs the compressor (too cold outdoors, a room below the band, outdoor or room readings missing), without a meter
+reading in the last ten minutes (or, without a meter, the pump's own state), or after a write that was not read back
+(that ends planned hot water for the day; a local route is tried once more after five minutes, a cloud route never).
+A pulse is read back by the run it asks for: the meter must show it within ten minutes.
 
 **With the cars and the battery.** A run that will be written is part of the house's expected load, so the cars'
 charging plans and the battery plan see it, and the pump's own reheat it replaces is taken out where it was expected.
-At its start, the run needs room on the fuse's tightest phase now (its whole power on one phase, the worst case): if a
-car has started since, it waits. If a phase goes over the fuse while SpotNav's own run is going, SpotNav ends that run
-(where the pump has a way to end it) and starts no more that day. Your own boost and the button's are never ended.
+What the house profile has already learned of these runs is not counted twice. At its start, the run needs room on
+the fuse's tightest phase now (its whole power on one phase, the worst case; what a battery holding the grid would
+yield counts as room) and room under your import target for the hour: if a car has started since, it waits. With a
+phase reading missing or stale it does not start at all. If a phase goes over the fuse while SpotNav's own run is
+going, SpotNav ends that run (where the pump has a way to end it) and starts no more that day. Your own boost and the
+button's are never ended.
 
 **Varmvatten nu.** Where the pump has a hot-water boost that ends by itself (NIBE's temporary lux "one time", myUplink's
-temporary lux, CTC's extra hot water for an hour, HeishaMon's force hot water) or you chose a **hot water entity**
+temporary lux, CTC's extra hot water for an hour) or you chose a **hot water entity**
 wired to the pump's hot-water input (SpotNav gives it a short pulse), the *Nu* tab has a **Varmvatten nu** button for
 anyone who sees the card. It shows *Startar…* until the pump reads the start back, then the time left (exact on a
-timer, about on a one-time run) and, where the boost can be ended early, **Avbryt**. One start per ten minutes. The
-button is your own start: SpotNav never stops it, never sheds it for the fuse and never blocks the pump during it.
+timer, about on a one-time run) and, where the boost can be ended early, **Avbryt**. One start per ten minutes (a
+start that failed does not count). While a phase is already over the main fuse the button says so and starts nothing:
+turn something off and press again. The button is your own start: SpotNav never stops it, never sheds it for the fuse,
+and a heat block ends at once and starts no more until its run is over. HeishaMon's force hot water is offered to the
+button only, since whether it ends by itself is not verified: SpotNav turns it off 15 minutes after the expected run.
 Without such a boost the button is not shown.
 
-**What SpotNav never does.** It never turns off or delays the pump's own periodic increase (NIBE's "periodisk
-höjning", CTC's legionella programme): keep it on, hygiene is the pump's. On a relay or SG Ready path it starts no
-heat block while the pump makes hot water, and a boost (yours, the button's or its own) ends a block at once.
+**What SpotNav never does.** It never turns off the pump's own periodic increase (NIBE's "periodisk höjning", CTC's
+legionella programme): keep it on, hygiene is the pump's. On a relay or SG Ready path it starts no heat block while
+the pump makes hot water, and a boost (yours, the button's or its own) ends a block at once. A heat block already
+held when the pump's own increase falls due can still delay it until the block ends (at most three hours); keeping
+blocks clear of the pump's own runs is a later step.
 
 The diagnostics (`heat_settings.shadow.hot_water`) show the boost route, the mode, the gate, the peaks, the picks, the
 days kept with their reviews and SpotNav's own writes.
