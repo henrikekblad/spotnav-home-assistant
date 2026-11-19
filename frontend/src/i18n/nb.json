@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "ville forkortet blokkeringen så varmtvannet rekker å varmes",
   "heat.chart.cutHygiene": "blokkering forkortet for varmtvannets periodiske økning",
   "heat.chart.cutHygieneWould": "ville forkortet blokkeringen for varmtvannets periodiske økning",
+  "heat.chart.cutMoved": "blokkering flyttet for varmtvannet",
+  "heat.chart.cutMovedWould": "ville flyttet blokkeringen for varmtvannet",
   "heat.water.review": "Varmtvann i går: {kwh} flyttet · {value} spart",
   "heat.water.reviewNone": "Varmtvann i går: ingenting å flytte",
   "heat.water.shadow": "(skygge)",

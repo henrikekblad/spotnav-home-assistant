@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "would shorten the block so the hot water gets its reheat",
   "heat.chart.cutHygiene": "block shortened for the hot water's periodic increase",
   "heat.chart.cutHygieneWould": "would shorten the block for the hot water's periodic increase",
+  "heat.chart.cutMoved": "block moved for the hot water",
+  "heat.chart.cutMovedWould": "would move the block for the hot water",
   "heat.water.review": "Hot water yesterday: {kwh} moved · {value} saved",
   "heat.water.reviewNone": "Hot water yesterday: nothing to move",
   "heat.water.shadow": "(shadow)",

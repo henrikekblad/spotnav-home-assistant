@@ -78,6 +78,7 @@ HYGIENE_AFTER: Final = timedelta(minutes=30)
 CUT_PEAK: Final = "peak"
 CUT_DAY: Final = "day_cap"
 CUT_HYGIENE: Final = "hygiene"
+CUT_MOVED: Final = "moved"
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,15 +254,34 @@ def kept_hours(
     return out
 
 
-def cuts(raw: Sequence[BandHour], shaped: Sequence[BandHour], kept: Mapping[datetime, tuple[str, datetime | None]]) -> list[Cut]:
+def cuts(
+    raw: Sequence[BandHour],
+    shaped: Sequence[BandHour],
+    kept: Mapping[datetime, tuple[str, datetime | None]],
+    max_day: int | None = None,
+    zone: tzinfo | None = None,
+) -> list[Cut]:
     """The hours `raw` lowers that `shaped` (the same plan under the rules) does not: the reason the hour is kept
-    (`kept_hours`), else over the day's cap."""
+    (`kept_hours`); else the day's cap where the shaped plan's local day (`zone`) lowers `max_day` hours; else moved
+    (the price rule chose again around a kept hour)."""
     lowered = {hour.start for hour in shaped if hour.action == ACTION_LOWER}
+
+    def day_of(moment: datetime) -> Any:
+        return moment.astimezone(zone).date() if zone is not None else moment.date()
+
+    per_day: dict[Any, int] = {}
+    for start in lowered:
+        per_day[day_of(start)] = per_day.get(day_of(start), 0) + 1
     out = []
     for hour in sorted(raw, key=lambda item: item.start):
         if hour.action != ACTION_LOWER or hour.start in lowered:
             continue
-        kind, ready = kept.get(hour.start, (CUT_DAY, None))
+        if hour.start in kept:
+            kind, ready = kept[hour.start]
+        elif max_day is not None and per_day.get(day_of(hour.start), 0) >= max_day:
+            kind, ready = CUT_DAY, None
+        else:
+            kind, ready = CUT_MOVED, None
         out.append(Cut(hour.start, kind, ready))
     return out
 
@@ -306,6 +326,7 @@ class TankGuard:
 __all__ = [
     "CUT_DAY",
     "CUT_HYGIENE",
+    "CUT_MOVED",
     "CUT_PEAK",
     "DELAYED_WITHIN",
     "MAX_DAY_NO_TANK",

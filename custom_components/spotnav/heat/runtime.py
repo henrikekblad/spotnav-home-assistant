@@ -781,7 +781,7 @@ class HeatShadow:
         if rules is not None:
             kept, max_day = rules
             shaped, shaped_guard = await self.hass.async_add_executor_job(partial(make, keep_normal=frozenset(kept), max_day=max_day))
-            cut = level_a_cuts(planned, shaped, kept)
+            cut = level_a_cuts(planned, shaped, kept, max_day, zone)
             live = self.hot_water.a_mode(config) == MODE_LIVE
             if live:
                 # Level A steers: the plan the heat control carries out has the hours out.

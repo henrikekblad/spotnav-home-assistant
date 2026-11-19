@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "zou de blokkering inkorten zodat het warme water kan opwarmen",
   "heat.chart.cutHygiene": "blokkering ingekort voor de periodieke verhoging van het warme water",
   "heat.chart.cutHygieneWould": "zou de blokkering inkorten voor de periodieke verhoging van het warme water",
+  "heat.chart.cutMoved": "blokkering verschoven voor het warme water",
+  "heat.chart.cutMovedWould": "zou de blokkering verschuiven voor het warme water",
   "heat.water.review": "Warm water gisteren: {kwh} verschoven · {value} bespaard",
   "heat.water.reviewNone": "Warm water gisteren: niets te verschuiven",
   "heat.water.shadow": "(schaduw)",

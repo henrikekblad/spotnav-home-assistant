@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "lyhentäisi eston, jotta käyttövesi ehtii lämmetä",
   "heat.chart.cutHygiene": "esto lyhennetty käyttöveden jaksottaisen korotuksen vuoksi",
   "heat.chart.cutHygieneWould": "lyhentäisi eston käyttöveden jaksottaisen korotuksen vuoksi",
+  "heat.chart.cutMoved": "esto siirretty käyttöveden vuoksi",
+  "heat.chart.cutMovedWould": "siirtäisi eston käyttöveden vuoksi",
   "heat.water.review": "Käyttövesi eilen: {kwh} siirretty · {value} säästetty",
   "heat.water.reviewNone": "Käyttövesi eilen: ei siirrettävää",
   "heat.water.shadow": "(varjo)",

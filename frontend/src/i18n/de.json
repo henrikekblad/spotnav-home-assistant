@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "würde die Sperre verkürzen, damit das Warmwasser nachheizen kann",
   "heat.chart.cutHygiene": "Sperre verkürzt für die periodische Warmwassererhöhung",
   "heat.chart.cutHygieneWould": "würde die Sperre für die periodische Warmwassererhöhung verkürzen",
+  "heat.chart.cutMoved": "Sperre fürs Warmwasser verschoben",
+  "heat.chart.cutMovedWould": "würde die Sperre fürs Warmwasser verschieben",
   "heat.water.review": "Warmwasser gestern: {kwh} verschoben · {value} gespart",
   "heat.water.reviewNone": "Warmwasser gestern: nichts zu verschieben",
   "heat.water.shadow": "(Schattenbetrieb)",

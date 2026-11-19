@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "acortaría el bloqueo para que el agua caliente pueda recalentarse",
   "heat.chart.cutHygiene": "bloqueo acortado por el aumento periódico del agua caliente",
   "heat.chart.cutHygieneWould": "acortaría el bloqueo por el aumento periódico del agua caliente",
+  "heat.chart.cutMoved": "bloqueo movido por el agua caliente",
+  "heat.chart.cutMovedWould": "movería el bloqueo por el agua caliente",
   "heat.water.review": "Agua caliente ayer: {kwh} desplazados · {value} ahorrados",
   "heat.water.reviewNone": "Agua caliente ayer: nada que desplazar",
   "heat.water.shadow": "(en sombra)",

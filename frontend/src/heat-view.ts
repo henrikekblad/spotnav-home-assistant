@@ -979,6 +979,7 @@ const CUT_KEYS: Record<string, [TranslationKey, TranslationKey]> = {
   peak: ["heat.chart.cutPeak", "heat.chart.cutPeakWould"],
   day_cap: ["heat.chart.cutDay", "heat.chart.cutDayWould"],
   hygiene: ["heat.chart.cutHygiene", "heat.chart.cutHygieneWould"],
+  moved: ["heat.chart.cutMoved", "heat.chart.cutMovedWould"],
 };
 
 /** An hour level A took out of the heat plan, in words: "blockering förkortad före duschen 06:00" (live) or "skulle

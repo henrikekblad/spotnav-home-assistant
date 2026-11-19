@@ -191,6 +191,7 @@ describe("blocks kept clear of the hot water (level A)", () => {
     expect(cutText("sv", { ...cut, live: true })).toBe("blockering förkortad före duschen 17:00");
     expect(cutText("sv", { ...cut, reason: "day_cap", peak: null, live: true })).toBe("blockering förkortad så att varmvattnet hinner värmas");
     expect(cutText("sv", { ...cut, reason: "hygiene", peak: null })).toBe("skulle förkorta blockeringen för varmvattnets periodiska höjning");
+    expect(cutText("sv", { ...cut, reason: "moved", peak: null, live: true })).toBe("blockering flyttad för varmvattnet");
     expect(dayFigures(chartInput(value, [{ startMs: Date.parse(cut.start), endMs: Date.parse(cut.end), text: cutText("sv", cut) }]), Date.parse(cut.start) + 60_000)).toContain(
       "skulle förkorta blockeringen före duschen 17:00",
     );

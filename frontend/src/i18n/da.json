@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "ville forkorte blokeringen så det varme vand når at blive varmet",
   "heat.chart.cutHygiene": "blokering forkortet for det varme vands periodiske forhøjelse",
   "heat.chart.cutHygieneWould": "ville forkorte blokeringen for det varme vands periodiske forhøjelse",
+  "heat.chart.cutMoved": "blokering flyttet for det varme vand",
+  "heat.chart.cutMovedWould": "ville flytte blokeringen for det varme vand",
   "heat.water.review": "Varmt vand i går: {kwh} flyttet · {value} sparet",
   "heat.water.reviewNone": "Varmt vand i går: intet at flytte",
   "heat.water.shadow": "(skygge)",

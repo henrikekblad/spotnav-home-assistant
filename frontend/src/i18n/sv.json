@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "skulle förkorta blockeringen så att varmvattnet hinner värmas",
   "heat.chart.cutHygiene": "blockering förkortad för varmvattnets periodiska höjning",
   "heat.chart.cutHygieneWould": "skulle förkorta blockeringen för varmvattnets periodiska höjning",
+  "heat.chart.cutMoved": "blockering flyttad för varmvattnet",
+  "heat.chart.cutMovedWould": "skulle flytta blockeringen för varmvattnet",
   "heat.water.review": "Varmvatten i går: {kwh} flyttade · {value} sparade",
   "heat.water.reviewNone": "Varmvatten i går: inget att flytta",
   "heat.water.shadow": "(skuggning)",

@@ -40,15 +40,17 @@
                         backed_off},
                  level: "A" | "B" | null, mode: "shadow" | "live" | "watch",
                  blocking: {mode: "shadow" | "live" | "watch", gate: {as gate}, tank: bool, strict: bool,
-                            cuts: [{start, end, reason: "peak" | "day_cap", peak: "HH:MM" | null, live}]} | null}
+                            cuts: [{start, end, reason: "peak" | "day_cap" | "hygiene" | "moved", peak: "HH:MM" | null,
+                                   live}]} | null}
 
 `hot_water` is the site's hot water (`heat/dhw_runtime.py`, plan `plans/v3_dhw_plan.md`): the Boost button's state
 (`null` where the pump has no boost that ends by itself), the peaks (`learned` false: the defaults), the boosts
 planned for today's and tomorrow's peaks (`live`: written; else what SpotNav would do; `pump_run` the pump's own
 run the boost would have replaced, once seen), today's measured runs and who started them, the last day's review
 and the gate to live. Money in the minor unit, as `today.cost`. `blocking` is level A where the path blocks hot water
-too (`heat/dhw_level_a.py`): the heat plan's hours its rules take out (`cuts`: before the peak at `peak`, or over the
-day's cap; `live` when the plan steered by has them out, else what it would do), its own mode and gate, and whether a
+too (`heat/dhw_level_a.py`): the heat plan's hours its rules take out (`cuts`: before the peak at `peak`, over the day's
+cap, the pump's periodic increase, or moved where the plan chose again around a kept hour; `live` when the plan
+steered by has them out, else what it would do), its own mode and gate, and whether a
 tank sensor reads (`tank`: the tank rule then stands in for the day's cap), and whether its stricter rules hold
 after a back-off (`strict`). The review's `cold_risks` are the peaks a
 block held the pump's run into, `blocks_cut` the hours level A took out that day, `a_mode` level A's mode that day. The band's `hot_water_pick` is the first planned

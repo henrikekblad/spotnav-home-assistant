@@ -661,7 +661,8 @@ export interface HeatHotWater {
 export interface HeatBlockingCut {
   start: string;
   end: string;
-  /** "peak" (before the shower at `peak`), "day_cap" (the day's blocked time) or "hygiene" (the periodic increase). */
+  /** "peak" (before the shower at `peak`), "day_cap" (the day's blocked time), "hygiene" (the periodic increase) or
+   * "moved" (the plan chose again around a kept hour). */
   reason: string;
   peak: string | null;
   /** Out of the plan steered by; else what SpotNav would do (shadow). */

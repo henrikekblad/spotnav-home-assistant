@@ -127,8 +127,9 @@ def main() -> None:
         raw, _ = band(config, hours, prices, now, zone)
         guards = dhw_level_a.guards(peaks, [day], zone, before, now, cutoff=cutoff)
         kept = dhw_level_a.kept_hours(guards, dhw_level_a.next_hygiene(before, zone, now))
-        shaped, _ = band(config, hours, prices, now, zone, keep_normal=kept, max_day=dhw_level_a.max_day_hours(False))
-        cuts = dhw_level_a.cuts(raw, shaped, kept)
+        cap = dhw_level_a.max_day_hours(False)
+        shaped, _ = band(config, hours, prices, now, zone, keep_normal=kept, max_day=cap)
+        cuts = dhw_level_a.cuts(raw, shaped, kept, cap, zone)
         raw_blocks, a_blocks = blocks_of(raw), blocks_of(shaped)
         cut_hours = {cut.start for cut in cuts}
         shortened = sum(1 for start, end in raw_blocks if any(start <= hour < end for hour in cut_hours))

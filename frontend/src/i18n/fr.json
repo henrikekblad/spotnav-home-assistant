@@ -2027,6 +2027,8 @@
   "heat.chart.cutDayWould": "raccourcirait le blocage pour que l'eau chaude puisse se réchauffer",
   "heat.chart.cutHygiene": "blocage raccourci pour la montée périodique de l'eau chaude",
   "heat.chart.cutHygieneWould": "raccourcirait le blocage pour la montée périodique de l'eau chaude",
+  "heat.chart.cutMoved": "blocage déplacé pour l'eau chaude",
+  "heat.chart.cutMovedWould": "déplacerait le blocage pour l'eau chaude",
   "heat.water.review": "Eau chaude hier : {kwh} déplacés · {value} économisés",
   "heat.water.reviewNone": "Eau chaude hier : rien à déplacer",
   "heat.water.shadow": "(en observation)",

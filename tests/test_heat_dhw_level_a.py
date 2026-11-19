@@ -132,7 +132,7 @@ def test_without_a_tank_sensor_a_day_lowers_at_most_four_hours() -> None:
     capped, _ = band(config, HOURS, priced(), now, ZONE, max_day=4)
     # The dearest four stay; the cheapest of the five goes.
     assert lowered(capped) == [8, 17, 18, 19]
-    assert [(c.start, c.kind) for c in cuts(raw, capped, {})] == [(local(7), CUT_DAY)]
+    assert [(c.start, c.kind) for c in cuts(raw, capped, {}, 4, ZONE)] == [(local(7), CUT_DAY)]
     # A cap above the plan's own changes nothing.
     assert lowered(band(config, HOURS, priced(), now, ZONE, max_day=9)[0]) == lowered(raw)
 
@@ -304,3 +304,17 @@ def test_a_standby_reheat_does_not_drop_the_morning_guard() -> None:
     small = type(late)(late.start, late.end, 0.3)
     assert [g.ready for g in guards(PEAKS, [DAY], ZONE, [small], local(3), cutoff=0.35)] == [local(6), local(18)]
     assert [g.ready for g in guards(PEAKS, [DAY], ZONE, [late], local(3), cutoff=0.35)] == [local(18)]
+
+
+def test_a_cut_is_called_the_day_cap_only_where_the_cap_was_reached() -> None:
+    """Review NIT: an hour the shaped plan drops for another reason (a re-pick after a kept hour) is said as moved,
+    not as the day's cap."""
+    from custom_components.spotnav.heat.shadow_rule import BandHour
+
+    def plan(*lowered: int) -> list[BandHour]:
+        return [BandHour(local(h), "lower" if h in lowered else "normal", 20.5, "dear_hour", 100.0) for h in range(24)]
+
+    raw, shaped = plan(7, 8, 17), plan(8)
+    kept = {local(17): ("peak", local(18))}
+    assert [(c.start, c.kind) for c in cuts(raw, shaped, kept, 4, ZONE)] == [(local(7), "moved"), (local(17), "peak")]
+    assert [(c.start, c.kind) for c in cuts(raw, shaped, kept, 1, ZONE)] == [(local(7), "day_cap"), (local(17), "peak")]
