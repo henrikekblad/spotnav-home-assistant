@@ -240,6 +240,7 @@ def _demand_diagnostics(hass: HomeAssistant, entry: ConfigEntry, controller: Any
             site_demand_components(hass, entry.entry_id), import_target_kw=stored_import_target_kw(entry.data)
         )
     except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+        _LOGGER.debug("demand_diagnostics: ignored failure (diagnostics must never fail on one block)", exc_info=True)
         return None
 
 
@@ -247,6 +248,7 @@ def _load_forecast_diagnostics(controller: Any) -> dict[str, Any] | None:
     try:
         return controller.house_forecast.diagnostics()
     except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+        _LOGGER.debug("load_forecast_diagnostics: ignored failure (diagnostics must never fail on one block)", exc_info=True)
         return None
 
 
@@ -261,6 +263,7 @@ def _part_snapshot(snapshot: Callable[[], Any]) -> Any:
     try:
         return snapshot()
     except Exception:  # noqa: BLE001
+        _LOGGER.debug("part_snapshot: ignored failure", exc_info=True)
         return None
 
 

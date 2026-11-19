@@ -626,6 +626,7 @@ class SpotNavChargingConfigFlow(
             async with asyncio.timeout(PROBE_TIMEOUT_S):
                 value = await read_assigned_current_value(self.hass, target.devid)
         except Exception:  # timeouts included
+            _LOGGER.debug("probe_assigned_current: ignored failure", exc_info=True)
             return PROBE_UNREACHABLE
         if (
             isinstance(value, str)

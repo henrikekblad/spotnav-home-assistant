@@ -69,6 +69,7 @@ def _drives(entity: Any, entity_id: str) -> bool:
     try:
         find(referenced, sequence)
     except Exception:  # noqa: BLE001 - not understood: taken to drive it
+        _LOGGER.debug("drives: ignored failure (not understood: taken to drive it)", exc_info=True)
         return True
     return entity_id in referenced
 

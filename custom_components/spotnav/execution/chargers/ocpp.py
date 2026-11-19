@@ -252,6 +252,7 @@ class OcppAssignedCurrent(CurrentPath):
                 return_response=True,
             )
         except Exception:
+            _LOGGER.debug("async_read_assigned_current: ignored failure", exc_info=True)
             return None
         current = configuration.get("value") if isinstance(configuration, dict) else None
         if not isinstance(current, str) or not current:
@@ -281,6 +282,7 @@ class OcppAssignedCurrent(CurrentPath):
                     self.hass, _OCPP_DOMAIN, _OCPP_CONFIGURE_SERVICE, data, blocking=True
                 )
         except Exception:
+            _LOGGER.debug("async_write_assigned_current: ignored failure", exc_info=True)
             return False
         self.reboot_required = isinstance(response, dict) and response.get("reboot_required") is True
         return True

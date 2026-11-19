@@ -59,6 +59,7 @@ async def _async_saved_record(hass: HomeAssistant, entry_id: str) -> dict[str, A
     try:
         saved = await Store[dict[str, Any]](hass, STORE_VERSION, f"{DOMAIN}.{entry_id}").async_load()
     except Exception:  # noqa: BLE001 - a store that cannot be read only means nothing is known
+        _LOGGER.debug("async_saved_record: ignored failure (a store that cannot be read only means nothing is known)", exc_info=True)
         return None
     return saved if isinstance(saved, dict) and saved else None
 
@@ -98,6 +99,7 @@ async def async_hand_back_charger(hass: HomeAssistant, entry: ConfigEntry) -> li
         is_paused = getattr(adapter.path, "is_paused", None)
         stopped = adapter.enabled_state() is False or (callable(is_paused) and is_paused() is True)
     except Exception:  # noqa: BLE001 - a control that cannot be read is not started
+        _LOGGER.debug("async_hand_back_charger: ignored failure (a control that cannot be read is not started)", exc_info=True)
         stopped = False
     if stopped and not own_stop:
         left.append("it was stopped by a person or outside SpotNav, so it stays stopped")
@@ -150,6 +152,7 @@ async def _async_restore_current(
     try:
         present = await adapter.current.async_present_a()
     except Exception:  # noqa: BLE001 - an unreadable current is written all the same
+        _LOGGER.debug("async_restore_current: ignored failure (an unreadable current is written all the same)", exc_info=True)
         present = None
     if present == before:
         left.append(f"its current already reads {before} A, as before SpotNav")

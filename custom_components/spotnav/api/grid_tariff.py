@@ -74,6 +74,7 @@ absent then), and the charger lookup's codes.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 from typing import Any, Final, Mapping
 
@@ -113,6 +114,8 @@ from ..const import (
 from ..site.measurement_source import grid_power_source_from_dict
 from .common import ERROR_CHARGER_REQUIRED, ERROR_NOT_ADMIN, is_admin, lookup_charger, lookup_site
 from .entity_fields import ERR_INVALID_VALUE, stored_import_target_kw
+
+_LOGGER = logging.getLogger(__name__)
 
 #: The charger prices with its own settings: there is no electricity price entry to hold a grid tariff.
 ERROR_NO_PRICE_ENTRY: Final = "spotnav_no_price_entry"
@@ -250,6 +253,7 @@ def capture_site_demand(
         try:
             effective = controller.effective_import_target_kw(target)
         except Exception:  # noqa: BLE001 - a figure shown only: the target itself stands in for it
+            _LOGGER.debug("capture_site_demand: ignored failure (a figure shown only: the target itself stands in for it)", exc_info=True)
             effective = target
     return CapturedDemand(
         available=True, reason=None, snapshot=snapshot, import_target_kw=target, effective_target_kw=effective

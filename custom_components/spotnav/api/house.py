@@ -208,6 +208,7 @@ def _control_state(controller: Any) -> str | None:
     try:
         state = control.state()
     except Exception:  # noqa: BLE001 - the house view never fails on the control's status; it says Test instead
+        _LOGGER.debug("control_state: ignored failure (the house view never fails on the control's status; it says Test instead)", exc_info=True)
         return None
     return state if isinstance(state, str) else None
 
@@ -328,6 +329,7 @@ def short_term_days(hass: HomeAssistant) -> int | None:
 
         days = get_instance(hass).keep_days
     except Exception:  # noqa: BLE001 - no recorder: no short-term statistics
+        _LOGGER.debug("short_term_days: ignored failure (no recorder: no short-term statistics)")
         return None
     return days if isinstance(days, int) and days > 0 else None
 

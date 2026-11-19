@@ -592,6 +592,7 @@ class BatteryControl:
         try:
             stored = await store.async_load()
         except Exception:  # noqa: BLE001 - a broken store holds nothing that can be handed back
+            _LOGGER.debug("async_remove_stored: ignored failure (a broken store holds nothing that can be handed back)", exc_info=True)
             stored = None
         data = dict(stored) if isinstance(stored, dict) else {}
         try:
@@ -643,6 +644,7 @@ class BatteryControl:
         try:
             version = async_get_loaded_integration(self.hass, domain).version
         except Exception:  # noqa: BLE001 - not loaded (yet): the version is unknown
+            _LOGGER.debug("integration_version: ignored failure (not loaded (yet): the version is unknown)", exc_info=True)
             return None
         return None if version is None else str(version)
 
@@ -1772,6 +1774,7 @@ class BatteryControl:
                     )
             failed = False
         except Exception:  # noqa: BLE001 - the status must never fail on it
+            _LOGGER.debug("cap_status: ignored failure (the status must never fail on it)", exc_info=True)
             cap, failed = None, True
         usable = learned is not None and learned.phase_peaks() is not None
         return {
@@ -2160,18 +2163,22 @@ class BatteryControl:
         try:
             power_kw, age_s = self._battery_power()
         except Exception:  # noqa: BLE001
+            _LOGGER.debug("minimal_inputs: ignored failure", exc_info=True)
             power_kw, age_s = None, None
         try:
             self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
         except Exception:  # noqa: BLE001
+            _LOGGER.debug("minimal_inputs: ignored failure", exc_info=True)
             facts = self.facts
         try:
             reads = self._reads(executor.control)
         except Exception:  # noqa: BLE001
+            _LOGGER.debug("minimal_inputs: ignored failure", exc_info=True)
             reads = stored_reads(self.hass, executor)
         try:
             takeover = self.options().ai_takeover_ack
         except Exception:  # noqa: BLE001
+            _LOGGER.debug("minimal_inputs: ignored failure", exc_info=True)
             takeover = False
         return ExecInputs(
             now=now, facts=facts, reads=reads, battery_age_s=age_s, measurement_ok=False, stopping=stopping,
@@ -2188,6 +2195,7 @@ class BatteryControl:
             facts, reads, _control = read_export_facts(self.hass, self.site.config)
             facts = self._with_outside(facts)
         except Exception:  # noqa: BLE001
+            _LOGGER.debug("export_hand_back_inputs: ignored failure", exc_info=True)
             facts, reads = BatteryFacts(brand=executor.state.brand), {}
         reads = {**stored_reads(self.hass, executor), **reads}
         return ExecInputs(now=now, facts=facts, reads=reads, measurement_ok=False, stopping=stopping,
@@ -2469,6 +2477,7 @@ class BatteryControl:
         try:
             status: dict[str, Any] | None = self.status()
         except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("snapshot: ignored failure (diagnostics must never fail on one block)", exc_info=True)
             status = None
         return {
             "status": status,
@@ -2486,6 +2495,7 @@ class BatteryControl:
         try:
             return self.write_budget()
         except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("write_budget_block: ignored failure (diagnostics must never fail on one block)", exc_info=True)
             return None
 
     def _backfill_status(self) -> dict[str, Any] | None:
@@ -2493,4 +2503,5 @@ class BatteryControl:
         try:
             return self.site.phase_peaks.backfill_status()
         except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+            _LOGGER.debug("backfill_status: ignored failure (diagnostics must never fail on one block)", exc_info=True)
             return None

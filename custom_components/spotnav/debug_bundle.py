@@ -314,6 +314,7 @@ async def _related_integrations(
             name = integration.name
             version = integration.version.string if integration.version is not None else None
         except Exception:  # noqa: BLE001 - not loadable: still worth naming
+            _LOGGER.debug("related_integrations: ignored failure (not loadable: still worth naming)", exc_info=True)
             pass
         result.append({"domain": domain, "name": name, "version": version, "roles": sorted(roles[domain])})
     return result

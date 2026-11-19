@@ -200,6 +200,7 @@ class HardwareTest:
         try:
             raw = await self._store.async_load()
         except Exception:  # noqa: BLE001 - nothing kept: the next test may start
+            _LOGGER.debug("async_load: ignored failure (nothing kept: the next test may start)", exc_info=True)
             raw = None
         raw = raw if isinstance(raw, dict) else {}
         self.last = raw.get("last") if isinstance(raw.get("last"), dict) else None
@@ -242,6 +243,7 @@ class HardwareTest:
         try:
             return self.site.battery_control.firmware_key()
         except Exception:  # noqa: BLE001 - no battery: no firmware to tell apart
+            _LOGGER.debug("firmware_key: ignored failure (no battery: no firmware to tell apart)", exc_info=True)
             return None
 
     def blocked(self, now: datetime, version: str | None) -> tuple[str | None, datetime | None]:
@@ -487,6 +489,7 @@ def _current_version(hass: HomeAssistant, fallback: str | None) -> str | None:
     try:
         version = async_get_loaded_integration(hass, DOMAIN).version
     except Exception:  # noqa: BLE001 - not loaded yet: the last test's version stands in
+        _LOGGER.debug("current_version: ignored failure (not loaded yet: the last test's version stands in)", exc_info=True)
         return fallback
     return None if version is None else str(version)
 

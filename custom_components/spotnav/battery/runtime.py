@@ -328,6 +328,7 @@ class BatteryShadow:
         try:
             return self.found_states()
         except Exception:  # noqa: BLE001 - without the write path's answer the entities are read as they are
+            _LOGGER.debug("found: ignored failure (without the write path's answer the entities are read as they are)", exc_info=True)
             return {}
 
     def with_outside(self, facts: BatteryFacts) -> BatteryFacts:
@@ -439,12 +440,14 @@ class BatteryShadow:
         try:
             return self.hold_variant()
         except Exception:  # noqa: BLE001 - without the write path's answer the brand's first variant is shown
+            _LOGGER.debug("hold_variant: ignored failure (without the write path's answer the brand's first variant is shown)", exc_info=True)
             return None
 
     def _takeover(self) -> bool:
         try:
             return bool(self.takeover())
         except Exception:  # noqa: BLE001 - without the site's answer a plant in its own optimiser is only watched
+            _LOGGER.debug("takeover: ignored failure (without the site's answer a plant in its own optimiser is only watched)", exc_info=True)
             return False
 
     @callback

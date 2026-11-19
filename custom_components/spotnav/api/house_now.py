@@ -52,6 +52,7 @@ def state_kw(hass: HomeAssistant, entity_id: str) -> float | None:
 
         return float(PowerConverter.convert(value, unit, "kW"))
     except Exception:  # noqa: BLE001 - a unit that is no power unit is no reading
+        _LOGGER.debug("state_kw: ignored failure (a unit that is no power unit is no reading)", exc_info=True)
         return None
 
 
@@ -87,6 +88,7 @@ def car_plugged(hass: HomeAssistant, charger_ids: Sequence[str]) -> tuple[bool |
         try:
             state = controller.connection()[0]
         except Exception:  # noqa: BLE001 - a charger that cannot be read says nothing
+            _LOGGER.debug("car_plugged: ignored failure (a charger that cannot be read says nothing)", exc_info=True)
             continue
         if state is None:
             continue
@@ -96,6 +98,7 @@ def car_plugged(hass: HomeAssistant, charger_ids: Sequence[str]) -> tuple[bool |
             try:
                 reading = controller.target_reading()
             except Exception:  # noqa: BLE001 - without a reading the level stays unknown
+                _LOGGER.debug("car_plugged: ignored failure (without a reading the level stays unknown)", exc_info=True)
                 reading = None
             soc = None if reading is None else reading.soc_percent
     return plugged, soc

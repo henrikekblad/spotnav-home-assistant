@@ -1416,6 +1416,7 @@ class AutoExecutor:
         try:
             return read(True)
         except Exception:  # noqa: BLE001 - the outcome's reading never fails the stop
+            _LOGGER.debug("core_stop_outcome: ignored failure (the outcome's reading never fails the stop)", exc_info=True)
             return CommandOutcome(True)
 
     def _core_connected(self, *, fallback: bool, kind: str, charger_only: bool = False) -> Any:

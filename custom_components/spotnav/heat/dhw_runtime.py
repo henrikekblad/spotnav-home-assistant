@@ -534,6 +534,7 @@ class HotWater:
         try:
             windows = site_car_windows(self.hass, site)
         except Exception:  # noqa: BLE001 - no car plan: none counted
+            _LOGGER.debug("inputs: ignored failure (no car plan: none counted)", exc_info=True)
             windows = []
         battery_plan = getattr(site.battery_shadow, "plan", None)
         planned = getattr(battery_plan, "plan", ()) or ()
@@ -1143,6 +1144,7 @@ class HotWater:
         try:
             watts = site_net_grid_w(self.shadow.site)
         except Exception:  # noqa: BLE001 - not known: the checks fail closed
+            _LOGGER.debug("grid_kw: ignored failure (not known: the checks fail closed)", exc_info=True)
             return None
         return None if watts is None else watts / 1000.0
 

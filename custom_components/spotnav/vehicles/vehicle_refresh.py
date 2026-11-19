@@ -145,6 +145,7 @@ async def async_ask_vehicle_update(
         if fresh is not None and fresh():
             return asked
     except Exception:  # noqa: BLE001 - what cannot be read is not fresh
+        _LOGGER.debug("async_ask_vehicle_update: ignored failure (what cannot be read is not fresh)", exc_info=True)
         pass
     if await async_wake_vehicle(hass, vehicle_id, wake_occasion) == RESULT_OK:
         await _async_reread_after_wake(hass, vehicle_id)
