@@ -876,6 +876,16 @@ class Executor:
             name for name in optional if (read := inputs.reads.get(name)) is None or not read.found
         )
 
+    def found_states(self) -> dict[str, str]:
+        """The state found before SpotNav first wrote each role it keeps a snapshot of, by entity id: what the
+        battery's facts read in place of SpotNav's own value (`facts.battery_facts`), so a floor set for a hold is
+        never taken for the battery's own and the plan does not see an empty battery."""
+        state = self.state
+        return {
+            state.entities[name]: value for name, value in state.snapshot.items()
+            if name in state.entities and value.strip().lower() not in _NO_VALUE
+        }
+
     @property
     def _daily_cap(self) -> int:
         """The day's setting writes (`BrandControl.write_cap`; 96 unless the recipe says less)."""

@@ -233,6 +233,35 @@ def test_a_lowered_goodwe_rate_reaches_the_inverter_by_the_numbers_write() -> No
     assert battery.sent["power"] == battery.states["eco_power"] != "60"
 
 
+def test_the_facts_read_the_floor_found_not_the_one_spotnav_set() -> None:
+    from custom_components.spotnav.battery.facts import EntityFact, battery_facts
+
+    def fact(entity_id: str, platform: str, unique_id: str, state: str) -> EntityFact:
+        return EntityFact(entity_id=entity_id, platform=platform, unique_id=unique_id, state=state, unit="%",
+                          device_id="D")
+
+    # SpotNav's hold set the floor to the level now (Tesla's reserve 40 %, GoodWe's depth 58 % = floor 42 %); the
+    # facts read the value found (reserve 20 %, depth 80 % = floor 20 %), so the plan still sees usable energy.
+    for platform, uid, state, found, held_floor in (
+        ("tesla_fleet", "123-backup_reserve_percent", "40", "20", 40.0),
+        ("goodwe", "goodwe-battery_discharge_depth-SN1", "58", "80", 42.0),
+    ):
+        battery = fact("sensor.battery_power", platform, "123-battery_power", "1")
+        floor_entity = fact("number.floor", platform, uid, state)
+        assert battery_facts(battery, [battery, floor_entity]).reserve_soc_pct == held_floor
+        facts = battery_facts(battery, [battery, floor_entity], found_states={"number.floor": found})
+        assert facts.reserve_soc_pct == 20.0, platform
+
+
+def test_the_executor_names_the_states_it_found_while_it_holds_a_snapshot() -> None:
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    now, _ = run(executor, battery, T0, 8, "hold")
+    assert battery.states["reserve"] == "40"
+    assert executor.found_states() == {"number.tesla_reserve": "20", "switch.tesla_grid_charging": "off"}
+    run(executor, battery, now + timedelta(hours=1), 12, "self_consume")
+    assert executor.state.phase == "idle" and executor.found_states() == {}
+
+
 def test_goodwe_without_a_battery_rating_does_not_start_a_grid_charge() -> None:
     executor, battery = _goodwe(rated_kw=None)
     _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0)

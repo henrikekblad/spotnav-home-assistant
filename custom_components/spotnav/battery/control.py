@@ -354,6 +354,7 @@ class BatteryControl:
             # The outside-control watch does not count SpotNav's own writes as someone else's, and the shadow hold
             # judges a plant in AI mode as control would.
             battery_shadow.spotnav_acting = self.acting
+            battery_shadow.found_states = self.found_states
             battery_shadow.takeover = lambda: self.options().ai_takeover_ack
             battery_shadow.hold_variant = self.hold_variant
 
@@ -1738,12 +1739,17 @@ class BatteryControl:
 
     def _read_facts(self) -> BatteryFacts:
         power_kw, _age = self._battery_power()
-        return self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        return self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
 
     def _with_outside(self, facts: BatteryFacts) -> BatteryFacts:
         """A battery the site's outside-control watch marks is another system's: every look refuses it."""
         battery_shadow = getattr(self.site, "battery_shadow", None)
         return facts if battery_shadow is None else battery_shadow.with_outside(facts)
+
+    def found_states(self) -> dict[str, str]:
+        """The states the battery's executor found before it first wrote, by entity id (`Executor.found_states`)."""
+        executor = self.executor
+        return {} if executor is None else executor.found_states()
 
     def acting(self) -> bool:
         """Whether this path acts on the battery or the export limit now (its writes are no one else's), and for
@@ -1844,7 +1850,7 @@ class BatteryControl:
     ) -> ExecInputs:
         """The battery's look with `slot` as the action (by default what control runs now)."""
         power_kw, age_s = self._battery_power()
-        self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         try:
@@ -1936,7 +1942,7 @@ class BatteryControl:
         except Exception:  # noqa: BLE001
             power_kw, age_s = None, None
         try:
-            self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+            self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
         except Exception:  # noqa: BLE001
             facts = self.facts
         try:

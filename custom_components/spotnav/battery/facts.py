@@ -10,7 +10,7 @@ A brand without an adapter gets its level from a `battery` sensor on the battery
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
@@ -297,14 +297,20 @@ def _cell_temperature_entity(adapter: Adapter, entities: Sequence[EntityFact], b
 
 
 def _reserve(
-    reserves: Sequence[ReserveSource], entities: Sequence[EntityFact], battery: EntityFact
+    reserves: Sequence[ReserveSource], entities: Sequence[EntityFact], battery: EntityFact,
+    found: Mapping[str, str] | None = None,
 ) -> tuple[float | None, list[str]]:
-    """The highest floor (%) the reserves read, with the entities read; `None` when none can be read."""
+    """The highest floor (%) the reserves read, with the entities read; `None` when none can be read. `found`: the
+    state found before SpotNav first wrote an entity, by entity id, read in place of what it reads now (the floor
+    SpotNav set for a hold is its own, not the battery's)."""
     floors: list[float] = []
     read: list[str] = []
     for source in reserves:
         entity = find_entity(source.match, entities, battery)
-        value = None if entity is None or not entity.available else _percent(entity.state)
+        if entity is not None and found and entity.entity_id in found:
+            value = _percent(found[entity.entity_id])
+        else:
+            value = None if entity is None or not entity.available else _percent(entity.state)
         if value is None:
             continue
         floors.append(100.0 - value if source.depth else value)
@@ -414,10 +420,12 @@ def battery_facts(
     manufacturer: str | None = None,
     power_kw: float | None = None,
     external_planner: str | None = None,
+    found_states: Mapping[str, str] | None = None,
 ) -> BatteryFacts:
     """What SpotNav knows of the site's battery. `entities` are the battery integration's entities (its config
     entry's); `manufacturer` is the battery device's; `external_planner` names a battery planner found running
-    (Predbat, EMHASS), which runs the battery whatever its own mode says."""
+    (Predbat, EMHASS), which runs the battery whatever its own mode says. `found_states`: the states SpotNav's control found
+    before it first wrote, by entity id (`Executor.found_states`): a floor it set is read as the one found."""
     if battery is None:
         return BatteryFacts(power_kw=power_kw)
     adapter = adapter_for(battery.platform, manufacturer)
@@ -479,7 +487,7 @@ def battery_facts(
     cell_temperature = _cell_temperature_entity(adapter, entities, battery)
     if cell_temperature is not None:
         sources["cell_temperature"] = cell_temperature
-    reserve_soc_pct, reserve_read = _reserve(adapter.reserves, entities, battery)
+    reserve_soc_pct, reserve_read = _reserve(adapter.reserves, entities, battery, found_states)
     if reserve_read:
         sources["reserve"] = ", ".join(reserve_read)
     on_grid: bool | None = None
