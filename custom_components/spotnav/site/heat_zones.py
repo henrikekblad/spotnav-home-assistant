@@ -34,6 +34,7 @@ short-term window), read in its executor, kWh per period start for each zone's s
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -43,6 +44,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .heat_meter import KIND_ENERGY, KIND_POWER, PERIOD_HOURS, HeatMeter, meter_kind, period_kwh
+
+_LOGGER = logging.getLogger(__name__)
 
 REASON_NO_SENSOR: Final = "no_sensor"
 REASON_HEAT_METER: Final = "heat_meter"
@@ -269,6 +272,7 @@ def find_zones(
             device_id, sensors = device_sensors(hass, climate)
             rows.append((climate, zone_name(hass, climate), pick_zone_sensor(sensors), device_id))
         except Exception:  # noqa: BLE001 - a registry that cannot be read leaves the zone out
+            _LOGGER.debug("find_zones: ignored failure (a registry that cannot be read leaves the zone out)", exc_info=True)
             rows.append((climate, climate, None, None))
     registry = er.async_get(hass)
     moved_rows: list[tuple[str, str, str | None]] = []

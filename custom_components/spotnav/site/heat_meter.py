@@ -537,6 +537,7 @@ class SiteHeatMeter:
         try:
             return tuple(self._zone_climates())
         except Exception:  # noqa: BLE001 - shown only
+            _LOGGER.debug("zone_climates: ignored failure (shown only)", exc_info=True)
             return ()
 
     async def async_current_zones(self) -> Any:

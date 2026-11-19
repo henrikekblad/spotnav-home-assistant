@@ -72,6 +72,7 @@ def _chargers(hass: HomeAssistant, site: ConfigEntry) -> Detected:
         try:
             start_stop = controller.adapter.path.describe().get("kind")
         except Exception:  # noqa: BLE001 - a path that cannot describe itself is shown without it
+            _LOGGER.debug("chargers: ignored failure (a path that cannot describe itself is shown without it)", exc_info=True)
             start_stop = None
         rows.append(
             ChargerRow(
@@ -143,6 +144,7 @@ async def _sun(hass: HomeAssistant, site: ConfigEntry, controller: Any) -> tuple
     try:
         domains = await async_forecast_capable_domains(hass)
     except Exception:  # noqa: BLE001 - the offers are left out, the choice is still shown
+        _LOGGER.debug("sun: ignored failure (the offers are left out, the choice is still shown)", exc_info=True)
         domains = frozenset()
     capable = {entry.title: entry.domain for entry in hass.config_entries.async_entries() if entry.domain in domains}
     forecast = controller.house_forecast

@@ -23,6 +23,7 @@ while the tracker still keeps them, else the kept summaries.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -32,6 +33,8 @@ from typing import Any, Final
 from .. import time_zones
 from ..planning.auto_settings import DemandComponent
 from ..planning.demand_charge import component_month, free_levels_by_hour, HourMean
+
+_LOGGER = logging.getLogger(__name__)
 
 #: How many months before the running one keep their day summaries (the history dialog's own reach).
 ARCHIVE_MONTHS: Final = 24
@@ -221,6 +224,7 @@ def _record_from(raw: Any) -> MonthRecord | None:
     try:
         components = tuple(DemandComponent.from_dict(item) for item in components_raw)
     except Exception:  # noqa: BLE001 - a stored component that no longer reads is dropped with its figures
+        _LOGGER.debug("record_from: ignored failure (a stored component that no longer reads is dropped with its figures)", exc_info=True)
         return record
     counted: list[tuple[datetime, ...]] = []
     for starts in counted_raw:

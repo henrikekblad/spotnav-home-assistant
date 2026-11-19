@@ -3907,6 +3907,7 @@ class SiteCapacityController:
         try:
             return charger_controller.charge_progress_facts().connector_status
         except Exception:  # noqa: BLE001 - an unreadable status says nothing
+            _LOGGER.debug("connector_status: ignored failure (an unreadable status says nothing)", exc_info=True)
             return None
 
     def _record_probe_event(
