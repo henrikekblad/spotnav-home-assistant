@@ -13,14 +13,14 @@ two together), plus what the per-phase control needs.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_BATTERY_AGGREGATE_POWER_ENTITY
-from .adapters import Match, _key
+from .adapters import Match, _goodwe, _key, _tesla
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,14 +61,30 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("select", "remotecontrol_power_control"),
         ("button", "remotecontrol_trigger"),
     ),
+    # GoodWe's HACS fork: the eco numbers exist only there; core's entities are enabled by default.
+    "goodwe": (
+        ("select", "operation_mode"),
+        ("number", "eco_mode_power"),
+        ("number", "eco_mode_soc"),
+        ("number", "battery_discharge_depth"),
+    ),
+    # Tesla's reserve and grid-charging switch are enabled by default; listed so a person's own disable is offered.
+    "tesla": (
+        ("number", "backup_reserve_percent"),
+        ("switch", "components_disallow_charge_from_grid_with_solar_installed"),
+    ),
 }
+
+#: Where a brand's integration keeps the key in the unique id (`adapters._goodwe`, `_tesla`); `_key` for the rest.
+_BUILDERS: Final[Mapping[str, Callable[..., Match]]] = {"goodwe": _goodwe, "tesla": _tesla}
 
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).
 _LIFTABLE: Final = (er.RegistryEntryDisabler.INTEGRATION, er.RegistryEntryDisabler.USER)
 
 
 def _matches(brand: str) -> list[Match]:
-    return [_key(key, domain) for domain, key in ENABLE_KEYS.get(brand, ())]
+    build = _BUILDERS.get(brand, _key)
+    return [build(key, domain) for domain, key in ENABLE_KEYS.get(brand, ())]
 
 
 def disabled_control_entities(

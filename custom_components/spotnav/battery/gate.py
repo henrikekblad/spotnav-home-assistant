@@ -627,11 +627,13 @@ def merged_action(plan: Slot | None, hold_requested: bool) -> Slot | None:
 
 
 def restricted(
-    slot: Slot | None, allowed: Iterable[str], cap_kw: float | None, export_cap_kw: float | None = None
+    slot: Slot | None, allowed: Iterable[str], cap_kw: float | None, export_cap_kw: float | None = None,
+    fixed_charge_kw: float | None = None,
 ) -> tuple[Slot | None, str | None]:
     """The slot control may run (an action the report does not allow becomes plain self-consumption; a grid charge
     is capped by `cap_kw`, a discharge to the grid by `export_cap_kw`; `restricted`'s second value says why it
-    changed)."""
+    changed). `fixed_charge_kw`: the plant charges at its own rate (Tesla): the charge runs as planned or, when that
+    rate is over the cap, not at all (`grid_charge_cap_fixed`): it is never lowered."""
     if slot is None:
         return None, None
     action, rate, end = slot
@@ -639,6 +641,10 @@ def restricted(
         return slot, None
     if action not in allowed:
         return (ACTION_SELF_CONSUME, 0.0, end), f"not_verified:{action}"
+    if action == ACTION_GRID_CHARGE and fixed_charge_kw is not None:
+        if cap_kw is not None and fixed_charge_kw > cap_kw:
+            return (ACTION_SELF_CONSUME, 0.0, end), "grid_charge_cap_fixed"
+        return slot, None
     for capped, cap, why in ((ACTION_GRID_CHARGE, cap_kw, "grid_charge_cap"),
                              (ACTION_EXPORT_DISCHARGE, export_cap_kw, "export_fuse_cap")):
         if action == capped and cap is not None and abs(rate) > cap:

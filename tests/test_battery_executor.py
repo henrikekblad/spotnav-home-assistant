@@ -76,7 +76,7 @@ def test_every_brand_with_a_control_has_a_command_for_every_planned_action_and_t
     assert {control.brand for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL)} == {
         "sigenergy", "solaredge", "huawei", "solax"
     }
-    for brand in ("victron", "goodwe", "enphase", None):
+    for brand in ("victron", "enphase", None):
         assert control_for(brand) is None
     rows = table()
     for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL):

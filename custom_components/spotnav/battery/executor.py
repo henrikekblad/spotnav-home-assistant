@@ -145,11 +145,12 @@ from .commands import (
     Native,
     Phases,
     Role,
+    fixed_rate_kw,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
 from .gate import phase_split_kw
-from .ledger import Ledger, same
+from .ledger import READBACK_DEADLINE_S, Ledger, same
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
     CONFIRM_READINGS,
@@ -199,6 +200,9 @@ RATE_TOLERANCE_KW: Final = 0.1
 #: A phase's target is lowered when its room is under it by more than this (kW), and raised back to what the caps
 #: allow when that is more than this above it.
 PHASE_TOLERANCE_KW: Final = 0.05
+#: A fixed-rate charge (`BrandControl.fixed_charge`) is judged only on whether the battery charges at all: the rate
+#: the monitor expects (kW), far under what such a plant does.
+FIXED_CHARGE_JUDGE_KW: Final = 1.0
 #: The step a phase's charge is rounded down to: whole amps (A), so a wobbling reading writes nothing; the
 #: verification's probe is rounded to this instead (kW).
 PHASE_STEP_A: Final = 1.0
@@ -824,6 +828,28 @@ class Executor:
         self.control = control.with_phases(True) if self.state.phased else control
         self.state = replace(self.state, variant=self.control.variant, phased=self.control.phased)
         self.watchdog_s = watchdog_s
+        #: What a state that depends on the plant is filled in with (`BrandControl.wanted`): the SoC, the rating and the
+        #: optional roles this plant lacks, as of the last look; not stored.
+        self._soc_pct: float | None = None
+        self._rated_kw: float | None = None
+        self._absent: frozenset[str] = frozenset()
+
+    def _sense(self, inputs: ExecInputs) -> None:
+        facts = inputs.facts
+        self._soc_pct, self._rated_kw = facts.soc_pct, facts.max_charge_kw
+        optional = self.control.optional_names()
+        self._absent = frozenset(
+            name for name in optional if (read := inputs.reads.get(name)) is None or not read.found
+        )
+
+    @property
+    def _daily_cap(self) -> int:
+        """The day's setting writes (`BrandControl.write_cap`; 96 unless the recipe says less)."""
+        return min(DAILY_WRITE_CAP, self.control.write_cap("setting"))
+
+    @property
+    def _charge_reserve(self) -> int:
+        return min(CHARGE_WRITE_RESERVE, self._daily_cap // 4)
 
     def use_phases(self, on: bool) -> bool:
         """Run the brand's targets per phase from now on, or not (`BrandControl.with_phases`); only while nothing is
@@ -883,6 +909,7 @@ class Executor:
 
     def step(self, inputs: ExecInputs) -> StepResult:
         now = inputs.now
+        self._sense(inputs)
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
@@ -1197,7 +1224,7 @@ class Executor:
             return f"management_changed:{management}"
         else:
             self.state = replace(self.state, management_unknown_since=None)
-        if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP:
+        if _writes_today(self.state, inputs) >= self._daily_cap:
             return "daily_write_cap"
         return self._charge_budget(inputs)
 
@@ -1212,7 +1239,7 @@ class Executor:
             return None
         if self._per_phase(inputs) and inputs.phase_probe_kw is None and self._setpoints_spent():
             return "setpoint_write_cap"
-        if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP - CHARGE_WRITE_RESERVE:
+        if _writes_today(self.state, inputs) >= self._daily_cap - self._charge_reserve:
             return "charge_write_budget"
         return None
 
@@ -1330,7 +1357,10 @@ class Executor:
     def _wanted(
         self, action: str, rate_kw: float, restore_values: Mapping[str, Native], phases: Phases | None = None
     ) -> dict[str, Native]:
-        wanted = self.control.wanted(action, rate_kw, self.watchdog_s, phases)
+        wanted = self.control.wanted(
+            action, rate_kw, self.watchdog_s, phases,
+            soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent,
+        )
         out = {
             name: (restore_values[name] if value == SNAPSHOT else value)
             for name, value in wanted.items()
@@ -1362,6 +1392,15 @@ class Executor:
         facts = inputs.facts
         action = inputs.action
         rate = abs(inputs.rate_kw)
+        if action == ACTION_GRID_CHARGE and self.control.fixed_charge:
+            # The plant charges at its own rate: it must fit under the fuse cap as it is, never lowered.
+            fixed = fixed_rate_kw(self.control, facts)
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False)
+            if cap is None:
+                return 0.0, "headroom_unknown"
+            if fixed is None or fixed > cap + RATE_TOLERANCE_KW:
+                return 0.0, "fuse_headroom"
+            return round(fixed, 3), None
         if action == ACTION_GRID_CHARGE:
             limit = facts.max_charge_kw
             if limit is not None:
@@ -1412,12 +1451,13 @@ class Executor:
         if action == ACTION_GRID_CHARGE and inputs.phase_probe_kw is not None and not hold_headroom_ok(inputs):
             # The verification's probe leaves two phases' house on the grid, as a hold does: the hold's start rule.
             return "headroom_too_small"
-        if _writes_today(state, inputs) >= DAILY_WRITE_CAP:
+        if _writes_today(state, inputs) >= self._daily_cap:
             return "daily_write_cap"
         budget = self._charge_budget(inputs)
         if budget is not None:
             return budget
-        if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < REARM_S:
+        rearm = REARM_S if self.control.rearm_s is None else max(REARM_S, self.control.rearm_s)
+        if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < rearm:
             return "rearm"
         for role, value, why in self.control.watched:
             read = inputs.reads.get(role.name)
@@ -1426,12 +1466,19 @@ class Executor:
             ) is False:
                 # Another control's target left standing would act under this one.
                 return f"{why}:{role.name}"
-        needed = set(self.control.wanted(action, 1.0, self.watchdog_s)) | {name for name, _ok, _why in self.control.requires}
+        self._sense(inputs)
+        wanted = self.control.wanted(
+            action, 1.0, self.watchdog_s, soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent
+        )
+        unresolved = self.control.unresolved(wanted)
+        if unresolved is not None:
+            return unresolved
+        needed = set(wanted) | {name for name, _ok, _why in self.control.requires}
         for name in sorted(needed):
             read = inputs.reads.get(name)
             role = self.control.role(name)
             if read is None or not read.found or read.entity_id is None:
-                return f"control_not_found:{name}"
+                return "needs_hacs_integration" if name in self.control.hacs_roles else f"control_not_found:{name}"
             if role.method != "service" and not read.enabled:
                 return f"control_disabled:{name}"
         for name, allowed, why in self.control.requires:
@@ -1503,6 +1550,8 @@ class Executor:
             return
         if action == ACTION_DISCHARGE_HOUSE:
             rate = max(inputs.house_deficit_kw or 0.0, 0.0)
+        elif action == ACTION_GRID_CHARGE and self.control.fixed_charge:
+            rate = FIXED_CHARGE_JUDGE_KW
         before = inputs.grid_import_kw if kind == "curtail" else inputs.facts.power_kw
         idle = kind == "hold" and self.control.hold_idle()
         self.monitor.start(Command(kind, inputs.now, rate, before_kw=before, written=True, idle=idle))
@@ -1525,6 +1574,11 @@ class Executor:
                 target=self._wanted(state.action or action, state.rate_kw, state.restore_values, state.phase_kw),
             )
             events.append(_event(now, "primed", state.action or action))
+        if action != state.action and self.control.slow and state.rate_changed_at is not None and (
+            (now - state.rate_changed_at).total_seconds() < self.control.min_change_s
+        ):
+            # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
+            return events
         if action != state.action:
             self.state = replace(
                 state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values, phases),
@@ -1539,7 +1593,9 @@ class Executor:
             return [_event(now, "change", action, rate_kw=rate, **detail)]
         if phases is not None and state.phase_kw is not None:
             events += self._retarget_phases(inputs, rate, phases)
-        elif action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
+        elif action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE) and not (
+            action == ACTION_GRID_CHARGE and self.control.fixed_charge
+        ):
             since = (now - (state.rate_changed_at or now)).total_seconds()
             down = rate < state.rate_kw - RATE_TOLERANCE_KW
             up = rate >= state.rate_kw + RATE_STEP_KW and since >= RATE_UP_DWELL_S
@@ -1636,7 +1692,7 @@ class Executor:
         now = inputs.now
         headroom = inputs.headroom_a
         first = self.control.peak_first.get(ACTION_HOLD, ())
-        if state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
+        if self.control.slow or state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
             return []
         if state.covered_at is None:
             if headroom >= PEAK_COVER_A:
@@ -1749,7 +1805,10 @@ class Executor:
                                  setpoint_writes_today=setpoints)
         else:
             if entity_id is not None:
-                self.ledger.intend(entity_id, value, inputs.now, step=None if read is None else (read.step or role.step))
+                self.ledger.intend(
+                    entity_id, value, inputs.now, step=None if read is None else (read.step or role.step),
+                    deadline_s=self.control.readback_s or READBACK_DEADLINE_S,
+                )
             if self._fuse_hand_back():
                 self.state = replace(state, in_flight=(*state.in_flight, name), sent=sent, renew=renew,
                                      writes_today=writes, written=written, setpoint_writes_today=setpoints)

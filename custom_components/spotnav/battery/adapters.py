@@ -190,6 +190,11 @@ def _key(key: str, *domains: str, reject: str | None = None) -> Match:
     return Match(domains or ("sensor",), re.compile(rf"(?:^|_){re.escape(key)}$"), None if reject is None else re.compile(reject))
 
 
+def _tesla(key: str, *domains: str) -> Match:
+    """Tesla Fleet and Teslemetry put the energy site's id before the key: `<energy site id>-<key>`."""
+    return Match(domains or ("sensor",), re.compile(rf"^[^-]+-{re.escape(key)}$"))
+
+
 def _goodwe(key: str, *domains: str) -> Match:
     """GoodWe puts the serial after the key: `goodwe-<key>-<serial>`."""
     return Match(domains or ("sensor",), re.compile(rf"^goodwe-{re.escape(key)}-[^-]+$"))
@@ -452,6 +457,23 @@ GOODWE: Final = Adapter(
     ),
 )
 
+#: Tesla Powerwall through the cloud integrations of Home Assistant core, `tesla_fleet` and `teslemetry` (core
+#: `3df9333`, read 2026-11-18; `plans/research_integrations/goodwe_tesla_enphase_control_2026-11.md`): an energy
+#: site's unique id is `<energy site id>-<key>`. The level is `percentage_charged`, the size `total_pack_energy` (Wh,
+#: disabled by default), the grid state `island_status`. No rated power is an entity. The floor is the backup reserve
+#: (number `backup_reserve_percent`, written by the control: while SpotNav holds or charges, the floor reads what it
+#: wrote). The mode (select `default_real_mode`) is free only in `self_consumption`: `backup` pins the reserve and
+#: `autonomous` (Time-Based Control) is the person's own optimiser.
+TESLA: Final = Adapter(
+    brand="tesla",
+    label="Tesla Powerwall",
+    platforms=("tesla_fleet", "teslemetry"),
+    facts={"soc": _tesla("percentage_charged"), "capacity": _tesla("total_pack_energy")},
+    modes=(ModeRule(_tesla("default_real_mode", "select"), frozenset({"self_consumption"}), "operation mode"),),
+    grid_status=(_tesla("island_status"), "on_grid"),
+    reserves=(ReserveSource(_tesla("backup_reserve_percent", "number")),),
+)
+
 ENPHASE: Final = Adapter(
     brand="enphase",
     label="Enphase",
@@ -469,7 +491,7 @@ ENPHASE: Final = Adapter(
 )
 
 ADAPTERS: Final[tuple[Adapter, ...]] = (
-    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, ENPHASE,
+    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
 )
 
 

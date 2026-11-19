@@ -99,6 +99,7 @@ from .commands import (
     Phases,
     control_for,
     export_control_for,
+    fixed_rate_kw,
     reading,
     service_call,
 )
@@ -1329,7 +1330,7 @@ class BatteryControl:
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
         slot, why = gate.restricted(
             self._merged_slot(now), allowed, self._charge_limits(now, options, phased=control.phased)[0],
-            self._export_cap_kw(),
+            self._export_cap_kw(), self._fixed_charge_kw(),
         )
         action = None if slot is None else slot[0]
         if action in (None, ACTION_SELF_CONSUME):
@@ -1353,12 +1354,20 @@ class BatteryControl:
 
     def _merged_slot(self, now: datetime) -> tuple[str, float, datetime | None] | None:
         """The plan's running slot with the hold for the car (`gate.merged_action`)."""
-        return gate.merged_action(self._plan_now(now), self.site.battery_shadow.hold_requested())
+        control = control_for(self.facts.brand)
+        # A slow control (a cloud) runs planned actions only: no hold for a car, which comes and goes in minutes.
+        hold_requested = self.site.battery_shadow.hold_requested() and not (control is not None and control.slow)
+        return gate.merged_action(self._plan_now(now), hold_requested)
+
+    def _fixed_charge_kw(self) -> float | None:
+        """The rate a plant charges at when the recipe cannot set it (`commands.fixed_rate_kw`), `None` otherwise."""
+        control = control_for(self.facts.brand)
+        return None if control is None else fixed_rate_kw(control, self.facts)
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         slot, why = gate.restricted(
             self._merged_slot(now), gate.allowed_actions(self.report(), options), self._charge_limits(now, options)[0],
-            self._export_cap_kw(),
+            self._export_cap_kw(), self._fixed_charge_kw(),
         )
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.
@@ -2086,7 +2095,12 @@ class BatteryControl:
         for role in control.roles:
             read = reads.get(role.name)
             if read is None or not read.found:
-                needs.append(f"control_not_found:{role.name}")
+                if role.name in control.hacs_roles:
+                    # Core's integration lacks it: one note the person can act on, not one line per control.
+                    if "needs_hacs_integration" not in needs:
+                        needs.append("needs_hacs_integration")
+                elif not role.optional:
+                    needs.append(f"control_not_found:{role.name}")
             elif role.method != "service" and not read.enabled:
                 needs.append(f"control_disabled:{role.name}")
         management = facts.management

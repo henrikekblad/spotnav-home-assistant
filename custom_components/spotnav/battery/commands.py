@@ -101,7 +101,46 @@ The entity keys, options and services below were checked against each integratio
   sensor"), so it does not need Remote EMS, but it needs the plant's grid sensor. Its never-set all-ones value reads
   `unknown` as the battery limits do; it is restored as the plant's maximum output (`plant_max_active_power`), the most
   the plant can export anyway, and the export control is not started without that figure.
-* Victron, GoodWe, Enphase and brands without an adapter: **none**. (Victron's discharge cap is a setting stored on
+* **GoodWe**, `goodwe`, the HACS fork mletenay/home-assistant-goodwe-inverter `e6e9b385dd0000b3e6dcf3742c61c38e0dc75c8f`
+  (0.9.9.30; library goodwe 0.4.10 `66dfcdd9cd947bfd799f2bddb40b4e05ba9db6f6`; research
+  `goodwe_tesla_enphase_control_2026-11.md`). **Core `goodwe` is not enough**: it has no `eco_charge` option and no eco
+  power or SoC number, so with the fork's numbers missing the status says `needs_hacs_integration`. Entities (unique
+  id `goodwe-<key>-<serial>`, both integrations): select `operation_mode` (fork options general, off_grid, backup, eco,
+  peak_shaving, self_use, eco_charge, eco_discharge), numbers `eco_mode_power` (% of the battery's rated power, 0-100)
+  and `eco_mode_soc` (%, 0-100) and `battery_discharge_depth` (on-grid depth of discharge, %, 0-99; the register holds
+  100 less it, `et.py` `set_ongrid_battery_dod`). The two eco numbers are **not written to the inverter on their
+  own** (`number.py`, `setter=None`): the select caches them (`select.py` `update_eco_mode_power/soc`) and sends the
+  eco group (`set_operation_mode`: group 1, 00:00-23:59, all days, groups 2-4 off, work mode 3) when it changes to
+  `eco_charge`. So numbers first, the mode last; back: the mode first, then the numbers. The select does not poll
+  (`should_poll = False`) and the numbers only echo what was written, so the read-back proves only what Home Assistant
+  holds (`local_readback`): the battery's power shows the effect. A grid charge is `eco_charge` at a share of the
+  rated power (1 % steps, rounded down; the rating is the BMS' present limit times the voltage, an estimate) with the
+  SoC ceiling at 100. **The ceiling is not trusted**: two firmwares ignore it (HACS #466, #486), so the charge ends with
+  the plan's slot, not at a SoC. A discharge for the house is plain `general` (self-consumption covers it). **Hold** is
+  the depth of discharge: the cut-off is set to the SoC now (depth = 100 less floor(SoC)), so the battery stops
+  discharging and, with the cut-off not above the SoC, has no reason to charge. **Unverified**: the library says
+  nothing of what the inverter does at a cut-off equal to its SoC; the other candidates read back as `general`
+  (an eco group at 0 % is what the select shows as general, HACS #229), so they could not be told from no hold.
+  There is no dead-man: eco group, mode and depth are inverter settings that survive Home Assistant stopping, so a
+  grid charge is capped for that case as for Sigenergy (`grid_charge_phases` is not known: 1). EEPROM wear is not
+  documented (assumed): 96 setting writes a day and no peak cover.
+* **Tesla Powerwall**, `tesla_fleet` / `teslemetry` (core `3df93331719fcb206ab24c165cadf1e796d52c02`, tesla-fleet-api
+  1.23.1), a **slow** cloud control (`BrandControl.slow`). Unique id `<energy site id>-<key>`: number
+  `backup_reserve_percent` (%, 0-100, step 1), switch `components_disallow_charge_from_grid_with_solar_installed`
+  (**inverted**: on = grid charging allowed; it exists only on a site with battery and solar, so it is optional here)
+  and the mode select `default_real_mode` (autonomous, backup, self_consumption), which is only read: the control runs
+  in `self_consumption` as found and never writes it (`autonomous` is Time-Based Control, the person's optimiser; `backup`
+  pins the reserve). A hold is the reserve at floor(SoC now), never rounded up (a reserve above the SoC charges from the
+  grid). A grid charge is the reserve at 100 % with grid charging allowed; **its power is not controllable** (about
+  1.7 kW per Powerwall in field reports, not measured here), so the gate and the executor use the plant's own
+  maximum as the rate (`BrandControl.fixed_charge`, `fixed_rate_kw`: the larger of what is read or learnt and 5 kW per
+  13.5 kWh) and **refuse** the charge when it does not fit under the fuse cap, instead of lowering it. Slow means: planned actions only
+  (no hold for a car, no peak cover, no change of action sooner than `min_change_s`), read-back waits `readback_s`
+  (the cloud answers in minutes and tesla_fleet's entities echo the value before the cloud does, `local_readback`), a
+  day's writes are capped at 24 (Tesla's real per-day limit for energy settings is unconfirmed and a figure of 5 a day
+  exists), and the hand-back writes the reserve first (it stops a forced charge at once). No dead-man: the reserve
+  and the switch persist in the cloud and on the gateway.
+* Victron, Enphase and brands without an adapter: **none**. (Victron's discharge cap is a setting stored on
   the GX; GoodWe's and Enphase's controls in core are whole-mode switches or a reserve trick, see
   `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
@@ -116,7 +155,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
-from .adapters import HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, Adapter, Match, _key
+from .adapters import GOODWE, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, TESLA, Adapter, Match, _goodwe, _key, _tesla
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -127,6 +166,13 @@ from .plan_model import (
 
 #: The value a role had before SpotNav first wrote it.
 SNAPSHOT: Final = "<snapshot>"
+#: Values a recipe cannot fix on its own, filled in by `BrandControl.wanted` from the plant's readings when the
+#: action is entered: `floor(SoC now)` (Tesla's reserve under a hold), the depth of discharge that makes the cut-off
+#: the SoC now (GoodWe's hold), and a share of the battery's rated power for a power in kW (`pct_of_rated`). Left as
+#: they are when the reading is missing: the executor then refuses to start (`unresolved`).
+SOC_FLOOR: Final = "<soc_floor>"
+SOC_DEPTH: Final = "<soc_depth>"
+_PCT_PREFIX: Final = "<pct_of_rated:"
 
 #: How long a brand's own watchdog runs (s) and when SpotNav renews it: a command SpotNav stops renewing (HA died)
 #: falls back by itself within this.
@@ -180,6 +226,9 @@ class Role:
     idle_when: frozenset[str] = frozenset()
     #: Which daily write budget its writes count against (`BrandControl.write_cap`).
     write_class: WriteClass = "setting"
+    #: The entity may not exist on a plant of this brand (Tesla's grid-charging switch needs solar): when it is not
+    #: found the role is left out of every state and nothing is missing.
+    optional: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,6 +382,23 @@ class BrandControl:
     #: Writes a day per class (`WriteClass`), where they differ from `SETTING_WRITES`: only for a class the brand's
     #: own documents were read for (see the module).
     write_caps: Mapping[str, int] = field(default_factory=dict)
+    #: A slow control (a cloud: Tesla): planned actions only. No hold for a car, no peak cover, no change of action
+    #: sooner than `min_change_s`, the read-back waits `readback_s` and a hand-back waits `rearm_s` before the next
+    #: action (`executor.py`, `control.py`). `None`: the executor's own figure.
+    slow: bool = False
+    min_change_s: float = 0.0
+    readback_s: float | None = None
+    rearm_s: float | None = None
+    #: The plant charges at its own rate and the recipe cannot set it (Tesla): the gate and the executor use that rate
+    #: (`fixed_rate_kw`) and refuse a grid charge that does not fit under the fuse cap instead of lowering it.
+    fixed_charge: bool = False
+    #: Its rate: kW per `fixed_unit_kwh` of the battery's size (at least one unit); the plant's own rating counts when
+    #: it is larger.
+    fixed_charge_kw: float = 0.0
+    fixed_unit_kwh: float = 13.5
+    #: Roles that exist only in a custom integration: not found, the status says `needs_hacs_integration` (GoodWe's
+    #: eco power and SoC numbers are the HACS fork's, not core's).
+    hacs_roles: tuple[str, ...] = ()
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -400,11 +466,13 @@ class BrandControl:
         return action == ACTION_SELF_CONSUME or action in self.states
 
     def wanted(
-        self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S, phases: Phases | None = None
+        self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S, phases: Phases | None = None,
+        *, soc_pct: float | None = None, rated_kw: float | None = None, absent: frozenset[str] = frozenset(),
     ) -> dict[str, Native]:
         """Every restored role's wanted value for the action (`SNAPSHOT` where the action leaves it). `phases`: a
         grid charge per phase on a phased control (kW on L1, L2, L3, negative for a discharge), instead of the
-        brand's own charge at `rate_kw`."""
+        brand's own charge at `rate_kw`. `soc_pct` and `rated_kw` fill in what depends on the plant (`SOC_FLOOR`,
+        `SOC_DEPTH`, `pct_of_rated`); `absent` are optional roles the plant does not have."""
         wanted: dict[str, Native] = {role.name: SNAPSHOT for role in self.roles if role.restored}
         if action != ACTION_SELF_CONSUME:
             spec = self.phase_control
@@ -413,8 +481,23 @@ class BrandControl:
             else:
                 wants = self.states[action](rate_kw, watchdog_s)
             for want in wants:
-                wanted[want.role] = want.value
+                wanted[want.role] = _resolve(want.value, soc_pct, rated_kw)
+        for name in absent:
+            wanted.pop(name, None)
         return wanted
+
+    def unresolved(self, wanted: Mapping[str, Native]) -> str | None:
+        """Why a wanted state cannot be written yet: `soc_unknown` or `rated_unknown` while a value that depends on
+        the plant's reading has none."""
+        for value in wanted.values():
+            if value in (SOC_FLOOR, SOC_DEPTH):
+                return "soc_unknown"
+            if isinstance(value, str) and value.startswith(_PCT_PREFIX):
+                return "rated_unknown"
+        return None
+
+    def optional_names(self) -> frozenset[str]:
+        return frozenset(role.name for role in self.roles if role.optional)
 
 
 def native(role: Role, kw: float) -> float:
@@ -423,6 +506,39 @@ def native(role: Role, kw: float) -> float:
     if role.step:
         value = math.floor(value / role.step + 1e-9) * role.step
     return round(value, 6)
+
+
+def pct_of_rated(kw: float) -> str:
+    """A power in kW as a share of the battery's rated power, for a role in percent (GoodWe's eco power): resolved by
+    `BrandControl.wanted` with the rating."""
+    return f"{_PCT_PREFIX}{kw!r}>"
+
+
+def _resolve(value: Native, soc_pct: float | None, rated_kw: float | None) -> Native:
+    """A value that depends on the plant, filled in; itself when the reading it needs is missing."""
+    if value == SOC_FLOOR or value == SOC_DEPTH:
+        if soc_pct is None or not math.isfinite(soc_pct):
+            return value
+        floor = max(float(math.floor(min(soc_pct, 100.0) + 1e-9)), 1.0 if value == SOC_DEPTH else 0.0)
+        return floor if value == SOC_FLOOR else 100.0 - floor
+    if isinstance(value, str) and value.startswith(_PCT_PREFIX):
+        if rated_kw is None or not math.isfinite(rated_kw) or rated_kw <= 0:
+            return value
+        kw = float(value[len(_PCT_PREFIX):-1])
+        return float(min(max(math.floor(kw / rated_kw * 100.0 + 1e-9), 1), 100))
+    return value
+
+
+def fixed_rate_kw(control: BrandControl, facts: Any) -> float | None:
+    """The rate a plant charges at when the recipe cannot set it (`BrandControl.fixed_charge`), in kW: the larger of
+    its own rating (read or learnt, `facts.max_charge_kw`) and the recipe's figure per unit of battery size. `None`
+    for a control that sets its rate."""
+    if not control.fixed_charge:
+        return None
+    capacity = getattr(facts, "capacity_kwh", None)
+    units = 1 if not isinstance(capacity, (int, float)) or capacity <= 0 else max(1, math.ceil(capacity / control.fixed_unit_kwh - 0.15))
+    rating = getattr(facts, "max_charge_kw", None)
+    return max(control.fixed_charge_kw * units, rating if isinstance(rating, (int, float)) else 0.0)
 
 
 def reading(role: Role, state: str | None) -> str | None:
@@ -746,6 +862,81 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
     " limit is restored as the plant's maximum output.",
 )
 
+# --- GoodWe (the HACS fork) ---------------------------------------------------------------------------------------
+
+_GW_MODE = Role("operation_mode", "select", _goodwe("operation_mode", "select"))
+_GW_ECO_POWER = Role("eco_power", "number", _goodwe("eco_mode_power", "number"), step=1.0)
+_GW_ECO_SOC = Role("eco_soc", "number", _goodwe("eco_mode_soc", "number"), step=1.0)
+_GW_DEPTH = Role("depth_of_discharge", "number", _goodwe("battery_discharge_depth", "number"), step=1.0)
+
+
+def _gw_charge(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
+    # Numbers first, the mode last: the select sends the eco group when it changes to eco_charge. The SoC ceiling is
+    # the inverter's full: some firmwares ignore it anyway (HACS #466, #486), so the plan's slot ends the charge.
+    return (
+        Want("eco_soc", 100.0), Want("eco_power", pct_of_rated(rate_kw)), Want("operation_mode", "eco_charge"),
+    )
+
+
+GOODWE_CONTROL: Final = BrandControl(
+    brand="goodwe",
+    adapter=GOODWE,
+    roles=(_GW_ECO_SOC, _GW_ECO_POWER, _GW_DEPTH, _GW_MODE),
+    states={
+        # Unverified: the cut-off at the SoC now (see the module).
+        ACTION_HOLD: lambda _rate, _w: (Want("depth_of_discharge", SOC_DEPTH),),
+        ACTION_GRID_CHARGE: _gw_charge,
+        # Plain self-consumption covers the house: everything at what was found, in `general`.
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("operation_mode", "general"),),
+    },
+    enter_order=("eco_soc", "eco_power", "depth_of_discharge", "operation_mode"),
+    restore_order=("operation_mode", "eco_power", "eco_soc", "depth_of_discharge"),
+    # A grid charge stops with the mode back to general; no peak cover under a hold (the cut-off is a stored setting).
+    peak_first={ACTION_GRID_CHARGE: ("operation_mode",)},
+    local_readback=True,
+    hacs_roles=("eco_power", "eco_soc"),
+    note="Needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core has no eco charge mode or eco"
+    " numbers. The eco SoC ceiling is ignored on some firmwares, so a charge is judged by the battery's power.",
+)
+
+# --- Tesla Powerwall (cloud, slow) --------------------------------------------------------------------------------
+
+_TS_RESERVE = Role("reserve", "number", _tesla("backup_reserve_percent", "number"), step=1.0)
+#: Inverted by the integration: on means grid charging is allowed. Only on a site with battery and solar.
+_TS_GRID = Role(
+    "grid_charging", "switch", _tesla("components_disallow_charge_from_grid_with_solar_installed", "switch"),
+    optional=True,
+)
+#: Tesla's cloud is slow and its energy settings may be limited to a few writes a day (unconfirmed): few writes.
+TESLA_WRITES_PER_DAY: Final = 24
+
+TESLA_CONTROL: Final = BrandControl(
+    brand="tesla",
+    adapter=TESLA,
+    roles=(_TS_RESERVE, _TS_GRID),
+    states={
+        # Never rounded up: a reserve above the SoC charges from the grid.
+        ACTION_HOLD: lambda _rate, _w: (Want("reserve", SOC_FLOOR),),
+        ACTION_GRID_CHARGE: lambda _rate, _w: (Want("grid_charging", True), Want("reserve", 100.0)),
+        # Self-consumption as found already covers the house.
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (),
+    },
+    enter_order=("grid_charging", "reserve"),
+    # The reserve first: it stops a forced charge at once.
+    restore_order=("reserve", "grid_charging"),
+    peak_first={ACTION_GRID_CHARGE: ("reserve",)},
+    local_readback=True,
+    slow=True,
+    min_change_s=900.0,
+    readback_s=420.0,
+    rearm_s=900.0,
+    fixed_charge=True,
+    fixed_charge_kw=5.0,
+    write_caps={"setting": TESLA_WRITES_PER_DAY},
+    note="Cloud, slow: planned actions only. The charge power is the Powerwall's own (about 1.7 kW each in field"
+    " reports): a charge that does not fit under the fuse is refused, not lowered.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -754,7 +945,9 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
     "solax": {"trigger": True},
 }
 
-CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL)
+CONTROLS: Final[tuple[BrandControl, ...]] = (
+    SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, GOODWE_CONTROL, TESLA_CONTROL,
+)
 
 
 #: The export-limit controls: only where the brand's adapter already knows the entity (`EXPORT_LIMIT_TABLE` lists
@@ -825,6 +1018,8 @@ def table() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for control in CONTROLS:
         for action in CONTROL_ACTIONS:
+            if action not in control.states:
+                continue
             wants = control.states[action](5.0, WATCHDOG_S)
             row = {"brand": control.brand, "action": action, "writes": {w.role: w.value for w in wants}}
             if action == ACTION_HOLD and control.hold_variants:
