@@ -1190,6 +1190,11 @@ class HeatControl:
             state = self.hass.states.get(entity_id)
             if state is not None and paths.boost_on(entity_id, state.state):
                 return SOURCE_PLAN if hot_water.ledger.owner(entity_id, now) == SOURCE_PLAN else "user"
+        # A pulse on the pump's hot-water input is on for two seconds: the run it asked for is known from the ledger
+        # until the meter has shown it over.
+        pulse = hot_water.pulse_owner(now)
+        if pulse is not None:
+            return SOURCE_PLAN if pulse == SOURCE_PLAN else "user"
         return None
 
     async def async_sample(self, now: datetime) -> Sample:

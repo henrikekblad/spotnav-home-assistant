@@ -43,6 +43,7 @@ from .. import time_zones
 from .config import HeatConfig
 from .dhw_boost import (
     PULSE,
+    PULSE_RUN_WITHIN,
     RATE,
     READ_BACK,
     READ_BACK_CLOUD,
@@ -160,6 +161,8 @@ class HotWater:
         self.shed_day: str | None = None
         self._delta_key: Any = None
         self._delta: dict[datetime, float] = {}
+        #: The meter has shown the run a pulse asked for (its end then ends the pulse's boost).
+        self._pulse_ran = False
 
     # ---- store
 
@@ -562,12 +565,46 @@ class HotWater:
             return
 
     def _observe(self, now: datetime, config: HeatConfig) -> None:
-        """A boost entity read off ends SpotNav's and the button's writes to it in the ledger (their ownership)."""
-        if not any(entry.ended is None and entry.read_back is True for entry in self.ledger.entries):
+        """A boost entity read off ends SpotNav's and the button's writes to it in the ledger (their ownership); a
+        pulse's boost ends when the meter has shown its run and the run is over, or when no run came in time."""
+        if not any(entry.ended is None and entry.read_back is not False for entry in self.ledger.entries):
             return
         route = self.route(config)
-        if route is not None and route.kind != "pulse" and not self._on(route)[0]:
+        if route is None:
+            return
+        if route.kind != "pulse":
+            if not self._on(route)[0]:
+                self.ledger.close(route.entity_id, now)
+            return
+        entry = self._pulse_entry(route, now)
+        if entry is None:
+            self._pulse_ran = False
+            return
+        making = self.making_now()
+        if making:
+            self._pulse_ran = True
+        elif self._pulse_ran or now - entry.at > PULSE_RUN_WITHIN:
             self.ledger.close(route.entity_id, now)
+            self._pulse_ran = False
+
+    def _pulse_entry(self, route: Route, now: datetime) -> Entry | None:
+        """The last pulse SpotNav or the button sent on the route whose run may still be coming or going."""
+        last = next((entry for entry in reversed(self.ledger.entries) if entry.entity_id == route.entity_id), None)
+        if last is None or last.read_back is False or last.ended is not None:
+            return None
+        if now - last.at > PULSE_RUN_WITHIN + 2 * self.run_len:
+            return None
+        return last
+
+    def pulse_owner(self, now: datetime | None = None) -> str | None:
+        """Whose pulse run may be going now on a pulse route (`plan` or `button`), `None` for none: a pulse is on
+        for two seconds, so the boost it asked for is known from the ledger, not from the switch."""
+        now = dt_util.utcnow() if now is None else now
+        route = self.route()
+        if route is None or route.kind != "pulse":
+            return None
+        entry = self._pulse_entry(route, now)
+        return None if entry is None else entry.source
 
     def _shed_check(self, now: datetime, config: HeatConfig) -> None:
         """SpotNav's own planned boost running while a phase is over the fuse for `SHED_LOOKS` looks: ended, and not
@@ -657,6 +694,8 @@ class HotWater:
             key = pick.peak.isoformat()
             if seen:
                 record.setdefault("live", []).append(key)
+                if (control := self.shadow.control) is not None:
+                    control.request_look()
                 self._retry_at.pop(key, None)
                 _LOGGER.info("SpotNav hot water: the planned boost for %s started", pick.peak.astimezone(self.zone).strftime("%H:%M"))
             elif route.cloud or key in self._retry_at:
@@ -729,12 +768,12 @@ class HotWater:
         if route is None:
             return None
         on, since = self._on(route)
-        last = self.ledger.last(SOURCE_BUTTON)
-        pulse_at = last.at if route.kind == "pulse" and last is not None and last.read_back else None
+        pulse = self._pulse_entry(route, now) if route.kind == "pulse" else None
+        pulse_at = None if pulse is None or pulse.read_back is not True else pulse.at
         reading = BoostReading(
             on=on,
             on_since=since,
-            ledger_source=self.ledger.owner(route.entity_id, now) if on else None,
+            ledger_source=self.ledger.owner(route.entity_id, now) if on else (None if pulse is None else pulse.source),
             making=self.making_now(),
             pulse_at=pulse_at,
             pending=self._pending is not None and not self._pending.done(),
@@ -784,6 +823,9 @@ class HotWater:
             seen = await self._async_write(route, SOURCE_BUTTON, now)
             if not seen:
                 self._failed_at = dt_util.utcnow()
+            elif (control := self.shadow.control) is not None:
+                # A block held now ends at once: the heat control looks without waiting for its next look.
+                control.request_look()
             self.shadow.save()
         except asyncio.CancelledError:
             raise

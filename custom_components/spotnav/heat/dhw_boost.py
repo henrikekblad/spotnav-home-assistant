@@ -209,7 +209,7 @@ def boost_state(route: Route | None, reading: BoostReading, now: datetime, run_l
     if route.kind == ROUTE_PULSE and reading.pulse_at is not None:
         since = now - reading.pulse_at
         if since <= PULSE_RUN_WITHIN or (reading.making and since <= PULSE_RUN_WITHIN + 2 * run_len):
-            return answer(STATE_RUNNING, BY_USER, reading.pulse_at)
+            return answer(STATE_RUNNING, BY_PLAN if reading.ledger_source == SOURCE_PLAN else BY_USER, reading.pulse_at)
     if reading.failed_at is not None and now - reading.failed_at <= FAILED_FOR:
         return answer(STATE_FAILED)
     if reading.making:
@@ -233,6 +233,7 @@ __all__ = [
     "Route",
     "boost_route",
     "boost_state",
+    "PULSE_RUN_WITHIN",
     "fits_fuse",
     "over_fuse",
     "start_call",

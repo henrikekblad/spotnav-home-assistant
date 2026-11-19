@@ -156,3 +156,41 @@ async def test_s7_ownership_survives_a_restart_and_a_counting_timer(hass: HomeAs
     again.tick(at + timedelta(minutes=40))
     hass.states.async_set(CTC, "2")
     assert again.boost()["source"] == "user"
+
+
+# ---- S1: the button's pulse ends a held block at once, and keeps it from starting, for the run's length
+
+
+async def test_s1_a_pulse_ends_a_held_block_until_the_run_is_over(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.heat import dhw_runtime
+
+    from .test_heat_control import MIN, _running
+
+    monkeypatch.setattr(dhw_runtime, "PULSE", timedelta(seconds=0))
+
+    async def no_pause(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(dhw_runtime, "_pause", no_pause)
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, hot_water_entity="switch.vv_puls")
+    hot_water = control.shadow.hot_water
+    monkeypatch.setattr(hot_water, "making_now", lambda: False)
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.held
+    # The pulse is on for two seconds only: the control never sees the switch on.
+    hass.states.async_set("switch.vv_puls", "off")
+    error, _boost = await hot_water.async_press("start", now + MIN)
+    await settle(hass)
+    assert error is None
+    # The ledger says a run was asked for: the block opens at the next look.
+    await control.async_look(now + 2 * MIN)
+    assert relay.calls == ["on", "off"] and control.boost_source == "user"
+    # ...and no block starts while the run may still be coming or going.
+    await control.async_look(now + 20 * MIN)
+    assert relay.calls == ["on", "off"]
+    # The meter shows the run, then its end: the block may come back.
+    monkeypatch.setattr(hot_water, "making_now", lambda: True)
+    hot_water.tick(now + 21 * MIN)
+    monkeypatch.setattr(hot_water, "making_now", lambda: False)
+    hot_water.tick(now + 40 * MIN)
+    assert hot_water.pulse_owner(now + 40 * MIN) is None
