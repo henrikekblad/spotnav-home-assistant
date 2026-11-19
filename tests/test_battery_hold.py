@@ -118,7 +118,7 @@ def test_a_sigenergy_limit_that_reads_unknown_is_restored_as_the_rating_never_as
 
 
 def test_a_brand_without_executor_commands_cannot_be_held_even_in_shadow() -> None:
-    facts = _facts(brand="goodwe", integration="goodwe")
+    facts = _facts(brand="enphase", integration="enphase_envoy")
     memory, decisions = _run(HoldMemory(), _inputs(T0, facts=facts, reads={}), _inputs(T0 + timedelta(seconds=ARM_S), facts=facts, reads={}))
 
     assert [(d.action, d.reason) for d in decisions] == [("not_possible", "no_brand_control")] and not memory.held

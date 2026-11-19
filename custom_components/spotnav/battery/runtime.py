@@ -122,8 +122,11 @@ def external_planner(hass: HomeAssistant) -> str | None:
     return None
 
 
-def read_battery_facts(hass: HomeAssistant, config: dict[str, Any], power_kw: float | None) -> BatteryFacts:
-    """The facts of the site's battery entity, from its integration's entities in the registry."""
+def read_battery_facts(
+    hass: HomeAssistant, config: dict[str, Any], power_kw: float | None, found: Mapping[str, str] | None = None
+) -> BatteryFacts:
+    """The facts of the site's battery entity, from its integration's entities in the registry. `found`: the states
+    SpotNav's control found before it first wrote, by entity id (`Executor.found_states`)."""
     entity_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
     registry = er.async_get(hass)
     battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
@@ -143,6 +146,7 @@ def read_battery_facts(hass: HomeAssistant, config: dict[str, Any], power_kw: fl
         manufacturer=None if device is None else device.manufacturer,
         power_kw=power_kw,
         external_planner=external_planner(hass),
+        found_states=found,
     )
 
 
@@ -229,6 +233,9 @@ class BatteryShadow:
         #: Whether SpotNav's own write path (`control.py`) acts on the battery now, and whether the person let it take
         #: the plant over from its own optimiser (`battery_control_ai_takeover_ack`); set by that path.
         self.spotnav_acting: Callable[[], bool] = lambda: False
+        #: The states SpotNav's control found before it first wrote, by entity id (`Executor.found_states`): a floor
+        #: it set for a hold is read as the one found, so the plan never takes SpotNav's own floor for the battery's.
+        self.found_states: Callable[[], Mapping[str, str]] = dict
         self.takeover: Callable[[], bool] = lambda: False
         #: The hold variant the write path would run (`gate.hold_variant_to_run`), set by that path.
         self.hold_variant: Callable[[], str | None] = lambda: None
@@ -314,7 +321,13 @@ class BatteryShadow:
 
     def _read_facts(self) -> BatteryFacts:
         power_kw, _age = self._battery_power()
-        return self.with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        return self.with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self._found()))
+
+    def _found(self) -> Mapping[str, str]:
+        try:
+            return self.found_states()
+        except Exception:  # noqa: BLE001 - without the write path's answer the entities are read as they are
+            return {}
 
     def with_outside(self, facts: BatteryFacts) -> BatteryFacts:
         """The facts with the outside-control verdict applied (`facts.with_outside_control`)."""
@@ -387,7 +400,7 @@ class BatteryShadow:
 
     def inputs(self, now: datetime) -> HoldInputs:
         power_kw, age_s = self._battery_power()
-        facts = read_battery_facts(self.hass, self.site.config, power_kw)
+        facts = read_battery_facts(self.hass, self.site.config, power_kw, self._found())
         chargers, car_kw = self.grid_charging()
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]

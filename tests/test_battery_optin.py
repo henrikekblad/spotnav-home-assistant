@@ -33,6 +33,11 @@ SIGEN_KEYS = [
 ]
 
 
+def _uid(brand: str, key: str) -> str:
+    """A unique id as the brand's integration builds it (GoodWe: `goodwe-<key>-<serial>`, Tesla: `<site id>-<key>`)."""
+    return {"goodwe": f"goodwe-{key}-SN1", "tesla": f"1234-{key}"}.get(brand, f"PLANT_{key}")
+
+
 def _plant(
     hass: HomeAssistant, brand: str, *, enabled: frozenset[str] = frozenset(), disabled_by: Any = INTEGRATION
 ) -> tuple[str, dict[str, str]]:
@@ -45,13 +50,13 @@ def _plant(
     device = dr.async_get(hass).async_get_or_create(config_entry_id=owner.entry_id, identifiers={(platform, "plant")})
     registry = er.async_get(hass)
     battery = registry.async_get_or_create(
-        "sensor", platform, "PLANT_battery_power", device_id=device.id, config_entry=owner,
+        "sensor", platform, _uid(brand, "battery_power"), device_id=device.id, config_entry=owner,
         suggested_object_id="plant_battery_power",
     )
     found: dict[str, str] = {}
     for domain, key in optin.ENABLE_KEYS[brand]:
         entry = registry.async_get_or_create(
-            domain, platform, f"PLANT_{key}", device_id=device.id, config_entry=owner,
+            domain, platform, _uid(brand, key), device_id=device.id, config_entry=owner,
             suggested_object_id=f"plant_{key}", disabled_by=None if key in enabled else disabled_by,
         )
         found[key] = entry.entity_id
@@ -66,20 +71,18 @@ def _config(battery: str) -> dict[str, Any]:
 def test_every_roles_entity_is_in_the_adapters_list(control: Any) -> None:
     keys = optin.ENABLE_KEYS[control.brand]
     for role in control.roles:
-        assert any(role.match.matches(domain, f"PLANT_{key}") for domain, key in keys), role.name
+        assert any(role.match.matches(domain, _uid(control.brand, key)) for domain, key in keys), role.name
 
 
-async def test_the_lists_per_adapter_in_order(hass: HomeAssistant) -> None:
-    for control in CONTROLS:
-        hass.config_entries.async_entries()  # noqa: B018 - nothing from an earlier brand is shared
-        battery, found = _plant(hass, control.brand)
-        entry_id, entities = optin.disabled_control_entities(hass, _config(battery), control.brand)
-        assert entry_id == "PLANT"
-        assert [entry.entity_id for entry in entities] == list(found.values()), control.brand
-        for entry in list(er.async_get(hass).entities.values()):
-            er.async_get(hass).async_remove(entry.entity_id)
-        for config_entry in hass.config_entries.async_entries():
-            await hass.config_entries.async_remove(config_entry.entry_id)
+@pytest.mark.parametrize("control", CONTROLS, ids=lambda control: control.brand)
+async def test_the_lists_per_adapter_in_order(hass: HomeAssistant, control: Any) -> None:
+    battery, found = _plant(hass, control.brand)
+    entry_id, entities = optin.disabled_control_entities(hass, _config(battery), control.brand)
+    assert entry_id == "PLANT"
+    assert [entry.entity_id for entry in entities] == list(found.values()), control.brand
+
+
+def test_the_sigenergy_list_is_kept() -> None:
     assert [key for _domain, key in optin.ENABLE_KEYS["sigenergy"]] == SIGEN_KEYS
 
 
@@ -88,7 +91,7 @@ async def test_an_enabled_entity_and_a_brand_without_a_list_are_left_out(hass: H
     _entry, entities = optin.disabled_control_entities(hass, _config(battery), "sigenergy")
     assert found["plant_ess_max_discharging_limit"] not in [entry.entity_id for entry in entities]
     assert len(entities) == len(SIGEN_KEYS) - 1
-    assert optin.disabled_control_entities(hass, _config(battery), "goodwe") == (None, [])
+    assert optin.disabled_control_entities(hass, _config(battery), "enphase") == (None, [])
     assert optin.disabled_control_entities(hass, _config(battery), None) == (None, [])
     assert optin.disabled_control_entities(hass, {}, "sigenergy") == (None, [])
 
@@ -201,6 +204,17 @@ async def test_a_failed_reload_is_an_error_and_writes_no_options(
     )
     assert answer["error"] == ERROR_ENABLE_FAILED
     assert site.data.get("battery_control_enabled") is not True
+
+
+async def test_core_goodwe_without_the_hacs_numbers_gets_one_note_in_the_checklist(hass: HomeAssistant) -> None:
+    battery, found = _plant(hass, "goodwe", enabled=frozenset(key for _d, key in optin.ENABLE_KEYS["goodwe"]))
+    registry = er.async_get(hass)
+    registry.async_remove(found["eco_mode_power"])
+    registry.async_remove(found["eco_mode_soc"])
+    _s, control = await _site(hass, battery)
+    needs = control.status()["needs"]
+    assert needs.count("needs_hacs_integration:mletenay/home-assistant-goodwe-inverter") == 1
+    assert not any(need.startswith("control_not_found") for need in needs)
 
 
 async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_the_house_at_its_peak(

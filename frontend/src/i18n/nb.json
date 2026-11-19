@@ -1587,6 +1587,7 @@
   "battery.need.noBatteryControl": "SpotNav kan ikke styre batterier av dette merket ennå.",
   "battery.need.firmwareUnknown": "Aktiver batteriets fastvaresensor i Home Assistant.",
   "battery.need.controlNotFound": "Batteriets styring {role} finnes ikke i Home Assistant.",
+  "battery.need.needsHacs": "Batteriets styring krever HACS-integrasjonen ({repo}); Home Assistants innebygde integrasjon mangler den.",
   "battery.need.controlDisabled": "Aktiver batteriets styring {role} i Home Assistant (den er deaktivert som standard).",
   "battery.need.outsideControl": "Noe annet styrer batteriet nå, så SpotNav styrer ingenting.",
   "battery.need.aiTakeoverAck": "Godta at SpotNav tar over fra batteriets AI-modus.",

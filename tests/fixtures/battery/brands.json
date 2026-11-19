@@ -1142,5 +1142,89 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "tesla": {
+  "_source": "Unique ids from core tesla_fleet / teslemetry (`<energy site id>-<key>`), core 3df9333, read 2026-11-18.",
+  "platform": "tesla_fleet",
+  "manufacturer": "Tesla",
+  "battery": "sensor.home_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.home_battery_power",
+    "unique_id": "1234567890-battery_power",
+    "device": "battery",
+    "state": "1000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.home_percentage_charged",
+    "unique_id": "1234567890-percentage_charged",
+    "device": "battery",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.home_total_pack_energy",
+    "unique_id": "1234567890-total_pack_energy",
+    "device": "battery",
+    "state": "13500",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.home_island_status",
+    "unique_id": "1234567890-island_status",
+    "device": "battery",
+    "state": "on_grid",
+    "unit": null,
+    "device_class": "enum",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.home_allow_export_mode",
+    "unique_id": "1234567890-default_real_mode",
+    "device": "battery",
+    "state": "self_consumption",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.home_backup_reserve",
+    "unique_id": "1234567890-backup_reserve_percent",
+    "device": "battery",
+    "state": "20",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.home_allow_charging_from_grid",
+    "unique_id": "1234567890-components_disallow_charge_from_grid_with_solar_installed",
+    "device": "battery",
+    "state": "on",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "tesla",
+   "soc_pct": 64.0,
+   "capacity_kwh": 13.5,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": true,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

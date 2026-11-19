@@ -769,7 +769,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "`goodwe`, Home Assistant core",
         keys=("goodwe",),
         adapter="goodwe",
-        control="Not mapped. Core has only whole operating modes and the depth of discharge, no power setpoint",
+        note="Control needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core has no eco charge "
+        "mode and no eco power or level numbers, and the status then says so. Nothing stops a command when Home "
+        "Assistant stops, so a grid charge is capped for that case. The eco level ceiling is ignored on some "
+        "firmwares, so a charge is judged by the battery's power. The hold (the depth of discharge set to the level "
+        "now) is not confirmed on a device: one that charges from the grid is handed back.",
     ),
     Overview(
         "Fronius (GEN24 with BYD)",
@@ -802,9 +806,13 @@ OVERVIEW: tuple[Overview, ...] = (
         "Tesla Powerwall",
         "`powerwall`, `tesla_fleet` and `teslemetry`, Home Assistant core; `tesla_custom`, HACS (alandtse/tesla)",
         keys=("powerwall", "tesla_fleet", "teslemetry", "tesla_custom"),
-        control="Not possible locally: reserve, mode and grid charging go through Tesla's cloud. Planned later for "
-        "slow actions only",
-        note="Powerwall 3 has a more restricted local API. No battery level or size is read yet.",
+        adapter="tesla",
+        note="Control is mapped for `tesla_fleet` and `teslemetry` only, through Tesla's cloud: slow, planned "
+        "actions only (backup reserve and grid charging, no peak cover, few writes a day). The charge power is the "
+        "Powerwall's own, so a charge that does not fit under the fuse on one phase is refused, not lowered, and none "
+        "runs while the battery's size is unknown. No dead-man: a grid charge runs in 30-minute blocks, so a lost "
+        "connection leaves one block's charge. Only while the operation mode is self-powered. Powerwall 3 has a more "
+        "restricted local API.",
     ),
     Overview(
         "Deye, Sunsynk, Sol-Ark",

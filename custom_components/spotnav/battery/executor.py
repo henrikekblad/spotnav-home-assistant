@@ -38,14 +38,26 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   first), while the other roles are handed back. A role
   that meanwhile needs no write (it reads its restore value, or its select is idle once Remote EMS is off) drops its
   retry, and a write made for the action that is still awaited when the hand-back begins is no restore retry: every
-  hand-back ends.
+  hand-back ends. Where the read-back is only Home Assistant's own echo, a recipe may watch the hand-back's writes
+  a while after it ends (`BrandControl.settle_s`): a role that reads SpotNav's value again kept no restore (a cloud
+  refused it) and is written again `SETTLE_ATTEMPTS` times, then the control blocks (`restore_not_held`) until the
+  role reads the value found or someone else's; meanwhile the facts still read the value found (`found_states`). A
+  restore given up is tried again every `BLOCKED_RESTORE_S`, or the recipe's longer `restore_retry_s` where each
+  write is a billed cloud command.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
-  grid (at most its charge, the commanded rate and the site's import) plus the headroom less `HEADROOM_MARGIN_A`.
+  grid (at most its charge, the commanded rate and the site's import) plus the least phase's headroom less
+  `HEADROOM_MARGIN_A`, counted on the phases the plant spreads its charge over (`ExecInputs.charge_phases`): a plant
+  that charges on one phase gets that one phase's room, not three.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
   charger held below what it asked makes the battery yield (`YIELD_STEP_KW` below its measured grid charge, one step
   per `RATE_UP_DWELL_S`, so the car's regulator has time to follow); with "battery first" the
   battery keeps its rate and the site's load balancing backs the car off (the battery is house load to it).
   The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
+* **A charge that takes more than commanded** (balanced; a charge per phase has its own runaway check below): the
+  lesser of the battery's charge and the site's import above the rate by `CHARGE_OVER_KW` (or a quarter of it) for
+  `CHARGE_OVER_S` hands the charge back (`not_obeyed:grid_charge:over`, clearing by itself after
+  `MANAGEMENT_BLOCK_S`). It catches what the rate could not tell: a share of a rated power whose base moved, a wrong
+  sign, a fixed rate above its estimate.
 * **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
   phase) lands on the fuse. When the least phase headroom falls under `PEAK_COVER_A` the executor first lifts the
   hold: one write, the brand's `peak_first` roles back to the value found or to the brand's normal value
@@ -68,7 +80,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   `HOLD_CHARGE_S` did not take the hold: mode 4 is a charge at the charge limit, from the grid once the sun is short,
   so it is handed back and the control blocked (`not_obeyed:hold:charging`), judged on the battery's own power (no
   grid reading needed), and its verification fails that variant. The block clears by itself after
-  `MANAGEMENT_BLOCK_S`, as a management change's does. A hold that stores the sun has no such guard.
+  `MANAGEMENT_BLOCK_S`, as a management change's does. A hold that stores the sun has that guard only where its
+  recipe asks for it (`BrandControl.hold_grid_guard`: a hold that is a floor at the SoC, which the plant may reach
+  from the grid), judged on the lesser of the battery's charge and the site's import, so the sun it stores does not
+  count.
 * **Hold variants** (`BrandControl.hold_variants`): a brand may have more than one way to hold; the executor runs
   one (`ExecState.variant`, stored so a restart hands back with that variant's order) and changes it only while it
   holds nothing (`use_variant`). Every variant writes only the brand's roles, all of them in the snapshot, so the
@@ -125,6 +140,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   load now beside the rate (`house_net_kw`: the site's import less the battery's charge) and are written again only
   when the rate changes; the monitor is told what the battery can still take or give of its rate once the house
   moved (`_house_cap`). Without the house's load the action does not run (`house_unknown`).
+* **A charge in blocks** (`BrandControl.charge_block_s`, a plant that sets its own charge power and stops at a SoC
+  ceiling: Tesla's reserve). The ceiling is one block ahead of the SoC at the recipe's rate (an upper figure) and is
+  renewed every block from the SoC then; with no dead-man, a Home Assistant or a cloud that stops leaves at most one
+  block's charge from the grid.
 * **Writes a day, per class** (`commands.WriteClass`, `BrandControl.write_cap`): a role is a `setting` (a limit, a
   mode, a switch: 96 a day, `ExecState.writes_today`, shared with the export limit's instance) or a `setpoint` made
   for continuous control (the targets per phase: the brand's own figure, `ExecState.setpoint_writes_today`).
@@ -175,6 +194,7 @@ from .commands import (
     Phases,
     Role,
     answered,
+    fixed_rate_kw,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
@@ -219,6 +239,13 @@ PEAK_REHOLD_S: Final = 900.0
 #: An idle hold (`HoldVariant.idle`) whose battery charges more than this (kW) for this long (s) is handed back.
 HOLD_CHARGE_KW: Final = 0.5
 HOLD_CHARGE_S: Final = 60.0
+#: A balanced grid charge that takes more from the grid than commanded (the lesser of its charge and the site's
+#: import, over the rate by this much (kW) or a quarter of it, whichever is more) for this long (s), judged from this
+#: long after its rate last changed (s; at least the recipe's read-back wait), did not take its rate: a wrong base
+#: for a share of the rated power, a wrong sign, a fixed rate above its estimate.
+CHARGE_OVER_KW: Final = 0.3
+CHARGE_OVER_S: Final = 60.0
+CHARGE_OVER_GRACE_S: Final = 120.0
 #: A grid charge below this is not worth running (kW).
 MIN_RATE_KW: Final = 0.5
 #: The rate goes up only by this much (kW), after this long since its last change (s).
@@ -229,6 +256,9 @@ RATE_TOLERANCE_KW: Final = 0.1
 #: A phase's target is lowered when its room is under it by more than this (kW), and raised back to what the caps
 #: allow when that is more than this above it.
 PHASE_TOLERANCE_KW: Final = 0.05
+#: A fixed-rate charge (`BrandControl.fixed_charge`) is judged only on whether the battery charges at all: the rate
+#: the monitor expects (kW), far under what such a plant does.
+FIXED_CHARGE_JUDGE_KW: Final = 1.0
 #: The step a phase's charge is rounded down to: whole amps (A), so a wobbling reading writes nothing; the
 #: verification's probe is rounded to this instead (kW).
 PHASE_STEP_A: Final = 1.0
@@ -273,6 +303,10 @@ RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
 #: A restore given up after every retry is tried again this often while the control is blocked (s): Remote EMS or a
 #: limit left set must not wait for a restart.
 BLOCKED_RESTORE_S: Final = 900.0
+#: A restore read back only by Home Assistant's echo that shows SpotNav's value again within the recipe's
+#: `settle_s` is written again this many times; then the control blocks (`restore_not_held:<roles>`) until the role
+#: reads the value found again (set back by hand) or someone else's.
+SETTLE_ATTEMPTS: Final = 2
 
 Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
@@ -283,7 +317,9 @@ _BLOCKING_PREFIXES: Final = (
 )
 #: Blocks that clear by themselves `MANAGEMENT_BLOCK_S` after the hand-back: a management change, and an idle hold
 #: that charged (the plant may take it another day; a block until reset would stop control for good).
-_SELF_CLEARING: Final = ("management_changed", f"not_obeyed:{ACTION_HOLD}:charging")
+_SELF_CLEARING: Final = (
+    "management_changed", f"not_obeyed:{ACTION_HOLD}:charging", f"not_obeyed:{ACTION_GRID_CHARGE}:over",
+)
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
@@ -446,6 +482,8 @@ class ExecState:
     variant: str | None = None
     #: Since when an idle hold's battery has charged (`HOLD_CHARGE_S`); not stored.
     charging_since: datetime | None = None
+    #: Since when a balanced grid charge has taken more from the grid than commanded (`CHARGE_OVER_S`); not stored.
+    over_since: datetime | None = None
     #: Roles written before the brand's enter order after a change of action: the grid charge's stop
     #: (`BrandControl.peak_first`), so no limit is loosened while the plant still charges from the grid; not stored.
     lead: tuple[str, ...] = ()
@@ -474,6 +512,13 @@ class ExecState:
     phase_over_at: datetime | None = None
     #: Writes today to setpoints (`commands.WriteClass`), counted apart from the settings' (`writes_today`).
     setpoint_writes_today: int = 0
+    #: The value SpotNav last wrote per role for an action (not a restore), stored: what a refused restore shows.
+    wrote: dict[str, Native] = field(default_factory=dict)
+    #: After a hand-back, the roles watched for a restore not held (`BrandControl.settle_s`): per role the state found,
+    #: its restore value, SpotNav's value and the entity; until when; and the restores written again so far.
+    settle: dict[str, tuple[str, Native, Native, str]] = field(default_factory=dict)
+    settle_until: datetime | None = None
+    settle_misses: int = 0
     #: The house's net load the running action's values were written for (`BrandControl.house_states`); the load
     #: behind each phase's point in the targets written (a `grid` target per phase) and the one before the last
     #: change. Not stored: a restart hands back.
@@ -524,6 +569,18 @@ class ExecState:
             "phased": self.phased,
             "phase_kw": None if self.phase_kw is None else list(self.phase_kw),
             "setpoint_writes_today": self.setpoint_writes_today,
+        } | self._settle_dict()
+
+    def _settle_dict(self) -> dict[str, Any]:
+        """The values written and the watch after a hand-back (`BrandControl.settle_s`), stored only when there are
+        any: a recipe without the watch stores what it always did."""
+        if not (self.wrote or self.settle or self.settle_misses):
+            return {}
+        return {
+            "wrote": dict(self.wrote),
+            "settle": {name: list(row) for name, row in self.settle.items()},
+            "settle_until": None if self.settle_until is None else self.settle_until.isoformat(),
+            "settle_misses": self.settle_misses,
         }
 
     @classmethod
@@ -566,6 +623,16 @@ class ExecState:
             phase_kw = (float(raw_phases[0]), float(raw_phases[1]), float(raw_phases[2]))
         writes = data.get("writes_today")
         setpoints = data.get("setpoint_writes_today")
+        misses = data.get("settle_misses")
+        settle: dict[str, tuple[str, Native, Native, str]] = {}
+        raw_settle = data.get("settle")
+        if isinstance(raw_settle, Mapping):
+            for name, row in raw_settle.items():
+                if (
+                    isinstance(row, list) and len(row) == 4 and isinstance(row[0], str) and isinstance(row[3], str)
+                    and all(isinstance(value, (str, bool, int, float)) for value in row[1:3])
+                ):
+                    settle[str(name)] = (row[0], row[1], row[2], row[3])
         retries: dict[str, tuple[int, datetime]] = {}
         raw_retries = data.get("retries")
         if isinstance(raw_retries, Mapping):
@@ -611,6 +678,10 @@ class ExecState:
             setpoint_writes_today=(
                 setpoints if isinstance(setpoints, int) and not isinstance(setpoints, bool) and setpoints >= 0 else 0
             ),
+            wrote=natives("wrote"),
+            settle=settle,
+            settle_until=parse_aware_datetime(data.get("settle_until")),
+            settle_misses=misses if isinstance(misses, int) and not isinstance(misses, bool) and misses >= 0 else 0,
         )
 
 
@@ -934,6 +1005,43 @@ class Executor:
         self.control = control.with_phases(True) if self.state.phased else control
         self.state = replace(self.state, variant=self.control.variant, phased=self.control.phased)
         self.watchdog_s = watchdog_s
+        #: What a state that depends on the plant is filled in with (`BrandControl.wanted`): the SoC, the rating and the
+        #: optional roles this plant lacks, as of the last look; not stored.
+        self._soc_pct: float | None = None
+        self._rated_kw: float | None = None
+        self._capacity_kwh: float | None = None
+        self._absent: frozenset[str] = frozenset()
+
+    def _sense(self, inputs: ExecInputs) -> None:
+        facts = inputs.facts
+        self._soc_pct, self._rated_kw, self._capacity_kwh = facts.soc_pct, facts.max_charge_kw, facts.capacity_kwh
+        optional = self.control.optional_names()
+        self._absent = frozenset(
+            name for name in optional if (read := inputs.reads.get(name)) is None or not read.found
+        )
+
+    def found_states(self) -> dict[str, str]:
+        """The state found before SpotNav first wrote each role it keeps a snapshot of, by entity id: what the
+        battery's facts read in place of SpotNav's own value (`facts.battery_facts`), so a floor set for a hold is
+        never taken for the battery's own and the plan does not see an empty battery."""
+        state = self.state
+        found = {
+            entity_id: row[0] for row in state.settle.values()
+            if (entity_id := row[3]) and row[0].strip().lower() not in _NO_VALUE
+        }
+        return found | {
+            state.entities[name]: value for name, value in state.snapshot.items()
+            if name in state.entities and value.strip().lower() not in _NO_VALUE
+        }
+
+    @property
+    def _daily_cap(self) -> int:
+        """The day's setting writes (`BrandControl.write_cap`; 96 unless the recipe says less)."""
+        return min(DAILY_WRITE_CAP, self.control.write_cap("setting"))
+
+    @property
+    def _charge_reserve(self) -> int:
+        return min(CHARGE_WRITE_RESERVE, self._daily_cap // 4)
 
     def use_phases(self, on: bool) -> bool:
         """Run the brand's targets per phase from now on, or not (`BrandControl.with_phases`); only while nothing is
@@ -987,12 +1095,14 @@ class Executor:
     def reset(self) -> None:
         """Lift a block (the part's next explicit decision); never while a snapshot waits to be restored."""
         if self.state.phase == "blocked" and not self.state.holds_snapshot:
-            self.state = replace(self.state, phase="idle", blocked=None, reason=None, given_up=())
+            # A restore not held gets its attempts again (the record stays: the next look writes it again).
+            self.state = replace(self.state, phase="idle", blocked=None, reason=None, given_up=(), settle_misses=0)
 
     # --- one look ---
 
     def step(self, inputs: ExecInputs) -> StepResult:
         now = inputs.now
+        self._sense(inputs)
         events: list[dict[str, Any]] = []
         today = now.date().isoformat()
         if self.state.day != today:
@@ -1009,9 +1119,13 @@ class Executor:
             events.append(_event(now, "unblocked", state.blocked or ""))
         if (
             state.phase == "blocked" and state.holds_snapshot and (state.blocked or "").startswith("restore_failed")
-            and (state.released_at is None or (now - state.released_at).total_seconds() >= BLOCKED_RESTORE_S)
+            and (
+                state.released_at is None
+                or (now - state.released_at).total_seconds() >= max(BLOCKED_RESTORE_S, self.control.restore_retry_s or 0.0)
+            )
         ):
             events += self._begin_restore(now, "restore_again")
+        events += self._settle(inputs)
 
         events += self._observe(inputs)
         if self.state.phase == "active":
@@ -1341,6 +1455,8 @@ class Executor:
             return "fuse_headroom"
         if self._hold_charges(inputs):
             return f"not_obeyed:{ACTION_HOLD}:charging"
+        if self._charge_over(inputs):
+            return f"not_obeyed:{ACTION_GRID_CHARGE}:over"
         # The battery's own instance runs the Remote EMS it turned on; the export instance only while the battery's
         # runs it (`sibling_active`): one taken by another controller (the app, a VPP) ends the curtail.
         management = management_problem(
@@ -1356,7 +1472,7 @@ class Executor:
             return f"management_changed:{management}"
         else:
             self.state = replace(self.state, management_unknown_since=None)
-        if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP:
+        if _writes_today(self.state, inputs) >= self._daily_cap:
             return "daily_write_cap"
         return self._charge_budget(inputs)
 
@@ -1383,18 +1499,26 @@ class Executor:
             return "setpoint_write_cap"
         if inputs.action != ACTION_GRID_CHARGE:
             return None
-        if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP - CHARGE_WRITE_RESERVE:
+        if _writes_today(self.state, inputs) >= self._daily_cap - self._charge_reserve:
             return "charge_write_budget"
         return None
 
     def _hold_charges(self, inputs: ExecInputs) -> bool:
-        """Whether a running idle hold's battery has charged for `HOLD_CHARGE_S` (kept in the state). Not while a peak
-        cover has the plant back in its own mode."""
+        """Whether a running idle hold's battery has charged for `HOLD_CHARGE_S` (kept in the state), or one under a
+        recipe's grid guard (`BrandControl.hold_grid_guard`) has charged from the grid that long: the lesser of its
+        charge and the site's import, so a sun it stores does not count. Not while a peak cover has the plant back in
+        its own mode."""
         state = self.state
         power = inputs.facts.power_kw
+        grid = inputs.grid_import_kw if inputs.measurement_ok else None
+        from_grid = (
+            self.control.hold_grid_guard and power is not None and grid is not None and math.isfinite(grid)
+            and min(power, grid) > HOLD_CHARGE_KW
+        )
         charging = (
-            not self._export and state.action == ACTION_HOLD and state.covered_at is None and self.control.hold_idle()
+            not self._export and state.action == ACTION_HOLD and state.covered_at is None
             and power is not None and math.isfinite(power) and power > HOLD_CHARGE_KW
+            and (self.control.hold_idle() or from_grid)
         )
         if not charging:
             if state.charging_since is not None:
@@ -1404,6 +1528,33 @@ class Executor:
         if state.charging_since is None:
             self.state = replace(state, charging_since=since)
         return (inputs.now - since).total_seconds() >= HOLD_CHARGE_S
+
+    def _charge_over(self, inputs: ExecInputs) -> bool:
+        """Whether a running balanced grid charge has taken more from the grid than commanded for `CHARGE_OVER_S`
+        (kept in the state): the lesser of the battery's charge and the site's import (so a sun it stores does not
+        count) above the rate by `CHARGE_OVER_KW` or a quarter of it. Judged only once its writes are read back and
+        `CHARGE_OVER_GRACE_S` (or the recipe's read-back wait) after the rate last changed. A charge per phase is
+        judged per phase."""
+        state = self.state
+        power = inputs.facts.power_kw
+        grid = inputs.grid_import_kw if inputs.measurement_ok else None
+        changed = state.rate_changed_at
+        grace = max(CHARGE_OVER_GRACE_S, self.control.readback_s or 0.0)
+        over = (
+            not self._export and state.action == ACTION_GRID_CHARGE and state.phase_kw is None
+            and changed is not None and (inputs.now - changed).total_seconds() >= grace
+            and state.pending is None and self._next_role(state, inputs) is None
+            and power is not None and grid is not None and math.isfinite(power) and math.isfinite(grid)
+            and min(power, grid) > state.rate_kw + max(CHARGE_OVER_KW, 0.25 * state.rate_kw)
+        )
+        if not over:
+            if state.over_since is not None:
+                self.state = replace(state, over_since=None)
+            return False
+        since = state.over_since or inputs.now
+        if state.over_since is None:
+            self.state = replace(state, over_since=since)
+        return (inputs.now - since).total_seconds() >= CHARGE_OVER_S
 
     def _begin_restore(self, now: datetime, reason: str) -> list[dict[str, Any]]:
         state = self.state
@@ -1426,7 +1577,7 @@ class Executor:
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
-            charging_since=None, priming=False, confirmed=(), phase_bad=(), house_kw=None,
+            charging_since=None, over_since=None, priming=False, confirmed=(), phase_bad=(), house_kw=None,
         )
         self._release_unset()
         return [_event(now, "hand_back", reason)]
@@ -1483,6 +1634,15 @@ class Executor:
             blocked = None
         if state.reason == "daily_write_cap":
             blocked = "daily_write_cap"
+        settle: dict[str, tuple[str, Native, Native, str]] = {}
+        if self.control.settle_s > 0:
+            # Watched a while: a restore that only Home Assistant echoed may show SpotNav's value again.
+            settle = {
+                name: (state.snapshot[name], state.restore_values[name], state.wrote[name], state.entities[name])
+                for name in state.written
+                if name in state.snapshot and name in state.restore_values and name in state.wrote
+                and name in state.entities and name not in state.given_up
+            }
         # A role that goes idle with the switch, written by the action, and handed back without a read-back.
         unsure = tuple(
             role.name for role in self.control.roles
@@ -1493,9 +1653,71 @@ class Executor:
             state, phase="blocked" if blocked else "idle", blocked=blocked, action=None, rate_kw=0.0, target={},
             snapshot={}, restore_values={}, entities={}, device_id=None, snapshot_at=None, sent=(), renew=(),
             released_at=now, given_up=state.given_up if blocked else (), written=(), confirmed=(),
-            unsure=tuple(dict.fromkeys((*state.unsure, *unsure))), phase_kw=None,
+            unsure=tuple(dict.fromkeys((*state.unsure, *unsure))), phase_kw=None, wrote={},
+            settle=settle, settle_until=now + timedelta(seconds=self.control.settle_s) if settle else None,
+            settle_misses=state.settle_misses if settle else 0,
         )
         return [_event(now, "handed_back", state.reason or "")]
+
+    def _settle(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """After a hand-back (`ExecState.settle`): a role that reads SpotNav's value again did not keep its restore
+        (a cloud refused it, or only Home Assistant echoed it). It is written again, `SETTLE_ATTEMPTS` times; then the
+        control blocks (`restore_not_held:<roles>`, the value found is kept so the facts still read it) until the role
+        reads the value found or someone else's. A role that reads someone else's value is no longer watched; the
+        watch ends `settle_s` after the hand-back."""
+        state = self.state
+        now = inputs.now
+        if not state.settle or state.phase not in ("idle", "blocked") or state.holds_snapshot:
+            return []
+        keep: dict[str, tuple[str, Native, Native, str]] = {}
+        not_held: list[str] = []
+        for name, row in state.settle.items():
+            _found, restore, wrote, _entity = row
+            try:
+                role = self.control.role(name)
+            except KeyError:
+                continue
+            read = inputs.reads.get(name)
+            now_read = reading(role, None if read is None else read.state)
+            step = None if read is None else (read.step or role.step)
+            if now_read is None or same(restore, now_read, step):
+                keep[name] = row
+            elif same(wrote, now_read, step):
+                keep[name] = row
+                not_held.append(name)
+        stuck = state.phase == "blocked" and (state.blocked or "").startswith("restore_not_held")
+        if not not_held:
+            if stuck:
+                # Set back (by hand) or taken by someone else: nothing of SpotNav's is left standing.
+                self.state = replace(state, phase="idle", blocked=None, reason=None, settle={}, settle_until=None,
+                                     settle_misses=0)
+                return [_event(now, "unblocked", state.blocked or "")]
+            if not keep or state.settle_until is None or now >= state.settle_until:
+                self.state = replace(state, settle={}, settle_until=None, settle_misses=0)
+            elif keep != state.settle:
+                self.state = replace(state, settle=keep)
+            return []
+        if stuck:
+            if keep != state.settle:
+                self.state = replace(state, settle=keep)
+            return []
+        misses = state.settle_misses + 1
+        events = [_event(now, "restore_not_held", ",".join(not_held), attempt=misses)]
+        if misses > SETTLE_ATTEMPTS:
+            self.state = replace(
+                state, phase="blocked", blocked=f"restore_not_held:{','.join(not_held)}", settle=keep,
+                settle_until=None, settle_misses=misses,
+            )
+            return events
+        rows = {name: keep[name] for name in not_held}
+        self.state = replace(
+            state, action=None, snapshot={name: row[0] for name, row in rows.items()},
+            restore_values={name: row[1] for name, row in rows.items()},
+            entities={name: row[3] for name, row in rows.items()},
+            wrote={name: row[2] for name, row in rows.items()}, written=tuple(not_held),
+            settle={}, settle_until=None, settle_misses=misses, released_at=now,
+        )
+        return events + self._begin_restore(now, "restore_not_held")
 
     # --- entering ---
 
@@ -1503,7 +1725,10 @@ class Executor:
         self, action: str, rate_kw: float, restore_values: Mapping[str, Native], phases: Phases | None = None, *,
         house_kw: float | None = None, behind: Phases | None = None,
     ) -> dict[str, Native]:
-        wanted = self.control.wanted(action, rate_kw, self.watchdog_s, phases, house_kw=house_kw, behind_kw=behind)
+        wanted = self.control.wanted(
+            action, rate_kw, self.watchdog_s, phases, house_kw=house_kw, behind_kw=behind,
+            soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent, capacity_kwh=self._capacity_kwh,
+        )
         out = {
             name: (restore_values[name] if value == SNAPSHOT else value)
             for name, value in wanted.items()
@@ -1542,6 +1767,17 @@ class Executor:
         facts = inputs.facts
         action = inputs.action
         rate = abs(inputs.rate_kw)
+        if action == ACTION_GRID_CHARGE and self.control.fixed_charge:
+            # The plant charges at its own rate: it must fit under the fuse cap as it is, never lowered.
+            fixed = fixed_rate_kw(self.control, facts)
+            if fixed is None or not math.isfinite(fixed):
+                return 0.0, "size_unknown"
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False)
+            if cap is None:
+                return 0.0, "headroom_unknown"
+            if fixed > cap + RATE_TOLERANCE_KW:
+                return 0.0, "fuse_headroom"
+            return round(fixed, 3), None
         if action == ACTION_GRID_CHARGE:
             limit = facts.max_charge_kw
             if limit is not None:
@@ -1565,6 +1801,23 @@ class Executor:
                 return 0.0, "rate_too_small"
         return round(rate, 3), None
 
+    def _hold_charge_problem(self, inputs: ExecInputs) -> str | None:
+        """Why a hold that may itself charge from the grid at the plant's fixed rate
+        (`BrandControl.hold_charges_without`, a role this plant lacks) cannot start: that rate does not fit in the
+        headroom left once the battery stops covering what it discharges now (`size_unknown`, `fuse_headroom`)."""
+        if not any(name in self._absent for name in self.control.hold_charges_without):
+            return None
+        fixed = fixed_rate_kw(self.control, inputs.facts)
+        if fixed is None or not math.isfinite(fixed):
+            return "size_unknown"
+        if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
+            return "headroom_unknown"
+        power = inputs.facts.power_kw
+        covered_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases if power is not None and power < 0 else 0.0
+        phases = min(max(inputs.charge_phases, 1), 3)
+        room = _kw(inputs.headroom_a - covered_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
+        return "fuse_headroom" if fixed > room + RATE_TOLERANCE_KW else None
+
     def _blocker(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
         action = inputs.action
@@ -1587,17 +1840,23 @@ class Executor:
             return "headroom_unknown"
         if action == ACTION_HOLD and not hold_headroom_ok(inputs):
             return "headroom_too_small"
+        if action == ACTION_HOLD:
+            self._sense(inputs)
+            problem = self._hold_charge_problem(inputs)
+            if problem is not None:
+                return problem
         if action == ACTION_GRID_CHARGE and inputs.headroom_a < HEADROOM_MARGIN_A:
             return "headroom_too_small"
         if action == ACTION_GRID_CHARGE and inputs.phase_probe_kw is not None and not hold_headroom_ok(inputs):
             # The verification's probe leaves two phases' house on the grid, as a hold does: the hold's start rule.
             return "headroom_too_small"
-        if _writes_today(state, inputs) >= DAILY_WRITE_CAP:
+        if _writes_today(state, inputs) >= self._daily_cap:
             return "daily_write_cap"
         budget = self._charge_budget(inputs)
         if budget is not None:
             return budget
-        if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < REARM_S:
+        rearm = REARM_S if self.control.rearm_s is None else max(REARM_S, self.control.rearm_s)
+        if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < rearm:
             return "rearm"
         for role, value, why in self.control.watched:
             read = inputs.reads.get(role.name)
@@ -1606,12 +1865,20 @@ class Executor:
             ) is False:
                 # Another control's target left standing would act under this one.
                 return f"{why}:{role.name}"
-        needed = set(self.control.wanted(action, 1.0, self.watchdog_s)) | {name for name, _ok, _why in self.control.requires}
+        self._sense(inputs)
+        wanted = self.control.wanted(
+            action, 1.0, self.watchdog_s, soc_pct=self._soc_pct, rated_kw=self._rated_kw, absent=self._absent,
+            capacity_kwh=self._capacity_kwh,
+        )
+        unresolved = self.control.unresolved(wanted)
+        if unresolved is not None:
+            return unresolved
+        needed = set(wanted) | {name for name, _ok, _why in self.control.requires}
         for name in sorted(needed):
             read = inputs.reads.get(name)
             role = self.control.role(name)
             if read is None or not read.found or read.entity_id is None:
-                return f"control_not_found:{name}"
+                return "needs_hacs_integration" if name in self.control.hacs_roles else f"control_not_found:{name}"
             if role.method != "service" and not read.enabled:
                 return f"control_disabled:{name}"
         for name, allowed, why in self.control.requires:
@@ -1648,7 +1915,10 @@ class Executor:
         action = inputs.action
         assert action is not None
         house, behind = self._grid_terms(inputs, action, phases)
-        self.state = replace(self.state, priming=bool(self.state.unsure and self.control.prime))
+        self.state = replace(
+            self.state, priming=bool(self.state.unsure and self.control.prime), wrote={}, settle={},
+            settle_until=None, settle_misses=0,
+        )
         self.state = replace(
             self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
             target=self._wanted(action, rate, restore_values, phases, house_kw=house, behind=behind),
@@ -1712,6 +1982,8 @@ class Executor:
             return
         if action == ACTION_DISCHARGE_HOUSE:
             rate = max(inputs.house_deficit_kw or 0.0, 0.0)
+        elif action == ACTION_GRID_CHARGE and self.control.fixed_charge:
+            rate = FIXED_CHARGE_JUDGE_KW
         before = inputs.grid_import_kw if kind == "curtail" else inputs.facts.power_kw
         idle = kind == "hold" and self.control.hold_idle()
         self.monitor.start(Command(kind, inputs.now, rate, before_kw=before, written=True, idle=idle))
@@ -1737,6 +2009,11 @@ class Executor:
                 ),
             )
             events.append(_event(now, "primed", state.action or action))
+        if action != state.action and self.control.slow and state.rate_changed_at is not None and (
+            (now - state.rate_changed_at).total_seconds() < self.control.min_change_s
+        ):
+            # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
+            return events
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
             self.state = replace(
@@ -1755,7 +2032,9 @@ class Executor:
             return [_event(now, "change", action, rate_kw=rate, **detail)]
         if phases is not None and state.phase_kw is not None:
             events += self._retarget_phases(inputs, rate, phases)
-        elif action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
+        elif action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE) and not (
+            action == ACTION_GRID_CHARGE and self.control.fixed_charge
+        ):
             since = (now - (state.rate_changed_at or now)).total_seconds()
             down = rate < state.rate_kw - RATE_TOLERANCE_KW
             up = rate >= state.rate_kw + RATE_STEP_KW and since >= RATE_UP_DWELL_S
@@ -1767,6 +2046,7 @@ class Executor:
                 )
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
+        events += self._renew_block(inputs)
         state = self.state
         if not self._fast_renewal():
             # A watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX): renewed as it always was, every
@@ -1791,6 +2071,25 @@ class Executor:
             self.state = replace(state, renew=renewed, watchdog_at=now)
             events.append(_event(now, "renew", ",".join(renewed)))
         return events
+
+    def _renew_block(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """A grid charge commanded in blocks (`BrandControl.charge_block_s`): once a block has run, its ceiling is
+        set one block ahead of the SoC now (written only where it changed). The block's start is `watchdog_at`."""
+        state = self.state
+        now = inputs.now
+        block = self.control.charge_block_s
+        if (
+            not block or state.action != ACTION_GRID_CHARGE or inputs.action != ACTION_GRID_CHARGE
+            or state.pending is not None or state.watchdog_at is None
+            or (now - state.watchdog_at).total_seconds() < block
+        ):
+            return []
+        target = self._wanted(ACTION_GRID_CHARGE, state.rate_kw, state.restore_values, state.phase_kw)
+        if self.control.unresolved(target) is not None:
+            return []
+        self.state = replace(state, target=target, watchdog_at=now)
+        changed = {name: value for name, value in target.items() if state.target.get(name) != value}
+        return [_event(now, "block", ACTION_GRID_CHARGE, **({"target": changed} if changed else {}))]
 
     def _retarget_phases(self, inputs: ExecInputs, rate: float, phases: Phases) -> list[dict[str, Any]]:
         """A running charge per phase: a phase whose room fell under its target goes down at once (every phase then
@@ -1877,7 +2176,7 @@ class Executor:
         if self.control.role(name).write_class == "setpoint":
             # A setpoint written to 0 stops something: never held back.
             return self._setpoints_spent() and state.target.get(name) != 0.0
-        return _writes_today(state, inputs) >= DAILY_WRITE_CAP
+        return _writes_today(state, inputs) >= self._daily_cap
 
     def _cover(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """Under a hold: lift it when the headroom falls under `PEAK_COVER_A`, hand back in full when it does not
@@ -1886,7 +2185,7 @@ class Executor:
         now = inputs.now
         headroom = inputs.headroom_a
         first = self.control.peak_first.get(ACTION_HOLD, ())
-        if state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
+        if self.control.slow or state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
             return []
         if state.covered_at is None:
             if headroom >= PEAK_COVER_A:
@@ -1997,6 +2296,8 @@ class Executor:
         writes = state.writes_today + (0 if setpoint else counted)
         setpoints = state.setpoint_writes_today + (counted if setpoint else 0)
         written = state.written if name in state.written else (*state.written, name)
+        if not restoring and not renewing:
+            state = replace(state, wrote=state.wrote | {name: value})
         if role.method == "button":
             # A button has no read-back: pressed once per target; the monitor judges what it did.
             self.state = replace(state, sent=sent, renew=renew, writes_today=writes, written=written,

@@ -230,7 +230,8 @@ def test_no_dead_man_is_counted_on_and_the_caps_are_the_cautious_ones() -> None:
     }
     # The dongle stalls: a read-back may come later than on any other brand.
     assert control.readback_s == READBACK_STALL_S == 180.0 > READBACK_DEADLINE_S
-    assert all(other.readback_s is None for other in CONTROLS if other is not control)
+    # Only a cloud waits longer (Tesla's).
+    assert all(other.readback_s is None for other in CONTROLS if other is not control and not other.slow)
 
 
 # --- the writes and their read-back ----------------------------------------------------------------------------------

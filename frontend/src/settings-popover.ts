@@ -338,6 +338,9 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.firmwareUnknown");
     case "control_not_found":
       return translate(language, "battery.need.controlNotFound", { role: roleName(param ?? "") });
+    case "needs_hacs_integration":
+      // The repository is the recipe's (`BrandControl.hacs_repo`), after the first colon only: it holds a slash.
+      return translate(language, "battery.need.needsHacs", { repo: need.slice(kind.length + 1) || "HACS" });
     case "control_disabled":
       return translate(language, "battery.need.controlDisabled", { role: roleName(param ?? "") });
     case "outside_control":

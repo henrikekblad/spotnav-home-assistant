@@ -100,6 +100,7 @@ from .commands import (
     answered,
     control_for,
     export_control_for,
+    fixed_rate_kw,
     reading,
     service_call,
 )
@@ -369,6 +370,7 @@ class BatteryControl:
             # The outside-control watch does not count SpotNav's own writes as someone else's, and the shadow hold
             # judges a plant in AI mode as control would.
             battery_shadow.spotnav_acting = self.acting
+            battery_shadow.found_states = self.found_states
             battery_shadow.takeover = lambda: self.options().ai_takeover_ack
             battery_shadow.hold_variant = self.hold_variant
 
@@ -1381,7 +1383,7 @@ class BatteryControl:
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
         slot, why = gate.restricted(
             self._merged_slot(now), allowed, self._charge_limits(now, options, phased=control.phased)[0],
-            self._export_cap_kw(),
+            self._export_cap_kw(), self._fixed_charge_kw(), hold_charges=self._hold_charges(),
         )
         action = None if slot is None else slot[0]
         if action in (None, ACTION_SELF_CONSUME):
@@ -1405,13 +1407,31 @@ class BatteryControl:
 
     def _merged_slot(self, now: datetime) -> tuple[str, float, datetime | None] | None:
         """The plan's running slot with the hold for the car (`gate.merged_action`)."""
-        return gate.merged_action(self._plan_now(now), self.site.battery_shadow.hold_requested())
+        control = control_for(self.facts.brand)
+        # A slow control (a cloud) runs planned actions only: no hold for a car, which comes and goes in minutes.
+        hold_requested = self.site.battery_shadow.hold_requested() and not (control is not None and control.slow)
+        return gate.merged_action(self._plan_now(now), hold_requested)
+
+    def _fixed_charge_kw(self) -> float | None:
+        """The rate a plant charges at when the recipe cannot set it (`commands.fixed_rate_kw`), `None` otherwise."""
+        control = control_for(self.facts.brand)
+        return None if control is None else fixed_rate_kw(control, self.facts)
+
+    def _hold_charges(self) -> bool:
+        """Whether a hold on this plant may itself charge from the grid at its fixed rate: a role whose absence lets it
+        (`BrandControl.hold_charges_without`) is not found."""
+        control = control_for(self.facts.brand)
+        if control is None or not control.hold_charges_without:
+            return False
+        reads = read_role_reads(self.hass, self.site.config, control)
+        return any((read := reads.get(name)) is None or not read.found for name in control.hold_charges_without)
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         slot, why = gate.restricted(
             self._merged_slot(now),
             gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge()),
-            self._charge_limits(now, options)[0], self._export_cap_kw(),
+            self._charge_limits(now, options)[0], self._export_cap_kw(), self._fixed_charge_kw(),
+            hold_charges=self._hold_charges(),
         )
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.
@@ -1773,12 +1793,17 @@ class BatteryControl:
 
     def _read_facts(self) -> BatteryFacts:
         power_kw, _age = self._battery_power()
-        return self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        return self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
 
     def _with_outside(self, facts: BatteryFacts) -> BatteryFacts:
         """A battery the site's outside-control watch marks is another system's: every look refuses it."""
         battery_shadow = getattr(self.site, "battery_shadow", None)
         return facts if battery_shadow is None else battery_shadow.with_outside(facts)
+
+    def found_states(self) -> dict[str, str]:
+        """The states the battery's executor found before it first wrote, by entity id (`Executor.found_states`)."""
+        executor = self.executor
+        return {} if executor is None else executor.found_states()
 
     def acting(self) -> bool:
         """Whether this path acts on the battery or the export limit now (its writes are no one else's), and for
@@ -1879,7 +1904,7 @@ class BatteryControl:
     ) -> ExecInputs:
         """The battery's look with `slot` as the action (by default what control runs now)."""
         power_kw, age_s = self._battery_power()
-        self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         try:
@@ -1984,7 +2009,7 @@ class BatteryControl:
         except Exception:  # noqa: BLE001
             power_kw, age_s = None, None
         try:
-            self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+            self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
         except Exception:  # noqa: BLE001
             facts = self.facts
         try:
@@ -2155,7 +2180,13 @@ class BatteryControl:
         for role in control.roles:
             read = reads.get(role.name)
             if read is None or not read.found:
-                needs.append(f"control_not_found:{role.name}")
+                if role.name in control.hacs_roles:
+                    # Core's integration lacks it: one note the person can act on, not one line per control.
+                    need = f"needs_hacs_integration:{control.hacs_repo}"
+                    if need not in needs:
+                        needs.append(need)
+                elif not role.optional:
+                    needs.append(f"control_not_found:{role.name}")
             elif role.method != "service" and not read.enabled:
                 needs.append(f"control_disabled:{role.name}")
         management = facts.management
