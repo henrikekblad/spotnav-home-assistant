@@ -43,7 +43,6 @@ RUNS: Final = (1, 2)
 SNAPSHOT_MAX_LEAD_H: Final = {1: 30.0, 2: 54.0}
 ISSUE_DAY_AHEAD: Final = "day_ahead"
 ISSUE_MORNING: Final = "morning"
-ISSUES: Final = (ISSUE_DAY_AHEAD, ISSUE_MORNING)
 #: A day not fully measured is reviewed anyway this many days after it.
 REVIEW_WAIT_DAYS: Final = 2
 _WEATHER_FIELDS: Final = ("g", "b", "c", "t")

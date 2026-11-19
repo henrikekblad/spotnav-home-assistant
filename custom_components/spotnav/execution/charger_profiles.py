@@ -69,18 +69,6 @@ PATH_SWITCH_BUDGET: Final = "switch_budget"
 #: A switch whose state is assumed for a while after each command, read from the charger's status meanwhile
 #: (NexBlue).
 PATH_SWITCH_ASSUMED: Final = "switch_assumed"
-PATH_KINDS: Final = (
-    PATH_SWITCH,
-    PATH_SELECT,
-    PATH_BUTTONS,
-    PATH_EASEE,
-    PATH_SELECT_RESTORE,
-    PATH_NUMBER_PAUSE,
-    PATH_BUTTONS_TOGGLE,
-    PATH_SELECT_APPROVE,
-    PATH_SWITCH_BUDGET,
-    PATH_SWITCH_ASSUMED,
-)
 
 
 @dataclass(frozen=True, slots=True)

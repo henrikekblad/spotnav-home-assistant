@@ -169,7 +169,3 @@ def attach_log_buffer() -> SpotNavLogBuffer:
     logger.addHandler(buffer)
     return buffer
 
-
-def detach_log_buffer(buffer: SpotNavLogBuffer | None) -> None:
-    if buffer is not None:
-        logging.getLogger(SPOTNAV_LOGGER).removeHandler(buffer)

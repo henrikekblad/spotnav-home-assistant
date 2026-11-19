@@ -102,10 +102,6 @@ class StepGuard:
         self._overshot_a: float | None = None
         self._overshot_until: float | None = None
 
-    @property
-    def overshot_a(self) -> float | None:
-        return self._overshot_a
-
     def _in_flight(self, now: float, charger_read_at: float | None) -> bool:
         """Whether the charger's reading was taken before it could show the last write."""
         written = self._last_write_at

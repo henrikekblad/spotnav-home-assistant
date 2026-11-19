@@ -63,20 +63,6 @@ STOP_HELD_AT_FLOOR: Final = "held_at_floor"
 
 #: Outcomes in which the charger now carries the requested current.
 IN_EFFECT_OUTCOMES: Final = frozenset({ASSIGN_ASSIGNED, ASSIGN_UNCONFIRMED, ASSIGN_UNCHANGED})
-#: Outcomes in which a write was refused by policy or capability, before anything was sent.
-REFUSED_OUTCOMES: Final = frozenset(
-    {
-        ASSIGN_RATE_LIMITED,
-        ASSIGN_FLASH_GUARD,
-        ASSIGN_IGNORED_WHILE_PAUSED,
-        ASSIGN_INSTALLATION_SHARED,
-        ASSIGN_EXTERNAL_BALANCER,
-        ASSIGN_UNSUPPORTED,
-        ASSIGN_UNIT_UNKNOWN,
-        ASSIGN_TARGET_UNAVAILABLE,
-        ASSIGN_BELOW_MINIMUM,
-    }
-)
 
 # Why a current is being written: a session start (or a manual one), the regulator loop, the
 # restore after active control is turned off, a re-send after the charger forgot its limit, the sun's own

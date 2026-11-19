@@ -1002,21 +1002,6 @@ class PriceRepository:
             self._prune()
             await self._store.async_save(self._payload())
 
-def read_state(present: bool, error: FailureCode | None, refreshing: bool) -> CatalogueState:
-    """The state of a resource as a reader sees it, with no attempt started.
-
-    Same precedence as the fetch paths: last good wins, a failure beside it is `stale`, and only an
-    empty cache is `loading`, `invalid` or `unavailable`.
-    """
-    if present:
-        return "ready" if error is None else "stale"
-    if refreshing:
-        return "loading"
-    if error is None or is_transport(error):
-        return "unavailable"
-    return "invalid"
-
-
 def _dated_on(document: PriceDocument, calendar: str) -> bool:
     """Whether a day file starts at its date's midnight on [calendar], i.e. covers that calendar's day."""
     return document.start_instant == local_midnight(document.day, calendar).astimezone(dt_util.UTC)

@@ -340,12 +340,10 @@ RoleMethod = Literal["number", "select", "switch", "button", "service", "sensor"
 #: What a role is, for how often it may be written in a day (`BrandControl.write_caps`): a `setting` (a limit, a mode,
 #: a switch: possibly stored in flash) or a `setpoint` made for continuous outside control.
 WriteClass = Literal["setting", "setpoint"]
-WRITE_CLASSES: Final[tuple[WriteClass, ...]] = ("setting", "setpoint")
 #: Writes a day per class, outside restores and watchdog renewals. A setting, and anything of a brand or role not
 #: checked: 96. A setpoint whose maker says it is volatile or made for continuous control: about 2000 (still a
 #: runaway guard: reaching it hands back). A setpoint the maker's protocol says nothing about: 500.
 SETTING_WRITES: Final = 96
-SETPOINT_WRITES_CONTINUOUS: Final = 2000
 SETPOINT_WRITES_UNSTATED: Final = 500
 #: How long a write may take to read back (s) where the plant's link stops answering now and then (Solinteg's dongle:
 #: 4-8 s about once a minute, about 70 s seen once), instead of the ledger's `READBACK_DEADLINE_S`.

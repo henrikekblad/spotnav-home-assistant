@@ -157,9 +157,6 @@ class SourceStatus:
         }
 
 
-NO_SOURCE: Final = SourceStatus(key=None, name=None, url=None, notice=ProviderNotice("source_missing"))
-
-
 def source_notice(facts: SourceFacts) -> ProviderNotice | None:
     """The table of the module, row by row: the area's own notice, else the Zonneplan hint."""
     own = _own_notice(facts)

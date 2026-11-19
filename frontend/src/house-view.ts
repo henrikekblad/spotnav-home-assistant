@@ -780,20 +780,6 @@ export function localDate(timeZone: string, nowMs: number): string {
   }
 }
 
-/** The battery's level and mode, under the schematic ("Batteri 48 % · läge Balanserad"); `null` without a battery. */
-export function batterySub(language: Language, answer: HouseAnswer): string | null {
-  const battery = answer.battery;
-  if (battery === null) {
-    return null;
-  }
-  const words: string[] = [];
-  if (battery.soc_pct !== null) {
-    words.push(translate(language, "house.sub.soc", { pct: pct(language, battery.soc_pct) }));
-  }
-  words.push(translate(language, "house.sub.mode", { mode: modeName(language, answer.today?.mode ?? battery.mode) }));
-  return words.join(" · ");
-}
-
 function statusParagraph(doc: Document, language: Language, key: TranslationKey, line: string): HTMLElement {
   const paragraph = element(doc, "p", `${C.muted} ${H.line}`, translate(language, key));
   paragraph.setAttribute("role", "status");

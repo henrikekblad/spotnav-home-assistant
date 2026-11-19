@@ -56,12 +56,11 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import fields, replace
-from datetime import date, datetime, time
+from datetime import date, time
 from typing import Any, Callable, Final, Mapping
 
 from homeassistant.components import websocket_api
 from homeassistant.core import callback, HomeAssistant
-from homeassistant.util import dt as dt_util
 
 from ..planning.auto_controller import SettingsReconcileError
 from ..planning.auto_settings import (
@@ -186,9 +185,6 @@ FISCAL_COMPONENT_NAMES: Final = (("vat", "vat"), ("tax", "tax"), ("transfer", "g
 OVERRIDE_KEYS: Final = frozenset({"area_id", "vat", "tax", "transfer"})
 FISCAL_KEYS: Final = frozenset({"enabled", "value"})
 TARGET_KEYS: Final = frozenset({"vehicle_id", "target_percent"})
-
-#: The read-only pause observation: the persisted record, or three nulls.
-PAUSE_KEYS: Final = frozenset({"choice", "admitted_at", "expires_at"})
 
 SETTINGS_ENVELOPE_KEYS: Final = frozenset({"api_version", "ok", "error", "settings", "pause"})
 
@@ -650,18 +646,6 @@ def encode_pause(intent: PauseIntent) -> dict[str, Any]:
     every other pause is the three keys it always was.
     """
     return intent.as_dict()
-
-
-def _pause_instant(value: Any, what: str) -> datetime | None:
-    """A wire instant: an offset-bearing ISO string, or null. Never a naive value."""
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        _refuse("invalid_pause", f"pause.{what} must be an ISO instant or null")
-    parsed = dt_util.parse_datetime(value)
-    if parsed is None or parsed.tzinfo is None:
-        _refuse("invalid_pause", f"pause.{what} must be an offset-bearing ISO instant")
-    return parsed
 
 
 def expected_revision_from(raw: Any) -> int:

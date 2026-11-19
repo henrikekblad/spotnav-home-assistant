@@ -50,6 +50,3 @@ export function targetNeedKwh(facts: NeedFacts): number | null {
   return needed === 0 ? 0 : needed / facts.efficiency;
 }
 
-export function pythonRoundedAbove(targetPercent: number, maxPercent: number | null): boolean {
-  return maxPercent !== null && pythonRound(targetPercent) > chargeCeiling(maxPercent);
-}

@@ -7,7 +7,7 @@
 import { formatNumber, percentAmount } from "./format";
 import { translate, type Language } from "./i18n";
 import { SETTINGS_DRIVER_TARGET_SOC, type ConnectionState, type SettingsRecord } from "./types";
-import { GUEST_VEHICLE_ID, type Soc, type Vehicle } from "./validate";
+import { GUEST_VEHICLE_ID, type Soc } from "./validate";
 
 export interface VehicleLineFacts {
   vehicleId: string;
@@ -41,10 +41,6 @@ export function ageSentence(language: Language, seconds: number): string {
     return translate(language, "settings.soc.age.hour", { count: String(Math.floor(seconds / 3600)) });
   }
   return translate(language, "settings.soc.age.day", { count: String(Math.floor(seconds / 86400)) });
-}
-
-function vehicleName(language: Language, name: string | null): string {
-  return name !== null && name.trim() !== "" ? name : translate(language, "settings.vehicle.unnamed");
 }
 
 export function vehicleLineFor(
@@ -104,15 +100,3 @@ export function connectionLabel(language: Language, connection: ConnectionState 
   return translate(language, `connection.${connection.shown}`);
 }
 
-export function vehicleChoicesFor(
-  language: Language,
-  vehicles: readonly Vehicle[],
-  plannedId: string | null,
-): VehicleChoice[] {
-  return vehicles.map((vehicle) => ({
-    id: vehicle.id,
-    name: vehicleName(language, vehicle.name),
-    charge: vehicle.soc_percent === null ? null : percentAmount(language, vehicle.soc_percent),
-    selected: vehicle.id === plannedId,
-  }));
-}

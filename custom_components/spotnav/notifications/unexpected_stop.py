@@ -52,14 +52,6 @@ REASON_HELD_BY_CHARGER: Final = "held_by_charger"
 REASON_VEHICLE_NOT_REQUESTING: Final = "vehicle_not_requesting"
 REASON_STOPPED: Final = "stopped"
 REASON_NOT_STARTED: Final = "not_started"
-STOP_REASONS: Final = (
-    REASON_CHARGER_UNAVAILABLE,
-    REASON_CHARGER_DISABLED,
-    REASON_HELD_BY_CHARGER,
-    REASON_VEHICLE_NOT_REQUESTING,
-    REASON_STOPPED,
-    REASON_NOT_STARTED,
-)
 
 
 @dataclass(frozen=True, slots=True)

@@ -213,9 +213,6 @@ PRICE_PLATFORMS = ["binary_sensor", "number", "select", "sensor"]
 # A price entry's data: the area, and each fee as a charger's settings store it
 # (`auto_settings.FiscalOverride.as_dict`: `{"enabled": bool, "value": float | None}`).
 CONF_PRICE_AREA = "area_id"
-CONF_PRICE_VAT = "vat"
-CONF_PRICE_TAX = "tax"
-CONF_PRICE_TRANSFER = "transfer"
 # How many times the area or fees were written in place (`pricing/price_source.py:async_write_price_entry`): a
 # counter that only grows, folded into the settings record's `revision` so a body read before a change is stale.
 CONF_PRICE_WRITE_REVISION = "write_revision"
