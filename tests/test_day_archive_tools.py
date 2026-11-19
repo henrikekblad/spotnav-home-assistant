@@ -198,9 +198,14 @@ def test_one_plan_at_midnight_gives_the_recorded_saving_again() -> None:
     assert result["mode"] == "balanced" and result["slots"] == 96 and result["replanned"] == "once"
     assert result["recorded"]["saving"] == 726.75
     # The record's plans were made once at midnight on the same forecasts: today's planner finds the same actions
-    # (to within the rounding of the stored prices and kW).
-    assert abs(result["difference"]) < 1.0
-    assert set(result["replayed"]["mode_savings"]) == {"balanced", "max_profit"}
+    # (to within the rounding of the stored prices and kW) where its rules are the same: Max profit's. Balanced has
+    # kept the house's need until the next cheap hours before a sale since the record was made, so it sells less of
+    # that evening's peak.
+    replayed, recorded = result["replayed"]["mode_savings"], result["recorded"]["mode_savings"]
+    assert set(replayed) == {"balanced", "max_profit"}
+    assert replayed["max_profit"] == pytest.approx(recorded["max_profit"], abs=1.0)
+    assert result["difference"] == pytest.approx(replayed["balanced"] - recorded["balanced"], abs=0.01)
+    assert replayed["balanced"] < recorded["balanced"]
     # The measured quarter hours are stored rounded: the same runs come out within a few hundredths of a krona.
     assert result["replayed"]["actual_saving"] == pytest.approx(result["recorded"]["actual_saving"], abs=1.0)
     assert result["replayed"]["self_consumption_net"] == pytest.approx(result["recorded"]["self_consumption_net"], abs=1.0)
