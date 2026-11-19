@@ -52,7 +52,9 @@ async def test_the_view_of_a_site_without_a_charger_offers_adding_one(hass: Home
     ids = [item["id"] for item in view["setup"]["items"]]
     assert ids[0] == "charger"
     assert {"id": "charger", "dismissible": True} in view["setup"]["items"]
-    assert not {"vehicle", "car_level", "phone", "app", "phase_switching", "site"} & set(ids)
+    assert not {"vehicle", "car_level", "phone", "phase_switching", "site"} & set(ids)
+    # A home without a charger pairs with the app too (SpotNav 3.0): "Get the app", until the app has been used.
+    assert {"id": "app", "dismissible": True} in view["setup"]["items"]
 
 
 async def test_the_view_by_a_charger_is_its_sites(hass: HomeAssistant, hass_ws_client: Any) -> None:
