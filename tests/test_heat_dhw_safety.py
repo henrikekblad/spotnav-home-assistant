@@ -692,3 +692,36 @@ async def test_a_start_given_up_on_that_lands_is_spotnavs_and_still_shed(hass: H
         await settle(hass)
     assert hass.states.get(LUX).state == "Off" and hot_water.shed_day is not None
 
+
+@pytest.mark.usefixtures("short_calls")
+async def test_a_pulse_that_closes_late_is_opened_at_each_look_until_it_reads_off(
+    hass: HomeAssistant, freezer, monkeypatch
+) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=PULSE_SWITCH)
+    hot_water = controller.heat_shadow.hot_water
+    hass.states.async_set(PULSE_SWITCH, "off")
+    writes = Hangs(hass, freezer)
+    writes.hang = {"turn_on"}
+    writes.fail = True  # the off sent after the give-up fails too (the device is unreachable)
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    await settle(hass)
+    # The device comes back and the hung turn-on lands: the switch is on, SpotNav did not see it.
+    hass.states.async_set(PULSE_SWITCH, "on")
+    now = controller.demand.now()
+    hot_water.tick(now)
+    await settle(hass)
+    assert hass.states.get(PULSE_SWITCH).state == "on", "not before it was on a while"
+    freezer.tick(timedelta(minutes=2))
+    hot_water.tick(now + timedelta(minutes=2))
+    await settle(hass)
+    assert hass.states.get(PULSE_SWITCH).state == "on", "the off failed"
+    writes.fail = False
+    hot_water.tick(now + timedelta(minutes=3))
+    await settle(hass)
+    assert hass.states.get(PULSE_SWITCH).state == "off"
+    calls = len(writes.calls)
+    hot_water.tick(now + timedelta(minutes=4))
+    await settle(hass)
+    assert len(writes.calls) == calls, "once off, nothing more"

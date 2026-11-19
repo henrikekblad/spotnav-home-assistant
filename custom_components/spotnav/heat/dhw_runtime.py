@@ -109,6 +109,9 @@ SHED_LOOKS: Final = 2
 #: no timeout of its own, and a hung pump integration must not hold a stop task, so a later shed or backstop runs.
 #: Long enough for a cloud route.
 CALL_TIMEOUT_S: Final = 30.0
+#: A pulse switch SpotNav wrote within `PULSE_WATCH` that reads on for longer than `PULSE_LEFT_ON` is opened.
+PULSE_LEFT_ON: Final = timedelta(minutes=1)
+PULSE_WATCH: Final = timedelta(hours=2)
 
 
 def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date, key: str = "live") -> float:
@@ -771,6 +774,8 @@ class HotWater:
         config = self.shadow.config()
         self._observe(now, config)
         if self._side is None or self._side.done():
+            self._pulse_left_on(now, config)
+        if self._side is None or self._side.done():
             # A stop (the backstop, a shed) is its own task: a start's read-back never holds it back.
             self._backstop(now, config)
             self._shed_check(now, config)
@@ -898,6 +903,25 @@ class HotWater:
                 self.ledger.close(route.entity_id, now)
 
         self._side = self.hass.async_create_background_task(stop(), f"spotnav hot water backstop {self.shadow.site.entry_id}")
+
+    def _pulse_left_on(self, now: datetime, config: HeatConfig) -> None:
+        """A pulse switch SpotNav wrote within `PULSE_WATCH` that reads on for longer than `PULSE_LEFT_ON` (a turn-on
+        that landed after it was given up on, an off that failed): opened, at each look until it reads off, so the
+        pump's hot-water input is never held (`async_start` does the same at the start)."""
+        route = self.route(config)
+        if route is None or route.kind != "pulse" or route.domain not in ("switch", "input_boolean"):
+            return
+        state = self.hass.states.get(route.entity_id)
+        if state is None or state.state != "on" or now - state.last_changed < PULSE_LEFT_ON:
+            return
+        last = next((entry for entry in reversed(self.ledger.entries) if entry.entity_id == route.entity_id), None)
+        if last is None or now - last.at > PULSE_WATCH:
+            return
+        _LOGGER.info("SpotNav hot water: %s still on after a pulse; turning it off", route.entity_id)
+        call = (route.domain, "turn_off", {"entity_id": route.entity_id})
+        self._side = self.hass.async_create_background_task(
+            self._async_call_quietly(call), f"spotnav hot water pulse off {self.shadow.site.entry_id}"
+        )
 
     async def _async_call_quietly(self, call: tuple[str, str, dict[str, Any]]) -> bool:
         """One service call, its failure logged (the next look tries again where it still applies)."""
@@ -1196,8 +1220,8 @@ class HotWater:
                 await _async_service(self.hass, domain, service, data)
             except TimeoutError:
                 if route.kind == "pulse":
-                    # Given up on, the switch may still close late: a pulse never stays on. A pulse is read back by
-                    # its run, not here.
+                    # Given up on, the switch may still close late: a pulse never stays on (`_pulse_left_on` opens
+                    # it at a later look should this fail too). A pulse is read back by its run, not here.
                     if pulse:
                         await self.hass.services.async_call(domain, "turn_off", data, blocking=False)
                     raise
