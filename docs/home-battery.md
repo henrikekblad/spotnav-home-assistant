@@ -51,8 +51,9 @@ card's gear or the charging card's **Settings** (administrators only). The secti
   passed, failed or not judged yet) with what SpotNav may then do;
 * the reminder to turn AI mode on again after a takeover ended;
 * **Mode**: **Self-consumption**, **Balanced** (the default) or **Max profit**
-  ([the three modes](battery-plan.md#the-three-modes)). Only **Max profit** lets control sell from the battery to the
-  grid.
+  ([the three modes](battery-plan.md#the-three-modes)). **Max profit** lets control sell from the battery to the
+  grid whenever that pays, **Balanced** only surplus and only when it is highly profitable, **Self-consumption**
+  never.
 
 ![The Home battery section of the settings: the mode, Battery control, its checklist and the check's steps](images/settings-home-battery.png)
 
@@ -258,7 +259,9 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
   minute.
 * **What backs off first** when the fuse is short: the battery's grid charge, then the car; the car first when its
   departure has room. With the solar priority "battery first" the car backs off before the battery.
-* **Selling from the battery** (discharging to the grid) is off unless you allow it in the battery section.
+* **Selling from the battery** (discharging to the grid) follows the mode: never in **Self-consumption**, only when it
+  is highly profitable in **Balanced**, whenever it pays in **Max profit**. It needs the check's house step (above),
+  and it is capped so that it and the sun's export keep every phase under the fuse.
 * **At most 96 writes a day** to the plant's settings (limits, modes, switches), outside hand-backs. A grid charge
   leaves the last 12 of them untouched, so a hold can still start after a day of charges that kept starting. The
   targets per phase are setpoints made for an outside controller and have their own count, 500 a day on Sigenergy

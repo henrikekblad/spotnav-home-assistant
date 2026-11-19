@@ -19,8 +19,11 @@ Pure: no `hass`, no clock, no storage. A shadow: it plans and prices, it writes 
 * **Money.** Import at `buy`, export at `sell`. The cycle cost (`cycle_cost` per kWh charged or discharged) steers the
   search against churn but is reported apart (`wear`), never as money; so does the spread gate's margin
   (`export_hurdle` per kWh the battery sells, reported as `hurdle`).
-* **Modes** (`plan_model.MODE_DEFS`, `plan_mode`): a mode sets the floor, the wear, and whether and how the battery
-  may sell; Self-consumption does not plan at all (its plan is the baseline).
+* **House first** (`export_reserve`, the spread gate's): a sale from the battery stops at what the house's deficit
+  needs from the next slot until the next cheap hours (`house_reserve_kwh`: a slot whose buy price is among the
+  horizon's cheapest `CHEAP_SHARE`), so only the surplus beyond it is sold.
+* **Modes** (`plan_model.MODE_DEFS`, `plan_mode`): a mode sets the wear, and whether and how the battery may sell;
+  Self-consumption does not plan at all (its plan is the baseline).
 * **The horizon's end.** A kWh still stored at the end is worth `end_value` (default: the horizon's median buy price
   times the round trip), so the plan neither empties the battery nor fills it for nothing at the horizon.
 * **Baseline.** The same slots with self-consumption only; `BatteryPlan.savings` is the difference with the end
@@ -29,6 +32,7 @@ Pure: no `hass`, no clock, no storage. A shadow: it plans and prices, it writes 
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections.abc import Sequence
 from dataclasses import replace
@@ -42,6 +46,7 @@ from .plan_model import (
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
+    DEFAULT_SELL_MARGIN,
     EXPORT_OFF,
     BatteryMode,
     BatteryParams,
@@ -56,6 +61,8 @@ from .plan_model import (
 _SAME_KW = 1e-6
 #: A gain smaller than this does not move the plan off an earlier action (minor units).
 _TIE = 1e-6
+#: The next cheap hours for house first: a slot whose buy price is among this share of the horizon's cheapest.
+CHEAP_SHARE = 0.25
 
 
 class _Outcome(NamedTuple):
@@ -101,7 +108,8 @@ def action_power(
 
     Every action but a grid charge follows the slot's load and sun, so a plan made on a forecast is run against
     what really happens by calling this with the real slot. A grid charge asks for [charge_kw] (or the sun's whole
-    surplus, if more).
+    surplus, if more). A discharge for export asks for all it can, or at most [charge_kw]'s size when one is given
+    (the planned kW, which house first may have held below that).
     """
     charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
     net = slot.net_kw
@@ -116,14 +124,40 @@ def action_power(
     if action == ACTION_GRID_CHARGE:
         return min(charge_lim, max(charge_kw, surplus))
     if action == ACTION_EXPORT_DISCHARGE:
-        return -discharge_lim
+        return -min(discharge_lim, abs(charge_kw)) if charge_kw else -discharge_lim
     raise ValueError(f"unknown action {action!r}")
 
 
+def house_reserve_kwh(slots: Sequence[PlanSlot], battery: BatteryParams) -> list[float]:
+    """Per slot: the stored kWh the house's deficit needs after it until the next cheap hours (the first later slot
+    whose buy price is among the horizon's cheapest `CHEAP_SHARE`; the horizon's end when none), at most the
+    battery's span. A slot's own deficit is not in it: a discharge for export covers that as it runs."""
+    buys = sorted(slot.buy for slot in slots)
+    cheap = buys[max(0, math.ceil(len(buys) * CHEAP_SHARE) - 1)] if buys else 0.0
+    eff = battery.one_way_efficiency
+    span = battery.max_kwh - battery.min_kwh
+    out = [0.0] * len(slots)
+    need = 0.0
+    for index in range(len(slots) - 1, -1, -1):
+        out[index] = min(span, need)
+        slot = slots[index]
+        need = 0.0 if slot.buy <= cheap else need + max(0.0, slot.net_kw) * slot.hours / eff
+    return out
+
+
+def _reserves(request: PlanRequest) -> list[float] | None:
+    """House first's reserve per slot when the request keeps one, else `None`."""
+    if request.allow_export_discharge and request.export_reserve:
+        return house_reserve_kwh(request.slots, request.battery)
+    return None
+
+
 def _candidates(
-    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, request: PlanRequest
+    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, request: PlanRequest, reserve: float | None = None
 ) -> list[tuple[str, float]]:
-    """The actions open in [slot] at [soc_kwh], as (action, wanted AC battery power), duplicates dropped."""
+    """The actions open in [slot] at [soc_kwh], as (action, wanted AC battery power), duplicates dropped. With a
+    [reserve] (house first), a discharge for export leaves at least that much stored above the floor, and is not
+    open where that leaves nothing beyond the slot's own deficit."""
     wanted = [
         (action, action_power(slot, battery, soc_kwh, action))
         for action in (ACTION_SELF_CONSUME, ACTION_HOLD, ACTION_DISCHARGE_HOUSE)
@@ -132,7 +166,12 @@ def _candidates(
         power = action_power(slot, battery, soc_kwh, ACTION_GRID_CHARGE, share * battery.max_charge_kw)
         wanted.append((ACTION_GRID_CHARGE, power))
     if request.allow_export_discharge:
-        wanted.append((ACTION_EXPORT_DISCHARGE, action_power(slot, battery, soc_kwh, ACTION_EXPORT_DISCHARGE)))
+        power = action_power(slot, battery, soc_kwh, ACTION_EXPORT_DISCHARGE)
+        if reserve is not None:
+            room = max(0.0, (soc_kwh - battery.min_kwh - reserve) * battery.one_way_efficiency / slot.hours)
+            power = max(power, -room)
+        if reserve is None or -power > max(0.0, slot.net_kw) + _SAME_KW:
+            wanted.append((ACTION_EXPORT_DISCHARGE, power))
 
     out: list[tuple[str, float]] = []
     for action, power in wanted:
@@ -220,11 +259,12 @@ def _best(
     soc_kwh: float,
     after: Sequence[float],
     grid: _Grid,
+    reserve: float | None = None,
 ) -> tuple[_Outcome, float]:
     battery = request.battery
     best: _Outcome | None = None
     best_total = 0.0
-    for action, power in _candidates(slot, battery, soc_kwh, request):
+    for action, power in _candidates(slot, battery, soc_kwh, request, reserve):
         outcome = _apply(slot, battery, soc_kwh, action, power, request.cycle_cost, request.export_hurdle)
         total = outcome.cost + outcome.wear + outcome.hurdle + grid.value(after, outcome.soc_end_kwh)
         if best is None or total < best_total - _TIE:
@@ -299,6 +339,7 @@ def plan_battery(
     battery = request.battery
     end_value = request.end_value if request.end_value is not None else default_end_value(request.slots, battery)
     grid = _Grid(battery, request.soc_steps)
+    reserves = _reserves(request)
 
     # Backwards: the value-to-go at each grid point, from the horizon's end value.
     values: list[list[float]] = [[] for _ in range(len(request.slots) + 1)]
@@ -306,13 +347,14 @@ def plan_battery(
     for index in range(len(request.slots) - 1, -1, -1):
         slot = request.slots[index]
         after = values[index + 1]
-        values[index] = [_best(slot, request, point, after, grid)[1] for point in grid.points]
+        reserve = None if reserves is None else reserves[index]
+        values[index] = [_best(slot, request, point, after, grid, reserve)[1] for point in grid.points]
 
-    best = _forward(request, values, grid)
+    best = _forward(request, values, grid, reserves=reserves)
     kept = False
     keep_gain: float | None = None
     if keep is not None:
-        held = _forward(request, values, grid, first=keep)
+        held = _forward(request, values, grid, first=keep, reserves=reserves)
         keep_gain = objective(held, battery, end_value) - objective(best, battery, end_value)
         if keep_gain <= keep_min_gain:
             best, kept = held, True
@@ -327,7 +369,11 @@ def plan_battery(
 
 
 def _forward(
-    request: PlanRequest, values: list[list[float]], grid: _Grid, first: tuple[str, float] | None = None
+    request: PlanRequest,
+    values: list[list[float]],
+    grid: _Grid,
+    first: tuple[str, float] | None = None,
+    reserves: Sequence[float] | None = None,
 ) -> PlanRun:
     """Forwards: the exact energy from now, each slot's best action against the value-to-go; with `first`, the first
     slot runs that action (at its kW, for a grid charge) instead of its best."""
@@ -341,21 +387,26 @@ def _forward(
             power = action_power(slot, battery, soc, action, charge_kw)
             outcome = _apply(slot, battery, soc, action, power, request.cycle_cost, request.export_hurdle)
         else:
-            outcome, _total = _best(slot, request, soc, values[index + 1], grid)
+            reserve = None if reserves is None else reserves[index]
+            outcome, _total = _best(slot, request, soc, values[index + 1], grid, reserve)
         decisions.append(_decision(slot, battery, outcome))
         outcomes.append(outcome)
         soc = outcome.soc_end_kwh
     return _run(decisions, outcomes, battery, soc)
 
 
-def mode_request(request: PlanRequest, mode: BatteryMode, wear: float) -> PlanRequest:
+def mode_request(
+    request: PlanRequest, mode: BatteryMode, wear: float, sell_margin: float = DEFAULT_SELL_MARGIN
+) -> PlanRequest:
     """[request] as [mode] plans it with [wear] (minor per kWh each way, the currency's): its multiple of the wear,
-    and whether and how the battery may sell."""
+    and whether and how the battery may sell (behind the gate: [sell_margin] per kWh, the currency's
+    `plan_model.sell_margin_minor_per_kwh`, and the house first)."""
     return replace(
         request,
         cycle_cost=mode.wear(wear),
         allow_export_discharge=mode.export != EXPORT_OFF,
-        export_hurdle=mode.hurdle(wear),
+        export_hurdle=mode.hurdle(sell_margin),
+        export_reserve=mode.house_first,
     )
 
 
@@ -364,6 +415,7 @@ def plan_mode(
     mode: BatteryMode,
     wear: float,
     *,
+    sell_margin: float = DEFAULT_SELL_MARGIN,
     keep: tuple[str, float] | None = None,
     keep_min_gain: float = 0.0,
     baseline: PlanRun | None = None,
@@ -378,4 +430,4 @@ def plan_mode(
             request.end_value if request.end_value is not None else default_end_value(request.slots, request.battery)
         )
         return BatteryPlan(plan=base, baseline=base, end_value=end_value, battery=request.battery)
-    return plan_battery(mode_request(request, mode, wear), keep=keep, keep_min_gain=keep_min_gain, baseline=base)
+    return plan_battery(mode_request(request, mode, wear, sell_margin), keep=keep, keep_min_gain=keep_min_gain, baseline=base)

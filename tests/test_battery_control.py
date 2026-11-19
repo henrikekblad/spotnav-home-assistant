@@ -662,7 +662,7 @@ async def test_enabling_runs_the_check_and_control_runs_the_plan_only_once_it_pa
     assert {mode: row["outcome"] for mode, row in report["modes"].items()} == {
         "hold": "obeyed", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored",
     }
-    assert control.state() == "on" and control.allowed() == {"hold", "grid_charge", "discharge_house"}
+    assert control.state() == "on" and control.allowed() == {"hold", "grid_charge", "discharge_house", "export_discharge"}
     # Now the plan runs: a grid charge at 3 kW.
     await _looks(control, now + timedelta(minutes=5), 6)
     assert hass.states.get(MODE).state == "Command Charging (Grid First)" and hass.states.get(CHARGE).state == "3"
@@ -719,7 +719,7 @@ async def test_a_mode_that_cannot_be_judged_now_is_tried_again_later_not_failed(
     assert [result.mode for result in control.verification.results] == ["discharge_house", "normal"]
     await _looks(control, now, 200)
     assert control.report()["modes"]["discharge_house"]["outcome"] == "obeyed"
-    assert control.allowed() == {"hold", "grid_charge", "discharge_house"} and control.report()["attempts"] == 2
+    assert control.allowed() == {"hold", "grid_charge", "discharge_house", "export_discharge"} and control.report()["attempts"] == 2
 
 
 async def test_no_check_runs_while_the_firmware_was_never_read(
@@ -1252,15 +1252,16 @@ async def test_the_site_samples_its_house_per_phase_without_raising(
     assert not controller.phase_peaks._failed
 
 
-async def test_selling_from_the_battery_is_off_by_default(
+async def test_selling_from_the_battery_is_off_in_self_consumption(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _mode(hass, site, "self_consumption")
     control = await _started(hass, site, controller, plan_source=lambda _now: ("export_discharge", 4.0, None))
     now = await _looks(control, dt_util.now(), 4)
     assert plant.calls == []
     assert [row["reason"] for row in control.log if row["kind"] == "restricted"] == ["not_verified:export_discharge"]
-    _mode(hass, site, "max_profit")
+    _mode(hass, site, "balanced")
     await _looks(control, now, 6)
     assert hass.states.get(MODE).state == "Command Discharging (PV First)" and hass.states.get(DISCHARGE).state == "4"
 
@@ -1754,7 +1755,7 @@ async def test_a_stored_allow_sell_becomes_the_max_profit_mode_once_and_a_chosen
     again = BatteryControl(hass, controller, plan_source=_hold)
     await again.async_start()
     assert site.data[gate.CONF_MODE] == "balanced", "migrated once; the legacy option is never read again"
-    assert again.options().mode == "balanced" and not again.options().allow_sell
+    assert again.options().mode == "balanced" and again.options().allow_sell, "Balanced sells through its gate"
     assert "battery_mode" in control.status()["options"]
     assert gate.CONF_ALLOW_SELL not in control.status()["options"]
 
@@ -1770,12 +1771,12 @@ async def test_a_stored_allow_sell_with_a_chosen_mode_is_removed_and_the_mode_ke
     assert site.data[gate.CONF_MODE] == "balanced" and gate.CONF_ALLOW_SELL not in site.data
 
 
-async def test_only_max_profit_lets_control_run_the_selling_action(
+async def test_balanced_and_max_profit_let_control_run_the_selling_action(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, _plant = await _site(hass, monkeypatch, hass_storage)
     control = await _started(hass, site, controller, plan_source=_hold)
-    for mode, sells in (("self_consumption", False), ("balanced", False), ("max_profit", True)):
+    for mode, sells in (("self_consumption", False), ("balanced", True), ("max_profit", True)):
         await control.async_update_options({gate.CONF_MODE: mode})
         assert ("export_discharge" in control.status()["allowed_actions"]) is sells
 

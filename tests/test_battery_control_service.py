@@ -51,12 +51,18 @@ async def test_the_test_action_is_for_administrators_refused_while_shadow_only_u
     with pytest.raises(ServiceValidationError) as refused:
         await hass.services.async_call(DOMAIN, "battery_control_test", {"action": "hold"}, blocking=True, context=admin)
     assert refused.value.translation_placeholders == {"reason": "shadow_only"}
+    await hass.services.async_call(
+        DOMAIN, "battery_control_settings", {"battery_mode": "self_consumption"}, blocking=True, context=admin,
+    )
     with pytest.raises(ServiceValidationError) as refused:
         await hass.services.async_call(
             DOMAIN, "battery_control_test", {"action": "export_discharge", "force_test": True}, blocking=True,
             context=admin,
         )
-    assert refused.value.translation_placeholders == {"reason": "sell_not_allowed"}
+    assert refused.value.translation_placeholders == {"reason": "sell_not_allowed"}, "Self-consumption never sells"
+    await hass.services.async_call(
+        DOMAIN, "battery_control_settings", {"battery_mode": "balanced"}, blocking=True, context=admin,
+    )
     answer = await hass.services.async_call(
         DOMAIN, "battery_control_test", {"action": "hold", "minutes": 5, "force_test": True}, blocking=True,
         context=admin, return_response=True,

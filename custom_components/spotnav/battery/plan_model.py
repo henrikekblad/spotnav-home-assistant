@@ -65,9 +65,10 @@ MAX_SLOTS: Final = 2 * 25 * 4
 
 #: The battery modes (one per site; `plans/v3_0_wave3.md` W3-M). Self-consumption: SpotNav never plans the battery,
 #: only its guards act (the fuse, the hold while a car charges from the grid). Balanced: the battery may buy cheap
-#: and spend in the house, cycles less (double wear), and sells stored energy only through the spread gate. Max
-#: profit: every action, the true wear. The modes differ only in how much arbitrage they do: every mode keeps the
-#: battery's own floor (a reserve for backup is the battery's setting, which the facts read).
+#: and spend in the house, cycles less (double wear), and sells only surplus and only when it is highly profitable
+#: (the spread gate: `SELL_MARGIN_MAJOR` per kWh sold, the house's need until the next cheap hours kept first; owner
+#: 2026-11-19, like Sigenergy's "Balanced Energy"). Max profit: every action, the true wear, a sale wherever it pays.
+#: Every mode keeps the battery's own floor (a reserve for backup is the battery's setting, which the facts read).
 MODE_SELF_CONSUMPTION: Final = "self_consumption"
 MODE_BALANCED: Final = "balanced"
 MODE_MAX_PROFIT: Final = "max_profit"
@@ -79,45 +80,72 @@ EXPORT_OFF: Final = "off"
 EXPORT_GATE: Final = "gate"
 EXPORT_FREE: Final = "free"
 
+#: The spread gate's margin: what a kWh sold from the battery must earn beyond what keeping it is worth (the stored
+#: kWh's value to the plan, the round trip and the wear) before Balanced sells it: "highly profitable". 1.00 SEK in
+#: each area currency's major unit, rounded at 2026 rates (every area currency has 100 minor units to the major one,
+#: `pricing/areas.json`); one constant, not a setting. Every currency the area catalogue holds is here (a test keeps
+#: it so); a currency not listed takes the SEK figure, as the wear does.
+SELL_MARGIN_MAJOR: Final[dict[str, float]] = {
+    "SEK": 1.00,
+    "NOK": 1.00,
+    "DKK": 0.70,
+    "EUR": 0.10,
+    "CHF": 0.10,
+    "GBP": 0.10,
+    "PLN": 0.40,
+    "CZK": 2.50,
+    "RON": 0.50,
+    "HUF": 35.0,
+}
+_MINOR_PER_MAJOR: Final = 100.0
+#: The margin a request weighs when it is not told (the SEK figure, in öre).
+DEFAULT_SELL_MARGIN: Final = SELL_MARGIN_MAJOR["SEK"] * _MINOR_PER_MAJOR
+
 
 @dataclass(frozen=True, slots=True)
 class BatteryMode:
     """A mode as a row of the plan's parameters, no code path of its own.
 
-    `wear_factor` multiplies the currency's wear (`WEAR_MINOR_PER_KWH`). Every mode keeps the battery's own floor. With `export` at `EXPORT_GATE`, a kWh sold from the battery is
-    weighed `gate_factor` x the wear below its sell price: the spread gate's margin `H`, so a sale must clear the
-    stored kWh's value, both ways' wear and `H` together. It falls out of the search, never a filter after it.
+    `wear_factor` multiplies the currency's wear (`WEAR_MINOR_PER_KWH`). Every mode keeps the battery's own floor.
+    With `export` at `EXPORT_GATE` (the spread gate), a kWh sold from the battery is weighed the currency's sell
+    margin (`SELL_MARGIN_MAJOR`) below its sell price, so a sale must clear the stored kWh's value, both ways' wear
+    and the margin together; and the house comes first: a sale never takes the battery below what the house needs
+    until the next cheap hours (`PlanRequest.export_reserve`). Both fall out of the search, never a filter after it.
     """
 
     name: str
     plans: bool
     export: str
     wear_factor: float
-    gate_factor: float = 0.0
 
     def wear(self, base: float) -> float:
         return base * self.wear_factor
 
-    def hurdle(self, base: float) -> float:
-        return base * self.gate_factor if self.export == EXPORT_GATE else 0.0
+    def hurdle(self, margin: float) -> float:
+        """The margin weighed on each kWh sold from the battery: [margin] behind the gate, none otherwise."""
+        return margin if self.export == EXPORT_GATE else 0.0
+
+    @property
+    def house_first(self) -> bool:
+        """Whether a sale keeps the house's need until the next cheap hours (the gate's)."""
+        return self.export == EXPORT_GATE
 
 
-#: Balanced's multiples of the wear (the backtest in `plans/battery_plan_backtest/README.md` weighs them). No reserve
-#: of its own (owner 2026-11-13: the modes differ in arbitrage, not in reserve).
+#: Balanced's multiple of the wear (the backtest in `plans/battery_plan_backtest/README.md` weighs it). No reserve
+#: of its own beyond the house's need before a sale (owner 2026-11-13: the modes differ in arbitrage, not in reserve).
 BALANCED_WEAR_FACTOR: Final = 2.0
-BALANCED_GATE_FACTOR: Final = 1.0
 
 MODE_DEFS: Final[dict[str, BatteryMode]] = {
     MODE_SELF_CONSUMPTION: BatteryMode(MODE_SELF_CONSUMPTION, plans=False, export=EXPORT_OFF, wear_factor=0.0),
-    MODE_BALANCED: BatteryMode(
-        MODE_BALANCED,
-        plans=True,
-        export=EXPORT_GATE,
-        wear_factor=BALANCED_WEAR_FACTOR,
-        gate_factor=BALANCED_GATE_FACTOR,
-    ),
+    MODE_BALANCED: BatteryMode(MODE_BALANCED, plans=True, export=EXPORT_GATE, wear_factor=BALANCED_WEAR_FACTOR),
     MODE_MAX_PROFIT: BatteryMode(MODE_MAX_PROFIT, plans=True, export=EXPORT_FREE, wear_factor=1.0),
 }
+
+
+def sell_margin_minor_per_kwh(currency: str | None) -> float:
+    """The spread gate's margin per kWh sold in [currency]'s minor unit; the SEK figure for one not listed."""
+    major = SELL_MARGIN_MAJOR.get((currency or "").upper())
+    return DEFAULT_SELL_MARGIN if major is None else major * _MINOR_PER_MAJOR
 
 
 def wear_minor_per_kwh(currency: str | None) -> float | None:
@@ -240,6 +268,8 @@ class PlanRequest:
     price of the horizon times the round trip (`plan.default_end_value`). `cycle_cost` is the wear per kWh through
     the battery. `allow_export_discharge` lets the plan sell from the battery; off by default. `export_hurdle`
     (minor per kWh) is weighed against every kWh the battery sells: the spread gate's margin (`BatteryMode`).
+    `export_reserve` (the gate's house first): a sale never takes the battery below what the house's deficit needs
+    from the next slot until the next cheap hours (`plan.house_reserve_kwh`).
     """
 
     slots: tuple[PlanSlot, ...]
@@ -249,6 +279,7 @@ class PlanRequest:
     cycle_cost: float = DEFAULT_CYCLE_COST
     allow_export_discharge: bool = False
     export_hurdle: float = 0.0
+    export_reserve: bool = False
     soc_steps: int = DEFAULT_SOC_STEPS
     charge_shares: tuple[float, ...] = DEFAULT_CHARGE_SHARES
 

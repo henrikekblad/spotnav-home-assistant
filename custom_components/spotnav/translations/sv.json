@@ -1174,7 +1174,7 @@
         },
         "battery_mode": {
           "name": "Batteriläge",
-          "description": "Vad batteriet är till för. Bara Max vinst får sälja till nätet."
+          "description": "Vad batteriet är till för. Balanserad säljer till nätet bara när det är mycket lönsamt, Max vinst så fort det lönar sig."
         },
         "battery_control_import_limit_acts": {
           "name": "Importgränsen verkar",

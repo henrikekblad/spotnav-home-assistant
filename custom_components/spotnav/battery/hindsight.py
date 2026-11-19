@@ -57,6 +57,7 @@ from .export_curtail import curtail_slots
 from .plan import action_power, plan_mode, run_slot
 from .plan_model import (
     ACTION_SELF_CONSUME,
+    DEFAULT_SELL_MARGIN,
     EXPORT_OFF,
     MODE_DEFS,
     MODE_MAX_PROFIT,
@@ -277,6 +278,7 @@ def perfect_plans(
     wear: float,
     end_value: float,
     modes: Iterable[str | BatteryMode] = PLANNING_MODES,
+    sell_margin: float = DEFAULT_SELL_MARGIN,
 ) -> dict[str, SimRun]:
     """Each of [modes]' perfect plan in hindsight over the measured [slots] (see the module), run as the review runs
     a way; a mode is named (`MODE_DEFS`) or given."""
@@ -289,7 +291,7 @@ def perfect_plans(
         mode = MODE_DEFS[item] if isinstance(item, str) else item
         name = mode.name
         request = PlanRequest(slots=tuple(chained), battery=battery, soc_now_pct=soc, end_value=end_value)
-        made = plan_mode(request, mode, wear)
+        made = plan_mode(request, mode, wear, sell_margin=sell_margin)
         actions = [(decision.action, decision.battery_kw) for decision in made.plan.decisions]
         out[name] = simulate(chained, battery, soc, actions)
     return out
@@ -457,6 +459,7 @@ def facit_day(
     no_battery_cost: float,
     day_quarters: int,
     now: datetime,
+    sell_margin: float = DEFAULT_SELL_MARGIN,
 ) -> Facit | None:
     """The day against its perfect plan (see the module). [buckets] are the review's usable quarter hours, oldest
     first, of a local day of [day_quarters]; [actual_cost] and [actual_end_soc_pct] what really happened (the
@@ -479,7 +482,8 @@ def facit_day(
         value = saving(run.cost, run.end_soc_pct)
         return Candidate(value, value, 100.0 if whole and value >= MIN_PERFECT_SAVING else None, False, run.work)
 
-    perfect = {name: perfect_of(run) for name, run in perfect_plans(slots, battery, start_soc_pct, wear, end_value).items()}
+    plans = perfect_plans(slots, battery, start_soc_pct, wear, end_value, sell_margin=sell_margin)
+    perfect = {name: perfect_of(run) for name, run in plans.items()}
     if site_mode not in perfect or MODE_MAX_PROFIT not in perfect:
         return None
 

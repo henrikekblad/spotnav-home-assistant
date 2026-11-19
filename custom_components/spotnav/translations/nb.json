@@ -1174,7 +1174,7 @@
         },
         "battery_mode": {
           "name": "Batterimodus",
-          "description": "Hva batteriet skal brukes til. Bare Maks fortjeneste kan selge til nettet."
+          "description": "Hva batteriet skal brukes til. Balansert selger til nettet bare når det er svært lønnsomt, Maks fortjeneste så snart det lønner seg."
         },
         "battery_control_import_limit_acts": {
           "name": "Importgrensen virker",
