@@ -297,15 +297,26 @@ def villa_hot_water() -> dict[str, Any]:
         ],
         "review": {
             "date": "2026-11-15", "mode": "shadow", "would_cost": 81.0, "actual_cost": 141.75, "saved": 60.75,
-            "moved_kwh": 1.05, "hits": 1, "peaks": 2, "misses": 0,
+            "moved_kwh": 1.05, "hits": 1, "peaks": 2, "misses": 0, "cold_risks": 1, "blocks_cut": 2, "a_mode": "shadow",
             "per_peak": [
-                {"peak": "05:00", "hit": True, "pick": _at(3.25, -1), "pump_run": _at(5 + 10 / 60, -1), "miss": False},
-                {"peak": "17:00", "hit": False, "pick": None, "pump_run": None, "miss": False},
+                {"peak": "05:00", "hit": True, "pick": _at(3.25, -1), "pump_run": _at(5 + 10 / 60, -1), "miss": False, "cold_risk": True},
+                {"peak": "17:00", "hit": False, "pick": None, "pump_run": None, "miss": False, "cold_risk": False},
             ],
         },
         "gate": hot_water_gate(days=5, weekdays=5, peaks=10, hits=8, saved=212.5),
         "level": "B",
         "mode": "shadow",
+        # The relay blocks the compressor, so hot water too: level A in shadow, day 5 of its 14; it would keep the
+        # hour before the evening shower and tomorrow's before the morning one free of a block.
+        "blocking": {
+            "mode": "shadow",
+            "gate": hot_water_gate(level="A", days=5, days_needed=14, weekdays=5, peaks=10, hits=8),
+            "cuts": [
+                {"start": _at(16), "end": _at(17), "reason": "peak", "peak": "17:00", "live": False},
+                {"start": _at(4, 1), "end": _at(5, 1), "reason": "peak", "peak": "05:00", "live": False},
+            ],
+            "tank": False,
+        },
     }
 
 
@@ -320,6 +331,7 @@ def network_pump_hot_water() -> dict[str, Any]:
         "gate": hot_water_gate(),
         "level": "B",
         "mode": "watch",
+        "blocking": None,
     }
 
 

@@ -15,7 +15,8 @@ this plan and tells what it will close ahead (`control.closings_ahead`).
   blueprint's inputs and the price's expensive intervals), else a closing now lasts at most three hours.
 * **The forecast's change** (`forecast_delta`, read by the house forecast's plan figures): the lowered heat and the
   rebound (`heat/relay_effect.py`) of the relay's past closings whose rebound is still to come, the closing now and
-  the closings ahead. The heat per hour is the house forecast's heat part where the meter has made one, else the
+  the closings ahead; and the hot water's (`HotWater.forecast_delta`: SpotNav's live boosts, the pump's runs the
+  control's closings ahead will hold). The heat per hour is the house forecast's heat part where the meter has made one, else the
   meter's mean over its last day.
 * **Learning**: each closing is measured on the meter's 5-minute rows once its rebound window has passed (within the
   recorder's short-term days), kept (`relay_effect.KEEP_BLOCKS`), and the effect learned again.
@@ -26,7 +27,10 @@ this plan and tells what it will close ahead (`control.closings_ahead`).
   readings of the last `rooms.WINDOW`, kept in memory: a sensor rising fast is left out as the card leaves it out, and
   the hour above the band starts again after a restart).
   What it would do now is logged at each change (`log`), and each hour's action is kept for the day as it was planned
-  when the hour began (`days`).
+  when the hour began (`days`). On a path that blocks hot water too, the plan is made a second time under the hot
+  water's level-A rules (`heat/dhw_level_a.py`: no lowered hour before a peak, the day's cap without a tank sensor);
+  the hours that differ are its cuts (`HotWater.set_cuts`), and the plan the heat control steers by is that one once
+  level A is live, else the first.
 * **The review** (`heat/review.py`): each day kept with a plan, once the three hours after its end have passed and
   while the recorder still holds its 5-minute rows: the relay's real closings and SpotNav's plan, money and comfort;
   beside it (`spotnav_min`) the minutes SpotNav's heat control itself held the relay closed that day.
@@ -56,6 +60,9 @@ from ..const import CONF_HEAT, DOMAIN
 from .automations import SteeringAutomation, steering_automations
 from .dhw_runtime import HotWater
 from .config import BAND_C, PATH_OFFSET, PATH_RELAY, PATH_SG_READY, PATH_SG_READY_API, HeatConfig, read_config
+from .dhw_level_a import Cut
+from .dhw_level_a import cuts as level_a_cuts
+from .dhw_review import MODE_LIVE
 from .meter_split import hot_water_runs, levels
 from .paths import lower_contact
 from .relay_effect import (
@@ -752,23 +759,36 @@ class HeatShadow:
         outdoor = self.site.house_forecast.outdoor_c()
         if config.outdoor_sensor is not None:
             outdoor = temperature_c(self.hass, config.outdoor_sensor)
-        planned, guard = await self.hass.async_add_executor_job(
-            partial(
-                plan_days,
-                config,
-                days,
-                prices,
-                now,
-                zone,
-                outdoor_c=outdoor,
-                coldest_c=self.coldest_now(config),
-                tight=tight,
-                outdoor_by_hour=outdoor_by_hour,
-                room_warm=self.room_warm.active,
-            )
+        # The hot water's level A on a path that blocks it too: the hours kept free before its peaks and the day's
+        # cap (`heat/dhw_level_a.py`).
+        rules = self.hot_water.level_a_rules(now, config, [day[0].astimezone(zone).date() for day in days])
+        make = partial(
+            plan_days,
+            config,
+            days,
+            prices,
+            now,
+            zone,
+            outdoor_c=outdoor,
+            coldest_c=self.coldest_now(config),
+            tight=tight,
+            outdoor_by_hour=outdoor_by_hour,
+            room_warm=self.room_warm.active,
         )
+        planned, guard = await self.hass.async_add_executor_job(make)
+        cut: list[Cut] = []
+        live = False
+        if rules is not None:
+            kept, max_day = rules
+            shaped, shaped_guard = await self.hass.async_add_executor_job(partial(make, keep_normal=frozenset(kept), max_day=max_day))
+            cut = level_a_cuts(planned, shaped, kept)
+            live = self.hot_water.a_mode(config) == MODE_LIVE
+            if live:
+                # Level A steers: the plan the heat control carries out has the hours out.
+                planned, guard = shaped, shaped_guard
         if self._closed:
             return
+        self.hot_water.set_cuts(cut, live)
         self.plan, self.guard, self.tight, self.made_at = planned, guard, tight, now
         self.status = "planned"
         self._log_would(now, config)

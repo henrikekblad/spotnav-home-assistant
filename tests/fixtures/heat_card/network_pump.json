@@ -442,6 +442,7 @@
     "until": null
   },
   "hot_water": {
+    "blocking": null,
     "boost": {
       "ends": null,
       "ends_estimated": false,
