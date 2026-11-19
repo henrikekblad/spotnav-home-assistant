@@ -953,3 +953,60 @@ async def test_a_cold_room_warming_fast_still_releases_and_blocks_the_plan(hass:
     _plan(control, now + 30 * MIN, 0, 1)
     await control.async_look(now + 30 * MIN)
     assert relay.calls == ["on", "off"] and control.status()["reason"] == "room_cold"
+
+
+async def test_a_hardware_test_engages_the_path_and_releases_it_read_back(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer)
+    # The looks are driven by hand here, at the test's own times (the look the start asks for is not run).
+    control.request_look = lambda: None  # type: ignore[method-assign]
+    await control.async_look(now)
+    assert control.state == "running" and relay.calls == []
+    assert control.async_test_start(now) is None
+    assert control.test_refusal(now) == "running"
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.test_view()["phase"] == "hold"
+    assert control.status()["reason"] == "hardware_test"
+    await control.async_look(now + 30 * MIN / 60)
+    assert relay.calls == ["on"]
+    await control.async_look(now + 2 * MIN)
+    test = control.test_view()
+    assert relay.calls == ["on", "off"] and not control.held
+    assert test["phase"] == "done" and test["outcome"] == "obeyed"
+    assert test["engaged_at"] is not None and test["released_at"] is not None
+    # Control runs on as before.
+    await control.async_look(now + 3 * MIN)
+    assert control.state == "running" and relay.calls == ["on", "off"]
+
+
+async def test_a_hardware_test_not_read_back_ends_failed_and_opens(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer)
+    # The looks are driven by hand here, at the test's own times (the look the start asks for is not run).
+    control.request_look = lambda: None  # type: ignore[method-assign]
+    await control.async_look(now)
+    relay.ignore = True
+    assert control.async_test_start(now) is None
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.test_view()["phase"] == "engaging"
+    await control.async_look(now + READ_BACK + MIN)
+    test = control.test_view()
+    assert test["phase"] == "done" and test["outcome"] == "aborted:no_read_back"
+    assert relay.calls == ["on", "off"] and control.status()["reason"] == "no_read_back"
+
+
+async def test_a_hardware_test_stopped_gives_the_path_back_at_once(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer)
+    # The looks are driven by hand here, at the test's own times (the look the start asks for is not run).
+    control.request_look = lambda: None  # type: ignore[method-assign]
+    await control.async_look(now)
+    control.async_test_start(now)
+    await control.async_look(now)
+    assert relay.state == "on"
+    control.async_test_stop("deadline")
+    await control.async_look(now + MIN / 2)
+    assert relay.state == "off" and control.test_view()["outcome"] == "aborted:deadline"
+
+
+async def test_a_hardware_test_needs_control_running(hass: HomeAssistant, freezer) -> None:
+    _site_, controller, _relay = await _site(hass, freezer, control_enabled=False)
+    control = controller.heat_control
+    assert control.test_refusal(controller.demand.now()) == "not_enabled"

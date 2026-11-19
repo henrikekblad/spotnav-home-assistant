@@ -68,6 +68,12 @@ safety reason, a changed relay entity, unload and Home Assistant's stop (`async_
 opened then is opened at the next start before anything else; a kept state that cannot be read opens both contacts
 once (behind the opt-in). Kept in `spotnav.heat_control.<entry>`: whether SpotNav
 holds the relay closed, the lowerings and writes of the last days, the checks per relay, the pause.
+
+**A person's hardware test** (`async_test_start`, `hardware_test.py`): with control running (the opt-in on, the
+check passed, nothing paused or blocked, no safety reason, nothing held), the path is engaged (`_async_write`,
+read back as every write), held `TEST_HOLD` and released, read back again. Every rule above still applies: a
+write not read back pauses control for the day as always, a block or a safety reason ends the test and gives the
+path back (`_async_test_look`; a look that is no longer running control ends it too). Two writes of the day's cap.
 """
 
 from __future__ import annotations
@@ -188,6 +194,10 @@ WAIT_FOREIGN_CHANGE: Final = "foreign_change"
 WAIT_NO_READ_BACK: Final = "no_read_back"
 #: The raise's reason while the lowering's control does not run (off, verifying or waiting): B stays open.
 RAISE_OFF: Final = "raise_off"
+#: How long a hardware test holds the path engaged before it releases it.
+TEST_HOLD: Final = timedelta(seconds=60)
+#: The reason under the switch while a hardware test runs.
+REASON_HARDWARE_TEST: Final = "hardware_test"
 
 #: The relay's states that read as closed.
 CLOSED: Final = frozenset({"on"})
@@ -336,6 +346,10 @@ class HeatControl:
         self._watched: tuple[str, ...] = ()
         self._watch_cancel: Callable[[], None] | None = None
         self._debounce_cancel: Callable[[], None] | None = None
+        #: A person's hardware test (`async_test_start`): `{started_at, phase, engaged_at, released_at, outcome}`;
+        #: `phase` engage, engaging, hold, releasing or done. Not kept: a restart opens what SpotNav holds anyway.
+        self.test: dict[str, Any] | None = None
+        self._test_stop: str | None = None
 
     # ---- life cycle
 
@@ -635,7 +649,13 @@ class HeatControl:
         self._forget(now)
         self._safe_track_home()
         try:
+            if self._test_stop is not None:
+                await self._async_test_end(now, f"aborted:{self._test_stop}")
             await self._async_look(now)
+            if self._test_running() and self.state != STATE_RUNNING:
+                # Control stopped running under the test (a block, a pause, a write not read back): the paths above
+                # gave the relay back; the test ends with why.
+                await self._async_test_end(now, f"aborted:{self.reason or self.state}")
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the next look tries again; the relay is opened where it can be
@@ -827,6 +847,10 @@ class HeatControl:
             await self._async_verify(now, relay, read, safety)
             return
 
+        if self._test_running():
+            await self._async_test_look(now, relay, safety)
+            return
+
         self.decision = decide(
             Situation(
                 now=now,
@@ -871,6 +895,96 @@ class HeatControl:
         self._set(STATE_VERIFYING, self.check.phase)
         if step.closed != self.held:
             await self._async_write(step.closed, now, why="check")
+
+    # ---- a person's hardware test
+
+    def _test_running(self) -> bool:
+        return self.test is not None and self.test.get("phase") != "done"
+
+    def test_refusal(self, now: datetime) -> str | None:
+        """Why the heat path cannot be tested now, `None` when it can (see the module)."""
+        config = self.shadow.config()
+        if not config.control_enabled:
+            return "not_enabled"
+        if self.relay is None:
+            return "no_relay"
+        if self._test_running():
+            return "running"
+        if self.state != STATE_RUNNING:
+            return f"not_running:{self.reason or self.state}"
+        if self.held or self.pending is not None:
+            return "busy"
+        if self.safety not in (None, SAFETY_SETTLING):
+            return f"safety:{self.safety}"
+        if self.writes.get(self._day(now), 0) + 2 > paths.max_writes(self.relay):
+            return "write_cap"
+        return None
+
+    def async_test_start(self, now: datetime) -> str | None:
+        """Start the test at the next look (asked for at once). Answers the refusal code, `None` once started."""
+        why = self.test_refusal(now)
+        if why is not None:
+            return why
+        self.test = {"started_at": now.isoformat(), "phase": "engage", "engaged_at": None, "released_at": None,
+                     "outcome": None, "path": self.relay}
+        self._test_stop = None
+        self._log(now, "hardware_test_started")
+        self.request_look()
+        return None
+
+    def async_test_stop(self, why: str) -> None:
+        """End a running test at the next look (asked for at once): the path is given back there."""
+        if self._test_running():
+            self._test_stop = why
+            self.request_look()
+
+    def test_view(self) -> dict[str, Any] | None:
+        return None if self.test is None else dict(self.test)
+
+    async def _async_test_look(self, now: datetime, relay: str, safety: str | None) -> None:
+        test = self.test
+        assert test is not None
+        self._set(STATE_RUNNING, REASON_HARDWARE_TEST)
+        if safety not in (None, SAFETY_SETTLING):
+            await self._async_test_end(now, f"aborted:safety:{safety}")
+            return
+        phase = test["phase"]
+        if phase == "engage":
+            await self._async_write(True, now, why=REASON_HARDWARE_TEST)
+            if not self.held:
+                # The closing waits (raise contact, write spacing) or cannot be written: nothing was engaged.
+                await self._async_test_end(now, "not_judgeable:close_not_possible")
+                return
+            test["phase"] = "engaging"
+            phase = "engaging"
+        if phase == "engaging" and self.held and self.pending is None and self._read(relay) is True:
+            test["engaged_at"] = now.isoformat()
+            test["phase"] = "hold"
+            return
+        if phase == "hold":
+            engaged = dt_util.parse_datetime(test["engaged_at"] or "")
+            if engaged is None or now - engaged >= TEST_HOLD:
+                await self._async_write(False, now, why=REASON_HARDWARE_TEST)
+                test["phase"] = "releasing"
+                phase = "releasing"
+        if phase == "releasing" and not self.held and self.pending is None:
+            test["released_at"] = now.isoformat()
+            test["phase"] = "done"
+            test["outcome"] = "obeyed"
+            self._log(now, "hardware_test_done", outcome="obeyed")
+
+    async def _async_test_end(self, now: datetime, outcome: str) -> None:
+        """End the test with `outcome`; what it engaged is given back at once."""
+        self._test_stop = None
+        test = self.test
+        if test is None or test.get("phase") == "done":
+            return
+        engaged = test["phase"] in ("engaging", "hold", "releasing")
+        test["phase"] = "done"
+        test["outcome"] = outcome
+        self._log(now, "hardware_test_done", outcome=outcome)
+        if engaged and (self.held or self.pending is not None):
+            await self._async_exit(now, REASON_HARDWARE_TEST)
 
     # ---- reads
 
