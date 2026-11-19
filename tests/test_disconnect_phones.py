@@ -104,10 +104,11 @@ async def test_a_reload_after_it_answers_at_the_new_id_and_unregisters_it_on_unl
     assert status == 200
     assert await hass.config_entries.async_unload(site.entry_id)
     await hass.async_block_till_done()
-    assert await _gone(client, site.data[CONF_WEBHOOK_ID])
+    status, body = await post(client, site.data[CONF_WEBHOOK_ID], {"action": "get_site"})
+    assert (status, body["error"]) == (503, "spotnav_site_unloaded"), "not loaded is never gone"
 
 
-async def test_an_unloaded_entry_gets_a_new_id_for_its_next_setup(hass: HomeAssistant, hass_client_no_auth) -> None:
+async def test_an_unloaded_site_gets_a_new_id_that_says_it_is_not_loaded(hass: HomeAssistant, hass_client_no_auth) -> None:
     _charger, _site, home = await _world(hass)
     client = await hass_client_no_auth()
     assert await hass.config_entries.async_unload(home.entry_id)
@@ -115,7 +116,9 @@ async def test_an_unloaded_entry_gets_a_new_id_for_its_next_setup(hass: HomeAssi
     old = home.data[CONF_WEBHOOK_ID]
     await _disconnect(hass)
     assert home.data[CONF_WEBHOOK_ID] != old
-    assert await _gone(client, home.data[CONF_WEBHOOK_ID])
+    assert await _gone(client, old)
+    status, body = await post(client, home.data[CONF_WEBHOOK_ID], {"action": "get_site"})
+    assert (status, body["error"]) == (503, "spotnav_site_unloaded")
     assert await hass.config_entries.async_setup(home.entry_id)
     await hass.async_block_till_done()
     assert await _gone(client, old)

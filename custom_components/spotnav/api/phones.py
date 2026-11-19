@@ -28,7 +28,7 @@ from ..notifications.push import ChargerPush
 from ..runtime import charger_data, domain_data
 from .common import ERROR_NOT_ADMIN, is_admin, send_unsupported_version
 from .pairing import PairingRegister
-from .site_entry_webhook import SITE_WEBHOOK_NAME, site_webhook_handler
+from .site_entry_webhook import async_ensure_site_webhook
 from .webhook import CHARGER_WEBHOOK_NAME, charger_webhook_handler
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,16 +47,18 @@ def _replace_webhook(hass: HomeAssistant, entry: ConfigEntry, kind: str) -> None
     """Give one entry a new webhook id and, while it is loaded, answer at the new id only."""
     old = entry.data[CONF_WEBHOOK_ID]
     new = new_webhook_id()
-    # The entry's unload unregisters the id its data holds then (`api/webhook.py:async_register_entry_webhook`).
     hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_WEBHOOK_ID: new})
+    if kind == ENTRY_TYPE_SITE:
+        # A site's door is registered whatever its load state; this moves it to the new id.
+        async_ensure_site_webhook(hass, entry)
+        return
+    # A charger's unload unregisters the id its data holds then (`api/webhook.py:async_register_entry_webhook`).
     webhook.async_unregister(hass, old)
     if entry.state is not ConfigEntryState.LOADED:
         return
-    if kind == ENTRY_TYPE_SITE:
-        name, handler = SITE_WEBHOOK_NAME, site_webhook_handler(entry)
-    else:
-        name, handler = CHARGER_WEBHOOK_NAME, charger_webhook_handler(entry)
-    webhook.async_register(hass, DOMAIN, name, new, handler, local_only=False, allowed_methods=("POST",))
+    webhook.async_register(
+        hass, DOMAIN, CHARGER_WEBHOOK_NAME, new, charger_webhook_handler(entry), local_only=False, allowed_methods=("POST",)
+    )
 
 
 async def async_disconnect_phones(hass: HomeAssistant) -> dict[str, int]:

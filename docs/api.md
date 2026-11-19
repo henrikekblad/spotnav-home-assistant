@@ -47,10 +47,13 @@ also ends its id.
 
 Both kinds of webhook id are `secrets.token_urlsafe(32)` (256 bits), registered with Home Assistant's webhook
 component (POST only, reachable from outside like any webhook), never logged, never in an entity, redacted in
-diagnostics. An unknown id gets Home Assistant's empty HTTP 200, which the app reads as "pair again". A home's id is
+diagnostics. An unknown id gets Home Assistant's empty HTTP 200, which the app reads as "pair again": only a removed
+entry or a replaced id (Disconnect all phones) does that. A home's webhook is registered whatever the home's load
+state, so a home that is starting, reloading or failed to set up answers HTTP 503 `spotnav_site_unloaded` (try
+again later), never "gone". A home's id is
 added to every existing home by config entry minor version 2 on the first start of 3.0; a downgrade to 2.5 keeps
-the entry loadable (Home Assistant refuses only a higher major version) and the home's door is then closed until
-3.0 runs again.
+the entry loadable (Home Assistant refuses only a higher major version) and the home's door is then closed (2.5 has
+no such webhook) until 3.0 runs again.
 
 ### Pairing
 
@@ -100,13 +103,14 @@ and refusals as the charger webhook below. It answers:
 
 | Refusal | HTTP | When |
 | ------- | ---- | ---- |
+| `spotnav_site_unloaded` | 503 | The home exists but is not loaded (starting, reloading, failed to set up, disabled): every known action, until it loads. Never read it as "pair again". |
 | `spotnav_charger_required` | 400 | A charger action without `charger_id`. |
 | `spotnav_unknown_charger` | 404 | `charger_id` names no SpotNav charger. |
 | `spotnav_charger_not_in_site` | 403 | `charger_id` names a charger of another home, of none, or a home. |
 | `spotnav_charger_unloaded` | 503 | The charger is this home's, but not loaded. |
 | `spotnav_not_permitted_over_webhook` | 403 | `choose_price_source`, `answer_price_duplicate` or `update_grid_tariff` without `charger_id`: the price and the grid tariff are read-only on the home's door in the beta (`get_site_settings_view` says `writable: false` on `price_settings.price_source` and `.grid_tariff`). The control opt-ins, as on a charger's webhook. |
 
-Each refusal is `{"ok": false, "error": <code>, "action": <action>}`. There is no `push_register` for the home
+Each refusal is `{"ok": false, "error": <code>, "action": <action>}` (`site_webhook_site_unloaded.json` for the 503). There is no `push_register` for the home
 itself: notifications are a charger's (with a `charger_id`). Examples: `tests/fixtures/webhook/site_webhook_*.json`.
 
 **`get_site`** (`api_version` optional, `1`), read on open and now and then, not on the live loop:
@@ -123,11 +127,12 @@ Examples: `get_site.json`, `get_site_no_charger.json`.
 
 **`get_site_access`** on a **charger's** webhook (`api_version` optional, `1`) answers the charger's home in the
 shape of one element of the pairing's `sites`: `{"ok": true, "action": "get_site_access", "api_version": 1,
-"site": {"id", "name", "webhook", "chargers": [{"id", "name"}]}}`. A charger in no home, or whose home is not
-loaded, is HTTP 400 `spotnav_no_site` (keep using the charger's webhook); more than six asks per charger a minute is
+"site": {"id", "name", "webhook", "chargers": [{"id", "name"}]}}`. A charger in no home
+is HTTP 400 `spotnav_no_site` (keep using the charger's webhook); a home that exists but is not loaded is HTTP 503
+`spotnav_site_unloaded` (ask again later; it is not "no home"); more than six asks per charger a minute is
 HTTP 429 `spotnav_rate_limited` with `retry_after_s` and `Retry-After`. Over the home's webhook with a `charger_id`
 it answers the same. Examples: `get_site_access_success.json`, `get_site_access_no_site.json`,
-`get_site_access_rate_limited.json`.
+`get_site_access_rate_limited.json`, `get_site_access_site_unloaded.json`.
 
 ### For administrators
 

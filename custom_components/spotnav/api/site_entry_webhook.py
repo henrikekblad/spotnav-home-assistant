@@ -2,7 +2,11 @@
 
 Its id is the site entry's `CONF_WEBHOOK_ID` (`entry_migration.py`), as long and as random as a charger's, registered
 like the charger webhook (`local_only=False`, POST only, the same envelope, the same refusals and log budget:
-`api/webhook.py:async_answer_webhook`). It answers:
+`api/webhook.py:async_answer_webhook`). Unlike a charger's, it is registered whatever the site's load state, from the
+integration's setup until the entry is removed (`async_ensure_site_webhook`): a site that is not loaded (starting,
+reloading, failed to set up, disabled) answers every action with HTTP 503 `spotnav_site_unloaded`, never Home
+Assistant's empty 200 that the app reads as "pair again". Only a removed entry or a replaced id
+("Disconnect all phones") gives that. It answers:
 
 * **The site's own actions**, bound to this site (a `site_id` in the body is never read): `get_site` (below), the
   site actions of the charger webhook (`api/site_webhook.py`: `get_house`, `get_house_now`, `get_house_history`,
@@ -35,10 +39,18 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Final
 
 from aiohttp import web
+from homeassistant.components import webhook
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, CONF_WEBHOOK_ID, DOMAIN, ENTRY_TYPE_CHARGER
+from ..const import (
+    CONF_CHARGER_ENTRY_IDS,
+    CONF_ENTRY_TYPE,
+    CONF_WEBHOOK_ID,
+    DOMAIN,
+    ENTRY_TYPE_CHARGER,
+    ENTRY_TYPE_SITE,
+)
 from .common import (
     ERROR_CHARGER_REQUIRED,
     ERROR_CHARGER_UNLOADED,
@@ -53,11 +65,13 @@ from .power_month import POWER_MONTH_API_VERSION, PowerMonthRefusal, power_month
 from .site_settings import async_site_webhook_update_site_settings
 from .site_webhook import SiteHandler, site_handlers
 from .target_suggestion import SUGGEST_API_VERSION, suggestion_answer
-from .webhook import Call, ACTIONS, async_answer_webhook, async_register_entry_webhook, charger_call
+from .webhook import Call, ACTIONS, async_answer_webhook, charger_call
 
 #: The name Home Assistant lists the site webhook by.
 SITE_WEBHOOK_NAME: Final = "SpotNav home"
 GET_SITE_API_VERSION: Final = 1
+#: The site entry exists but is not loaded (starting, reloading, failed to set up, disabled): try again later.
+ERROR_SITE_UNLOADED: Final = "spotnav_site_unloaded"
 #: A charger of another site, or of none, named on this site's webhook.
 ERROR_CHARGER_NOT_IN_SITE: Final = "spotnav_charger_not_in_site"
 #: The price writes, read-only on the site webhook in the beta (allowed with a `charger_id`, as a charger's action).
@@ -175,6 +189,9 @@ def site_call(hass: HomeAssistant, site: ConfigEntry, action: str, payload: dict
     charger_action = ACTIONS.get(action)
     if site_action is None and charger_action is None:
         return None
+    if site.state is not ConfigEntryState.LOADED:
+        # Never "gone": the app must not read a restart or a failed setup as "pair again".
+        return lambda: _answered(_refused(action, ERROR_SITE_UNLOADED, 503))
     named = "charger_id" in payload
     charger: ConfigEntry | None = None
     if named:
@@ -194,10 +211,15 @@ async def _answered(response: web.Response) -> web.Response:
     return response
 
 
-def site_webhook_handler(site: ConfigEntry) -> Callable[..., Awaitable[web.Response]]:
-    """The site webhook's request handler, for registering it again under a new id (`api/phones.py`)."""
+def site_webhook_handler(site_id: str) -> Callable[..., Awaitable[web.Response]]:
+    """The site webhook's request handler: reads the site entry at each request, so it answers while the site is not
+    loaded (`spotnav_site_unloaded`)."""
 
     async def async_handle_webhook(hass: HomeAssistant, _webhook_id: str, request: web.Request) -> web.Response:
+        site = hass.config_entries.async_get_entry(site_id)
+        if site is None:
+            # Removed between the request and now: as an id Home Assistant does not know.
+            return web.Response(status=200)
         return await async_answer_webhook(
             hass, request, lambda action, payload: site_call(hass, site, action, payload)
         )
@@ -205,9 +227,47 @@ def site_webhook_handler(site: ConfigEntry) -> Callable[..., Awaitable[web.Respo
     return async_handle_webhook
 
 
-def async_register_site_webhook(hass: HomeAssistant, site: ConfigEntry) -> None:
-    """Register this site's webhook (when it holds an id), and unregister it when the entry unloads or fails to set
-    up."""
-    if not site.data.get(CONF_WEBHOOK_ID):
+#: hass.data key: site entry id -> the webhook id registered for it now.
+_REGISTERED: Final = "spotnav_site_webhooks"
+
+
+def async_ensure_site_webhook(hass: HomeAssistant, site: ConfigEntry) -> None:
+    """Register this site's webhook under the id its data holds now, whatever the entry's load state: from the
+    integration's setup for every site entry, from the site's own setup (a new or just migrated one), and after
+    "Disconnect all phones" replaced its id (the old id is unregistered then). It stays registered across unloads,
+    reloads and failed setups, which answer `spotnav_site_unloaded`; only `async_drop_site_webhook` (the entry
+    removed) takes it away."""
+    webhook_id = site.data.get(CONF_WEBHOOK_ID)
+    registered: dict[str, str] = hass.data.setdefault(_REGISTERED, {})
+    current = registered.get(site.entry_id)
+    if current == webhook_id:
         return
-    async_register_entry_webhook(hass, site, SITE_WEBHOOK_NAME, site_webhook_handler(site))
+    if current is not None:
+        webhook.async_unregister(hass, current)
+        registered.pop(site.entry_id, None)
+    if not webhook_id:
+        return
+    webhook.async_register(
+        hass,
+        DOMAIN,
+        SITE_WEBHOOK_NAME,
+        webhook_id,
+        site_webhook_handler(site.entry_id),
+        local_only=False,
+        allowed_methods=("POST",),
+    )
+    registered[site.entry_id] = webhook_id
+
+
+def async_drop_site_webhook(hass: HomeAssistant, site_id: str) -> None:
+    """The site entry is removed: its webhook id answers nothing any more (Home Assistant's empty 200)."""
+    current = hass.data.setdefault(_REGISTERED, {}).pop(site_id, None)
+    if current is not None:
+        webhook.async_unregister(hass, current)
+
+
+def async_register_site_webhooks(hass: HomeAssistant) -> None:
+    """Every site entry's webhook, at the integration's setup (before any entry is set up)."""
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+            async_ensure_site_webhook(hass, entry)

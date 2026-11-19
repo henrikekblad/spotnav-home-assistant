@@ -220,7 +220,10 @@ async def test_a_charger_of_the_site_that_is_not_loaded_says_so(hass: HomeAssist
     assert (status, body) == (503, {"ok": False, "error": "spotnav_charger_unloaded", "action": "dashboard"})
 
 
-async def test_unloading_the_site_unregisters_its_webhook(hass: HomeAssistant, freezer, hass_client_no_auth) -> None:
+async def test_a_site_that_is_not_loaded_says_so_and_only_a_removed_one_is_gone(
+    hass: HomeAssistant, freezer, hass_client_no_auth
+) -> None:
+    """A restart, a reload or a failed setup is never "pair again": 503 `spotnav_site_unloaded` until it loads."""
     site = await _site(hass, freezer)
     client = await hass_client_no_auth()
     secret = _hook(site)
@@ -228,9 +231,59 @@ async def test_unloading_the_site_unregisters_its_webhook(hass: HomeAssistant, f
     assert status == 200
     assert await hass.config_entries.async_unload(site.entry_id)
     await hass.async_block_till_done()
+    for request in ({"action": "get_site"}, {"action": "get_house"}, {"action": "dashboard", "charger_id": "entry_a"}):
+        status, body = await post(client, secret, request)
+        assert (status, body) == (503, {"ok": False, "error": "spotnav_site_unloaded", "action": request["action"]})
+    _pinned("site_webhook_site_unloaded.json", body)
+    # An action it does not know is still a bad request.
+    status, _body = await post(client, secret, {"action": "no_such_action"})
+    assert status == 400
+    # Loaded again, it answers at the same id.
+    assert await hass.config_entries.async_setup(site.entry_id)
+    await hass.async_block_till_done()
+    status, _body = await post(client, secret, {"action": "get_site"})
+    assert status == 200
+    # Removed: the id answers nothing (Home Assistant's empty 200, which the app reads as "pair again").
+    assert await hass.config_entries.async_remove(site.entry_id)
+    await hass.async_block_till_done()
     response = await client.post(f"/api/webhook/{secret}", json={"version": 1, "action": "get_site"})
-    # Home Assistant's answer for an id it does not know: an empty 200, as for a charger's.
     assert response.status == 200 and await response.text() == ""
+
+
+async def test_a_site_whose_setup_fails_answers_unloaded(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from homeassistant.config_entries import ConfigEntryState
+
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    async def broken(self: Any) -> None:
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(SiteCapacityController, "async_initialize", broken)
+    home = make_site_entry(hass, entry_id="home_broken", charger_entry_ids=[], title="Villa")
+    await hass.config_entries.async_setup(home.entry_id)
+    await hass.async_block_till_done()
+    assert home.state is ConfigEntryState.SETUP_ERROR
+    client = await hass_client_no_auth()
+    status, body = await post(client, _hook(home), {"action": "get_site"})
+    assert (status, body) == (503, {"ok": False, "error": "spotnav_site_unloaded", "action": "get_site"})
+
+
+async def test_a_site_not_loaded_at_the_integrations_start_answers_unloaded(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    """Registered from the integration's setup for every site entry, also one that never loads (disabled)."""
+    from homeassistant.config_entries import ConfigEntryDisabler
+
+    disabled = make_site_entry(hass, entry_id="home_disabled", charger_entry_ids=[], title="Cabin")
+    disabled.disabled_by = ConfigEntryDisabler.USER
+    charger, _ = await setup_charger_and_site(hass, "entry_x", site=False)
+    assert charger is not None
+    client = await hass_client_no_auth()
+    status, body = await post(client, _hook(disabled), {"action": "get_site"})
+    assert (status, body["error"]) == (503, "spotnav_site_unloaded")
+
 
 
 async def test_a_charger_hands_over_its_own_site_and_never_another(
@@ -274,11 +327,12 @@ async def test_a_charger_hands_over_its_own_site_and_never_another(
     status, body = await post(client, HOOK, {"action": "get_site_access", "api_version": 2})
     assert (status, body["error"]) == (400, "spotnav_unsupported_api_version")
 
-    # A site that is not loaded has no door yet.
+    # A home that is not loaded is never "no home": try again later.
     assert await hass.config_entries.async_unload(site_b.entry_id)
     await hass.async_block_till_done()
     status, body = await post(client, "webhook-entry_b", {"action": "get_site_access"})
-    assert (status, body["error"]) == (400, "spotnav_no_site")
+    assert (status, body) == (503, {"ok": False, "error": "spotnav_site_unloaded", "action": "get_site_access"})
+    _pinned("get_site_access_site_unloaded.json", body)
 
 
 async def test_asking_for_the_site_is_rate_limited_per_charger(hass: HomeAssistant, freezer, hass_client_no_auth) -> None:

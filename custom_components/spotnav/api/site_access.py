@@ -9,8 +9,8 @@ Request: `{version: 1, action: "get_site_access", api_version?: 1}`. Answers:
 
 * 200 `{ok: true, action, api_version: 1, site: {id, name, webhook, chargers: [{id, name}]}}`: the same shape as one
   element of the pairing hand-over's `sites` (`vehicles/charger_inventory.py:site_pairing_entry`).
-* 400 `spotnav_no_site`: the charger is in no site, or its site is not loaded (its webhook would not answer yet);
-  the app keeps using the charger webhook.
+* 400 `spotnav_no_site`: the charger is in no site; the app keeps using the charger webhook.
+* 503 `spotnav_site_unloaded`: its site exists but is not loaded (starting, failed to set up): ask again later.
 * 400 `spotnav_unsupported_api_version`.
 * 429 `spotnav_rate_limited` with `retry_after_s` and `Retry-After`: more than `ACCESS_LIMIT` asks per charger in
   `ACCESS_WINDOW_S` (the app asks once per start).
@@ -37,6 +37,8 @@ from .common import ERROR_NO_SITE, ERROR_UNSUPPORTED_VERSION, site_of_charger
 ACTION: Final = "get_site_access"
 SITE_ACCESS_API_VERSION: Final = 1
 ERROR_RATE_LIMITED: Final = "spotnav_rate_limited"
+#: As the site webhook's (`api/site_entry_webhook.py`): the charger's home exists but is not loaded.
+ERROR_SITE_UNLOADED: Final = "spotnav_site_unloaded"
 #: At most this many asks per charger in `ACCESS_WINDOW_S`.
 ACCESS_LIMIT: Final = 6
 ACCESS_WINDOW_S: Final = 60.0
@@ -69,8 +71,11 @@ async def webhook_get_site_access(hass: HomeAssistant, entry: ConfigEntry, paylo
             headers={"Retry-After": str(retry_after_s)},
         )
     site = site_of_charger(hass, entry.entry_id)
-    if site is None or site.state is not ConfigEntryState.LOADED or not site.data.get(CONF_WEBHOOK_ID):
+    if site is None or not site.data.get(CONF_WEBHOOK_ID):
         return web.json_response({"ok": False, "error": ERROR_NO_SITE, "action": ACTION}, status=400)
+    if site.state is not ConfigEntryState.LOADED:
+        # The home exists: never "no home" while it starts or fails to set up.
+        return web.json_response({"ok": False, "error": ERROR_SITE_UNLOADED, "action": ACTION}, status=503)
     return web.json_response(
         {"ok": True, "action": ACTION, "api_version": SITE_ACCESS_API_VERSION, "site": site_pairing_entry(hass, site)}
     )
