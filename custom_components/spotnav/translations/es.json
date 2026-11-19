@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "¿Qué quieres añadir?",
-        "description": "Un cargador conecta un punto de carga físico con SpotNav. Una instalación es opcional: equilibra la carga de todos los cargadores de una misma acometida eléctrica por debajo del fusible general. Un precio de la electricidad da a otras automatizaciones los precios de SpotNav con tus cargos.",
+        "description": "Tu hogar: el contador de la casa, una batería doméstica, la calefacción y el equilibrado de carga por debajo del fusible general, con o sin cargador. Un cargador conecta un punto de carga físico con SpotNav; en un hogar comparte el fusible general con la casa. Un precio de la electricidad da a otras automatizaciones los precios de SpotNav con tus cargos.",
         "data": {
           "entry_type": "Qué añadir"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "Un cargador",
-        "site": "Una instalación (equilibrado de carga)",
+        "site": "Tu hogar (casa, batería, calefacción, equilibrado de carga)",
         "resolve_vehicle": "Resolver un vehículo detectado",
         "price": "Un precio de la electricidad"
       }

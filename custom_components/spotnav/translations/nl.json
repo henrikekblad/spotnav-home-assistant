@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Wat wil je toevoegen?",
-        "description": "Een laadpaal koppelt één fysiek laadpunt aan SpotNav. Een locatie is optioneel: die verdeelt de belasting van alle laadpalen op één elektrische aansluiting onder de hoofdzekering. Een elektriciteitsprijs geeft andere automatiseringen de prijzen van SpotNav met jouw heffingen.",
+        "description": "Je woning: de meter van het huis, een thuisbatterij, verwarming en load balancing onder de hoofdzekering, met of zonder laadpaal. Een laadpaal koppelt één fysiek laadpunt aan SpotNav; in een woning deelt die de hoofdzekering met het huis. Een elektriciteitsprijs geeft andere automatiseringen de prijzen van SpotNav met jouw heffingen.",
         "data": {
           "entry_type": "Wat toevoegen"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "Een laadpaal",
-        "site": "Een locatie (load balancing)",
+        "site": "Je woning (huis, batterij, verwarming, load balancing)",
         "resolve_vehicle": "Een gevonden auto oplossen",
         "price": "Een elektriciteitsprijs"
       }

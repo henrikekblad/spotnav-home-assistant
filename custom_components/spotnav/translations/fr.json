@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Que voulez-vous ajouter ?",
-        "description": "Une borne relie un point de charge physique à SpotNav. Un site est facultatif : il équilibre la charge de toutes les bornes d'un même raccordement électrique sous le fusible principal. Un prix de l'électricité donne aux autres automatisations les prix de SpotNav avec vos taxes.",
+        "description": "Votre maison : le compteur de la maison, une batterie domestique, le chauffage et l'équilibrage de charge sous le fusible principal, avec ou sans borne. Une borne relie un point de charge physique à SpotNav ; dans une maison, elle partage le fusible principal avec la maison. Un prix de l'électricité donne aux autres automatisations les prix de SpotNav avec vos taxes.",
         "data": {
           "entry_type": "Élément à ajouter"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "Une borne",
-        "site": "Un site (équilibrage de charge)",
+        "site": "Votre maison (maison, batterie, chauffage, équilibrage de charge)",
         "resolve_vehicle": "Identifier un véhicule détecté",
         "price": "Un prix de l'électricité"
       }

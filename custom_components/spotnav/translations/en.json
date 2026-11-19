@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "What do you want to add?",
-        "description": "A charger connects one physical charge point to SpotNav. A site is optional: it balances the load of every charger at one electrical connection under the main fuse. An electricity price gives other automations SpotNav's prices with your fees.",
+        "description": "Your home: the house's meter, a home battery, heating and load balancing under the main fuse, with or without a charger. A charger connects one physical charge point to SpotNav; in a home, it shares the main fuse with the house. An electricity price gives other automations SpotNav's prices with your fees.",
         "data": {
           "entry_type": "What to add"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "A charger",
-        "site": "A site (load balancing)",
+        "site": "Your home (house, battery, heat, load balancing)",
         "resolve_vehicle": "Resolve a detected vehicle",
         "price": "An electricity price"
       }

@@ -293,8 +293,8 @@ class SpotNavChargingConfigFlow(
         return self.async_abort(reason="pairing_denied")
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Choose what to add: a charger, a site capacity/load-balancing group, an electricity price for
-        other automations, or a resolution for a vehicle detection could not decide about.
+        """Choose what to add: the home (a site: the house, battery, heat and load balancing), a charger, an
+        electricity price for other automations, or a resolution for a vehicle detection could not decide about.
         """
         # A first charger's flow can run before the integration's setup has read SpotNav's texts.
         await async_load_texts(self.hass)
@@ -311,12 +311,14 @@ class SpotNavChargingConfigFlow(
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_ENTRY_TYPE, default=ENTRY_TYPE_CHARGER
+                        CONF_ENTRY_TYPE, default=ENTRY_TYPE_SITE
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
+                            # The home first (SpotNav 3.0): the house, battery, heat and load balancing, with or
+                            # without a charger.
                             options=[
-                                ENTRY_TYPE_CHARGER,
                                 ENTRY_TYPE_SITE,
+                                ENTRY_TYPE_CHARGER,
                                 ENTRY_TYPE_PRICE,
                                 # Only offered when detection has something it refuses to guess.
                                 *(

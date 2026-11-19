@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Hva vil du legge til?",
-        "description": "En lader kobler ett fysisk ladepunkt til SpotNav. Et anlegg er valgfritt: det balanserer lasten for alle ladere på én elektrisk tilkobling under hovedsikringen. En strømpris gir andre automasjoner SpotNavs priser med dine avgifter.",
+        "description": "Hjemmet ditt: husets måler, hjemmebatteri, varme og lastbalansering under hovedsikringen, med eller uten lader. En lader kobler ett fysisk ladepunkt til SpotNav; i et hjem deler den hovedsikringen med huset. En strømpris gir andre automasjoner SpotNavs priser med dine avgifter.",
         "data": {
           "entry_type": "Hva som skal legges til"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "En lader",
-        "site": "Et anlegg (lastbalansering)",
+        "site": "Hjemmet ditt (hus, batteri, varme, lastbalansering)",
         "resolve_vehicle": "Avklar et oppdaget kjøretøy",
         "price": "En strømpris"
       }

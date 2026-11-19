@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Was möchtest du hinzufügen?",
-        "description": "Eine Ladestation verbindet einen physischen Ladepunkt mit SpotNav. Ein Standort ist optional: Er verteilt die Last aller Ladestationen an einem Netzanschluss unter der Hauptsicherung. Ein Strompreis gibt anderen Automationen SpotNavs Preise mit deinen Abgaben.",
+        "description": "Dein Zuhause: der Zähler des Hauses, ein Heimspeicher, die Heizung und das Lastmanagement unter der Hauptsicherung, mit oder ohne Ladestation. Eine Ladestation verbindet einen physischen Ladepunkt mit SpotNav; in einem Zuhause teilt sie sich die Hauptsicherung mit dem Haus. Ein Strompreis gibt anderen Automationen SpotNavs Preise mit deinen Abgaben.",
         "data": {
           "entry_type": "Was hinzufügen"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "Eine Ladestation",
-        "site": "Einen Standort (Lastmanagement)",
+        "site": "Dein Zuhause (Haus, Batterie, Heizung, Lastmanagement)",
         "resolve_vehicle": "Ein erkanntes Fahrzeug klären",
         "price": "Einen Strompreis"
       }

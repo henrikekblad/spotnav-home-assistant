@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Vad vill du lägga till?",
-        "description": "En laddare kopplar en fysisk laddpunkt till SpotNav. En site är valfri: den lastbalanserar alla laddare på samma elanslutning under huvudsäkringen. Ett elpris ger andra automationer SpotNavs priser med dina avgifter.",
+        "description": "Ditt hem: husets mätare, hembatteri, värme och lastbalansering under huvudsäkringen, med eller utan laddare. En laddare kopplar en fysisk laddpunkt till SpotNav; i ett hem delar den huvudsäkringen med huset. Ett elpris ger andra automationer SpotNavs priser med dina avgifter.",
         "data": {
           "entry_type": "Vad som ska läggas till"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "En laddare",
-        "site": "En site (lastbalansering)",
+        "site": "Ditt hem (hus, batteri, värme, lastbalansering)",
         "resolve_vehicle": "Lös upp ett upptäckt fordon",
         "price": "Ett elpris"
       }

@@ -19,7 +19,7 @@
       },
       "user": {
         "title": "Mitä haluat lisätä?",
-        "description": "Laturi liittää yhden fyysisen latauspisteen SpotNaviin. Kohde on valinnainen: se hallitsee kaikkien saman sähköliittymän laturien kuormaa pääsulakkeen alapuolella. Sähkön hinta antaa muille automaatioille SpotNavin hinnat maksuineen.",
+        "description": "Kotisi: talon mittari, kotiakku, lämmitys ja kuormanhallinta pääsulakkeen alapuolella, laturin kanssa tai ilman. Laturi liittää yhden fyysisen latauspisteen SpotNaviin; kodissa se jakaa pääsulakkeen talon kanssa. Sähkön hinta antaa muille automaatioille SpotNavin hinnat maksuineen.",
         "data": {
           "entry_type": "Lisättävä"
         }
@@ -540,7 +540,7 @@
     "entry_type": {
       "options": {
         "charger": "Latauslaite",
-        "site": "Kohde (kuormanhallinta)",
+        "site": "Kotisi (talo, akku, lämmitys, kuormanhallinta)",
         "resolve_vehicle": "Ratkaise tunnistettu ajoneuvo",
         "price": "Sähkön hinta"
       }
