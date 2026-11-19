@@ -511,6 +511,35 @@ def test_a_write_never_read_back_is_not_taken_after_the_longer_wait_and_one_that
     assert plant.states["working_mode"] == "General" and executor.state.phase == "blocked"
 
 
+def test_a_hand_back_or_a_peak_cover_the_dongle_dropped_is_sent_again_after_the_ledgers_own_wait() -> None:
+    """Only a write that starts or changes a command waits the stall's three minutes: General is idempotent, and
+    the house stands on the grid without the battery until it lands."""
+    executor, plant = _plant()
+    now, _results = run(executor, plant, T0, 6, "hold")
+    plant.drops = {"working_mode"}
+    now, results = run(executor, plant, now, 2, "hold", headroom_a=1.2)
+    assert written(results) == [("working_mode", "General")] and events(results, "peak_cover")
+    covered = now
+    now, results = run(executor, plant, now, 7, "hold", headroom_a=1.2)
+    assert events(results, "not_taken")[0]["why"] == "no_read_back"
+    assert (now - covered).total_seconds() <= READBACK_DEADLINE_S + 3 * TICK.total_seconds() < READBACK_STALL_S
+    plant.drops = set()
+    now, results = run(executor, plant, now, 12, None)
+    assert ("working_mode", "General") in written(results) and executor.state.phase != "active"
+    assert plant.states["working_mode"] == "General"
+    # A plain hand-back dropped once is sent again after the 30 s retry, not after three minutes.
+    executor, plant = _plant()
+    now, _results = run(executor, plant, T0, 6, "grid_charge", 3.0)
+    plant.drops = {"working_mode"}
+    start = now
+    now, results = run(executor, plant, now, 7, None)
+    assert events(results, "not_taken")[0]["why"] == "no_read_back"
+    plant.drops = set()
+    now, results = run(executor, plant, now, 6, None)
+    assert ("working_mode", "General") in written(results)
+    assert plant.states == STATES and (now - start).total_seconds() < READBACK_STALL_S
+
+
 def test_a_stall_never_delays_the_fuse() -> None:
     executor, plant = _plant()
     now, _results = run(executor, plant, T0, 6, "grid_charge", 3.0)

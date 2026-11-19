@@ -109,7 +109,8 @@ What to know before you turn it on:
   It also stops answering for 4 to 8 seconds about once a minute while it uploads to the cloud. Set the
   integration's timeout to 10 to 12 seconds, so that a write made in such a pause waits instead of failing; a write
   the integration reports as failed stops control until you turn it on again. SpotNav waits up to three minutes
-  for a written value to show (one minute on other brands).
+  for a written value to show (one minute on other brands); a hand-back to *General* waits one minute and is then
+  written again.
 * **The cloud and the app.** If the Solinteg app, the cloud or another controller (Samvolt, CheckWatt, Enequi)
   changes the Working Mode while SpotNav runs it, SpotNav hands back and stops; it never writes over them.
 * **Writes a day:** 500 to the power targets, 96 to the modes. Nobody states whether the inverter keeps the targets

@@ -10,8 +10,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Edge-triggered.** It writes only when the wanted state changes (a new action, a new rate past the hysteresis,
   a brand's watchdog to renew) and only the roles whose reading differs from it, one at a time in the brand's order
   (`commands.py`). Each write goes through the confirmed-write ledger (`ledger.py`): it counts only when the entity
-  reads it back within `READBACK_DEADLINE_S` (a brand whose link stalls names a longer wait,
-  `BrandControl.readback_s`; a hand-back for the fuse never waits for a read-back either way); the next role is
+  reads it back within `READBACK_DEADLINE_S` (a brand whose link stalls names a longer wait for the writes that
+  start or change a command, `BrandControl.readback_s`; a restore and a peak cover keep the 60 s, so a dropped one
+  is sent again soon, and a hand-back for the fuse never waits for a read-back either way); the next role is
   written only after that. A write that does not read
   back (a read-only integration drops it silently, an entity went away) hands the battery back and blocks the
   control until it is reset: SpotNav never repeats a write the device did not take.
@@ -1767,7 +1768,7 @@ class Executor:
             if entity_id is not None:
                 self.ledger.intend(
                     entity_id, value, inputs.now, step=None if read is None else (read.step or role.step),
-                    deadline_s=READBACK_DEADLINE_S if self.control.readback_s is None else self.control.readback_s,
+                    deadline_s=self._readback_s(state, name),
                 )
             if self._fuse_hand_back():
                 self.state = replace(state, in_flight=(*state.in_flight, name), sent=sent, renew=renew,
@@ -1776,6 +1777,15 @@ class Executor:
                 self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written,
                                      setpoint_writes_today=setpoints)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    def _readback_s(self, state: ExecState, name: str) -> float:
+        """How long this write may take to read back: the brand's longer wait (`BrandControl.readback_s`) only for a
+        write that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link
+        dropped is sent again soon (both are idempotent, and the house stands on the grid without the battery
+        meanwhile)."""
+        if self.control.readback_s is None or state.phase == "restoring" or self._covering(state, name):
+            return READBACK_DEADLINE_S
+        return self.control.readback_s
 
     def _fuse_hand_back(self) -> bool:
         """A hand-back for the fuse: its roles are written at once, each read back afterwards."""

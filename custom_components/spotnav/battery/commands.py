@@ -136,9 +136,10 @@ The entity keys, options and services below were checked against each integratio
   70 s). The plugin answers a write only once the inverter acknowledged it, raises when it did not (a write not
   taken, as for any brand), and then shows the written value at once; the register itself is read at its next poll,
   where a value the inverter or the cloud changed back shows as a change by someone else. A read-back may therefore
-  arrive a stall late: `READBACK_STALL_S` instead of the ledger's 60 s. **Writes a day:** no document says whether
-  50207 and 50204-50206 are kept in flash; owners write 50207 every second, but that is no maker's word, so they are
-  setpoints at `SETPOINT_WRITES_UNSTATED` (500) and the modes are settings (96).
+  arrive a stall late: `READBACK_STALL_S` instead of the ledger's 60 s for the writes that start or change a
+  command (a hand-back or a peak cover writes General again after the 60 s: the house is on the grid meanwhile).
+  **Writes a day:** no document says whether 50207 and 50204-50206 are kept in flash; owners write 50207 every
+  second, but that is no maker's word, so they are setpoints at `SETPOINT_WRITES_UNSTATED` (500) and the modes are settings (96).
 * **Export limit** (`EXPORT_CONTROLS`, the action `ACTION_CURTAIL_EXPORT`: no export while the sell price is below
   zero, `export_curtail.py`): its own control beside the battery's, written by the same executor and ledger. Sigenergy:
   number `plant_grid_point_maximum_export_limitation` ("Grid Export Limitation", register 40038, U32, gain 1000, kW
@@ -384,7 +385,9 @@ class BrandControl:
     #: own documents were read for (see the module).
     write_caps: Mapping[str, int] = field(default_factory=dict)
     #: How long a write may take to read back (s) before it counts as not taken; `None`: the ledger's own
-    #: (`ledger.READBACK_DEADLINE_S`). Longer only for a link known to stall (`READBACK_STALL_S`).
+    #: (`ledger.READBACK_DEADLINE_S`). Longer only for a link known to stall (`READBACK_STALL_S`), and only for a
+    #: write that starts or changes a command: a restore and a peak cover keep the ledger's own, so a dropped one is
+    #: sent again soon.
     readback_s: float | None = None
 
     def role(self, name: str) -> Role:
