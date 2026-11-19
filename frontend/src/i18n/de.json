@@ -1990,5 +1990,6 @@
   "heat.water.gateWeekdays": "{weekdays} von 7 Wochentagen",
   "heat.water.gateReady": "Warmwasser: bereit zur Steuerung mit „Heizung steuern“",
   "heat.water.live": "Warmwasser wird von SpotNav gesteuert",
-  "heat.water.backedOff": "Warmwasser nach zu vielem Nachheizen wieder im Schattenbetrieb"
+  "heat.water.backedOff": "Warmwasser nach zu vielem Nachheizen wieder im Schattenbetrieb",
+  "heat.boost.noHeadroom": "Die Hauptsicherung ist gerade voll belastet; etwas ausschalten und erneut versuchen"
 }

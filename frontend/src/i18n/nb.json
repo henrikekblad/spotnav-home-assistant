@@ -1990,5 +1990,6 @@
   "heat.water.gateWeekdays": "{weekdays} av 7 ukedager",
   "heat.water.gateReady": "Varmtvann: klart til å styres med «Styr varmen»",
   "heat.water.live": "Varmtvannet styres av SpotNav",
-  "heat.water.backedOff": "Varmtvannet er tilbake i skygge etter for mange omlastinger"
+  "heat.water.backedOff": "Varmtvannet er tilbake i skygge etter for mange omlastinger",
+  "heat.boost.noHeadroom": "Hovedsikringen er fullt belastet nå; slå av noe og prøv igjen"
 }

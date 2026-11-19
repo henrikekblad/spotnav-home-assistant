@@ -1990,5 +1990,6 @@
   "heat.water.gateWeekdays": "{weekdays} de 7 días de la semana",
   "heat.water.gateReady": "Agua caliente: lista para controlarse con «Controlar la calefacción»",
   "heat.water.live": "SpotNav controla el agua caliente",
-  "heat.water.backedOff": "Agua caliente de vuelta en sombra tras demasiados recalentamientos"
+  "heat.water.backedOff": "Agua caliente de vuelta en sombra tras demasiados recalentamientos",
+  "heat.boost.noHeadroom": "El fusible principal está a plena carga ahora; apaga algo e inténtalo de nuevo"
 }

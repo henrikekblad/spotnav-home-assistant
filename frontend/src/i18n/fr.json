@@ -1990,5 +1990,6 @@
   "heat.water.gateWeekdays": "{weekdays} jours de la semaine sur 7",
   "heat.water.gateReady": "Eau chaude : prête à être pilotée avec « Piloter le chauffage »",
   "heat.water.live": "L’eau chaude est pilotée par SpotNav",
-  "heat.water.backedOff": "Eau chaude de retour en observation après trop de réchauffes"
+  "heat.water.backedOff": "Eau chaude de retour en observation après trop de réchauffes",
+  "heat.boost.noHeadroom": "Le disjoncteur principal est à pleine charge ; éteignez un appareil et réessayez"
 }

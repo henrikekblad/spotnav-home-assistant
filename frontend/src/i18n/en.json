@@ -1990,5 +1990,6 @@
   "heat.water.gateWeekdays": "{weekdays} of 7 weekdays",
   "heat.water.gateReady": "Hot water: ready to be steered with “Control the heat”",
   "heat.water.live": "Hot water is steered by SpotNav",
-  "heat.water.backedOff": "Hot water back in shadow after too many reloads"
+  "heat.water.backedOff": "Hot water back in shadow after too many reloads",
+  "heat.boost.noHeadroom": "The main fuse is fully loaded right now; turn something off and try again"
 }

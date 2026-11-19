@@ -46,7 +46,8 @@ charger or version is a WebSocket error as `spotnav/get_house` answers it.
 start goes out through the pump's own boost or the settings' hot-water input (`heat/dhw_runtime.HotWater.async_press`)
 and is read back in the background (`boost.state` "starting" until then). Refusals (`error`): `spotnav_not_supported`
 (no boost route, or a stop with no way to end it early), `spotnav_busy` (a start is pending), `spotnav_rate_limited`
-(one start per ten minutes per site), `spotnav_write_failed` (the write was not taken), `spotnav_not_own` (a stop of a
+(one start per ten minutes per site), `spotnav_no_headroom` (a phase is already over the main fuse less its margin:
+turn something off and press again), `spotnav_write_failed` (the write was not taken), `spotnav_not_own` (a stop of a
 run that is not the household's: SpotNav's planned boost or the pump's own run). The webhook's `heat_boost` is the
 same body without `type`.
 

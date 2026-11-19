@@ -48,6 +48,11 @@ export { instantToLocal, localToInstant, writeError };
 export const HEAT_CARD_TYPE = "spotnav-heat-card";
 export const HEAT_CARD_ELEMENT = "spotnav-heat-card";
 export const HEAT_REFRESH_MS = 60_000;
+/** The sentence for a refused press of the Boost button. */
+export function boostErrorKey(code: string | null): "heat.boost.rateLimited" | "heat.boost.noHeadroom" | "heat.boost.failed" {
+  return code === "spotnav_rate_limited" ? "heat.boost.rateLimited" : code === "spotnav_no_headroom" ? "heat.boost.noHeadroom" : "heat.boost.failed";
+}
+
 /** While the Boost button's start waits for its read-back: look again this often, this many times. */
 const BOOST_POLL_MS = 5_000;
 const BOOST_POLLS = 40;
@@ -502,7 +507,7 @@ export class SpotnavHeatCard extends HTMLElement {
       if (!decoded.ok) {
         error = translate(language, "heat.error.generic");
       } else if (!decoded.value.ok) {
-        error = translate(language, decoded.value.error === "spotnav_rate_limited" ? "heat.boost.rateLimited" : "heat.boost.failed");
+        error = translate(language, boostErrorKey(decoded.value.error));
       }
     } catch {
       error = translate(language, "heat.boost.failed");

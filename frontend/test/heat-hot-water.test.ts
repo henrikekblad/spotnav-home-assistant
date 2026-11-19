@@ -7,9 +7,10 @@ import { join } from "node:path";
 
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { boostErrorKey } from "../src/heat-card";
 import { decodeHeat, decodeHeatBoost, type HeatAnswer, type HeatBoost } from "../src/heat-model";
 import { aheadLine, boostWords, heatBody, hotWaterLines, plannedWaterText, type HeatState } from "../src/heat-view";
-import { registerTranslation } from "../src/i18n";
+import { registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "heat_card");
@@ -89,6 +90,12 @@ describe("the Boost button", () => {
 
   it("is left out where the card cannot press it", () => {
     expect(render(withBoost(answer(), IDLE), "now", null).querySelector("[data-block='boost']")).toBeNull();
+  });
+
+  it("says why a press was refused", () => {
+    expect(translate("sv", boostErrorKey("spotnav_no_headroom"))).toBe("Säkringen är fullt belastad just nu; stäng av något och försök igen");
+    expect(boostErrorKey("spotnav_rate_limited")).toBe("heat.boost.rateLimited");
+    expect(boostErrorKey("spotnav_write_failed")).toBe("heat.boost.failed");
   });
 
   it("decodes the command's answer strictly", () => {

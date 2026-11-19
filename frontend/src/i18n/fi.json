@@ -1990,5 +1990,6 @@
   "heat.water.gateWeekdays": "{weekdays}/7 viikonpäivää",
   "heat.water.gateReady": "Käyttövesi: valmis ohjattavaksi kohdasta ”Ohjaa lämmitystä”",
   "heat.water.live": "SpotNav ohjaa käyttövettä",
-  "heat.water.backedOff": "Käyttövesi palasi varjoon liian monen uudelleenlämmityksen jälkeen"
+  "heat.water.backedOff": "Käyttövesi palasi varjoon liian monen uudelleenlämmityksen jälkeen",
+  "heat.boost.noHeadroom": "Pääsulake on nyt täysin kuormitettu; sammuta jotain ja yritä uudelleen"
 }

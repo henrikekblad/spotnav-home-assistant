@@ -281,3 +281,33 @@ async def test_s2_shed_counts_what_the_battery_would_yield(hass: HomeAssistant, 
         hot_water.tick(at + timedelta(minutes=minute))
         await settle(hass)
     assert len(writes.calls) == 1
+
+
+# ---- S3: the button refuses only while a phase is already over the fuse
+
+
+async def test_s3_the_button_refuses_only_over_the_fuse(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hot_water = controller.heat_shadow.hot_water
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    writes = Writes(hass)
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -3.0, "l2": 10.0, "l3": 10.0})
+    answer = (await press(hass, "start", site_id=site.entry_id))["result"]
+    assert answer["error"] == "spotnav_no_headroom" and writes.calls == []
+    # A refused press does not count toward the rate limit; a tight margin is still the household's to use.
+    _fuse(monkeypatch, hot_water, "observing", {"l1": 1.0, "l2": 10.0, "l3": 10.0})
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    assert len(writes.calls) == 1
+
+
+async def test_s3_unknown_margins_do_not_refuse_the_button(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    writes = Writes(hass)
+    _fuse(monkeypatch, controller.heat_shadow.hot_water, "stale_measurements", {})
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    assert len(writes.calls) == 1

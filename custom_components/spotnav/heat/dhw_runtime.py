@@ -876,6 +876,10 @@ class HotWater:
         if state.get("state") == "running" and state.get("source") in ("user", "plan"):
             # Already on: nothing more to write.
             return None, state
+        if over_fuse(self._margins()) is True:
+            # A phase is already over the fuse less its margin: something must go off first. A tight margin is the
+            # household's own to use, as at the pump's display; unknown margins never refuse.
+            return "spotnav_no_headroom", state
         self._failed_at = None
         if start_call(route, self._options(route)) is None:
             return "spotnav_write_failed", state

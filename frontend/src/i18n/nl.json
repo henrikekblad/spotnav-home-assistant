@@ -1990,5 +1990,6 @@
   "heat.water.gateWeekdays": "{weekdays} van 7 weekdagen",
   "heat.water.gateReady": "Warm water: klaar om gestuurd te worden met ‘Verwarming sturen’",
   "heat.water.live": "Warm water wordt door SpotNav gestuurd",
-  "heat.water.backedOff": "Warm water terug in schaduw na te vaak opnieuw verwarmen"
+  "heat.water.backedOff": "Warm water terug in schaduw na te vaak opnieuw verwarmen",
+  "heat.boost.noHeadroom": "De hoofdzekering is nu volledig belast; zet iets uit en probeer het opnieuw"
 }
