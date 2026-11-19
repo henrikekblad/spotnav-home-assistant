@@ -1066,7 +1066,9 @@ def service_call(
     if method == "select":
         return "select", "select_option", {"entity_id": entity_id, "option": value}
     if method == "switch":
-        return "switch", "turn_on" if value is True else "turn_off", {"entity_id": entity_id}
+        # A restore writes the state found ("on"/"off" as read), an action a bool.
+        on = value is True or (isinstance(value, str) and value.strip().lower() in ("on", "true"))
+        return "switch", "turn_on" if on else "turn_off", {"entity_id": entity_id}
     if method == "button":
         return "button", "press", {"entity_id": entity_id}
     if not isinstance(value, str) or services is None or device_id is None:

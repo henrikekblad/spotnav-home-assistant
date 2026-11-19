@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
-from custom_components.spotnav.battery.commands import BrandControl
+from custom_components.spotnav.battery.commands import BrandControl, service_call
 from custom_components.spotnav.battery.executor import ExecInputs, Executor, Op, RoleRead, StepResult
 from custom_components.spotnav.battery.facts import BatteryFacts, Management
 
@@ -82,7 +82,8 @@ class FakeBattery:
             return True
         brand = self.control.brand
         if op.method == "switch":
-            self.states[op.role] = "on" if op.value is True else "off"
+            # As Home Assistant's service would take it (`commands.service_call`).
+            self.states[op.role] = "on" if service_call("switch", op.entity_id, op.value)[1] == "turn_on" else "off"
             if brand == "sigenergy":
                 # 40031 keeps its last value; on a plant never in Remote EMS that is 0, PCS Remote Control.
                 self.states["control_mode"] = self.register_40031 if op.value is True else "unavailable"

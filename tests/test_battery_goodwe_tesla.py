@@ -126,8 +126,10 @@ def test_tesla_maps_each_action() -> None:
     assert TESLA_CONTROL.enter_order == ("grid_charging", "reserve") and TESLA_CONTROL.restore_order[0] == "reserve"
     # No site without solar: the optional switch is left out of every state.
     assert "grid_charging" not in TESLA_CONTROL.wanted("grid_charge", 3.0, absent=frozenset({"grid_charging"}))
-    # The inverted switch is written as any switch: on means grid charging allowed.
+    # The inverted switch is written as any switch: on means grid charging allowed. A restore writes the state found.
     assert service_call("switch", "switch.x", True)[1] == "turn_on"
+    assert service_call("switch", "switch.x", "on")[1] == "turn_on"
+    assert service_call("switch", "switch.x", "off")[1] == "turn_off"
 
 
 def test_a_value_that_needs_a_reading_is_unresolved_without_it() -> None:
@@ -216,6 +218,16 @@ def test_a_tesla_hold_and_grid_charge_and_the_hand_back_order() -> None:
     _now, results = run(executor, battery, now, 12, "self_consume")
     assert written(results) == [("reserve", 20.0), ("grid_charging", "off")]
     assert battery.states == TESLA_STATES | {"reserve": "20", "grid_charging": "off"}
+
+
+def test_a_switch_found_on_is_handed_back_on() -> None:
+    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    battery.states["grid_charging"] = "on"
+    now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
+    assert written(results) == [("reserve", 100.0)]
+    # Grid charging was allowed before: only the reserve was written, and nothing turns the switch off.
+    _now, results = run(executor, battery, now, 12, "self_consume")
+    assert written(results) == [("reserve", 20.0)] and battery.states["grid_charging"] == "on"
 
 
 def test_a_tesla_site_without_solar_has_no_grid_charging_switch_and_still_charges_by_the_reserve() -> None:
