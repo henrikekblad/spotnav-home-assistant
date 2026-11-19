@@ -115,7 +115,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   (`_release_unset`), so the plant's own writes to it are never read as someone else's change.
 * **A fast watchdog** (`BrandControl.watchdog_renew_s`): its roles are renewed on that interval while the action
   sets them, a whole round in one look (each still read back), never ahead of a write the action owes. A renewal
-  writes the value the role holds and is not counted; one whose value changed meanwhile is a change, and is.
+  writes the value the role holds and is not counted; one whose value changed meanwhile is a change, and is. A
+  watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX) is renewed as before: every role every
+  round, on time whatever is still owed, a role a look, never counted.
 * **An action run by the grid's power** (`BrandControl.house_states`): the brand's values are given the house's net
   load now beside the rate (`house_net_kw`: the site's import less the battery's charge) and are written again only
   when the rate changes; the monitor is told what the battery can still take or give of its rate once the house
@@ -1738,8 +1740,18 @@ class Executor:
                 self._watch(inputs, action, rate)
                 events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
         state = self.state
-        # Only what the running action sets is renewed (a watchdog of the charge per phase has nothing to keep
-        # alive under a hold).
+        if not self._fast_renewal():
+            # A watchdog on the shared `WATCHDOG_RENEW_S` (SolarEdge, Huawei, SolaX): renewed as it always was, every
+            # role whatever is still owed, a round a look per role.
+            if (
+                self.control.watchdog_roles and state.watchdog_at is not None and state.pending is None
+                and (now - state.watchdog_at).total_seconds() >= WATCHDOG_RENEW_S
+            ):
+                self.state = replace(state, renew=self.control.watchdog_roles, watchdog_at=now)
+                events.append(_event(now, "renew", ",".join(self.control.watchdog_roles)))
+            return events
+        # A fast watchdog (`BrandControl.watchdog_renew_s`): only what the running action sets is renewed (a
+        # watchdog of the charge per phase has nothing to keep alive under a hold).
         renewed = tuple(name for name in self.control.watchdog_roles if name in state.target)
         if (
             renewed and state.watchdog_at is not None and state.pending is None
@@ -1943,8 +1955,11 @@ class Executor:
         sent = state.sent if name in state.sent else (*state.sent, name)
         # A restore and a watchdog renewal are not counted: the renewal is the brand's dead-man, on a fixed timer
         # (`WATCHDOG_RENEW_S`, at most a few roles), never a change of the wanted state.
-        # (a role in a renewal round whose value changed meanwhile is a change, and is counted).
-        renewing = name in state.renew and self._satisfied(role, value, read, restoring=False)
+        # On a fast watchdog a role in a renewal round whose value changed meanwhile is a change, and is counted;
+        # the brands on `WATCHDOG_RENEW_S` count no renewal, as before (their round is a few roles a quarter-hour).
+        renewing = name in state.renew and (
+            not self._fast_renewal() or self._satisfied(role, value, read, restoring=False)
+        )
         counted = 0 if restoring or renewing else 1
         setpoint = role.write_class == "setpoint"
         writes = state.writes_today + (0 if setpoint else counted)
