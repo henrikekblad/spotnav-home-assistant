@@ -29,12 +29,13 @@ hand-edited one never fails a read):
 
 from __future__ import annotations
 
-import math
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Final
+
+from ..core.parse import finite_number
 
 TARGET_MIN_C: Final = 16.0
 TARGET_MAX_C: Final = 25.0
@@ -233,18 +234,12 @@ def parse_instant(text: Any) -> datetime | None:
     return moment if moment.tzinfo is not None else None
 
 
-def _number(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-        return None
-    return float(value)
-
-
 def _on_step(value: float) -> bool:
     return abs(value / STEP_C - round(value / STEP_C)) < 1e-9
 
 
 def _step_in(value: Any, low: float, high: float) -> float | None:
-    number = _number(value)
+    number = finite_number(value)
     if number is None or not low <= number <= high or not _on_step(number):
         return None
     return number
@@ -385,7 +380,7 @@ def apply_changes(
 
     if F_TARGET in changes:
         value = changes[F_TARGET]
-        number = _number(value)
+        number = finite_number(value)
         if number is None:
             errors.append(FieldError(F_TARGET, ERR_INVALID))
         elif not TARGET_MIN_C <= number <= TARGET_MAX_C:
@@ -417,7 +412,7 @@ def apply_changes(
 
     if F_AWAY_DELTA in changes:
         value = changes[F_AWAY_DELTA]
-        number = _number(value)
+        number = finite_number(value)
         if value is None:
             updated = replace(updated, away_delta_c=DEFAULT_AWAY_DELTA_C)
         elif number is None:
@@ -536,7 +531,7 @@ def apply_changes(
                 entity_id = item["entity_id"]
                 _check_entity(errors, F_ZONES, entity_id, "zone", ("climate",), check)
                 offset = item.get("offset_c", 0.0)
-                number = _number(offset)
+                number = finite_number(offset)
                 if number is None:
                     errors.append(FieldError(F_ZONES, ERR_INVALID))
                 elif not OFFSET_MIN_C <= number <= OFFSET_MAX_C:
@@ -563,7 +558,7 @@ def apply_changes(
                 if not isinstance(item, Mapping) or set(item) != {"entity_id", "offset_c"}:
                     errors.append(FieldError(F_INDOOR_OFFSETS, ERR_INVALID))
                     continue
-                number = _number(item["offset_c"])
+                number = finite_number(item["offset_c"])
                 if item["entity_id"] not in updated.indoor_sensors:
                     errors.append(FieldError(F_INDOOR_OFFSETS, ERR_INVALID))
                 elif any(offset.entity_id == item["entity_id"] for offset in offsets):

@@ -13,6 +13,7 @@ from collections.abc import Mapping
 import math
 from typing import Any, Final
 
+from .parse import finite_number
 from ..const import (
     CONF_MAIN_FUSE_A,
     CONF_SAFETY_MARGIN_A,
@@ -27,12 +28,6 @@ from ..const import (
 PHASE_V: Final = 230.0
 #: The voltage between phases where none is known: a TN network.
 TN_VOLTS_BETWEEN_PHASES: Final = float(DEFAULT_VOLTAGE_BETWEEN_PHASES_V)
-
-
-def _number(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-        return None
-    return float(value)
 
 
 def three_phase_kw(amps: float, volts_between_phases: float) -> float:
@@ -54,7 +49,7 @@ def phase_volts(volts_between_phases: float) -> float:
 
 def fuse_kw(main_fuse_a: float | None, volts_between_phases: float, margin_a: float = 0.0) -> float | None:
     """The fuse as three-phase power (kW), less `margin_a` per phase; `None` when the fuse is unknown."""
-    fuse = _number(main_fuse_a)
+    fuse = finite_number(main_fuse_a)
     if fuse is None or fuse <= 0 or volts_between_phases <= 0:
         return None
     return three_phase_kw(max(fuse - margin_a, 0.0), volts_between_phases)
@@ -71,7 +66,7 @@ def stored_voltage_between_phases_v(data: Mapping[str, Any] | None) -> float:
 def stored_safety_margin_a(data: Mapping[str, Any] | None) -> float:
     """The site's safety margin (A per phase): the stored one, else `DEFAULT_SAFETY_MARGIN_A` (also for a value that
     is not a finite, non-negative number)."""
-    margin = None if data is None else _number(data.get(CONF_SAFETY_MARGIN_A))
+    margin = None if data is None else finite_number(data.get(CONF_SAFETY_MARGIN_A))
     return DEFAULT_SAFETY_MARGIN_A if margin is None or margin < 0 else margin
 
 

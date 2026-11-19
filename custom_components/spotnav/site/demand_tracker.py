@@ -53,12 +53,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 import logging
-import math
 from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from ..core.parse import aware_utc, is_number
 from .. import time_zones
 from ..const import DOMAIN
 from ..debug_day import DayStore
@@ -172,24 +172,24 @@ class RunningHour:
         """A stored running hour, its last reading unknown (a restart since), or `None` when it is not one."""
         if not isinstance(raw, dict):
             return None
-        start = _instant(raw.get("start"))
-        last_at = _instant(raw.get("last_at"))
+        start = aware_utc(raw.get("start"))
+        last_at = aware_utc(raw.get("last_at"))
         numbers = [raw.get(key) for key in ("import_wh", "covered_s", "house_wh", "house_covered_s")]
-        if start is None or not all(_number(value) and value >= 0 for value in numbers):
+        if start is None or not all(is_number(value) and value >= 0 for value in numbers):
             return None
         if any(value > HOUR_S for value in (numbers[1], numbers[3])):
             return None
         # Kept since the import target holds: a record without them (or with a bad one) counts no discharge.
         discharge = [raw.get(key, 0.0) for key in ("discharge_wh", "discharge_covered_s")]
-        if not all(_number(value) and value >= 0 for value in discharge) or discharge[1] > HOUR_S:
+        if not all(is_number(value) and value >= 0 for value in discharge) or discharge[1] > HOUR_S:
             discharge = [0.0, 0.0]
         # Kept since the gross house load: a record without them (or with a bad one) counts nothing without the battery.
         ex_battery = [raw.get(key, 0.0) for key in ("ex_battery_wh", "ex_battery_covered_s")]
-        if not all(_number(value) for value in ex_battery) or not 0 <= ex_battery[1] <= HOUR_S:
+        if not all(is_number(value) for value in ex_battery) or not 0 <= ex_battery[1] <= HOUR_S:
             ex_battery = [0.0, 0.0]
         # Kept since the house load forecast: a record without them (or with a bad one) has no temperature.
         outdoor_sum, outdoor_n = raw.get("outdoor_sum", 0.0), raw.get("outdoor_n", 0)
-        if not _number(outdoor_sum) or isinstance(outdoor_n, bool) or not isinstance(outdoor_n, int) or outdoor_n < 0:
+        if not is_number(outdoor_sum) or isinstance(outdoor_n, bool) or not isinstance(outdoor_n, int) or outdoor_n < 0:
             outdoor_sum, outdoor_n = 0.0, 0
         return cls(
             start=start,
@@ -209,10 +209,6 @@ class RunningHour:
         )
 
 
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
-
-
 #: An outdoor temperature outside this range (°C) is not a reading: it is not recorded.
 OUTDOOR_MIN_C: Final = -70.0
 OUTDOOR_MAX_C: Final = 60.0
@@ -220,17 +216,7 @@ OUTDOOR_MAX_C: Final = 60.0
 
 def outdoor_reading(value: Any) -> float | None:
     """`value` as an outdoor temperature (°C), or `None` when it is not a plausible one."""
-    return float(value) if _number(value) and OUTDOOR_MIN_C <= value <= OUTDOOR_MAX_C else None
-
-
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
+    return float(value) if is_number(value) and OUTDOOR_MIN_C <= value <= OUTDOOR_MAX_C else None
 
 
 def hour_row(hour: HourMean) -> list[Any]:
@@ -267,17 +253,17 @@ def _hour_from_row(raw: Any) -> HourMean | None:
     complete = raw[8] if len(raw) == 9 else 0
     if isinstance(complete, bool) or complete != 1 and len(raw) == 9:
         return None
-    start = _instant(raw[0])
+    start = aware_utc(raw[0])
     kw, house, incomplete = raw[1], raw[2], raw[3]
     held, paused = (raw[4], raw[5]) if len(raw) >= 6 else (0, 0)
     floor = raw[6] if len(raw) >= 7 else None
-    if floor is not None and (not _number(floor) or floor < 0):
+    if floor is not None and (not is_number(floor) or floor < 0):
         return None
-    if start is None or not _number(kw) or kw < 0 or any(flag not in (0, 1) for flag in (incomplete, held, paused)):
+    if start is None or not is_number(kw) or kw < 0 or any(flag not in (0, 1) for flag in (incomplete, held, paused)):
         return None
     if any(isinstance(flag, bool) for flag in (incomplete, held, paused)):
         return None
-    if house is not None and (not _number(house) or house < 0):
+    if house is not None and (not is_number(house) or house < 0):
         return None
     return HourMean(
         start=start,
@@ -366,10 +352,10 @@ class HourTracker:
                     last_battery_w=running.last_battery_w,
                 )
         running.last_at = now
-        running.last_grid_w = None if grid_w is None or not _number(grid_w) else float(grid_w)
-        running.last_car_w = None if car_w is None or not _number(car_w) else float(car_w)
-        running.last_discharge_w = None if discharge_w is None or not _number(discharge_w) else float(discharge_w)
-        running.last_battery_w = None if battery_w is None or not _number(battery_w) else float(battery_w)
+        running.last_grid_w = None if grid_w is None or not is_number(grid_w) else float(grid_w)
+        running.last_car_w = None if car_w is None or not is_number(car_w) else float(car_w)
+        running.last_discharge_w = None if discharge_w is None or not is_number(discharge_w) else float(discharge_w)
+        running.last_battery_w = None if battery_w is None or not is_number(battery_w) else float(battery_w)
         if target is not None and target.hour_start == running.start:
             running.held |= target.held
             running.paused |= target.paused
@@ -507,7 +493,7 @@ class HourTracker:
 def _complete_starts(raw: Any) -> set[datetime]:
     if not isinstance(raw, list):
         return set()
-    return {start for start in (_instant(item) for item in raw) if start is not None}
+    return {start for start in (aware_utc(item) for item in raw) if start is not None}
 
 
 def _has_ninth(raw: Any) -> bool:
@@ -532,7 +518,7 @@ def _outdoor_from(raw: Any) -> dict[datetime, float]:
         return {}
     kept: dict[datetime, float] = {}
     for key, value in raw.items():
-        start, reading = _instant(key), outdoor_reading(value)
+        start, reading = aware_utc(key), outdoor_reading(value)
         if start is not None and reading is not None:
             kept[start] = reading
     return kept
@@ -555,8 +541,8 @@ def _ex_battery_from(raw: Any) -> dict[datetime, float]:
         return {}
     kept: dict[datetime, float] = {}
     for key, value in raw.items():
-        start = _instant(key)
-        if start is not None and _number(value):
+        start = aware_utc(key)
+        if start is not None and is_number(value):
             kept[start] = float(value)
     return kept
 
@@ -731,7 +717,7 @@ class SiteDemand:
             return True
         if marker.get("status") == BACKFILL_DONE and marker.get("hours"):
             return False
-        at = _instant(marker.get("at"))
+        at = aware_utc(marker.get("at"))
         return at is None or (now - at).total_seconds() >= BACKFILL_RETRY_S
 
     async def async_backfill(

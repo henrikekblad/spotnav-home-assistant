@@ -12,12 +12,12 @@ the reason in `missing`, never as a number (EffektGuard's lesson: a mis-scaled B
 
 from __future__ import annotations
 
-import math
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from ..core.parse import number_from_state
 from .adapters import ADAPTERS, Adapter, Capability, CapabilityKind, FactRole, Match, PriceRule, adapters_for
 
 ControlState = Literal["free", "watch_only", "unknown"]
@@ -205,16 +205,6 @@ class HeatPumpFacts:
         }
 
 
-def _number(state: str | None) -> float | None:
-    if state is None:
-        return None
-    try:
-        value = float(state)
-    except (TypeError, ValueError):
-        return None
-    return value if math.isfinite(value) else None
-
-
 def _celsius(value: float, unit: str | None) -> float | None:
     if unit in (None, "", "°C"):
         return value
@@ -230,7 +220,7 @@ def _kw(value: float, unit: str | None) -> float | None:
 
 def numeric_reading(role: FactRole, entity: HeatEntity) -> float | None:
     """A role's value from an available entity, `None` when it is no plausible reading of that role."""
-    value = _number(entity.state)
+    value = number_from_state(entity.state)
     if value is None or value in _NO_SENSOR:
         return None
     if role in _TEMPERATURE_ROLES:
@@ -366,13 +356,13 @@ def _rule_state(rule: PriceRule, entity: HeatEntity) -> bool | None:
     if rule.kind == "on":
         return switched_on(text)
     if rule.kind == "level":
-        value = _number(text)
+        value = number_from_state(text)
         key = str(int(value)) if value is not None and value.is_integer() else text
         if key in _LEVELS_ON:
             return True
         return False if key in _LEVELS_OFF else None
     if rule.kind == "nonzero":
-        value = _number(text)
+        value = number_from_state(text)
         return None if value is None else value != 0.0
     # not_normal
     return "normal" not in text

@@ -35,6 +35,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 
+from ..core.parse import number_from_state
 from .shadow import MIN_DIVERGENCE_S, parse_aware_datetime
 
 #: How long a write may take to read back before it counts as not taken.
@@ -60,14 +61,6 @@ def _reading(read: str | None) -> str | None:
     return read
 
 
-def _number(text: str) -> float | None:
-    try:
-        value = float(text)
-    except ValueError:
-        return None
-    return value if math.isfinite(value) else None
-
-
 def same(expected: Intended, read: str | None, step: float | None = None) -> bool | None:
     """Whether `read` is `expected`: a number within less than one `step` (the device may round either way), a
     switch's on/off, or the same text. `None` when the read is no evidence (no reading, or no number where one is
@@ -83,13 +76,13 @@ def same(expected: Intended, read: str | None, step: float | None = None) -> boo
             return not expected
         return None
     if isinstance(expected, (int, float)):
-        value = _number(text)
+        value = number_from_state(text)
         if value is None:
             return None
         if step is not None and step > 0:
             return abs(value - float(expected)) < step
         return abs(value - float(expected)) <= _EXACT
-    expected_number = _number(expected)
+    expected_number = number_from_state(expected)
     if expected_number is not None:
         # An owned value is a read of the entity: compare two numeric reads as numbers.
         return same(expected_number, text, step)

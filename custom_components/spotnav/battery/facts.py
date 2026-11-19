@@ -9,11 +9,11 @@ A brand without an adapter gets its level from a `battery` sensor on the battery
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
+from ..core.parse import number_from_state
 from .adapters import Adapter, ControlSpec, FactRole, Match, ReserveSource, adapter_for
 
 ManagementState = Literal["free", "self_managed", "unknown", "externally_controlled"]
@@ -195,19 +195,9 @@ def _lower(rating: float | None, plant_max: float | None) -> float | None:
     return min(rating, plant_max)
 
 
-def _number(state: str | None) -> float | None:
-    if state is None:
-        return None
-    try:
-        value = float(state)
-    except (TypeError, ValueError):
-        return None
-    return value if math.isfinite(value) else None
-
-
 def to_kw(state: str | None, unit: str | None) -> float | None:
     """A power reading in kW; `None` when it is none or its unit is not one of power's."""
-    value = _number(state)
+    value = number_from_state(state)
     if value is None:
         return None
     factor = {"W": 0.001, "kW": 1.0, "MW": 1000.0}.get(unit or "kW")
@@ -216,7 +206,7 @@ def to_kw(state: str | None, unit: str | None) -> float | None:
 
 def to_kwh(state: str | None, unit: str | None) -> float | None:
     """An energy reading in kWh; an amp-hour capacity (Victron, GoodWe) is no energy and reads `None`."""
-    value = _number(state)
+    value = number_from_state(state)
     if value is None:
         return None
     factor = {"Wh": 0.001, "kWh": 1.0, "MWh": 1000.0}.get(unit or "kWh")
@@ -232,7 +222,7 @@ EST_RATED_FROM_CURRENT: Final = "rated_from_current"
 
 
 def _percent(state: str | None) -> float | None:
-    value = _number(state)
+    value = number_from_state(state)
     return value if value is not None and 0.0 <= value <= 100.0 else None
 
 
@@ -240,7 +230,7 @@ def _volts(entity: EntityFact | None) -> float | None:
     """The battery voltage an entity reads, `None` when it reads none, is not in volts or is not a battery's."""
     if entity is None or (entity.unit or "V") != "V":
         return None
-    value = _number(entity.state)
+    value = number_from_state(entity.state)
     return value if value is not None and _VOLTAGE_RANGE[0] <= value <= _VOLTAGE_RANGE[1] else None
 
 
@@ -248,7 +238,7 @@ def _from_amps(entity: EntityFact | None, volts: float | None) -> tuple[float | 
     """An amp reading (Ah or A) times the voltage in thousandths (kWh or kW), with the entity it came from."""
     if entity is None or volts is None or (entity.unit or "A") not in _CURRENT_UNITS:
         return None, None
-    amps = _number(entity.state)
+    amps = number_from_state(entity.state)
     if amps is None or amps <= 0:
         return None, None
     return amps * volts / 1000.0, entity.entity_id

@@ -37,9 +37,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-import math
 from typing import Any, Final
 
+from ..core.parse import is_number
 from .. import time_zones
 
 KIND_CLEAR: Final = "clear"
@@ -141,7 +141,7 @@ def plateau_ceiling(slots: Mapping[datetime, float], *, min_kw: float) -> float 
     The series' highest reading is a ceiling when the series sat within `CLIP_TOLERANCE` of it for at least
     `PLATEAU_SLOTS` slots in a row on at least `PLATEAU_DAYS` different days, and it is at least `min_kw`.
     """
-    values = [value for value in slots.values() if _number(value)]
+    values = [value for value in slots.values() if is_number(value)]
     if not values:
         return None
     peak = max(values)
@@ -158,7 +158,7 @@ def clipped_hours(slots: Mapping[datetime, float], ceiling_kw: float | None) -> 
     level = ceiling_kw * (1.0 - CLIP_TOLERANCE)
     counts: dict[datetime, int] = {}
     for start, value in slots.items():
-        if _number(value) and value >= level:
+        if is_number(value) and value >= level:
             hour = start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
             counts[hour] = counts.get(hour, 0) + 1
     return {hour for hour, count in counts.items() if count >= CLIPPED_HOUR_SLOTS}
@@ -218,7 +218,7 @@ def day_evidence(samples: Iterable[HourSample], tz: str) -> dict[date, DayEviden
     zone = time_zones.require_zone(tz)
     by_day: dict[date, list[HourSample]] = {}
     for sample in samples:
-        if sample.forecast_kwh > MIN_FORECAST_KWH and _number(sample.actual_kwh) and sample.actual_kwh >= 0:
+        if sample.forecast_kwh > MIN_FORECAST_KWH and is_number(sample.actual_kwh) and sample.actual_kwh >= 0:
             by_day.setdefault(sample.start.astimezone(zone).date(), []).append(sample)
     evidence: dict[date, DayEvidence] = {}
     for day, rows in by_day.items():
@@ -433,7 +433,7 @@ class SolarCorrection:
         capped by the array's size, which no forecast may exceed)."""
         corrected: dict[datetime, float] = {}
         for start, value in raw.items():
-            if not _number(value):
+            if not is_number(value):
                 continue
             if self.curtailed is not None:
                 factor = 1.0
@@ -477,7 +477,7 @@ class SolarCorrection:
         if isinstance(factors, dict):
             for kind in KINDS:
                 value = factors.get(kind)
-                if _number(value):
+                if is_number(value):
                     state.factors[kind] = clamp_factor(float(value))
         days = raw.get("days")
         if isinstance(days, dict):
@@ -489,7 +489,7 @@ class SolarCorrection:
         if isinstance(targets, dict):
             for kind in KINDS:
                 value = targets.get(kind)
-                state.targets[kind] = float(value) if _number(value) else None
+                state.targets[kind] = float(value) if is_number(value) else None
         if isinstance(raw.get("updated_on"), str):
             try:
                 state.updated_on = date.fromisoformat(raw["updated_on"])
@@ -506,7 +506,7 @@ class SolarCorrection:
                 continue
             if start.tzinfo is None:
                 continue
-            cloud = float(row[1]) if _number(row[1]) else None
+            cloud = float(row[1]) if is_number(row[1]) else None
             negative = row[2] if isinstance(row[2], bool) else None
             state.meta[start.astimezone(timezone.utc)] = HourMeta(cloud, negative)
         history = raw.get("history")
@@ -515,5 +515,3 @@ class SolarCorrection:
         return state
 
 
-def _number(value: Any) -> bool:
-    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
