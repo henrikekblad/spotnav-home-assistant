@@ -175,7 +175,7 @@ export interface MoneyUnits {
 
 /**
  * An amount given in the minor unit, shown in the major one: two decimals below 10 major units, so a small
- * amount keeps its öre ("4,57 kr", "0,83 kr", "0,00 kr"), whole units from 10 up ("25 kr"). Negative amounts
+ * amount keeps its öre ("4,57 kr", "0,83 kr"), exactly zero as "0 kr", whole units from 10 up ("25 kr"). Negative amounts
  * follow their absolute value. Without a major unit the minor figure is shown whole.
  */
 export function moneyMinorAsMajor(language: Language, minor: number, units: MoneyUnits | null): string {
@@ -183,7 +183,7 @@ export function moneyMinorAsMajor(language: Language, minor: number, units: Mone
     return `${formatNumber(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
   }
   const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major_unit}`;
+  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 2)} ${units.major_unit}`;
 }
 
 /** An amount in a currency the way the language writes money, or the plain form if the code is unknown. */
