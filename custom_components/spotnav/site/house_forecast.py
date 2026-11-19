@@ -428,6 +428,7 @@ class SiteHouseForecast:
                 temperature_store_key(entry_id),
                 self.temperature_history.as_dict,
                 save_delay_s=TEMPERATURE_SAVE_DELAY_S,
+                off_loop=True,
             )
 
     def _stored(self) -> dict[str, Any]:

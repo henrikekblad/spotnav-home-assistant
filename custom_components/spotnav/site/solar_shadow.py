@@ -217,7 +217,7 @@ class SiteSolarShadow:
         self._position: tuple[float, float] | None = None
         self._position_logged = False
         self._tz: str | None = None
-        self._store = DayStore(hass, store_key(site.entry_id), self._stored, save_delay_s=SAVE_DELAY_S)
+        self._store = DayStore(hass, store_key(site.entry_id), self._stored, save_delay_s=SAVE_DELAY_S, off_loop=True)
         self._timer_cancel: Callable[[], None] | None = None
         self._task: asyncio.Task[None] | None = None
         self._for_hour: datetime | None = None
