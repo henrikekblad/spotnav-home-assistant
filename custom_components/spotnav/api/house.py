@@ -329,7 +329,7 @@ def short_term_days(hass: HomeAssistant) -> int | None:
 
         days = get_instance(hass).keep_days
     except Exception:  # noqa: BLE001 - no recorder: no short-term statistics
-        _LOGGER.debug("short_term_days: ignored failure (no recorder: no short-term statistics)", exc_info=True)
+        _LOGGER.debug("short_term_days: ignored failure (no recorder: no short-term statistics)")
         return None
     return days if isinstance(days, int) and days > 0 else None
 
