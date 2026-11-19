@@ -14,8 +14,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_mode` (`CONF_MODE`: self_consumption | balanced | max_profit, default balanced): the person's choice of
-  what the battery is for. Only Max profit lets the plan discharge the battery to the grid (`export_discharge`),
-  capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`). It replaced
+  what the battery is for. Balanced and Max profit let the plan discharge the battery to the grid
+  (`export_discharge`; Balanced only through its spread gate, which the plan weighs: surplus beyond the house's need,
+  at a high margin), capped so that it and the sun's export keep every phase under the fuse
+  (`export_discharge_cap_kw`); Self-consumption never does. It replaced
   `battery_control_allow_sell`, which an early 3.0 build stored: read once at load, as the source of a one-time
   migration (`legacy_mode`, `BatteryControl._migrate_mode`), then removed from the entry; never written or sent.
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
@@ -39,7 +41,7 @@ is pending and tried again at a later suitable moment (`modes_to_run`, `suitable
 **The report decides which actions are allowed** (`allowed_actions`): hold and normal must pass for any control; a
 grid charge only if `charge` passed (where it could be tried only as a charge on one phase, a charge per phase
 only, once `per_phase` is verified too: `charge_by_phases`), a discharge for the house only if `discharge_house` passed, a discharge to the
-grid only in the Max profit mode on top of that (and `charge` passed too where the discharge writes a signed
+grid only in a mode that sells (Balanced, Max profit) on top of that (and `charge` passed too where the discharge writes a signed
 power target: the house step, the plant's own mode, says nothing about its sign). The export limit needs no routine of its own: it starts
 on its live check (the executor's monitor hands it back and blocks it when the export does not stop).
 
@@ -62,6 +64,7 @@ from ..core.electric import phase_volts
 from .commands import ACTION_CURTAIL_EXPORT
 from .plan_model import (
     DEFAULT_MODE,
+    EXPORT_OFF,
     MODE_MAX_PROFIT,
     MODES,
     ACTION_DISCHARGE_HOUSE,
@@ -69,6 +72,7 @@ from .plan_model import (
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
+    mode_named,
 )
 from .shadow import parse_aware_datetime
 
@@ -181,8 +185,10 @@ class Options:
 
     @property
     def allow_sell(self) -> bool:
-        """Selling from the battery is the Max profit mode's."""
-        return self.mode == MODE_MAX_PROFIT
+        """Whether the mode sells from the battery: Max profit wherever it pays, Balanced through its spread gate
+        (the plan weighs it), Self-consumption never."""
+        mode = mode_named(self.mode)
+        return mode is not None and mode.export != EXPORT_OFF
 
     @property
     def writes(self) -> bool:

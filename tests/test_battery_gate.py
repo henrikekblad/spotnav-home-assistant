@@ -86,8 +86,11 @@ def test_each_outcome_passes_fails_or_is_tried_again(outcome: str | None, verdic
 def test_a_pass_needs_hold_and_the_hand_back_and_the_report_decides_the_actions() -> None:
     passed = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
     assert report_status(passed) == "passed"
-    assert allowed_actions(passed, Options()) == {"hold", "grid_charge", "discharge_house"}
+    assert allowed_actions(passed, Options(mode="self_consumption")) == {"hold", "grid_charge", "discharge_house"}
     assert "export_discharge" in allowed_actions(passed, Options(mode="max_profit")), "selling only when allowed"
+    assert "export_discharge" in allowed_actions(passed, Options()), "Balanced (the default) sells through its gate"
+    no_house = _report(hold="obeyed", charge="obeyed", discharge_house="ignored", normal="restored")
+    assert allowed_actions(no_house, Options()) == {"hold", "grid_charge"}, "selling needs the house step"
     only_hold = _report(hold="obeyed", charge="ignored", discharge_house="not_judgeable:x", normal="restored")
     assert report_status(only_hold) == "passed" and allowed_actions(only_hold, Options()) == {"hold"}
     assert modes_to_run(only_hold) == ("discharge_house",) and needs_run(only_hold)
@@ -99,12 +102,12 @@ def test_a_pass_needs_hold_and_the_hand_back_and_the_report_decides_the_actions(
 
 def test_a_discharge_to_the_grid_on_a_signed_target_needs_the_charge_step_too() -> None:
     """The house step is the plant's own mode: it shows nothing of the sign a discharge to the grid writes."""
-    sell = Options(mode="max_profit")
-    no_charge = _report(hold="obeyed", charge="ignored", discharge_house="obeyed", normal="restored")
-    assert "export_discharge" in allowed_actions(no_charge, sell)
-    assert allowed_actions(no_charge, sell, export_needs_charge=True) == {"hold", "discharge_house"}
-    both = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
-    assert "export_discharge" in allowed_actions(both, sell, export_needs_charge=True)
+    for sell in (Options(mode="max_profit"), Options(mode="balanced")):
+        no_charge = _report(hold="obeyed", charge="ignored", discharge_house="obeyed", normal="restored")
+        assert "export_discharge" in allowed_actions(no_charge, sell)
+        assert allowed_actions(no_charge, sell, export_needs_charge=True) == {"hold", "discharge_house"}
+        both = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
+        assert "export_discharge" in allowed_actions(both, sell, export_needs_charge=True)
     signed = {brand for brand in ("sigenergy", "solaredge", "huawei", "solax", "solinteg")
               if (control := control_for(brand)) is not None and control.export_signed_by_charge()}
     assert signed == {"solax", "solinteg"}, "one signed power target for both directions"
@@ -136,7 +139,7 @@ def test_a_mode_left_pending_after_hold_and_normal_passed_is_tried_at_most_max_a
     assert needs_run(_report(attempts=MAX_ATTEMPTS - 1, **modes))
     spent = _report(attempts=MAX_ATTEMPTS, **modes)
     assert report_status(spent) == "passed" and not needs_run(spent), "control runs on; the charge mode stays off"
-    assert allowed_actions(spent, Options()) == {"hold", "discharge_house"}
+    assert allowed_actions(spent, Options(mode="self_consumption")) == {"hold", "discharge_house"}
 
 
 def test_reports_are_bounded_newest_last() -> None:
@@ -375,8 +378,9 @@ def test_the_hold_for_the_car_fills_a_self_consumption_slot_only() -> None:
     assert merged_action(("self_consume", 0.0, end), False) == ("self_consume", 0.0, end)
 
 
-def test_selling_from_the_battery_is_off_by_default_also_for_the_test_action() -> None:
-    assert trial_refusal("export_discharge", Options()) == "sell_not_allowed"
+def test_selling_from_the_battery_follows_the_mode_also_for_the_test_action() -> None:
+    assert trial_refusal("export_discharge", Options(mode="self_consumption")) == "sell_not_allowed"
+    assert trial_refusal("export_discharge", Options()) is None, "Balanced sells through its gate"
     assert trial_refusal("export_discharge", Options(mode="max_profit")) is None
     assert trial_refusal("hold", Options()) is None and trial_refusal("curtail_export", Options()) is None
     assert trial_refusal("explode", Options()) == "unknown_action"
@@ -394,7 +398,8 @@ def test_the_car_backs_off_first_when_its_departure_has_room() -> None:
 def test_the_mode_decides_selling_and_a_stored_legacy_sell_option_is_only_the_migration_source() -> None:
     from custom_components.spotnav.battery import gate as g
 
-    assert g.Options.from_config({}).mode == "balanced" and not g.Options.from_config({}).allow_sell
+    assert g.Options.from_config({}).mode == "balanced" and g.Options.from_config({}).allow_sell
+    assert not g.Options.from_config({g.CONF_MODE: "self_consumption"}).allow_sell
     for mode in ("self_consumption", "balanced", "max_profit"):
         assert g.Options.from_config({g.CONF_MODE: mode}).mode == mode
     assert g.Options.from_config({g.CONF_MODE: "export"}).mode == "balanced"
@@ -407,6 +412,7 @@ def test_the_mode_decides_selling_and_a_stored_legacy_sell_option_is_only_the_mi
     assert g.valid_change("battery_mode", "max_profit") and not g.valid_change("battery_mode", "x")
     assert not g.valid_change(g.CONF_ALLOW_SELL, True)
     every = _report(hold="obeyed", charge="obeyed", discharge_house="obeyed", normal="restored")
-    for mode in ("self_consumption", "balanced"):
-        assert "export_discharge" not in g.allowed_actions(every, g.Options(mode=mode))
+    assert "export_discharge" not in g.allowed_actions(every, g.Options(mode="self_consumption"))
+    for mode in ("balanced", "max_profit"):
+        assert "export_discharge" in g.allowed_actions(every, g.Options(mode=mode))
     assert g.CONF_ALLOW_SELL not in g.WRITABLE and g.CONF_MODE in g.WRITABLE

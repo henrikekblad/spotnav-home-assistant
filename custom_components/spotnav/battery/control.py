@@ -171,7 +171,7 @@ CALL_TIMEOUT_S: Final = 30.0
 _METHOD_SERVICES: Final = {
     "number": ("set_value",), "select": ("select_option",), "switch": ("turn_on", "turn_off"), "button": ("press",),
 }
-#: Every action control may run when the report allows it; selling only with `battery_control_allow_sell`.
+#: Every action control may run when the report allows it; selling only in a mode that sells (`gate.Options.allow_sell`).
 _PLAN_ACTIONS: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE, ACTION_DISCHARGE_HOUSE})
 #: How often the site's energy sources are read again for the import-limit rule (s).
 SOURCES_REFRESH_S: Final = 3600.0
