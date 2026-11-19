@@ -204,6 +204,7 @@ def test_a_target_needs_a_percentage() -> None:
         {"enabled": "true", "value": 12.0},
         {"value": None},
         {"enabled": True},
+        {"enabled": True, "value": None, "extra": 1},
         None,
         "off",
     ],
@@ -214,6 +215,7 @@ def test_a_target_needs_a_percentage() -> None:
         "string-true",
         "missing-enabled",
         "missing-value",
+        "unknown-key",
         "null",
         "text",
     ],
@@ -223,11 +225,6 @@ def test_a_stored_fiscal_component_must_be_a_real_boolean_and_a_full_shape(compo
     with pytest.raises(AutoSettingsError) as refused:
         FiscalOverride.from_stored(component, "vat")
     assert refused.value.code in ("invalid_fiscal", "missing_field", "unknown_field")
-
-
-def test_a_stored_fiscal_component_reads_past_a_later_releases_key() -> None:
-    """A key a later release stores beside the two is read past (going back to this release keeps the fee)."""
-    assert FiscalOverride.from_stored({"enabled": True, "value": 2.5, "extra": 1}, "vat") == FiscalOverride(True, 2.5)
 
 
 def test_a_stored_fiscal_component_reads_back_exactly() -> None:
@@ -245,13 +242,14 @@ OFF = {"enabled": False, "value": None}
     ("raw", "code"),
     [
         ({"area_id": "SE4"}, "missing_field"),
+        ({"area_id": "SE4", "vat": OFF, "tax": OFF, "transfer": OFF, "extra": 1}, "unknown_field"),
         ({"area_id": "SE4", "vat": {}, "tax": OFF, "transfer": OFF}, "missing_field"),
         ({"area_id": "", "vat": OFF, "tax": OFF, "transfer": OFF}, "invalid_area"),
         ({"area_id": 4, "vat": OFF, "tax": OFF, "transfer": OFF}, "invalid_area"),
     ],
 )
 def test_a_stored_area_override_is_read_by_shape(raw: Any, code: str) -> None:
-    """An area record has its four fields, and its id is a non-empty name."""
+    """An area record is exactly its four fields, and its id is a non-empty name."""
     with pytest.raises(AutoSettingsError) as refused:
         AreaAutoSettings.from_stored(raw)
     assert refused.value.code == code
@@ -261,6 +259,8 @@ def test_a_stored_area_override_is_read_by_shape(raw: Any, code: str) -> None:
     ("raw", "code"),
     [
         ({}, "missing_field"),
+        ({"vehicle_id": "v", "target_percent": 80, "z": 1}, "unknown_field"),
+        ({"vehicle_id": "v", "target_percent": 80, "remembered_capacity_kwh": 60.0}, "unknown_field"),
         ({"vehicle_id": "v"}, "missing_field"),
         ({"vehicle_id": 7, "target_percent": 80}, "invalid_target"),
         ({"vehicle_id": None, "target_percent": "80"}, "invalid_target"),
@@ -274,14 +274,18 @@ def test_a_stored_target_is_read_by_shape(raw: Any, code: str) -> None:
     assert refused.value.code == code
 
 
-def test_stored_nested_records_read_past_a_later_releases_keys() -> None:
-    """An area override, a target and a pause with a key a later release added still read (3.0 and on)."""
-    area = AreaAutoSettings.from_stored({"area_id": "SE4", "vat": OFF, "tax": OFF, "transfer": OFF, "extra": 1})
-    assert area == AreaAutoSettings(area_id="SE4")
-    target = TargetSocIntent.from_stored({"vehicle_id": "v", "target_percent": 80, "z": 1})
-    assert target == TargetSocIntent(vehicle_id="v", target_percent=80.0)
+def test_stored_nested_records_stay_exact() -> None:
+    """Only the settings record reads past a later release's key (and keeps it). A nested record carries values a later
+    release may mean something else by beside a new key, and it would not be written back: it is refused as before."""
     pause = AutoSettings().pause
-    assert PauseIntent.from_stored({**pause.as_dict(), "later": True}) == pause
+    with pytest.raises(AutoSettingsError) as refused:
+        PauseIntent.from_stored({**pause.as_dict(), "later": True})
+    assert refused.value.code == "unknown_field"
+    raw = AutoSettings(area_id="SE4", amps=10).as_dict()
+    raw["target"] = {**raw["target"], "later": True}
+    with pytest.raises(AutoSettingsError) as refused:
+        AutoSettings.from_stored(raw)
+    assert refused.value.code == "unknown_field"
 
 
 def stored_settings(**changes: Any) -> dict[str, Any]:
@@ -475,6 +479,7 @@ def a_proposal(**changes: Any) -> StoredProposal:
             },
             "invalid_proposal",
         ),
+        ({"unknown": 1}, "unknown_field"),
     ],
 )
 def test_a_stored_proposal_is_read_strictly(changes: dict, code: str) -> None:

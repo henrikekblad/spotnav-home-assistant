@@ -149,14 +149,17 @@ def _exact_shape(
     what: str,
     *,
     optional: frozenset[str] = frozenset(),
+    later_fields: bool = False,
 ) -> dict[str, Any]:
-    """A stored record carrying every one of these keys, or a refusal naming the wrong shape.
+    """A stored record carrying exactly these keys, or a refusal naming the wrong shape.
 
-    `as_dict` is the only writer of this release and emits every key, so a missing key means the record is not
-    this schema's. Which keys are required is defined by `as_dict` itself; `optional` names the keys a release
-    added later, which `as_dict` writes only when set. A key named in neither is a later release's (3.0 adds
-    some): read past, never refused, so going back to this release keeps the record; each caller's own checks of
-    the keys it knows stand. `later_release_fields` gives those keys, for a record that writes them back.
+    `as_dict` is the only writer and emits every key, so a missing or unknown key means
+    the record is not this schema's. Which keys are required is defined by `as_dict` itself;
+    `optional` names the keys a later release added, which `as_dict` writes only when set.
+
+    `later_fields`: a key named in neither is a later release's (3.0's), read past rather than refused. Only for a
+    record that keeps such keys and writes them back unchanged (`later_release_fields`): the charger's settings
+    record. A nested record stays exact, since a later release may mean something else by a key beside its values.
     """
     if not isinstance(raw, dict):
         _refuse(code, f"{what} must be a stored object")
@@ -164,6 +167,9 @@ def _exact_shape(
     if missing:
         # Counted, not listed: a log line about stored data must not quote it.
         _refuse("missing_field", f"{what} is missing {len(missing)} field(s) of its shape")
+    unknown = set(raw) - expected - optional
+    if unknown and not later_fields:
+        _refuse("unknown_field", f"{what} has {len(unknown)} field(s) this release does not know")
     return raw
 
 
@@ -669,8 +675,6 @@ def _stored_instant(value: Any, what: str) -> datetime | None:
 ALL_WEEKDAYS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
 
 
-
-
 @dataclass(frozen=True, slots=True)
 class AutoSettings:
     """One charger's Auto settings, as stored. Frozen, so a revision is a new value.
@@ -936,7 +940,9 @@ class AutoSettings:
                 "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
             }
         )
-        stored = _exact_shape(raw, expected, "unknown_field", "a stored settings record", optional=optional)
+        stored = _exact_shape(
+            raw, expected, "unknown_field", "a stored settings record", optional=optional, later_fields=True
+        )
         revision = stored["revision"]
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
             _refuse("invalid_number", "a stored revision must be a non-negative whole number")
@@ -1387,8 +1393,10 @@ class AutoSettingsStore:
     async def async_load(self) -> None:
         """Read the file once. Bad content is ignored, never fatal.
 
-        A missing file, other schema, malformed record, unknown field or invalid enum value
-        each logs one warning and leaves that entry at its defaults.
+        A missing file, other schema, malformed record, missing field or invalid value each logs one
+        warning and leaves that entry at its defaults. A field a later release added to a charger's settings record
+        is kept and written back (`AutoSettings.from_stored`); one beside a charger's four parts is read past and not
+        kept (3.0 writes none).
         """
         async with self._lock:
             if self._loaded:
@@ -1411,8 +1419,8 @@ class AutoSettingsStore:
                 if not isinstance(entry_id, str) or not entry_id:
                     _LOGGER.warning("Ignoring a stored Auto settings record with no entry id")
                     continue
-                # A key beside these four is a later release's (3.0 and on): read past, never a reason to drop the
-                # charger's settings when going back to this release.
+                # A key beside these four is a later release's: read past (not kept on save; 3.0 writes none), never
+                # a reason to drop the charger's settings when going back to this release.
                 if not isinstance(record, dict):
                     _LOGGER.warning("Ignoring a malformed stored Auto settings record")
                     continue
