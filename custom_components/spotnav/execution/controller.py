@@ -760,6 +760,16 @@ def _report_kind(observed: bool | None) -> str | None:
     return None
 
 
+def store_key(entry_id: str) -> str:
+    """The controller's own store (what it remembers across a restart): one file per charger entry."""
+    return f"{DOMAIN}.{entry_id}"
+
+
+async def async_remove_controller_store(hass: HomeAssistant, entry_id: str) -> None:
+    """The charger entry is gone for good: forget what its controller kept."""
+    await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+
+
 class ChargingController:
     """Control one Home Assistant charger from SpotNav commands.
 
@@ -1049,9 +1059,7 @@ class ChargingController:
 
         self._phase_observer = PhaseObserver()
         self._phase_timer_cancel: Callable[[], None] | None = None
-        self._store: Store[dict[str, Any]] = Store(
-            hass, STORE_VERSION, f"{DOMAIN}.{entry_id}"
-        )
+        self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(entry_id))
         # Whether the charger's stopped state is one SpotNav made itself (a plan waiting, the sun, a balancing pause, a
         # target reached, the hold): only such a stop is undone when the charger is handed back
         # (`charger_handback.py`). Cleared by any start, a person's Stop or pause, and a charge or an "on" control seen

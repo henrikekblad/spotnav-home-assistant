@@ -22,6 +22,7 @@ in the debug bundle) only.
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -63,7 +64,7 @@ _LOGGER = logging.getLogger(__name__)
 
 TICK_S: Final = 10.0
 STORE_VERSION: Final = 1
-_SAVE_DELAY_S: Final = 60.0
+_SAVE_DELAY_S: Final = 300.0
 #: A gap between two looks longer than this (a restart, a stalled loop) is not counted as run or not run.
 MAX_GAP: Final = timedelta(minutes=2)
 #: Days of runtime and cost kept.
@@ -117,6 +118,8 @@ class SwitchLoadShadow:
         self._loaded = False
         #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
         self._save_pending = False
+        #: The book as last written (or handed to the store), so an unchanged book is not written again.
+        self._saved: dict[str, Any] | None = None
         self._look_failed_logged = False
         self._planning = False
         self._closed = False
@@ -179,7 +182,10 @@ class SwitchLoadShadow:
             self._timer_cancel()
             self._timer_cancel = None
         if self._loaded:
-            await self._store.async_save(self._book_data())
+            data = self._book_data()
+            if data != self._saved:
+                await self._store.async_save(data)
+                self._saved = copy.deepcopy(data)
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
@@ -189,12 +195,16 @@ class SwitchLoadShadow:
         """Write the book within `_SAVE_DELAY_S`: a write already waiting is not put off by the next look."""
         if self._save_pending:
             return
+        if self._book_data() == self._saved:
+            return
         self._save_pending = True
         self._store.async_delay_save(self._data_to_save, _SAVE_DELAY_S)
 
     def _data_to_save(self) -> dict[str, Any]:
         self._save_pending = False
-        return self._book_data()
+        data = self._book_data()
+        self._saved = copy.deepcopy(data)
+        return data
 
     def _book_data(self) -> dict[str, Any]:
         self.book.set_section(SECTION_HISTORY, self.history.as_dict())

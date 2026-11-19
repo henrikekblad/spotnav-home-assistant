@@ -239,3 +239,38 @@ async def test_without_prices_it_waits_for_them_and_says_so(hass: HomeAssistant)
     assert load.decision.reason == "waiting_for_prices" and not load.decision.on
     diagnostics = (await async_get_config_entry_diagnostics(hass, site))["switch_load"]
     assert diagnostics["plan"]["priced_until"] is None and diagnostics["plan"]["deferred_quarters"] == 4
+
+
+async def test_an_idle_hour_writes_the_book_only_when_it_changed(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The looks go on every ten seconds; the book is handed to the store only when its data differs from the last
+    written, and the final write at a shutdown still happens."""
+    now = quarter_start(dt_util.now())
+    _prices(monkeypatch, now, cheap_hour=20)
+    _site_entry, controller = await _site(hass)
+    load = controller.switch_load
+    handed: list[Any] = []
+    original = load._store.async_delay_save
+
+    def count(data_func: Any, delay: float = 0) -> None:
+        handed.append(delay)
+        original(data_func, delay)
+
+    monkeypatch.setattr(load._store, "async_delay_save", count)
+    load.tick(now + timedelta(seconds=1))  # the first look after the start may have something new to write
+    load._data_to_save()
+    handed.clear()
+    for step in range(2, 362):  # an hour of looks, the switch off the whole time
+        load.tick(now + timedelta(seconds=step * 10))
+    assert handed == [], "an unchanged book is not written again"
+
+    saves: list[Any] = []
+
+    async def save(data: Any) -> None:
+        saves.append(data)
+
+    monkeypatch.setattr(load._store, "async_save", save)
+    load.history.note(now, now + timedelta(minutes=1))
+    await load.async_shutdown()
+    assert len(saves) == 1, "the final write still happens when the book changed"

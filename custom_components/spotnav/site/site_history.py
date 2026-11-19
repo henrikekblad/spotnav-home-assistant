@@ -57,6 +57,10 @@ __all__ = ["SAMPLE_COUNT", "SAMPLE_INTERVAL_S", "SiteHistory"]
 
 _LOGGER = logging.getLogger(__name__)
 
+#: How long a change waits for its write: the table is one big file, and a restart or an unload writes what waits
+#: (the debug bundle is the only reader; losing the last half hour of rows to a power cut is acceptable).
+SAVE_DELAY_S: Final = 1800.0
+
 #: The import target's columns on the site's row, after its own, and on a member charger's row.
 TARGET_SITE_COLUMNS: Final = ("target_hold_kw", "target_allowed_w", "target_house_w", "target_not_applied")
 TARGET_CHARGER_COLUMNS: Final = ("target_action", "target_cap_a")
@@ -102,7 +106,9 @@ class SiteHistory:
         self._chargers: dict[str, deque[str]] = {}
         self._target_log: deque[dict[str, Any]] = deque(maxlen=TARGET_LOG_KEPT)
         self._store = (
-            None if hass is None or entry_id is None else DayStore(hass, store_key(entry_id), self._to_store)
+            None
+            if hass is None or entry_id is None
+            else DayStore(hass, store_key(entry_id), self._to_store, save_delay_s=SAVE_DELAY_S, off_loop=True)
         )
 
     def _to_store(self) -> dict[str, Any]:

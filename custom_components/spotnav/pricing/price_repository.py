@@ -292,7 +292,7 @@ class PriceRepository:
         self._now = now if now is not None else dt_util.utcnow
 
         # Seams for tests (races and clock changes are timing); `None` means the real thing.
-        self._store: Store[dict[str, Any]] = store if store is not None else Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._store: Store[dict[str, Any]] = store if store is not None else Store(hass, STORAGE_VERSION, STORAGE_KEY, serialize_in_event_loop=False)
         #: The area list shipped with the integration, the only one: never fetched, never stored.
         self._bundled = bundled
         # Day files per (area, market day), one per market calendar they are dated in (see [_held_file]).
