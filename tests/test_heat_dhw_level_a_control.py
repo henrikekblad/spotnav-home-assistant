@@ -105,3 +105,21 @@ async def test_a_run_seen_under_a_block_long_held_keeps_the_block(hass: HomeAssi
     making["now"] = True
     await control.async_look(now + 20 * MIN)
     assert relay.calls == ["on"] and control.held and control.status()["reason"] == "planned"
+
+
+async def test_the_tank_rule_sees_the_tank_reheated_during_a_run(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Review NIT: the tank rule is stepped at every look, also while a run holds the block off, so a tank reheated
+    to 52 °C during the run and at 43 °C after it is no longer low."""
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, 2)
+    hot_water = control.shadow.hot_water
+    making = {"now": False}
+    tank = {"c": 38.0}
+    monkeypatch.setattr(hot_water, "making_now", lambda: making["now"])
+    monkeypatch.setattr(type(hot_water), "_pump", lambda _self: _pump(tank["c"]))
+    await control.async_look(now)
+    assert relay.calls == [] and control.status()["reason"] == "hot_water_low"
+    making["now"], tank["c"] = True, 52.0
+    await control.async_look(now + 10 * MIN)
+    making["now"], tank["c"] = False, 43.0
+    await control.async_look(now + 40 * MIN)
+    assert relay.calls == ["on"]

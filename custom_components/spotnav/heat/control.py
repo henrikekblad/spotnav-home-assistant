@@ -1270,6 +1270,8 @@ class HeatControl:
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
         if paths.blocks_hot_water(config):
+            # Stepped at every look, also while a boost or a run answers first: a tank reheated meanwhile is seen.
+            tank_low = self.shadow.hot_water.tank_low()
             self.boost_source = self._boost_source(config)
             if self.boost_source is not None:
                 # A block may stop hot water too: a boost is never cut off (the household's, the Boost button's or
@@ -1283,7 +1285,7 @@ class HeatControl:
                 # later under a held block shows the block does not stop hot water here (a relay that only lowers
                 # the curve): the lowering stays.
                 return SAFETY_HOT_WATER
-            if self.shadow.hot_water.tank_low():
+            if tank_low:
                 # The tank rule (`dhw_level_a.TankGuard`): below 40 °C no block, until it reads 45 °C again.
                 return SAFETY_HOT_WATER_LOW
         b = raise_entity(config)
