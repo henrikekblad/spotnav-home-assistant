@@ -1762,10 +1762,14 @@ export class SettingsPopover {
       section.append(element(doc, "p", C.muted, translate(language, view.writable ? "entity.loading" : "popover.site.readOnly")));
       return section;
     }
-    section.append(
-      ...this.numberRow("main_fuse_a", translate(language, "entity.field.mainFuse"), "A", null),
-      ...this.numberRow("import_target_kw", translate(language, "site.importTarget"), "kW", translate(language, "settings.value.off"), translate(language, "site.importTarget.help")),
-    );
+    section.append(...this.numberRow("main_fuse_a", translate(language, "entity.field.mainFuse"), "A", null));
+    // A site that cannot measure an import target hides the row while none is set (a set one stays, to clear it).
+    const target = this.field("import_target_kw");
+    if (view.import_target.available || (target?.kind === "number" && target.value !== null)) {
+      section.append(
+        ...this.numberRow("import_target_kw", translate(language, "site.importTarget"), "kW", translate(language, "settings.value.off"), translate(language, "site.importTarget.help")),
+      );
+    }
     // The same label as the charging card's site row: it is how the site is measured, not a device.
     const label = translate(language, "entity.field.measurementMode");
     const value = modeLabel(language, config.site.measurement.mode);
