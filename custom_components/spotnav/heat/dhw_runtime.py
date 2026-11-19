@@ -139,7 +139,8 @@ class HotWater:
         self.seen: set[str] = set()
         self.peaks: list[Peak] = learn_peaks([], timezone.utc, 0)
         self.picks: list[Pick] = []
-        #: Per local day: `peaks` [[ready, until]], `picks` {peak: pick}, `live` [peak], `review`.
+        #: Per local day: `peaks` [[ready, until]], `picks` {peak: pick}, `live` [peak] (a planned boost written),
+        #: `filled` [peak] (a boost already running when the pick came due), `review`.
         self.days: dict[str, dict[str, Any]] = {}
         #: The gate counts shadow days after this day (it closed then).
         self.gate_since: str | None = None
@@ -536,7 +537,14 @@ class HotWater:
             if not pick.start <= now < pick.start + START_LATE:
                 continue
             record = self._record(pick.peak.astimezone(self.zone).date().isoformat())
-            if pick.peak.isoformat() in (record.get("live") or []):
+            key = pick.peak.isoformat()
+            if key in (record.get("live") or []) or key in (record.get("filled") or []):
+                continue
+            if self._on(route)[0] or self.making_now():
+                # A boost already runs (the household's, the button's, the pump's own run): it fills the peak.
+                # SpotNav never writes over it, never takes it as its own and spends nothing on it.
+                record.setdefault("filled", []).append(key)
+                _LOGGER.debug("SpotNav hot water: the peak at %s is filled by a boost already running", pick.peak)
                 continue
             retry = self._retry_at.get(pick.peak.isoformat())
             if retry is not None and now < retry:
@@ -584,7 +592,8 @@ class HotWater:
         plans count on (`HeatShadow.forecast_delta`): each boost that will be written (live) adds its power over its
         run, and the pump's own reheat it replaces is taken out at its expected time. Nothing in shadow: there the
         pump runs as it always has. Kept per 5 minutes."""
-        key = (int(now.timestamp() // 300), tuple(pick.start for pick in self.picks), self.shed_day, self.ended_day)
+        filled_count = sum(len(record.get("filled") or []) for record in self.days.values())
+        key = (int(now.timestamp() // 300), tuple(pick.start for pick in self.picks), self.shed_day, self.ended_day, filled_count)
         if key == self._delta_key:
             return self._delta
         out: dict[datetime, float] = {}
@@ -597,8 +606,9 @@ class HotWater:
                 from .relay_effect import hour_shares  # noqa: PLC0415
 
                 run_h = max(self.run_len.total_seconds() / 3600.0, 0.25)
+                filled = {key for record in self.days.values() for key in record.get("filled") or []}
                 for pick in self.picks:
-                    if pick.end <= now or pick.peak <= now:
+                    if pick.end <= now or pick.peak <= now or pick.peak.isoformat() in filled:
                         continue
                     for hour, share in hour_shares(max(pick.start, now), pick.end):
                         out[hour] = out.get(hour, 0.0) + self.boost_kw * share
