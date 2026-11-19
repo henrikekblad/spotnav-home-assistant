@@ -1341,6 +1341,7 @@ class ChargingController:
             try:
                 pause = getattr(gate, "pause_intent", None)
             except Exception:  # noqa: BLE001 - an unreadable pause is read as none
+                _LOGGER.debug("boundary_intent: ignored failure (an unreadable pause is read as none)", exc_info=True)
                 pause = None
         return legacy_intent(pause, gate is not None and self._legacy_person_stopped)
 
@@ -2003,6 +2004,7 @@ class ChargingController:
         try:
             reading = self._soc_reader(record.vehicle)
         except Exception:  # noqa: BLE001 - an unreadable car says nothing new
+            _LOGGER.debug("car_facts: ignored failure (an unreadable car says nothing new)", exc_info=True)
             return facts
         if reading is None or reading.soc_percent is None:
             return facts
@@ -2068,6 +2070,7 @@ class ChargingController:
         try:
             reading = self._soc_reader(self._car_ended.vehicle)
         except Exception:  # noqa: BLE001 - an unreadable car says nothing new
+            _LOGGER.debug("car_ended_level_since: ignored failure (an unreadable car says nothing new)", exc_info=True)
             return None
         if reading is None or reading.soc_percent is None or reading.age_s is None:
             return None
@@ -2116,6 +2119,7 @@ class ChargingController:
         try:
             return self._car_drawing() is True
         except Exception:  # noqa: BLE001 - what cannot be read is not drawing
+            _LOGGER.debug("car_drawing_now: ignored failure (what cannot be read is not drawing)", exc_info=True)
             return False
 
     async def async_note_car_ended(self, vehicle_id: str | None = None) -> dict[str, Any]:
@@ -2134,6 +2138,7 @@ class ChargingController:
                 try:
                     reading = self._soc_reader(vehicle_id)
                 except Exception:  # noqa: BLE001 - an unreadable car is a state of charge not known
+                    _LOGGER.debug("async_note_car_ended: ignored failure (an unreadable car is a state of charge not known)", exc_info=True)
                     reading = None
             # Only a read state of charge says whether the car is full (`core.ownership.car_ended_known_full`), never
             # an estimate carried forward. A person's charge the car ended waits for nothing: only the plan's own
@@ -2255,6 +2260,7 @@ class ChargingController:
                 try:
                     reading = self._soc_reader(vehicle_id)
                 except Exception:  # noqa: BLE001 - an unreadable car is a state of charge not known
+                    _LOGGER.debug("async_plan_car_ended: ignored failure (an unreadable car is a state of charge not known)", exc_info=True)
                     reading = None
             full = car_ended_full(
                 reading,
@@ -5779,6 +5785,7 @@ class ChargingController:
         try:
             version = await async_manifest_version(self.hass)
         except Exception:  # noqa: BLE001 - the tally only names it
+            _LOGGER.debug("integration_version: ignored failure (the tally only names it)", exc_info=True)
             return None
         return None if version is None else str(version)
 
@@ -6475,6 +6482,7 @@ class ChargingController:
         try:
             return bool(probe())
         except Exception:  # noqa: BLE001 - an unreadable boundary holds nothing back: the window as ever
+            _LOGGER.debug("superseded_holds_start: ignored failure (an unreadable boundary holds nothing back: the window as ever)", exc_info=True)
             return False
 
     def _successor_continues(self) -> bool:
@@ -6489,6 +6497,7 @@ class ChargingController:
         try:
             return bool(probe())
         except Exception:  # noqa: BLE001 - an unreadable boundary hands nothing over: the end as ever
+            _LOGGER.debug("successor_continues: ignored failure (an unreadable boundary hands nothing over: the end as ever)", exc_info=True)
             return False
 
     async def _async_hand_over(self, *, final: bool) -> None:

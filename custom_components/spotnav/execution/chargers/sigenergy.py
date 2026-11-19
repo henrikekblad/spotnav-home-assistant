@@ -134,6 +134,7 @@ def evdc_fuse_cap_a(hass: HomeAssistant, charger_entry_id: str | None) -> int | 
             if control is not None and control.import_limit_guards(without_charger=charger_entry_id):
                 return None
         except Exception:  # noqa: BLE001 - fail closed: the cap stays
+            _LOGGER.debug("evdc_fuse_cap_a: ignored failure (fail closed: the cap stays)", exc_info=True)
             pass
     limit = site_limit_a(site)
     return None if limit is None else max(0, limit)
@@ -569,6 +570,7 @@ class PowerCurrent(CurrentPath):
                 self.hass, "number", "set_value", {"entity_id": self.entity_id, "value": value}, blocking=True
             )
         except Exception:  # noqa: BLE001 - the outcome code says it; the regulator decides what that means
+            _LOGGER.debug("async_set: ignored failure (the outcome code says it; the regulator decides what that means)", exc_info=True)
             return ASSIGN_WRITE_FAILED
         self.last_written_a = amps
         self._pending = (float(native), self._now())
