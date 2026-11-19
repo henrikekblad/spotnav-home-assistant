@@ -667,6 +667,29 @@ def test_fuse_s1_a_sale_is_handed_back_when_a_phase_nears_the_fuse() -> None:
     assert executor.state.phase in ("idle", "restoring")
 
 
+def test_a_sale_at_the_export_cap_is_not_handed_back_for_the_export_side() -> None:
+    """The export cap lets a sale and the sun fill each phase to the fuse less 2 A, where the headroom reads about
+    `RESTORE_HEADROOM_A`: the hand-back judges the importing phases only (the export side is the cap's), so a sale
+    at its cap runs on, not handed back and started again every `REARM_S`."""
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "export_discharge", 3.0)
+    assert executor.state.phase == "active" and executor.state.action == "export_discharge"
+    exporting = {"headroom_a": RESTORE_HEADROOM_A - 0.3, "phase_headroom_a": (0.7, 0.8, 0.9),
+                 "grid_phase_kw": (-4.0, -4.0, -4.0)}
+    _now, results = run(executor, battery, now, 15, "export_discharge", 3.0, **exporting)
+    assert events(results, "hand_back") == []
+    assert executor.state.phase == "active" and executor.state.action == "export_discharge"
+
+
+def test_a_sale_is_handed_back_when_an_importing_phase_nears_the_fuse() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "export_discharge", 3.0)
+    importing = {"headroom_a": RESTORE_HEADROOM_A - 0.5, "phase_headroom_a": (RESTORE_HEADROOM_A - 0.5, 9.0, 9.0),
+                 "grid_phase_kw": (4.4, -3.0, -3.0)}
+    _now, results = run(executor, battery, now, 3, "export_discharge", 3.0, **importing)
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+
+
 def test_fuse_s2_a_change_into_a_hold_passes_the_holds_start_rule() -> None:
     """The battery covers 3 kW (13 A on one phase) with 8 A left: from idle a hold is refused; as a change from
     covering the house it is handed back to plain self-consumption, never written."""
