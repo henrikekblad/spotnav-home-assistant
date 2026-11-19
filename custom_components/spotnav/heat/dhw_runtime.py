@@ -105,6 +105,10 @@ LOG_SIZE: Final = 48
 BACKSTOP: Final = timedelta(minutes=15)
 #: Looks in a row over the fuse before SpotNav's own running boost is shed.
 SHED_LOOKS: Final = 2
+#: How long one write's service call may take before it is given up on as a write not taken (s): Home Assistant has
+#: no timeout of its own, and a hung pump integration must not hold a stop task, so a later shed or backstop runs.
+#: Long enough for a cloud route.
+CALL_TIMEOUT_S: Final = 30.0
 
 
 def learned_live_share(days: Mapping[str, Mapping[str, Any]], today: date, key: str = "live") -> float:
@@ -134,6 +138,12 @@ def beta_gate_open(hass: HomeAssistant, site: Any) -> bool:
 
 async def _pause(seconds: float) -> None:
     await asyncio.sleep(seconds)
+
+
+async def _async_service(hass: HomeAssistant, domain: str, service: str, data: dict[str, Any]) -> None:
+    """One write's blocking service call, given up on after `CALL_TIMEOUT_S` (`TimeoutError`, a write not taken)."""
+    async with asyncio.timeout(CALL_TIMEOUT_S):
+        await hass.services.async_call(domain, service, data, blocking=True)
 
 
 def _run_of(raw: Any) -> HotWaterRun | None:
@@ -270,7 +280,7 @@ class HotWater:
             if not any(entry.entity_id == route.entity_id for entry in self.ledger.entries):
                 return
             _LOGGER.info("SpotNav hot water: %s was left on after a pulse; turning it off", route.entity_id)
-            await self.hass.services.async_call(route.domain, "turn_off", {"entity_id": route.entity_id}, blocking=True)
+            await _async_service(self.hass, route.domain, "turn_off", {"entity_id": route.entity_id})
         except Exception:  # noqa: BLE001 - tried again at the next start
             _LOGGER.debug("SpotNav hot water: the pulse switch could not be opened", exc_info=True)
 
@@ -892,8 +902,8 @@ class HotWater:
     async def _async_call_quietly(self, call: tuple[str, str, dict[str, Any]]) -> bool:
         """One service call, its failure logged (the next look tries again where it still applies)."""
         try:
-            await self.hass.services.async_call(call[0], call[1], call[2], blocking=True)
-        except Exception:  # noqa: BLE001 - logged
+            await _async_service(self.hass, call[0], call[1], call[2])
+        except Exception:  # noqa: BLE001 - logged (a call given up on too)
             _LOGGER.info("SpotNav hot water: the stop through %s failed", call[2].get("entity_id"), exc_info=True)
             return False
         return True
@@ -1180,9 +1190,16 @@ class HotWater:
             self.ledger.update(entry, read_back=False)
             return False
         domain, service, data = call
+        pulse = route.kind == "pulse" and domain in ("switch", "input_boolean")
         try:
-            await self.hass.services.async_call(domain, service, data, blocking=True)
-            if route.kind == "pulse" and domain in ("switch", "input_boolean"):
+            try:
+                await _async_service(self.hass, domain, service, data)
+            except TimeoutError:
+                if pulse:
+                    # Given up on, the switch may still close late: a pulse never stays on.
+                    await self.hass.services.async_call(domain, "turn_off", data, blocking=False)
+                raise
+            if pulse:
                 try:
                     await _pause(PULSE.total_seconds())
                 finally:
@@ -1249,8 +1266,8 @@ class HotWater:
             if call is None:
                 return "spotnav_not_supported", state
             try:
-                await self.hass.services.async_call(call[0], call[1], call[2], blocking=True)
-            except Exception:  # noqa: BLE001 - the answer says so
+                await _async_service(self.hass, call[0], call[1], call[2])
+            except Exception:  # noqa: BLE001 - the answer says so (a call given up on too)
                 _LOGGER.info("SpotNav hot water: stopping the boost failed", exc_info=True)
                 return "spotnav_write_failed", self.boost(now)
             return None, self.boost(now)

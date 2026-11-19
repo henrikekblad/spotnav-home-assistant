@@ -549,3 +549,120 @@ async def test_nit_the_pending_write_ends_with_the_site(hass: HomeAssistant, fre
     await controller.heat_shadow.async_shutdown()
     await asyncio.sleep(0)
     assert hot_water._pending.cancelled() or hot_water._pending.done()  # noqa: SLF001
+
+
+# ---- A hung pump integration: each write is given up on, so a later shed, backstop or press still runs
+# (`pytest.ini`'s timeout ends a test whose call is never given up on).
+
+
+class Hangs(Writes):
+    """`Writes` whose calls never answer while `hang` is set (`True`, or the services that hang): a Modbus or cloud
+    integration that hangs. The test's clock is frozen: a hung call moves it on past `CALL_TIMEOUT_S`, so the timeout
+    is due."""
+
+    def __init__(self, hass: HomeAssistant, freezer: Any) -> None:
+        self.hang: bool | set[str] = False
+        self.freezer = freezer
+        super().__init__(hass)
+        for domain, service in (
+            ("switch", "turn_on"), ("switch", "turn_off"), ("select", "select_option"), ("number", "set_value"),
+        ):
+            hass.services.async_register(domain, service, self._hung)
+
+    async def _hung(self, call: Any) -> None:
+        import asyncio
+
+        if self.hang is True or (isinstance(self.hang, set) and call.service in self.hang):
+            self.calls.append((call.domain, call.service, dict(call.data)))
+            self.freezer.tick(timedelta(seconds=1))
+            await asyncio.Event().wait()
+        self._call(call)
+
+
+@pytest.fixture
+def short_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    from custom_components.spotnav.heat import dhw_runtime
+
+    monkeypatch.setattr(dhw_runtime, "CALL_TIMEOUT_S", 0.05)
+
+
+@pytest.mark.usefixtures("short_calls")
+async def test_a_hung_shed_is_given_up_on_and_tried_again(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    writes = Hangs(hass, freezer)
+    hot_water.tick(at)
+    await settle(hass)
+    assert len(writes.calls) == 1
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -2.0, "l2": 10.0, "l3": 10.0})
+    writes.hang = True
+    for minute in (1, 2):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert writes.calls[-1] == ("select", "select_option", {"entity_id": LUX, "option": "Off"})
+    assert hot_water._side is not None and hot_water._side.done()  # noqa: SLF001
+    assert hot_water.shed_day is None
+    writes.hang = False
+    for minute in (3, 4):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert hass.states.get(LUX).state == "Off"
+    assert hot_water.shed_day is not None
+
+
+@pytest.mark.usefixtures("short_calls")
+async def test_a_hung_backstop_is_given_up_on_and_tried_again(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.heat.adapters import HEISHAMON
+
+    from .test_heat_dhw_runtime import press
+
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(HEISHAMON, HEISHA))
+    hass.states.async_set(HEISHA, "off")
+    writes = Hangs(hass, freezer)
+    entry_id = next(entry.entry_id for entry in hass.config_entries.async_entries("spotnav") if entry.data.get("heat") is not None)
+    assert (await press(hass, "start", site_id=entry_id))["result"]["ok"] is True
+    await settle(hass)
+    started = hot_water.ledger.last().at
+    hot_water.run_len = timedelta(minutes=30)
+    writes.hang = True
+    hot_water.tick(started + timedelta(minutes=46))
+    await settle(hass)
+    assert writes.calls[-1] == ("switch", "turn_off", {"entity_id": HEISHA})
+    assert hass.states.get(HEISHA).state == "on"
+    writes.hang = False
+    hot_water.tick(started + timedelta(minutes=47))
+    await settle(hass)
+    assert hass.states.get(HEISHA).state == "off"
+
+
+@pytest.mark.usefixtures("short_calls")
+async def test_a_hung_pulse_start_is_not_taken_and_the_pulse_is_opened(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=PULSE_SWITCH)
+    hot_water = controller.heat_shadow.hot_water
+    hass.states.async_set(PULSE_SWITCH, "off")
+    writes = Hangs(hass, freezer)
+    writes.hang = {"turn_on"}
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    await settle(hass)
+    assert hot_water.ledger.last().read_back is False
+    assert hass.states.get(PULSE_SWITCH).state == "off"
+    # Given up on, the switch is opened as after any pulse (sent without waiting: the integration hangs).
+    assert [(domain, service) for domain, service, _ in writes.calls] == [("switch", "turn_on"), ("switch", "turn_off")]
+
+
+@pytest.mark.usefixtures("short_calls")
+async def test_a_hung_stop_press_is_answered_as_failed(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, _pump(CTC_BMS, CTC))
+    hass.states.async_set(CTC, "0")
+    writes = Hangs(hass, freezer)
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    await settle(hass)
+    assert controller.heat_shadow.hot_water.boost()["state"] == "running"
+    writes.hang = True
+    answer = await press(hass, "stop", site_id=site.entry_id)
+    assert writes.calls[-1][1] == "set_value"
+    assert answer["result"]["ok"] is False
