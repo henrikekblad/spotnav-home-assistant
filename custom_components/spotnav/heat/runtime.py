@@ -234,8 +234,11 @@ def plan_days(
     tight: frozenset[datetime],
     outdoor_by_hour: Mapping[datetime, float],
     room_warm: bool = False,
+    keep_normal: frozenset[datetime] = frozenset(),
+    max_day: int | None = None,
 ) -> tuple[list[BandHour], str | None]:
-    """SpotNav's plan for the days given (the executor's part): each day's band, and today's guard."""
+    """SpotNav's plan for the days given (the executor's part): each day's band, and today's guard; `keep_normal` and
+    `max_day` the hot water's level-A rules (`heat/dhw_level_a.py`)."""
     hours: list[BandHour] = []
     guard: str | None = None
     for index, day in enumerate(days):
@@ -250,6 +253,8 @@ def plan_days(
             tight=tight,
             outdoor_by_hour=outdoor_by_hour,
             room_warm=room_warm and index == 0,
+            keep_normal=keep_normal,
+            max_day=max_day,
         )
         if index == 0:
             guard = day_guard
