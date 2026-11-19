@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from custom_components.spotnav.heat.adapters import CTC_BMS, MYUPLINK, NIBE_F
 from custom_components.spotnav.heat.dhw_ledger import SOURCE_PLAN
 
-from .test_heat_dhw_runtime import LUX, LUX_OPTIONS, Writes, _live_pick, _open_gate, _pump, _site, settle
+from .test_heat_dhw_runtime import LUX, LUX_OPTIONS, Writes, _live_pick, _open_gate, _pump, _quick_read_back, _site, settle  # noqa: F401 - the autouse fixture
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -311,3 +311,82 @@ async def test_s3_unknown_margins_do_not_refuse_the_button(hass: HomeAssistant, 
     _fuse(monkeypatch, controller.heat_shadow.hot_water, "stale_measurements", {})
     assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
     assert len(writes.calls) == 1
+
+
+# ---- S4: a pulse is read back by the meter's run; a pulse relay left on is opened at the start
+
+PULSE_SWITCH = "switch.larm_utgang_2"
+
+
+async def test_s4_a_pulse_is_read_back_by_the_meters_run(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=PULSE_SWITCH)
+    hot_water = controller.heat_shadow.hot_water
+    hass.states.async_set(PULSE_SWITCH, "off")
+    Writes(hass)
+    making = {"now": False}
+    monkeypatch.setattr(hot_water, "making_now", lambda: making["now"])
+    now = controller.demand.now()
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    entry = hot_water.ledger.last()
+    assert entry.read_back is None and hot_water.boost(now)["state"] == "starting"
+    # The meter shows the run: read back.
+    making["now"] = True
+    hot_water.tick(now + timedelta(minutes=2))
+    assert hot_water.ledger.last().read_back is True
+    assert hot_water.boost(now + timedelta(minutes=2))["state"] == "running"
+    # A second press later that brings no run: not read back after ten minutes, and failed.
+    making["now"] = False
+    hot_water.tick(now + timedelta(minutes=30))
+    freezer.tick(timedelta(minutes=31))
+    later = controller.demand.now()
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    hot_water.tick(later + timedelta(minutes=11))
+    assert hot_water.ledger.last().read_back is False
+    assert hot_water.boost(later + timedelta(minutes=11))["state"] == "failed"
+
+
+async def test_s4_a_planned_pulse_without_a_run_is_tried_once_more_then_ends_the_day(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, None, hot_water_entity=PULSE_SWITCH)
+    hass.states.async_set(PULSE_SWITCH, "off")
+    monkeypatch.setattr(hot_water, "making_now", lambda: False)
+    monkeypatch.setattr(hot_water, "_data_fresh", lambda _now: True)
+    writes = Writes(hass)
+    hot_water.tick(at)
+    await settle(hass)
+    assert len(writes.calls) == 2  # on, off
+    record = hot_water.days[hot_water.picks[0].peak.astimezone(hot_water.zone).date().isoformat()]
+    assert record["live"] == []
+    hot_water.tick(at + timedelta(minutes=11))
+    await settle(hass)
+    assert hot_water.ended_day is None and record["live"] == []
+    # Tried once more (it is still within the pick's start window when the retry comes due).
+    from dataclasses import replace
+
+    first = hot_water.picks[0]
+    hot_water.picks = [replace(first, start=at + timedelta(minutes=12), end=at + timedelta(minutes=42))]
+    hot_water.tick(at + timedelta(minutes=16))
+    await settle(hass)
+    assert len(writes.calls) == 4
+    hot_water.tick(at + timedelta(minutes=27))
+    await settle(hass)
+    assert hot_water.ended_day == at.astimezone(hot_water.zone).date().isoformat()
+
+
+async def test_s4_a_pulse_relay_left_on_is_opened_at_the_start(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.heat.dhw_ledger import SOURCE_BUTTON, Entry
+
+    site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=PULSE_SWITCH)
+    hot_water = controller.heat_shadow.hot_water
+    writes = Writes(hass)
+    hot_water.ledger.add(Entry(PULSE_SWITCH, "turn_on", controller.demand.now(), SOURCE_BUTTON))
+    hass.states.async_set(PULSE_SWITCH, "on")
+    await hot_water.async_start()
+    assert writes.calls == [("switch", "turn_off", {"entity_id": PULSE_SWITCH})]
+    # A switch SpotNav never pulsed is left alone.
+    hot_water.ledger.entries = []
+    writes.calls.clear()
+    hass.states.async_set(PULSE_SWITCH, "on")
+    await hot_water.async_start()
+    assert writes.calls == []

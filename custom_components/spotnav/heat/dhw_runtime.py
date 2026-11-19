@@ -163,6 +163,8 @@ class HotWater:
         self._delta: dict[datetime, float] = {}
         #: The meter has shown the run a pulse asked for (its end then ends the pulse's boost).
         self._pulse_ran = False
+        #: A planned pulse waiting for its read-back: its write's time (ISO) to its peak (ISO).
+        self._pulse_peaks: dict[str, str] = {}
 
     # ---- store
 
@@ -198,6 +200,23 @@ class HotWater:
         self.picks = [pick for item in raw.get("picks") or [] if (pick := Pick.from_stored(item)) is not None]
         self.run_len, self.boost_kw = learned_run(list(self.runs.values()))
         self.standby = standby_kwh(self.runs.values())
+
+    async def async_start(self) -> None:
+        """At the start: a pulse switch SpotNav has pulsed that reads on was left on (Home Assistant stopped within
+        the pulse): opened, so the pump's hot-water input is never held."""
+        try:
+            route = self.route()
+            if route is None or route.kind != "pulse" or route.domain not in ("switch", "input_boolean"):
+                return
+            state = self.hass.states.get(route.entity_id)
+            if state is None or state.state != "on":
+                return
+            if not any(entry.entity_id == route.entity_id for entry in self.ledger.entries):
+                return
+            _LOGGER.info("SpotNav hot water: %s was left on after a pulse; turning it off", route.entity_id)
+            await self.hass.services.async_call(route.domain, "turn_off", {"entity_id": route.entity_id}, blocking=True)
+        except Exception:  # noqa: BLE001 - tried again at the next start
+            _LOGGER.debug("SpotNav hot water: the pulse switch could not be opened", exc_info=True)
 
     # ---- reads
 
@@ -576,6 +595,7 @@ class HotWater:
             if not self._on(route)[0]:
                 self.ledger.close(route.entity_id, now)
             return
+        self._confirm_pulse(now, route)
         entry = self._pulse_entry(route, now)
         if entry is None:
             self._pulse_ran = False
@@ -586,6 +606,28 @@ class HotWater:
         elif self._pulse_ran or now - entry.at > PULSE_RUN_WITHIN:
             self.ledger.close(route.entity_id, now)
             self._pulse_ran = False
+
+    def _confirm_pulse(self, now: datetime, route: Route) -> None:
+        """A pulse waiting for its read-back: the run showing reads it back, none within `PULSE_RUN_WITHIN` does not
+        (a press then shows failed; a planned one is tried once more on this local route, then ends the day)."""
+        entry = next((item for item in reversed(self.ledger.entries) if item.entity_id == route.entity_id), None)
+        if entry is None or entry.read_back is not None:
+            return
+        if self.making_now():
+            seen = True
+        elif now - entry.at > PULSE_RUN_WITHIN:
+            seen = False
+        else:
+            return
+        self.ledger.update(entry, read_back=seen)
+        if seen:
+            self._pulse_ran = True
+        if entry.source == SOURCE_BUTTON and not seen:
+            self._failed_at = now
+        peak = self._pulse_peaks.pop(entry.at.isoformat(), None)
+        if entry.source == SOURCE_PLAN and peak is not None:
+            self._planned_outcome(now, route, peak, seen)
+        self.shadow.save()
 
     def _pulse_entry(self, route: Route, now: datetime) -> Entry | None:
         """The last pulse SpotNav or the button sent on the route whose run may still be coming or going."""
@@ -756,24 +798,35 @@ class HotWater:
     async def _async_live_start(self, now: datetime, route: Route, pick: Pick) -> None:
         try:
             seen = await self._async_write(route, SOURCE_PLAN, now)
-            record = self._record(pick.peak.astimezone(self.zone).date().isoformat())
             key = pick.peak.isoformat()
-            if seen:
-                record.setdefault("live", []).append(key)
-                if (control := self.shadow.control) is not None:
-                    control.request_look()
-                self._retry_at.pop(key, None)
-                _LOGGER.info("SpotNav hot water: the planned boost for %s started", pick.peak.astimezone(self.zone).strftime("%H:%M"))
-            elif route.cloud or key in self._retry_at:
-                self.ended_day = now.astimezone(self.zone).date().isoformat()
-                _LOGGER.info("SpotNav hot water: the planned boost was not read back; no more planned boosts today")
-            else:
-                self._retry_at[key] = now + RETRY
+            if seen is None:
+                self._pulse_peaks[now.isoformat()] = key
+                self.shadow.save()
+                return
+            self._planned_outcome(now, route, key, seen)
             self.shadow.save()
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - never into the site
             _LOGGER.debug("SpotNav hot water: the planned boost failed", exc_info=True)
+
+    def _planned_outcome(self, now: datetime, route: Route, key: str, seen: bool) -> None:
+        """A planned boost read back (the peak is live) or not (tried once more on a local route, else the day ends)."""
+        try:
+            record = self._record(datetime.fromisoformat(key).astimezone(self.zone).date().isoformat())
+            if seen:
+                record.setdefault("live", []).append(key)
+                if (control := self.shadow.control) is not None:
+                    control.request_look()
+                self._retry_at.pop(key, None)
+                _LOGGER.info("SpotNav hot water: the planned boost for %s started", datetime.fromisoformat(key).astimezone(self.zone).strftime("%H:%M"))
+            elif route.cloud or key in self._retry_at:
+                self.ended_day = now.astimezone(self.zone).date().isoformat()
+                _LOGGER.info("SpotNav hot water: the planned boost was not read back; no more planned boosts today")
+            else:
+                self._retry_at[key] = now + RETRY
+        except ValueError:
+            return
 
     # ---- writes
 
@@ -789,8 +842,9 @@ class HotWater:
             return False, None
         return boost_on(route.entity_id, state.state), state.last_changed
 
-    async def _async_write(self, route: Route, source: str, now: datetime) -> bool:
-        """Start the boost through the route, kept in the ledger first; whether it was read back."""
+    async def _async_write(self, route: Route, source: str, now: datetime) -> bool | None:
+        """Start the boost through the route, kept in the ledger first; whether it was read back (`None`: a pulse,
+        read back later by the meter)."""
         call = start_call(route, self._options(route))
         entry = self.ledger.add(Entry(route.entity_id, "start" if call is None else str(call[2].get("option", call[2].get("value", call[1]))), now, source))
         if call is None:
@@ -810,8 +864,9 @@ class HotWater:
             self.ledger.update(entry, read_back=False)
             return False
         if route.kind == "pulse":
-            self.ledger.update(entry, read_back=True)
-            return True
+            # A pulse is read back by the run it asks for: the meter (or the pump's state) must show it within
+            # `PULSE_RUN_WITHIN` (`_confirm_pulse`); until then the entry waits.
+            return None
         limit = READ_BACK_CLOUD if route.cloud else READ_BACK
         waited = 0.0
         while True:
@@ -842,7 +897,7 @@ class HotWater:
             ledger_source=self.ledger.owner(route.entity_id, now) if on else (None if pulse is None else pulse.source),
             making=self.making_now(),
             pulse_at=pulse_at,
-            pending=self._pending is not None and not self._pending.done(),
+            pending=(self._pending is not None and not self._pending.done()) or (pulse is not None and pulse.read_back is None),
             failed_at=self._failed_at,
         )
         return boost_state(route, reading, now, self.run_len)
@@ -891,7 +946,7 @@ class HotWater:
     async def _async_button_start(self, route: Route, now: datetime) -> None:
         try:
             seen = await self._async_write(route, SOURCE_BUTTON, now)
-            if not seen:
+            if seen is False:
                 self._failed_at = dt_util.utcnow()
             elif (control := self.shadow.control) is not None:
                 # A block held now ends at once: the heat control looks without waiting for its next look.

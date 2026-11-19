@@ -325,6 +325,7 @@ class HeatShadow:
         except Exception:  # noqa: BLE001 - a store that cannot be read starts again
             _LOGGER.warning("SpotNav heat: the kept heat shadow could not be read; starting a new one", exc_info=True)
         self._loaded = True
+        await self.hot_water.async_start()
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
         self.tick(dt_util.utcnow())
 

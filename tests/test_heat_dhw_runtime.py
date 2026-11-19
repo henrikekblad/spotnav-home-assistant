@@ -141,6 +141,10 @@ async def test_the_button_pulses_the_hot_water_input_once_per_ten_minutes(hass: 
     assert [(domain, service) for domain, service, _ in writes.calls] == [("switch", "turn_on"), ("switch", "turn_off")]
     hot_water = controller.heat_shadow.hot_water
     assert hot_water.ledger.last(SOURCE_BUTTON) is not None
+    # Starting until the meter shows the run the pulse asked for.
+    assert hot_water.boost()["state"] == "starting"
+    monkeypatch.setattr(hot_water, "making_now", lambda: True)
+    hot_water.tick(controller.demand.now())
     boost = (await read(hass, api_version=1, site_id=site.entry_id))["result"]["hot_water"]["boost"]
     assert (boost["state"], boost["source"], boost["stoppable"], boost["ends_estimated"]) == ("running", "user", False, True)
     again = await press(hass, "start", site_id=site.entry_id)
