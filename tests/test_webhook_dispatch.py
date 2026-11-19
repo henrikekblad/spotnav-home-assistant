@@ -57,6 +57,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "get_site_settings_view",
         "battery_control",
         "update_heat",
+        "heat_boost",
     }
 
 

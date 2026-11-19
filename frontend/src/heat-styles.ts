@@ -45,6 +45,9 @@ export const HEAT_CLASSES = {
   legendItem: "spotnav-heat-legend-item",
   swatch: "spotnav-heat-swatch",
   error: "spotnav-heat-error",
+  boost: "spotnav-heat-boost",
+  boostButton: "spotnav-heat-boost-button",
+  boostLine: "spotnav-heat-boost-line",
   section: "spotnav-heat-section",
   editorField: "spotnav-heat-editor-field",
 } as const;
@@ -172,6 +175,31 @@ export const HEAT_STYLES = `
     cursor: pointer;
     text-decoration: underline;
   }
+  /* The Boost button: one compact button with a drop, its state beside it. */
+  .${X.boost} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: 0.88rem;
+  }
+  .${X.boostButton} {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 4px 14px 4px 10px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 16px;
+    background: none;
+    color: var(--primary-text-color, #212121);
+    font: inherit;
+    cursor: pointer;
+  }
+  .${X.boostButton}:disabled { cursor: default; opacity: 0.7; }
+  .${X.boostButton}:focus-visible { outline: 2px solid var(--primary-color, #03a9f4); outline-offset: 2px; }
+  .${X.boostButton} svg { width: 14px; height: 14px; fill: var(--spotnav-heat-water-colour, #c62828); }
+  .${X.boostLine} { margin: 0; overflow-wrap: break-word; }
   .${X.status} {
     margin: 10px 0 0;
     font-size: 0.88rem;
@@ -276,6 +304,13 @@ export const HEAT_STYLES = `
     stroke: var(--card-background-color, #fff);
     stroke-width: 1.5;
   }
+  .${X.dayMark}[data-mark="hot_water_planned"] {
+    fill: var(--card-background-color, #fff);
+    stroke: var(--spotnav-heat-water-colour, #c62828);
+    stroke-width: 1.5;
+  }
+  .${X.dayMark}[data-mark="hot_water_bar"] { fill: color-mix(in srgb, var(--spotnav-heat-water-colour, #c62828) 55%, transparent); }
+  .${X.dayMark}[data-mark="hot_water_peak"] { stroke: var(--spotnav-heat-water-colour, #c62828); stroke-width: 1.5; }
   .${X.dayMark}[data-mark="car"] { fill: var(--spotnav-flow-car-colour, #f08c3a); }
   .${X.dayAxis} {
     fill: var(--secondary-text-color, #727272);

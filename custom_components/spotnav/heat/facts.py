@@ -114,6 +114,12 @@ class CapabilityStatus:
     options: tuple[str, ...] = ()
     volatile: bool = False
     note: str = ""
+    #: A hot-water boost's recipe (`adapters.Capability`).
+    self_ending: bool = False
+    duration_s: float | None = None
+    start: str | None = None
+    stop: str | None = None
+    verified: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -129,6 +135,7 @@ class CapabilityStatus:
             "options": list(self.options),
             "volatile": self.volatile,
             "note": self.note,
+            "self_ending": self.self_ending,
         }
 
 
@@ -411,6 +418,11 @@ def _capabilities(capabilities: tuple[Capability, ...], scope: _Scope) -> tuple[
                     options=entity.options,
                     volatile=capability.volatile,
                     note=capability.note,
+                    self_ending=capability.self_ending,
+                    duration_s=None if capability.duration is None else capability.duration.total_seconds(),
+                    start=capability.start,
+                    stop=capability.stop,
+                    verified=capability.verified,
                 )
             )
     return tuple(found)

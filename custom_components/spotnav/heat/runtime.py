@@ -54,6 +54,7 @@ from homeassistant.util import dt as dt_util
 from .. import time_zones
 from ..const import CONF_HEAT, DOMAIN
 from .automations import SteeringAutomation, steering_automations
+from .dhw_runtime import HotWater
 from .config import BAND_C, PATH_OFFSET, PATH_RELAY, PATH_SG_READY, PATH_SG_READY_API, HeatConfig, read_config
 from .meter_split import hot_water_runs, levels
 from .paths import lower_contact
@@ -312,6 +313,8 @@ class HeatShadow:
         #: Whether the house is too warm (`shadow_rule.RoomWarm`), and the rooms' readings of the last window.
         self.room_warm = RoomWarm()
         self._rooms: dict[str, deque[tuple[datetime, float]]] = {}
+        #: The site's hot water (`heat/dhw_runtime.py`): its peaks, plan, reviews and the Boost button.
+        self.hot_water = HotWater(hass, self)
 
     # ---- life cycle
 
@@ -322,6 +325,7 @@ class HeatShadow:
         except Exception:  # noqa: BLE001 - a store that cannot be read starts again
             _LOGGER.warning("SpotNav heat: the kept heat shadow could not be read; starting a new one", exc_info=True)
         self._loaded = True
+        await self.hot_water.async_start()
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
         self.tick(dt_util.utcnow())
 
@@ -335,6 +339,7 @@ class HeatShadow:
         days = raw.get("days")
         if isinstance(days, dict):
             self.days = {day: value for day, value in days.items() if isinstance(day, str) and isinstance(value, dict)}
+        self.hot_water.restore(raw.get("hot_water"))
 
     async def async_shutdown(self) -> None:
         self._closed = True
@@ -343,6 +348,7 @@ class HeatShadow:
             self._timer_cancel = None
         if self._task is not None and not self._task.done():
             self._task.cancel()
+        await self.hot_water.async_shutdown()
         if self._loaded:
             await self._store.async_save(self._data())
 
@@ -351,10 +357,20 @@ class HeatShadow:
         await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
 
     def _data(self) -> dict[str, Any]:
-        return {"relay": self.relay_id, "blocks": [block.as_dict() for block in self.blocks], "days": self.days}
+        return {
+            "relay": self.relay_id,
+            "blocks": [block.as_dict() for block in self.blocks],
+            "days": self.days,
+            "hot_water": self.hot_water.stored(),
+        }
 
     def _save(self) -> None:
         self._store.async_delay_save(self._data, SAVE_DELAY_S)
+
+    def save(self) -> None:
+        """Keep the store soon (the hot water's writes)."""
+        if self._loaded and not self._closed:
+            self._save()
 
     # ---- reads
 
@@ -471,8 +487,23 @@ class HeatShadow:
         return past, [(max(start, now), end) for start, end in ahead if end > now]
 
     def forecast_delta(self, now: datetime) -> dict[datetime, float]:
-        """The change to the house's expected load per hour (`relay_effect.forecast_delta`), from the relay's closings
-        whose rebound is not over; empty without a relay. Kept per 5 minutes."""
+        """The change to the house's expected load per hour: the relay's closings whose rebound is not over
+        (`relay_effect.forecast_delta`, kept per 5 minutes; none without a relay) and SpotNav's own hot-water boosts
+        with the pump's reheats they replace (`HotWater.forecast_delta`), on every path."""
+        heat = self._relay_delta(now)
+        try:
+            water = self.hot_water.forecast_delta(now) if self._loaded else {}
+        except Exception:  # noqa: BLE001 - the hot water's change is extra: the heat's stands
+            _LOGGER.debug("SpotNav hot water: its change to the forecast could not be made", exc_info=True)
+            water = {}
+        if not water:
+            return heat
+        out = dict(heat)
+        for hour, kw in water.items():
+            out[hour] = out.get(hour, 0.0) + kw
+        return out
+
+    def _relay_delta(self, now: datetime) -> dict[datetime, float]:
         if (self.relay_id is None and self.steered is None) or not self._loaded:
             return {}
         controlled = None if self.control is None else self.control.closings_ahead(now)
@@ -510,6 +541,10 @@ class HeatShadow:
         self.automations = steering_automations(self.hass, watched)
         self._step_warm(config, now)
         self._log_would(now, config)
+        try:
+            self.hot_water.tick(now)
+        except Exception:  # noqa: BLE001 - the hot water must never disturb the heat
+            _LOGGER.debug("SpotNav hot water: the look failed", exc_info=True)
         key = (self._prices_key(now), self.room_warm.active)
         if self._running or (hour_of(now) == self._for_hour and key == self._plan_key):
             return
@@ -535,6 +570,7 @@ class HeatShadow:
             await self._async_measure(now)
             await self._async_plan(now)
             self._keep_hour(now)
+            await self._async_hot_water(now)
             await self._async_review(now)
             self._trim(now)
             self._save()
@@ -545,6 +581,14 @@ class HeatShadow:
             self.status = "failed"
         finally:
             self._running = False
+
+    async def _async_hot_water(self, now: datetime) -> None:
+        try:
+            await self.hot_water.async_hourly(now)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - tried again at the next hour; the heat goes on
+            _LOGGER.debug("SpotNav hot water: the hourly plan failed", exc_info=True)
 
     async def _async_read_relay(self, now: datetime) -> None:
         start = now - timedelta(days=RELAY_DAYS)
@@ -864,4 +908,5 @@ class HeatShadow:
             "plan": [hour.as_dict() for hour in self.plan],
             "days": self.days,
             "log": self.log.as_list(),
+            "hot_water": self.hot_water.diagnostics(),
         }

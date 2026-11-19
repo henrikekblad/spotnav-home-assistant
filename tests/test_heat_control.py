@@ -1010,3 +1010,23 @@ async def test_a_hardware_test_needs_control_running(hass: HomeAssistant, freeze
     _site_, controller, _relay = await _site(hass, freezer, control_enabled=False)
     control = controller.heat_control
     assert control.test_refusal(controller.demand.now()) == "not_enabled"
+async def test_no_block_starts_while_the_pump_makes_hot_water_and_a_boost_is_never_cut(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Review S5: on a path that blocks hot water too, no block starts during the pump's own run, and a boost (the
+    household's, the button's or SpotNav's own) ends a held block and keeps it from starting."""
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, hot_water_entity="switch.vv_puls")
+    hot_water = control.shadow.hot_water
+    monkeypatch.setattr(hot_water, "making_now", lambda: True)
+    await control.async_look(now)
+    assert relay.calls == [] and control.safety == "hot_water"
+    monkeypatch.setattr(hot_water, "making_now", lambda: False)
+    await control.async_look(now + 5 * MIN)
+    assert relay.calls == ["on"] and control.held
+    # The pump starting its own run while held does not open the block (the run waits, step 8 bounds it).
+    monkeypatch.setattr(hot_water, "making_now", lambda: True)
+    await control.async_look(now + 10 * MIN)
+    assert relay.calls == ["on"]
+    # A boost turned on: the block opens at once.
+    hass.states.async_set("switch.vv_puls", "on")
+    await control.async_look(now + 15 * MIN)
+    assert relay.calls == ["on", "off"] and control.boost_source == "user"
+    assert control.diagnostics()["boost_source"] == "user"

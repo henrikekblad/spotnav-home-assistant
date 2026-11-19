@@ -254,6 +254,7 @@ def villa_answer(zone_periods: Any = "villa", **overrides: Any) -> dict[str, Any
             automations=villa_automations(),
             names={"climate.golvvarme_toalett_nere": "Golvvärme toalett nedervåning"},
             review=villa_review(),
+            hot_water=villa_hot_water(),
             indoor_day=indoor_day(
                 config, villa_rooms(), MIDNIGHT, MIDNIGHT + timedelta(days=1), NOW, LIVE_STEP_MIN,
                 names={sensor.entity_id: sensor.name for sensor in sensors},
@@ -265,6 +266,61 @@ def villa_answer(zone_periods: Any = "villa", **overrides: Any) -> dict[str, Any
             ),
         ), **overrides)
     )
+
+
+def _at(hours: float, day: int = 0) -> str:
+    return (MIDNIGHT + timedelta(days=day, hours=hours)).isoformat()
+
+
+def hot_water_gate(**changes: Any) -> dict[str, Any]:
+    return {
+        "level": "B", "days": 0, "days_needed": 7, "weekdays": 0, "peaks": 0, "peaks_needed": 10, "hits": 0,
+        "hit_needed": 0.7, "saved": 0.0, "open": False, "backed_off": None, **changes,
+    }
+
+
+def villa_hot_water() -> dict[str, Any]:
+    """The villa's hot water in shadow (`heat/dhw_runtime.HotWater.view`): a relay pulse on the pump's hot-water input
+    started a run five minutes ago; the morning's would-be boost at 03:15 against the pump's own 05:10 run, the
+    evening's at 14:00, tomorrow's morning at 03:30; day 5 of the gate's 7."""
+    return {
+        "boost": {"state": "running", "source": "user", "started": _at(17 + 15 / 60), "ends": _at(17.75), "ends_estimated": True, "stoppable": False},
+        "peaks": [{"ready_by": "05:00", "kwh": 1.2, "learned": True}, {"ready_by": "17:00", "kwh": 1.0, "learned": False}],
+        "planned": [
+            {"start": _at(3.25), "end": _at(3.75), "kwh": 1.2, "price": 75.0, "reason": "cheap", "peak": "05:00", "live": False, "pump_run": _at(5 + 10 / 60)},
+            {"start": _at(14), "end": _at(14.5), "kwh": 1.0, "price": 100.0, "reason": "cheap", "peak": "17:00", "live": False, "pump_run": None},
+            {"start": _at(3.5, 1), "end": _at(4, 1), "kwh": 1.2, "price": 76.0, "reason": "cheap", "peak": "05:00", "live": False, "pump_run": None},
+        ],
+        "runs_today": [
+            {"start": _at(5 + 10 / 60), "end": _at(5.5), "kwh": 1.05, "source": "pump"},
+            {"start": _at(17 + 15 / 60), "end": _at(17.5), "kwh": 0.4, "source": "button"},
+        ],
+        "review": {
+            "date": "2026-11-15", "mode": "shadow", "would_cost": 81.0, "actual_cost": 141.75, "saved": 60.75,
+            "moved_kwh": 1.05, "hits": 1, "peaks": 2, "misses": 0,
+            "per_peak": [
+                {"peak": "05:00", "hit": True, "pick": _at(3.25, -1), "pump_run": _at(5 + 10 / 60, -1), "miss": False},
+                {"peak": "17:00", "hit": False, "pick": None, "pump_run": None, "miss": False},
+            ],
+        },
+        "gate": hot_water_gate(days=5, weekdays=5, peaks=10, hits=8, saved=212.5),
+        "level": "B",
+        "mode": "shadow",
+    }
+
+
+def network_pump_hot_water() -> dict[str, Any]:
+    """A NIBE whose own price control is on: watch only; its temporary lux is idle and can be pressed."""
+    return {
+        "boost": {"state": "idle", "source": None, "started": None, "ends": None, "ends_estimated": False, "stoppable": False},
+        "peaks": [{"ready_by": "05:00", "kwh": 1.0, "learned": False}, {"ready_by": "17:00", "kwh": 1.0, "learned": False}],
+        "planned": [],
+        "runs_today": [],
+        "review": None,
+        "gate": hot_water_gate(),
+        "level": "B",
+        "mode": "watch",
+    }
 
 
 def control_status(state: str, reason: str | None, **extra: Any) -> dict[str, Any]:
@@ -357,6 +413,7 @@ def network_pump_answer() -> dict[str, Any]:
             prices=_slots(),
             money=("SEK", "kr", "öre"),
             control=control_status("off", None),
+            hot_water=network_pump_hot_water(),
         )
     )
 
@@ -467,7 +524,10 @@ def test_the_villa() -> None:
     assert actions[0] == "night" and actions[23] == "night"
     assert [hour["car"] for hour in answer["band"]["hours"]][1:5] == [True] * 4
     hot = [hour["start"] for hour in answer["band"]["hours"] if hour["hot_water"]]
-    assert hot == [(MIDNIGHT + timedelta(hours=h)).isoformat() for h in (5, 7)]
+    # The measured runs at 05 and 07, the planned boosts at 03 and 14 (tomorrow's is not today's).
+    assert hot == [(MIDNIGHT + timedelta(hours=h)).isoformat() for h in (3, 5, 7, 14)]
+    assert answer["band"]["hot_water_pick"] == _at(3.5, 1)
+    assert answer["hot_water"]["gate"]["days"] == 5
     today = answer["today"]
     assert today["hot_water_kwh"] > 1.5 and today["cost"] > 0 and today["money"]["minor_unit"] == "öre"
     # Heat holds the zones' own meters (6 hours at 0.6 kW); hot water stays the heat pump meter's own split.
@@ -550,5 +610,6 @@ def test_the_hours_ahead_end_at_midnight_until_tomorrow_has_its_prices() -> None
     longer = villa_answer(prices=two_days)["ahead"]
     assert len(longer) == 12
     assert [hour["start"] for hour in longer] == [(MIDNIGHT + timedelta(hours=17 + index)).isoformat() for index in range(12)]
-    # The cooler night runs on past midnight, and tomorrow has no hot water of its own yet.
-    assert longer[7]["action"] == "night" and all(not hour["hot_water"] for hour in longer[7:])
+    # The cooler night runs on past midnight; tomorrow's hot water is its planned boost at 03:30.
+    assert longer[7]["action"] == "night"
+    assert [hour["hot_water"] for hour in longer[7:]] == [False, False, False, True, False]

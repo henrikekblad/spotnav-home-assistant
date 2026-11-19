@@ -317,3 +317,73 @@ Home Assistant runs, it is SpotNav's rules that end it. An override that someone
 
 The diagnostics (`heat_settings.control`) show the path's write class and the day's counts (`writes`), the kept
 offset moves (`kept.snapshots`) and whether SpotNav holds the SG Ready switch (`kept.activation`).
+
+## Hot water
+
+SpotNav learns when the household uses hot water and plans the tank's reheating into the cheap hours before it. It
+starts in shadow: it shows what it would do and what that would have saved, and writes nothing until it has shown
+that it hits your peaks. There is no setting of its own beyond **Styr värmen**.
+
+**The peaks.** A peak is a time of day by which a full tank is wanted, for example the morning showers. SpotNav finds
+them in the heat pump meter: each hot-water run (the meter's plateau of about three times the heating level) follows a
+draw, so the draw is placed 20 minutes before the run. Runs under half your pump's median run (at least 0.2 kWh)
+are the tank's standby loss, not use: on a pump whose runs are 0.4–1.0 kWh that is about 0.35 kWh. Over
+the last 21 days the draws are grouped by time of day; a group that holds at least a fifth of the hot water used, and
+at least five draws, is a peak, at most three a day and at least three hours apart. Until a week has been seen, the
+peaks are **05:00–07:00** and **17:00–20:00** (ready by 05:00 and 17:00); a learned peak replaces the nearest of them.
+Runs that SpotNav or the button started are left out, so a boost does not teach SpotNav that nobody showers.
+
+**The plan.** Before each peak, SpotNav looks for the cheapest quarter-hours for one run that ends by itself: from the
+end of the previous peak, at most eight hours ahead, done before the peak. Spare sun counts at the sell price. A run
+never goes where the house, the cars' charging and the battery's grid charging leave no room under the fuse or your
+import target, nor into an hour where SpotNav lowers the heat on a path that also blocks hot water, nor while it is
+too cold outdoors. It is planned only where it saves at least 0.10 kr (the same in your area's currency, about one
+euro cent) against the pump's own reheat after the peak, counted with the tank's standby loss; otherwise the pump
+does it itself. A cloud route gets at most two planned runs a
+day, a local one three.
+
+**On the heat card.** *Plan* shows the planned runs as hollow droplets with a thin bar over their length and the
+peaks as small ticks on the time axis ("dusch 06:00"); the measured runs stay filled droplets. Tap a run: "Skulle värma
+varmvatten 04:15–04:45 · 42 öre/kWh · klart till 06:00", and once it has passed, what the pump did instead ("Skulle
+ha värmt varmvatten 04:15 · pumpen körde själv 06:20"). The strip on *Nu* says "varmvatten 04:15". Under the chart:
+yesterday's review (kWh moved and money saved, in shadow), each peak hit or not, and the shadow's progress ("dag 5 av
+7, 8 av 10 toppar träffade").
+
+**From shadow to steering.** Planned runs are written only with **Styr värmen** on and after at least seven shadow
+days, one of each weekday, at least ten peaks seen, 70 % of them hit (the pump ran within 45 minutes of the peak) and
+a saving above zero. Once open, the gate stays open while SpotNav steers; if the pump reheats within 90 minutes after
+a peak despite the run three times in a week, SpotNav goes back to shadow and the week starts again. A run is not
+started while a boost already runs (yours, the button's or the pump's own run: that fills the peak), while the house
+needs the compressor (too cold outdoors, a room below the band, outdoor or room readings missing), without a meter
+reading in the last ten minutes (or, without a meter, the pump's own state), or after a write that was not read back
+(that ends planned hot water for the day; a local route is tried once more after five minutes, a cloud route never).
+A pulse is read back by the run it asks for: the meter must show it within ten minutes.
+
+**With the cars and the battery.** A run that will be written is part of the house's expected load, so the cars'
+charging plans and the battery plan see it, and the pump's own reheat it replaces is taken out where it was expected.
+What the house profile has already learned of these runs is not counted twice. At its start, the run needs room on
+the fuse's tightest phase now (its whole power on one phase, the worst case; what a battery holding the grid would
+yield counts as room) and room under your import target for the hour: if a car has started since, it waits. With a
+phase reading missing or stale it does not start at all. If a phase goes over the fuse while SpotNav's own run is
+going, SpotNav ends that run (where the pump has a way to end it) and starts no more that day. Your own boost and the
+button's are never ended.
+
+**Varmvatten nu.** Where the pump has a hot-water boost that ends by itself (NIBE's temporary lux "one time", myUplink's
+temporary lux, CTC's extra hot water for an hour) or you chose a **hot water entity**
+wired to the pump's hot-water input (SpotNav gives it a short pulse), the *Nu* tab has a **Varmvatten nu** button for
+anyone who sees the card. It shows *Startar…* until the pump reads the start back, then the time left (exact on a
+timer, about on a one-time run) and, where the boost can be ended early, **Avbryt**. One start per ten minutes (a
+start that failed does not count). While a phase is already over the main fuse the button says so and starts nothing:
+turn something off and press again. The button is your own start: SpotNav never stops it, never sheds it for the fuse,
+and a heat block ends at once and starts no more until its run is over. HeishaMon's force hot water is offered to the
+button only, since whether it ends by itself is not verified: SpotNav turns it off 15 minutes after the expected run.
+Without such a boost the button is not shown.
+
+**What SpotNav never does.** It never turns off the pump's own periodic increase (NIBE's "periodisk höjning", CTC's
+legionella programme): keep it on, hygiene is the pump's. On a relay or SG Ready path it starts no heat block while
+the pump makes hot water, and a boost (yours, the button's or its own) ends a block at once. A heat block already
+held when the pump's own increase falls due can still delay it until the block ends (at most three hours); keeping
+blocks clear of the pump's own runs is a later step.
+
+The diagnostics (`heat_settings.shadow.hot_water`) show the boost route, the mode, the gate, the peaks, the picks, the
+days kept with their reviews and SpotNav's own writes.

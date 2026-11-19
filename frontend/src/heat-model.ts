@@ -113,6 +113,64 @@ export const INDOOR_DAY = O({
   rooms: A(O({ entity_id: "string", name: "string" })),
 });
 
+/** The Boost button's state (`heat/dhw_boost.py`): `null` where the pump has no boost that ends by itself. */
+export const BOOST = O({
+  state: "string",
+  source: N("string"),
+  started: N("string"),
+  ends: N("string"),
+  ends_estimated: "boolean",
+  stoppable: "boolean",
+});
+/** The site's hot water (`heat/dhw_runtime.py`): peaks, the boosts planned, today's runs, the last review, the gate. */
+export const HOT_WATER = O({
+  boost: N(BOOST),
+  peaks: A(O({ ready_by: "string", kwh: "number", learned: "boolean" })),
+  planned: A(
+    O({
+      start: "string",
+      end: "string",
+      kwh: "number",
+      price: "number",
+      reason: "string",
+      peak: "string",
+      live: "boolean",
+      pump_run: N("string"),
+    }),
+  ),
+  runs_today: A(O({ start: "string", end: "string", kwh: "number", source: "string" })),
+  review: N(
+    O({
+      date: "string",
+      mode: "string",
+      would_cost: "number",
+      actual_cost: "number",
+      saved: "number",
+      moved_kwh: "number",
+      hits: "number",
+      peaks: "number",
+      misses: "number",
+      per_peak: A(O({ peak: "string", hit: "boolean", pick: N("string"), pump_run: N("string"), miss: "boolean" })),
+    }),
+  ),
+  gate: O({
+    level: "string",
+    days: "number",
+    days_needed: "number",
+    weekdays: "number",
+    peaks: "number",
+    peaks_needed: "number",
+    hits: "number",
+    hit_needed: "number",
+    saved: "number",
+    open: "boolean",
+    backed_off: N("string"),
+  }),
+  level: N("string"),
+  mode: "string",
+});
+const BOOST_ANSWER = O({ api_version: "number", ok: "boolean", error: N("string"), boost: N(BOOST) });
+
 const ANSWER = O({
   api_version: "number",
   site_id: "string",
@@ -263,6 +321,7 @@ const ANSWER = O({
     }),
   ),
   ahead: A(O({ start: "string", action: "string", target_c: "number", reason: "string", hot_water: "boolean" })),
+  hot_water: N(HOT_WATER),
 });
 
 const WRITE = O({
@@ -499,6 +558,86 @@ export interface HeatAnswer {
   /** The plan from the running hour on, twelve hours at most (the strip under the dial); it ends at midnight until
    * tomorrow has its prices. */
   ahead: HeatAheadHour[];
+  /** The site's hot water; `null` without the heat shadow. */
+  hot_water: HeatHotWater | null;
+}
+
+/** The Boost button (`hot_water.boost`). */
+export interface HeatBoost {
+  /** "idle", "starting", "running" or "failed". */
+  state: string;
+  /** "user" (the button's or the household's own), "plan" (SpotNav's planned boost) or "pump" (its own run). */
+  source: string | null;
+  started: string | null;
+  ends: string | null;
+  /** `ends` is the learned run length's estimate, not a timer's. */
+  ends_estimated: boolean;
+  /** The household's own boost that can be ended early: the button offers "stop". */
+  stoppable: boolean;
+}
+
+export interface HeatHotWaterPlanned {
+  start: string;
+  end: string;
+  kwh: number;
+  /** The run's mean price (minor unit per kWh): the sell price on sun. */
+  price: number;
+  /** "cheap" or "sun". */
+  reason: string;
+  /** The peak it fills ("06:00", local). */
+  peak: string;
+  /** Written to the pump (live); else what SpotNav would do (shadow). */
+  live: boolean;
+  /** The pump's own run the boost would have replaced, once seen. */
+  pump_run: string | null;
+}
+
+export interface HeatHotWaterReview {
+  date: string;
+  mode: string;
+  would_cost: number;
+  actual_cost: number;
+  saved: number;
+  moved_kwh: number;
+  hits: number;
+  peaks: number;
+  misses: number;
+  per_peak: { peak: string; hit: boolean; pick: string | null; pump_run: string | null; miss: boolean }[];
+}
+
+export interface HeatHotWaterGate {
+  level: string;
+  days: number;
+  days_needed: number;
+  weekdays: number;
+  peaks: number;
+  peaks_needed: number;
+  hits: number;
+  hit_needed: number;
+  saved: number;
+  open: boolean;
+  backed_off: string | null;
+}
+
+/** The site's hot water: the button, the peaks, the boosts planned, today's runs, the last review and the gate. */
+export interface HeatHotWater {
+  boost: HeatBoost | null;
+  peaks: { ready_by: string; kwh: number; learned: boolean }[];
+  planned: HeatHotWaterPlanned[];
+  runs_today: { start: string; end: string; kwh: number; source: string }[];
+  review: HeatHotWaterReview | null;
+  gate: HeatHotWaterGate;
+  /** "B" (a boost route), "A" (a block path only) or `null`. */
+  level: string | null;
+  /** "shadow", "live" or "watch". */
+  mode: string;
+}
+
+export interface HeatBoostAnswer {
+  api_version: number;
+  ok: boolean;
+  error: string | null;
+  boost: HeatBoost | null;
 }
 
 export interface HeatWriteAnswer {
@@ -558,6 +697,14 @@ export function decodeHeatWrite(raw: unknown): Decoded<HeatWriteAnswer> {
     return { ok: false, failure: typeof versionOf(raw) === "number" ? "unsupported" : "malformed" };
   }
   return fits(raw, WRITE) ? { ok: true, value: raw as HeatWriteAnswer } : { ok: false, failure: "malformed" };
+}
+
+/** `spotnav/heat_boost`'s answer, or why it cannot be read. */
+export function decodeHeatBoost(raw: unknown): Decoded<HeatBoostAnswer> {
+  if (versionOf(raw) !== HEAT_API_VERSION) {
+    return { ok: false, failure: typeof versionOf(raw) === "number" ? "unsupported" : "malformed" };
+  }
+  return fits(raw, BOOST_ANSWER) ? { ok: true, value: raw as HeatBoostAnswer } : { ok: false, failure: "malformed" };
 }
 
 /** A room's name without the sensor's trailing "temperature" word ("Ovanvåning temperatur" → "Ovanvåning"). */

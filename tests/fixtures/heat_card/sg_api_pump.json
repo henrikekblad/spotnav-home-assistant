@@ -479,6 +479,7 @@
     "untested": true,
     "until": null
   },
+  "hot_water": null,
   "indoor": {
     "coldest": null,
     "coldest_name": null,

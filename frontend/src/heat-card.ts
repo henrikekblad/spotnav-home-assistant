@@ -13,10 +13,10 @@
 // YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
 // optionally `tab: now | plan | use` to show only that tab (no tab row).
 
-import { getHeat, getPeriodHistory, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { getHeat, getPeriodHistory, heatBoost, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { browserStore, type PreferenceStore } from "./chart-preference";
 import { writeError, writeHeat, type HeatWriteOptions } from "./heat-editors";
-import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
+import { decodeHeat, decodeHeatBoost, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
 import {
   fitHeatTabs,
@@ -48,6 +48,14 @@ export { instantToLocal, localToInstant, writeError };
 export const HEAT_CARD_TYPE = "spotnav-heat-card";
 export const HEAT_CARD_ELEMENT = "spotnav-heat-card";
 export const HEAT_REFRESH_MS = 60_000;
+/** The sentence for a refused press of the Boost button. */
+export function boostErrorKey(code: string | null): "heat.boost.rateLimited" | "heat.boost.noHeadroom" | "heat.boost.failed" {
+  return code === "spotnav_rate_limited" ? "heat.boost.rateLimited" : code === "spotnav_no_headroom" ? "heat.boost.noHeadroom" : "heat.boost.failed";
+}
+
+/** While the Boost button's start waits for its read-back: look again this often, this many times. */
+const BOOST_POLL_MS = 5_000;
+const BOOST_POLLS = 40;
 /** A dial step is written this long after the last tap, so a run of taps is one write. */
 export const DIAL_SETTLE_MS = 700;
 export const HEAT_FALLBACK_WIDTH = 330;
@@ -482,6 +490,42 @@ export class SpotnavHeatCard extends HTMLElement {
     return result.error;
   }
 
+  /** The Boost button pressed: the start or stop sent, the answer's state shown, and while it starts (read back,
+   * up to a few minutes through a cloud) the card looks again every `BOOST_POLL_MS`. */
+  private async boost(action: "start" | "stop"): Promise<void> {
+    const hass = this.hassObject;
+    const target = this.target();
+    const language = this.cardLanguage();
+    if (hass === null || target === null || this.ui.boostBusy === true) {
+      return;
+    }
+    this.ui = { ...this.ui, boostBusy: true, boostError: null };
+    this.render();
+    let error: string | null = null;
+    try {
+      const decoded = decodeHeatBoost(await heatBoost(hass, target, action));
+      if (!decoded.ok) {
+        error = translate(language, "heat.error.generic");
+      } else if (!decoded.value.ok) {
+        error = translate(language, boostErrorKey(decoded.value.error));
+      }
+    } catch {
+      error = translate(language, "heat.boost.failed");
+    }
+    this.ui = { ...this.ui, boostBusy: false, boostError: error };
+    await this.refresh();
+    this.pollBoost(BOOST_POLLS);
+  }
+
+  private pollBoost(left: number): void {
+    if (left <= 0 || this.answer()?.hot_water?.boost?.state !== "starting") {
+      return;
+    }
+    window.setTimeout(() => {
+      void this.refresh().then(() => this.pollBoost(left - 1));
+    }, BOOST_POLL_MS);
+  }
+
   private step(delta: number): void {
     const answer = this.answer();
     if (answer === null) {
@@ -687,6 +731,7 @@ export class SpotnavHeatCard extends HTMLElement {
           onBar: (key) => {
             this.ui = { ...this.ui, bar: key };
           },
+          onBoost: (action) => void this.boost(action),
         },
       }),
     );

@@ -441,6 +441,46 @@
     "untested": false,
     "until": null
   },
+  "hot_water": {
+    "boost": {
+      "ends": null,
+      "ends_estimated": false,
+      "source": null,
+      "started": null,
+      "state": "idle",
+      "stoppable": false
+    },
+    "gate": {
+      "backed_off": null,
+      "days": 0,
+      "days_needed": 7,
+      "hit_needed": 0.7,
+      "hits": 0,
+      "level": "B",
+      "open": false,
+      "peaks": 0,
+      "peaks_needed": 10,
+      "saved": 0.0,
+      "weekdays": 0
+    },
+    "level": "B",
+    "mode": "watch",
+    "peaks": [
+      {
+        "kwh": 1.0,
+        "learned": false,
+        "ready_by": "05:00"
+      },
+      {
+        "kwh": 1.0,
+        "learned": false,
+        "ready_by": "17:00"
+      }
+    ],
+    "planned": [],
+    "review": null,
+    "runs_today": []
+  },
   "indoor": {
     "coldest": null,
     "coldest_name": null,

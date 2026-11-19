@@ -39,6 +39,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Final, Literal
 
 from ..battery.adapters import Match
@@ -75,12 +76,24 @@ PriceRuleKind = Literal["on", "level", "nonzero", "not_normal"]
 @dataclass(frozen=True, slots=True)
 class Capability:
     """A control path a pump has. `volatile`: the pump forgets a written value by itself (CTC's 1000 block);
-    `stored`: a stored setting (write rarely)."""
+    `stored`: a stored setting (write rarely).
+
+    A hot-water boost's recipe (the Boost button and the planned boost, `heat/dhw_boost.py`): `self_ending` when a
+    start ends by itself (a one-time run, a timer), `duration` the timer's length where it has one (`None`: a
+    one-time run, its length learned), `start` and `stop` what is written: a select's option (matched by these
+    words, any case) or a number's value; a switch is turned on and off and needs neither. `stop` `None` on a select
+    or number: no way to end it early. `verified`: that a start ends by itself is confirmed on a real pump; an
+    unverified boost is offered to the Boost button only, and SpotNav stops it after its expected run."""
 
     kind: CapabilityKind
     match: Match
     note: str = ""
     volatile: bool = False
+    self_ending: bool = False
+    duration: timedelta | None = None
+    start: str | None = None
+    stop: str | None = None
+    verified: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +162,14 @@ NIBE_F: Final = Adapter(
         Capability("offset", _dash("47011", "number"), "Heat Offset S1, -10..10 in whole steps; a stored setting."),
         Capability("setpoint", _dash("s1", "climate"), "Climate system 1; acts only with the room sensor in use."),
         Capability("setpoint", _dash("47398", "number"), "Room sensor setpoint S1; a stored setting."),
-        Capability("hot_water_boost", _dash("48132", "select"), "Temporary lux: off, 3 h, 6 h, 12 h, one time."),
+        Capability(
+            "hot_water_boost",
+            _dash("48132", "select"),
+            "Temporary lux: off, 3 h, 6 h, 12 h, one time.",
+            self_ending=True,
+            start="one time",
+            stop="off",
+        ),
     ),
     price_control=(
         PriceRule(_dash("41929"), "level", "Smart Price Adaption price level"),
@@ -209,8 +229,15 @@ MYUPLINK: Final = Adapter(
     capabilities=(
         Capability("offset", _dash("47011", "number"), "Heating offset climate system 1, -10..10; through the cloud."),
         Capability("setpoint", _dash("47398", "number"), "Room sensor set point climate system 1; through the cloud."),
-        Capability("hot_water_boost", _dash("50004", "switch"), "Temporary lux."),
-        Capability("hot_water_boost", _dash("48132", "select"), "Temporary lux with a duration (SMO 20)."),
+        Capability("hot_water_boost", _dash("50004", "switch"), "Temporary lux (one run).", self_ending=True),
+        Capability(
+            "hot_water_boost",
+            _dash("48132", "select"),
+            "Temporary lux with a duration (SMO 20).",
+            self_ending=True,
+            start="one time",
+            stop="off",
+        ),
     ),
     price_control=(
         PriceRule(_dash("41929"), "level", "Smart Price Adaption mode"),
@@ -252,7 +279,16 @@ CTC_BMS: Final = Adapter(
             "Virtual digital inputs; SmartGrid A/B only where the controller's menu assigns them.",
             volatile=True,
         ),
-        Capability("hot_water_boost", _under("1006", "number"), "Extra hot water timer override (h).", volatile=True),
+        Capability(
+            "hot_water_boost",
+            _under("1006", "number"),
+            "Extra hot water timer override (h).",
+            volatile=True,
+            self_ending=True,
+            duration=timedelta(hours=1),
+            start="1",
+            stop="0",
+        ),
         Capability("blocking", _under("1002", "number"), "Max compressor speed override (rps).", volatile=True),
         Capability("blocking", _under("61521", "switch"), "Heat pump 1 blocked (stored, EEPROM)."),
         Capability("price_mode", _under("1005", "select"), "Electricity price mode override.", volatile=True),
@@ -285,7 +321,16 @@ CTC_LOCAL: Final = Adapter(
     },
     capabilities=(
         Capability("setpoint", _under("ctl_room_setpoint_1", "number"), "Room setpoint override.", volatile=True),
-        Capability("hot_water_boost", _under("ctl_extra_dhw", "number"), "Extra hot water (h).", volatile=True),
+        Capability(
+            "hot_water_boost",
+            _under("ctl_extra_dhw", "number"),
+            "Extra hot water (h).",
+            volatile=True,
+            self_ending=True,
+            duration=timedelta(hours=1),
+            start="1",
+            stop="0",
+        ),
         Capability("blocking", _under("ctl_max_rps", "number"), "Max compressor speed override (rps).", volatile=True),
         Capability("price_mode", _under("ctl_price_mode", "select"), "Electricity price mode override.", volatile=True),
     ),
@@ -314,7 +359,14 @@ HEISHAMON: Final = Adapter(
             "Zone 1 heat request: a -5..5 shift only with the compensation curve; a direct temperature otherwise.",
         ),
         Capability("setpoint", _dash("1", "climate"), "Zone 1 climate."),
-        Capability("hot_water_boost", _dash("SET10", "switch"), "Force DHW."),
+        # Whether Force DHW ends by itself once the tank is full is not verified on a real pump.
+        Capability(
+            "hot_water_boost",
+            _dash("SET10", "switch"),
+            "Force DHW (ending by itself unverified).",
+            self_ending=True,
+            verified=False,
+        ),
         Capability("sg_ready", _dash("SetSmartGridMode", "select"), "Needs HeishaMon's optional PCB."),
     ),
 )
