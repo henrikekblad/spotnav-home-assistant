@@ -152,6 +152,51 @@ export function money(context: FormatContext, value: number | null): string {
   return context.majorUnit === null ? amount : `${amount} ${context.majorUnit}`;
 }
 
+/** A power in kW to one decimal: "5,9 kW". */
+export function kwText(language: Language, value: number): string {
+  return `${formatFixed(language, value, 1)} kW`;
+}
+
+/** An energy in kWh: one decimal, none from 100 (on the absolute value): "2,5 kWh", "150 kWh". */
+export function kwhText(language: Language, value: number): string {
+  return `${formatFixed(language, value, Math.abs(value) >= 100 ? 0 : 1)} kWh`;
+}
+
+/** `kwhText` for readouts where small loads matter: two decimals below 1 kWh ("0,42 kWh"). */
+export function kwhFineText(language: Language, value: number): string {
+  return `${formatFixed(language, value, value >= 100 ? 0 : value > 0 && value < 1 ? 2 : 1)} kWh`;
+}
+
+/** The money units a payload states: either may be missing. */
+export interface MoneyUnits {
+  major_unit: string | null;
+  minor_unit: string | null;
+}
+
+/**
+ * An amount given in the minor unit, shown in the major one: whole units from 10 up and at zero, one decimal
+ * between ("25 kr", "4,0 kr", "0,8 kr", "0 kr"). Without a major unit the minor figure is shown whole.
+ */
+export function moneyMinorAsMajor(language: Language, minor: number, units: MoneyUnits | null): string {
+  if (units === null || units.major_unit === null) {
+    return `${formatNumber(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
+  }
+  const major = minor / 100;
+  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${units.major_unit}`;
+}
+
+/**
+ * `moneyMinorAsMajor` for the heat card's use and history views: two decimals below 10 major units, so a
+ * small saving keeps its öre ("4,57 kr", "3,36 kr"), whole units from 10 up.
+ */
+export function moneyMinorAsMajorFine(language: Language, minor: number, units: MoneyUnits | null): string {
+  if (units === null || units.major_unit === null) {
+    return `${formatNumber(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
+  }
+  const major = minor / 100;
+  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major_unit}`;
+}
+
 /** An amount in a currency the way the language writes money, or the plain form if the code is unknown. */
 export function localeMoney(language: Language, value: number, currency: string, label: string | null): string {
   try {

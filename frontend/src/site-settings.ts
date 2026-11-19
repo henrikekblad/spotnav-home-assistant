@@ -6,7 +6,6 @@ import { formatNumber } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { decodeSite, type Site } from "./validate";
 import { SITE_SETTINGS_API_VERSION } from "./types";
-import { hasAllKeys, hasUnknownKeys } from "./contract";
 import { Malformed, bad, isRecord, record, exactKeys, textOrNullAt as textOrNull, flagAt as booleanValue, numberOrNullAt as numberOrNull } from "./decode-primitives";
 
 export const SITE_SETTINGS_NOT_ADMIN = "spotnav_not_admin";

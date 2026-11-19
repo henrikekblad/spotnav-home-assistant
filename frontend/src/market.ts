@@ -27,7 +27,6 @@ import {
   type SettingsBody,
   type SettingsRecord,
 } from "./types";
-import { hasAllKeys, hasUnknownKeys } from "./contract";
 import { Malformed, bad, isRecord, record, exactKeys } from "./decode-primitives";
 
 export type MarketDecodeResult =

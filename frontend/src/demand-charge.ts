@@ -6,7 +6,7 @@
 // charge: None", and the site one, "Import target: Off". A component is written with the tariff
 // (`grid-tariff.ts:withComponent`), the target with the site's settings.
 
-import { clock, dateLabel, formatFixed, formatNumber, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, formatNumber, kwText, type FormatContext } from "./format";
 import { choiceSelect, labelled, SUGGESTED_WINDOW, windowFields, windowText } from "./grid-tariff";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -31,11 +31,6 @@ export const DEMAND_REASON_KEYS: Record<string, TranslationKey> = {
   no_site: "demand.reason.no_site",
   needs_total_grid_power: "demand.reason.needs_total_grid_power",
 };
-
-/** A power in kW to one decimal ("7,0 kW"). */
-export function kwText(language: Language, kw: number): string {
-  return `${formatFixed(language, kw, 1)} kW`;
-}
 
 /** What the component counts, in one line: "Highest hour, Every day 06–23, all year" or "…, All hours". */
 export function componentText(language: Language, component: DemandComponent): string {

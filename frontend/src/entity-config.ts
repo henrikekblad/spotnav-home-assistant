@@ -10,7 +10,6 @@
 import type { TranslationKey } from "./i18n";
 import { ENTITY_CONFIG_API_VERSION } from "./types";
 import { decodeVehicle as decodeVehicleRow, type Vehicle } from "./validate";
-import { hasAllKeys, hasUnknownKeys } from "./contract";
 import { Malformed, bad, isRecord, record, exactKeys, textOrNullAt as textOrNull, flagAt as flag, numberOrNullAt as numberOrNull, listAt as list, textListAt as textList } from "./decode-primitives";
 
 function text(source: Record<string, unknown>, key: string): string {

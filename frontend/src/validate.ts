@@ -10,7 +10,7 @@
 
 import { localDayKey } from "./chart";
 import { decodeSettingsRecord } from "./settings";
-import { hasAllKeys, hasUnknownKeys } from "./contract";
+import { hasUnknownKeys } from "./contract";
 import {
   ACTION_PAUSE,
   ACTION_RESUME,

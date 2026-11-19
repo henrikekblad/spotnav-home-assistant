@@ -40,6 +40,7 @@ import {
   hourLabel,
   formatFixed,
   formatNumber,
+  kwText,
   hasZone,
   percentAmount,
   priceAxisLabel,
@@ -94,7 +95,7 @@ import {
   type ReferencePicture,
   type Vehicle,
 } from "./validate";
-import { hourLine, kwText } from "./demand-charge";
+import { hourLine } from "./demand-charge";
 import { suggestionAdvice } from "./target-suggestion";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";

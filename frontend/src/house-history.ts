@@ -7,10 +7,9 @@
 // figure is the period's own and stands once. The energy flow is the card's own tab. Every figure is the backend's;
 // text is written with `textContent` only.
 
-import { dateLabel, formatFixed, formatNumber } from "./format";
+import { dateLabel, formatFixed, formatNumber, kwhText, moneyMinorAsMajor as amount } from "./format";
 import { decodeEnergyFlow, decodePerfect, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow, type PerfectFigures } from "./house-model";
 import { hasPerfect, onlyPartial, perfectHeadline, perfectNotes, perfectRows, perfectSaving, perfectTable, perfectTableNotes, perfectTemperature } from "./perfect-view";
-import { amount } from "./house-view";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { element } from "./dom";
 import { HOUSE_CLASSES as H } from "./house-styles";
@@ -391,10 +390,6 @@ export interface HouseHistoryInput {
   sources?: HTMLElement | null;
 }
 
-function kwh(language: Language, value: number): string {
-  return `${formatFixed(language, value, value >= 100 ? 0 : 1)} kWh`;
-}
-
 const monthNames = new Map<string, Intl.DateTimeFormat>();
 
 function narrowMonth(language: Language, month: number): string {
@@ -434,7 +429,7 @@ function houseBars(input: HouseHistoryInput, answer: HouseHistory): HTMLElement 
       const figures =
         item.periods === 0
           ? translate(language, "hist.house.barNone", { when: words.when })
-          : translate(language, "hist.house.barNoCost", { when: words.when, use: kwh(language, item.use), bought: kwh(language, item.grid_in) });
+          : translate(language, "hist.house.barNoCost", { when: words.when, use: kwhText(language, item.use), bought: kwhText(language, item.grid_in) });
       return { key: item.key, value: item.periods === 0 ? null : item.use, dear: null, words: figures, axis: words.axis };
     });
     return periodBars(doc, language, translate(language, "hist.house.chart"), "kWh", bars, ui, translate(language, "hist.house.hint"));
@@ -446,7 +441,7 @@ function houseBars(input: HouseHistoryInput, answer: HouseHistory): HTMLElement 
     if (item.periods === 0) {
       figures = translate(language, "hist.house.barNone", { when: words.when });
     } else if (item.cost === null) {
-      figures = translate(language, "hist.house.barNoCost", { when: words.when, use: kwh(language, item.use), bought: kwh(language, item.grid_in) });
+      figures = translate(language, "hist.house.barNoCost", { when: words.when, use: kwhText(language, item.use), bought: kwhText(language, item.grid_in) });
     } else if (saving === null) {
       figures = translate(language, answer.period === "day" ? "hist.house.barHourly" : "hist.house.barUnreviewed", {
         when: words.when,
@@ -499,9 +494,9 @@ function moneySection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
         doc,
         translate(language, "hist.house.costParts", {
           bought: amount(language, spent.bought, answer.money),
-          kwhIn: kwh(language, spent.kwh_in),
+          kwhIn: kwhText(language, spent.kwh_in),
           sold: amount(language, spent.sold, answer.money),
-          kwhOut: kwh(language, spent.kwh_out),
+          kwhOut: kwhText(language, spent.kwh_out),
         }),
       ),
     );

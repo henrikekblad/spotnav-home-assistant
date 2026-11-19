@@ -25,10 +25,10 @@
 // * The sentence: from the battery plan's hours (`HouseHour.battery_action`), what the battery does now and until
 //   when, then what comes next; while SpotNav does not control the battery, who does and what SpotNav would do.
 
-import { clock, dayCue, formatFixed, formatNumber, type FormatContext } from "./format";
+import { clock, dayCue, formatFixed, formatNumber, kwhText, type FormatContext } from "./format";
 import { HOUSE_NOW_API_VERSION, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { translate, type Language, type TranslationKey } from "./i18n";
-import { bad, record, text, numberOrNull, flag, textOrNull } from "./decode-primitives";
+import { record, text, numberOrNull, flag, textOrNull } from "./decode-primitives";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const HOUR_MS = 3_600_000;
@@ -234,10 +234,6 @@ function flowKwh(flow: EnergyFlow | null, side: "source" | "use", role: string):
 
 function kwText(language: Language, kw: number): string {
   return `${formatFixed(language, kw, kw >= 10 ? 0 : 1)} kW`;
-}
-
-function kwhText(language: Language, kwh: number): string {
-  return `${formatFixed(language, kwh, kwh >= 100 ? 0 : 1)} kWh`;
 }
 
 /** A figure without its unit, for the grid's sold part ("0,1"). */

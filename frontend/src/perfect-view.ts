@@ -4,7 +4,7 @@
 // each way saved and the battery's work, with the cells' temperature. Every figure is the
 // backend's; text is written with `textContent` only.
 
-import { formatFixed, formatNumber } from "./format";
+import { formatFixed, formatNumber, moneyMinorAsMajor as money } from "./format";
 import { MODES, PERFECT_WAYS, type BatteryMode, type HouseAnswer, type PerfectFigures, type PerfectWay } from "./house-model";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { numberWord, pluralForm, translate, type Language } from "./i18n";
@@ -28,14 +28,6 @@ export function onlyPartial(perfect: PerfectFigures): boolean {
 
 function share(language: Language, value: number): string {
   return `${formatNumber(language, value, 0)} %`;
-}
-
-function money(language: Language, minor: number, unit: Money): string {
-  if (unit === null || unit.major_unit === null) {
-    return `${formatNumber(language, minor, 0)}${unit?.minor_unit ? ` ${unit.minor_unit}` : ""}`;
-  }
-  const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${unit.major_unit}`;
 }
 
 /** A round sum in the major unit ("5 kr"), else in minor units. */

@@ -34,7 +34,6 @@ import {
   type SettingsRecord,
 } from "./types";
 import type { Fiscal } from "./validate";
-import { hasAllKeys, hasUnknownKeys } from "./contract";
 import { Malformed, bad, isRecord, record, exactKeys, textAt as text, textOrNullAt as textOrNull, flagAt as booleanValue, numberAt as finite, listAt as list } from "./decode-primitives";
 
 function whole(source: Record<string, unknown>, key: string): number {

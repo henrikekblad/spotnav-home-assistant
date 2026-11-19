@@ -7,7 +7,7 @@
 // only; every figure is the backend's.
 
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
-import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, kwhText, kwText, type FormatContext } from "./format";
 import {
   isRelayPath,
   roomName,
@@ -192,14 +192,6 @@ export function offsetValue(language: Language, value: number): string {
   return `${value > 0 ? "+" : "−"}${formatFixed(language, Math.abs(value), Number.isInteger(value) ? 0 : 1)}`;
 }
 
-function kw(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kW`;
-}
-
-function kwh(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kWh`;
-}
-
 function context(language: Language, answer: HeatAnswer): FormatContext {
   return { language, timeZone: answer.time_zone, unit: "kWh", currency: answer.today?.money?.currency ?? null, majorUnit: answer.today?.money?.major_unit ?? null };
 }
@@ -319,7 +311,7 @@ export function heatLive(language: Language, answer: HeatAnswer): { code: string
   }
   const power = answer.status.kw;
   const words = translate(language, `heat.now.${state}` as TranslationKey);
-  return { code: state, text: state === "idle" || power === null ? words : `${words} ${kw(language, power).replace(" ", "\u00a0")}` };
+  return { code: state, text: state === "idle" || power === null ? words : `${words} ${kwText(language, power).replace(" ", "\u00a0")}` };
 }
 
 /** Whether SpotNav's own heat control runs (else the header says Test). */
@@ -507,7 +499,7 @@ export function pumpLine(language: Language, answer: HeatAnswer): string | null 
     return answer.meter === null && answer.pump === null ? null : translate(language, "heat.pump.unknown");
   }
   const key = (["heating", "hot_water", "idle"].includes(state) ? `heat.pump.${state}` : "heat.pump.unknown") as TranslationKey;
-  return translate(language, key, { kw: power === null ? "–" : kw(language, power) }).replace(/ · –$/, "");
+  return translate(language, key, { kw: power === null ? "–" : kwText(language, power) }).replace(/ · –$/, "");
 }
 
 /** What SpotNav would do now, in shadow ("Skulle sänka till 20,5 °C till 20:00: dyra timmar"). */
@@ -666,7 +658,7 @@ export function hotWaterLines(language: Language, answer: HeatAnswer): { key: st
   }
   const money = answer.today?.money ?? null;
   let line = review.moved_kwh > 0
-    ? translate(language, "heat.water.review", { kwh: kwh(language, review.moved_kwh), value: amount(language, review.saved, money) })
+    ? translate(language, "heat.water.review", { kwh: kwhText(language, review.moved_kwh), value: amount(language, review.saved, money) })
     : translate(language, "heat.water.reviewNone");
   if (review.mode === "shadow") {
     line += ` ${translate(language, "heat.water.shadow")}`;
@@ -1048,12 +1040,12 @@ export function todayLine(language: Language, answer: HeatAnswer): string | null
   if (today === null) {
     return null;
   }
-  const parts = [translate(language, "heat.today.label"), translate(language, "heat.today.heat", { kwh: kwh(language, today.heat_kwh) })];
+  const parts = [translate(language, "heat.today.label"), translate(language, "heat.today.heat", { kwh: kwhText(language, today.heat_kwh) })];
   if (today.zones_kwh !== null && today.zones_kwh > 0) {
-    parts.push(translate(language, "heat.today.zones", { kwh: kwh(language, today.zones_kwh) }));
+    parts.push(translate(language, "heat.today.zones", { kwh: kwhText(language, today.zones_kwh) }));
   }
   if (today.hot_water_kwh !== null) {
-    parts.push(translate(language, "heat.today.water", { kwh: kwh(language, today.hot_water_kwh) }));
+    parts.push(translate(language, "heat.today.water", { kwh: kwhText(language, today.hot_water_kwh) }));
   }
   if (today.cost !== null) {
     parts.push(amount(language, today.cost, today.money));
