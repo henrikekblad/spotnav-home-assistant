@@ -50,6 +50,7 @@ from ..site.energy_flow import (
     quarter_hours,
 )
 from ..site.energy_statistics import (
+    short_term_days,
     FlowIds,
     async_energy_prefs,
     async_soc_statistics,
@@ -319,19 +320,6 @@ async def async_car_hours(
     wanted = set(left)
     car = _car_hours(hass, controller, rows, car_ids, left)
     return {**{start: kwh for start, kwh in car.items() if start in wanted}, **known}
-
-
-def short_term_days(hass: HomeAssistant) -> int | None:
-    """How many days the recorder keeps its short-term (5-minute) statistics: its `purge_keep_days` (they are purged
-    with the states); `None` without a recorder."""
-    try:
-        from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
-
-        days = get_instance(hass).keep_days
-    except Exception:  # noqa: BLE001 - no recorder: no short-term statistics
-        _LOGGER.debug("short_term_days: ignored failure (no recorder: no short-term statistics)")
-        return None
-    return days if isinstance(days, int) and days > 0 else None
 
 
 def reads_quarters(midnight: datetime, now: datetime, keep_days: int | None) -> bool:

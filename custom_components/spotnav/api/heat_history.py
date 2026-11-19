@@ -10,7 +10,7 @@ the heat pump meter's), the heat pump meter's hourly statistics from the degree-
 trend's first month (eleven months before the period's last) to the last completed hour, its 5-minute rows where the
 recorder still holds them (the period's days and the week before, for the hot-water split and its runs), the outdoor
 sensor's, the chosen indoor sensors' and the immersion heater's hourly means (and the indoor minimums). The prices
-are the area's held day documents with the fees as set now (`api/house_history.period_price_slots`). The answer is
+are the area's held day documents with the fees as set now (`pricing/period_prices.period_price_slots`). The answer is
 kept per site and period until the next hour (a day with today in it: the next 5-minute row) or, for a finished
 period, until the next day. Refusals as `spotnav/get_house_history`.
 """
@@ -60,8 +60,10 @@ from ..site.history_period import (
 )
 from .common import send_unsupported_version
 from .heat import _name, stored_config
-from .house import five_slot, fuse_kw, short_term_days
-from .house_history import ERROR_INVALID_DATE, forecast_maes, period_price_slots
+from ..pricing.period_prices import period_price_slots
+from ..site.energy_statistics import short_term_days
+from .house import five_slot, fuse_kw
+from .house_history import ERROR_INVALID_DATE, forecast_maes
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)

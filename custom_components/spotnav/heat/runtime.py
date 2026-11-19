@@ -57,6 +57,8 @@ from homeassistant.util import dt as dt_util
 
 from .. import time_zones
 from ..const import CONF_HEAT, DOMAIN
+from ..pricing.period_prices import period_price_slots
+from ..site.energy_statistics import short_term_days
 from .automations import SteeringAutomation, steering_automations
 from .dhw_runtime import HotWater
 from .config import BAND_C, PATH_OFFSET, PATH_RELAY, PATH_SG_READY, PATH_SG_READY_API, HeatConfig, read_config
@@ -823,8 +825,6 @@ class HeatShadow:
 
     async def _async_review(self, now: datetime) -> None:
         """Review the kept days that are due (see the module)."""
-        from ..api.house import short_term_days  # noqa: PLC0415 - the API imports the site
-        from ..api.house_history import period_price_slots  # noqa: PLC0415
         from ..site.heat_meter import async_heat_hours  # noqa: PLC0415
         from ..site.history_period import PERIOD_DAY, midnight_utc, period_of  # noqa: PLC0415
         from .history import hour_prices  # noqa: PLC0415

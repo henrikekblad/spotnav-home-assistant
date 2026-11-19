@@ -266,7 +266,7 @@ async def test_the_plan_in_shadow_kept_reviewed_and_shown(hass: HomeAssistant, f
     hot_water.runs[run_start.isoformat()] = HotWaterRun(run_start, run_start + timedelta(minutes=30), 1.4)
     hot_water.seen.add(tomorrow)
     review_at = datetime.combine(date.fromisoformat(tomorrow) + timedelta(days=1), datetime.min.time(), tzinfo=zone) + timedelta(hours=4)
-    monkeypatch.setattr("custom_components.spotnav.api.house_history.period_price_slots", lambda *_args: slots)
+    monkeypatch.setattr("custom_components.spotnav.heat.dhw_runtime.period_price_slots", lambda *_args: slots)
     await hot_water._async_review(review_at.astimezone(timezone.utc))  # noqa: SLF001
     review = hot_water.days[tomorrow]["review"]
     assert (review["mode"], review["hits"], review["peaks"]) == ("shadow", 1, 1)

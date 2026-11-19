@@ -10,6 +10,7 @@ net of the sun, leave out). The two pure helpers are kept apart from the two tha
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,8 @@ import math
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _number(value: Any) -> bool:
@@ -214,3 +217,16 @@ async def async_statistics(
     return await get_instance(hass).async_add_executor_job(
         statistics_during_period, hass, start, end, set(ids), period, {"energy": "kWh"}, {"change"}
     )
+
+
+def short_term_days(hass: HomeAssistant) -> int | None:
+    """How many days the recorder keeps its short-term (5-minute) statistics: its `purge_keep_days` (they are purged
+    with the states); `None` without a recorder."""
+    try:
+        from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
+
+        days = get_instance(hass).keep_days
+    except Exception:  # noqa: BLE001 - no recorder: no short-term statistics
+        _LOGGER.debug("short_term_days: ignored failure (no recorder: no short-term statistics)")
+        return None
+    return days if isinstance(days, int) and days > 0 else None
