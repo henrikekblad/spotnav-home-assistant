@@ -277,6 +277,10 @@ class HourTracker:
     previous_month: tuple[int, int] | None = None
     previous: list[HourMean] = field(default_factory=list)
     running: RunningHour | None = None
+    #: The month document's keys a later release wrote beside the rows (3.0's `outdoor_c` and `ex_battery_kw`, by
+    #: hour start), as they were read: not used here, written back so going back to this release, and forward again,
+    #: keeps them.
+    later_release: dict[str, Any] = field(default_factory=dict)
 
     def observe(
         self,
@@ -400,6 +404,8 @@ class HourTracker:
         (`HourMean.complete`): beside the rows, which keep their length, so a release before 2.5.0 (which ignores the
         key) still reads every row."""
         return {
+            # First, so a key of this release's own is never written over.
+            **self.later_release,
             "tz": self.tz,
             "month": _month_text(self.month),
             "hours": [hour_row(hour) for hour in self.hours],
@@ -416,6 +422,9 @@ class HourTracker:
         if isinstance(month_data, dict):
             month = _month_from(month_data.get("month"))
             if month is not None:
+                self.later_release = {
+                    key: value for key, value in month_data.items() if key not in _MONTH_DOCUMENT_KEYS
+                }
                 complete = _complete_starts(month_data.get("complete"))
                 migrate = _has_ninth(month_data.get("hours")) or _has_ninth(month_data.get("previous"))
                 self.month = month
@@ -428,6 +437,10 @@ class HourTracker:
         if running is not None:
             self.running = running
         return migrate
+
+
+#: The month document's keys this release writes (`HourTracker.month_dict`).
+_MONTH_DOCUMENT_KEYS: Final = frozenset({"tz", "month", "hours", "previous_month", "previous", "complete"})
 
 
 def _complete_starts(raw: Any) -> set[datetime]:
