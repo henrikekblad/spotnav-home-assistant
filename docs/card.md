@@ -1,4 +1,10 @@
-# The SpotNav card
+---
+title: "The charging card"
+description: "The day-to-day view of one charger: the price graph, the plan, the buttons, the status lines and the settings."
+order: 10
+---
+
+# The charging card
 
 The card is the day-to-day view of one charger: the price graph, the charging plan, the buttons
 and all of the settings. One card shows one charger. [Add it](setup.md#3-add-the-card) from the

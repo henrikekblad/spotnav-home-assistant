@@ -1,3 +1,9 @@
+---
+title: "Target state of charge"
+description: "Charge to a level instead of an amount of energy: what it needs and how it stops at the target."
+order: 12
+---
+
 # Target state of charge
 
 Instead of a fixed number of kWh, a charger can plan from a target charge level, for example

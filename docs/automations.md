@@ -1,3 +1,9 @@
+---
+title: Automations
+description: Ready-made blueprints that use SpotNav's prices for heating, relays and solar surplus.
+order: 91
+---
+
 # Automations
 
 SpotNav ships three Home Assistant **blueprints**: ready-made automations that use SpotNav's

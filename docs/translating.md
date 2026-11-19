@@ -1,3 +1,9 @@
+---
+title: Translating SpotNav
+description: Where the texts are, how to add a language, and the glossary for each language.
+order: 96
+---
+
 # Translating SpotNav
 
 For translators and contributors: where SpotNav's texts live and how to add or improve a language.

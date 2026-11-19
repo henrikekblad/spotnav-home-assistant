@@ -1,3 +1,9 @@
+---
+title: "How the forecasts are tested"
+description: "The backtests behind the house load and solar forecasts: what was kept and what was rejected."
+order: 94
+---
+
 # How the forecasts are tested
 
 SpotNav 3.0 plans the home battery, the cars and the heat from forecasts. This page explains how the house load

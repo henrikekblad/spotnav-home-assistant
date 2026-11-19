@@ -1,3 +1,9 @@
+---
+title: Notifications
+description: What SpotNav tells your phone, through the Home Assistant app or the SpotNav app.
+order: 55
+---
+
 # Notifications
 
 SpotNav can tell a phone when something about a charge needs attention, through the Home Assistant

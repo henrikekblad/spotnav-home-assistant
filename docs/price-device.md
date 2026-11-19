@@ -1,3 +1,9 @@
+---
+title: "The electricity price"
+description: "One price device for the whole installation: its entities, several prices, and the spotnav.get_prices action."
+order: 62
+---
+
 # The electricity price
 
 An **Electricity price** is where SpotNav keeps your price area, VAT, energy tax and grid fee. Every

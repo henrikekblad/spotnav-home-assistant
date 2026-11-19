@@ -1,3 +1,9 @@
+---
+title: "Charge ownership: the session model"
+description: "How charger control is structured inside the integration. For developers."
+order: 95
+---
+
 # Charge ownership: the session model
 
 > **Developer documentation.** Who owns a charger's charge and which person intent holds is one record per charger,
