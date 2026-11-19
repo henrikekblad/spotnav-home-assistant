@@ -337,5 +337,6 @@ async def test_only_reviews_made_with_level_as_figures_count_toward_its_gate(has
     _site_, _controller, _relay, hot_water, now = await _villa(hass, freezer, monkeypatch)
     _open_a_gate(hot_water, now.astimezone(hot_water.zone).date())
     for record in hot_water.days.values():
-        record["review"].pop("a_mode")
+        if isinstance(record.get("review"), dict):
+            record["review"].pop("a_mode")
     assert hot_water.a_gate_reviews() == [] and not hot_water.a_gate_state()["open"]
