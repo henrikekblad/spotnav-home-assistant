@@ -7,6 +7,7 @@
 import { formatNumber } from "./format";
 import { translate, type Language } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** What an editor's Save does: `null` when the value was taken, else the sentence to show under it. */
 export type SaveValue<T> = (value: T) => Promise<string | null>;
@@ -15,17 +16,6 @@ export interface EditorHandlers {
   /** The editor's value was taken: the card closes the dialog. */
   onDone: () => void;
   onCancel: () => void;
-}
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 // ------------------------------------------------------------------------------------------------ icons

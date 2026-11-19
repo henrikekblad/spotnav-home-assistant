@@ -11,6 +11,7 @@ import { hasAllKeys, hasUnknownKeys } from "./contract";
 import { PRIVACY_URL, MAX_EMAIL_CHARS, sendFailureText } from "./send-debug";
 import { BETA_API_VERSION } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export { BETA_API_VERSION };
 /** How often a running test is read again (ms). */
@@ -131,17 +132,6 @@ export function decodeBetaAnswer(value: unknown): BetaAnswer | null {
     return null;
   }
   return { ok: raw.ok, error: raw.error, beta, test, ref: raw.ref, retryAfterS: wait };
-}
-
-function element(doc: Document, tag: string, className?: string, content?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (content !== undefined) {
-    node.textContent = content;
-  }
-  return node;
 }
 
 function dateText(language: Language, iso: string, withTime: boolean): string {

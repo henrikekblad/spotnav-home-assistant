@@ -4,13 +4,14 @@
 // every figure is the backend's.
 
 import { attachScrub } from "./chart-scrub";
-import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
+import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwhText, kwText, moneyMinorAsMajor as amount, percentWhole, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./house-model";
 import { flowHeight, renderFlow, type LoadsKind, type PillMeasure } from "./house-flow";
 import type { BatteryFlow, HouseHistory } from "./house-history";
 import { planSentence, renderSchematic, schematicHeight, type HouseNow } from "./house-now";
-import { energyChart, flowWords, kwhText, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
+import { localDayKey } from "./chart";
+import { energyChart, flowWords, tilesBlock, PERIOD_VIEW_CLASSES } from "./house-period-view";
 import { earnBars, earnLegend, earnNotes, earnParts, earnTotal } from "./house-earnings";
 import { dayOnly, periodPicker, tabList, tabPanel, type HouseTab, type PeriodChoice, type TabFit } from "./house-tabs";
 import type { HistoryPeriod } from "./period-history";
@@ -20,6 +21,7 @@ import { statusLine, testStatus } from "./heat-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { daysLeft, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 const HOUR_MS = 3_600_000;
 /** The Energy flow tab's diagram at most (px) outside a box; its blocks' words still fit (`house-flow.ts`). */
@@ -112,44 +114,11 @@ export interface HouseRenderInput {
   measure?: PillMeasure;
 }
 
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
-
 // ------------------------------------------------------------------------------------------------ words
-
-export function kw(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kW`;
-}
-
-function kwh(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kWh`;
-}
-
-function pct(language: Language, value: number): string {
-  return `${formatNumber(language, value, 0)} %`;
-}
 
 /** An error figure: two decimals below 1, one above ("±0,09 kW", "±1,2 kW"). */
 function plusMinus(language: Language, value: number, unit: string): string {
   return `±${formatFixed(language, value, value < 1 ? 2 : 1)} ${unit}`;
-}
-
-/** Money given in the minor unit, shown in the major one: whole units from 10 up ("51 kr"), else two decimals. */
-export function amount(language: Language, minor: number, money: HouseAnswer["money"]): string {
-  const major = minor / 100;
-  if (money === null || money.major_unit === null) {
-    return `${formatNumber(language, minor, 0)}${money?.minor_unit ? ` ${money.minor_unit}` : ""}`;
-  }
-  // Whole units from 10 (and nothing at all), one decimal below: "25 kr", "4,0 kr", "0,8 kr", "0 kr".
-  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${money.major_unit}`;
 }
 
 /** The price's unit per kWh, the area's minor unit ("öre/kWh"). */
@@ -260,30 +229,30 @@ export function hourFigures(
   if (view === "energy" && house.kw !== null) {
     const forecast = hour.house_forecast_kw !== null && visible("forecast");
     if (visible("house") && house.measured && forecast) {
-      parts.push(translate(language, "house.readout.houseBoth", { kw: kw(language, house.kw), forecast: kw(language, hour.house_forecast_kw as number) }));
+      parts.push(translate(language, "house.readout.houseBoth", { kw: kwText(language, house.kw), forecast: kwText(language, hour.house_forecast_kw as number) }));
     } else if (visible("house") && (!house.measured || !forecast)) {
-      parts.push(translate(language, house.measured ? "house.readout.house" : "house.readout.houseForecast", { kw: kw(language, house.kw) }));
+      parts.push(translate(language, house.measured ? "house.readout.house" : "house.readout.houseForecast", { kw: kwText(language, house.kw) }));
     } else if (house.measured && forecast) {
-      parts.push(translate(language, "house.readout.houseForecast", { kw: kw(language, hour.house_forecast_kw as number) }));
+      parts.push(translate(language, "house.readout.houseForecast", { kw: kwText(language, hour.house_forecast_kw as number) }));
     }
   }
   const heat = heatShown(hour);
   if (view === "energy" && heat !== null && visible("heat")) {
-    parts.push(translate(language, house.measured ? "house.readout.heat" : "house.readout.heatForecast", { kw: kw(language, heat) }));
+    parts.push(translate(language, house.measured ? "house.readout.heat" : "house.readout.heatForecast", { kw: kwText(language, heat) }));
   }
   if (view === "energy" && hour.car_kw !== null && hour.car_kw > 0 && visible("car")) {
-    parts.push(translate(language, "house.readout.car", { kw: kw(language, hour.car_kw) }));
+    parts.push(translate(language, "house.readout.car", { kw: kwText(language, hour.car_kw) }));
   }
   const sun = sunShown(hour, nowMs);
   const past = hour.startMs + HOUR_MS <= nowMs;
   if (view === "energy" && visible("sun") && sun !== null && (sun > 0 || (hour.sun_forecast_kwh ?? 0) > 0)) {
-    parts.push(translate(language, past ? "house.readout.sun" : "house.readout.sunForecast", { kwh: kwh(language, sun) }));
+    parts.push(translate(language, past ? "house.readout.sun" : "house.readout.sunForecast", { kwh: kwhText(language, sun) }));
   }
   if (visible("battery")) {
     if (hour.soc_pct !== null) {
-      parts.push(translate(language, "house.readout.soc", { pct: pct(language, hour.soc_pct) }));
+      parts.push(translate(language, "house.readout.soc", { pct: percentWhole(language, hour.soc_pct) }));
     } else if (!past && hour.soc_plan_pct !== null) {
-      parts.push(translate(language, "house.readout.socPlan", { pct: pct(language, hour.soc_plan_pct) }));
+      parts.push(translate(language, "house.readout.socPlan", { pct: percentWhole(language, hour.soc_plan_pct) }));
     }
   }
   const tint = hour.battery_action === "grid_charge" ? "charge" : hour.battery_action === "export_discharge" ? "sell" : null;
@@ -312,8 +281,8 @@ export function heatLine(language: Language, answer: HouseAnswer, words?: Entity
   }
   const past = answer.day !== null && !answer.day.today;
   return translate(language, past ? "house.heat.dayPast" : "house.heat.day", {
-    heat: kwh(language, day.heat_kwh),
-    house: kwh(language, day.house_kwh),
+    heat: kwhText(language, day.heat_kwh),
+    house: kwhText(language, day.house_kwh),
     share: pctOf(language, day.heat_kwh, day.house_kwh),
   });
 }
@@ -618,7 +587,7 @@ function chartBlock(
 }
 
 function pctOf(language: Language, part: number, whole: number): string {
-  return whole > 0 ? `${formatNumber(language, (part / whole) * 100, 0)} %` : "–";
+  return whole > 0 ? percentWhole(language, (part / whole) * 100) : "–";
 }
 
 /** The day's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. Today before
@@ -732,13 +701,13 @@ export function houseSources(doc: Document, language: Language, answer: HouseAns
   const battery = answer.battery;
   if (battery !== null) {
     const name = battery.label ?? battery.brand ?? "";
-    const size = battery.usable_kwh === null ? "" : ` · ${kwh(language, battery.usable_kwh)}`;
+    const size = battery.usable_kwh === null ? "" : ` · ${kwhText(language, battery.usable_kwh)}`;
     add(translate(language, "house.sources.battery", { name: `${name}${size}` }));
     const today = answer.today;
     if (today !== null && today.stored_kwh !== null && today.average_cost !== null) {
       add(
         translate(language, today.estimated ? "house.sources.storedEstimated" : "house.sources.stored", {
-          kwh: kwh(language, today.stored_kwh),
+          kwh: kwhText(language, today.stored_kwh),
           cost: `${formatNumber(language, today.average_cost, 0)} ${priceUnit(answer)}`,
         }),
       );
@@ -772,9 +741,7 @@ export function houseSources(doc: Document, language: Language, answer: HouseAns
 /** The site's local date at `nowMs`. */
 export function localDate(timeZone: string, nowMs: number): string {
   try {
-    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(nowMs));
-    const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
-    return `${get("year")}-${get("month")}-${get("day")}`;
+    return localDayKey(nowMs, timeZone);
   } catch {
     return new Date(nowMs).toISOString().slice(0, 10);
   }
@@ -1163,4 +1130,4 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   return card;
 }
 
-export { kwhText, schematicHeight };
+export { amount, kwhText, schematicHeight };

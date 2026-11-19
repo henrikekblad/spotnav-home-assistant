@@ -15,12 +15,13 @@
 // Every figure is the backend's; text is written with `textContent` only.
 
 import { attachScrub, scrubBars } from "./chart-scrub";
-import { formatFixed, formatNumber } from "./format";
+import { formatNumber, kwhText } from "./format";
 import type { EnergyFlow } from "./house-model";
 import type { BatteryFlow, HouseBucket, HouseHistory } from "./house-history";
 import { bucketWords } from "./house-history";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export const PERIOD_VIEW_CLASSES = {
   tiles: "spotnav-house-tiles",
@@ -41,21 +42,6 @@ export const PERIOD_VIEW_CLASSES = {
 } as const;
 
 const P = PERIOD_VIEW_CLASSES;
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
-
-export function kwhText(language: Language, value: number): string {
-  return `${formatFixed(language, value, Math.abs(value) >= 100 ? 0 : 1)} kWh`;
-}
 
 /** What a bucket's battery arbitrage is made of, in words for a readout, to be compared with the battery maker's
  * cash flow: "urladdat 3,5 kWh, värt 8,1 kr, minus 5,6 kr som energin kostade att ladda = 2,5 kr", and what it

@@ -2,6 +2,8 @@
 // `custom_components/spotnav/site/house_view.py`; its fixtures are `tests/fixtures/house/`. Extra keys are allowed
 // (additive fields); a missing or mistyped one makes the whole answer unreadable, never half-shown.
 
+import { bad, record, list, text, textOrNull, number, numberOrNull, flag } from "./decode-primitives";
+
 export const HOUSE_API_VERSION = 1;
 /** `spotnav/get_house_history`'s version (`house-history.ts`). */
 export const HOUSE_HISTORY_API_VERSION = 1;
@@ -322,36 +324,6 @@ export interface HouseAnswer {
 
 export type HouseDecodeResult = { ok: true; value: HouseAnswer } | { ok: false; failure: "unsupported" | "malformed" };
 
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
-function list(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : bad();
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : bad();
-}
-
-function textOrNull(value: unknown): string | null {
-  return value === null ? null : text(value);
-}
-
-function number(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(value: unknown): number | null {
-  return value === null ? null : number(value);
-}
-
 /** A field an older answer did not have: absent reads as `fallback`, present must be its shape. */
 function additive<T>(source: Record<string, unknown>, key: string, read: (value: unknown) => T, fallback: T): T {
   return key in source ? read(source[key]) : fallback;
@@ -359,10 +331,6 @@ function additive<T>(source: Record<string, unknown>, key: string, read: (value:
 
 function count(value: unknown): number {
   return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : bad();
-}
-
-function flag(value: unknown): boolean {
-  return typeof value === "boolean" ? value : bad();
 }
 
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?([+-]\d{2}:\d{2}|Z)$/;

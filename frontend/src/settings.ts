@@ -34,50 +34,7 @@ import {
   type SettingsRecord,
 } from "./types";
 import type { Fiscal } from "./validate";
-import { hasAllKeys, hasUnknownKeys } from "./contract";
-
-class MalformedPayload extends Error {}
-
-function bad(): never {
-  throw new MalformedPayload("malformed");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : bad();
-}
-
-function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
-    bad();
-  }
-}
-
-function text(source: Record<string, unknown>, key: string): string {
-  const value = source[key];
-  return typeof value === "string" ? value : bad();
-}
-
-function textOrNull(source: Record<string, unknown>, key: string): string | null {
-  const value = source[key];
-  if (value === null) {
-    return null;
-  }
-  return typeof value === "string" ? value : bad();
-}
-
-function booleanValue(source: Record<string, unknown>, key: string): boolean {
-  const value = source[key];
-  return typeof value === "boolean" ? value : bad();
-}
-
-function finite(source: Record<string, unknown>, key: string): number {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
+import { Malformed, bad, isRecord, record, exactKeys, textAt as text, textOrNullAt as textOrNull, flagAt as booleanValue, numberAt as finite, listAt as list } from "./decode-primitives";
 
 function whole(source: Record<string, unknown>, key: string): number {
   const value = source[key];
@@ -108,11 +65,6 @@ function oneOf<T extends string>(
     return bad();
   }
   return value as T;
-}
-
-function list(source: Record<string, unknown>, key: string): unknown[] {
-  const value = source[key];
-  return Array.isArray(value) ? value : bad();
 }
 
 const WALL_TIME = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -467,7 +419,7 @@ export function decodeSettingsAnswer(raw: unknown): SettingsDecodeResult {
     }
     return { ok: true, value: { ok: false, code: error, settings, pause } };
   } catch (error) {
-    if (error instanceof MalformedPayload) {
+    if (error instanceof Malformed) {
       return malformed();
     }
     throw error;

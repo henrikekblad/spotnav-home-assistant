@@ -3,6 +3,7 @@
 // inspects the bundle; it is what the backend redacted, saved as it came.
 
 import { DEBUG_API_VERSION } from "./types";
+import { pad2 } from "./format";
 
 export type DebugAnswer =
   | { ok: true; bundle: Record<string, unknown> }
@@ -28,8 +29,7 @@ export function decodeDebugAnswer(raw: unknown): DebugAnswer | null {
 }
 
 export function debugFileName(now: Date): string {
-  const pad = (value: number): string => String(value).padStart(2, "0");
-  return `spotnav-debug-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
+  return `spotnav-debug-${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}.json`;
 }
 
 /** Save `bundle` as a download. Returns false when the browser cannot make a file URL. */

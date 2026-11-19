@@ -10,6 +10,7 @@ import type { CameraFrame } from "./types";
 import type { ReferencePicture } from "./validate";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** A frame narrower or lower than this (of the picture) is refused by Home Assistant: the editor keeps above it. */
 export const FRAME_MIN_SIZE = 0.05;
@@ -113,17 +114,6 @@ export function isWholePicture(frame: CameraFrame | null): boolean {
 }
 
 // ------------------------------------------------------------------------------------------------ the frame editor
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
-}
 
 export interface FrameEditorInput {
   /** A fresh picture from the camera, or the refusal's code. */

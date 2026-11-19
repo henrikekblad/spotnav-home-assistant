@@ -1,7 +1,8 @@
 // The suggested import target in the target's editor (`spotnav/suggest_import_target`): the decoded answer and the
 // sentence that offers it. The backend reads Home Assistant's statistics and does every sum; this only words them.
 
-import { dateLabel, formatFixed } from "./format";
+import { isRecord } from "./decode-primitives";
+import { dateLabel, kwText } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 
 /** `spotnav/suggest_import_target`'s own version. */
@@ -35,10 +36,6 @@ const REASONS: Record<string, TranslationKey> = {
   no_chargers: "target.suggest.none.no_chargers",
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function power(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
@@ -69,10 +66,6 @@ export function decodeSuggestion(raw: unknown): TargetSuggestion | null {
   return suggestion;
 }
 
-function kw(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kW`;
-}
-
 /**
  * The sentence under the target's field: "The house alone: usually at most 2,4 kW in an hour a day, at most 3,7 kW
  * (Sat 17 Oct). Suggestion: 6,5 kW – …", with the figure to fill in; without a suggestion, why. `null` for an answer
@@ -90,11 +83,11 @@ export function suggestionAdvice(language: Language, raw: unknown): TargetAdvice
   const value = suggestion.suggestion_kw!;
   const parts = [
     translate(language, "target.suggest.text", {
-      typical: kw(language, suggestion.typical_kw!),
-      highest: kw(language, suggestion.highest!.kw),
+      typical: kwText(language, suggestion.typical_kw!),
+      highest: kwText(language, suggestion.highest!.kw),
       date: dateLabel(language, suggestion.highest!.date),
-      suggestion: kw(language, value),
-      car: kw(language, suggestion.car_kw!),
+      suggestion: kwText(language, value),
+      car: kwText(language, suggestion.car_kw!),
     }),
   ];
   if (suggestion.charger_missing) {

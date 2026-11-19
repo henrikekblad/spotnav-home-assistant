@@ -21,6 +21,7 @@ import { bucketWords } from "./house-history";
 import { barChart, flowWords, type Bar, type BarPart } from "./house-period-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
+import { element } from "./dom";
 
 export type EarnPart = "battery" | "own" | "would" | "heat" | "car";
 /** In the order they stack, bottom up; the plan's figure stands beside the stack. */
@@ -110,17 +111,6 @@ export function earnTotal(answer: HouseHistory, hidden: ReadonlySet<string>): nu
 /** Whether any bucket has a figure for a part drawn (else the period has only its sums). */
 export function hasBars(answer: HouseHistory, parts: readonly EarnPart[]): boolean {
   return answer.buckets.some((bucket) => parts.some((part) => bucketPart(bucket, part) !== null));
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
 }
 
 /** The toggles: a pressed button per part with its swatch, its name and its sum. `onToggle` gets the hidden parts

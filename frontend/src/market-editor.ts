@@ -28,6 +28,7 @@ import {
 } from "./market";
 import type { MarketOptionsV1 } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export interface MarketEditorForm {
   readOnly: boolean;
@@ -63,17 +64,6 @@ export interface RegionLookup {
 export interface MarketEditorBody {
   body: HTMLElement;
   values: () => MarketFormValues;
-}
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 function componentKey(component: FiscalComponent, suffix: "label" | "description"): TranslationKey {

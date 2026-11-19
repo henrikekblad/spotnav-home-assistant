@@ -51,7 +51,7 @@ export function stripBars(bands: PlanBands, nowMs: number): StripBar[] {
 }
 
 /** A share of the track as a CSS percentage, rounded so float noise never reaches the style. */
-function percent(share: number): string {
+export function cssPercent(share: number): string {
   return `${Math.round(share * 1e6) / 1e4}%`;
 }
 
@@ -67,12 +67,12 @@ export interface StripPlacement {
  * the minimum width grows inwards and a quarter-hour at 23:45 is not clipped by the track's edge.
  */
 export function stripBarPlacement(bar: StripBar): StripPlacement {
-  const width = percent(Math.max(0, bar.end - bar.start));
+  const width = cssPercent(Math.max(0, bar.end - bar.start));
   const minWidth = `${STRIP_MIN_BAR_PX}px`;
   if (bar.start + bar.end > 1) {
-    return { left: null, right: percent(1 - bar.end), width, minWidth };
+    return { left: null, right: cssPercent(1 - bar.end), width, minWidth };
   }
-  return { left: percent(bar.start), right: null, width, minWidth };
+  return { left: cssPercent(bar.start), right: null, width, minWidth };
 }
 
 /**

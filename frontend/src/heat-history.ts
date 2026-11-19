@@ -8,13 +8,13 @@
 // runs one by one. The day's chart is the card's Plan tab. Every figure is the backend's; text is written with
 // `textContent` only.
 
-import { clock, dateLabel, formatFixed, formatNumber, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, formatNumber, kwhText, moneyMinorAsMajorFine as money, type FormatContext } from "./format";
 import { fits, HEAT_HISTORY_API_VERSION, INDOOR_DAY, REVIEW, roomName, type HeatReview, type IndoorDay } from "./heat-model";
 import { bucketWords, isoDay, periodKind } from "./house-history";
 import { periodPicker, type PeriodChoice } from "./house-tabs";
+import { element } from "./dom";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
-  element,
   figureRow,
   note,
   periodBars,
@@ -28,6 +28,7 @@ import {
 } from "./period-history";
 import { monthLabel } from "./history";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { bad, record, list, text, textOrNull, number, numberOrNull, flag } from "./decode-primitives";
 
 export interface HeatBucket {
   key: string;
@@ -135,42 +136,8 @@ export interface HeatHistory {
 
 export type HeatHistoryDecode = { ok: true; value: HeatHistory } | { ok: false; failure: "unsupported" | "malformed" };
 
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
-function list(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : bad();
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : bad();
-}
-
-function textOrNull(value: unknown): string | null {
-  return value === null ? null : text(value);
-}
-
-function number(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(value: unknown): number | null {
-  return value === null ? null : number(value);
-}
-
 function count(value: unknown): number {
   return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : bad();
-}
-
-function flag(value: unknown): boolean {
-  return typeof value === "boolean" ? value : bad();
 }
 
 function nullable<T>(value: unknown, read: (source: Record<string, unknown>) => T): T | null {
@@ -322,21 +289,8 @@ export interface HeatHistoryInput {
   today: string;
 }
 
-function kwh(language: Language, value: number): string {
-  return `${formatFixed(language, value, value >= 100 ? 0 : 1)} kWh`;
-}
-
 function celsius(language: Language, value: number): string {
   return `${formatFixed(language, value, 1)} °C`;
-}
-
-/** Money in the minor unit shown in the major one (whole units from 10 up), as the heat card writes it. */
-function money(language: Language, minor: number, units: HeatHistory["money"]): string {
-  if (units === null || units.major_unit === null) {
-    return `${formatNumber(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
-  }
-  const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major_unit}`;
 }
 
 /** The cost bars with what SpotNav's plan would have saved hatched on top: drawn only where some bucket has that
@@ -353,7 +307,7 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
     if (item.kwh === null) {
       parts.push(translate(language, "hist.heat.barNone", { when: words.when }));
     } else {
-      parts.push(`${words.when}: ${kwh(language, item.kwh)}`);
+      parts.push(`${words.when}: ${kwhText(language, item.kwh)}`);
       if (item.cost !== null) {
         parts.push(money(language, item.cost, answer.money));
       }
@@ -361,10 +315,10 @@ function heatBars(input: HeatHistoryInput, answer: HeatHistory): HTMLElement | n
         parts.push(translate(language, "hist.heat.barSaving", { saving: money(language, item.shadow_value, answer.money) }));
       }
       if (item.zones_kwh !== null && item.zones_kwh > 0) {
-        parts.push(translate(language, "hist.heat.barZones", { kwh: kwh(language, item.zones_kwh) }));
+        parts.push(translate(language, "hist.heat.barZones", { kwh: kwhText(language, item.zones_kwh) }));
       }
       if (item.hot_water_kwh !== null) {
-        parts.push(translate(language, "hist.heat.barHotWater", { kwh: kwh(language, item.hot_water_kwh) }));
+        parts.push(translate(language, "hist.heat.barHotWater", { kwh: kwhText(language, item.hot_water_kwh) }));
       }
       if (item.outdoor_c !== null) {
         parts.push(translate(language, "hist.heat.barOutdoor", { temp: celsius(language, item.outdoor_c) }));
@@ -408,15 +362,15 @@ function useSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement {
     block.append(note(doc, translate(language, "hist.heat.noEnergy"), "no-energy"));
     return block;
   }
-  block.append(figureRow(doc, translate(language, "hist.heat.total"), kwh(language, energy.total_kwh), "total"));
+  block.append(figureRow(doc, translate(language, "hist.heat.total"), kwhText(language, energy.total_kwh), "total"));
   if (energy.zones_kwh !== null) {
-    block.append(figureRow(doc, translate(language, "hist.heat.zones"), kwh(language, energy.zones_kwh), "zones"));
+    block.append(figureRow(doc, translate(language, "hist.heat.zones"), kwhText(language, energy.zones_kwh), "zones"));
     if (energy.zones_from !== null) {
       block.append(note(doc, translate(language, "hist.heat.zonesFrom", { date: dateLabel(language, energy.zones_from) }), "zones-from"));
     }
   }
   if (energy.hot_water_kwh !== null) {
-    block.append(figureRow(doc, translate(language, "hist.heat.hotWater"), kwh(language, energy.hot_water_kwh), "hot-water"));
+    block.append(figureRow(doc, translate(language, "hist.heat.hotWater"), kwhText(language, energy.hot_water_kwh), "hot-water"));
     // Said only when some days are missing from the split.
     if (energy.split_days < energy.days) {
       block.append(note(doc, translate(language, "hist.heat.splitDays", { days: String(energy.split_days), total: String(energy.days) }), "split-days"));
@@ -437,7 +391,7 @@ function useSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement {
       figureRow(
         doc,
         translate(language, "hist.heat.immersion"),
-        translate(language, "hist.heat.immersionFigure", { hours: String(answer.immersion.hours), kwh: kwh(language, answer.immersion.kwh) }),
+        translate(language, "hist.heat.immersionFigure", { hours: String(answer.immersion.hours), kwh: kwhText(language, answer.immersion.kwh) }),
         "immersion",
       ),
     );
@@ -555,7 +509,7 @@ function shadowSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElemen
     note(
       doc,
       translate(language, "hist.heat.shadowLine", {
-        kwh: kwh(language, shadow.moved_kwh),
+        kwh: kwhText(language, shadow.moved_kwh),
         hours: String(shadow.lowered_hours),
         days: String(shadow.days),
       }),
@@ -663,7 +617,7 @@ function runsSection(input: HeatHistoryInput, answer: HeatHistory): HTMLElement 
     row.dataset["run"] = run.start;
     row.append(
       element(doc, "span", undefined, `${clock(context, Date.parse(run.start))}–${clock(context, Date.parse(run.end))}`),
-      element(doc, "span", "spotnav-period-figure", `${kwh(language, run.kwh)} · ${translate(language, run.cause === null ? "hist.heat.causeUnknown" : CAUSE_KEYS[run.cause]!)}`),
+      element(doc, "span", "spotnav-period-figure", `${kwhText(language, run.kwh)} · ${translate(language, run.cause === null ? "hist.heat.causeUnknown" : CAUSE_KEYS[run.cause]!)}`),
     );
     rows.append(row);
   }

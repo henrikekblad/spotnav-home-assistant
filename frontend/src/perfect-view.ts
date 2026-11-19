@@ -4,27 +4,17 @@
 // each way saved and the battery's work, with the cells' temperature. Every figure is the
 // backend's; text is written with `textContent` only.
 
-import { formatFixed, formatNumber } from "./format";
+import { formatFixed, formatNumber, moneyMinorAsMajor as money, percentWhole } from "./format";
 import { MODES, PERFECT_WAYS, type BatteryMode, type HouseAnswer, type PerfectFigures, type PerfectWay } from "./house-model";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { numberWord, pluralForm, translate, type Language } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 type Money = HouseAnswer["money"];
 
 /** A day's share needs the perfect plan to save at least this much (minor units: `hindsight.MIN_PERFECT_SAVING`). */
 const MIN_PERFECT_SAVING = 500;
-
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
 
 /** Whether there is a perfect plan to show: a whole day's, or only incomplete days (which say so). */
 export function hasPerfect(perfect: PerfectFigures | null | undefined): perfect is PerfectFigures {
@@ -34,18 +24,6 @@ export function hasPerfect(perfect: PerfectFigures | null | undefined): perfect 
 /** Whether only incomplete days are behind it: no share to show. */
 export function onlyPartial(perfect: PerfectFigures): boolean {
   return perfect.days === 0 || perfect.saving === null;
-}
-
-function share(language: Language, value: number): string {
-  return `${formatNumber(language, value, 0)} %`;
-}
-
-function money(language: Language, minor: number, unit: Money): string {
-  if (unit === null || unit.major_unit === null) {
-    return `${formatNumber(language, minor, 0)}${unit?.minor_unit ? ` ${unit.minor_unit}` : ""}`;
-  }
-  const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${unit.major_unit}`;
 }
 
 /** A round sum in the major unit ("5 kr"), else in minor units. */
@@ -77,10 +55,10 @@ export function perfectHeadline(language: Language, perfect: PerfectFigures, own
   const mode = PERFECT_WAYS.find((way) => way !== "own" && way === perfect.mode) ?? null;
   const plan = mode === null ? null : perfect.shares[mode];
   if (own !== null && mode !== null && plan !== null) {
-    return translate(language, "perfect.headline", { own: ownName, ownShare: share(language, own), plan: wayName(language, mode, ownName), planShare: share(language, plan) });
+    return translate(language, "perfect.headline", { own: ownName, ownShare: percentWhole(language, own), plan: wayName(language, mode, ownName), planShare: percentWhole(language, plan) });
   }
   const [way, value] = own !== null ? (["own", own] as const) : mode !== null && plan !== null ? ([mode, plan] as const) : [null, null];
-  return way === null ? null : translate(language, "perfect.headlineOne", { name: wayName(language, way, ownName), share: share(language, value!) });
+  return way === null ? null : translate(language, "perfect.headlineOne", { name: wayName(language, way, ownName), share: percentWhole(language, value!) });
 }
 
 /** The share rows (a bar each, 0-100 %), the chosen mode marked; none over incomplete days alone. */
@@ -106,7 +84,7 @@ export function perfectRows(doc: Document, language: Language, perfect: PerfectF
       fill.style.width = `${Math.round(Math.min(100, value))}%`;
       track.append(fill);
     }
-    const figure = value !== null ? share(language, value) : translate(language, ran ? "perfect.nothing" : "house.compare.none");
+    const figure = value !== null ? percentWhole(language, value) : translate(language, ran ? "perfect.nothing" : "house.compare.none");
     const line = element(doc, "div", H.compareRow);
     line.dataset["row"] = way;
     if (way === inForce) {

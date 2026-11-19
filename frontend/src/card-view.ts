@@ -40,6 +40,7 @@ import {
   hourLabel,
   formatFixed,
   formatNumber,
+  kwText,
   hasZone,
   percentAmount,
   priceAxisLabel,
@@ -94,7 +95,7 @@ import {
   type ReferencePicture,
   type Vehicle,
 } from "./validate";
-import { hourLine, kwText } from "./demand-charge";
+import { hourLine } from "./demand-charge";
 import { suggestionAdvice } from "./target-suggestion";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
@@ -156,6 +157,7 @@ import { CHART_DENSITY, VISUAL_CLASSES as C } from "./visual-styles";
 import type { SiteTarget } from "./api";
 import { SiteSections } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
+import { element } from "./dom";
 
 /** What the camera's editors ask the card for. */
 export type CameraPictureRequest =
@@ -491,22 +493,6 @@ function navigateTo(doc: Document, path: string): void {
   }
   view.history.pushState(null, "", path);
   view.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (text !== undefined) {
-    created.textContent = text;
-  }
-  return created;
 }
 
 export function readoutDay(model: CardModel, mark: ChartMark): string {

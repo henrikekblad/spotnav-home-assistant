@@ -10,60 +10,11 @@
 import type { TranslationKey } from "./i18n";
 import { ENTITY_CONFIG_API_VERSION } from "./types";
 import { decodeVehicle as decodeVehicleRow, type Vehicle } from "./validate";
-import { hasAllKeys, hasUnknownKeys } from "./contract";
-
-class MalformedPayload extends Error {}
-
-function bad(): never {
-  throw new MalformedPayload("malformed");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : bad();
-}
-
-function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
-    bad();
-  }
-}
+import { Malformed, bad, isRecord, record, exactKeys, textOrNullAt as textOrNull, flagAt as flag, numberOrNullAt as numberOrNull, listAt as list, textListAt as textList } from "./decode-primitives";
 
 function text(source: Record<string, unknown>, key: string): string {
   const value = source[key];
   return typeof value === "string" && value !== "" ? value : bad();
-}
-
-function textOrNull(source: Record<string, unknown>, key: string): string | null {
-  const value = source[key];
-  if (value === null) {
-    return null;
-  }
-  return typeof value === "string" ? value : bad();
-}
-
-function flag(source: Record<string, unknown>, key: string): boolean {
-  const value = source[key];
-  return typeof value === "boolean" ? value : bad();
-}
-
-function textList(source: Record<string, unknown>, key: string): string[] {
-  const value = source[key];
-  if (!Array.isArray(value)) {
-    return bad();
-  }
-  return value.map((entry) => (typeof entry === "string" ? entry : bad()));
-}
-
-function numberOrNull(source: Record<string, unknown>, key: string): number | null {
-  const value = source[key];
-  if (value === null) {
-    return null;
-  }
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
 }
 
 export const ENTITY_NOT_ADMIN = "spotnav_not_admin";
@@ -451,11 +402,6 @@ function decodeField(raw: unknown): EntityField {
     return { ...base, kind, value: flag(source, "value") };
   }
   return bad();
-}
-
-function list(source: Record<string, unknown>, key: string): unknown[] {
-  const value = source[key];
-  return Array.isArray(value) ? value : bad();
 }
 
 function intervalOrNull(source: Record<string, unknown>, key: string): number | null {
@@ -909,7 +855,7 @@ export function decodeEntityAnswer(raw: unknown): EntityDecodeResult {
       value: { ok: false, code: envelope.error ?? "", config: envelope.config, fieldErrors: envelope.fieldErrors },
     };
   } catch (error) {
-    if (error instanceof MalformedPayload || (error instanceof Error && error.message === "malformed")) {
+    if (error instanceof Malformed) {
       return { ok: false, failure: "malformed" };
     }
     throw error;
@@ -957,7 +903,7 @@ export function decodeVehicleAnswer(raw: unknown): VehicleDecodeResult {
       },
     };
   } catch (error) {
-    if (error instanceof MalformedPayload || (error instanceof Error && error.message === "malformed")) {
+    if (error instanceof Malformed) {
       return { ok: false, failure: "malformed" };
     }
     throw error;

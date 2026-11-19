@@ -12,14 +12,15 @@
 //   it.
 // Every figure is the backend's; text is written with `textContent` only.
 
-import { formatFixed } from "./format";
+import { kwhText, moneyMinorAsMajorFine as useMoney } from "./format";
 import type { HeatHistory, HeatPart } from "./heat-history";
 import type { UseUnit } from "./heat-tabs";
 import { bucketWords } from "./house-history";
-import { barChart, kwhText, PERIOD_VIEW_CLASSES, type Bar, type BarPart } from "./house-period-view";
+import { barChart, PERIOD_VIEW_CLASSES, type Bar, type BarPart } from "./house-period-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export const USE_CLASSES = {
   head: "spotnav-heat-use-head",
@@ -37,17 +38,6 @@ const KIND_WORDS: Record<Exclude<HeatPart["kind"], "zone">, TranslationKey> = {
   other: "heat.use.part.other",
 };
 
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
-
 /** A part's name: a zone's own, else the card's words for its kind. */
 export function partWord(language: Language, part: HeatPart): string {
   return part.kind === "zone" ? (part.name ?? translate(language, "heat.use.part.zone")) : translate(language, KIND_WORDS[part.kind]);
@@ -59,15 +49,6 @@ export function partSeries(parts: readonly HeatPart[], part: HeatPart): string {
     return `use-${part.kind}`;
   }
   return `use-zone-${parts.filter((item) => item.kind === "zone").indexOf(part) % 4}`;
-}
-
-/** Money in the minor unit shown in the major one (whole units from 10 up), as the heat card writes it. */
-export function useMoney(language: Language, minor: number, units: HeatHistory["money"]): string {
-  if (units === null || units.major_unit === null) {
-    return `${formatFixed(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
-  }
-  const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${units.major_unit}`;
 }
 
 /** Whether the period can be shown in money: some part has a priced hour. */

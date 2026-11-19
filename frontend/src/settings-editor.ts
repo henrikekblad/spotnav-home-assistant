@@ -27,6 +27,7 @@ import { infoButton, type InfoButton } from "./info-button";
 import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
 import { chargeCeiling, effectiveTarget, targetNeedKwh } from "./target-need";
 import type { DepartureCalendarBlock, Soc, Vehicle } from "./validate";
+import { element } from "./dom";
 
 export interface SettingsEditorForm {
   kind: SettingsEditorKind;
@@ -100,17 +101,6 @@ export interface SettingsEditorBody {
   values: () => SettingsFormValues;
   /** Where the Plan dialog's live preview is painted (`plan-preview.ts`); `null` for any other dialog. */
   preview: HTMLElement | null;
-}
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 /**

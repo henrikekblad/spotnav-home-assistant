@@ -104,6 +104,7 @@ import {
 } from "./value-editors";
 import type { FiscalComponentName } from "./value-writes";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** Where the popover opens: a section, or `house` for the top of the page (the house card's gear). */
 export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "support";
@@ -135,17 +136,6 @@ export async function stubTarget(hass: HomeAssistantLike, timeoutMs: number): Pr
     clearTimeout(timer);
   }
   return {};
-}
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 /** Open one of Home Assistant's own pages, the way its frontend moves between them. */

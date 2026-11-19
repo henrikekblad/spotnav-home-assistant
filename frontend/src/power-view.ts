@@ -9,12 +9,14 @@
 // still kept; an older month keeps its days only). Hover, focus or a tap shows the figures in the readout under the
 // chart, as the charge history's day chart does. Nothing is recomputed: every figure is the backend's.
 
-import { dateLabel, formatFixed, formatNumber } from "./format";
+import { clockOf, dateLabel, formatNumber, kwText, pad2 } from "./format";
 import { DAY_WORDS, monthsText } from "./grid-tariff";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { decodeDemandComponent, type DemandComponent } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { POWER_MONTH_API_VERSION } from "./types";
+import { bad, record, flag, list } from "./decode-primitives";
+import { element } from "./dom";
 
 export interface PowerDay {
   /** The local date, `YYYY-MM-DD`. */
@@ -59,16 +61,6 @@ export interface PowerMonth {
 
 export type PowerDecodeResult = { ok: true; value: PowerMonth } | { ok: false; failure: "unsupported" | "malformed" };
 
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
 function text(source: Record<string, unknown>, key: string, pattern?: RegExp): string {
   const value = source[key];
   return typeof value === "string" && (pattern === undefined || pattern.test(value)) ? value : bad();
@@ -82,17 +74,9 @@ function powerOrNull(value: unknown): number | null {
   return value === null ? null : power(value);
 }
 
-function flag(value: unknown): boolean {
-  return typeof value === "boolean" ? value : bad();
-}
-
 /** A field an older backend did not state: absent reads as `fallback`, present must be its shape. */
 function additive<T>(source: Record<string, unknown>, key: string, read: (value: unknown) => T, fallback: T): T {
   return key in source ? read(source[key]) : fallback;
-}
-
-function list(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : bad();
 }
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -187,32 +171,6 @@ export interface PowerHandlers {
 
 // ------------------------------------------------------------------------------------------- rendering
 
-function element<K extends keyof HTMLElementTagNameMap>(
-  doc: Document,
-  tag: K,
-  className?: string,
-  content?: string,
-): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
-
-/** A power to one decimal: "5,9 kW". */
-export function kw(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kW`;
-}
-
-/** The wall clock as the backend wrote it (the area's own zone): `2026-09-22T19:00:00+02:00` -> `19:00`. */
-function clockOf(iso: string): string {
-  return /T(\d{2}:\d{2})/.exec(iso)?.[1] ?? "";
-}
-
 function daysInMonth(month: string): number {
   const [year, number] = month.split("-").map(Number) as [number, number];
   return new Date(Date.UTC(year, number, 0)).getUTCDate();
@@ -234,10 +192,6 @@ function inline(language: Language, word: string, keep = false): string {
   return language === "de" || keep ? word : word.charAt(0).toLocaleLowerCase(language) + word.slice(1);
 }
 
-function pad(hour: number): string {
-  return String(hour).padStart(2, "0");
-}
-
 /** How the view names the demand charge's parts: by their hours ("Dag 06–23", "Natt 23–06", "Alla timmar"), with the
  * days and months only where they are not all; numbered ("Effektavgift 1") where two would read the same. `inline`
  * is each name as it reads inside a sentence ("räknas för dag 06–23"). */
@@ -256,7 +210,7 @@ export function partNames(language: Language, components: DemandComponent[]): Pa
       inlined.push(translate(language, "power.part.allInline"));
       continue;
     }
-    const hours = `${pad(window.from_hour)}–${pad(window.to_hour)}`;
+    const hours = `${pad2(window.from_hour)}–${pad2(window.to_hour)}`;
     const night = window.from_hour > window.to_hour || window.to_hour <= 7;
     const extra: string[] = [];
     if (window.days !== "all") {
@@ -296,8 +250,8 @@ function notes(
   if (item.house_kw !== null) {
     words.push(
       translate(language, "power.split", {
-        house: kw(language, Math.min(item.house_kw, item.kw)),
-        car: kw(language, Math.max(0, item.kw - item.house_kw)),
+        house: kwText(language, Math.min(item.house_kw, item.kw)),
+        car: kwText(language, Math.max(0, item.kw - item.house_kw)),
       }),
     );
   }
@@ -317,7 +271,7 @@ function notes(
     words.push(translate(language, "power.incomplete"));
   }
   if (item.month_peak_kw !== null) {
-    words.push(translate(language, "power.peak", { kw: kw(language, item.month_peak_kw) }));
+    words.push(translate(language, "power.peak", { kw: kwText(language, item.month_peak_kw) }));
   }
   if (item.imported) {
     words.push(translate(language, "power.imported"));
@@ -328,14 +282,14 @@ function notes(
 export function dayFigures(language: Language, day: PowerDay, parts: string[] = []): string {
   const head = translate(language, "power.day", {
     date: dateLabel(language, day.date),
-    kw: kw(language, day.peak_kw),
+    kw: kwText(language, day.peak_kw),
     time: clockOf(day.peak_start),
   });
   return [head, ...notes(language, { ...day, kw: day.peak_kw }, parts)].join(" · ");
 }
 
 export function hourFigures(language: Language, hour: PowerHour, parts: string[] = []): string {
-  const head = translate(language, "power.hour", { time: clockOf(hour.start), kw: kw(language, hour.kw) });
+  const head = translate(language, "power.hour", { time: clockOf(hour.start), kw: kwText(language, hour.kw) });
   return [head, ...notes(language, hour, parts)].join(" · ");
 }
 
@@ -388,7 +342,7 @@ function barChart(
     const line = element(doc, "span", C.powerTarget);
     line.setAttribute("aria-hidden", "true");
     line.style.bottom = `${(target / top) * 100}%`;
-    const label = element(doc, "span", C.powerTargetLabel, kw(language, target));
+    const label = element(doc, "span", C.powerTargetLabel, kwText(language, target));
     // The label sits just above the dashed line; where the month's peak line runs just above it (within a tenth of
     // the scale), the label goes under the dashed line so the two never overlap.
     const peaks = columns.map((column) => column.peak).filter((peak): peak is number => peak !== null);
@@ -468,7 +422,7 @@ function barChart(
   const ticks = element(doc, "div", C.powerTicks);
   ticks.setAttribute("aria-hidden", "true");
   for (const value of [0, top / 2, top]) {
-    const tick = element(doc, "span", undefined, value === top ? kw(language, value) : formatNumber(language, value, value % 1 === 0 ? 0 : 1));
+    const tick = element(doc, "span", undefined, value === top ? kwText(language, value) : formatNumber(language, value, value % 1 === 0 ? 0 : 1));
     tick.style.bottom = `${(value / top) * 100}%`;
     ticks.append(tick);
     if (value > 0) {
@@ -504,11 +458,11 @@ function legend(doc: Document, language: Language, answer: PowerMonth, columns: 
     list.append(swatch(doc, C.powerUnsplit, translate(language, "power.legend.unsplit")));
   }
   if (answer.import_target_kw !== null) {
-    list.append(swatch(doc, C.powerTargetSwatch, translate(language, "power.legend.target", { kw: kw(language, answer.import_target_kw) })));
+    list.append(swatch(doc, C.powerTargetSwatch, translate(language, "power.legend.target", { kw: kwText(language, answer.import_target_kw) })));
   }
   const peaks = columns.map((column) => column.peak).filter((peak): peak is number => peak !== null);
   if (peaks.length > 0) {
-    list.append(swatch(doc, C.powerPeakSwatch, translate(language, "power.legend.peak", { kw: kw(language, Math.max(...peaks)) })));
+    list.append(swatch(doc, C.powerPeakSwatch, translate(language, "power.legend.peak", { kw: kwText(language, Math.max(...peaks)) })));
   }
   if (columns.some((column) => column.imported)) {
     list.append(swatch(doc, C.powerImportedSwatch, translate(language, "power.legend.imported")));
@@ -534,7 +488,7 @@ function summary(doc: Document, language: Language, answer: PowerMonth): HTMLEle
   const names = partNames(language, answer.components);
   const parts = answer.bars.map((bar, index) => {
     const name = answer.components.length > 1 ? (names.names[index] ?? "") : translate(language, "demand.title");
-    return `${name}: ${bar === null ? translate(language, "power.noPeak") : kw(language, bar)}`;
+    return `${name}: ${bar === null ? translate(language, "power.noPeak") : kwText(language, bar)}`;
   });
   const tile = element(doc, "section", C.historyTile);
   tile.dataset["tile"] = "power";

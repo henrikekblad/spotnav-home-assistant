@@ -32,3 +32,20 @@ export function labelledButton(label: string, accessibleName: string): HTMLButto
 export function chargerOption(label: string, value: string): HTMLOptionElement {
   return new Option(label, value);
 }
+
+/** One element of a literal tag, with an optional class and text (set as text, never parsed as markup). */
+export function element<K extends keyof HTMLElementTagNameMap>(
+  doc: Document,
+  tag: K,
+  className?: string,
+  text?: string,
+): HTMLElementTagNameMap[K] {
+  const created = doc.createElement(tag);
+  if (className !== undefined) {
+    created.className = className;
+  }
+  if (text !== undefined) {
+    created.textContent = text;
+  }
+  return created;
+}

@@ -7,7 +7,7 @@
 // only; every figure is the backend's.
 
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
-import { clock, dateLabel, formatFixed, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, kwhText, kwText, pad2, type FormatContext } from "./format";
 import {
   isRelayPath,
   roomName,
@@ -28,6 +28,7 @@ import { periodPicker, type PeriodChoice } from "./house-tabs";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { sectionHeading, settingRow } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 export const TARGET_MIN = 16;
 export const TARGET_MAX = 25;
@@ -120,17 +121,6 @@ export interface HeatRenderInput {
   tabs?: HeatTabsData;
 }
 
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
-
 function svg<K extends keyof SVGElementTagNameMap>(doc: Document, tag: K, attributes: Record<string, string | number>): SVGElementTagNameMap[K] {
   const node = doc.createElementNS(SVG, tag);
   for (const [name, value] of Object.entries(attributes)) {
@@ -174,10 +164,9 @@ export function localToInstant(date: string, time: string, timeZone: string): nu
 /** An instant as the local date and time in `timeZone` ("2026-11-20", "16:00"). */
 export function instantToLocal(instantMs: number, timeZone: string): { date: string; time: string } {
   const shifted = new Date(instantMs + zoneOffsetMs(timeZone, instantMs));
-  const pad = (n: number): string => String(n).padStart(2, "0");
   return {
-    date: `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`,
-    time: `${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}`,
+    date: `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}`,
+    time: `${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}`,
   };
 }
 
@@ -200,14 +189,6 @@ export function offsetValue(language: Language, value: number): string {
     return "0";
   }
   return `${value > 0 ? "+" : "−"}${formatFixed(language, Math.abs(value), Number.isInteger(value) ? 0 : 1)}`;
-}
-
-function kw(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kW`;
-}
-
-function kwh(language: Language, value: number): string {
-  return `${formatFixed(language, value, 1)} kWh`;
 }
 
 function context(language: Language, answer: HeatAnswer): FormatContext {
@@ -329,7 +310,7 @@ export function heatLive(language: Language, answer: HeatAnswer): { code: string
   }
   const power = answer.status.kw;
   const words = translate(language, `heat.now.${state}` as TranslationKey);
-  return { code: state, text: state === "idle" || power === null ? words : `${words} ${kw(language, power).replace(" ", "\u00a0")}` };
+  return { code: state, text: state === "idle" || power === null ? words : `${words} ${kwText(language, power).replace(" ", "\u00a0")}` };
 }
 
 /** Whether SpotNav's own heat control runs (else the header says Test). */
@@ -517,7 +498,7 @@ export function pumpLine(language: Language, answer: HeatAnswer): string | null 
     return answer.meter === null && answer.pump === null ? null : translate(language, "heat.pump.unknown");
   }
   const key = (["heating", "hot_water", "idle"].includes(state) ? `heat.pump.${state}` : "heat.pump.unknown") as TranslationKey;
-  return translate(language, key, { kw: power === null ? "–" : kw(language, power) }).replace(/ · –$/, "");
+  return translate(language, key, { kw: power === null ? "–" : kwText(language, power) }).replace(/ · –$/, "");
 }
 
 /** What SpotNav would do now, in shadow ("Skulle sänka till 20,5 °C till 20:00: dyra timmar"). */
@@ -676,7 +657,7 @@ export function hotWaterLines(language: Language, answer: HeatAnswer): { key: st
   }
   const money = answer.today?.money ?? null;
   let line = review.moved_kwh > 0
-    ? translate(language, "heat.water.review", { kwh: kwh(language, review.moved_kwh), value: amount(language, review.saved, money) })
+    ? translate(language, "heat.water.review", { kwh: kwhText(language, review.moved_kwh), value: amount(language, review.saved, money) })
     : translate(language, "heat.water.reviewNone");
   if (review.mode === "shadow") {
     line += ` ${translate(language, "heat.water.shadow")}`;
@@ -1058,12 +1039,12 @@ export function todayLine(language: Language, answer: HeatAnswer): string | null
   if (today === null) {
     return null;
   }
-  const parts = [translate(language, "heat.today.label"), translate(language, "heat.today.heat", { kwh: kwh(language, today.heat_kwh) })];
+  const parts = [translate(language, "heat.today.label"), translate(language, "heat.today.heat", { kwh: kwhText(language, today.heat_kwh) })];
   if (today.zones_kwh !== null && today.zones_kwh > 0) {
-    parts.push(translate(language, "heat.today.zones", { kwh: kwh(language, today.zones_kwh) }));
+    parts.push(translate(language, "heat.today.zones", { kwh: kwhText(language, today.zones_kwh) }));
   }
   if (today.hot_water_kwh !== null) {
-    parts.push(translate(language, "heat.today.water", { kwh: kwh(language, today.hot_water_kwh) }));
+    parts.push(translate(language, "heat.today.water", { kwh: kwhText(language, today.hot_water_kwh) }));
   }
   if (today.cost !== null) {
     parts.push(amount(language, today.cost, today.money));

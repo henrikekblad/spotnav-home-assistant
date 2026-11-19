@@ -8,6 +8,7 @@ import { translate, type Language } from "./i18n";
 import type { Vehicle } from "./validate";
 import { sectionHeading, settingRow } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** The editors a car's rows open; a row without one is read-only. */
 export interface VehicleEdits {
@@ -43,17 +44,6 @@ export interface VehicleSummaryInput {
   reference?: VehicleReference | undefined;
   /** With two or more cars: the cars' tabs, shown under the section's "Car" heading in place of the name. */
   tabs?: HTMLElement;
-}
-
-function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
-  const node = doc.createElement(tag);
-  if (className !== undefined) {
-    node.className = className;
-  }
-  if (text !== undefined) {
-    node.textContent = text;
-  }
-  return node;
 }
 
 export function vehicleSummary(doc: Document, language: Language, input: VehicleSummaryInput): HTMLElement {

@@ -24,11 +24,13 @@
 
 import { getHouseLoads, SpotnavApiError, UNSUPPORTED_API_VERSION, updateMeterBelongs } from "./api";
 import { createDialog, type DialogHandle } from "./dialog";
-import { dateLabel, formatFixed, formatNumber } from "./format";
+import { dateLabel, formatNumber, kwhFineText } from "./format";
 import { HOUSE_LOADS_API_VERSION } from "./house-model";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { bad, record, text, number, numberOrNull } from "./decode-primitives";
+import { element } from "./dom";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -263,26 +265,6 @@ export interface HouseLoads {
 
 export type HouseLoadsDecode = { ok: true; value: HouseLoads } | { ok: false; failure: "unsupported" | "malformed" };
 
-function bad(): never {
-  throw new Error("malformed");
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : bad();
-}
-
-function number(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(value: unknown): number | null {
-  return value === null ? null : number(value);
-}
-
 function day(value: unknown): string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : bad();
 }
@@ -427,27 +409,12 @@ export function pieModel(language: Language, answer: HouseLoads): PieModel {
 
 // ------------------------------------------------------------------------------------------------ the view
 
-function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
-  const created = doc.createElement(tag);
-  if (className !== undefined) {
-    created.className = className;
-  }
-  if (content !== undefined) {
-    created.textContent = content;
-  }
-  return created;
-}
-
 function svg<K extends keyof SVGElementTagNameMap>(doc: Document, name: K, attributes: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const created = doc.createElementNS(SVG_NS, name);
   for (const [key, value] of Object.entries(attributes)) {
     created.setAttribute(key, String(value));
   }
   return created;
-}
-
-export function kwhText(language: Language, value: number): string {
-  return `${formatFixed(language, value, value >= 100 ? 0 : value > 0 && value < 1 ? 2 : 1)} kWh`;
 }
 
 export function shareText(language: Language, share: number): string {
@@ -483,7 +450,7 @@ export function renderPie(
   root.setAttribute(
     "aria-label",
     translate(language, "house.loads.chart", {
-      list: model.slices.map((slice) => `${slice.name} ${kwhText(language, slice.kwh)} (${shareText(language, slice.share)})`).join(", "),
+      list: model.slices.map((slice) => `${slice.name} ${kwhFineText(language, slice.kwh)} (${shareText(language, slice.share)})`).join(", "),
     }),
   );
   const drawn = model.slices.filter((slice) => slice.kwh > 0);
@@ -491,7 +458,7 @@ export function renderPie(
   let angle = 0;
   const titled = (mark: SVGElement, slice: PieSlice): void => {
     const title = svg(doc, "title");
-    title.textContent = `${slice.name} ${kwhText(language, slice.kwh)} (${shareText(language, slice.share)})`;
+    title.textContent = `${slice.name} ${kwhFineText(language, slice.kwh)} (${shareText(language, slice.share)})`;
     mark.append(title);
   };
   if (drawn.length <= 1) {
@@ -524,7 +491,7 @@ export function renderPie(
     angle += sweep;
   }
   const value = svg(doc, "text", { x: PIE / 2, y: PIE / 2 + 2, "text-anchor": "middle", class: L.centre, "aria-hidden": "true" });
-  value.textContent = kwhText(language, house);
+  value.textContent = kwhFineText(language, house);
   const label = svg(doc, "text", { x: PIE / 2, y: PIE / 2 + 17, "text-anchor": "middle", class: L.centreSmall, "aria-hidden": "true" });
   label.textContent = translate(language, kind === "heat" ? "house.flow.heat" : "house.flow.house");
   root.append(value, label);
@@ -662,7 +629,7 @@ export function loadsBody(
       mark.dataset["mark"] = "changed";
       name.append(mark);
     }
-    row.append(swatch, name, element(doc, "span", L.value, `${kwhText(language, slice.kwh)} · ${shareText(language, slice.share)}`));
+    row.append(swatch, name, element(doc, "span", L.value, `${kwhFineText(language, slice.kwh)} · ${shareText(language, slice.share)}`));
     list.append(row);
   }
   const onSlice = controls === null ? null : (key: string) => controls.onChoose(controls.chosen === key ? null : key);
@@ -687,7 +654,7 @@ export function loadsBody(
     );
   }
   if (model.merged.length > 0) {
-    const line = note("house.loads.otherHolds", { list: model.merged.map((load) => `${load.name} ${kwhText(language, load.kwh)}`).join(", ") }, "merged");
+    const line = note("house.loads.otherHolds", { list: model.merged.map((load) => `${load.name} ${kwhFineText(language, load.kwh)}`).join(", ") }, "merged");
     root.append(line);
     // A meter too small for a slice may be moved too: its name as a button under the line.
     const movable = controls === null ? [] : model.merged.filter((load) => choosable.has(load.statistic_id));
@@ -707,7 +674,7 @@ export function loadsBody(
     }
   }
   if (answer.over_kwh > 0) {
-    root.append(note("house.loads.over", { kwh: kwhText(language, answer.over_kwh) }, "over"));
+    root.append(note("house.loads.over", { kwh: kwhFineText(language, answer.over_kwh) }, "over"));
   }
   if (answer.loads.length === 0 && !heat) {
     root.append(note("house.loads.none", undefined, "none"));
