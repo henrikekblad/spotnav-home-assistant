@@ -24,8 +24,9 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   nothing at two weeks; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase. Where the plant
   takes a target per phase (`commands.PhaseControl`, verified as the mode `per_phase`) the cap is each phase's own
   (`grid_charge_phase_caps_kw`), so a house that loads one phase leaves the others' room to the charge. Where the
-  recipe states the plant's own dead-man (`commands.PhaseControl.silence_fallback_s`, Victron's 60 s watchdog) the
-  targets do not stay, and each phase's cap is the fuse less the margin: the live clamp per phase bounds the charge.
+  recipe states the plant's own dead-man (`commands.PhaseControl.silence_fallback_s`, set only once a field test has
+  seen it act; no recipe does yet) the targets do not stay, and each phase's cap is the fuse less the margin: the
+  live clamp per phase bounds the charge.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -552,10 +553,10 @@ def grid_charge_phase_caps_kw(
     with each phase's own house peak (`house_peaks_a`) and the chargers' last currents (`cars_a`) counted on
     every phase. With the fuse or the chargers unknown no phase may charge (0).
 
-    **A plant with its own dead-man** (`silence_fallback_s`, `silence_guards`; Victron's Mode 3: a setpoint not
-    written again within 60 s puts the Multi in passthru, by the maker's own page, `commands.py`): the targets do
-    not stay, so the cap is not reckoned for a house at its peak with nobody watching. It is the fuse less the
-    margin on each phase,
+    **A plant with its own dead-man** (`silence_fallback_s`, `silence_guards`; a recipe states it only once a field
+    test has seen the plant stop following its targets when the writes stop. Victron's page promises it for Mode 3,
+    but it is not yet seen, so its recipe does not state it, `commands.py`): the targets do not stay, so the cap is
+    not reckoned for a house at its peak with nobody watching. It is the fuse less the margin on each phase,
 
         cap_i = V * max(0, fuse - margin) / 1000
 

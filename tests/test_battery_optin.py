@@ -203,12 +203,13 @@ async def test_a_failed_reload_is_an_error_and_writes_no_options(
     assert site.data.get("battery_control_enabled") is not True
 
 
-async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_are_the_fuse(
+async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_the_house_at_its_peak(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The shell on a Victron plant (`commands.VICTRON_CONTROL`): the charge per phase needs nothing but the
     recipe's own entities, the plant's power per phase is the load behind each Multi less the power on its input,
-    and each phase's HA-down cap is the fuse less the margin (the recipe's own dead-man)."""
+    and each phase's HA-down cap is reckoned with the house at its peak, as Sigenergy's: the Multi's own dead-man
+    is the maker's word only, not yet seen on a plant, so the recipe does not state it."""
     from custom_components.spotnav.battery import gate
     from custom_components.spotnav.battery.commands import VICTRON_CONTROL
     from custom_components.spotnav.battery.control import BatteryControl
@@ -242,8 +243,13 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_are_the_
     fuse_a = control._main_fuse_a()
     assert fuse_a is not None
     volts = 400.0 / 3 ** 0.5
-    assert control._phase_caps_kw(now) == pytest.approx(((fuse_a - 2.0) * volts / 1000,) * 3)
-    assert gate.silence_guards(VICTRON_CONTROL.phase_control.silence_fallback_s)
+    caps = control._phase_caps_kw(now)
+    assert not gate.silence_guards(VICTRON_CONTROL.phase_control.silence_fallback_s)
+    assert caps == pytest.approx(gate.grid_charge_phase_caps_kw(
+        fuse_a, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=control._house_peak_kw(now),
+        house_phase_peaks_a=control._phase_peaks(now) or None,
+    ))
+    assert all(cap < (fuse_a - 2.0) * volts / 1000 for cap in caps), "never the fuse less the margin"
 
     # A sensor that reads nothing: no charge per phase.
     hass.states.async_set(found["vebus_inverter_output_power_l2"], "unavailable")

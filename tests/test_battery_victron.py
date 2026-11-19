@@ -50,18 +50,31 @@ TARGETS = ("phase_l1_target", "phase_l2_target", "phase_l3_target")
 PEAKS = {"L1": 13.6, "L2": 18.0, "L3": 17.4}
 
 
-def _caps(**kwargs: Any) -> tuple[float, float, float]:
+def _caps(peaks: dict[str, float] = PEAKS, **kwargs: Any) -> tuple[float, float, float]:
     return gate.grid_charge_phase_caps_kw(
-        FUSE_A, 400.0, margin_a=HEADROOM_MARGIN_A, cars_a=0.0, house_peak_kw=None, house_phase_peaks_a=PEAKS, **kwargs
+        FUSE_A, 400.0, margin_a=HEADROOM_MARGIN_A, cars_a=0.0, house_peak_kw=None, house_phase_peaks_a=peaks, **kwargs
     )
+
+
+def _shipped(peaks: dict[str, float] = PEAKS) -> tuple[float, float, float]:
+    """The caps the recipe as shipped gets: its dead-man is not stated, so the house counts at its peak."""
+    return _caps(peaks, silence_fallback_s=VICTRON_PHASES.silence_fallback_s)
+
+
+def _lifted() -> tuple[float, float, float]:
+    """The caps a recipe with a dead-man seen on a plant would get (the fuse less the margin on each phase). No
+    recipe ships it; the executor does not know where its caps come from, so these exercise its live clamp alone."""
+    return _caps(silence_fallback_s=VICTRON_SILENCE_S)
 
 
 @dataclass
 class Plant:
     """A three-phase Victron ESS as the page describes it. In its own modes the GX holds the site's total at the
     grid setpoint, within the charge and discharge power, spread evenly, and writes the setpoints per phase itself.
-    In external control each Multi holds its AC input at its setpoint, for 60 s after the last write of it; then it
-    is in passthru. `out_kw`: the loads on the Multis' AC outputs; `beside_kw`: the loads wired beside them."""
+    In external control each Multi holds its AC input at its setpoint, the GX's last one until SpotNav writes its
+    own, for 60 s after the last write of it; then it is in passthru (`fallback` false: a firmware or a flow on the
+    GX where that never happens, the setpoints stand). `out_kw`: the loads on the Multis' AC outputs; `beside_kw`:
+    the loads wired beside them."""
 
     out_kw: list[float] = field(default_factory=lambda: [0.3, 0.2, 1.0])
     beside_kw: list[float] = field(default_factory=lambda: [0.5, 0.5, 0.5])
@@ -72,6 +85,7 @@ class Plant:
     written_at: dict[str, datetime] = field(default_factory=dict)
     writes: list[tuple[datetime, Op]] = field(default_factory=list)
     rating_kw: float = 10.0
+    fallback: bool = True
 
     @property
     def external(self) -> bool:
@@ -82,8 +96,9 @@ class Plant:
         if self.external:
             out: list[float] = []
             for index, name in enumerate(TARGETS):
-                at = self.written_at.get(name)
-                fresh = at is not None and (now - at).total_seconds() <= VICTRON_SILENCE_S
+                # Until a setpoint is written, the GX's last one, written as external control was entered.
+                at = self.written_at.get(name, self.written_at.get("ess_mode"))
+                fresh = at is not None and (not self.fallback or (now - at).total_seconds() <= VICTRON_SILENCE_S)
                 out.append(float(self.states.get(name, "0")) / 1000.0 if fresh else self.out_kw[index])
             return out
         limit = {name: float(self.states[name]) for name in ("charge_power", "discharge_power")}
@@ -227,7 +242,9 @@ def test_the_setpoints_are_setpoints_with_a_cap_that_fits_a_minute_and_the_rest_
 
 
 def test_the_watchdog_is_recipe_data_and_only_the_phased_control_has_it() -> None:
-    assert VICTRON_PHASES.silence_fallback_s == VICTRON_SILENCE_S == 60
+    # The page's 60 s fallback is not stated until a field test has seen it: the HA-down cap is not lifted on it.
+    assert VICTRON_PHASES.silence_fallback_s is None and VICTRON_SILENCE_S == 60
+    assert _shipped() == _caps() and _shipped() != _lifted()
     assert VICTRON_PHASES.watchdog_renew_s == VICTRON_RENEW_S
     # Three roles, one written a look: each is written again within the renewal plus three looks.
     assert VICTRON_RENEW_S + 3 * TICK.total_seconds() < VICTRON_SILENCE_S
@@ -235,8 +252,8 @@ def test_the_watchdog_is_recipe_data_and_only_the_phased_control_has_it() -> Non
     phased = VICTRON_CONTROL.with_phases(True)
     assert phased.watchdog_roles == TARGETS and phased.watchdog_renew_s == VICTRON_RENEW_S
     assert phased.own_states == {"ESS mode": frozenset({"external_control"})} and VICTRON_CONTROL.own_states == {}
-    # No other recipe says its plant falls back by itself.
-    assert [c.brand for c in CONTROLS if c.phase_control and c.phase_control.silence_fallback_s] == ["victron"]
+    # No recipe says its plant falls back by itself.
+    assert [c.brand for c in CONTROLS if c.phase_control and c.phase_control.silence_fallback_s] == []
     assert SIGENERGY_CONTROL.phase_control is not None and SIGENERGY_CONTROL.phase_control.park
 
 
@@ -315,7 +332,7 @@ def test_a_discharge_for_the_house_stores_nothing_and_one_to_the_grid_is_the_hou
 
 def test_a_charge_per_phase_is_written_as_the_load_behind_each_multi_plus_the_charge() -> None:
     plant, executor = Plant(), _phased()
-    now, results = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_caps(silence_fallback_s=60))
+    now, results = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_lifted())
     charge = executor.state.phase_kw
     assert charge is not None and sum(charge) == pytest.approx(3.0, abs=0.3)
     writes = _written(results)
@@ -331,7 +348,7 @@ def test_a_charge_per_phase_is_written_as_the_load_behind_each_multi_plus_the_ch
 
 def test_a_target_follows_the_load_behind_it_and_a_load_that_falls_is_no_runaway() -> None:
     plant, executor = Plant(), _phased()
-    caps = _caps(silence_fallback_s=60)
+    caps = _lifted()
     now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=caps)
     before = float(plant.states["phase_l3_target"])
     # The load on L3's output falls by 0.8 kW: the Multi keeps its input, so the battery takes it for a while.
@@ -345,7 +362,7 @@ def test_a_target_follows_the_load_behind_it_and_a_load_that_falls_is_no_runaway
 
 def test_each_setpoint_is_written_again_well_inside_the_minute_and_renewals_are_not_counted() -> None:
     plant, executor = Plant(), _phased()
-    caps = _caps(silence_fallback_s=60)
+    caps = _lifted()
     now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=caps)
     counted = executor.state.setpoint_writes_today
     start = len(plant.writes)
@@ -364,7 +381,7 @@ def test_each_setpoint_is_written_again_well_inside_the_minute_and_renewals_are_
 
 def test_the_plant_falls_back_by_itself_when_the_writes_stop() -> None:
     plant, executor = Plant(), _phased()
-    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_caps(silence_fallback_s=60))
+    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_lifted())
     assert plant.battery_kw(now) > 2.5
     # Home Assistant stops: nothing is written. Within the minute the charge still runs; after it, passthru.
     later = now + timedelta(seconds=VICTRON_SILENCE_S + 10)
@@ -374,13 +391,13 @@ def test_the_plant_falls_back_by_itself_when_the_writes_stop() -> None:
     restarted = Executor(VICTRON_CONTROL, state=type(executor.state).from_dict(executor.state.as_dict()))
     assert restarted.control.phased
     restarted.restart(later)
-    _now, results = _run(restarted, plant, later, 4, "grid_charge", 3.0, phase_caps_kw=_caps(silence_fallback_s=60))
+    _now, results = _run(restarted, plant, later, 4, "grid_charge", 3.0, phase_caps_kw=_lifted())
     assert _written(results)[0] == ("ess_mode", "phase_compensation_enabled")
 
 
 def test_the_hand_back_is_the_ess_mode_alone_and_the_gx_writing_its_setpoints_after_is_no_ones_change() -> None:
     plant, executor = Plant(), _phased()
-    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_caps(silence_fallback_s=60))
+    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_lifted())
     now, results = _run(executor, plant, now, 4, "self_consume")
     assert _written(results) == [("ess_mode", "phase_compensation_enabled")]
     assert executor.state.phase == "idle" and executor.ledger.entity_ids() == []
@@ -390,7 +407,7 @@ def test_the_hand_back_is_the_ess_mode_alone_and_the_gx_writing_its_setpoints_af
 
 def test_a_change_to_a_hold_leaves_the_setpoints_to_the_gx_without_a_block() -> None:
     plant, executor = Plant(), _phased()
-    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_caps(silence_fallback_s=60))
+    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=_lifted())
     looks = int(MIN_DIVERGENCE_S / 10) + 12
     now, results = _run(executor, plant, now, looks, "hold")
     writes = _written(results)
@@ -404,20 +421,20 @@ def test_a_change_to_a_hold_leaves_the_setpoints_to_the_gx_without_a_block() -> 
 def test_someone_else_in_external_control_is_not_taken() -> None:
     plant, executor = Plant(), _phased()
     plant.states["ess_mode"] = "external_control"
-    _now, results = _run(executor, plant, T0, 2, "grid_charge", 3.0, phase_caps_kw=_caps(silence_fallback_s=60))
+    _now, results = _run(executor, plant, T0, 2, "grid_charge", 3.0, phase_caps_kw=_lifted())
     assert _written(results) == [] and _events(results, "not_started")[0]["reason"].startswith("self_managed")
 
 
 def test_a_charge_per_phase_does_not_run_without_the_load_behind_the_multis() -> None:
     plant, executor = Plant(), _phased()
     _now, results = _run(
-        executor, plant, T0, 2, "grid_charge", 3.0, phase_caps_kw=_caps(silence_fallback_s=60), phase_behind_kw=None
+        executor, plant, T0, 2, "grid_charge", 3.0, phase_caps_kw=_lifted(), phase_behind_kw=None
     )
     assert _written(results) == [] and _events(results, "not_started")[0]["reason"] == "phase_load_unknown"
 
 
 def test_a_multi_that_takes_more_than_its_setpoint_is_a_runaway_and_one_in_passthru_a_charge_without_effect() -> None:
-    caps = _caps(silence_fallback_s=60)
+    caps = _lifted()
 
     class Greedy(Plant):
         def input_kw(self, now: datetime) -> list[float]:
@@ -456,7 +473,7 @@ def test_the_gate_lifts_the_ha_down_cap_only_for_a_fallback_within_the_minute() 
 def test_an_unbalanced_house_never_passes_the_fuse_on_any_phase() -> None:
     # L2 carries 15 A beside the Multi; the battery covers the house when the charge starts.
     plant, executor = Plant(out_kw=[0.3, 0.2, 1.0], beside_kw=[1.0, 3.3, 0.2]), _phased()
-    caps = _caps(silence_fallback_s=60)
+    caps = _lifted()
     most = FUSE_A - PHASE_GRID_MARGIN_A + 0.1
     now, results = _run(executor, plant, T0, 12, "grid_charge", 9.0, phase_caps_kw=caps)
     charge = executor.state.phase_kw
@@ -487,13 +504,44 @@ def test_an_unbalanced_house_never_passes_the_fuse_on_any_phase() -> None:
 
 def test_home_assistant_stopping_leaves_no_phase_over_the_fuse_after_the_minute_even_at_the_houses_peak() -> None:
     plant, executor = Plant(out_kw=[0.3, 0.2, 1.0], beside_kw=[1.0, 3.3, 0.2]), _phased()
-    now, _ = _run(executor, plant, T0, 12, "grid_charge", 9.0, phase_caps_kw=_caps(silence_fallback_s=60))
+    now, _ = _run(executor, plant, T0, 12, "grid_charge", 9.0, phase_caps_kw=_lifted())
     # Home Assistant stops and the house goes to its learned peak on every phase.
     plant.out_kw = [0.0, 0.0, 0.0]
     plant.beside_kw = [peak * VOLTS / 1000 for peak in PEAKS.values()]
     later = now + timedelta(seconds=VICTRON_SILENCE_S + 1)
     assert plant.amps(later) == pytest.approx(list(PEAKS.values()))
     assert max(plant.amps(later)) <= FUSE_A
+
+
+def test_as_shipped_a_plant_whose_fallback_never_acts_stays_under_the_fuse_with_the_house_at_its_peak() -> None:
+    # The review's case: a firmware, or a flow on the GX, where the 60 s rule does not act, so the targets stand.
+    # The house's learned peak is 10 A on every phase; 1 kW sits behind each Multi when the charge is written.
+    peaks = {"L1": 10.0, "L2": 10.0, "L3": 10.0}
+    plant, executor = Plant(out_kw=[1.0, 1.0, 1.0], beside_kw=[0.2, 0.2, 0.2], fallback=False), _phased()
+    caps = _shipped(peaks)
+    now, results = _run(executor, plant, T0, 12, "grid_charge", 9.0, phase_caps_kw=caps)
+    charge = executor.state.phase_kw
+    assert charge is not None and executor.state.phase == "active" and sum(charge) >= 1.5
+    # The cap bounds the whole target that would stand (the load behind plus the charge), not the charge alone.
+    for index, name in enumerate(TARGETS):
+        assert float(plant.states[name]) / 1000.0 <= caps[index] + 1e-6, name
+    # Home Assistant stops. Hours later the house is at its peak on every phase, all of it wired beside the
+    # Multis, the loads behind them gone: each phase carries its peak plus the target that stood.
+    plant.out_kw = [0.0, 0.0, 0.0]
+    plant.beside_kw = [peak * VOLTS / 1000 for peak in peaks.values()]
+    later = now + timedelta(hours=3)
+    assert plant.battery_kw(later) > 1.5, "the targets still stand"
+    assert max(plant.amps(later)) <= FUSE_A - HEADROOM_MARGIN_A + 1e-6
+
+
+def test_as_shipped_the_owners_house_gets_no_charge_on_a_phase_its_peak_fills() -> None:
+    # 20 A, L2's peak 18 A: with the margin nothing is left there, whatever L2 has free now.
+    caps = _shipped()
+    assert caps[1] == 0.0
+    plant, executor = Plant(fallback=False), _phased()
+    _now, _results = _run(executor, plant, T0, 12, "grid_charge", 9.0, phase_caps_kw=caps)
+    charge = executor.state.phase_kw
+    assert charge is None or charge[1] == 0.0
 
 
 # --- the verification ------------------------------------------------------------------------------------------------

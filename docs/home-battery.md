@@ -300,16 +300,24 @@ ways in:
   mode as it was found, and the GX runs all three phases again; SpotNav never leaves a setpoint behind, since
   outside external control the GX writes them itself.
 
-**The watchdog, and what it changes.** Victron: "These registers must be written once every 60 seconds, or the
-Multi will go into Passthru." SpotNav writes each setpoint again every 20 seconds. If Home Assistant stops, the
-charge therefore stops by itself within a minute, which no other battery here does. Because of that the per-phase
-cap for Victron is not reckoned with the house at its learned peak: each phase may be filled by what it has free
-**now**, to 4 A under the fuse, checked at every look, and a phase within 1 A of the fuse hands everything back at
-once. What is left open is the minute after Home Assistant stops: a large load that starts on a full phase in that
-minute rides on top of the charge until the Multi falls back. A breaker carries such an overload for much longer
-than a minute in all but the worst case; the cost of that case is a tripped fuse. After such a stop the Multis stay
-in passthru (the battery neither charges nor covers the house) until Home Assistant is back and hands the ESS mode
-back, which it does first thing.
+**The watchdog, and what it does not change yet.** Victron: "These registers must be written once every 60
+seconds, or the Multi will go into Passthru." SpotNav writes each setpoint again every 20 seconds. By that rule a
+charge per phase would stop by itself within a minute of Home Assistant stopping, but nobody has seen it happen on
+a plant, and a firmware where it does not act, or something else on the GX that writes the setpoints (a Node-RED
+flow, a script), would leave them standing. So SpotNav counts on it nowhere: each phase's cap is reckoned as for
+Sigenergy, with the house at its learned peak on that phase, and covers the whole setpoint that would stand (the
+load behind the Multi plus the charge). On top of that each phase is filled only by what it has free **now**, to
+4 A under the fuse, checked at every look, and a phase within 1 A of the fuse hands everything back at once.
+If the Multis do fall back, they stay in passthru (the battery neither charges nor covers the house) until Home
+Assistant is back and hands the ESS mode back, which it does first thing.
+
+What a field test must show before the fallback may be counted on (per Venus OS version): a charge per phase of
+at least 1 kW on each phase, then Home Assistant stopped mid-charge with the ESS mode still in external control;
+within 70 seconds each Multi's AC input power falls to its AC output's load (the battery about 0 on each phase)
+and stays there for 5 minutes, while the setpoints still read what SpotNav last wrote; the same after 10 minutes
+of renewals, the charge never dropping meanwhile; and nothing else on the GX writing the setpoints (no Node-RED
+flow, Dynamic ESS off). Until a report shows that, a charge per phase on a house whose learned peak fills a phase
+gets nothing on that phase.
 
 The check's per-phase step is the same as above, with the Multi's own power per phase read as its output power
 less its input power.

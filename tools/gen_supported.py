@@ -783,8 +783,8 @@ OVERVIEW: tuple[Overview, ...] = (
         adapter="victron",
         control="Not mapped. ESS mode, grid setpoint and minimum SoC exist locally",
         note="Control is for `victron_gx` and `victron_mqtt` (a Multi or Quattro with ESS); the Modbus integration "
-        "is read only. A charge per phase stops by itself a minute after the last command. The limits are settings "
-        "stored on the GX, written rarely.",
+        "is read only. The Multi's own one-minute fall-back is not counted on until a plant has shown it. The limits "
+        "are settings stored on the GX, written rarely.",
     ),
     Overview(
         "Enphase",

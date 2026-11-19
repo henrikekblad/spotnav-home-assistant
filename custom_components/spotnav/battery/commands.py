@@ -148,14 +148,25 @@ The entity keys, options and services below were checked against each integratio
     **The watchdog:** "These registers must be written once every 60 seconds, or the Multi will go into Passthru"
     (3.2 a; 6.2 and 6.3 repeat it for D-Bus: "the AcPowerSetpoint value has to be written at least once every 60
     seconds"). Passthru is the Multi neither charging nor discharging: its AC output's loads are fed from the grid.
-    So the three setpoints are renewed every `VICTRON_RENEW_S` (each is then written again within about 30 s), and
-    a charge per phase stops by itself within 60 s of the last write (`PhaseControl.silence_fallback_s`): this is
-    the one recipe whose HA-down cap is lifted to the fuse itself (`gate.grid_charge_phase_caps_kw`), the live
-    clamp per phase kept. After such a stop the plant stays in passthru (the ESS mode is a setting) until Home
-    Assistant is back and hands the mode back: it then neither stores the sun nor covers the house. Both flags are
-    written off for the charge (with feed-in allowed the battery covers a load that passes the setpoint, instead of
-    the grid). The setpoints are not stored in flash (the GX's own loop writes them all the time in its modes) and
-    are made for a control loop: `SETPOINT_WRITES_WATCHED` a day.
+    So the three setpoints are renewed every `VICTRON_RENEW_S` (each is then written again within about 30 s). By
+    the page a charge per phase then stops by itself within `VICTRON_SILENCE_S` of the last write, but that is
+    quoted, not seen: a firmware where the rule does not act, or something else on the GX that republishes the
+    setpoints (Node-RED, a script), would leave them standing. So the recipe does **not** state the dead-man
+    (`PhaseControl.silence_fallback_s` `None`): each phase's HA-down cap is reckoned with the house at its learned
+    peak, as Sigenergy's (`gate.grid_charge_phase_caps_kw`), and bounds the whole target that would stand (the load
+    behind the point plus the charge, `executor._phase_room_kw`). **Before it may be stated** a field test on the
+    plant, per Venus OS version (the firmware key), must show: (1) a charge per phase of at least 1 kW on each
+    phase, SpotNav stopped mid-charge (Home Assistant stopped, not a hand-back), the ESS mode still
+    `external_control`; (2) within 70 s of the last write each Multi's AC input power falls to its AC output's load
+    (the battery's power per phase about 0) and stays there for 5 minutes, with the setpoints still reading what was
+    last written; (3) the same with a renewal running for 10 minutes first, the charge not interrupted meanwhile
+    (an unchanged value written again does renew the timer); (4) nothing else on the GX writes
+    `/Hub4/L1..L3/AcPowerSetpoint` (no Node-RED flow, Dynamic ESS off). After such a stop the plant stays in
+    passthru (the ESS mode is a setting) until Home Assistant is back and hands the mode back: it then neither
+    stores the sun nor covers the house. Both flags are written off for the charge (with feed-in allowed the
+    battery covers a load that passes the setpoint, instead of the grid). The setpoints are not stored in flash
+    (the GX's own loop writes them all the time in its modes) and are made for a control loop:
+    `SETPOINT_WRITES_WATCHED` a day.
   * The minimum SoC (`system_ess_min_soc_limit`) is read as the floor (`adapters.VICTRON.reserves`) and never
     written. A plant is taken only in an optimized ESS mode with Dynamic ESS off (`adapters.VICTRON`'s mode rules);
     one found in external control is someone else's.
@@ -336,7 +347,8 @@ class PhaseControl:
     watchdog_renew_s: int | None = None
     #: The plant stops following the targets by itself this long after the last write of them (s): the maker's own
     #: dead-man. `None`: the targets stay until written. Read by the gate (`gate.grid_charge_phase_caps_kw`): only
-    #: with it may a phase's HA-down cap be the fuse itself.
+    #: with it may a phase's HA-down cap be the fuse itself, so it is set only once a field test on a plant has seen
+    #: the fallback act (a maker's page alone is not enough); no recipe sets it yet.
     silence_fallback_s: int | None = None
     #: The three targets exist only on a three-phase plant (an entity per phase the plant has): finding them is
     #: what shows the plant's phases, where the brand has no other reading of them.
@@ -891,7 +903,9 @@ _VIC_MODE = Role("ess_mode", "select", _key("system_ess_mode", "select"))
 _VIC_NO_CHARGE = Role("disable_charge", "switch", _key("vebus_hub4_disable_charge", "switch"), restored=False)
 _VIC_NO_FEED_IN = Role("disable_feed_in", "switch", _key("vebus_hub4_disable_feed_in", "switch"), restored=False)
 _VIC_EXTERNAL: Final = "external_control"  # Hub4Mode 3
-#: The Multi falls back to passthru this long after the last write of a setpoint (s), and how often each is renewed.
+#: The Multi falls back to passthru this long after the last write of a setpoint (s), by Victron's page, and how often
+#: each is renewed. The fallback is not yet seen on a plant, so it is not the recipe's `silence_fallback_s` (see the
+#: module for the field test that must come first).
 VICTRON_SILENCE_S: Final = 60
 VICTRON_RENEW_S: Final = 20
 #: The range of the setpoint entities (kW): `vebus_ac_power_setpoint_{phase}` is -10000 to 10000 W, and the grid
@@ -931,8 +945,8 @@ _VIC_PHASE_TARGETS: Final = _vic_phase_roles(
 #: so a charge is written as the load on its AC output plus the charge. The Multis follow them only in external
 #: control, where SpotNav owns them and both flags; in every other state the GX writes them itself, so they are
 #: neither parked nor handed back, and the one write that stops a charge per phase on all three phases is the ESS
-#: mode back as found. Each setpoint is renewed well inside the Multi's 60 s watchdog; when the writes stop, the
-#: Multi goes to passthru by itself.
+#: mode back as found. Each setpoint is renewed well inside the Multi's 60 s watchdog; that the Multi goes to
+#: passthru by itself when the writes stop is the page's word only, so the HA-down cap is not lifted on it.
 VICTRON_PHASES: Final = PhaseControl(
     targets=_VIC_PHASE_TARGETS,
     charge_sign=1.0,
@@ -944,7 +958,8 @@ VICTRON_PHASES: Final = PhaseControl(
     point=_vic_phase_roles("input", "vebus_inverter_input_power"),
     watchdog_roles=tuple(role.name for role in _VIC_PHASE_TARGETS),
     watchdog_renew_s=VICTRON_RENEW_S,
-    silence_fallback_s=VICTRON_SILENCE_S,
+    # Not stated until a field test shows the fallback (the module): the targets are reckoned as if they stay.
+    silence_fallback_s=None,
     three_phase_by_targets=True,
     limit_kw=VICTRON_SETPOINT_MAX_KW,
     own_states={"ESS mode": frozenset({_VIC_EXTERNAL})},

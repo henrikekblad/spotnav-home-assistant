@@ -106,7 +106,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   so a load that changes is the battery's, never the grid's). The room of a phase is then reckoned exactly
   (`_phase_room_kw`: the headroom less `PHASE_GRID_MARGIN_A` less what the plant puts out on the phase now), since
   it may be the only bound: the HA-down cap of a recipe with its own dead-man is the fuse
-  (`gate.grid_charge_phase_caps_kw`). A phase taking more than its target is judged at the point against the target
+  (`gate.grid_charge_phase_caps_kw`). The HA-down cap bounds the whole target, the load behind plus the charge
+  (`_target_caps`), as that is what stands if Home Assistant stops. A phase taking more than its target is judged at the point against the target
   written; whether the battery takes its charge is judged on the plant's own power (the load behind the point less
   the point's). Without the sensors' readings no charge per phase runs (`phase_load_unknown`).
 * **Targets the plant owns outside the charge** (`PhaseControl.park` false): they are not written in any other
@@ -655,6 +656,20 @@ def _finite3(values: Any) -> bool:
     )
 
 
+def _target_caps(inputs: ExecInputs) -> Phases:
+    """For `grid` targets: the most each phase may charge by its HA-down cap (kW). The target that stands if Home
+    Assistant stops is the load behind the point plus the charge, and the grid's phase is then what is beside the
+    point plus that target, whatever the load behind does meanwhile: so the cap bounds the target, and the charge's
+    share of it is the cap less the load behind (a negative load, a source behind the point, is not counted as
+    room). 0 on every phase without the load behind."""
+    caps = inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+    behind = inputs.phase_behind_kw
+    if not _finite3(behind) or behind is None:
+        return (0.0, 0.0, 0.0)
+    out = [max(cap - max(load, 0.0), 0.0) for cap, load in zip(caps, behind, strict=True)]  # type: ignore[arg-type]
+    return (out[0], out[1], out[2])
+
+
 def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool = False) -> Phases | None:
     """The most each phase may charge now (kW): its HA-down cap (`ExecInputs.phase_caps_kw`, 0 without one) and its
     live room, what the plant already takes on that phase (at most what was commanded on it and what the plant's own
@@ -666,12 +681,15 @@ def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool =
     load behind the point plus a charge `c` puts the phase at its import now, plus what the plant puts out on it
     now (which it then no longer does), plus `c`: the room is the headroom less `PHASE_GRID_MARGIN_A` less the
     plant's own output now (signed: a plant that charges now has that back). No room without the plant's power per
-    phase."""
+    phase. The HA-down cap bounds the whole target, which is what stands if Home Assistant stops
+    (`_target_caps`)."""
     if not _finite3(inputs.phase_headroom_a) or inputs.volts_between_phases <= 0:
         return None
     assert inputs.phase_headroom_a is not None
     volts = inputs.volts_between_phases / math.sqrt(3.0)
-    caps = inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+    caps = _target_caps(inputs) if grid else (
+        inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+    )
     plant = inputs.plant_phase_kw if _finite3(inputs.plant_phase_kw) else None
     room: list[float] = []
     for index in range(3):
@@ -714,7 +732,9 @@ def phase_charge_kw(
     if room is None:
         return None, "headroom_unknown"
     if not live:
-        caps = inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+        caps = _target_caps(inputs) if grid else (
+            inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
+        )
         room = (max(caps[0], 0.0), max(caps[1], 0.0), max(caps[2], 0.0))  # type: ignore[index]
     probe = inputs.phase_probe_kw
     if probe is not None:
@@ -1752,7 +1772,7 @@ class Executor:
             change = any(abs(new - was) > 1e-9 for new, was in zip(phases, old, strict=True))
         else:
             gain = sum(phases) - sum(old)
-            ceiling, _why = phase_charge_kw(inputs, None, live=False)
+            ceiling, _why = phase_charge_kw(inputs, None, live=False, grid=self._grid_kind())
             full = ceiling is not None and all(
                 new >= most - PHASE_STEP_KW - 1e-9 for new, most in zip(phases, ceiling, strict=True)
             )
@@ -1766,8 +1786,10 @@ class Executor:
         if not change and not moved:
             return []
         if not change:
-            # Only the load moved: the charge per phase stays as commanded, its targets move with the load.
-            phases, rate = old, state.rate_kw
+            # Only the load moved: the charge per phase stays as commanded (never above what the phase allows with
+            # the load as it is now), its targets move with the load.
+            phases = (min(old[0], phases[0]), min(old[1], phases[1]), min(old[2], phases[2]))
+            rate = round(sum(max(value, 0.0) for value in phases), 3)
         spec = self.control.phase_control
         names = () if spec is None else spec.names()
         # The falling phases are written first: no phase is raised while another still draws what it must give up.
