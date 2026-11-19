@@ -29,7 +29,23 @@
                path: the control path steered | null, untested: bool,
                enable_entities: {integration, entities: [{entity_id, name}]} | null,
                offset_home: {entity_id, value, home} | null} | null,
-     ahead: [{start, action, target_c, reason, hot_water}]}
+     ahead: [{start, action, target_c, reason, hot_water}],
+     hot_water: {boost: {state, source, started, ends, ends_estimated, stoppable} | null,
+                 peaks: [{ready_by: "HH:MM", kwh, learned}],
+                 planned: [{start, end, kwh, price, reason: "cheap" | "sun", peak: "HH:MM", live, pump_run}],
+                 runs_today: [{start, end, kwh, source: "pump" | "plan" | "button"}],
+                 review: {date, mode, would_cost, actual_cost, saved, moved_kwh, hits, peaks, misses,
+                          per_peak: [{peak, hit, pick, pump_run, miss}]} | null,
+                 gate: {level, days, days_needed, weekdays, peaks, peaks_needed, hits, hit_needed, saved, open,
+                        backed_off},
+                 level: "A" | "B" | null, mode: "shadow" | "live" | "watch"} | null}
+
+`hot_water` is the site's hot water (`heat/dhw_runtime.py`, plan `plans/v3_dhw_plan.md`): the Boost button's state
+(`null` where the pump has no boost that ends by itself), the peaks (`learned` false: the defaults), the boosts
+planned for today's and tomorrow's peaks (`live`: written; else what SpotNav would do; `pump_run` the pump's own
+run the boost would have replaced, once seen), today's measured runs and who started them, the last day's review
+and the gate to live. Money in the minor unit, as `today.cost`. The band's `hot_water_pick` is the first planned
+boost ahead (an alias kept one release), and an hour with a planned boost is marked `hot_water` as a measured run's.
 
 `ahead` is the plan from the running hour on, `AHEAD_HOURS` of them at most (the card's strip under the dial): the
 band's own hours to midnight, then tomorrow's as the same rule plans them once every hour of tomorrow has its price
@@ -68,7 +84,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 
 from .. import time_zones
@@ -85,7 +101,7 @@ HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
     "zones", "pump", "meter", "today", "status", "band", "indoor_day", "notes", "choices", "relay", "review", "control",
-    "ahead",
+    "ahead", "hot_water",
 )
 AHEAD_HOUR_KEYS: Final = ("start", "action", "target_c", "reason", "hot_water")
 #: The hours the card's "now" strip shows from the running one on.
@@ -200,6 +216,8 @@ class HeatViewInputs:
     indoor_day: Mapping[str, Any] | None = None
     #: Whether the house is too warm now (the heat shadow's `RoomWarm`): the band lowers the running hours for it.
     room_warm: bool = False
+    #: The site's hot water (`heat/dhw_runtime.HotWater.view`), `None` without the heat shadow.
+    hot_water: Mapping[str, Any] | None = None
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -331,11 +349,15 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
     split = None if meter is None else meter.split
     runs = () if split is None else split.runs
     run_hours = {run.start.replace(minute=0) for run in runs}
+    # The planned boosts (`hot_water.planned`): the first ahead is the band's `hot_water_pick` (kept one release as
+    # the alias it was), each marks its hour.
     hot_water_pick: datetime | None = None
-    if config.hot_water_entity is not None:
-        ahead = [hour for hour in band_hours if hour.start >= current and hour.price is not None]
-        if ahead:
-            hot_water_pick = min(ahead, key=lambda hour: (hour.price, hour.start)).start
+    planned_hours: set[datetime] = set()
+    for item in (inputs.hot_water or {}).get("planned") or ():
+        start = datetime.fromisoformat(item["start"])
+        planned_hours.add(start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0))
+        if hot_water_pick is None and start >= current:
+            hot_water_pick = start
 
     band_block = {
         "date": now.astimezone(zone_info).date().isoformat(),
@@ -343,7 +365,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
             {
                 **hour.as_dict(),
                 "past": hour.start < current,
-                "hot_water": hour.start in run_hours or hour.start == hot_water_pick,
+                "hot_water": hour.start in run_hours or hour.start in planned_hours,
                 "car": hour.start in inputs.car_hours,
                 "relay_min": None if relay is None else relay.minutes.get(hour.start, (0, False))[0],
                 "relay_expected": relay is not None and relay.minutes.get(hour.start, (0, False))[1],
@@ -356,7 +378,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
     }
 
     ahead = [
-        {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": hour.start in run_hours or hour.start == hot_water_pick}
+        {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": hour.start in run_hours or hour.start in planned_hours}
         for hour in band_hours
         if hour.start >= current
     ][:AHEAD_HOURS]
@@ -374,7 +396,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
                 outdoor_by_hour=inputs.outdoor_by_hour,
             )
             ahead += [
-                {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": False}
+                {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": hour.start in planned_hours}
                 for hour in following[: AHEAD_HOURS - len(ahead)]
             ]
 
@@ -499,5 +521,6 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         "review": None if inputs.review is None else dict(inputs.review),
         "control": None if inputs.control is None else dict(inputs.control),
         "ahead": ahead,
+        "hot_water": None if inputs.hot_water is None else dict(inputs.hot_water),
     }
 

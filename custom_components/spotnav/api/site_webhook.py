@@ -22,6 +22,8 @@ Writes, the everyday choices only (the owner's decision of 2026-11-18, `plans/ap
   `away_until`), the cooler night (`night`), each stored zone's offset (`zones`, the same entities in the same
   order) and each stored indoor sensor's offset (`indoor_offsets`), judged by the command's own rules (`heat/config.py`) under its compare-and-set.
 * `battery_control` with `changes`: `battery_mode` only (`self_consumption`, `balanced`, `max_profit`).
+* `heat_boost` (`spotnav/heat_boost`): the Boost button, `boost_action` "start" or "stop" (`action` routes the
+  body); HTTP 200, 400 for an unknown `boost_action`, 429 for `spotnav_rate_limited`, 409 for the other refusals.
 
 The control opt-ins stay with a signed-in administrator in Home Assistant: `control_enabled` ("Styr värmen") and
 the control path, the sensors and which entities are zones, `battery_control_enabled` ("Styr batteriet") and the other battery options are
@@ -59,7 +61,15 @@ from .common import (
     ERROR_UNSUPPORTED_VERSION,
     site_of_charger,
 )
-from .heat import ERROR_CONFLICT, HeatWriteRefusal, heat_answer, write_envelope, write_heat
+from .heat import (
+    ERROR_CONFLICT,
+    ERROR_INVALID_VALUE,
+    HeatWriteRefusal,
+    heat_answer,
+    heat_boost_answer,
+    write_envelope,
+    write_heat,
+)
 from .house import async_house_answer
 from .house_loads import async_loads_answer
 from .house_now import async_house_now
@@ -160,6 +170,20 @@ async def _update_heat(hass: HomeAssistant, entry: ConfigEntry, payload: dict[st
     return web.json_response({**write_envelope(site), "action": action})
 
 
+async def _heat_boost(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+    """`heat_boost`: the Boost button, as `spotnav/heat_boost` (a household control, like the dial)."""
+    action = "heat_boost"
+    if not _speaks(payload, HEAT_API_VERSION):
+        return _refused(action, ERROR_UNSUPPORTED_VERSION)
+    try:
+        site = _site_of_charger(hass, entry)
+    except PowerMonthRefusal as refusal:
+        return _refused(action, refusal.code)
+    answer = await heat_boost_answer(hass, site, payload.get("boost_action"))
+    status = 200 if answer["ok"] else {ERROR_INVALID_VALUE: 400, "spotnav_rate_limited": 429}.get(answer["error"], 409)
+    return web.json_response({**answer, "action": action}, status=status)
+
+
 async def _battery_control(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
     """`battery_control`: the status, after writing the battery mode when `changes` names it."""
     action = "battery_control"
@@ -183,4 +207,5 @@ SITE_ACTIONS: Final[dict[str, _Handler]] = {
     "get_site_settings_view": _site_settings_view,
     "battery_control": _battery_control,
     "update_heat": _update_heat,
+    "heat_boost": _heat_boost,
 }

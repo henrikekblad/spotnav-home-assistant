@@ -480,6 +480,39 @@
     "untested": false,
     "until": null
   },
+  "hot_water": {
+    "boost": null,
+    "gate": {
+      "backed_off": null,
+      "days": 0,
+      "days_needed": 7,
+      "hit_needed": 0.7,
+      "hits": 0,
+      "level": "B",
+      "open": false,
+      "peaks": 0,
+      "peaks_needed": 10,
+      "saved": 0,
+      "weekdays": 0
+    },
+    "level": null,
+    "mode": "shadow",
+    "peaks": [
+      {
+        "kwh": 1.0,
+        "learned": false,
+        "ready_by": "05:00"
+      },
+      {
+        "kwh": 1.0,
+        "learned": false,
+        "ready_by": "17:00"
+      }
+    ],
+    "planned": [],
+    "review": null,
+    "runs_today": []
+  },
   "indoor": {
     "coldest": "sensor.ovanvaning",
     "coldest_name": "ovanvaning",

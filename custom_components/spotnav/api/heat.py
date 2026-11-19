@@ -37,6 +37,19 @@ passes), `spotnav_not_admin` (a caller who is not an administrator named anythin
 `away_until`: the dial and home/away are a thermostat's own controls, the rest is configuration). An unknown site,
 charger or version is a WebSocket error as `spotnav/get_house` answers it.
 
+`spotnav/heat_boost` (API v1): the Boost button, any user who can see the card (a household control like the dial):
+
+    {type: "spotnav/heat_boost", api_version: 1, site_id | charger_id, action: "start" | "stop"}
+    -> {api_version, ok, error, boost}
+
+`boost` is `get_heat`'s `hot_water.boost` after the press (`null`: the pump has no boost that ends by itself). A
+start goes out through the pump's own boost or the settings' hot-water input (`heat/dhw_runtime.HotWater.async_press`)
+and is read back in the background (`boost.state` "starting" until then). Refusals (`error`): `spotnav_not_supported`
+(no boost route, or a stop with no way to end it early), `spotnav_busy` (a start is pending), `spotnav_rate_limited`
+(one start per ten minutes per site), `spotnav_write_failed` (the write was not taken), `spotnav_not_own` (a stop of a
+run that is not the household's: SpotNav's planned boost or the pump's own run). The webhook's `heat_boost` is the
+same body without `type`.
+
 The settings live in the site entry's data under `CONF_HEAT`, written once and without a reload (nothing in load
 balancing reads them; the heat view reads them on each read). `heat_meter_entity` is the same setting the house
 card's site settings write (`CONF_HEAT_METER_ENTITY`, a power or energy sensor, `null` or `""` clears it); the
@@ -809,6 +822,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
     area = None if source is None else source.area
     shadow = getattr(controller, "heat_shadow", None)
     relay, tight, outdoor_by_hour, kept, review, room_warm = None, frozenset(), {}, {}, None, False
+    hot_water: dict[str, Any] | None = None
     automations: tuple[Any, ...] = ()
     control_status, executed, raised = None, {}, None
     control = getattr(controller, "heat_control", None)
@@ -830,6 +844,10 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             room_warm = shadow.room_warm.active
         except Exception:  # noqa: BLE001 - the heat shadow is extra: the card shows the rest
             _LOGGER.debug("SpotNav heat: the heat shadow could not be read", exc_info=True)
+        try:
+            hot_water = shadow.hot_water.view(now, config)
+        except Exception:  # noqa: BLE001 - the hot water is extra: the card shows the rest
+            _LOGGER.debug("SpotNav heat: the hot water could not be read", exc_info=True)
     answer = heat_view(
         HeatViewInputs(
             site_id=site.entry_id,
@@ -860,6 +878,7 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             raised=raised,
             indoor_day=curve,
             room_warm=room_warm,
+            hot_water=hot_water,
         )
     )
     return answer
@@ -889,8 +908,50 @@ async def websocket_get_heat(hass: HomeAssistant, connection: websocket_api.Acti
     connection.send_result(msg["id"], answer)
 
 
+BOOST_ACTIONS: Final = ("start", "stop")
+
+
+async def heat_boost_answer(hass: HomeAssistant, site: ConfigEntry, action: Any) -> dict[str, Any]:
+    """The Boost button's envelope (see the module)."""
+    controller = site_controller_for(hass, site.entry_id)
+    shadow = getattr(controller, "heat_shadow", None)
+    if action not in BOOST_ACTIONS:
+        return {"api_version": HEAT_API_VERSION, "ok": False, "error": ERROR_INVALID_VALUE, "boost": None}
+    if shadow is None:
+        return {"api_version": HEAT_API_VERSION, "ok": False, "error": "spotnav_not_supported", "boost": None}
+    error, boost = await shadow.hot_water.async_press(action)
+    if error is None:
+        _LOGGER.info("SpotNav hot water: the Boost button's %s", action)
+    return {"api_version": HEAT_API_VERSION, "ok": error is None, "error": error, "boost": boost}
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "spotnav/heat_boost",
+        vol.Optional("api_version"): object,
+        vol.Optional("charger_id"): object,
+        vol.Optional("site_id"): object,
+        vol.Optional("action"): object,
+    }
+)
+@websocket_api.async_response
+async def websocket_heat_boost(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """The Boost button (see the module)."""
+    version = msg.get("api_version")
+    if type(version) is not int or version != HEAT_API_VERSION:
+        send_unsupported_version(connection, msg, HEAT_API_VERSION)
+        return
+    try:
+        site = _site_of_request(hass, msg)
+    except PowerMonthRefusal as refusal:
+        connection.send_error(msg["id"], refusal.code, refusal.message)
+        return
+    connection.send_result(msg["id"], await heat_boost_answer(hass, site, msg.get("action")))
+
+
 @callback
 def async_setup_heat_api(hass: HomeAssistant) -> None:
     """Register the heat card's commands once for the domain."""
     websocket_api.async_register_command(hass, websocket_update_heat)
     websocket_api.async_register_command(hass, websocket_get_heat)
+    websocket_api.async_register_command(hass, websocket_heat_boost)

@@ -300,6 +300,8 @@ class HeatControl:
         self.decision: Decision | None = None
         #: The safety reason at the last look (`relay_control.SAFETY_*`).
         self.safety: str | None = None
+        #: Whose hot-water boost ran at the last look on a blocking path (`_boost_source`), `None` for none.
+        self.boost_source: str | None = None
         self.automation: SteeringAutomation | None = None
         self.log: deque[dict[str, Any]] = deque(maxlen=LOG_SIZE)
         self._was_enabled: bool | None = None
@@ -1130,9 +1132,15 @@ class HeatControl:
             return SAFETY_STALE
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
-        if paths.blocks_hot_water(config) and self._boost_on(config):
-            # A block may stop hot water too: a boost someone started is never cut off, and no block starts on it.
-            return SAFETY_HOT_WATER
+        if paths.blocks_hot_water(config):
+            self.boost_source = self._boost_source(config)
+            if self.boost_source is not None:
+                # A block may stop hot water too: a boost is never cut off (the household's, the Boost button's or
+                # SpotNav's own planned one), and no block starts on it.
+                return SAFETY_HOT_WATER
+            if not self.held and self.shadow.hot_water.making_now():
+                # The pump makes hot water by itself: no block starts during its run (review S5).
+                return SAFETY_HOT_WATER
         b = raise_entity(config)
         if b is not None:
             # B closed by SpotNav's own raise is no safety reason: the interlock opens it before A closes.
@@ -1144,9 +1152,14 @@ class HeatControl:
         return None
 
     def _boost_on(self, config: HeatConfig) -> bool:
-        """Whether a hot-water boost runs: the settings' hot-water entity, or the pump's own boost (its adapter's
-        `hot_water_boost` entities), reads on (`paths.boost_on`)."""
+        return self._boost_source(config) is not None
+
+    def _boost_source(self, config: HeatConfig) -> str | None:
+        """Whose hot-water boost runs, `None` when none does: the settings' hot-water entity or the pump's own boost
+        (its adapter's `hot_water_boost` entities) reading on (`paths.boost_on`). `plan` when SpotNav's planned boost
+        started it (`heat/dhw_ledger.py`), else `user`: the household's own or the Boost button's."""
         from .detect import read_heat_pumps  # noqa: PLC0415 - read only when it matters
+        from .dhw_ledger import SOURCE_PLAN  # noqa: PLC0415
 
         entities = [config.hot_water_entity] if config.hot_water_entity else []
         for pump in read_heat_pumps(self.hass):
@@ -1154,8 +1167,9 @@ class HeatControl:
         for entity_id in entities:
             state = self.hass.states.get(entity_id)
             if state is not None and paths.boost_on(entity_id, state.state):
-                return True
-        return False
+                own = self.shadow.hot_water.ledger.source_of_on(entity_id, state.last_changed)
+                return SOURCE_PLAN if own == SOURCE_PLAN else "user"
+        return None
 
     async def async_sample(self, now: datetime) -> Sample:
         """The check's readings now: the meter's power and what the pump does by it, the calculated supply."""
@@ -2019,6 +2033,7 @@ class HeatControl:
             "pending": None if self.pending is None else {"closed": self.pending.closed, "at": self.pending.at.isoformat()},
             "writes": self._write_classes(),
             "levels": None if self._levels is None else {"running_kw": self._levels.running_kw, "baseline_kw": self._levels.baseline_kw},
+            "boost_source": self.boost_source,
             "raise": {
                 "entity": self.raise_entity,
                 "reason": None if self.raise_decision is None else self.raise_decision.reason,
