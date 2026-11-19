@@ -160,10 +160,12 @@ def site_settings_view(
     writable: bool,
     forecast_domains: frozenset[str] = frozenset(),
     active_control_writable: bool | None = None,
+    price_writable: bool | None = None,
 ) -> dict[str, Any]:
     """The whole answer; `forecast_domains` (`async_forecast_capable_domains`, read first) lists the solar forecast
     sources the `site` block offers. `active_control_writable` (default: as `writable`): `False` for the charger
-    webhook, whose secret never switches load balancing (`site.active_control.writable`)."""
+    webhook, whose secret never switches load balancing (`site.active_control.writable`). `price_writable` (default:
+    as `writable`): `False` for the site webhook, where the price and grid tariff are read-only (`can_act`)."""
     return {
         "api_version": SITE_VIEW_API_VERSION,
         "site_id": site.entry_id,
@@ -173,7 +175,9 @@ def site_settings_view(
         "price": _price_block(hass, site),
         "battery": {"found": battery_found(hass, site)},
         "setup": serialize_setup(capture_site_setup(hass, site)),
-        "price_settings": price_settings_block(hass, site, writable=writable),
+        "price_settings": price_settings_block(
+            hass, site, writable=writable if price_writable is None else price_writable
+        ),
         "site": capture_site_block(
             hass,
             site,
