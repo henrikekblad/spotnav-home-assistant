@@ -67,12 +67,58 @@ administrators can confirm, and never over the webhook. The entities per brand:
   control mode and AC charge policy.
 * Huawei: forcible charge/discharge write, maximum charging and discharging power.
 * SolaX: remote control autorepeat duration, active power, power control and trigger.
+* Solinteg (the Solinteg plugin of SolaX Modbus): Working Mode and EMS BattCtrl Charge Discharge Power Target, and for
+  the per-phase control EMS ACCtrl AC Power Scheduling Mode, Grid Unbalanced Output (read by SpotNav) and the EMS
+  ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
 
-**Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
+**Read only: Sofar and Growatt.** SpotNav reads these two through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see
 [The battery plan](battery-plan.md#what-the-plan-needs)), so the site can tell the car's draw from the battery's and the
-battery plan can run in shadow. It has no control for them and writes nothing to them. All three are read from the
+battery plan can run in shadow. It has no control for them and writes nothing to them. Both are read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+
+**Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
+commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
+the plugin's source and from owners' notes. Nobody has run them on an inverter yet; the first to do so is a pilot.
+What it does:
+
+* **Hold:** Working Mode *EMS BattCtrl* with the battery's power target at 0. The battery stands idle and stores no
+  sun meanwhile (a surplus is exported).
+* **Charge from the grid:** *EMS BattCtrl* with the target at minus the power (negative charges). The mode is
+  written first and the target after it: owners found that values written before the mode switch read back but do
+  not act.
+* **Cover the house:** the inverter's own *General* mode. There is no EMS mode that covers the house and stores
+  nothing, so the battery also stores a sun surplus then.
+* **Hand back:** Working Mode to *General* (one write releases the battery), then the target to 0. SpotNav takes the
+  inverter only in *General*, so that is the mode it was found in.
+
+What to know before you turn it on:
+
+* **The inverter keeps the last command.** No timeout is known: if Home Assistant stops during a grid charge, the
+  charge goes on until something writes the inverter again. So a grid charge is always capped as described under
+  "The grid charge cap and the house's peaks" below, and because nothing says how the inverter spreads such a charge
+  over its phases, the cap counts **all of it on one phase**: a third of what a plant known to balance gets. On a
+  small main fuse that can leave no grid charge at all until the house's peaks are learned.
+* **The inverter's own limits are not counted on.** The site import limit (Import Limit, peak shaving) may or may
+  not act under EMS control, and the Solinteg cloud has been seen to write limits back. SpotNav neither writes them
+  nor relies on them. The EMS BattCtrl Max Grid Import/Export numbers are left as you have them: if one of them
+  stops a charge, the check fails on that step and says so.
+* **Nothing left behind.** SpotNav starts nothing while the power target reads anything but 0: it would run for some
+  seconds when the mode is switched. Set it to 0 and control goes on.
+* **One Modbus client.** The dongle answers one client only: do not run another Modbus tool beside the integration.
+  It also stops answering for 4 to 8 seconds about once a minute while it uploads to the cloud. Set the
+  integration's timeout to 10 to 12 seconds, so that a write made in such a pause waits instead of failing; a write
+  the integration reports as failed stops control until you turn it on again. SpotNav waits up to three minutes
+  for a written value to show (one minute on other brands); a hand-back to *General* waits one minute and is then
+  written again.
+* **The cloud and the app.** If the Solinteg app, the cloud or another controller (Samvolt, CheckWatt, Enequi)
+  changes the Working Mode while SpotNav runs it, SpotNav hands back and stops; it never writes over them.
+* **Writes a day:** 500 to the power targets, 96 to the modes. Nobody states whether the inverter keeps the targets
+  in flash.
+* **Restore by hand:** set Working Mode to *General* and the EMS BattCtrl Charge Discharge Power Target (and the
+  three phase numbers) to 0.
+
+Please [tell us](supported.md) what the check says on yours.
 
 **Switching on starts a check, not control.** SpotNav first checks that the battery obeys, each step through the
 same write path control uses: hold (the battery stops discharging), charge 2 kW from the grid, cover the house, and
@@ -111,7 +157,9 @@ also stores a sun surplus, as it does normally). Other protocol changes worth kn
 (Remote EMS dispatch enable, not used by SpotNav) and V2.9 added V2G (0x08) to the Remote EMS control modes.
 
 **The check decides what SpotNav may do.** Hold and the hand-back must pass for any control; grid charging only if the
-charge step passed, covering the house only if that step passed. A failed step leaves control off, with one line
+charge step passed, covering the house only if that step passed. Selling from the battery needs the house step;
+on a battery whose one power target both charges and discharges by its sign (SolaX, Solinteg) it needs the charge
+step too, since only that step shows which sign charges. A failed step leaves control off, with one line
 saying what did not work (for example "the battery did not stop discharging when held"); turning the switch off and
 on again runs the check again. The result is kept per firmware and integration version: after a firmware update
 (or a new version of the integration) SpotNav hands the battery back and checks again at the next suitable evening.
@@ -138,7 +186,9 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
 
 The cap answers one question: how much may the battery draw from the grid so that no phase passes the main fuse if
 Home Assistant stops and the command stays? It is the fuse, less a margin, less what the chargers may draw, less the
-house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn.
+house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn. While
+Home Assistant runs, the charge is also kept under the phase with the least room now, counted the same way: on a
+plant not known to balance its charge, all of it on that one phase.
 
 * **The first week: a cautious rule.** With fewer than seven days learned, the house is taken to draw the house
   forecast's high figure for the hour, at least 4 kW, all of it on one phase (17 A). On a 20 A fuse that leaves no
@@ -265,6 +315,14 @@ shows it: "Nätladdning per fas: L1 1,01 kW · L2 0 kW · L3 0,13 kW".
 
 Handing back writes the three targets to 0, then the control mode to Maximum Self Consumption, then Remote EMS off,
 each read back.
+
+**Solinteg** has the same kind of targets: in Working Mode *EMS ACCtrl* with *EMS ACCtrl AC Power Scheduling Mode*
+at "Power Setting on each Phase" the inverter follows *EMS ACCtrl Phase A/B/C Power Scheduling* (the inverter's AC
+power on that phase, negative taking from the grid), with *Grid Unbalanced Output* on, which SpotNav reads and never
+changes. SpotNav has the commands (the targets, then the scheduling mode, then the working mode; back: *General*
+first, then the targets to 0), but **it cannot use them yet**: the check and the watch per phase need the inverter's
+own power per phase, and the integration reads only its current per phase without a direction. Until it does, a
+Solinteg grid charge is the balanced one under its cap.
 
 **Sigen AI mode.** SpotNav can take the plant over from AI mode only after you have read this: *SpotNav takes over
 the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the

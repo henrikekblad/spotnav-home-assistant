@@ -485,6 +485,18 @@ def test_a_yield_step_is_counted_from_the_battery_s_measured_charge_not_its_last
                                      car_held=True, car_first=True), 4.0) == pytest.approx(1.0)
 
 
+def test_the_live_clamp_counts_the_least_headroom_on_the_phases_the_plant_spreads_the_charge_over() -> None:
+    """A charge not known to be balanced may all land on the tightest phase: a third of the three-phase figure."""
+    _executor, battery = _sigenergy()
+    look = inputs(battery, T0, "grid_charge", 10.0, headroom_a=10.0 + HEADROOM_MARGIN_A, grid_import_kw=0.0)
+    balanced = grid_charge_cap_kw(look, 10.0)
+    assert balanced == pytest.approx(10.0 * 3 ** 0.5 * 400.0 / 1000), "the default: three phases"
+    assert grid_charge_cap_kw(replace(look, charge_phases=3), 10.0) == pytest.approx(balanced)
+    one = grid_charge_cap_kw(replace(look, charge_phases=1), 10.0)
+    assert one == pytest.approx(balanced / 3)
+    assert one * 1000 / (400.0 / 3 ** 0.5) == pytest.approx(10.0), "the whole room of one phase, no more"
+
+
 def test_a_grid_charge_that_the_headroom_cannot_carry_is_not_started_or_is_handed_back() -> None:
     executor, battery = _sigenergy()
     _now, results = run(executor, battery, T0, 2, "grid_charge", 4.0, headroom_a=2.5)

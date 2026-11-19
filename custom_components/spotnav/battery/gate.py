@@ -31,7 +31,8 @@ fail; anything else (`not_judgeable:*`, an abort for the moment's circumstances:
 is pending and tried again at a later suitable moment (`modes_to_run`, `suitable`), at most `MAX_ATTEMPTS` runs.
 **The report decides which actions are allowed** (`allowed_actions`): hold and normal must pass for any control; a
 grid charge only if `charge` passed, a discharge for the house only if `discharge_house` passed, a discharge to the
-grid only in the Max profit mode on top of that. The export limit needs no routine of its own: it starts
+grid only in the Max profit mode on top of that (and `charge` passed too where the discharge writes a signed
+power target: the house step, the plant's own mode, says nothing about its sign). The export limit needs no routine of its own: it starts
 on its live check (the executor's monitor hands it back and blocks it when the export does not stop).
 
 The fast shedding order on the fuse (`battery_yields`): heat loads first (when the site has them, later), then the
@@ -302,8 +303,12 @@ def needs_run(report: Mapping[str, Any] | None) -> bool:
     return bool(modes_to_run(report)) or mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
 
 
-def allowed_actions(report: Mapping[str, Any] | None, options: Options) -> frozenset[str]:
-    """The plan actions control may run on this plant (see the module); empty until hold and normal passed."""
+def allowed_actions(
+    report: Mapping[str, Any] | None, options: Options, *, export_needs_charge: bool = False
+) -> frozenset[str]:
+    """The plan actions control may run on this plant (see the module); empty until hold and normal passed.
+    `export_needs_charge`: the discharge to the grid writes a signed target whose sign only the charge step showed
+    (`commands.BrandControl.export_signed_by_charge`), so it needs `charge` passed as well."""
     if report_status(report) != "passed":
         return frozenset()
     modes = _modes(report)
@@ -313,7 +318,7 @@ def allowed_actions(report: Mapping[str, Any] | None, options: Options) -> froze
         allowed.add(ACTION_GRID_CHARGE)
     if "discharge_house" in passed:
         allowed.add(ACTION_DISCHARGE_HOUSE)
-        if options.allow_sell:
+        if options.allow_sell and (not export_needs_charge or "charge" in passed):
             allowed.add(ACTION_EXPORT_DISCHARGE)
     return frozenset(allowed)
 

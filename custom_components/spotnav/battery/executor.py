@@ -10,7 +10,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Edge-triggered.** It writes only when the wanted state changes (a new action, a new rate past the hysteresis,
   a brand's watchdog to renew) and only the roles whose reading differs from it, one at a time in the brand's order
   (`commands.py`). Each write goes through the confirmed-write ledger (`ledger.py`): it counts only when the entity
-  reads it back within `READBACK_DEADLINE_S`; the next role is written only after that. A write that does not read
+  reads it back within `READBACK_DEADLINE_S` (a brand whose link stalls names a longer wait for the writes that
+  start or change a command, `BrandControl.readback_s`; a restore and a peak cover keep the 60 s, so a dropped one
+  is sent again soon, and a hand-back for the fuse never waits for a read-back either way); the next role is
+  written only after that. A write that does not read
   back (a read-only integration drops it silently, an entity went away) hands the battery back and blocks the
   control until it is reset: SpotNav never repeats a write the device did not take.
 * **The monitor judges the effect** (`monitor.py`): after its grace, three readings that show no effect hand the
@@ -102,7 +105,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   mode, a switch: 96 a day, `ExecState.writes_today`, shared with the export limit's instance) or a `setpoint` made
   for continuous control (the targets per phase: the brand's own figure, `ExecState.setpoint_writes_today`).
   Reaching the setpoints' cap is the runaway guard: a charge per phase is handed back (`setpoint_write_cap`, not
-  blocked) and none starts again that day, while every other action still runs. A grid charge of either kind also
+  blocked) and none starts again that day, while every other action still runs. The same holds for an action whose
+  own rate is a setpoint (`_rate_is_setpoint`: a battery power target), so a rate that must fall is never left
+  unwritten. A grid charge of either kind also
   leaves `CHARGE_WRITE_RESERVE` of the day's setting writes untouched (`charge_write_budget`), so a hold can still
   start after a day of charges that kept starting. Restores, the peak cover and watchdog renewals are never
   counted or held back.
@@ -149,7 +154,7 @@ from .commands import (
 )
 from .facts import BatteryFacts, EntityFact, find_entity
 from .gate import phase_split_kw
-from .ledger import Ledger, same
+from .ledger import READBACK_DEADLINE_S, Ledger, same
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
     CONFIRM_READINGS,
@@ -294,6 +299,9 @@ class ExecInputs:
     measurement_ok: bool = True
     #: The least headroom on any phase now (A), `None` when unknown.
     headroom_a: float | None = None
+    #: The phases the plant spreads a balanced grid charge over (`BrandControl.grid_charge_phases`, or the plant's
+    #: Output Type): the live clamp counts the least headroom on that many phases, as the HA-down cap does.
+    charge_phases: int = 3
     volts_between_phases: float = 400.0
     #: The site's grid import now (kW, + import), `None` when unknown.
     grid_import_kw: float | None = None
@@ -581,7 +589,8 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
 
     What the battery already takes from the grid is counted back (it is in the measured import): at most its own
     charge, the rate commanded and the site's import, and nothing when the import is unknown, so the figure is never
-    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse. With "car first" and a car held, the
+    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse, on as many phases as the plant spreads
+    the charge over (`ExecInputs.charge_phases`: a charge not known to be balanced may land on the tightest one). With "car first" and a car held, the
     battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
     it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
@@ -591,7 +600,8 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
     if inputs.grid_import_kw is not None and battery is not None:
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
         measured = max(min(battery, inputs.grid_import_kw), 0.0)
-    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases)
+    phases = min(max(inputs.charge_phases, 1), 3)
+    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
     if inputs.car_first and inputs.car_held:
         cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap
@@ -1204,14 +1214,26 @@ class Executor:
     def _setpoints_spent(self) -> bool:
         return self.state.setpoint_writes_today >= self.control.write_cap("setpoint")
 
+    def _rate_is_setpoint(self, action: str | None) -> bool:
+        """Whether the brand's own command for the action carries its rate in a setpoint (a battery power target)."""
+        build = self.control.states.get(action or "")
+        return build is not None and any(
+            want.value != 0.0 and self.control.role(want.role).write_class == "setpoint"
+            for want in build(1.0, self.watchdog_s)
+        )
+
     def _charge_budget(self, inputs: ExecInputs) -> str | None:
-        """Why a grid charge may not run (on) for the day's writes: a charge per phase once the setpoints' cap is
-        reached (the runaway guard), and either kind once only `CHARGE_WRITE_RESERVE` of the settings' writes are
-        left (a hold must still be able to start)."""
-        if inputs.action != ACTION_GRID_CHARGE or self._export:
+        """Why an action may not run (on) for the day's writes: a charge per phase, or an action whose rate is a
+        setpoint, once the setpoints' cap is reached (the runaway guard), and a grid charge of either kind once only
+        `CHARGE_WRITE_RESERVE` of the settings' writes are left (a hold must still be able to start)."""
+        if self._export:
             return None
-        if self._per_phase(inputs) and inputs.phase_probe_kw is None and self._setpoints_spent():
+        if inputs.phase_probe_kw is None and self._setpoints_spent() and (
+            self._per_phase(inputs) or self._rate_is_setpoint(inputs.action)
+        ):
             return "setpoint_write_cap"
+        if inputs.action != ACTION_GRID_CHARGE:
+            return None
         if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP - CHARGE_WRITE_RESERVE:
             return "charge_write_budget"
         return None
@@ -1749,7 +1771,10 @@ class Executor:
                                  setpoint_writes_today=setpoints)
         else:
             if entity_id is not None:
-                self.ledger.intend(entity_id, value, inputs.now, step=None if read is None else (read.step or role.step))
+                self.ledger.intend(
+                    entity_id, value, inputs.now, step=None if read is None else (read.step or role.step),
+                    deadline_s=self._readback_s(state, name),
+                )
             if self._fuse_hand_back():
                 self.state = replace(state, in_flight=(*state.in_flight, name), sent=sent, renew=renew,
                                      writes_today=writes, written=written, setpoint_writes_today=setpoints)
@@ -1757,6 +1782,15 @@ class Executor:
                 self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written,
                                      setpoint_writes_today=setpoints)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    def _readback_s(self, state: ExecState, name: str) -> float:
+        """How long this write may take to read back: the brand's longer wait (`BrandControl.readback_s`) only for a
+        write that starts or changes a command. A restore and a peak cover keep the ledger's own, so one the link
+        dropped is sent again soon (both are idempotent, and the house stands on the grid without the battery
+        meanwhile)."""
+        if self.control.readback_s is None or state.phase == "restoring" or self._covering(state, name):
+            return READBACK_DEADLINE_S
+        return self.control.readback_s
 
     def _fuse_hand_back(self) -> bool:
         """A hand-back for the fuse: its roles are written at once, each read back afterwards."""

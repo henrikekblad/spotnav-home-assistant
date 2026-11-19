@@ -61,6 +61,18 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("select", "remotecontrol_power_control"),
         ("button", "remotecontrol_trigger"),
     ),
+    # The Solinteg plugin of `solax_modbus` (enabled by default but for the three phase numbers).
+    "solinteg": (
+        ("select", "working_mode"),
+        ("number", "battery_charge_discharge_power_target"),
+        # The per-phase control: the AC power scheduling mode, Grid Unbalanced Output (read, never written) and each
+        # phase's AC power.
+        ("select", "ems_acctrl_mode"),
+        ("select", "grid_unbalanced_output"),
+        ("number", "ems_acctrl_phase_a_power"),
+        ("number", "ems_acctrl_phase_b_power"),
+        ("number", "ems_acctrl_phase_c_power"),
+    ),
 }
 
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).
