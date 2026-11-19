@@ -52,7 +52,7 @@ import {
   type EntityField,
 } from "./entity-config";
 import { entityEditorBody, modeLabel } from "./entity-editor";
-import { formatNumber, type FormatContext } from "./format";
+import { formatFixed, formatNumber, type FormatContext } from "./format";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { heatEditor, writeHeat, type HeatWriteOptions } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
@@ -86,6 +86,7 @@ import {
   decodeSiteView,
   reportOutcomes,
   type BatteryStatus,
+  type PlanCosts,
   type SitePriceSettings,
   type SiteView,
 } from "./site-model";
@@ -107,6 +108,9 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
 
 /** Where the popover opens: a section, or `house` for the top of the page (the house card's gear). */
+/** The docs page that explains the wear and the margin. */
+export const PLAN_DOCS_URL = "https://github.com/henrikekblad/spotnav-home-assistant/blob/main/docs/battery-plan.md#the-wear-cost";
+
 export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "support";
 
 /**
@@ -238,6 +242,28 @@ export function batteryLine(language: Language, line: string): string {
     return translate(language, first === "daily_write_cap" ? "battery.line.blockedWrites" : "battery.line.blocked");
   }
   return line;
+}
+
+/** A per-kWh figure of the plan in the area's money: the minor unit below one major unit ("15 öre"), the major one
+ * from there, whole when it is or from 10 up ("1 kr", "12 kr"), else two decimals ("1,40 kr"). */
+export function planMoney(language: Language, minor: number, costs: PlanCosts): string {
+  if (Math.abs(minor) < 100 && minor !== 0) {
+    return `${formatFixed(language, minor, Number.isInteger(minor) ? 0 : 1)} ${costs.minor_unit}`;
+  }
+  const major = minor / 100;
+  return `${formatFixed(language, major, Number.isInteger(major) || Math.abs(major) >= 10 ? 0 : 2)} ${costs.major_unit}`;
+}
+
+/** The muted line under the battery's mode: the wear the plan counts and Balanced's selling margin; `null` from a
+ * Home Assistant without them or a site with no price area. Fixed figures, not settings. */
+export function planCostsLine(language: Language, status: BatteryStatus): string | null {
+  const costs = status.plan_costs;
+  return costs === null
+    ? null
+    : translate(language, "battery.planCosts", {
+        wear: `${planMoney(language, costs.wear_minor_per_kwh, costs)}/kWh`,
+        margin: `${planMoney(language, costs.balanced_margin_minor_per_kwh, costs)}/kWh`,
+      });
 }
 
 /** One `status.needs` code in words. */
@@ -725,6 +751,18 @@ export class SiteSections {
           : {}),
       }),
     );
+    const planLine = planCostsLine(language, status);
+    if (planLine !== null) {
+      const costs = element(doc, "p", C.settingRowHelp, `${planLine} `);
+      costs.dataset["planCosts"] = "true";
+      const more = doc.createElement("a");
+      more.href = PLAN_DOCS_URL;
+      more.target = "_blank";
+      more.rel = "noopener noreferrer";
+      more.textContent = translate(language, "battery.planCostsDocs");
+      costs.append(more);
+      section.append(costs);
+    }
     if (status.state !== "on") {
       // The mode counts even when nothing is controlled: it moves the comparison's marked row.
       const shadow = element(doc, "p", C.settingRowHelp, translate(language, "battery.modeShadow"));

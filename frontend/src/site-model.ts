@@ -102,6 +102,17 @@ export interface BatteryStatus {
   /** A grid charge per phase, where the plant takes a target per phase; `null` for a brand without, and from a
    * Home Assistant that does not send it yet. */
   per_phase: PerPhase | null;
+  /** The plan's two fixed figures, read-only; `null` while the site has no price area, and from a Home Assistant that
+   * does not send it yet. */
+  plan_costs: PlanCosts | null;
+}
+
+/** The battery plan's wear per kWh each way and Balanced's selling margin per kWh, in the area's minor unit. */
+export interface PlanCosts {
+  wear_minor_per_kwh: number;
+  balanced_margin_minor_per_kwh: number;
+  major_unit: string;
+  minor_unit: string;
 }
 
 /** The plant's own grid import limit against the most that still guards the fuse: it limits the total over the
@@ -291,6 +302,7 @@ const STATUS: Spec = O({
   trial: "any",
   grid_charge_cap: GRID_CHARGE_CAP,
   per_phase: N(PER_PHASE),
+  plan_costs: N(O({ wear_minor_per_kwh: "number", balanced_margin_minor_per_kwh: "number", major_unit: "string", minor_unit: "string" })),
 });
 
 const BATTERY = O({ api_version: "number", ok: "boolean", error: N("string"), status: N(STATUS) });
@@ -361,7 +373,7 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 }
 
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
- * `status.per_phase` and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
+ * `status.per_phase`, `status.plan_costs` and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
 function withLaterBlocks(raw: unknown): unknown {
   const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
   if (typeof status !== "object" || status === null || Array.isArray(status)) {
@@ -376,6 +388,7 @@ function withLaterBlocks(raw: unknown): unknown {
       ...block,
       ...(plainCap ? { grid_charge_cap: { import_limit: null, ...(cap as Record<string, unknown>) } } : {}),
       per_phase: block["per_phase"] ?? null,
+      plan_costs: block["plan_costs"] ?? null,
     },
   };
 }

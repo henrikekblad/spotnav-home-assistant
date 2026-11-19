@@ -1607,6 +1607,8 @@
   "battery.modeHelp.balanced": "Lader også fra nettet, når det er billigt, og bruges, når det er dyrt. Sælger kun, når det er meget rentabelt.",
   "battery.modeHelp.max_profit": "Som Balanceret, men sælger til nettet, så snart det kan betale sig, med slidtagen medregnet.",
   "battery.modeShadow": "Så længe SpotNav ikke styrer batteriet, flytter valget kun, hvilken række der er markeret som valgt i sammenligningen.",
+  "battery.planCosts": "Slid regnes som {wear} hver vej · Balanceret sælger ved mindst {margin} netto",
+  "battery.planCostsDocs": "Batteriplanen",
   "battery.line.off": "Fra: SpotNav styrer ikke noget endnu og viser kun, hvad den ville gøre.",
   "battery.line.shadowOnly": "Test: SpotNav styrer ikke noget endnu og logger kun, hvad den ville gøre.",
   "battery.line.checking": "Tjekker, at batteriet adlyder (cirka 40 minutter).",

@@ -1607,6 +1607,8 @@
   "battery.modeHelp.balanced": "Also charges from the grid when it is cheap and is used when it is expensive. Sells only when it is highly profitable.",
   "battery.modeHelp.max_profit": "Like Balanced, but sells to the grid whenever it pays, wear counted in.",
   "battery.modeShadow": "While SpotNav does not control the battery, the choice only moves which row is marked as chosen in the comparison.",
+  "battery.planCosts": "Wear counted as {wear} each way · Balanced sells at {margin} net or more",
+  "battery.planCostsDocs": "Battery plan",
   "battery.line.off": "Off: SpotNav controls nothing yet and only shows what it would do.",
   "battery.line.shadowOnly": "Test: SpotNav controls nothing yet and only logs what it would do.",
   "battery.line.checking": "Checking that the battery obeys (about 40 minutes).",
