@@ -83,10 +83,15 @@ async function settle(): Promise<void> {
 async function mounted(
   payload: Record<string, unknown>,
   language = "en",
+  admin = false,
 ): Promise<{ hass: FakeHass; element: ReturnType<typeof mountCard> }> {
   const hass = new FakeHass();
   const element = mountCard(CONFIG, hass);
-  element.hass = hass.snapshot("snapshot", language);
+  const snapshot = hass.snapshot("snapshot", language);
+  if (admin) {
+    snapshot.user = { is_admin: true };
+  }
+  element.hass = snapshot;
   await settle();
   hass.resolveNext(payload);
   await settle();
@@ -442,8 +447,18 @@ describe("the pause sheet", () => {
 });
 
 describe("the strategy dialog", () => {
-  it("shows Cheapest selected, the placeholders disabled with their reason, and sends nothing", async () => {
+  it("shows a household member Cheapest alone where the site has no solar: Sol and Hybrid are an administrator's to set up", async () => {
     const { hass, element } = await mounted(fixture("start_idle"));
+    const before = hass.messages.length;
+    (strategyButton(element) as HTMLButtonElement).click();
+    await settle();
+    expect(strategyRows(element).map((row) => row.dataset["strategy"])).toEqual(["cheapest"]);
+    expect(text(element)).not.toContain(translate("en", "strategy.reason.solar"));
+    expect(hass.messages.length).toBe(before);
+  });
+
+  it("shows an administrator Cheapest selected, the placeholders disabled with their reason, and sends nothing", async () => {
+    const { hass, element } = await mounted(fixture("start_idle"), "en", true);
     const before = hass.messages.length;
     const trigger = strategyButton(element) as HTMLButtonElement;
     expect(trigger.querySelector(".spotnav-settings-value")?.textContent).toBe(translate("en", "strategy.cheapest"));
