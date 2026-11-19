@@ -45,6 +45,11 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   per `RATE_UP_DWELL_S`, so the car's regulator has time to follow); with "battery first" the
   battery keeps its rate and the site's load balancing backs the car off (the battery is house load to it).
   The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
+* **A charge that takes more than commanded** (balanced; a charge per phase has its own runaway check below): the
+  lesser of the battery's charge and the site's import above the rate by `CHARGE_OVER_KW` (or a quarter of it) for
+  `CHARGE_OVER_S` hands the charge back (`not_obeyed:grid_charge:over`, clearing by itself after
+  `MANAGEMENT_BLOCK_S`). It catches what the rate could not tell: a share of a rated power whose base moved, a wrong
+  sign, a fixed rate above its estimate.
 * **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
   phase) lands on the fuse. When the least phase headroom falls under `PEAK_COVER_A` the executor first lifts the
   hold: one write, the brand's `peak_first` roles back to the value found or to the brand's normal value
@@ -199,6 +204,13 @@ PEAK_REHOLD_S: Final = 900.0
 #: An idle hold (`HoldVariant.idle`) whose battery charges more than this (kW) for this long (s) is handed back.
 HOLD_CHARGE_KW: Final = 0.5
 HOLD_CHARGE_S: Final = 60.0
+#: A balanced grid charge that takes more from the grid than commanded (the lesser of its charge and the site's
+#: import, over the rate by this much (kW) or a quarter of it, whichever is more) for this long (s), judged from this
+#: long after its rate last changed (s; at least the recipe's read-back wait), did not take its rate: a wrong base
+#: for a share of the rated power, a wrong sign, a fixed rate above its estimate.
+CHARGE_OVER_KW: Final = 0.3
+CHARGE_OVER_S: Final = 60.0
+CHARGE_OVER_GRACE_S: Final = 120.0
 #: A grid charge below this is not worth running (kW).
 MIN_RATE_KW: Final = 0.5
 #: The rate goes up only by this much (kW), after this long since its last change (s).
@@ -256,7 +268,9 @@ _BLOCKING_PREFIXES: Final = (
 )
 #: Blocks that clear by themselves `MANAGEMENT_BLOCK_S` after the hand-back: a management change, and an idle hold
 #: that charged (the plant may take it another day; a block until reset would stop control for good).
-_SELF_CLEARING: Final = ("management_changed", f"not_obeyed:{ACTION_HOLD}:charging")
+_SELF_CLEARING: Final = (
+    "management_changed", f"not_obeyed:{ACTION_HOLD}:charging", f"not_obeyed:{ACTION_GRID_CHARGE}:over",
+)
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
@@ -413,6 +427,8 @@ class ExecState:
     variant: str | None = None
     #: Since when an idle hold's battery has charged (`HOLD_CHARGE_S`); not stored.
     charging_since: datetime | None = None
+    #: Since when a balanced grid charge has taken more from the grid than commanded (`CHARGE_OVER_S`); not stored.
+    over_since: datetime | None = None
     #: Roles written before the brand's enter order after a change of action: the grid charge's stop
     #: (`BrandControl.peak_first`), so no limit is loosened while the plant still charges from the grid; not stored.
     lead: tuple[str, ...] = ()
@@ -1227,6 +1243,8 @@ class Executor:
             return "fuse_headroom"
         if self._hold_charges(inputs):
             return f"not_obeyed:{ACTION_HOLD}:charging"
+        if self._charge_over(inputs):
+            return f"not_obeyed:{ACTION_GRID_CHARGE}:over"
         # The battery's own instance runs the Remote EMS it turned on; the export instance only while the battery's
         # runs it (`sibling_active`): one taken by another controller (the app, a VPP) ends the curtail.
         management = management_problem(
@@ -1287,6 +1305,33 @@ class Executor:
             self.state = replace(state, charging_since=since)
         return (inputs.now - since).total_seconds() >= HOLD_CHARGE_S
 
+    def _charge_over(self, inputs: ExecInputs) -> bool:
+        """Whether a running balanced grid charge has taken more from the grid than commanded for `CHARGE_OVER_S`
+        (kept in the state): the lesser of the battery's charge and the site's import (so a sun it stores does not
+        count) above the rate by `CHARGE_OVER_KW` or a quarter of it. Judged only once its writes are read back and
+        `CHARGE_OVER_GRACE_S` (or the recipe's read-back wait) after the rate last changed. A charge per phase is
+        judged per phase."""
+        state = self.state
+        power = inputs.facts.power_kw
+        grid = inputs.grid_import_kw if inputs.measurement_ok else None
+        changed = state.rate_changed_at
+        grace = max(CHARGE_OVER_GRACE_S, self.control.readback_s or 0.0)
+        over = (
+            not self._export and state.action == ACTION_GRID_CHARGE and state.phase_kw is None
+            and changed is not None and (inputs.now - changed).total_seconds() >= grace
+            and state.pending is None and self._next_role(state, inputs) is None
+            and power is not None and grid is not None and math.isfinite(power) and math.isfinite(grid)
+            and min(power, grid) > state.rate_kw + max(CHARGE_OVER_KW, 0.25 * state.rate_kw)
+        )
+        if not over:
+            if state.over_since is not None:
+                self.state = replace(state, over_since=None)
+            return False
+        since = state.over_since or inputs.now
+        if state.over_since is None:
+            self.state = replace(state, over_since=since)
+        return (inputs.now - since).total_seconds() >= CHARGE_OVER_S
+
     def _begin_restore(self, now: datetime, reason: str) -> list[dict[str, Any]]:
         state = self.state
         if state.phase == "restoring" or (state.phase != "active" and not state.holds_snapshot):
@@ -1308,7 +1353,7 @@ class Executor:
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
-            charging_since=None, priming=False, confirmed=(), phase_bad=(),
+            charging_since=None, over_since=None, priming=False, confirmed=(), phase_bad=(),
         )
         return [_event(now, "hand_back", reason)]
 

@@ -75,7 +75,9 @@ the same routine as the others, and both are untested.
 
 * *GoodWe* needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core's `goodwe` has no eco charge mode and
   no eco power or SoC numbers, and the checklist then says "needs the HACS integration". A grid charge is the eco charge
-  mode at a share of the battery's rated power (an estimate from the battery's present current limit and voltage); a
+  mode at a share of the battery's rated power (an estimate from the battery's present current limit and voltage, so
+  a charge that takes more from the grid than it was given for a minute is handed back and not tried again for six
+  hours); a
   discharge for the house is the general mode; a hold sets the depth of discharge so the cut-off is the level now (not
   confirmed on a device: the library does not say what the inverter does at that point, so a hold whose battery
   charges from the grid for a minute is handed back and not tried again for six hours). Hand-back puts the mode, the

@@ -193,6 +193,20 @@ def test_a_goodwe_grid_charge_is_not_taken_for_the_plants_own_management() -> No
     assert events(results, "not_started")[0]["reason"].startswith("self_managed")
 
 
+def test_a_goodwe_charge_that_takes_more_than_its_share_is_handed_back() -> None:
+    # The share is reckoned on the BMS' present limit: a battery whose limit rose takes more than commanded.
+    executor, battery = _goodwe()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0, headroom_a=30.0)
+    _now, results = run(executor, battery, now, 30, "grid_charge", 4.0, headroom_a=30.0, power_kw=6.0, grid_import_kw=7.0)
+    assert [e["reason"] for e in events(results, "hand_back")] == ["not_obeyed:grid_charge:over"]
+    assert executor.state.blocked == "not_obeyed:grid_charge:over"
+    # The sun stored on top of the charge is not the grid's.
+    executor, battery = _goodwe()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0, headroom_a=30.0)
+    _now, results = run(executor, battery, now, 30, "grid_charge", 4.0, headroom_a=30.0, power_kw=6.0, grid_import_kw=4.2)
+    assert not events(results, "hand_back") and executor.state.phase == "active"
+
+
 def test_goodwe_without_a_battery_rating_does_not_start_a_grid_charge() -> None:
     executor, battery = _goodwe(rated_kw=None)
     _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0)
