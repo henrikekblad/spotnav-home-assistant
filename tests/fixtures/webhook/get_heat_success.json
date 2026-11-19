@@ -89,7 +89,6 @@
   "api_version": 1,
   "band": {
     "date": "2026-09-22",
-    "hot_water_pick": null,
     "hours": [
       {
         "action": "normal",
