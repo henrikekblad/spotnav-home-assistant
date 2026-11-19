@@ -185,6 +185,9 @@ _ENDING_REASONS: Final = (REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING, REASON_POWER
 DECISION_CAR_LIMIT: Final = "car_limit"
 #: A car limit plans again when the plan counts on more than this share above it.
 _CAR_LIMIT_REPLAN_SHARE: Final = 0.95
+#: A car limit is measured only at a plan current at least this far above the charger's least current: near it a
+#: car's own draw (a 6 A pilot taken as about 5.3 A) is no limit of the car's.
+_CAR_LIMIT_MIN_MARGIN_A: Final = 2.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -2087,6 +2090,11 @@ class AutoPlannerController:
         offered = None if plan is None else self._offered_amps(controller, plan.amps, held)
         if (
             offered
+            # Only at the plan's own current: a current held back (load balancing, the import target, the sun) is
+            # never measured, so a hold cannot become the car's limit, for this plug-in or the next.
+            and held in (None, "balancing_limit")
+            and offered >= plan.amps
+            and self._above_least_current(settings, plan.amps)
             and window is not None
             and wiring is not None
             and reading is not None
@@ -2122,6 +2130,13 @@ class AutoPlannerController:
             return None
         self._limit_replanned_at = now
         return DECISION_CAR_LIMIT
+
+    def _above_least_current(self, settings: AutoSettings, amps: int) -> bool:
+        """`amps` at least `_CAR_LIMIT_MIN_MARGIN_A` above the charger's least current (`charge_power_limits`)."""
+        _high_kw, low_w = hybrid_execution.charge_power_limits(self._hass, self._entry_id, settings)
+        phases = effective_phases(self._hass, self._entry_id)
+        per_amp_w = power_kw(1, phases, voltage_between_phases_v(self._hass, self._entry_id)) * 1000.0
+        return per_amp_w > 0 and amps >= low_w / per_amp_w + _CAR_LIMIT_MIN_MARGIN_A - 1e-6
 
     def _offered_amps(self, controller: Any, amps: int, held: str | None) -> float | None:
         """The current in force on the charger: its current-limit entity's, else the last one assigned to it, else the

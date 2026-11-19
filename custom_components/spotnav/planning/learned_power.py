@@ -16,8 +16,8 @@ two (`PlanRequest.power_cap_kw`). No setting.
   between the count's posts (a register that posts every five minutes is not a car that draws nothing for four),
   from the first post made inside the stretch.
 * **A car that takes less than it is given.** Beside the clean minutes, a plug-in keeps the car's own limit when
-  one was seen (`planning/car_limit.py`: a steady stretch at whatever current was in force, a balancing hold
-  included, in which the car drew clearly less than that current gives). That is the car's power at the plan's
+  one was seen (`planning/car_limit.py`: a steady stretch at the plan's own current, never a held one, in which
+  the car drew clearly less than that current gives). That is the car's power at the plan's
   current too, so a plug-in's power is the higher of the two it has.
 * **Per what.** Per vehicle when the charger knows which one it plans for (`vehicle_properties.resolved_vehicle_id`),
   else per charger. Each keeps the last `MAX_SESSIONS` plug-ins as (minutes, kWh); a plug-in is the last one the
