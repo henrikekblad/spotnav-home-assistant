@@ -69,7 +69,7 @@ def test_storage_and_the_wire_share_one_strategy_vocabulary() -> None:
 
 
 def test_every_strategy_round_trips_and_any_other_spelling_is_refused() -> None:
-    settings = AutoSettings(area_id="SE4", amps=10, phases=3)
+    settings = AutoSettings(area_id="SE4", amps=10)
     body = body_of(settings)
     assert body["strategy"] == STRATEGY_CHEAPEST
 
@@ -87,7 +87,7 @@ def test_every_strategy_round_trips_and_any_other_spelling_is_refused() -> None:
 
 def test_a_replacement_writes_the_strategy_and_keeps_the_stored_pause() -> None:
     pause = PauseIntent(choice="until_resumed")
-    current = replace(AutoSettings(area_id="SE4", amps=10, phases=3, revision=2), pause=pause)
+    current = replace(AutoSettings(area_id="SE4", amps=10, revision=2), pause=pause)
     replacement = decode_settings(body_of(current, strategy=SOLAR))
 
     committed = replacement_mutator(replacement)(current)

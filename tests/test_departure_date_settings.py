@@ -46,7 +46,7 @@ TODAY = "2026-09-22 06:00:00"
 
 
 def test_the_date_is_stored_only_when_set_and_a_record_without_it_reads_as_daily() -> None:
-    daily = AutoSettings(area_id="SE4", amps=10, phases=3)
+    daily = AutoSettings(area_id="SE4", amps=10)
     assert "departure_date" not in daily.as_dict()
     assert AutoSettings.from_stored(daily.as_dict()).departure_date is None
 
@@ -57,14 +57,14 @@ def test_the_date_is_stored_only_when_set_and_a_record_without_it_reads_as_daily
 
 @pytest.mark.parametrize("stored", [20260927, "2026-02-30", "Sunday", ["2026-09-27"]])
 def test_a_stored_date_that_is_not_a_date_is_refused_by_name(stored: Any) -> None:
-    record = AutoSettings(area_id="SE4", amps=10, phases=3).as_dict() | {"departure_date": stored}
+    record = AutoSettings(area_id="SE4", amps=10).as_dict() | {"departure_date": stored}
     with pytest.raises(AutoSettingsError) as error:
         AutoSettings.from_stored(record)
     assert error.value.code == "invalid_departure"
 
 
 def test_a_record_still_refuses_a_field_this_release_does_not_know() -> None:
-    record = AutoSettings(area_id="SE4", amps=10, phases=3).as_dict() | {"departure_day": "2026-09-27"}
+    record = AutoSettings(area_id="SE4", amps=10).as_dict() | {"departure_day": "2026-09-27"}
     with pytest.raises(AutoSettingsError) as error:
         AutoSettings.from_stored(record)
     assert error.value.code == "unknown_field"
@@ -82,7 +82,7 @@ def test_validation_wants_a_calendar_date_not_a_datetime() -> None:
 
 
 def body(**changes: Any) -> dict[str, Any]:
-    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10, phases=3))
+    encoded = encode_settings(AutoSettings(area_id="SE4", amps=10))
     return {key: value for key, value in encoded.items() if key != "revision"} | changes
 
 
@@ -128,7 +128,7 @@ def test_anything_else_is_refused_as_an_invalid_departure(value: Any) -> None:
 
 
 def test_a_replacement_without_the_date_keeps_the_stored_one_and_null_clears_it() -> None:
-    current = replace(AutoSettings(area_id="SE4", amps=10, phases=3), departure_date=date(2026, 9, 27))
+    current = replace(AutoSettings(area_id="SE4", amps=10), departure_date=date(2026, 9, 27))
     keep = replacement_mutator(decode_settings(body()), keep_departure_date=True)(current)
     assert keep.departure_date == date(2026, 9, 27)
     clear = replacement_mutator(decode_settings(body(departure_date=None)))(current)

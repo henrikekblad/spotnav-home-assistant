@@ -329,7 +329,7 @@ async def test_a_satisfied_target_soc_hybrid_never_starts_on_surplus(hass: HomeA
 
     snapshot = await preview.async_apply_settings(
         mutate=lambda s: replace(
-            s, area_id="SE4", amps=10, phases=3, departure_enabled=False,
+            s, area_id="SE4", amps=10, departure_enabled=False,
             driver=DRIVER_TARGET_SOC,
             target=TargetSocIntent(vehicle_id="car-1", target_percent=80.0),
         )

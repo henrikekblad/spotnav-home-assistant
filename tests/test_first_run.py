@@ -150,7 +150,7 @@ def test_amps(charger_max, site_limit, amps) -> None:
     )
     assert (settings.amps, settings.area_id) == (amps, "SE3")
     # The phases are not defaulted: the charger's wiring and the car decide them.
-    assert settings.phases is None
+    assert not hasattr(settings, "phases")
     assert suggested == tuple(name for name, value in (("area", "SE3"), ("amps", amps)) if value is not None)
 
 
@@ -227,7 +227,7 @@ async def test_a_new_charger_is_seeded_once_and_marked(hass) -> None:
     preview = _Preview()
     assert await async_seed_first_run(hass, entry, _Controller(None), preview)
     settings = store.settings(entry.entry_id)
-    assert (settings.area_id, settings.phases, settings.amps) == ("SE1", None, 16)
+    assert (settings.area_id, settings.amps) == ("SE1", 16)
     assert store.suggested(entry.entry_id) == ("area", "amps")
     assert preview.seeded == 1
     assert settings.missing_for_auto() == ()
@@ -251,14 +251,14 @@ async def test_the_charger_maximum_and_the_site_shape_the_defaults(hass) -> None
     await async_seed_first_run(hass, entry, _Controller(32), None)
     settings = store.settings(entry.entry_id)
     # The site's wiring is not copied into the settings: the planner reads it from the site.
-    assert (settings.area_id, settings.phases, settings.amps) == ("NO5", None, 17)
+    assert (settings.area_id, settings.amps) == ("NO5", 17)
 
 
 async def test_no_country_seeds_amps_but_no_area(hass) -> None:
     store, entry = await _setup(hass, country=None)
     await async_seed_first_run(hass, entry, _Controller(None), None)
     settings = store.settings(entry.entry_id)
-    assert (settings.area_id, settings.phases, settings.amps) == (None, None, 16)
+    assert (settings.area_id, settings.amps) == (None, 16)
     assert store.suggested(entry.entry_id) == ("amps",)
     assert settings.missing_for_auto() == ("area",)
 
@@ -267,7 +267,7 @@ async def test_a_value_a_person_saved_is_never_overwritten_or_reapplied(hass) ->
     store, entry = await _setup(hass)
     await store.async_update(
         entry.entry_id,
-        mutate=lambda current: AutoSettings(area_id="FI", phases=1, amps=10),
+        mutate=lambda current: AutoSettings(area_id="FI", amps=10),
         confirm=True,
     )
     assert not await async_seed_first_run(hass, entry, _Controller(None), None)
@@ -328,7 +328,7 @@ async def test_a_store_written_before_the_marker_existed_still_loads(hass) -> No
 
     store = AutoSettingsStore(hass, store=SimpleNamespace(async_load=load, async_save=save))
     await store.async_load()
-    await store.async_update("a", mutate=lambda current: AutoSettings(area_id="SE4", phases=3, amps=16), confirm=True)
+    await store.async_update("a", mutate=lambda current: AutoSettings(area_id="SE4", amps=16), confirm=True)
     for record in saved["doc"]["chargers"].values():
         del record["suggested"]
     reopened = AutoSettingsStore(hass, store=SimpleNamespace(async_load=load, async_save=save))

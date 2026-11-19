@@ -55,7 +55,6 @@ def full_settings() -> AutoSettings:
             ),
             AreaAutoSettings(area_id="FI", vat=FiscalOverride(enabled=True, value=0.0)),
         ),
-        phases=3,
         amps=16,
         requested_kwh=22.5,
         max_periods=4,
@@ -84,8 +83,8 @@ def test_every_field_survives_a_round_trip():
     assert {item.area_id: item for item in decoded.overrides} == {
         item.area_id: item for item in settings.overrides
     }
-    # `phases` is accepted from an older client and ignored: it decodes to nothing stored.
-    assert decoded.phases is None
+    # `phases` is accepted from a client and ignored: it decodes to nothing stored.
+    assert not hasattr(decoded, "phases")
     assert decoded.amps == settings.amps
     assert decoded.requested_kwh == settings.requested_kwh
     assert decoded.max_periods == settings.max_periods
@@ -122,7 +121,6 @@ def test_absence_is_not_zero_at_every_nesting_level():
     settings = replace(
         AutoSettings(),
         area_id=None,
-        phases=None,
         amps=None,
         overrides=(AreaAutoSettings(area_id="SE4", vat=FiscalOverride(enabled=True, value=0.0)),),
         # `target_percent = 0` is a legal choice ("charge to nothing"), which is exactly the case where
@@ -132,7 +130,6 @@ def test_absence_is_not_zero_at_every_nesting_level():
     decoded = decode_settings(body_of(settings))
 
     assert decoded.area_id is None
-    assert decoded.phases is None
     assert decoded.amps is None
     assert decoded.overrides[0].vat == FiscalOverride(enabled=True, value=0.0)
     assert decoded.target.target_percent == 0.0  # zero is a value, not an absence

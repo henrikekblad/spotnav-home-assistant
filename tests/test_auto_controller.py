@@ -1216,7 +1216,7 @@ async def test_diagnostics_describe_every_auto_state(
 
     # 3. A ready proposal.
     await controller.async_apply_settings(
-        mutate=lambda settings: replace(settings, area_id=SE4, amps=10, phases=1, departure_enabled=False)
+        mutate=lambda settings: replace(settings, area_id=SE4, amps=10, departure_enabled=False)
     )
     ready = await auto_section(hass, entry)
     assert ready["state"] == "proposal_ready" and ready["reason"] == "ready"
@@ -1347,7 +1347,7 @@ async def test_no_auto_path_ever_reaches_a_charger(
 
     await controller.async_recalculate()
     with pytest.raises(AutoSettingsError):
-        await controller.async_apply_settings(mutate=lambda settings: replace(settings, phases=2))
+        await controller.async_apply_settings(mutate=lambda settings: replace(settings, amps=0))
     await controller.async_apply_settings(
         mutate=lambda settings: replace(settings, area_id=DE_LU)
     )

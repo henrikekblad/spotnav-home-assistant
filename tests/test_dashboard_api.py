@@ -721,7 +721,7 @@ async def test_fiscal_states_stay_distinct_in_the_response(hass: HomeAssistant) 
     preview = preview_for(hass, entry.entry_id)
     assert preview is not None
     await preview.async_apply_settings(
-        mutate=lambda settings: replace(settings, area_id=SE4, amps=10, phases=1)
+        mutate=lambda settings: replace(settings, area_id=SE4, amps=10)
     )
     await preview.async_apply_settings(
         mutate=lambda settings: settings.with_override(

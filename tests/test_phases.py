@@ -132,9 +132,14 @@ async def test_the_plan_power_follows_the_effective_phases(hass: HomeAssistant, 
 
 
 async def _with_stored_phases(hass: HomeAssistant, entry_id: str, phases: int | None) -> None:
+    """The charger's settings as a release before 1.5 stored them, with `phases` in them, read at load
+    (`AutoSettingsStore.async_load` keeps the value for the migration alone: `test_auto_settings`)."""
     store = domain_data(hass).auto_store
     assert store is not None
-    await store.async_update(entry_id, mutate=lambda settings: replace(settings, phases=phases))
+    await store.async_update(entry_id, mutate=lambda settings: replace(settings))
+    store._legacy_phases.pop(entry_id, None)  # noqa: SLF001
+    if phases is not None:
+        store._legacy_phases[entry_id] = phases  # noqa: SLF001
 
 
 async def test_a_stored_phase_count_below_the_wiring_becomes_the_vehicles_onboard_charger(
@@ -151,7 +156,7 @@ async def test_a_stored_phase_count_below_the_wiring_becomes_the_vehicles_onboar
     assert vehicle_properties.stored_properties(hass, car).onboard_phases == 1
     assert effective_phases(hass, charger.entry_id) == 1
     settings = store.settings(charger.entry_id)
-    assert settings.phases is None, "and the old value is no longer read"
+    assert store.legacy_phases(charger.entry_id) is None, "and the old value is no longer read"
     assert settings.revision == revision, "forgetting it is not an edit: an installed plan stands"
     # Once: the second start finds nothing to move.
     assert await async_migrate_settings_phases(hass, charger.entry_id) is False
@@ -167,7 +172,7 @@ async def test_with_no_vehicle_it_becomes_the_wiring_of_a_charger_in_no_site(has
 
     assert charger.data[CONF_CHARGER_PHASES] == 1
     assert effective_phases(hass, charger.entry_id) == 1
-    assert domain_data(hass).auto_store.settings(charger.entry_id).phases is None
+    assert domain_data(hass).auto_store.legacy_phases(charger.entry_id) is None
 
 
 async def test_a_value_that_does_not_lower_the_wiring_moves_nothing(hass: HomeAssistant) -> None:
@@ -178,7 +183,7 @@ async def test_a_value_that_does_not_lower_the_wiring_moves_nothing(hass: HomeAs
     assert await async_migrate_settings_phases(hass, charger.entry_id) is False
 
     assert vehicle_properties.stored_properties(hass, car).onboard_phases is None
-    assert domain_data(hass).auto_store.settings(charger.entry_id).phases is None
+    assert domain_data(hass).auto_store.legacy_phases(charger.entry_id) is None
 
     set_charger_phases(hass, charger.entry_id, 3)
     await _with_stored_phases(hass, charger.entry_id, 3)
@@ -195,7 +200,7 @@ async def test_a_vehicle_that_already_has_an_answer_keeps_it(hass: HomeAssistant
     assert await async_migrate_settings_phases(hass, charger.entry_id) is False
 
     assert vehicle_properties.stored_properties(hass, car).onboard_phases == 3
-    assert domain_data(hass).auto_store.settings(charger.entry_id).phases is None
+    assert domain_data(hass).auto_store.legacy_phases(charger.entry_id) is None
 
 
 async def test_a_site_charger_without_a_vehicle_has_no_wiring_of_its_own_to_lower(hass: HomeAssistant) -> None:
@@ -206,7 +211,7 @@ async def test_a_site_charger_without_a_vehicle_has_no_wiring_of_its_own_to_lowe
 
     assert CONF_CHARGER_PHASES not in charger.data
     assert effective_phases(hass, charger.entry_id) == 3
-    assert domain_data(hass).auto_store.settings(charger.entry_id).phases is None
+    assert domain_data(hass).auto_store.legacy_phases(charger.entry_id) is None
 
 
 # ----------------------------------------------------------------------------- the wire
@@ -223,13 +228,13 @@ def _body(**changes: Any) -> dict[str, Any]:
 @pytest.mark.parametrize("phases", [1, 3, None])
 def test_the_codec_accepts_a_phases_it_ignores(phases: int | None) -> None:
     decoded = decode_settings(_body(phases=phases))
-    assert decoded.phases is None and decoded.amps == 10
+    assert not hasattr(decoded, "phases") and decoded.amps == 10
 
 
 def test_the_codec_accepts_a_replacement_without_phases() -> None:
     body = _body()
     del body["phases"]
-    assert decode_settings(body).phases is None
+    assert decode_settings(body).amps == 10
 
 
 @pytest.mark.parametrize("phases", [2, "3", 3.5, True])
@@ -245,7 +250,7 @@ async def test_the_webhook_still_accepts_phases_and_ignores_it(hass: HomeAssista
     status, answer = await post(client, "webhook-a", settings_payload(stored(hass), area_id=SE4, amps=16, phases=1))
 
     assert status == 200 and answer["ok"] is True
-    assert stored(hass, entry.entry_id).phases is None, "never stored"
+    assert not hasattr(stored(hass, entry.entry_id), "phases"), "never stored"
     assert answer["settings"]["phases"] == 3, "and the effective count is what comes back"
     assert answer["settings"]["amps"] == 16
 

@@ -725,15 +725,14 @@ class AutoSettings:
     """One charger's Auto settings, as stored. Frozen, so a revision is a new value.
 
     Fields that could steer a charge have no default unless it cannot be unsafe: energy,
-    period cap and departure do; current, area, vehicle and fiscal figures do not. `phases` is what an
-    older release stored: it is migrated away (`planning/phases.py`) and never read, only carried so
-    that an older client's full replacement is still accepted.
+    period cap and departure do; current, area, vehicle and fiscal figures do not. The `phases` a release
+    before 1.5 stored is not a setting: the store reads it once for its migration (`legacy_phases`,
+    `planning/phases.py`) and keeps it nowhere here.
     """
 
     revision: int = 0
     area_id: str | None = None
     overrides: tuple[AreaAutoSettings, ...] = ()
-    phases: int | None = None
     amps: int | None = None
     requested_kwh: float = DEFAULT_REQUESTED_KWH
     #: "Fill": a manual need that is the battery's room (to the car's own limit) at each calculation, so it
@@ -833,8 +832,6 @@ class AutoSettings:
             _refuse("invalid_strategy", f"{self.strategy!r} is not a strategy this release can store")
         if self.area_id is not None and (not isinstance(self.area_id, str) or not self.area_id):
             _refuse("invalid_area", "area_id must be a non-empty string or absent")
-        if self.phases is not None and self.phases not in (1, 3):
-            _refuse("invalid_phases", "phases must be 1 or 3 when it is set")
         if self.amps is not None:
             if isinstance(self.amps, bool) or not isinstance(self.amps, int) or not 1 <= self.amps <= 80:
                 _refuse("invalid_amps", "amps must be a whole number of amperes when it is set")
@@ -932,7 +929,6 @@ class AutoSettings:
             "revision": self.revision,
             "area_id": self.area_id,
             "overrides": [item.as_dict() for item in self.overrides],
-            "phases": self.phases,
             "amps": self.amps,
             "requested_kwh": self.requested_kwh,
             # Not `max_periods`: a record that has that key is from before automatic periods (`from_stored`).
@@ -994,6 +990,9 @@ class AutoSettings:
                 {
                     "departure_date", "departure_weekdays", "departure_calendar", "departure_calendar_only", "notifications",
                     "fill_to_limit", "vehicle_ids", "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
+                    # A release before 1.5 stored the phases here; read by the store for its migration alone
+                    # (`AutoSettingsStore.legacy_phases`), never by this record.
+                    "phases",
                 }
             ),
         )
@@ -1043,7 +1042,6 @@ class AutoSettings:
             revision=revision,
             area_id=stored["area_id"],
             overrides=tuple(AreaAutoSettings.from_stored(item) for item in overrides),
-            phases=stored["phases"],
             amps=stored["amps"],
             requested_kwh=stored["requested_kwh"],
             fill_to_limit=stored.get("fill_to_limit", False),
@@ -1422,6 +1420,8 @@ class AutoSettingsStore:
         self._unsaved = False
         # When each charger's settings last changed by a write, for what must stay quiet right after one.
         self._written_at: dict[str, datetime] = {}
+        # The `phases` a release before 1.5 stored, per charger, until its migration takes it (`legacy_phases`).
+        self._legacy_phases: dict[str, int] = {}
         # Told of every committed settings change (`add_write_listener`), after the save.
         self._write_listeners: list[Callable[[str, AutoSettings, AutoSettings], None]] = []
 
@@ -1482,6 +1482,9 @@ class AutoSettingsStore:
                 except AutoSettingsError as err:
                     _LOGGER.warning("Ignoring stored Auto settings for one charger: %s", err.code)
                     continue
+                legacy = record["settings"].get("phases")
+                if legacy in (1, 3) and not isinstance(legacy, bool):
+                    self._legacy_phases[entry_id] = legacy
                 proposal = None
                 if record.get("proposal") is not None:
                     try:
@@ -1625,23 +1628,28 @@ class AutoSettingsStore:
             await self._async_commit(entry_id, entry)
             return True
 
+    def legacy_phases(self, entry_id: str) -> int | None:
+        """The `phases` (1 or 3) a release before 1.5 stored for this charger, until its migration takes it
+        (`planning/phases.async_migrate_settings_phases`), else `None`."""
+        return self._legacy_phases.get(entry_id)
+
     async def async_clear_legacy_phases(self, entry_id: str) -> bool:
-        """Forget the `phases` an older release stored (its meaning moved to the vehicle and the charger).
+        """Forget the `phases` a release before 1.5 stored (its meaning moved to the vehicle and the charger), and
+        write the file without it.
 
         Not a settings edit: the revision stays, so an installed plan and its identity stand. Returns
         whether there was a value to clear.
         """
         async with self._lock:
             existing = self._entries.get(entry_id)
-            if existing is None or existing.settings.phases is None:
+            if existing is None or entry_id not in self._legacy_phases:
                 return False
-            entry = _Entry(
-                settings=replace(existing.settings, phases=None),
-                proposal=existing.proposal,
-                energy_baseline=existing.energy_baseline,
-                suggested=tuple(item for item in existing.suggested if item != "phases"),
-            )
-            await self._async_commit(entry_id, entry)
+            legacy = self._legacy_phases.pop(entry_id)
+            try:
+                await self._async_commit(entry_id, existing)
+            except BaseException:
+                self._legacy_phases[entry_id] = legacy
+                raise
             return True
 
     async def async_suggest_area(self, entry_id: str, area_id: str) -> bool:
@@ -1747,12 +1755,16 @@ class AutoSettingsStore:
         self._unsaved = False
 
     def _document(self, entries: dict[str, _Entry]) -> dict[str, Any]:
-        """The whole stored file, from one set of records."""
+        """The whole stored file, from one set of records.
+
+        Each record's settings keep a `phases` key: a 2.x release, run again after a downgrade, reads a settings record
+        only with every key it knows. It is `null`, or a release before 1.5's value its migration has not taken yet.
+        """
         return {
             "schema": STORAGE_VERSION,
             "chargers": {
                 entry_id: {
-                    "settings": entry.settings.as_dict(),
+                    "settings": {**entry.settings.as_dict(), "phases": self._legacy_phases.get(entry_id)},
                     "proposal": None if entry.proposal is None else entry.proposal.as_dict(),
                     "energy_baseline": (
                         None

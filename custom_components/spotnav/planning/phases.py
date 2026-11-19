@@ -11,8 +11,8 @@ the wiring, one phase on three-phase wiring twice running for the same vehicle b
 its onboard charger. A charge the sun forced to one phase, or whose phase switch settles, says nothing about the
 car: such a stretch is dropped from the observation (`PhaseObserver.sample`'s `switched`). Nothing but a site-less charger's unset wiring is ever changed by itself.
 
-The stored settings' `phases` is not read any more: it is what an older release recorded, moved here by
-`async_migrate_settings_phases` once and kept on the wire (as this effective value) for older clients.
+The stored settings' `phases` is not a setting any more: what a release before 1.5 recorded is moved here by
+`async_migrate_settings_phases` once. The settings payload's `phases` carries this effective value.
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ async def async_migrate_settings_phases(hass: HomeAssistant, entry_id: str) -> b
     store = domain_data(hass).auto_store
     if store is None:
         return False
-    stored = store.settings(entry_id).phases
+    stored = store.legacy_phases(entry_id)
     if stored is None:
         return False
     moved = False
