@@ -1,6 +1,7 @@
 // The suggested import target in the target's editor (`spotnav/suggest_import_target`): the decoded answer and the
 // sentence that offers it. The backend reads Home Assistant's statistics and does every sum; this only words them.
 
+import { isRecord } from "./decode-primitives";
 import { dateLabel, formatFixed } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
 
@@ -34,10 +35,6 @@ const REASONS: Record<string, TranslationKey> = {
   too_few_days: "target.suggest.none.too_few_days",
   no_chargers: "target.suggest.none.no_chargers",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function power(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;

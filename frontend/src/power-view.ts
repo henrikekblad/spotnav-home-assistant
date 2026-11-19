@@ -15,6 +15,7 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import { decodeDemandComponent, type DemandComponent } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { POWER_MONTH_API_VERSION } from "./types";
+import { bad, record, flag, list } from "./decode-primitives";
 
 export interface PowerDay {
   /** The local date, `YYYY-MM-DD`. */
@@ -59,16 +60,6 @@ export interface PowerMonth {
 
 export type PowerDecodeResult = { ok: true; value: PowerMonth } | { ok: false; failure: "unsupported" | "malformed" };
 
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
 function text(source: Record<string, unknown>, key: string, pattern?: RegExp): string {
   const value = source[key];
   return typeof value === "string" && (pattern === undefined || pattern.test(value)) ? value : bad();
@@ -82,17 +73,9 @@ function powerOrNull(value: unknown): number | null {
   return value === null ? null : power(value);
 }
 
-function flag(value: unknown): boolean {
-  return typeof value === "boolean" ? value : bad();
-}
-
 /** A field an older backend did not state: absent reads as `fallback`, present must be its shape. */
 function additive<T>(source: Record<string, unknown>, key: string, read: (value: unknown) => T, fallback: T): T {
   return key in source ? read(source[key]) : fallback;
-}
-
-function list(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : bad();
 }
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;

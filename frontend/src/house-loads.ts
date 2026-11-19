@@ -29,6 +29,7 @@ import { HOUSE_LOADS_API_VERSION } from "./house-model";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { bad, record, text, number, numberOrNull } from "./decode-primitives";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -262,26 +263,6 @@ export interface HouseLoads {
 }
 
 export type HouseLoadsDecode = { ok: true; value: HouseLoads } | { ok: false; failure: "unsupported" | "malformed" };
-
-function bad(): never {
-  throw new Error("malformed");
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : bad();
-}
-
-function number(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(value: unknown): number | null {
-  return value === null ? null : number(value);
-}
 
 function day(value: unknown): string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : bad();

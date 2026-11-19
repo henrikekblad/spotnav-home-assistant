@@ -28,31 +28,12 @@ import {
   type SettingsRecord,
 } from "./types";
 import { hasAllKeys, hasUnknownKeys } from "./contract";
+import { Malformed, bad, isRecord, record, exactKeys } from "./decode-primitives";
 
 export type MarketDecodeResult =
   | { ok: true; value: MarketOptionsV1 }
   | { ok: false; failure: "unsupported" | "malformed" };
 
-
-class MalformedPayload extends Error {}
-
-function bad(): never {
-  throw new MalformedPayload("malformed");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : bad();
-}
-
-function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
-    bad();
-  }
-}
 
 /**
  * A non-empty identity (area id, name, zone, currency, unit label). Empty text is refused; hostile text
@@ -214,7 +195,7 @@ export function decodeMarketOptions(raw: unknown): MarketDecodeResult {
       },
     };
   } catch (error) {
-    if (error instanceof MalformedPayload) {
+    if (error instanceof Malformed) {
       return { ok: false, failure: "malformed" };
     }
     throw error;

@@ -28,6 +28,7 @@ import {
   type ChargeProgress,
   type SettingsRecord,
 } from "./types";
+import { bad, isRecord, record, textAt as text, textOrNullAt as textOrNull, numberAt as numberValue, numberOrNullAt as numberOrNull, flagAt as booleanValue, listAt as arrayValue } from "./decode-primitives";
 
 export interface ChargerCapabilities {
   auto_price: boolean;
@@ -741,8 +742,6 @@ export type DecodeResult =
   | { ok: true; value: Dashboard }
   | { ok: false; failure: DecodeFailure };
 
-class Malformed extends Error {}
-
 /**
  * Whether the serializer emitted this key at all. An explicit `null` is a stated fact; an absent key
  * means the payload is not this contract, so every field the card reads must be present. Unknown
@@ -761,60 +760,12 @@ const OFFSET_SUFFIX = /(?:Z|[+-]\d{2}:?\d{2})$/;
 
 export const DURATION_TOLERANCE_MS = 1_000;
 
-function bad(): never {
-  throw new Malformed("malformed");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : bad();
-}
-
-function text(source: Record<string, unknown>, key: string): string {
-  const value = source[key];
-  return typeof value === "string" ? value : bad();
-}
-
-function textOrNull(source: Record<string, unknown>, key: string): string | null {
-  const value = required(source, key);
-  if (value === null) {
-    return null;
-  }
-  return typeof value === "string" ? value : bad();
-}
-
-function numberValue(source: Record<string, unknown>, key: string): number {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(source: Record<string, unknown>, key: string): number | null {
-  const value = required(source, key);
-  if (value === null) {
-    return null;
-  }
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function booleanValue(source: Record<string, unknown>, key: string): boolean {
-  const value = source[key];
-  return typeof value === "boolean" ? value : bad();
-}
-
 function booleanOrNull(source: Record<string, unknown>, key: string): boolean | null {
   const value = required(source, key);
   if (value === null) {
     return null;
   }
   return typeof value === "boolean" ? value : bad();
-}
-
-function arrayValue(source: Record<string, unknown>, key: string): unknown[] {
-  const value = source[key];
-  return Array.isArray(value) ? value : bad();
 }
 
 function stringListOrNull(source: Record<string, unknown>, key: string): string[] | null {

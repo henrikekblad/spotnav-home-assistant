@@ -21,6 +21,7 @@ import {
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { powerBody, type PowerHandlers, type PowerState, type PowerUi } from "./power-view";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { bad, record, textAt as text, textOrNullAt as textOrNull, numberAt as number, numberOrNullAt as numberOrNull, flagAt as flag } from "./decode-primitives";
 
 export interface SessionRecord {
   id: string;
@@ -86,43 +87,6 @@ export interface SessionsAnswer {
 export type SessionsDecodeResult =
   | { ok: true; value: SessionsAnswer }
   | { ok: false; failure: "unsupported" | "malformed" };
-
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : bad();
-}
-
-function text(source: Record<string, unknown>, key: string): string {
-  const value = source[key];
-  return typeof value === "string" ? value : bad();
-}
-
-function textOrNull(source: Record<string, unknown>, key: string): string | null {
-  const value = source[key];
-  return value === null ? null : typeof value === "string" ? value : bad();
-}
-
-function number(source: Record<string, unknown>, key: string): number {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(source: Record<string, unknown>, key: string): number | null {
-  const value = source[key];
-  return value === null ? null : typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function flag(source: Record<string, unknown>, key: string): boolean {
-  const value = source[key];
-  return typeof value === "boolean" ? value : bad();
-}
 
 function shareOrNull(source: Record<string, unknown>, key: string): number | null {
   const value = numberOrNull(source, key);

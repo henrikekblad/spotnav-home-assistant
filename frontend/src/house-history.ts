@@ -29,6 +29,7 @@ import {
   type PeriodUi,
 } from "./period-history";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { bad, record, list, text, textOrNull, number, numberOrNull, flag } from "./decode-primitives";
 
 /** The battery's moves in a bucket: the energy given back, what it was worth (buy or sell price), what it cost out of
  * the stock (worth less cost is the arbitrage), and the energy charged with its cost. */
@@ -169,36 +170,6 @@ export interface HouseHistory {
 
 export type HouseHistoryDecode = { ok: true; value: HouseHistory } | { ok: false; failure: "unsupported" | "malformed" };
 
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
-function list(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : bad();
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : bad();
-}
-
-function textOrNull(value: unknown): string | null {
-  return value === null ? null : text(value);
-}
-
-function number(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(value: unknown): number | null {
-  return value === null ? null : number(value);
-}
-
 /** A field an older answer did not have: absent reads as `null`, present must be a number or `null`. */
 function newNumber(source: Record<string, unknown>, key: string): number | null {
   return key in source ? numberOrNull(source[key]) : null;
@@ -231,10 +202,6 @@ function ownControl(value: unknown): HouseOwnControl | null {
 
 function count(value: unknown): number {
   return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : bad();
-}
-
-function flag(value: unknown): boolean {
-  return typeof value === "boolean" ? value : bad();
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

@@ -28,6 +28,7 @@
 import { clock, dayCue, formatFixed, formatNumber, type FormatContext } from "./format";
 import { HOUSE_NOW_API_VERSION, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { translate, type Language, type TranslationKey } from "./i18n";
+import { bad, record, text, numberOrNull, flag, textOrNull } from "./decode-primitives";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const HOUR_MS = 3_600_000;
@@ -53,32 +54,6 @@ export interface HouseNow {
 }
 
 export type HouseNowDecode = { ok: true; value: HouseNow } | { ok: false; failure: "unsupported" | "malformed" };
-
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : bad();
-}
-
-function numberOrNull(value: unknown): number | null {
-  return value === null ? null : typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function flag(value: unknown): boolean {
-  return typeof value === "boolean" ? value : bad();
-}
-
-function textOrNull(value: unknown): string | null {
-  return value === null ? null : text(value);
-}
 
 /** The answer, strictly typed; extra keys are allowed (additive fields), a missing or mistyped one is not. */
 export function decodeHouseNow(raw: unknown): HouseNowDecode {

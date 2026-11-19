@@ -28,6 +28,7 @@ import {
 } from "./period-history";
 import { monthLabel } from "./history";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { bad, record, list, text, textOrNull, number, numberOrNull, flag } from "./decode-primitives";
 
 export interface HeatBucket {
   key: string;
@@ -135,42 +136,8 @@ export interface HeatHistory {
 
 export type HeatHistoryDecode = { ok: true; value: HeatHistory } | { ok: false; failure: "unsupported" | "malformed" };
 
-class Malformed extends Error {}
-
-function bad(): never {
-  throw new Malformed();
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : bad();
-}
-
-function list(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : bad();
-}
-
-function text(value: unknown): string {
-  return typeof value === "string" ? value : bad();
-}
-
-function textOrNull(value: unknown): string | null {
-  return value === null ? null : text(value);
-}
-
-function number(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
-}
-
-function numberOrNull(value: unknown): number | null {
-  return value === null ? null : number(value);
-}
-
 function count(value: unknown): number {
   return Number.isInteger(value) && (value as number) >= 0 ? (value as number) : bad();
-}
-
-function flag(value: unknown): boolean {
-  return typeof value === "boolean" ? value : bad();
 }
 
 function nullable<T>(value: unknown, read: (source: Record<string, unknown>) => T): T | null {

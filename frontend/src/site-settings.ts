@@ -7,39 +7,7 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 import { decodeSite, type Site } from "./validate";
 import { SITE_SETTINGS_API_VERSION } from "./types";
 import { hasAllKeys, hasUnknownKeys } from "./contract";
-
-class MalformedPayload extends Error {}
-
-function bad(): never {
-  throw new MalformedPayload("malformed");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : bad();
-}
-
-function exactKeys(source: Record<string, unknown>, keys: readonly string[]): void {
-  if (!hasAllKeys(source, keys) || hasUnknownKeys(source, keys)) {
-    bad();
-  }
-}
-
-function textOrNull(source: Record<string, unknown>, key: string): string | null {
-  const value = source[key];
-  if (value === null) {
-    return null;
-  }
-  return typeof value === "string" ? value : bad();
-}
-
-function booleanValue(source: Record<string, unknown>, key: string): boolean {
-  const value = source[key];
-  return typeof value === "boolean" ? value : bad();
-}
+import { Malformed, bad, isRecord, record, exactKeys, textOrNullAt as textOrNull, flagAt as booleanValue, numberOrNullAt as numberOrNull } from "./decode-primitives";
 
 export const SITE_SETTINGS_NOT_ADMIN = "spotnav_not_admin";
 export const SITE_SETTINGS_NO_SITE = "spotnav_no_site";
@@ -115,7 +83,7 @@ export function decodeSiteSettingsAnswer(raw: unknown): SiteSettingsDecodeResult
     }
     return { ok: true, value: { ok: false, code: error, site, restore } };
   } catch (error) {
-    if (error instanceof MalformedPayload) {
+    if (error instanceof Malformed) {
       return { ok: false, failure: "malformed" };
     }
     throw error;
@@ -125,14 +93,6 @@ export function decodeSiteSettingsAnswer(raw: unknown): SiteSettingsDecodeResult
 function restoreOutcome(source: Record<string, unknown>, key: string): RestoreOutcome {
   const value = source[key];
   return value === "not_needed" || value === "restored" || value === "failed" ? value : bad();
-}
-
-function numberOrNull(source: Record<string, unknown>, key: string): number | null {
-  const value = source[key];
-  if (value === null) {
-    return null;
-  }
-  return typeof value === "number" && Number.isFinite(value) ? value : bad();
 }
 
 /**
