@@ -1,0 +1,61 @@
+{
+  "api_version": 1,
+  "beta": {
+    "email": "me@example.com",
+    "ended": false,
+    "ends_at": "2026-12-03T11:15:00-08:00",
+    "on": true,
+    "started_at": "2026-11-19T11:15:00-08:00"
+  },
+  "error": null,
+  "ok": true,
+  "ref": null,
+  "retry_after_s": null,
+  "test": {
+    "blocked": "running",
+    "finished_at": null,
+    "next_at": null,
+    "result": null,
+    "sent_ref": null,
+    "started_at": "2026-11-19T11:15:00-08:00",
+    "state": "running",
+    "steps": [
+      {
+        "part": "battery",
+        "reason": null,
+        "status": "running",
+        "step": "hold"
+      },
+      {
+        "part": "battery",
+        "reason": null,
+        "status": "pending",
+        "step": "charge"
+      },
+      {
+        "part": "battery",
+        "reason": null,
+        "status": "pending",
+        "step": "discharge"
+      },
+      {
+        "part": "battery",
+        "reason": null,
+        "status": "pending",
+        "step": "hand_back"
+      },
+      {
+        "part": "heat",
+        "reason": null,
+        "status": "passed",
+        "step": "engage"
+      },
+      {
+        "part": "heat",
+        "reason": null,
+        "status": "running",
+        "step": "release"
+      }
+    ]
+  }
+}

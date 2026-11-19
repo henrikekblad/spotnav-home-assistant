@@ -4,7 +4,10 @@ hardware test's runner (`hardware_test.py`) against fake engines."""
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -395,3 +398,54 @@ async def test_a_running_test_is_ended_at_the_unload(hass: HomeAssistant) -> Non
     await runner.async_shutdown()
     assert battery.stopped == ["hardware_test_stopped"]
     assert runner.record is not None and runner.record["stopped"] == "unload"
+
+
+# ---- the card's contract: `spotnav/beta`'s answers (`tests/fixtures/beta/`, `SPOTNAV_WRITE_FIXTURES=1` rewrites them)
+
+FIXTURES = Path(__file__).parent / "fixtures" / "beta"
+
+
+def _write_or_compare(name: str, answer: dict[str, Any]) -> None:
+    path = FIXTURES / name
+    text = json.dumps(answer, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    assert json.loads(path.read_text(encoding="utf-8")) == json.loads(text)
+
+
+def _answer(beta: Beta, runner: HardwareTest | None, **extra: Any) -> dict[str, Any]:
+    return {"api_version": 1, "ok": True, "error": None, "beta": view(beta.state),
+            "test": None if runner is None else runner.view(), "ref": None, "retry_after_s": None, **extra}
+
+
+async def test_the_card_s_fixtures(hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch) -> None:
+    freezer.move_to("2026-11-19T20:15:00+01:00")
+    monkeypatch.setattr(hardware_test, "_current_version", lambda _hass, fallback: "3.0.0")
+
+    async def version(_self: HardwareTest) -> str:
+        return "3.0.0"
+
+    monkeypatch.setattr(HardwareTest, "_async_version", version)
+    beta = await _beta(hass, _Sender())
+    idle = await _runner(hass, _FakeBattery(), _FakeHeat())
+    _write_or_compare("off_idle.json", _answer(beta, idle))
+    await beta.async_set(on=True, email="me@example.com")
+    running = await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True))
+    assert await running.async_start() is None
+    await asyncio.sleep(0)
+    _write_or_compare("on_running.json", _answer(beta, running))
+    await running.async_stop("stopped")
+
+    async def send(_hass: HomeAssistant, message: str, email: str | None, client: Any, *, kind: str) -> ReportResult:
+        return ReportResult(ref="SN-7KQ4")
+
+    monkeypatch.setattr(support_report, "async_send_report", send)
+    failed = await _runner(hass, _FakeBattery({"hold": "obeyed", "charge": "partial", "discharge_house": "obeyed",
+                                               "normal": "restored"}), _FakeHeat(refusal="safety:room_cold"))
+    assert await failed.async_start() is None
+    await _finished(failed)
+    _write_or_compare("on_done_failed.json", _answer(beta, failed))
+    freezer.move_to("2026-12-04T03:00:00+01:00")
+    _write_or_compare("ended.json", _answer(beta, None))
+    await beta.async_stop()
