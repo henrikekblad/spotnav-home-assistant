@@ -242,7 +242,10 @@ leaves them enabled.
 
 ### SG Ready through the integration (NIBE S series)
 
-The number holds the mode the pump is asked for, and acts only while the switch is on:
+The number holds the mode the pump is asked for, and acts only while the switch is on. Only the pump's own SG Ready
+number and switch (found by NIBE Heat Pump's register numbers) are accepted for this path, also when the settings
+are written another way than through the card, so SpotNav never writes a mode to another number. On no path is
+anything written through a heat pump integration that runs through the maker's cloud.
 
 | Mode | SG Ready state | SpotNav |
 |---|---|---|

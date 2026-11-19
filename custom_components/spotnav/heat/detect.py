@@ -68,6 +68,27 @@ def offset_capability(hass: HomeAssistant, entity_id: str) -> tuple[str, bool, b
     return None
 
 
+def cloud_entity(hass: HomeAssistant, entity_id: str) -> bool:
+    """Whether an entity belongs to a heat pump integration read through the maker's cloud (read only, plan section
+    4: nothing is steered through it). A registry read only."""
+    entry = er.async_get(hass).async_get(entity_id)
+    return entry is not None and any(adapter.cloud for adapter in adapters_for(entry.platform))
+
+
+def sg_ready_api_fits(hass: HomeAssistant, entity_id: str, domain: str) -> bool:
+    """Whether an entity is a pump's own SG Ready control of `domain` (the SG Ready API's mode `number`, its
+    activation `switch`) by its integration and unique id, not through a cloud: the only entities the SG Ready API
+    path writes. A registry read only."""
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None or entry.domain != domain:
+        return False
+    return any(
+        not adapter.cloud and capability.kind == "sg_ready" and capability.match.matches(entry.domain, str(entry.unique_id or ""))
+        for adapter in adapters_for(entry.platform)
+        for capability in adapter.capabilities
+    )
+
+
 def read_heat_pumps(hass: HomeAssistant) -> list[HeatPumpFacts]:
     """Every heat pump SpotNav can read here, with its facts."""
     registry = er.async_get(hass)

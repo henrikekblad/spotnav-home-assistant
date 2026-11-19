@@ -140,6 +140,8 @@ SG_API = {"control_path": "sg_ready_api", "control_entity": MODE, "control_entit
 
 
 def _sg_api(hass: HomeAssistant, mode: str = "1", api: str = "off") -> dict[str, Any]:
+    _register(hass, MODE, "nibe_heatpump", "S1155-46009")
+    _register(hass, API, "nibe_heatpump", "S1155-43033")
     hass.states.async_set(MODE, mode, {"min": 0, "max": 3, "step": 1})
     hass.states.async_set(API, api)
     return SG_API
@@ -270,6 +272,52 @@ def test_the_settings_take_the_sg_ready_api_as_a_number_and_a_switch(hass: HomeA
     # Another path drops the switch with the mode.
     moved, errors = apply_changes(updated, {"control_path": "offset", "control_entity": NIBE}, now=now, check=lambda _entity, _role: True)
     assert errors == [] and moved.control_entity_b is None
+
+
+CLOUD_OFFSET = "number.myuplink_heating_offset_climate_system_1_47011"
+
+
+async def test_the_sg_ready_api_takes_only_the_pumps_own_sg_ready_entities(hass: HomeAssistant, freezer) -> None:
+    site = await pilot_site(hass, freezer)
+    _sg_api(hass)
+    _register(hass, CLOUD_OFFSET, "myuplink", "DEV-47011")
+    hass.states.async_set(CLOUD_OFFSET, "0", {"min": -10, "max": 10, "step": 1})
+    hass.states.async_set("switch.annan", "off")
+    hass.states.async_set("input_number.eget", "1", {"min": 0, "max": 3, "step": 1})
+
+    async def errors(changes: dict[str, Any]) -> list[tuple[str, str]]:
+        answer = (await update(hass, api_version=1, site_id=site.entry_id, changes=changes, expected={}))["result"]
+        return [(item["field"], item["code"]) for item in answer["field_errors"]]
+
+    # Any other number, a cloud offset too, and any other switch are refused: SpotNav would write 0..2 to them.
+    assert await errors({**SG_API, "control_entity": CLOUD_OFFSET}) == [("control_entity", "wrong_kind")]
+    assert await errors({**SG_API, "control_entity": "input_number.eget"}) == [("control_entity", "wrong_kind")]
+    assert await errors({**SG_API, "control_entity_b": "switch.annan"}) == [("control_entity_b", "wrong_kind")]
+    # The pump's own pair is taken.
+    assert await errors(dict(SG_API)) == []
+    assert read_config(site.data[CONF_HEAT]).control_entity == MODE
+
+
+async def test_nothing_is_written_through_a_cloud_entity_or_a_number_that_is_no_sg_ready_mode(hass: HomeAssistant, freezer) -> None:
+    _register(hass, CLOUD_OFFSET, "myuplink", "DEV-47011")
+    hass.states.async_set(CLOUD_OFFSET, "1", {"min": -10, "max": 10, "step": 1})
+    hass.states.async_set(API, "off")
+    heat = {"control_path": "sg_ready_api", "control_entity": CLOUD_OFFSET, "control_entity_b": API}
+    _site_, control, pump, now = await _running(hass, freezer, heat, {0: "lower", 1: "lower"})
+    await _look(control, now)
+    await _look(control, now + MIN)
+    assert pump.calls == [] and control.reason == "no_relay"
+    # A switch behind the cloud on the relay path: the same.
+    _register(hass, "switch.myuplink_lux_50004", "myuplink", "DEV-50004")
+    hass.states.async_set("switch.myuplink_lux_50004", "off")
+    entry = hass.config_entries.async_get_entry(control.site.entry_id)
+    assert entry is not None
+    relay = {**entry.data[CONF_HEAT], "control_path": "relay", "control_entity": "switch.myuplink_lux_50004", "control_entity_b": None}
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_HEAT: relay})
+    control.checks["switch.myuplink_lux_50004"] = {"result": "passed"}
+    await _look(control, now + 2 * MIN)
+    await _look(control, now + 3 * MIN)
+    assert pump.calls == [] and control.reason == "no_relay"
 
 
 # ------------------------------------------------------------------------------------------------ SG Ready via the API

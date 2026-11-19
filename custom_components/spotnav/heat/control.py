@@ -1042,14 +1042,19 @@ class HeatControl:
         return None
 
     def _blocker(self, config: HeatConfig, relay: str) -> str | None:
-        from .detect import offset_capability, other_controllers, read_heat_pumps  # noqa: PLC0415 - read only when it matters
+        from .detect import cloud_entity, other_controllers, read_heat_pumps, sg_ready_api_fits  # noqa: PLC0415 - read only when it matters
 
         watched = list(dict.fromkeys([paths.entity_of(relay)] + ([config.control_entity_b] if config.control_entity_b else [])))
-        if paths.parse(relay)[1] == paths.KIND_OFFSET:
-            known = offset_capability(self.hass, paths.entity_of(relay))
-            if known is not None and known[2]:
-                # An offset behind the maker's cloud is read only (plan section 4): there is nothing to steer.
-                return WAIT_NO_RELAY
+        if any(cloud_entity(self.hass, entity_id) for entity_id in watched):
+            # An entity behind the maker's cloud is read only (plan section 4), on every path: nothing to steer.
+            return WAIT_NO_RELAY
+        if paths.parse(relay)[1] == paths.KIND_MODE and not (
+            sg_ready_api_fits(self.hass, paths.entity_of(relay), "number")
+            and config.control_entity_b is not None
+            and sg_ready_api_fits(self.hass, config.control_entity_b, "switch")
+        ):
+            # The SG Ready API writes 0..2 to its mode: never to a number that is not the pump's own SG Ready mode.
+            return WAIT_NO_RELAY
         self.automation = next(iter(steering_automations(self.hass, watched)), None)
         if self.automation is not None:
             return WAIT_AUTOMATION

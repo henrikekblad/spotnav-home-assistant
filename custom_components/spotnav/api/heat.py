@@ -67,6 +67,7 @@ from ..heat.config import (
     F_NIGHT,
     F_ZONES,
     FIELDS,
+    PATH_SG_READY_API,
     USER_FIELDS,
     FieldError,
     HeatConfig,
@@ -76,7 +77,7 @@ from ..heat.config import (
 )
 from ..heat import optin as heat_optin
 from ..heat.control import raise_entity
-from ..heat.detect import other_controllers, read_heat_pumps
+from ..heat.detect import other_controllers, read_heat_pumps, sg_ready_api_fits
 from ..heat.facts import HeatPumpFacts
 from ..heat.meter_split import levels, split_day
 from ..heat.indoor_day import LIVE_STEP_MIN, indoor_day, means_by_start
@@ -173,6 +174,11 @@ def entity_check(hass: HomeAssistant) -> Any:
             return None
         if role in ("indoor", "outdoor") and entity_id.startswith("sensor."):
             return bool(is_temperature(hass, entity_id))
+        if role == PATH_SG_READY_API:
+            # The SG Ready API writes 0..2 to its mode: only the pump's own SG Ready number, never any number.
+            return sg_ready_api_fits(hass, entity_id, "number")
+        if role == f"{PATH_SG_READY_API}_b":
+            return sg_ready_api_fits(hass, entity_id, "switch")
         return True
 
     return check

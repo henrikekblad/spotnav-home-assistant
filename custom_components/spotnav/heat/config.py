@@ -351,7 +351,8 @@ class FieldError:
 
 
 #: What an entity id is, for the judge: `None` when Home Assistant knows no such entity, else whether it fits the
-#: role named (`indoor`, `outdoor`, `zone`, `relay`, `sg_ready`, `offset`, `setpoint`, `hot_water`).
+#: role named (`indoor`, `outdoor`, `zone`, a control path's own name for its first entity and `<path>_b` for its
+#: second, `hot_water`).
 EntityCheck = Callable[[str, str], bool | None]
 
 
@@ -499,7 +500,7 @@ def apply_changes(
                 if first is not None:
                     _check_entity(errors, F_CONTROL, first, path, domains, check)
                 if path in PATH_DOMAINS_B and second is not None:
-                    _check_entity(errors, F_CONTROL_B, second, path, PATH_DOMAINS_B[path], check)
+                    _check_entity(errors, F_CONTROL_B, second, f"{path}_b", PATH_DOMAINS_B[path], check)
                     if second == first:
                         errors.append(FieldError(F_CONTROL_B, ERR_DUPLICATE))
                 elif path not in PATH_DOMAINS_B:
