@@ -277,6 +277,7 @@ async def history_answer(hass: HomeAssistant, site: Any, raw_period: Any, raw_da
     try:
         model_mae = dict(forecast_maes(controller.house_forecast.log).get(KIND_HEAT) or {})
     except Exception:  # noqa: BLE001 - the forecast log is extra: the rest is shown
+        _LOGGER.debug("history_answer: ignored failure (the forecast log is extra: the rest is shown)", exc_info=True)
         model_mae = {}
     answer = heat_history(
         HeatHistoryInputs(

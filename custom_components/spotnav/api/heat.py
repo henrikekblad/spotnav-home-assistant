@@ -686,6 +686,7 @@ def _car_hours(hass: HomeAssistant, controller: Any, measured: Mapping[datetime,
     try:
         windows = site_car_windows(hass, controller)
     except Exception:  # noqa: BLE001 - the band shows the rest
+        _LOGGER.debug("car_hours: ignored failure (the band shows the rest)", exc_info=True)
         windows = []
     for start, end, _kw in windows:
         moment = start.replace(minute=0, second=0, microsecond=0)
