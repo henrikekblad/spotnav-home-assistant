@@ -164,6 +164,7 @@ const LINE_KEYS: Record<string, TranslationKey> = {
   checking_after_update: "battery.line.checkingAfterUpdate",
   on: "battery.line.on",
   "watching:ai_mode": "battery.line.watchingAiMode",
+  "watching:strategy": "battery.line.watchingStrategy",
 };
 
 const WAITING_KEYS: Record<string, TranslationKey> = {
@@ -337,12 +338,17 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.firmwareUnknown");
     case "control_not_found":
       return translate(language, "battery.need.controlNotFound", { role: roleName(param ?? "") });
+    case "needs_hacs_integration":
+      // The repository is the recipe's (`BrandControl.hacs_repo`), after the first colon only: it holds a slash.
+      return translate(language, "battery.need.needsHacs", { repo: need.slice(kind.length + 1) || "HACS" });
     case "control_disabled":
       return translate(language, "battery.need.controlDisabled", { role: roleName(param ?? "") });
     case "outside_control":
       return translate(language, "battery.need.outsideControl");
     case "ai_takeover_ack":
       return translate(language, "battery.need.aiTakeoverAck");
+    case "strategy_ack":
+      return translate(language, "battery.need.strategyAck");
     case "self_managed":
       return translate(language, "battery.need.selfManaged");
     default:
@@ -529,6 +535,20 @@ export class SiteSections {
     });
   }
 
+  /** For a battery whose own strategy SpotNav cannot read: the explanation that SpotNav's commands override it;
+   * its button writes the same acknowledgement as the AI-mode takeover (`battery_control_ai_takeover_ack`). */
+  openStrategyAck(): void {
+    const { doc, idPrefix } = this.input;
+    const language = this.language;
+    this.input.openEditor(translate(language, "battery.strategyAck.title"), (handlers) => {
+      const editor = shell(doc, language, "battery-strategy-ack", handlers, translate(language, "battery.ack.confirm"));
+      editor.body.append(element(doc, "p", C.settingRowHelp, translate(language, "battery.strategyAck.text")));
+      editor.form.dataset["batteryAck"] = idPrefix;
+      editor.submit(async () => await this.writeBattery({ battery_control_ai_takeover_ack: true }));
+      return editor.form;
+    });
+  }
+
   /** The battery mode: one of three, each with its help line; Choose writes `battery_mode`. */
   private openBatteryMode(title: string, current: string): void {
     const { doc, idPrefix } = this.input;
@@ -612,6 +632,13 @@ export class SiteSections {
           button.type = "button";
           button.dataset["edit"] = "battery_control_ai_takeover_ack";
           button.addEventListener("click", () => this.openTakeover());
+          item.append(button);
+        }
+        if (need === "strategy_ack" && admin) {
+          const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.ack.open")) as HTMLButtonElement;
+          button.type = "button";
+          button.dataset["edit"] = "battery_control_ai_takeover_ack";
+          button.addEventListener("click", () => this.openStrategyAck());
           item.append(button);
         }
       }

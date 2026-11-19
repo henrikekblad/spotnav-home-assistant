@@ -33,24 +33,30 @@ SIGEN_KEYS = [
 ]
 
 
+def _uid(brand: str, key: str) -> str:
+    """A unique id as the brand's integration builds it (GoodWe: `goodwe-<key>-<serial>`, Tesla: `<site id>-<key>`)."""
+    return {"goodwe": f"goodwe-{key}-SN1", "tesla": f"1234-{key}"}.get(brand, f"PLANT_{key}")
+
+
 def _plant(
     hass: HomeAssistant, brand: str, *, enabled: frozenset[str] = frozenset(), disabled_by: Any = INTEGRATION
 ) -> tuple[str, dict[str, str]]:
     """A plant of the brand's integration with every control entity of `optin.ENABLE_KEYS` in the registry, disabled
     except the keys in `enabled`; answers the battery entity and the entity id per key."""
-    platform = next(control.adapter.platforms[0] for control in CONTROLS if control.brand == brand)
+    # The last platform: Victron's first is in Home Assistant core, whose library is not installed here.
+    platform = next(control.adapter.platforms[-1] for control in CONTROLS if control.brand == brand)
     owner = MockConfigEntry(domain=platform, entry_id="PLANT", title="The plant")
     owner.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(config_entry_id=owner.entry_id, identifiers={(platform, "plant")})
     registry = er.async_get(hass)
     battery = registry.async_get_or_create(
-        "sensor", platform, "PLANT_battery_power", device_id=device.id, config_entry=owner,
+        "sensor", platform, _uid(brand, "battery_power"), device_id=device.id, config_entry=owner,
         suggested_object_id="plant_battery_power",
     )
     found: dict[str, str] = {}
     for domain, key in optin.ENABLE_KEYS[brand]:
         entry = registry.async_get_or_create(
-            domain, platform, f"PLANT_{key}", device_id=device.id, config_entry=owner,
+            domain, platform, _uid(brand, key), device_id=device.id, config_entry=owner,
             suggested_object_id=f"plant_{key}", disabled_by=None if key in enabled else disabled_by,
         )
         found[key] = entry.entity_id
@@ -65,20 +71,18 @@ def _config(battery: str) -> dict[str, Any]:
 def test_every_roles_entity_is_in_the_adapters_list(control: Any) -> None:
     keys = optin.ENABLE_KEYS[control.brand]
     for role in control.roles:
-        assert any(role.match.matches(domain, f"PLANT_{key}") for domain, key in keys), role.name
+        assert any(role.match.matches(domain, _uid(control.brand, key)) for domain, key in keys), role.name
 
 
-async def test_the_lists_per_adapter_in_order(hass: HomeAssistant) -> None:
-    for control in CONTROLS:
-        hass.config_entries.async_entries()  # noqa: B018 - nothing from an earlier brand is shared
-        battery, found = _plant(hass, control.brand)
-        entry_id, entities = optin.disabled_control_entities(hass, _config(battery), control.brand)
-        assert entry_id == "PLANT"
-        assert [entry.entity_id for entry in entities] == list(found.values()), control.brand
-        for entry in list(er.async_get(hass).entities.values()):
-            er.async_get(hass).async_remove(entry.entity_id)
-        for config_entry in hass.config_entries.async_entries():
-            await hass.config_entries.async_remove(config_entry.entry_id)
+@pytest.mark.parametrize("control", CONTROLS, ids=lambda control: control.brand)
+async def test_the_lists_per_adapter_in_order(hass: HomeAssistant, control: Any) -> None:
+    battery, found = _plant(hass, control.brand)
+    entry_id, entities = optin.disabled_control_entities(hass, _config(battery), control.brand)
+    assert entry_id == "PLANT"
+    assert [entry.entity_id for entry in entities] == list(found.values()), control.brand
+
+
+def test_the_sigenergy_list_is_kept() -> None:
     assert [key for _domain, key in optin.ENABLE_KEYS["sigenergy"]] == SIGEN_KEYS
 
 
@@ -87,7 +91,7 @@ async def test_an_enabled_entity_and_a_brand_without_a_list_are_left_out(hass: H
     _entry, entities = optin.disabled_control_entities(hass, _config(battery), "sigenergy")
     assert found["plant_ess_max_discharging_limit"] not in [entry.entity_id for entry in entities]
     assert len(entities) == len(SIGEN_KEYS) - 1
-    assert optin.disabled_control_entities(hass, _config(battery), "goodwe") == (None, [])
+    assert optin.disabled_control_entities(hass, _config(battery), "enphase") == (None, [])
     assert optin.disabled_control_entities(hass, _config(battery), None) == (None, [])
     assert optin.disabled_control_entities(hass, {}, "sigenergy") == (None, [])
 
@@ -200,3 +204,69 @@ async def test_a_failed_reload_is_an_error_and_writes_no_options(
     )
     assert answer["error"] == ERROR_ENABLE_FAILED
     assert site.data.get("battery_control_enabled") is not True
+
+
+async def test_core_goodwe_without_the_hacs_numbers_gets_one_note_in_the_checklist(hass: HomeAssistant) -> None:
+    battery, found = _plant(hass, "goodwe", enabled=frozenset(key for _d, key in optin.ENABLE_KEYS["goodwe"]))
+    registry = er.async_get(hass)
+    registry.async_remove(found["eco_mode_power"])
+    registry.async_remove(found["eco_mode_soc"])
+    _s, control = await _site(hass, battery)
+    needs = control.status()["needs"]
+    assert needs.count("needs_hacs_integration:mletenay/home-assistant-goodwe-inverter") == 1
+    assert not any(need.startswith("control_not_found") for need in needs)
+
+
+async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_the_house_at_its_peak(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shell on a Victron plant (`commands.VICTRON_CONTROL`): the charge per phase needs nothing but the
+    recipe's own entities, the plant's power per phase is the load behind each Multi less the power on its input,
+    and each phase's HA-down cap is reckoned with the house at its peak, as Sigenergy's: the Multi's own dead-man
+    is the maker's word only, not yet seen on a plant, so the recipe does not state it."""
+    from custom_components.spotnav.battery import gate
+    from custom_components.spotnav.battery.commands import VICTRON_CONTROL
+    from custom_components.spotnav.battery.control import BatteryControl
+    from homeassistant.util import dt as dt_util
+
+    battery, found = _plant(hass, "victron", enabled=frozenset(key for _domain, key in optin.ENABLE_KEYS["victron"]))
+    site, control = await _site(hass, battery)
+    states = {
+        "system_ess_max_charge_power": "-1", "system_ess_max_inverter_power_limit": "-1",
+        "system_ac_power_set_point": "50", "system_ess_mode": "phase_compensation_enabled",
+        "vebus_hub4_disable_charge": "off", "vebus_hub4_disable_feed_in": "off",
+        **{f"vebus_ac_power_setpoint_l{n}": "0" for n in (1, 2, 3)},
+        **{f"vebus_inverter_output_power_l{n}": str(100 * n) for n in (1, 2, 3)},
+        **{f"vebus_inverter_input_power_l{n}": str(1000 + 100 * n) for n in (1, 2, 3)},
+    }
+    for key, state in states.items():
+        hass.states.async_set(found[key], state)
+    monkeypatch.setattr(BatteryControl, "_phase_headroom_a", lambda self: (10.0, 10.0, 10.0))
+    monkeypatch.setattr(BatteryControl, "_grid_phase_kw", lambda self: (1.0, 1.0, 1.0))
+    monkeypatch.setattr(BatteryControl, "_cars_allowed_a", lambda self, **_kwargs: 0.0)
+    control.facts = control._read_facts()
+    assert control.facts.brand == "victron"
+
+    assert control._phase_missing_now() is None
+    now = dt_util.now()
+    inputs = control.inputs(now, VICTRON_CONTROL.with_phases(True), slot=None)
+    assert inputs.phase_behind_kw == pytest.approx((0.1, 0.2, 0.3))
+    assert inputs.phase_point_kw == pytest.approx((1.1, 1.2, 1.3))
+    assert inputs.plant_phase_kw == pytest.approx((-1.0, -1.0, -1.0))
+    assert set(inputs.reads) >= {"ess_mode", "phase_l3_target", "phase_l1_load", "phase_l2_input"}
+    fuse_a = control._main_fuse_a()
+    assert fuse_a is not None
+    volts = 400.0 / 3 ** 0.5
+    caps = control._phase_caps_kw(now)
+    assert not gate.silence_guards(VICTRON_CONTROL.phase_control.silence_fallback_s)
+    assert caps == pytest.approx(gate.grid_charge_phase_caps_kw(
+        fuse_a, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=control._house_peak_kw(now),
+        house_phase_peaks_a=control._phase_peaks(now) or None,
+    ))
+    assert all(cap < (fuse_a - 2.0) * volts / 1000 for cap in caps), "never the fuse less the margin"
+
+    # A sensor that reads nothing: no charge per phase.
+    hass.states.async_set(found["vebus_inverter_output_power_l2"], "unavailable")
+    control._look_id += 1
+    assert control._phase_missing_now() == "plant_phase_power"
+    assert control.inputs(now, VICTRON_CONTROL.with_phases(True), slot=None).plant_phase_kw is None

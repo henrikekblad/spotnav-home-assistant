@@ -8,6 +8,9 @@ offset through the pump's own integration (see
 [Control through the pump's own integration](#control-through-the-pumps-own-integration-not-yet-tried-on-a-real-pump)).
 It never writes a setpoint. What it reads is shown in the diagnostics (`heat_pump`).
 
+Which other pumps and Home Assistant integrations can be controlled, and which can make hot water on command, is
+in [Supported heat pumps](supported.md#supported-heat-pumps).
+
 ## Which pumps are read
 
 | Pump | Integration | Notes |

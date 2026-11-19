@@ -69,7 +69,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_RESTORED
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, State, callback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.loader import async_get_loaded_integration
@@ -97,8 +97,10 @@ from .commands import (
     WATCHDOG_S,
     BrandControl,
     Phases,
+    answered,
     control_for,
     export_control_for,
+    fixed_rate_kw,
     reading,
     service_call,
 )
@@ -192,21 +194,33 @@ def _float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _state_of(control: BrandControl, name: str, state: State | None) -> str | None:
+    """A stored control's state as its role reads it (`commands.answered`); `None` when the entity is gone."""
+    if state is None:
+        return None
+    try:
+        role = control.role(name)
+    except KeyError:
+        return state.state
+    return answered(role, state.state, state.attributes)
+
+
 def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]:
     """Each control the executor wrote, read by its stored entity (no registry lookup)."""
     reads: dict[str, RoleRead] = {}
     for name, entity_id in executor.state.entities.items():
         state = hass.states.get(entity_id)
-        reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+        reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                found=state is not None, enabled=state is not None, device_id=executor.state.device_id)
     return reads
 
 
 async def _async_call(hass: HomeAssistant, op: Op, executor: Executor, watchdog_s: int) -> bool:
     """One write as a service call; `False` when it raised (the executor counts it as not taken)."""
+    role = executor.control.role(op.role)
     domain, service, data = service_call(
         op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-        services=executor.control.role(op.role).services, watchdog_s=watchdog_s,
+        services=role.services, watchdog_s=watchdog_s, device_field=role.device_field, duration=role.duration,
     )
     try:
         await hass.services.async_call(domain, service, data, blocking=True)
@@ -348,11 +362,15 @@ class BatteryControl:
         #: The look (or status read) being answered, and `_phase_missing` as read in it.
         self._look_id = 0
         self._missing: tuple[int, str | None] | None = None
+        #: For a recipe whose targets per phase are the grid's: the load behind each point and the power at it, read
+        #: once a look (`_grid_phases`).
+        self._grid_read: tuple[int, tuple[Phases, Phases] | None] | None = None
         battery_shadow = getattr(site, "battery_shadow", None)
         if battery_shadow is not None:
             # The outside-control watch does not count SpotNav's own writes as someone else's, and the shadow hold
             # judges a plant in AI mode as control would.
             battery_shadow.spotnav_acting = self.acting
+            battery_shadow.found_states = self.found_states
             battery_shadow.takeover = lambda: self.options().ai_takeover_ack
             battery_shadow.hold_variant = self.hold_variant
 
@@ -619,7 +637,12 @@ class BatteryControl:
         options = options or self.options()
         if self.state(options) != "on":
             return frozenset()
-        return gate.allowed_actions(self.report(), options)
+        return gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge())
+
+    def _export_needs_charge(self) -> bool:
+        """Whether this brand's discharge to the grid needs the charge step passed (`gate.allowed_actions`)."""
+        control = control_for(self.facts.brand)
+        return control is not None and control.export_signed_by_charge()
 
     def _require(self, ok: bool, what: str) -> None:
         if not ok:
@@ -836,7 +859,8 @@ class BatteryControl:
         spec = None if control is None else control.phase_control
         if control is None or spec is None:
             return "not_supported"
-        if self._plant_phases(control) != 3:
+        if not spec.three_phase_by_targets and self._plant_phases(control) != 3:
+            # Where the three targets exist only on a three-phase plant, finding them (below) is what shows it.
             return "not_three_phase"
         reads = read_role_reads(self.hass, self.site.config, control.with_phases(True))
         for role in spec.owned():
@@ -848,11 +872,37 @@ class BatteryControl:
         for role, states, why in spec.requires:
             if reading(role, reads[role.name].state) not in states:
                 return why
-        if self.facts.plant_phase_entities is None:
+        if spec.behind is not None and spec.point is not None:
+            # The recipe's own sensors at its point give the plant's power per phase (`_grid_phases`).
+            if self._grid_phases() is None:
+                return "plant_phase_power"
+        elif self.facts.plant_phase_entities is None:
             return "plant_phase_power"
         if self._phase_headroom_a() is None or self._grid_phase_kw() is None:
             return "site_phases"
         return None
+
+    def _grid_phases(self) -> tuple[Phases, Phases] | None:
+        """For a brand whose targets per phase are the grid's, with sensors at their point
+        (`commands.PhaseControl.grid_phases`): the load behind each phase's point and the power at the point now
+        (kW); `None` for any other brand, or when a sensor is missing, disabled or reads nothing. Read once a look
+        (it walks the registry), whichever control the executor runs now."""
+        cached = self._grid_read
+        if cached is not None and cached[0] == self._look_id:
+            return cached[1]
+        control = control_for(self.facts.brand)
+        spec = None if control is None else control.phase_control
+        found: tuple[Phases, Phases] | None = None
+        if control is not None and spec is not None and spec.behind is not None and spec.point is not None:
+            try:
+                reads = read_role_reads(self.hass, self.site.config, control.with_phases(True))
+                found = spec.grid_phases({
+                    name: read.state for name, read in reads.items() if read.found and read.enabled
+                })
+            except Exception:  # noqa: BLE001 - unknown: no charge per phase runs without them
+                self._look_failed("grid_phases")
+        self._grid_read = (self._look_id, found)
+        return found
 
     def _phase_headroom_a(self) -> Phases | None:
         """Each phase's headroom now (A), `None` when one is unknown."""
@@ -883,10 +933,14 @@ class BatteryControl:
     def _phase_caps_kw(self, now: datetime) -> Phases:
         """The HA-down cap of a grid charge on each phase (`gate.grid_charge_phase_caps_kw`) on the site's readings
         now, by the same house peaks, chargers and margin as the balanced cap."""
+        control = control_for(self.facts.brand)
+        spec = None if control is None else control.phase_control
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
             house_phase_peaks_a=self._phase_peaks(now) or None,
+            # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
+            silence_fallback_s=None if spec is None else spec.silence_fallback_s,
         )
 
     def _charge_limits(
@@ -1329,7 +1383,7 @@ class BatteryControl:
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
         slot, why = gate.restricted(
             self._merged_slot(now), allowed, self._charge_limits(now, options, phased=control.phased)[0],
-            self._export_cap_kw(),
+            self._export_cap_kw(), self._fixed_charge_kw(), hold_charges=self._hold_charges(),
         )
         action = None if slot is None else slot[0]
         if action in (None, ACTION_SELF_CONSUME):
@@ -1353,12 +1407,31 @@ class BatteryControl:
 
     def _merged_slot(self, now: datetime) -> tuple[str, float, datetime | None] | None:
         """The plan's running slot with the hold for the car (`gate.merged_action`)."""
-        return gate.merged_action(self._plan_now(now), self.site.battery_shadow.hold_requested())
+        control = control_for(self.facts.brand)
+        # A slow control (a cloud) runs planned actions only: no hold for a car, which comes and goes in minutes.
+        hold_requested = self.site.battery_shadow.hold_requested() and not (control is not None and control.slow)
+        return gate.merged_action(self._plan_now(now), hold_requested)
+
+    def _fixed_charge_kw(self) -> float | None:
+        """The rate a plant charges at when the recipe cannot set it (`commands.fixed_rate_kw`), `None` otherwise."""
+        control = control_for(self.facts.brand)
+        return None if control is None else fixed_rate_kw(control, self.facts)
+
+    def _hold_charges(self) -> bool:
+        """Whether a hold on this plant may itself charge from the grid at its fixed rate: a role whose absence lets it
+        (`BrandControl.hold_charges_without`) is not found."""
+        control = control_for(self.facts.brand)
+        if control is None or not control.hold_charges_without:
+            return False
+        reads = read_role_reads(self.hass, self.site.config, control)
+        return any((read := reads.get(name)) is None or not read.found for name in control.hold_charges_without)
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         slot, why = gate.restricted(
-            self._merged_slot(now), gate.allowed_actions(self.report(), options), self._charge_limits(now, options)[0],
-            self._export_cap_kw(),
+            self._merged_slot(now),
+            gate.allowed_actions(self.report(), options, export_needs_charge=self._export_needs_charge()),
+            self._charge_limits(now, options)[0], self._export_cap_kw(), self._fixed_charge_kw(),
+            hold_charges=self._hold_charges(),
         )
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.
@@ -1720,12 +1793,17 @@ class BatteryControl:
 
     def _read_facts(self) -> BatteryFacts:
         power_kw, _age = self._battery_power()
-        return self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        return self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
 
     def _with_outside(self, facts: BatteryFacts) -> BatteryFacts:
         """A battery the site's outside-control watch marks is another system's: every look refuses it."""
         battery_shadow = getattr(self.site, "battery_shadow", None)
         return facts if battery_shadow is None else battery_shadow.with_outside(facts)
+
+    def found_states(self) -> dict[str, str]:
+        """The states the battery's executor found before it first wrote, by entity id (`Executor.found_states`)."""
+        executor = self.executor
+        return {} if executor is None else executor.found_states()
 
     def acting(self) -> bool:
         """Whether this path acts on the battery or the export limit now (its writes are no one else's), and for
@@ -1765,7 +1843,7 @@ class BatteryControl:
             for name, entity_id in executor.state.entities.items():
                 if name not in reads:
                     state = self.hass.states.get(entity_id)
-                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                    reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                            found=state is not None, enabled=state is not None)
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
@@ -1809,7 +1887,7 @@ class BatteryControl:
             for name, entity_id in executor.state.entities.items():
                 if name not in reads:
                     state = self.hass.states.get(entity_id)
-                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                    reads[name] = RoleRead(entity_id=entity_id, state=_state_of(executor.control, name, state),
                                            found=state is not None, enabled=state is not None,
                                            device_id=executor.state.device_id)
         return reads
@@ -1826,7 +1904,7 @@ class BatteryControl:
     ) -> ExecInputs:
         """The battery's look with `slot` as the action (by default what control runs now)."""
         power_kw, age_s = self._battery_power()
-        self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+        self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         try:
@@ -1852,13 +1930,26 @@ class BatteryControl:
             if cap is not None and slot[1] > cap:
                 slot = (slot[0], cap, slot[2]) if cap >= gate.MIN_RATE_KW else (ACTION_SELF_CONSUME, 0.0, slot[2])
                 phase_caps = phase_caps if cap >= gate.MIN_RATE_KW else None
+        # A recipe whose targets per phase are the grid's reads the plant's power per phase at its own point: the
+        # load behind the point less the power at it.
+        grid_phases = self._grid_phases()
+        behind, point = grid_phases if grid_phases is not None else (None, None)
+        spec = control.phase_control
+        if spec is not None and spec.behind is not None and spec.point is not None:
+            plant_phase_kw = None if behind is None or point is None else (
+                behind[0] - point[0], behind[1] - point[1], behind[2] - point[2]
+            )
+        else:
+            plant_phase_kw = self._plant_phase_kw(now)
         return ExecInputs(
             now=now,
             facts=facts,
             reads=self._reads(control),
             phase_caps_kw=phase_caps,
             phase_headroom_a=self._phase_headroom_a(),
-            plant_phase_kw=self._plant_phase_kw(now),
+            plant_phase_kw=plant_phase_kw,
+            phase_behind_kw=behind,
+            phase_point_kw=point,
             grid_phase_kw=self._grid_phase_kw() if result.state not in UNHEALTHY_STATES else None,
             action=None if slot is None else slot[0],
             rate_kw=0.0 if slot is None else slot[1],
@@ -1866,6 +1957,7 @@ class BatteryControl:
             battery_age_s=age_s,
             measurement_ok=result.state not in UNHEALTHY_STATES and result.state != "not_configured",
             headroom_a=min(headrooms) if headrooms else None,
+            charge_phases=self._plant_phases(control),
             volts_between_phases=stored_voltage_between_phases_v(config),
             grid_import_kw=grid_import_kw,
             # The fast shedding order (`gate.battery_yields`): the battery's grid charge before the car, the car
@@ -1917,7 +2009,7 @@ class BatteryControl:
         except Exception:  # noqa: BLE001
             power_kw, age_s = None, None
         try:
-            self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+            self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw, self.found_states()))
         except Exception:  # noqa: BLE001
             facts = self.facts
         try:
@@ -2024,9 +2116,11 @@ class BatteryControl:
             _LOGGER.warning("SpotNav battery control: a write of %s was refused by the gate", op.role)
             self._log([{"at": dt_util.now().isoformat(), "kind": "refused", "reason": op.role}])
             return False
+        role = executor.control.role(op.role)
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
-            services=executor.control.role(op.role).services, watchdog_s=self._watchdog_s,
+            services=role.services, watchdog_s=self._watchdog_s, device_field=role.device_field,
+            duration=role.duration,
         )
         try:
             await self.hass.services.async_call(domain, service, data, blocking=True)
@@ -2086,7 +2180,13 @@ class BatteryControl:
         for role in control.roles:
             read = reads.get(role.name)
             if read is None or not read.found:
-                needs.append(f"control_not_found:{role.name}")
+                if role.name in control.hacs_roles:
+                    # Core's integration lacks it: one note the person can act on, not one line per control.
+                    need = f"needs_hacs_integration:{control.hacs_repo}"
+                    if need not in needs:
+                        needs.append(need)
+                elif not role.optional:
+                    needs.append(f"control_not_found:{role.name}")
             elif role.method != "service" and not read.enabled:
                 needs.append(f"control_disabled:{role.name}")
         management = facts.management
@@ -2095,6 +2195,8 @@ class BatteryControl:
         elif taken_over(facts, control) or self._takeover_withdrawn(self.options()):
             if not self.options().ai_takeover_ack:
                 needs.append("ai_takeover_ack")
+        elif control.strategy_unread and not self.options().ai_takeover_ack:
+            needs.append("strategy_ack")
         elif management.state == "self_managed" and not (self.acting()):
             needs.append(f"self_managed:{management.reason}")
         return needs
@@ -2139,6 +2241,8 @@ class BatteryControl:
             return f"blocked:{executor.state.blocked}"
         if state == "on" and "ai_takeover_ack" in self._needs():
             return "watching:ai_mode"
+        if state == "on" and "strategy_ack" in self._needs():
+            return "watching:strategy"
         return state
 
     def status(self) -> dict[str, Any]:

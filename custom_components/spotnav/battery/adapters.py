@@ -13,7 +13,7 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   the storage controls sit on the inverter, the battery's facts on its own `B<n>` device.
 * SolaX Modbus, `solax_modbus` (wills106 `8a1f3fc`): `<hub name>_<key>`, the SolaX plugin's devices only.
 * Three more plugins of `solax_modbus` (wills106 `4acd644`, read 2026-11-18), each its own adapter, told apart by
-  the manufacturer the plugin gives the device, and read only (no control is mapped for any of them):
+  the manufacturer the plugin gives the device, and read only here (Solinteg alone has a control, in `commands.py`):
   * Sofar (`plugin_sofar.py`, "Sofar Solar"): the level is `battery_capacity_total` (%, all battery inputs; the
     per-input `battery_capacity_1..8` are not read). The floor is 100 less `bat_config_depth_of_discharge` (%, a
     sensor that is disabled by default). The size and the ratings are learnt: `bat_config_capacity` (Ah) and the
@@ -33,13 +33,23 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
     times `battery_voltage`, an estimate as for GoodWe. The floor is the number `battery_soc_min_ongrid` (register
     52503; the inverter applies it only while its "Battery SOC Protection On Grid" is on, which is not read). The
     mode is the select `working_mode`, free in "General". The cells' warmest temperature
-    (`battery_max_cell_temperature`) is not the average and is not read.
+    (`battery_max_cell_temperature`) is not the average and is not read. The plugin has no signed power per phase of
+    the inverter ("Inverter Current L1-3", `grid_current_l1..3`, are unsigned currents and "Meter Active Power L1-3"
+    the grid's), so there is no `plant_phase_power` and its control per phase (`commands.SOLINTEG_PHASES`) cannot
+    run until there is.
 * Victron, core `victron_gx` (victron-mqtt 2026.11.1): `<installation>_<device type>_<device id>_<short id>`; the HACS
-  `victron_mqtt` (tomer-w/ha-victron-mqtt 2026.11.2, same short ids) is read the same way.
+  `victron_mqtt` (tomer-w/ha-victron-mqtt 2026.11.2, same short ids) is read the same way. The firmware a control
+  check is kept per is the GX's Venus OS version (`platform_venus_firmware_installed_version`, read 2026-11-18 in
+  victron-mqtt 2026.11.1): the ESS loop and its control points are the GX's.
 * Victron Modbus, community `victron` (sfstar/hass-victron `32fb345`): `<unit id>_<register key>`, the GX system at unit
   100, a battery monitor or BMS at 225 by default.
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
 * Enphase, core `enphase_envoy`: `<serial>_<key>`.
+* Ferroamp, `ferroamp` (henricm/ha-ferroamp `b18097f`, 1.18.0, read 2026-11-18): `<slug>_ehub-<key>` on the EnergyHub
+  and `<slug>_ehub-<key>-L1..L3` per phase (`sensor.py` `KeyedFerroampSensor`, `SinglePhaseFerroampSensor`); the
+  ESOs and ESMs carry `<slug>_eso_<id>-<key>` and are not read. `soc` (%) and `ratedcap` (Wh) are the whole system's
+  and exist only when the hub sends them. `pinv-L1..L3` is the hub's inverter power per phase on the grid's sign
+  (import positive, so negative while it delivers): `plant_phase_sign` -1. Nothing is disabled by default.
 
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
@@ -188,6 +198,11 @@ class Adapter:
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
     """The key at the end of the unique id, after `_` or at its start."""
     return Match(domains or ("sensor",), re.compile(rf"(?:^|_){re.escape(key)}$"), None if reject is None else re.compile(reject))
+
+
+def _tesla(key: str, *domains: str) -> Match:
+    """Tesla Fleet and Teslemetry put the energy site's id before the key: `<energy site id>-<key>`."""
+    return Match(domains or ("sensor",), re.compile(rf"^[^-]+-{re.escape(key)}$"))
 
 
 def _goodwe(key: str, *domains: str) -> Match:
@@ -380,6 +395,9 @@ VICTRON: Final = Adapter(
         "charge_current": _key("battery_max_charge_current"),
         "discharge_current": _key("battery_max_discharge_current"),
         "voltage": _key("system_dc_battery_voltage"),
+        # The GX's Venus OS version (`/Firmware/Installed/Version` on the platform service): its ESS loop and the
+        # control points are the GX's, so a change of it is what a control check is kept per.
+        "firmware": _key("platform_venus_firmware_installed_version"),
     },
     # The ESS minimum SoC (Settings/CGwacs/BatteryLife/MinimumSocLimit), the floor the system discharges to.
     reserves=(ReserveSource(_key("system_ess_min_soc_limit", "number")),),
@@ -452,6 +470,23 @@ GOODWE: Final = Adapter(
     ),
 )
 
+#: Tesla Powerwall through the cloud integrations of Home Assistant core, `tesla_fleet` and `teslemetry` (core
+#: `3df9333`, read 2026-11-18; `plans/research_integrations/goodwe_tesla_enphase_control_2026-11.md`): an energy
+#: site's unique id is `<energy site id>-<key>`. The level is `percentage_charged`, the size `total_pack_energy` (Wh,
+#: disabled by default), the grid state `island_status`. No rated power is an entity. The floor is the backup reserve
+#: (number `backup_reserve_percent`, written by the control: while SpotNav holds or charges, the floor reads what it
+#: wrote). The mode (select `default_real_mode`) is free only in `self_consumption`: `backup` pins the reserve and
+#: `autonomous` (Time-Based Control) is the person's own optimiser.
+TESLA: Final = Adapter(
+    brand="tesla",
+    label="Tesla Powerwall",
+    platforms=("tesla_fleet", "teslemetry"),
+    facts={"soc": _tesla("percentage_charged"), "capacity": _tesla("total_pack_energy")},
+    modes=(ModeRule(_tesla("default_real_mode", "select"), frozenset({"self_consumption"}), "operation mode"),),
+    grid_status=(_tesla("island_status"), "on_grid"),
+    reserves=(ReserveSource(_tesla("backup_reserve_percent", "number")),),
+)
+
 ENPHASE: Final = Adapter(
     brand="enphase",
     label="Enphase",
@@ -468,8 +503,25 @@ ENPHASE: Final = Adapter(
     ),
 )
 
+def _ehub(key: str, *domains: str) -> Match:
+    """Ferroamp's EnergyHub entity: `<slug>_ehub-<key>` (the ESOs' and ESMs' `<slug>_eso_<id>-<key>` never match)."""
+    return Match(domains or ("sensor",), re.compile(rf"_ehub-{re.escape(key)}$"))
+
+
+FERROAMP: Final = Adapter(
+    brand="ferroamp",
+    label="Ferroamp EnergyHub",
+    platforms=("ferroamp",),
+    facts={"soc": _ehub("soc"), "capacity": _ehub("ratedcap")},
+    # The hub's inverter power per phase, import-positive like its grid power (`pext - pinv` is each phase's load).
+    plant_phase_power=(_ehub("pinv-l1"), _ehub("pinv-l2"), _ehub("pinv-l3")),
+    plant_phase_sign=-1.0,
+    # No mode entity: the hub's own control (FerroAI, the person's EnergyCloud settings) is not readable here.
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
-    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, ENPHASE,
+    SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
+    FERROAMP,
 )
 
 

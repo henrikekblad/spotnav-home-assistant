@@ -33,9 +33,9 @@ settings popover's **Home battery** section, shown when SpotNav finds a battery:
 card's gear or the charging card's **Settings** (administrators only). The section also has:
 
 * one line under the switch saying what control does now (off, test mode, checking, waiting for a suitable moment and
-  why, on, stopped, or only watching while the AI mode is not yet accepted);
+  why, on, stopped, or only watching while the AI mode, or a battery's own strategy SpotNav cannot read, is not yet accepted);
 * the checklist of what you still have to do (enable an entity, turn on the firmware sensor, accept the AI-mode
-  takeover), each in plain words;
+  takeover or, for a Ferroamp hub, that SpotNav overrides its own strategy), each in plain words;
 * the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
   passed, failed or not judged yet) with what SpotNav may then do;
 * the reminder to turn AI mode on again after a takeover ended, and **Allow selling from the battery** (off by
@@ -67,12 +67,126 @@ administrators can confirm, and never over the webhook. The entities per brand:
   control mode and AC charge policy.
 * Huawei: forcible charge/discharge write, maximum charging and discharging power.
 * SolaX: remote control autorepeat duration, active power, power control and trigger.
+* GoodWe (the HACS integration): operation mode, eco mode power, eco mode SoC and the depth of discharge.
+* Tesla Powerwall: backup reserve, the grid charging switch and the battery's size (its pack energy).
+* Solinteg (the Solinteg plugin of SolaX Modbus): Working Mode and EMS BattCtrl Charge Discharge Power Target, and for
+  the per-phase control EMS ACCtrl AC Power Scheduling Mode, Grid Unbalanced Output (read by SpotNav) and the EMS
+  ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
+* Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
+  discharge and autocharge services.
+* Victron (the core Victron GX integration and the HACS Victron MQTT; all enabled by default): ESS max charge power
+  limit, ESS max inverter power limit and AC power setpoint, and for the per-phase control ESS mode (Hub4), Hub4
+  disable charge, Hub4 disable feed-in, AC power setpoint L1, L2 and L3, and the Multi's Input power and Output
+  power L1, L2 and L3.
 
-**Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
+**GoodWe and Tesla Powerwall: mapped, never run on a device.** Both are switched on by the same switch and checked by
+the same routine as the others, and both are untested.
+
+* *GoodWe* needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core's `goodwe` has no eco charge mode
+  and no eco power or SoC numbers, and the checklist then says "needs the HACS integration". A grid charge is the eco
+  charge mode at a share of the battery's rated power (an estimate from the battery's present current limit and
+  voltage, so a charge that takes more from the grid than it was given for a minute is handed back and not tried again
+  for six hours); a discharge for the house is the general mode; a hold sets the depth of discharge so the cut-off is
+  the level now (not confirmed on a device: the library does not say what the inverter does at that point, so a hold
+  whose battery charges from the grid for a minute is handed back and not tried again for six hours). While SpotNav
+  holds, the plan still counts the depth of discharge you set, not SpotNav's. Hand-back puts the mode, the eco values
+  and the depth back as found. Nothing stops a command when Home Assistant stops, so a grid charge is capped for that
+  case. Some firmwares ignore the eco level ceiling (the HACS integration's issues 466 and 486), so a charge ends with
+  the plan's slot and is judged by the battery's power, not by the level.
+* *Tesla Powerwall* (`tesla_fleet` or `teslemetry`, Tesla's cloud) is **slow**: only the plan's own actions, no hold
+  for a car, no peak cover, at most 24 writes a day (Tesla's real limit for energy settings is not confirmed) and no
+  change of action within 15 minutes. It runs only while the operation mode is self-powered; Time-Based Control and
+  Backup are left alone.
+  * A **hold** turns grid charging off and sets the backup reserve two points under the level now, rounded down, so a
+    level the cloud reports late never puts the reserve above the battery, where it would charge from the grid. A hold
+    that charges from the grid anyway is handed back and not tried again for six hours. While SpotNav holds, the plan
+    still counts the reserve you set, not SpotNav's.
+  * A **grid charge** allows grid charging and sets the reserve to what the Powerwalls reach in 30 minutes at 5 kW
+    each, raised again every 30 minutes. Tesla has **no dead-man**: if Home Assistant or the cloud stops, at most that
+    much is charged from the grid and the reserve stays there until it is set back (see below), never at 100 %.
+  * The charge power is the Powerwall's own (about 1.7 kW each in reports, not measured here), so SpotNav counts 5 kW
+    per Powerwall on one phase for the fuse cap and does not start a charge that does not fit. It does not start one
+    at all while the battery's size is not read (the size sensor is disabled by default; the switch's dialog offers
+    it): without it two Powerwalls would be checked as one.
+  * The grid charging switch exists only on a site with solar. Without it a reserve above the level charges from the
+    grid whatever SpotNav does, so there a hold runs only where the Powerwall's charge would fit under the fuse cap.
+  * The cloud may take minutes to show a change, and Home Assistant shows SpotNav's write at once. For 15 minutes after
+    a hand-back SpotNav watches that the reserve and the switch stay as it set them back; one that shows SpotNav's
+    value again is written again twice, and then the switch's line says the control is blocked until the reserve is
+    set back. A hand-back the cloud refuses outright is tried again every hour.
+
+**If GoodWe or Tesla Powerwall control goes wrong, restore by hand** (note the values before you turn control on):
+
+* GoodWe: set the operation mode back to General (or your own mode), the depth of discharge (on grid) to your value
+  and the eco mode power and SoC to what they were; then turn SpotNav's switch off.
+* Tesla Powerwall, in the Tesla app or Home Assistant: set the backup reserve back to your value and grid charging
+  (the "allow charging from grid" switch, on a site with solar) back as it was; then turn SpotNav's switch off.
+
+**Ferroamp (EnergyHub), untested.** Control goes through the `ferroamp` integration's services (Ferroamp's MQTT API,
+which Ferroamp's support enables): a charge or discharge request with a power in watts for the whole system (steps of
+500 W), and `autocharge`, which hands the batteries back to the hub. A hold is a charge request of 0 W (the check also
+tries a discharge request of 0 W; neither is documented by Ferroamp, so the hub may refuse it), covering the house is
+`auto`, and every hand-back is `auto`. Things to know: the API has no timeout for a request, so a command stays if
+Home Assistant stops, and SpotNav caps a grid charge for that case as for Sigenergy; the integration shows the
+last request seen on the bus and, beside it, the hub's answer to it: SpotNav counts a request as taken only once the
+hub has acknowledged it, and sends a refused hand-back again (the battery's power is still judged as for every
+brand); the hub takes one request at a time and refuses a second while one is running; and SpotNav does not start while another request
+(Ferroamp's own app, an automation) is standing. The strategy set for the hub in EnergyCloud (peak shaving, FerroAI,
+a grid service) is not shown in Home Assistant, so SpotNav cannot tell whether one runs: the checklist asks you to
+accept that SpotNav's requests override it while SpotNav controls the battery (every hand-back gives the hub back to
+it), and nothing is sent before you do. Leave control off if the hub takes part in a grid service. The hub's ACE moves energy between the phases to keep each grid
+phase under the threshold set in EnergyCloud (set it at the main fuse). It runs inside the hub, but Ferroamp documents neither whether it acts on a grid charge nor how the hub spreads a
+charge over its three phases, so SpotNav's cap for a grid charge counts it all on one phase, as for a brand that
+does not say, and does not depend on ACE.
+
+**Read only: Sofar and Growatt.** SpotNav reads these two through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see
 [The battery plan](battery-plan.md#what-the-plan-needs)), so the site can tell the car's draw from the battery's and the
-battery plan can run in shadow. It has no control for them and writes nothing to them. All three are read from the
+battery plan can run in shadow. It has no control for them and writes nothing to them. Both are read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
+
+**Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
+commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
+the plugin's source and from owners' notes. Nobody has run them on an inverter yet; the first to do so is a pilot.
+What it does:
+
+* **Hold:** Working Mode *EMS BattCtrl* with the battery's power target at 0. The battery stands idle and stores no
+  sun meanwhile (a surplus is exported).
+* **Charge from the grid:** *EMS BattCtrl* with the target at minus the power (negative charges). The mode is
+  written first and the target after it: owners found that values written before the mode switch read back but do
+  not act.
+* **Cover the house:** the inverter's own *General* mode. There is no EMS mode that covers the house and stores
+  nothing, so the battery also stores a sun surplus then.
+* **Hand back:** Working Mode to *General* (one write releases the battery), then the target to 0. SpotNav takes the
+  inverter only in *General*, so that is the mode it was found in.
+
+What to know before you turn it on:
+
+* **The inverter keeps the last command.** No timeout is known: if Home Assistant stops during a grid charge, the
+  charge goes on until something writes the inverter again. So a grid charge is always capped as described under
+  "The grid charge cap and the house's peaks" below, and because nothing says how the inverter spreads such a charge
+  over its phases, the cap counts **all of it on one phase**: a third of what a plant known to balance gets. On a
+  small main fuse that can leave no grid charge at all until the house's peaks are learned.
+* **The inverter's own limits are not counted on.** The site import limit (Import Limit, peak shaving) may or may
+  not act under EMS control, and the Solinteg cloud has been seen to write limits back. SpotNav neither writes them
+  nor relies on them. The EMS BattCtrl Max Grid Import/Export numbers are left as you have them: if one of them
+  stops a charge, the check fails on that step and says so.
+* **Nothing left behind.** SpotNav starts nothing while the power target reads anything but 0: it would run for some
+  seconds when the mode is switched. Set it to 0 and control goes on.
+* **One Modbus client.** The dongle answers one client only: do not run another Modbus tool beside the integration.
+  It also stops answering for 4 to 8 seconds about once a minute while it uploads to the cloud. Set the
+  integration's timeout to 10 to 12 seconds, so that a write made in such a pause waits instead of failing; a write
+  the integration reports as failed stops control until you turn it on again. SpotNav waits up to three minutes
+  for a written value to show (one minute on other brands); a hand-back to *General* waits one minute and is then
+  written again.
+* **The cloud and the app.** If the Solinteg app, the cloud or another controller (Samvolt, CheckWatt, Enequi)
+  changes the Working Mode while SpotNav runs it, SpotNav hands back and stops; it never writes over them.
+* **Writes a day:** 500 to the power targets, 96 to the modes. Nobody states whether the inverter keeps the targets
+  in flash.
+* **Restore by hand:** set Working Mode to *General* and the EMS BattCtrl Charge Discharge Power Target (and the
+  three phase numbers) to 0.
+
+Please [tell us](supported.md) what the check says on yours.
 
 **Switching on starts a check, not control.** SpotNav first checks that the battery obeys, each step through the
 same write path control uses: hold (the battery stops discharging), charge 2 kW from the grid, cover the house, and
@@ -111,7 +225,9 @@ also stores a sun surplus, as it does normally). Other protocol changes worth kn
 (Remote EMS dispatch enable, not used by SpotNav) and V2.9 added V2G (0x08) to the Remote EMS control modes.
 
 **The check decides what SpotNav may do.** Hold and the hand-back must pass for any control; grid charging only if the
-charge step passed, covering the house only if that step passed. A failed step leaves control off, with one line
+charge step passed, covering the house only if that step passed. Selling from the battery needs the house step;
+on a battery whose one power target both charges and discharges by its sign (SolaX, Solinteg) it needs the charge
+step too, since only that step shows which sign charges. A failed step leaves control off, with one line
 saying what did not work (for example "the battery did not stop discharging when held"); turning the switch off and
 on again runs the check again. The result is kept per firmware and integration version: after a firmware update
 (or a new version of the integration) SpotNav hands the battery back and checks again at the next suitable evening.
@@ -131,14 +247,17 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
 * **At most 96 writes a day** to the plant's settings (limits, modes, switches), outside hand-backs. A grid charge
   leaves the last 12 of them untouched, so a hold can still start after a day of charges that kept starting. The
   targets per phase are setpoints made for an outside controller and have their own count, 500 a day on Sigenergy
-  (its protocol does not say how often they may be written, so not more); reaching it ends charging per phase for
-  the day and nothing else. The diagnostics show what is left of each.
+  (its protocol does not say how often they may be written, so not more) and 3 000 a day on Victron (whose
+  setpoints must be written again within a minute anyway; those renewals are not counted); reaching it ends charging
+  per phase for the day and nothing else. The diagnostics show what is left of each.
 
 ### The grid charge cap and the house's peaks
 
 The cap answers one question: how much may the battery draw from the grid so that no phase passes the main fuse if
 Home Assistant stops and the command stays? It is the fuse, less a margin, less what the chargers may draw, less the
-house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn.
+house's peak; what is left is spread over the plant's phases. The house's peak is what SpotNav has to learn. While
+Home Assistant runs, the charge is also kept under the phase with the least room now, counted the same way: on a
+plant not known to balance its charge, all of it on that one phase.
 
 * **The first week: a cautious rule.** With fewer than seven days learned, the house is taken to draw the house
   forecast's high figure for the hour, at least 4 kW, all of it on one phase (17 A). On a 20 A fuse that leaves no
@@ -265,6 +384,82 @@ shows it: "Nätladdning per fas: L1 1,01 kW · L2 0 kW · L3 0,13 kW".
 
 Handing back writes the three targets to 0, then the control mode to Maximum Self Consumption, then Remote EMS off,
 each read back.
+
+**Solinteg** has the same kind of targets: in Working Mode *EMS ACCtrl* with *EMS ACCtrl AC Power Scheduling Mode*
+at "Power Setting on each Phase" the inverter follows *EMS ACCtrl Phase A/B/C Power Scheduling* (the inverter's AC
+power on that phase, negative taking from the grid), with *Grid Unbalanced Output* on, which SpotNav reads and never
+changes. SpotNav has the commands (the targets, then the scheduling mode, then the working mode; back: *General*
+first, then the targets to 0), but **it cannot use them yet**: the check and the watch per phase need the inverter's
+own power per phase, and the integration reads only its current per phase without a direction. Until it does, a
+Solinteg grid charge is the balanced one under its cap.
+
+### Victron ESS (mapped, not yet tested on a plant)
+
+For a GX device with a MultiPlus or Quattro and the ESS assistant, through the **Victron GX** integration in Home
+Assistant core or the HACS **Victron MQTT**. Nobody has run it on a plant yet: it is built from Victron's own page
+"ESS mode 2 and 3" and the integrations' source, it sits behind the same switch and the same check, and a
+[field report](supported.md) is what it needs. The community Modbus integration (`victron`) is read only: its
+maximum inverter power cannot show "no limit" as a value SpotNav could write back. With the HACS integration set
+to its read-only operation mode the controls are sensors, and SpotNav finds nothing to write.
+
+SpotNav takes the plant only in an *Optimized* ESS mode with Dynamic ESS off, and uses Victron's two documented
+ways in:
+
+* **Mode 2, the GX keeps running its own loop.** A hold sets *ESS max inverter power limit* to 0 (the battery does
+  not discharge; the sun is still stored). A discharge for the house sets *ESS max charge power limit* to 0 (the
+  GX covers the house as always; an MPPT on the battery side still charges, the limit is the Multi's). A grid charge
+  sets the max charge power to the rate and the *AC power setpoint*, which is the **grid's** power and not the
+  battery's (positive takes from the grid), to the house's load now plus the rate. When the house then draws more
+  the battery takes less, and it helps once the house alone passes the setpoint; the setpoint is not moved to
+  follow the house, since it is a setting on the GX and Victron warns that writing it often wears the GX's flash.
+  These are settings and stay if Home Assistant stops, so this charge runs under the usual cap, reckoned as if the
+  Multis were all on one phase (the integration does not say how many there are).
+* **Mode 3, external control, for a charge per phase** on a three-phase system. SpotNav sets *ESS mode (Hub4)* to
+  external control and writes *AC power setpoint L1/L2/L3*. Such a setpoint is the power on that Multi's **AC
+  input**, not a battery target ("Power to/from AC-input = Power to/from battery + Power to/from AC-output"), so
+  SpotNav writes the load on that Multi's AC output plus the charge it wants there, and follows that load. Loads
+  wired beside the Multis are seen by your grid meter and by the fuse rule. Handing back is one write, the ESS
+  mode as it was found, and the GX runs all three phases again; SpotNav never leaves a setpoint behind, since
+  outside external control the GX writes them itself.
+
+**The watchdog, and what it does not change yet.** Victron: "These registers must be written once every 60
+seconds, or the Multi will go into Passthru." SpotNav writes each setpoint again every 20 seconds. By that rule a
+charge per phase would stop by itself within a minute of Home Assistant stopping, but nobody has seen it happen on
+a plant, and a firmware where it does not act, or something else on the GX that writes the setpoints (a Node-RED
+flow, a script), would leave them standing. So SpotNav counts on it nowhere: each phase's cap is reckoned as for
+Sigenergy, with the house at its learned peak on that phase, and covers the whole setpoint that would stand (the
+load behind the Multi plus the charge). On top of that each phase is filled only by what it has free **now**, to
+4 A under the fuse, checked at every look, and a phase within 1 A of the fuse hands everything back at once.
+If the Multis do fall back, they stay in passthru (the battery neither charges nor covers the house) until Home
+Assistant is back and hands the ESS mode back, which it does first thing.
+
+What a field test must show before the fallback may be counted on (per Venus OS version): a charge per phase of
+at least 1 kW on each phase, then Home Assistant stopped mid-charge with the ESS mode still in external control;
+within 70 seconds each Multi's AC input power falls to its AC output's load (the battery about 0 on each phase)
+and stays there for 5 minutes, while the setpoints still read what SpotNav last wrote; the same after 10 minutes
+of renewals, the charge never dropping meanwhile; and nothing else on the GX writing the setpoints (no Node-RED
+flow, Dynamic ESS off). Until a report shows that, a charge per phase on a house whose learned peak fills a phase
+gets nothing on that phase.
+
+The check's per-phase step is the same as above, with the Multi's own power per phase read as its output power
+less its input power.
+
+**If Home Assistant never comes back, or something goes wrong, restore by hand** (in Home Assistant, or on the
+GX under Settings → ESS):
+
+* **ESS mode (Hub4)** back to the mode you had, *Optimized (with BatteryLife)* or *Optimized (without
+  BatteryLife)*. Left in external control the Multis stay in passthru: no charging, no covering the house.
+* **AC power setpoint** (the grid setpoint) back to your usual value. Left at the house plus a charge rate, the
+  GX keeps importing that much and the battery stays full from the grid, day after day.
+* **ESS max charge power** and **ESS max inverter power limit** back to what you had (-1 is no limit). A hold
+  leaves the inverter limit at 0, a discharge for the house the charge power at 0.
+* **Hub4 disable charge** and **Hub4 disable feed-in**: SpotNav turns both off for a charge per phase and does not
+  turn them back, because outside external control the GX sets them itself. If either stays off while you had
+  feed-in disabled on the GX, set it back.
+
+**What the first field report should say,** beside the fallback test above: whether both Hub4 flags read what the
+GX sets again within a minute of a hand-back (SpotNav counts on that, from Victron's documentation, not from a
+plant); the setpoints the GX writes outside external control; and the Venus OS version.
 
 **Sigen AI mode.** SpotNav can take the plant over from AI mode only after you have read this: *SpotNav takes over
 the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the

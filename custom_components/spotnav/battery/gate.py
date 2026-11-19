@@ -23,7 +23,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   before it from the recorder's history), once a week of it is kept, with a further margin that falls to
   nothing at two weeks; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase. Where the plant
   takes a target per phase (`commands.PhaseControl`, verified as the mode `per_phase`) the cap is each phase's own
-  (`grid_charge_phase_caps_kw`), so a house that loads one phase leaves the others' room to the charge.
+  (`grid_charge_phase_caps_kw`), so a house that loads one phase leaves the others' room to the charge. Where the
+  recipe states the plant's own dead-man (`commands.PhaseControl.silence_fallback_s`, set only once a field test has
+  seen it act; no recipe does yet) the targets do not stay, and each phase's cap is the fuse less the margin: the
+  live clamp per phase bounds the charge.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -31,7 +34,8 @@ fail; anything else (`not_judgeable:*`, an abort for the moment's circumstances:
 is pending and tried again at a later suitable moment (`modes_to_run`, `suitable`), at most `MAX_ATTEMPTS` runs.
 **The report decides which actions are allowed** (`allowed_actions`): hold and normal must pass for any control; a
 grid charge only if `charge` passed, a discharge for the house only if `discharge_house` passed, a discharge to the
-grid only in the Max profit mode on top of that. The export limit needs no routine of its own: it starts
+grid only in the Max profit mode on top of that (and `charge` passed too where the discharge writes a signed
+power target: the house step, the plant's own mode, says nothing about its sign). The export limit needs no routine of its own: it starts
 on its live check (the executor's monitor hands it back and blocks it when the export does not stop).
 
 The fast shedding order on the fuse (`battery_yields`): heat loads first (when the site has them, later), then the
@@ -112,6 +116,10 @@ _PHASE_NAMES: Final = PHASE_NAMES
 HOUSE_PEAK_DEFAULT_KW: Final = 4.0
 #: A grid charge below this is not worth running (kW), as the executor's `MIN_RATE_KW`.
 MIN_RATE_KW: Final = 0.5
+#: The longest a plant's own dead-man (`commands.PhaseControl.silence_fallback_s`) may take to stop a charge per
+#: phase for the HA-down cap to be lifted on its account (s): about what a fuse and a breaker carry a phase's
+#: overload for without opening (see `grid_charge_phase_caps_kw`).
+SILENCE_FALLBACK_MAX_S: Final = 60.0
 #: A held car's departure has room when this many hours at its planned power are left over (h).
 DEPARTURE_ROOM_H: Final = 2.0
 
@@ -302,8 +310,12 @@ def needs_run(report: Mapping[str, Any] | None) -> bool:
     return bool(modes_to_run(report)) or mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
 
 
-def allowed_actions(report: Mapping[str, Any] | None, options: Options) -> frozenset[str]:
-    """The plan actions control may run on this plant (see the module); empty until hold and normal passed."""
+def allowed_actions(
+    report: Mapping[str, Any] | None, options: Options, *, export_needs_charge: bool = False
+) -> frozenset[str]:
+    """The plan actions control may run on this plant (see the module); empty until hold and normal passed.
+    `export_needs_charge`: the discharge to the grid writes a signed target whose sign only the charge step showed
+    (`commands.BrandControl.export_signed_by_charge`), so it needs `charge` passed as well."""
     if report_status(report) != "passed":
         return frozenset()
     modes = _modes(report)
@@ -313,7 +325,7 @@ def allowed_actions(report: Mapping[str, Any] | None, options: Options) -> froze
         allowed.add(ACTION_GRID_CHARGE)
     if "discharge_house" in passed:
         allowed.add(ACTION_DISCHARGE_HOUSE)
-        if options.allow_sell:
+        if options.allow_sell and (not export_needs_charge or "charge" in passed):
             allowed.add(ACTION_EXPORT_DISCHARGE)
     return frozenset(allowed)
 
@@ -522,9 +534,20 @@ def import_limit_holds(
     )
 
 
+def silence_guards(silence_fallback_s: float | None) -> bool:
+    """Whether a recipe's own dead-man (`commands.PhaseControl.silence_fallback_s`) stands in for the HA-down cap of
+    a charge per phase: the maker states that the plant stops following the targets by itself, within
+    `SILENCE_FALLBACK_MAX_S` of the last write."""
+    return (
+        silence_fallback_s is not None and not isinstance(silence_fallback_s, bool)
+        and math.isfinite(silence_fallback_s) and 0 < silence_fallback_s <= SILENCE_FALLBACK_MAX_S
+    )
+
+
 def grid_charge_phase_caps_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
+    silence_fallback_s: float | None = None,
 ) -> tuple[float, float, float]:
     """The most a grid charge may be commanded at on L1, L2 and L3 (kW) where the plant takes a target per phase,
     so that no phase passes the fuse even if Home Assistant stops while it runs (the targets stay, as each charger's
@@ -533,11 +556,32 @@ def grid_charge_phase_caps_kw(
         cap_i = V * max(0, fuse - margin - house_peak_i - cars) / 1000
 
     with each phase's own house peak (`house_peaks_a`) and the chargers' last currents (`cars_a`) counted on
-    every phase. With the fuse or the chargers unknown no phase may charge (0)."""
+    every phase. With the fuse or the chargers unknown no phase may charge (0).
+
+    **A plant with its own dead-man** (`silence_fallback_s`, `silence_guards`; a recipe states it only once a field
+    test has seen the plant stop following its targets when the writes stop. Victron's page promises it for Mode 3,
+    but it is not yet seen, so its recipe does not state it, `commands.py`): the targets do not stay, so the cap is
+    not reckoned for a house at its peak with nobody watching. It is the fuse less the margin on each phase,
+
+        cap_i = V * max(0, fuse - margin) / 1000
+
+    and what bounds the charge is the live clamp per phase (`executor._phase_room_kw`: the phase's headroom now,
+    the house and the cars as they are, less `HEADROOM_MARGIN_A`), which runs at every look while Home Assistant
+    does. What is left unguarded is the minute after Home Assistant stops: a load that starts on a phase in that
+    minute rides on top of the charge until the plant falls back. That is the same exposure a running Home Assistant
+    has between two looks and the plant's own settling, stretched from seconds to at most
+    `SILENCE_FALLBACK_MAX_S`; it ends by itself, and a breaker or a fuse carries a moderate overload far longer than
+    that (IEC 60898: a breaker holds 1.13 times its rating for an hour and may take an hour to open at 1.45 times;
+    a gG fuse 1.25 and 1.6 times). A large load starting on a full phase in that very minute can still open it: the
+    cost is a tripped fuse, not a danger, and it is the price of using the phase's live room. A recipe whose
+    fallback takes longer, or is not stated by the maker, keeps the cap above."""
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return (0.0, 0.0, 0.0)
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
+    if silence_guards(silence_fallback_s):
+        most = max(main_fuse_a - margin_a, 0.0) * volts / 1000.0
+        return (most, most, most)
     house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
     room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - peak, 0.0) * volts / 1000.0 for peak in house]
     return (room[0], room[1], room[2])
@@ -627,11 +671,16 @@ def merged_action(plan: Slot | None, hold_requested: bool) -> Slot | None:
 
 
 def restricted(
-    slot: Slot | None, allowed: Iterable[str], cap_kw: float | None, export_cap_kw: float | None = None
+    slot: Slot | None, allowed: Iterable[str], cap_kw: float | None, export_cap_kw: float | None = None,
+    fixed_charge_kw: float | None = None, *, hold_charges: bool = False,
 ) -> tuple[Slot | None, str | None]:
     """The slot control may run (an action the report does not allow becomes plain self-consumption; a grid charge
     is capped by `cap_kw`, a discharge to the grid by `export_cap_kw`; `restricted`'s second value says why it
-    changed)."""
+    changed). `fixed_charge_kw`: the plant charges at its own rate (Tesla): the charge runs as planned or, when that
+    rate is over the cap, not at all (`grid_charge_cap_fixed`): it is never lowered. An infinite rate (the battery's
+    size, so its number of units, is not read) is never run (`grid_charge_size_unknown`). `hold_charges`: a hold on
+    this plant may itself charge from the grid at that rate (Tesla without the grid-charging switch,
+    `BrandControl.hold_charges_without`), so it runs only under the same rule (`hold_cap_fixed`, `hold_size_unknown`)."""
     if slot is None:
         return None, None
     action, rate, end = slot
@@ -639,6 +688,13 @@ def restricted(
         return slot, None
     if action not in allowed:
         return (ACTION_SELF_CONSUME, 0.0, end), f"not_verified:{action}"
+    if fixed_charge_kw is not None and (action == ACTION_GRID_CHARGE or (action == ACTION_HOLD and hold_charges)):
+        name = "grid_charge" if action == ACTION_GRID_CHARGE else "hold"
+        if not math.isfinite(fixed_charge_kw):
+            return (ACTION_SELF_CONSUME, 0.0, end), f"{name}_size_unknown"
+        if cap_kw is not None and fixed_charge_kw > cap_kw:
+            return (ACTION_SELF_CONSUME, 0.0, end), f"{name}_cap_fixed"
+        return slot, None
     for capped, cap, why in ((ACTION_GRID_CHARGE, cap_kw, "grid_charge_cap"),
                              (ACTION_EXPORT_DISCHARGE, export_cap_kw, "export_fuse_cap")):
         if action == capped and cap is not None and abs(rate) > cap:

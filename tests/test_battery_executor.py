@@ -10,7 +10,9 @@ from datetime import timedelta
 import pytest
 
 from custom_components.spotnav.battery.commands import (
+    FERROAMP_CONTROL,
     HUAWEI_CONTROL,
+    NORMAL,
     SIGENERGY_CONTROL,
     SOLAREDGE_CONTROL,
     SOLAX_CONTROL,
@@ -73,13 +75,13 @@ def _held(executor: Executor, battery: FakeBattery) -> object:
 
 
 def test_every_brand_with_a_control_has_a_command_for_every_planned_action_and_the_rest_have_none() -> None:
-    assert {control.brand for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL)} == {
-        "sigenergy", "solaredge", "huawei", "solax"
+    assert {control.brand for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, FERROAMP_CONTROL)} == {
+        "sigenergy", "solaredge", "huawei", "solax", "ferroamp"
     }
-    for brand in ("victron", "goodwe", "enphase", None):
+    for brand in ("victron_modbus", "enphase", None):
         assert control_for(brand) is None
     rows = table()
-    for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL):
+    for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, FERROAMP_CONTROL):
         actions = {row["action"] for row in rows if row["brand"] == control.brand}
         assert actions == {"hold", "grid_charge", "discharge_house", "export_discharge", "self_consume"}
     # Sigenergy: Remote EMS with the limits; never the discharge cut-off SoC.
@@ -485,6 +487,18 @@ def test_a_yield_step_is_counted_from_the_battery_s_measured_charge_not_its_last
                                      car_held=True, car_first=True), 4.0) == pytest.approx(1.0)
 
 
+def test_the_live_clamp_counts_the_least_headroom_on_the_phases_the_plant_spreads_the_charge_over() -> None:
+    """A charge not known to be balanced may all land on the tightest phase: a third of the three-phase figure."""
+    _executor, battery = _sigenergy()
+    look = inputs(battery, T0, "grid_charge", 10.0, headroom_a=10.0 + HEADROOM_MARGIN_A, grid_import_kw=0.0)
+    balanced = grid_charge_cap_kw(look, 10.0)
+    assert balanced == pytest.approx(10.0 * 3 ** 0.5 * 400.0 / 1000), "the default: three phases"
+    assert grid_charge_cap_kw(replace(look, charge_phases=3), 10.0) == pytest.approx(balanced)
+    one = grid_charge_cap_kw(replace(look, charge_phases=1), 10.0)
+    assert one == pytest.approx(balanced / 3)
+    assert one * 1000 / (400.0 / 3 ** 0.5) == pytest.approx(10.0), "the whole room of one phase, no more"
+
+
 def test_a_grid_charge_that_the_headroom_cannot_carry_is_not_started_or_is_handed_back() -> None:
     executor, battery = _sigenergy()
     _now, results = run(executor, battery, T0, 2, "grid_charge", 4.0, headroom_a=2.5)
@@ -764,6 +778,67 @@ def test_watchdog_renewals_do_not_count_against_the_day_s_write_cap() -> None:
         renewals += len(written(results))
     assert renewals > DAILY_WRITE_CAP and now.date() == T0.date()
     assert executor.state.phase == "active" and executor.state.writes_today == entered
+
+
+_SLOW_WATCHDOGS = pytest.mark.parametrize(
+    ("control", "states", "unreadable"),
+    [
+        (SOLAREDGE_CONTROL, SOLAREDGE_STATES, {"command_mode": "unavailable"}),
+        # Huawei's summary sensor reads unavailable now and then.
+        (HUAWEI_CONTROL, HUAWEI_STATES, {"forcible": "unavailable"}),
+        (SOLAX_CONTROL, SOLAX_STATES, {"autorepeat": "unavailable"}),
+    ],
+    ids=["solaredge", "huawei", "solax"],
+)
+
+
+@_SLOW_WATCHDOGS
+def test_a_renewal_on_the_shared_timer_is_never_counted_even_when_its_role_reads_something_else(
+    control, states, unreadable
+) -> None:
+    # The brands on WATCHDOG_RENEW_S renew as they always did: a renewal is the dead-man, never a change, whatever
+    # the role reads when it is due (only a recipe's fast watchdog counts a renewal whose value moved).
+    assert control.watchdog_renew_s is None and control.watchdog_roles
+    executor, battery = Executor(control), FakeBattery(control, dict(states))
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 2.0)
+    assert executor.state.phase == "active"
+    entered = executor.state.writes_today
+    battery.states |= unreadable
+    now, results = run(executor, battery, now + timedelta(seconds=WATCHDOG_RENEW_S), 6, "grid_charge", 2.0)
+    assert events(results, "renew") and set(control.watchdog_roles) <= {role for role, _ in written(results)}
+    assert executor.state.writes_today == entered
+
+
+@_SLOW_WATCHDOGS
+def test_a_renewal_on_the_shared_timer_starts_on_time_even_when_the_last_round_has_not_ended(
+    control, states, unreadable
+) -> None:
+    # A round left unfinished (a role still in it) does not hold the next one back: it starts every WATCHDOG_RENEW_S,
+    # with every watchdog role, as before the fast watchdog was added.
+    del unreadable
+    executor, battery = Executor(control), FakeBattery(control, dict(states))
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 2.0)
+    executor.state = replace(executor.state, renew=control.watchdog_roles[:1])
+    now += timedelta(seconds=WATCHDOG_RENEW_S)
+    _now, results = run(executor, battery, now, 1, "grid_charge", 2.0)
+    assert [event["reason"] for event in events(results, "renew")] == [",".join(control.watchdog_roles)]
+
+
+def test_the_brands_before_victron_set_every_role_they_write_in_every_action_and_the_hand_back() -> None:
+    # So releasing a role the running action no longer sets (`Executor._release_unset`, for targets the plant owns
+    # outside the charge) and treating a late read-back of such a role as superseded never touch them.
+    for control in (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL):
+        for phased in (False, True):
+            if phased and control.phase_control is None:
+                continue
+            ctl = control.with_phases(True) if phased else control
+            actions = ctl.states
+            ever = set().union(*(ctl.wanted(action, 2.0) for action in actions))
+            for action in actions:
+                assert ever <= set(ctl.wanted(action, 2.0)), (control.brand, phased, action)
+            back = {role.name for role in ctl.roles if role.restored} | set(NORMAL.get(control.brand, {}))
+            assert ever <= back, (control.brand, phased)
+            assert ctl.watchdog_renew_s is None and not ctl.house_states, control.brand
 
 
 def test_a_role_never_written_that_reads_unknown_for_a_moment_is_not_written_on_the_way_back() -> None:

@@ -750,8 +750,11 @@ OVERVIEW: tuple[Overview, ...] = (
         keys=("solax_modbus/solinteg",),
         adapter="solinteg",
         control="Not mapped. The integration has an EMS mode with a battery power target",
-        note="Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes. "
-        "Has its own site import limit; whether it acts under EMS control is unknown. One Modbus TCP client at a time.",
+        note="Keeps the last command: no dead-man found, and one owner measured a command standing for 16 minutes, so "
+        "SpotNav caps a grid charge for the case that Home Assistant stops, counted as all on one phase. Has its own "
+        "site import limit; whether it acts under EMS control is unknown, so SpotNav does not count on it. Charging "
+        "per phase is mapped but cannot run: the integration reads no power per phase of the inverter. One Modbus TCP "
+        "client at a time, and the dongle stops answering for some seconds about once a minute.",
     ),
     Overview(
         "Sungrow (SH hybrids)",
@@ -766,7 +769,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "`goodwe`, Home Assistant core",
         keys=("goodwe",),
         adapter="goodwe",
-        control="Not mapped. Core has only whole operating modes and the depth of discharge, no power setpoint",
+        note="Control needs the HACS integration (mletenay/home-assistant-goodwe-inverter): core has no eco charge "
+        "mode and no eco power or level numbers, and the status then says so. Nothing stops a command when Home "
+        "Assistant stops, so a grid charge is capped for that case. The eco level ceiling is ignored on some "
+        "firmwares, so a charge is judged by the battery's power. The hold (the depth of discharge set to the level "
+        "now) is not confirmed on a device: one that charges from the grid is handed back.",
     ),
     Overview(
         "Fronius (GEN24 with BYD)",
@@ -782,7 +789,9 @@ OVERVIEW: tuple[Overview, ...] = (
         keys=("victron_gx", "victron_mqtt", "victron"),
         adapter="victron",
         control="Not mapped. ESS mode, grid setpoint and minimum SoC exist locally",
-        note="The limits are settings stored on the GX, and repeated writes wear its flash.",
+        note="Control is for `victron_gx` and `victron_mqtt` (a Multi or Quattro with ESS); the Modbus integration "
+        "is read only. The Multi's own one-minute fall-back is not counted on until a plant has shown it. The limits "
+        "are settings stored on the GX, written rarely.",
     ),
     Overview(
         "Enphase",
@@ -797,9 +806,13 @@ OVERVIEW: tuple[Overview, ...] = (
         "Tesla Powerwall",
         "`powerwall`, `tesla_fleet` and `teslemetry`, Home Assistant core; `tesla_custom`, HACS (alandtse/tesla)",
         keys=("powerwall", "tesla_fleet", "teslemetry", "tesla_custom"),
-        control="Not possible locally: reserve, mode and grid charging go through Tesla's cloud. Planned later for "
-        "slow actions only",
-        note="Powerwall 3 has a more restricted local API. No battery level or size is read yet.",
+        adapter="tesla",
+        note="Control is mapped for `tesla_fleet` and `teslemetry` only, through Tesla's cloud: slow, planned "
+        "actions only (backup reserve and grid charging, no peak cover, few writes a day). The charge power is the "
+        "Powerwall's own, so a charge that does not fit under the fuse on one phase is refused, not lowered, and none "
+        "runs while the battery's size is unknown. No dead-man: a grid charge runs in 30-minute blocks, so a lost "
+        "connection leaves one block's charge. Only while the operation mode is self-powered. Powerwall 3 has a more "
+        "restricted local API.",
     ),
     Overview(
         "Deye, Sunsynk, Sol-Ark",
@@ -864,9 +877,10 @@ OVERVIEW: tuple[Overview, ...] = (
         "Ferroamp (EnergyHub)",
         "`ferroamp`, HACS (henricm/ha-ferroamp)",
         keys=("ferroamp",),
-        control="Not mapped. The integration has charge, discharge and auto services",
-        note="The EnergyHub balances load by itself and may fight active control. MQTT is enabled by Ferroamp's "
-        "support. Pools batteries for grid services with Ntricity.",
+        adapter="ferroamp",
+        note="Control sends the integration's charge, discharge and auto requests (whole-system power, no timeout "
+        "documented; a request counts once the hub has acked it). The charge cap counts it on one phase: how the hub "
+        "spreads it is not documented, and SpotNav does not count on ACE. MQTT is enabled by Ferroamp's support. Pools batteries for grid services with Ntricity.",
     ),
     Overview(
         "Homevolt (Tibber)",
@@ -958,6 +972,235 @@ def overview_section() -> list[str]:
         ),
         "",
     ]
+
+
+# ---- heat pumps -----------------------------------------------------------------------------------
+
+#: One row per pump and Home Assistant route: (brand, integration, local or cloud, what SpotNav controls of the
+#: heating, hot water on command, notes). Hand-written from `plans/research_integrations/` (the heat pump survey,
+#: the cloud note and the hot-water note) and from `heat/adapters.py` and `heat/paths.py`; an integration is named
+#: as the sources name it, never linked from memory. "Unverified" means no source read says either way.
+HEAT_PUMP_HEADER = ("Brand", "Integration", "Local or cloud", "SpotNav controls", "Hot water on command", "Notes")
+HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
+    (
+        "NIBE F-series (F730, F750, F1155, F1255, SMO, VVM)",
+        "`nibe_heatpump`, Home Assistant core",
+        "Local",
+        "Relay or SG Ready contact; offset (47011, stored), untested",
+        "Boost: temporary lux, select 48132 (off, 3 h, 6 h, 12 h, one time)",
+        "The lux run ends by itself. Comfort mode and the start and stop temperatures are stored settings.",
+    ),
+    (
+        "NIBE F-series",
+        "`myuplink`, Home Assistant core",
+        "Cloud",
+        "Read only; an offset number if you pick one, untested",
+        "Boost: switch temporary lux (50004), select 48132 on SMO 20",
+        "Needs your own myUplink API app. The lux run ends by itself. Request limits unverified.",
+    ),
+    (
+        "NIBE S-series (S1155, S1255, S320, S735)",
+        "`nibe_heatpump`, Home Assistant core",
+        "Local",
+        "SG Ready through the API (43033 and 46009), offset (40031, stored): both untested",
+        "Unproven: \"more hot water\" (40698), values undocumented. No temporary lux register",
+        "SG Ready is the clean route here. Stop temperatures (40059-40065) and the water heater mode are stored settings.",
+    ),
+    (
+        "CTC EcoLogic, EcoZenith, EcoAir",
+        "`ctc_bms`, HACS (dklemm/home-assistant-ctc-bms); `ctc_ecozenith`, HACS (beolink/HA-CTC-Local-Easyconf)",
+        "Local (Modbus TCP)",
+        "Offset (`ctc_bms` only), untested; the Local Easyconf integration is read only",
+        "Boost: extra hot water in hours; hot water mode and setpoint",
+        "These controls are volatile: the pump forgets them about five minutes after the last write, so a lost "
+        "connection hands back by itself. Stored parameters are not written.",
+    ),
+    (
+        "Panasonic Aquarea",
+        "HeishaMon with `kamaradclimber/heishamon-homeassistant`, HACS",
+        "Local (MQTT, needs the HeishaMon board)",
+        "Read; relay or SG Ready contact; an offset number if you pick one, untested",
+        "Boost: force hot water (switch); hot water setpoint 40-75",
+        "Whether HeishaMon's commands survive a power cut is unverified.",
+    ),
+    (
+        "Panasonic Aquarea",
+        "`cjaliaga/home-assistant-aquarea`, HACS",
+        "Cloud",
+        "Not yet",
+        "Setpoint and on/off (unverified)",
+        "",
+    ),
+    (
+        "Daikin Altherma 4",
+        "`joklee/ha_daikin_altherma4_modbus`, HACS",
+        "Local (Modbus TCP)",
+        "Not yet",
+        "Boost: DHW booster and single heat-up switches with setpoints 30-85; reheat setpoint; mode select",
+        "Whether the values are stored is unverified. The README advises refreshing state regularly.",
+    ),
+    (
+        "Daikin Altherma",
+        "`jwillemsen/daikin_onecta`, HACS",
+        "Cloud (200 calls a day)",
+        "Not yet",
+        "Setpoint, on/off and powerful mode",
+        "The call limit rules out anything but one planned action a day.",
+    ),
+    (
+        "Mitsubishi Ecodan",
+        "`gekkekoe/esphome-ecodan-hp`, ESPHome",
+        "Local (CN105 and an ESP)",
+        "Not yet",
+        "Boost: forced hot water; block or allow hot water and heating (server control)",
+        "Whether the values are stored is unverified.",
+    ),
+    (
+        "Mitsubishi Ecodan",
+        "`melcloud`, Home Assistant core",
+        "Cloud (throttled)",
+        "Not yet",
+        "Setpoint and mode (auto, force hot water)",
+        "",
+    ),
+    (
+        "Thermia Genesis",
+        "`CJNE/thermiagenesis`, HACS",
+        "Local (Modbus TCP)",
+        "Not yet",
+        "Setpoint: start and stop temperatures as numbers (disabled by default). No boost entity seen",
+        "A field tester is needed to check the registers.",
+    ),
+    (
+        "Thermia Online",
+        "`klejejs/ha-thermia-heat-pump-integration`, HACS",
+        "Cloud",
+        "Not yet",
+        "Boost: hot water and hot water boost switches; water heater",
+        "Unverified.",
+    ),
+    (
+        "IVT Greenline, older Bosch Compress (Rego 6xx)",
+        "`crnjan/regoheatpump-ha`, HACS",
+        "Local (serial)",
+        "Not yet",
+        "Setpoint: DHW target 35-54 degrees. No boost",
+        "A stored Rego setting.",
+    ),
+    (
+        "IVT, Bosch with K30, K40 or iCom",
+        "`serbanb11/bosch-homecom-hass`, HACS",
+        "Cloud",
+        "Not yet",
+        "Boost: extra hot water service; setpoint and mode",
+        "The cloud answers 429 quickly: not a route for feedback.",
+    ),
+    (
+        "Vaillant (aroTHERM, flexoTHERM)",
+        "`signalkraft/mypyllant-component`, HACS",
+        "Cloud (strict quotas)",
+        "Not yet",
+        "A hot water boost entity is listed; the documented services only set time programmes (unverified)",
+        "Low scan intervals can get a temporary ban.",
+    ),
+    (
+        "Viessmann (Vitocal)",
+        "`vicare`, Home Assistant core",
+        "Cloud (daily quota)",
+        "Not yet",
+        "Setpoint only; no boost or mode write",
+        "",
+    ),
+    (
+        "Stiebel Eltron, Tecalor",
+        "`pail23/stiebel_eltron_isg_component`, HACS",
+        "Local (ISG Modbus)",
+        "Not yet; its SG Ready switches fit the SG Ready path",
+        "Comfort and eco targets (unverified)",
+        "",
+    ),
+    (
+        "Samsung EHS",
+        "`echoDaveD/EHS-Sentinel`",
+        "Local (RS485 and MQTT)",
+        "Not yet",
+        "Hot water mode and target with control allowed (unverified)",
+        "Writes field settings whose wear is unknown.",
+    ),
+    (
+        "LG Therma V",
+        "`lg-heatpump/lg_heatpump`, HACS",
+        "Local (Modbus through PI485)",
+        "Not yet",
+        "On/off and a disinfection switch. No setpoint or boost",
+        "",
+    ),
+    (
+        "Hitachi Yutaki",
+        "`alepee/hass-hitachi_yutaki`, HACS",
+        "Local (Modbus gateway)",
+        "Not yet",
+        "Boost (unverified)",
+        "",
+    ),
+    (
+        "Qvantum",
+        "`perosb/qvantum_custom_component`, HACS",
+        "Local (Modbus, writing is opt-in) or cloud",
+        "Not yet",
+        "Modes Eco, Normal, Extra, Smart, Off (unverified)",
+        "",
+    ),
+    (
+        "Any pump with an SG Ready input",
+        "A switch entity for each of the two inputs",
+        "Local",
+        "SG Ready (never the forced state)",
+        "Only if the installer wired the input to extra hot water",
+        "",
+    ),
+    (
+        "Any pump with an input for a relay",
+        "A switch entity",
+        "Local",
+        "Relay: lowers the curve",
+        "A contact on an external hot water input, if the pump has one",
+        "",
+    ),
+    (
+        "Any water heater with an immersion element",
+        "A switch or smart plug",
+        "Local",
+        "No: use the price automation blueprint",
+        "Allow heating in the cheap hours only; the thermostat stays as the safety",
+        "Do not hold the tank cold for days.",
+    ),
+)
+
+
+def heat_pumps_section() -> list[str]:
+    lines = [
+        "## Supported heat pumps",
+        "",
+        "What SpotNav reads of a heat pump is in [Heat pumps](heat-pumps.md). This table says what it can control, "
+        "and which pumps can make hot water on command through Home Assistant.",
+        "",
+        "- **SpotNav controls** is the heating: *relay* and *SG Ready* switch a contact you wired, *SG Ready API* "
+        "writes the pump's own SG Ready mode, *offset* writes the heating curve offset, *Not yet* means SpotNav reads "
+        "at most. A stored offset is written rarely, in whole steps, and put back when the control ends.",
+        "- **The NIBE S, the CTC and every stored-offset path are untested in the field.** None of them has run on "
+        "a real heat pump yet; they are read from the integrations' sources and the makers' manuals.",
+        "- **Hot water on command** is what the integration can do, as the sources describe it. SpotNav lists these "
+        "controls and does not write any of them yet. *Boost* is a run that ends by itself, *setpoint* is a stored "
+        "setting, and *block* holds the pump back. *Unverified* means no source we read says.",
+        "- Cloud routes are rate limited. They get at most one planned hot water action a day, never a loop.",
+        "",
+        *table(HEAT_PUMP_HEADER, [row for row in HEAT_PUMPS]),
+        "",
+        f"A pump or route missing or wrong here? [Hardware tested]({ISSUES_URL}).",
+        "",
+    ]
+    return lines
 
 
 # ---- vehicles -------------------------------------------------------------------------------------
@@ -1200,7 +1443,7 @@ def render() -> str:
     lines = [
         "<!-- Generated by tools/gen_supported.py from the integration's tables. Do not edit by hand. -->",
         "",
-        "# Supported EV chargers, meters, batteries and cars",
+        "# Supported EV chargers, meters, batteries, heat pumps and cars",
         "",
         "SpotNav for Home Assistant works with the Home Assistant integrations listed here. The lists are "
         "generated from the tables the integration itself uses, so they always match the release.",
@@ -1217,13 +1460,14 @@ def render() -> str:
         "",
         "Jump to: [inverters and batteries, the overview](#hybrid-inverters-and-home-batteries-overview), "
         "[chargers](#supported-ev-chargers), [grid meters](#supported-grid-meters), "
-        "[house batteries](#supported-house-batteries), [vehicles](#supported-vehicles), "
+        "[house batteries](#supported-house-batteries), [heat pumps](#supported-heat-pumps), [vehicles](#supported-vehicles), "
         "[solar forecast](#supported-solar-forecast), [price areas](#supported-price-areas).",
         "",
         *overview_section(),
         *chargers_section(),
         *meters_section(),
         *batteries_section(),
+        *heat_pumps_section(),
         *vehicles_section(),
         *forecast_section(),
         *prices_section(),

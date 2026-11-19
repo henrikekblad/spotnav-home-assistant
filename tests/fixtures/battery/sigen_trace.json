@@ -1,0 +1,3557 @@
+{
+ "discharge": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "discharge_house",
+      "snapshot": {
+       "charge_limit": "unknown",
+       "discharge_limit": "23.04"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "Maximum Self Consumption"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Maximum Self Consumption",
+      "reason": "control_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "change",
+      "rate_kw": 2.0,
+      "reason": "export_discharge"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 10.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      10.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "10",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 2.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      2.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "2",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "Command Discharging (PV First)"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Command Discharging (PV First)",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Command Discharging (PV First)",
+      "reason": "control_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": true,
+      "value": "Maximum Self Consumption"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Maximum Self Consumption",
+      "reason": "control_mode"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 23.04
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      23.04,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "23.04",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "kind": "handed_back",
+      "reason": "plan_self_consume"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "sigenergy",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:01:00+01:00",
+   "rate_kw": 0.0,
+   "reason": "plan_self_consume",
+   "released_at": "2026-11-14T02:02:30+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [],
+   "variant": "msc_no_discharge",
+   "watchdog_at": "2026-11-14T02:01:00+01:00",
+   "writes_today": 6,
+   "written": []
+  }
+ },
+ "grid_charge": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 3.0,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "unknown",
+       "discharge_limit": "23.04"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 3.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      3.0,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "3",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "Command Charging (Grid First)"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Command Charging (Grid First)",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Command Charging (Grid First)",
+      "reason": "control_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "rate",
+      "rate_kw": 2.0,
+      "reason": "grid_charge",
+      "was_kw": 3.0
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 2.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      2.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "2",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "kind": "rate",
+      "rate_kw": 4.0,
+      "reason": "grid_charge",
+      "was_kw": 2.0
+     },
+     {
+      "at": "2026-11-14T02:02:40+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 4.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      4.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:50+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "4",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:09:20+01:00",
+      "kind": "rate",
+      "rate_kw": 1.693,
+      "reason": "grid_charge",
+      "was_kw": 4.0
+     },
+     {
+      "at": "2026-11-14T02:09:20+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 1.693
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      1.693,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:09:30+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "1.693",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:10:20+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:10:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": true,
+      "value": "Maximum Self Consumption"
+     },
+     {
+      "at": "2026-11-14T02:10:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     },
+     {
+      "at": "2026-11-14T02:10:20+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 10.0
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      true
+     ],
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ],
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      10.0,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:10:30+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:10:30+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "10",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:11:20+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "control_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:11:20+01:00",
+      "kind": "handed_back",
+      "reason": "fuse_headroom"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:11:30+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "sigenergy",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:09:20+01:00",
+   "rate_kw": 0.0,
+   "reason": "fuse_headroom",
+   "released_at": "2026-11-14T02:11:20+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [
+    "control_mode"
+   ],
+   "variant": "msc_no_discharge",
+   "watchdog_at": "2026-11-14T02:00:00+01:00",
+   "writes_today": 6,
+   "written": []
+  }
+ },
+ "hold": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "unknown",
+       "discharge_limit": "23.04"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "Maximum Self Consumption"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Maximum Self Consumption",
+      "reason": "control_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 23.04
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      23.04,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "23.04",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:01:20+01:00",
+      "kind": "handed_back",
+      "reason": "plan_self_consume"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "sigenergy",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:00:00+01:00",
+   "rate_kw": 0.0,
+   "reason": "plan_self_consume",
+   "released_at": "2026-11-14T02:01:20+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [
+    "control_mode"
+   ],
+   "variant": "msc_no_discharge",
+   "watchdog_at": "2026-11-14T02:00:00+01:00",
+   "writes_today": 3,
+   "written": []
+  }
+ },
+ "peak_cover": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "unknown",
+       "discharge_limit": "23.04"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "Maximum Self Consumption"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Maximum Self Consumption",
+      "reason": "control_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "headroom_a": 1.2,
+      "kind": "peak_cover",
+      "reason": "hold",
+      "roles": [
+       "discharge_limit"
+      ]
+     },
+     {
+      "at": "2026-11-14T02:01:00+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 23.04
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      23.04,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:10+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "23.04",
+      "reason": "discharge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:01:30+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:01:40+01:00",
+      "kind": "handed_back",
+      "reason": "fuse_headroom"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:01:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "enter",
+      "rate_kw": 0.0,
+      "reason": "hold",
+      "snapshot": {
+       "charge_limit": "unknown",
+       "discharge_limit": "23.04"
+      }
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "kind": "primed",
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": false,
+      "value": 10.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      10.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "10",
+      "reason": "charge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:12:00+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:12:00+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 23.04
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      23.04,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:12:10+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "23.04",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:12:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:12:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:12:20+01:00",
+      "kind": "handed_back",
+      "reason": "plan_self_consume"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "sigenergy",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:03:40+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:03:40+01:00",
+   "rate_kw": 0.0,
+   "reason": "plan_self_consume",
+   "released_at": "2026-11-14T02:12:20+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [],
+   "variant": "msc_no_discharge",
+   "watchdog_at": "2026-11-14T02:03:40+01:00",
+   "writes_today": 8,
+   "written": []
+  }
+ },
+ "per_phase": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "phase_kw": [
+       1.84,
+       1.84,
+       1.84
+      ],
+      "rate_kw": 5.52,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "unknown",
+       "discharge_limit": "23.04"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": -1.84
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number.sigenergy_phase_l1_target",
+      -1.84,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "confirmed",
+      "read": "-1.84",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": -1.84
+     }
+    ],
+    "ops": [
+     [
+      "phase_l2_target",
+      "number.sigenergy_phase_l2_target",
+      -1.84,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "confirmed",
+      "read": "-1.84",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": -1.84
+     }
+    ],
+    "ops": [
+     [
+      "phase_l3_target",
+      "number.sigenergy_phase_l3_target",
+      -1.84,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "confirmed",
+      "read": "-1.84",
+      "reason": "phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:00:40+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "PCS Remote Control"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "PCS Remote Control",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:50+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "PCS Remote Control",
+      "reason": "control_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "rate",
+      "phase_kw": [
+       1.61,
+       2.07,
+       2.07
+      ],
+      "rate_kw": 5.75,
+      "reason": "grid_charge",
+      "was_kw": 5.52,
+      "was_phase_kw": [
+       1.84,
+       1.84,
+       1.84
+      ]
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": -1.61
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number.sigenergy_phase_l1_target",
+      -1.61,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "confirmed",
+      "read": "-1.61",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": -2.07
+     }
+    ],
+    "ops": [
+     [
+      "phase_l2_target",
+      "number.sigenergy_phase_l2_target",
+      -2.07,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "confirmed",
+      "read": "-2.07",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": -2.07
+     }
+    ],
+    "ops": [
+     [
+      "phase_l3_target",
+      "number.sigenergy_phase_l3_target",
+      -2.07,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "confirmed",
+      "read": "-2.07",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "rate",
+      "phase_kw": [
+       1.84,
+       1.84,
+       1.84
+      ],
+      "rate_kw": 5.52,
+      "reason": "grid_charge",
+      "was_kw": 5.75,
+      "was_phase_kw": [
+       1.61,
+       2.07,
+       2.07
+      ]
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": false,
+      "value": -1.84
+     }
+    ],
+    "ops": [
+     [
+      "phase_l2_target",
+      "number.sigenergy_phase_l2_target",
+      -1.84,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "confirmed",
+      "read": "-1.84",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:04:10+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": false,
+      "value": -1.84
+     }
+    ],
+    "ops": [
+     [
+      "phase_l3_target",
+      "number.sigenergy_phase_l3_target",
+      -1.84,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "confirmed",
+      "read": "-1.84",
+      "reason": "phase_l3_target"
+     },
+     {
+      "at": "2026-11-14T02:04:20+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": -1.84
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number.sigenergy_phase_l1_target",
+      -1.84,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:30+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "confirmed",
+      "read": "-1.84",
+      "reason": "phase_l1_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "kind": "hand_back",
+      "reason": "fuse_headroom"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": true,
+      "value": 0.0
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "write",
+      "reason": "phase_l2_target",
+      "restore": true,
+      "value": 0.0
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "write",
+      "reason": "phase_l3_target",
+      "restore": true,
+      "value": 0.0
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": true,
+      "value": "Maximum Self Consumption"
+     },
+     {
+      "at": "2026-11-14T02:10:40+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number.sigenergy_phase_l1_target",
+      0.0,
+      true
+     ],
+     [
+      "phase_l2_target",
+      "number.sigenergy_phase_l2_target",
+      0.0,
+      true
+     ],
+     [
+      "phase_l3_target",
+      "number.sigenergy_phase_l3_target",
+      0.0,
+      true
+     ],
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      true
+     ],
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:10:50+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:10:50+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:10:50+01:00",
+      "entity_id": "number.sigenergy_phase_l2_target",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "phase_l2_target"
+     },
+     {
+      "at": "2026-11-14T02:10:50+01:00",
+      "entity_id": "number.sigenergy_phase_l3_target",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "phase_l3_target"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:11:40+01:00",
+      "kind": "not_taken",
+      "read": null,
+      "reason": "control_mode",
+      "why": "no_read_back"
+     },
+     {
+      "at": "2026-11-14T02:11:40+01:00",
+      "kind": "handed_back",
+      "reason": "fuse_headroom"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:11:50+01:00",
+      "kind": "not_started",
+      "reason": "headroom_too_small"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "sigenergy",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": true,
+   "rate_changed_at": "2026-11-14T02:04:00+01:00",
+   "rate_kw": 0.0,
+   "reason": "fuse_headroom",
+   "released_at": "2026-11-14T02:11:40+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 9,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [
+    "control_mode"
+   ],
+   "variant": "msc_no_discharge",
+   "watchdog_at": "2026-11-14T02:00:00+01:00",
+   "writes_today": 2,
+   "written": []
+  }
+ },
+ "per_phase_to_hold": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "kind": "enter",
+      "phase_kw": [
+       0.92,
+       0.0,
+       0.0
+      ],
+      "rate_kw": 0.92,
+      "reason": "grid_charge",
+      "snapshot": {
+       "charge_limit": "unknown",
+       "discharge_limit": "23.04"
+      }
+     },
+     {
+      "at": "2026-11-14T02:00:00+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": -0.92
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number.sigenergy_phase_l1_target",
+      -0.92,
+      false
+     ]
+    ],
+    "persist_first": true
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "confirmed",
+      "read": "-0.92",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:00:10+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": false,
+      "value": true
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      true,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "on",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:00:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "PCS Remote Control"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "PCS Remote Control",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:00:30+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "PCS Remote Control",
+      "reason": "control_mode"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "kind": "change",
+      "rate_kw": 0.0,
+      "reason": "hold"
+     },
+     {
+      "at": "2026-11-14T02:02:00+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "write",
+      "reason": "phase_l1_target",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "phase_l1_target",
+      "number.sigenergy_phase_l1_target",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "number.sigenergy_phase_l1_target",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "phase_l1_target"
+     },
+     {
+      "at": "2026-11-14T02:02:10+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": false,
+      "value": "Maximum Self Consumption"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Maximum Self Consumption",
+      "reason": "control_mode"
+     },
+     {
+      "at": "2026-11-14T02:02:20+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": false,
+      "value": 0.0
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      0.0,
+      false
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:02:30+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "0",
+      "reason": "discharge_limit"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "kind": "hand_back",
+      "reason": "plan_self_consume"
+     },
+     {
+      "at": "2026-11-14T02:03:40+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "write",
+      "reason": "discharge_limit",
+      "restore": true,
+      "value": 23.04
+     }
+    ],
+    "ops": [
+     [
+      "discharge_limit",
+      "number.sigenergy_discharge_limit",
+      23.04,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "number.sigenergy_discharge_limit",
+      "kind": "confirmed",
+      "read": "23.04",
+      "reason": "discharge_limit"
+     },
+     {
+      "at": "2026-11-14T02:03:50+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:04:00+01:00",
+      "kind": "handed_back",
+      "reason": "plan_self_consume"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "sigenergy",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": true,
+   "rate_changed_at": "2026-11-14T02:02:00+01:00",
+   "rate_kw": 0.0,
+   "reason": "plan_self_consume",
+   "released_at": "2026-11-14T02:04:00+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 2,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [
+    "control_mode"
+   ],
+   "variant": "msc_no_discharge",
+   "watchdog_at": "2026-11-14T02:02:00+01:00",
+   "writes_today": 4,
+   "written": []
+  }
+ },
+ "restart": {
+  "looks": [
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:06:20+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "write",
+      "reason": "control_mode",
+      "restore": true,
+      "value": "Maximum Self Consumption"
+     }
+    ],
+    "ops": [
+     [
+      "control_mode",
+      "select.sigenergy_control_mode",
+      "Maximum Self Consumption",
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "select.sigenergy_control_mode",
+      "kind": "confirmed",
+      "read": "Maximum Self Consumption",
+      "reason": "control_mode"
+     },
+     {
+      "at": "2026-11-14T02:06:30+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "write",
+      "reason": "remote_ems",
+      "restore": true,
+      "value": false
+     }
+    ],
+    "ops": [
+     [
+      "remote_ems",
+      "switch.sigenergy_remote_ems",
+      false,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "switch.sigenergy_remote_ems",
+      "kind": "confirmed",
+      "read": "off",
+      "reason": "remote_ems"
+     },
+     {
+      "at": "2026-11-14T02:06:40+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "write",
+      "reason": "charge_limit",
+      "restore": true,
+      "value": 10.0
+     }
+    ],
+    "ops": [
+     [
+      "charge_limit",
+      "number.sigenergy_charge_limit",
+      10.0,
+      true
+     ]
+    ],
+    "persist_first": false
+   },
+   {
+    "events": [
+     {
+      "at": "2026-11-14T02:06:50+01:00",
+      "entity_id": "number.sigenergy_charge_limit",
+      "kind": "confirmed",
+      "read": "10",
+      "reason": "charge_limit"
+     },
+     {
+      "at": "2026-11-14T02:06:50+01:00",
+      "kind": "handed_back",
+      "reason": "restart"
+     }
+    ],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   },
+   {
+    "events": [],
+    "ops": [],
+    "persist_first": false
+   }
+  ],
+  "restart_events": [
+   {
+    "at": "2026-11-14T02:06:20+01:00",
+    "kind": "hand_back",
+    "reason": "restart"
+   }
+  ],
+  "state": {
+   "action": null,
+   "blocked": null,
+   "brand": "sigenergy",
+   "covered_at": null,
+   "day": "2026-11-14",
+   "device_id": null,
+   "entered_at": "2026-11-14T02:00:00+01:00",
+   "entities": {},
+   "given_up": [],
+   "in_flight": [],
+   "management_unknown_since": null,
+   "peak_low_since": null,
+   "pending": null,
+   "phase": "idle",
+   "phase_kw": null,
+   "phased": false,
+   "rate_changed_at": "2026-11-14T02:00:00+01:00",
+   "rate_kw": 0.0,
+   "reason": "restart",
+   "released_at": "2026-11-14T02:06:50+01:00",
+   "renew": [],
+   "restore_values": {},
+   "retries": {},
+   "sent": [],
+   "setpoint_writes_today": 0,
+   "snapshot": {},
+   "snapshot_at": null,
+   "target": {},
+   "unrestored": [],
+   "unsure": [],
+   "variant": "msc_no_discharge",
+   "watchdog_at": "2026-11-14T02:00:00+01:00",
+   "writes_today": 3,
+   "written": []
+  }
+ }
+}

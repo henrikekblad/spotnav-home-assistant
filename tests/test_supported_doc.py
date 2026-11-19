@@ -35,10 +35,11 @@ def test_every_listed_integration_has_a_display_name() -> None:
 def test_page_has_one_section_per_category() -> None:
     text = _generator().render()
     for heading in (
-        "# Supported EV chargers, meters, batteries and cars",
+        "# Supported EV chargers, meters, batteries, heat pumps and cars",
         "## Supported EV chargers",
         "## Supported grid meters",
         "## Supported house batteries",
+        "## Supported heat pumps",
         "## Supported vehicles",
         "## Supported solar forecast",
     ):
@@ -71,9 +72,12 @@ def test_the_overview_names_every_battery_spotnav_reads_and_works_out_what_it_do
     rows = {entry.brand: gen._overview_row(entry) for entry in gen.OVERVIEW}
     assert rows["Sigenergy"][2].startswith("Yes: ") and rows["Sigenergy"][3] == gen.CONTROL_OPT_IN
     assert rows["Huawei (SUN2000, LUNA2000)"][3] == gen.CONTROL_MAPPED
-    # Read only and untested: the three plugins of SolaX Modbus beside SolaX's own.
-    for brand in ("Sofar", "Growatt", "Solinteg"):
+    # Read only and untested: two of the plugins of SolaX Modbus beside SolaX's own.
+    for brand in ("Sofar", "Growatt"):
         row = next(row for name, row in rows.items() if name.startswith(brand))
         assert row[2].startswith("Yes, untested: ") and row[3].startswith("Not mapped") and row[4] == "Nothing yet"
+    # Solinteg: read untested, its commands mapped and never run on a device.
+    row = next(row for name, row in rows.items() if name.startswith("Solinteg"))
+    assert row[2].startswith("Yes, untested: ") and row[3] == gen.CONTROL_MAPPED and row[4] == "Nothing yet"
     assert rows["SAJ"][1:5] == ("Unknown", "No", "Unknown", "Nothing yet")
     assert "\n## Hybrid inverters and home batteries: overview\n" in gen.render()
