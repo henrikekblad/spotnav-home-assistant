@@ -28,6 +28,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -36,6 +37,7 @@ from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
     CONF_BATTERY_POWER_INVERTED,
+    CONF_CHARGER_ENTRY_IDS,
     CONF_CHARGE_CONTROL,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
@@ -1596,6 +1598,12 @@ def excluded_charger_devices(hass: HomeAssistant, charger_entry_ids: list[str]) 
 def detect_site_from_hass(hass: HomeAssistant, *, excluded_device_ids: Iterable[str] = ()) -> Detection:
     entities, devices = snapshot_registry(hass)
     return detect_site(entities, devices, excluded_device_ids=excluded_device_ids)
+
+
+def site_detection(hass: HomeAssistant, entry: ConfigEntry) -> Detection:
+    """Meter and battery candidates for this site, charger devices excluded."""
+    excluded = excluded_charger_devices(hass, list(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []))
+    return detect_site_from_hass(hass, excluded_device_ids=excluded)
 
 
 # ---- Devices with their own load balancing -----------------------------------------------------

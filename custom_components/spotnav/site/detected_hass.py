@@ -2,7 +2,7 @@
 
 Read only: it reads the registries, the states and what each part of the site already chose (the house forecast's
 weather entity, outdoor sensor and holiday calendar, the battery's facts, the site's measurement). The meter and
-battery offers come from the same scan the site editor uses (`api.entity_fields.site_detection`), the cars from the
+battery offers come from the same scan the site editor uses (`site/site_detection.site_detection`), the cars from the
 same discovery the dashboard uses. Nothing is written and no part is asked to choose again.
 """
 
@@ -39,6 +39,7 @@ from .detected import (
 )
 from .house_forecast import DEFAULT_WEATHER, OUTDOOR_SENSORS, pick_weather_entity
 from .measurement_source import grid_power_source_from_dict
+from .site_detection import site_detection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -92,8 +93,6 @@ def _chargers(hass: HomeAssistant, site: ConfigEntry) -> Detected:
 
 
 def _meter_and_battery(hass: HomeAssistant, site: ConfigEntry, controller: Any) -> tuple[Detected, Detected]:
-    from ..api.entity_fields import site_detection  # noqa: PLC0415 - the API imports the site
-
     try:
         detection = site_detection(hass, site)
         meters = [

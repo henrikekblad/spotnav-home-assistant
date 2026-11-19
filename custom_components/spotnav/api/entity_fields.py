@@ -55,7 +55,6 @@ from ..const import (
     CONF_BATTERY_POWER_INVERTED,
     CHARGER_PRIORITIES,
     CONF_CHARGE_CONTROL,
-    CONF_CHARGER_ENTRY_IDS,
     CONF_CHARGER_PRIORITY,
     CONF_CHARGER_PLATFORM,
     CONF_CONTROL_PATH,
@@ -97,12 +96,10 @@ from ..site.battery_limit import battery_import_limit, WARNING_CODE as BATTERY_L
 from ..site.site_detection import (
     apply_meter_candidate,
     BatteryCandidate,
-    detect_site_from_hass,
-    Detection,
-    excluded_charger_devices,
     find_own_load_balancing_from_hass,
     freshness_warnings,
     MeterCandidate,
+    site_detection,
 )
 from ..site.charger_current_offer import (
     charger_own_current_sensors,
@@ -1409,15 +1406,6 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
 
 
 # ---- Detection, warnings and measurement state for the card ------------------------------------
-
-
-def _site_excluded_devices(hass: HomeAssistant, entry: ConfigEntry) -> set[str]:
-    return excluded_charger_devices(hass, list(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []))
-
-
-def site_detection(hass: HomeAssistant, entry: ConfigEntry) -> Detection:
-    """Meter and battery candidates for this site, charger devices excluded."""
-    return detect_site_from_hass(hass, excluded_device_ids=_site_excluded_devices(hass, entry))
 
 
 def resolve_detection_candidate(

@@ -141,7 +141,7 @@ from ..site.phase_detection import (
     UNKNOWN as UNKNOWN_PHASES,
 )
 from ..site.measurement_problem import MeasurementProblem
-from ..site.site_detection import direction_hint
+from ..site.site_detection import direction_hint, site_detection
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
 from ..util import aware_iso, finite_number
@@ -156,7 +156,7 @@ from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, one_vehicle_scan, resolve_target_vehicle
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
-from .entity_fields import phase_switching_offered, site_detection
+from .entity_fields import phase_switching_offered
 from .grid_tariff import capture_grid_tariff, CapturedGridTariff, demand_needs_grid_power, serialize_grid_tariff
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
 from .price_days import serialize_source as source_attribution
