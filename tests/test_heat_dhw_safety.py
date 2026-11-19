@@ -714,7 +714,7 @@ async def test_a_pulse_that_closes_late_is_opened_at_each_look_until_it_reads_of
     assert len(writes.calls) == calls, "once off, nothing more"
 
 
-# ---- Fuse review B1: a charging battery is room only while SpotNav's own executor runs the charge or hold
+# ---- Fuse review B1: a charging battery is room only while SpotNav's own executor runs a grid charge
 
 
 def _own_battery(monkeypatch: pytest.MonkeyPatch, controller: Any, phase: str | None, action: str | None = None) -> None:
@@ -738,9 +738,10 @@ _OWNER_ESTIMATE = {"l1": 10.0, "l2": 16.0, "l3": 16.0}
         ("idle", None, False),
         # SpotNav's executor runs something that does not draw from the grid: the charge is not its own.
         ("active", "discharge_house", False),
-        # SpotNav's own grid charge or hold: handed back under 1 A of headroom, per phase.
+        # SpotNav's own grid charge: handed back under 1 A of headroom, per phase.
         ("active", "grid_charge", True),
-        ("active", "hold", True),
+        # A hold charges from the sun only: handing it back takes nothing off the grid, so its charge is no room.
+        ("active", "hold", False),
     ],
 )
 async def test_fuse_b1_a_boost_counts_only_spotnavs_own_charge_as_room(

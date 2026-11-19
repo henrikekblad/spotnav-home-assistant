@@ -21,7 +21,7 @@ import custom_components.spotnav as integration
 from custom_components.spotnav.battery.control import BatteryControl, store_key
 from custom_components.spotnav.heat.control import HeatControl
 from custom_components.spotnav.heat.runtime import HeatShadow
-from custom_components.spotnav.runtime import site_controller_for
+from custom_components.spotnav.runtime import controller_for, site_controller_for
 from custom_components.spotnav.site.site_capacity_controller import SHUTDOWNS_KEY
 
 from tests.world import setup_charger_and_site
@@ -126,19 +126,19 @@ async def test_a_reload_during_a_long_hand_back_waits_for_it_and_the_old_copy_wr
     site, recorder = await _site(hass, monkeypatch)
     reload = hass.async_create_task(hass.config_entries.async_reload(site.entry_id))
     await recorder.handing_back.wait()
-    # Long past what Home Assistant would wait for an unload task: the new copy has not started, the platforms are up.
+    # Long past what Home Assistant would wait for an unload task: the new copy has not started.
     for _ in range(20):
         await asyncio.sleep(0)
     assert not reload.done()
     assert len(recorder.copies) == 1
-    assert (-1, "platforms unloaded") not in recorder.events
     recorder.release.set()
     assert await reload
     await hass.async_block_till_done()
 
     assert site.state is ConfigEntryState.LOADED
     assert len(recorder.copies) == 2, "a new copy runs"
-    # Exactly one hand-back sequence, all of it before the platforms go and before the new copy starts.
+    # Exactly one hand-back sequence, after the platforms went (a failed platform unload leaves the site running)
+    # and before the new copy starts.
     assert _of(recorder, 0) == [
         "battery start", "heat start", "battery write", "battery write", "battery save", "battery handed back",
         "heat write", "heat handed back",
@@ -146,8 +146,67 @@ async def test_a_reload_during_a_long_hand_back_waits_for_it_and_the_old_copy_wr
     first_new = next(i for i, (copy, _what) in enumerate(recorder.events) if copy == 1)
     last_old = max(i for i, (copy, _what) in enumerate(recorder.events) if copy == 0)
     platforms = recorder.events.index((-1, "platforms unloaded"))
-    assert last_old < platforms < first_new
+    first_old_write = recorder.events.index((0, "battery write"))
+    assert platforms < first_old_write and last_old < first_new
     assert not hass.data.get(SHUTDOWNS_KEY)
+
+
+async def test_the_chargers_keep_their_start_cap_until_the_hand_back_has_ended(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The chargers stay live while the site hands back: a plan's start, a resend or a session's write in that time
+    is still capped by the site. The cap goes only once the hand-back has ended."""
+    site, recorder = await _site(hass, monkeypatch)
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None and charger._start_cap is not None  # noqa: SLF001
+    unload = hass.async_create_task(hass.config_entries.async_unload(site.entry_id))
+    await recorder.handing_back.wait()
+    assert charger._start_cap is not None, "the site still caps a start while it hands back"  # noqa: SLF001
+    recorder.release.set()
+    assert await unload
+    assert charger._start_cap is None  # noqa: SLF001
+
+
+async def test_home_assistant_s_stop_leaves_the_chargers_capped(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """At Home Assistant's stop nothing unloads and the chargers run on to the end: the site's cap stays with them.
+    The entry's own unload afterwards lets go."""
+    site, recorder = await _site(hass, monkeypatch)
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None
+    recorder.release.set()
+    async with asyncio.timeout(5):
+        await integration._async_stop(hass)  # noqa: SLF001
+    assert charger._start_cap is not None  # noqa: SLF001
+    assert await hass.config_entries.async_unload(site.entry_id)
+    assert charger._start_cap is None  # noqa: SLF001
+
+
+# The platforms that failed to unload (faked here) keep their timers.
+@pytest.mark.parametrize("expected_lingering_timers", [True])
+async def test_a_failed_platform_unload_leaves_the_site_running(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Home Assistant sets an entry whose platforms did not unload to FAILED_UNLOAD, which cannot be reloaded: the
+    site is then not shut down, so its load balancing and the chargers' start cap stay until Home Assistant
+    restarts."""
+    site, recorder = await _site(hass, monkeypatch)
+    controller = recorder.copies[0]
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None
+
+    async def fails(entry: Any, platforms: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(hass.config_entries, "async_unload_platforms", fails)
+    assert not await hass.config_entries.async_unload(site.entry_id)
+    assert site.state is ConfigEntryState.FAILED_UNLOAD
+    assert controller._shutdown_task is None and not controller._closed  # noqa: SLF001
+    assert "battery write" not in _of(recorder, 0)
+    assert charger._start_cap is not None  # noqa: SLF001
+    recorder.release.set()
+    await controller.async_shutdown()
 
 
 async def test_the_old_copy_never_saves_over_the_new_copy_s_snapshot(
@@ -332,3 +391,66 @@ async def test_a_battery_control_shut_down_before_its_store_was_read_writes_noth
     await control.async_shutdown()
     await control.async_save()
     assert hass_storage[key] == snapshot
+
+
+_HELD = {"phase": "active", "brand": "sigenergy", "action": "grid_charge",
+         "snapshot": {"mode": "x"}, "entities": {"mode": "select.not_loaded_yet"}}
+_EXPORT_HELD = {"phase": "active", "brand": "sigenergy", "action": "curtail_export",
+                "snapshot": {"export_limit": "10"}, "entities": {"export_limit": "number.not_loaded_yet"}}
+
+
+def _held_store(key: str) -> dict[str, Any]:
+    return {"version": 1, "minor_version": 1, "key": key,
+            "data": {"state": dict(_HELD), "export": {"state": dict(_EXPORT_HELD)}}}
+
+
+async def test_a_shutdown_while_the_battery_restarts_keeps_the_export_limit_s_snapshot(
+    hass: HomeAssistant, hass_storage: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start has made the battery's executor but not yet the export limit's (it waits for the plant or hands
+    the battery back): a shutdown then keeps the export limit's stored snapshot for the next start."""
+    _charger, site = await setup_charger_and_site(hass)
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    key = store_key(site.entry_id)
+    hass_storage[key] = _held_store(key)
+    control = BatteryControl(hass, controller)
+
+    async def not_reachable(self: BatteryControl, reason: str) -> None:  # the plant cannot be written yet
+        return None
+
+    monkeypatch.setattr(BatteryControl, "_async_until_handed_back", not_reachable)
+    control.async_launch(None)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert control._loaded and control.executor is not None and control.export_executor is None  # noqa: SLF001
+    await control.async_shutdown()
+    data = hass_storage[key]["data"]
+    assert data["export"]["state"]["snapshot"] == {"export_limit": "10"}
+    assert data["state"]["snapshot"] == {"mode": "x"}
+
+
+async def test_a_shutdown_after_a_failed_start_keeps_the_battery_s_snapshot(
+    hass: HomeAssistant, hass_storage: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start raised after it read the store and waits to retry: a shutdown then keeps the battery's and the
+    export limit's stored snapshots for the next start."""
+    _charger, site = await setup_charger_and_site(hass)
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    key = store_key(site.entry_id)
+    hass_storage[key] = _held_store(key)
+    control = BatteryControl(hass, controller)
+
+    def unreadable(self: BatteryControl) -> Any:
+        raise RuntimeError("facts not readable")
+
+    monkeypatch.setattr(BatteryControl, "_read_facts", unreadable)
+    control.async_launch(None)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert control._loaded and control.executor is None  # noqa: SLF001
+    await control.async_shutdown()
+    data = hass_storage[key]["data"]
+    assert data["state"]["snapshot"] == {"mode": "x"}
+    assert data["export"]["state"]["snapshot"] == {"export_limit": "10"}

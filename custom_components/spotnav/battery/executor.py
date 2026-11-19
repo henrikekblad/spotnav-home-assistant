@@ -23,7 +23,7 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   in the brand's restore order, each read back) when: the part is stopped or unloaded; the plan wants plain
   self-consumption, has no slot now or names an action the brand cannot do; a reading is stale or the site's
   measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` under a hold,
-  a grid charge or a sale (`_FUSE_HANDED_BACK`; or a grid charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
+  a grid charge or a sale (`_FUSE_HANDED_BACK`; a sale on the phases that import only; or a grid charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
   an app taking Remote EMS back: blocked, the block clears by itself after `MANAGEMENT_BLOCK_S`) or reads unknown
   past `MANAGEMENT_GRACE_S` (handed back as stale data is, not blocked) or the site's battery is no longer that brand
   (a plant in its own optimiser is taken only when the person acknowledged the takeover, `ExecInputs.takeover`); someone else changes a control
@@ -884,6 +884,19 @@ def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0) -> bool:
 # --- helpers -------------------------------------------------------------------------------------------------------
 
 
+def _import_headroom_a(inputs: ExecInputs) -> float | None:
+    """The least headroom on a phase that imports now (A): a sale's hand-back for the fuse. The export side is the
+    export cap's (`gate.export_discharge_cap_kw`, recomputed each look), which lets a sale and the sun fill a phase
+    to where its headroom reads about `RESTORE_HEADROOM_A`: judged there too, a sale at its cap would be handed back
+    and started again every `REARM_S`. `None` when no phase imports; the least headroom on any phase when the
+    meter's sign per phase is not known."""
+    signed, headroom = inputs.grid_phase_kw, inputs.phase_headroom_a
+    if signed is None or headroom is None:
+        return inputs.headroom_a
+    importing = [room for power, room in zip(signed, headroom, strict=True) if power >= 0.0]
+    return min(importing) if importing else None
+
+
 def _fresh(inputs: ExecInputs) -> bool:
     age = inputs.battery_age_s
     return inputs.facts.power_kw is not None and age is not None and age <= BATTERY_MAX_AGE_S
@@ -1476,11 +1489,13 @@ class Executor:
             return "stale_data"
         if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
-        if (
-            (action in _FUSE_HANDED_BACK or self.state.action in _FUSE_HANDED_BACK)
-            and inputs.headroom_a is not None and inputs.headroom_a < RESTORE_HEADROOM_A
-        ):
-            return "fuse_headroom"
+        if action in _FUSE_HANDED_BACK or self.state.action in _FUSE_HANDED_BACK:
+            headroom = (
+                inputs.headroom_a if action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT
+                else _import_headroom_a(inputs)
+            )
+            if headroom is not None and headroom < RESTORE_HEADROOM_A:
+                return "fuse_headroom"
         if self._hold_charges(inputs):
             return f"not_obeyed:{ACTION_HOLD}:charging"
         if self._charge_over(inputs):
@@ -2050,12 +2065,14 @@ class Executor:
         ):
             # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
             return events
-        if action != state.action and (
+        if action != state.action and state.action not in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE) and (
             (action == ACTION_HOLD and not hold_headroom_ok(inputs))
             or (action == ACTION_EXPORT_DISCHARGE and not self._sale_headroom_ok(inputs))
         ):
-            # A change into a hold or a sale is held to that action's start rule: the cover the battery gives now
-            # must not come off a phase that cannot carry it. Handed back (plain self-consumption) instead.
+            # A change into a hold or a sale from an action in which the battery may cover the house is held to that
+            # action's start rule: the cover the battery gives now must not come off a phase that cannot carry it.
+            # Handed back (plain self-consumption) instead. From a grid charge or a sale the battery covers nothing
+            # (ending a charge only frees room, a sale's output is no cover): the change is made directly.
             return events + self._begin_restore(now, "headroom_too_small")
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
