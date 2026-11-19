@@ -1930,7 +1930,7 @@ class Executor:
         if self.control.role(name).write_class == "setpoint":
             # A setpoint written to 0 stops something: never held back.
             return self._setpoints_spent() and state.target.get(name) != 0.0
-        return _writes_today(state, inputs) >= DAILY_WRITE_CAP
+        return _writes_today(state, inputs) >= self._daily_cap
 
     def _cover(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """Under a hold: lift it when the headroom falls under `PEAK_COVER_A`, hand back in full when it does not
