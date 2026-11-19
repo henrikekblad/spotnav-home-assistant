@@ -325,10 +325,11 @@ async def test_the_forecast_s_zone_hours_are_read_under_the_main_fuse(hass: Home
     monkeypatch.setattr(zones_module, "async_zone_periods", zone)
     await site.async_refresh(HOUR + timedelta(hours=2))
     assert caps == [13.8]
-    # The site sets it from its main fuse (16 A: 11.04 kW); without a fuse there is no cap.
+    # The site sets it from its main fuse (16 A on a TN network: sqrt(3) x 400 V x 16 A, 11.09 kW); without a fuse
+    # there is no cap.
     from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
 
-    assert SiteCapacityController._main_fuse_kw(SimpleNamespace(config={"main_fuse_a": 16})) == pytest.approx(11.04)  # type: ignore[arg-type]
+    assert SiteCapacityController._main_fuse_kw(SimpleNamespace(config={"main_fuse_a": 16})) == pytest.approx(11.0851, abs=1e-4)  # type: ignore[arg-type]
     assert SiteCapacityController._main_fuse_kw(SimpleNamespace(config={})) is None  # type: ignore[arg-type]
 
 

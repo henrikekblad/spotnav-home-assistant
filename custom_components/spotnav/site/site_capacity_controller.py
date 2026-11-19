@@ -88,7 +88,6 @@ from .import_target import (
     effective_target,
     EffectiveTarget,
     held_level_kw,
-    HOLD_VOLTAGE_V,
     hour_budget,
     hour_end_lock_a,
     HourBudget,
@@ -117,6 +116,7 @@ from ..execution.chargers.base import WRITE_SESSION_START, WRITE_SOLAR
 from ..execution.min_soc_floor import ORIGIN_MIN_SOC
 from ..execution.switched_current import measured_amps
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
+from ..core.electric import site_fuse_kw
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
@@ -5341,11 +5341,9 @@ class SiteCapacityController:
         return tuple(stat for stat, value in belongs.items() if value == BELONG_HEAT)
 
     def _main_fuse_kw(self) -> float | None:
-        """The main fuse's capacity (kW, three phases at 230 V); `None` where it is not set."""
-        fuse = self.config.get(CONF_MAIN_FUSE_A)
-        if isinstance(fuse, bool) or not isinstance(fuse, (int, float)) or fuse <= 0:
-            return None
-        return float(fuse) * 3 * 230.0 / 1000.0
+        """The main fuse's capacity (kW, three phases on the site's network, `site_fuse_kw`); `None` where it is not
+        set."""
+        return site_fuse_kw(self.config)
 
     def _heat_meter_setting(self) -> str | None:
         """The heat pump meter chosen in the site settings (`None`: found by itself or none), read from the entry: it
@@ -5447,17 +5445,21 @@ class SiteCapacityController:
             if typical_kw is not None:
                 house_w = min(house_w, max(0.0, typical_kw) * 1000.0)
         running = self.demand.tracker.running_hour(now)
-        main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
-        ceiling_w = float("inf") if main_fuse_a is None else float(main_fuse_a) * len(PHASES) * HOLD_VOLTAGE_V
         return hour_budget(
             target_kw=target_kw,
             running=running,
             now=now,
             house_w=house_w,
-            ceiling_w=ceiling_w,
+            ceiling_w=self._import_ceiling_w(),
             extra_wh=0.0 if running is None else running.discharge_wh,
             extra_covered_s=(None if running is None else running.discharge_covered_s) if battery_counts else None,
         )
+
+    def _import_ceiling_w(self) -> float:
+        """The most the import target's budget lets the chargers draw (W): the main fuse as three-phase power on the
+        site's network (`site_fuse_kw`); unbounded without a fuse."""
+        fuse_kw = site_fuse_kw(self.config)
+        return float("inf") if fuse_kw is None else fuse_kw * 1000.0
 
     def _target_member(
         self,

@@ -37,7 +37,8 @@ from homeassistant.core import callback, HomeAssistant
 
 from ..battery.plan_model import DEFAULT_MODE
 from .. import time_zones
-from ..const import CONF_CHARGER_ENTRY_IDS, CONF_MAIN_FUSE_A, CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
+from ..const import CONF_CHARGER_ENTRY_IDS, CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
+from ..core.electric import site_fuse_kw
 from ..planning.demand_charge import hour_start
 from ..site.energy_flow import (
     SETTLE,
@@ -235,11 +236,8 @@ def _heat(hass: HomeAssistant, controller: Any, read: Mapping[datetime, float] |
 
 
 def fuse_kw(controller: Any) -> float | None:
-    """The main fuse's capacity (kW, three phases at 230 V); `None` where it is not set."""
-    fuse = controller.config.get(CONF_MAIN_FUSE_A)
-    if isinstance(fuse, bool) or not isinstance(fuse, (int, float)) or fuse <= 0:
-        return None
-    return float(fuse) * 3 * 230.0 / 1000.0
+    """The site's main fuse as power (kW, `site_fuse_kw`); `None` where it is not set."""
+    return site_fuse_kw(controller.config)
 
 
 def _bucket_car(controller: Any) -> dict[datetime, float]:
