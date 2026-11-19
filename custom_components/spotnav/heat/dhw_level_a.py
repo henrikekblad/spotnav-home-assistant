@@ -13,6 +13,13 @@ and the level-A gate, `dhw_review.GATES`):
   lowers at most `MAX_DAY_NO_TANK` hours (the heat plan's own cap is `shadow_rule.MAX_LOWERED_DAY`): the pump gets its
   reheats between the blocks. With a tank sensor the tank rule stands in for it.
 
+* **The pump's periodic increase** (`next_hygiene`, the legionella run NIBE calls "periodisk höjning"): never
+  blocked where the meter shows it. It is told from the runs alone: a run at least `HYGIENE_SIZE` times the site's
+  median run (energy and length), at night (`HYGIENE_NIGHT`), seen at least twice at the same time of day
+  (`HYGIENE_SAME_TIME`) a whole number of weeks apart. Its next one (the last plus that period) is kept free of blocks
+  from `HYGIENE_BEFORE` before its start to `HYGIENE_AFTER` after its usual length. Until it has been seen twice (and
+  where the pump runs it at varying times) it is not known, and a block may delay it by up to one block, as any run.
+
 A lowered hour the rules take out is shown as cut (`cuts`): the price rule then lowers the next dearest hour it may,
 so a block may move rather than go.
 
@@ -29,12 +36,13 @@ run after the block began within `DELAYED_WITHIN` of its end and not done by `re
 
 from __future__ import annotations
 
+import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, tzinfo
 from typing import Any, Final
 
-from .dhw_peaks import Peak, RunLike, peak_instant
+from .dhw_peaks import Peak, RunLike, peak_instant, standby, standby_kwh
 from .shadow_rule import ACTION_LOWER, BandHour
 
 PEAK_GUARD: Final = timedelta(hours=2)
@@ -46,8 +54,17 @@ TANK_BACK_C: Final = 45.0
 DELAYED_WITHIN: Final = timedelta(minutes=30)
 HOUR: Final = timedelta(hours=1)
 
+#: The periodic increase: this many times the median run's energy and length.
+HYGIENE_SIZE: Final = 2.0
+#: Local hours a periodic increase starts in (from, to): the night.
+HYGIENE_NIGHT: Final = (22, 7)
+HYGIENE_SAME_TIME: Final = timedelta(minutes=60)
+HYGIENE_BEFORE: Final = timedelta(hours=1)
+HYGIENE_AFTER: Final = timedelta(minutes=30)
+
 CUT_PEAK: Final = "peak"
 CUT_DAY: Final = "day_cap"
+CUT_HYGIENE: Final = "hygiene"
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,16 +157,81 @@ def max_day_hours(tank_sensor: bool) -> int | None:
     return None if tank_sensor else MAX_DAY_NO_TANK
 
 
-def cuts(raw: Sequence[BandHour], shaped: Sequence[BandHour], kept: Mapping[datetime, datetime]) -> list[Cut]:
-    """The hours `raw` lowers that `shaped` (the same plan under the rules) does not: before a peak where the hour
-    touches a guard (`kept`, from `guard_hours`), else over the day's cap."""
+def _night(moment: datetime, zone: tzinfo) -> bool:
+    hour = moment.astimezone(zone).hour
+    first, last = HYGIENE_NIGHT
+    return hour >= first or hour < last
+
+
+def _minute_gap(a: datetime, b: datetime, zone: tzinfo) -> timedelta:
+    left, right = a.astimezone(zone), b.astimezone(zone)
+    minutes = abs((left.hour * 60 + left.minute) - (right.hour * 60 + right.minute))
+    return timedelta(minutes=min(minutes, 24 * 60 - minutes))
+
+
+def next_hygiene(runs: Sequence[RunLike], zone: tzinfo, now: datetime) -> tuple[datetime, datetime] | None:
+    """The pump's next periodic increase as the meter has shown it (see the module): `(start, end)` of the time kept
+    free, `None` where it is not known."""
+    real = [run for run in runs if not standby(run, standby_kwh(runs)) and run.end > run.start]
+    if len(real) < 3:
+        return None
+    kwh = statistics.median(run.kwh for run in real)
+    length = statistics.median((run.end - run.start).total_seconds() for run in real)
+    long = sorted(
+        (
+            run
+            for run in real
+            if run.kwh >= HYGIENE_SIZE * kwh
+            and (run.end - run.start).total_seconds() >= HYGIENE_SIZE * length
+            and _night(run.start, zone)
+        ),
+        key=lambda run: run.start,
+    )
+    best: tuple[RunLike, timedelta] | None = None
+    for index, later in enumerate(long):
+        for earlier in long[:index]:
+            if _minute_gap(earlier.start, later.start, zone) > HYGIENE_SAME_TIME:
+                continue
+            days = round((later.start - earlier.start).total_seconds() / 86400)
+            if days < 7 or days % 7:
+                continue
+            period = timedelta(days=days)
+            if best is None or later.start > best[0].start or (later.start == best[0].start and period < best[1]):
+                best = (later, period)
+    if best is None:
+        return None
+    last, period = best
+    span = last.end - last.start
+    start = last.start + period
+    while start + span + HYGIENE_AFTER <= now:
+        start += period
+    return start - HYGIENE_BEFORE, start + span + HYGIENE_AFTER
+
+
+def kept_hours(
+    items: Sequence[Guard], hygiene: tuple[datetime, datetime] | None = None
+) -> dict[datetime, tuple[str, datetime | None]]:
+    """The plan's hours (UTC hour starts) kept free of blocks, each with why: before a peak (`ready`), or the pump's
+    periodic increase."""
+    out: dict[datetime, tuple[str, datetime | None]] = {hour: (CUT_PEAK, ready) for hour, ready in guard_hours(items).items()}
+    if hygiene is not None:
+        hour = hygiene[0].replace(minute=0, second=0, microsecond=0)
+        while hour < hygiene[1]:
+            out.setdefault(hour, (CUT_HYGIENE, None))
+            hour += HOUR
+    return out
+
+
+def cuts(raw: Sequence[BandHour], shaped: Sequence[BandHour], kept: Mapping[datetime, tuple[str, datetime | None]]) -> list[Cut]:
+    """The hours `raw` lowers that `shaped` (the same plan under the rules) does not: the reason the hour is kept
+    (`kept_hours`), else over the day's cap."""
     lowered = {hour.start for hour in shaped if hour.action == ACTION_LOWER}
     out = []
     for hour in sorted(raw, key=lambda item: item.start):
         if hour.action != ACTION_LOWER or hour.start in lowered:
             continue
-        ready = kept.get(hour.start)
-        out.append(Cut(hour.start, CUT_PEAK if ready is not None else CUT_DAY, ready))
+        kind, ready = kept.get(hour.start, (CUT_DAY, None))
+        out.append(Cut(hour.start, kind, ready))
     return out
 
 
@@ -192,6 +274,7 @@ class TankGuard:
 
 __all__ = [
     "CUT_DAY",
+    "CUT_HYGIENE",
     "CUT_PEAK",
     "DELAYED_WITHIN",
     "MAX_DAY_NO_TANK",
@@ -205,6 +288,8 @@ __all__ = [
     "cuts",
     "guard_hours",
     "guards",
+    "kept_hours",
     "max_day_hours",
+    "next_hygiene",
     "served",
 ]

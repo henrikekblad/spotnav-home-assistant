@@ -64,7 +64,7 @@ from .dhw_boost import (
     stop_call,
 )
 from .dhw_ledger import SOURCE_BUTTON, SOURCE_PLAN, Entry, Ledger
-from .dhw_level_a import Cut, TankGuard, guard_hours, guards, max_day_hours
+from .dhw_level_a import Cut, TankGuard, guards, kept_hours, max_day_hours, next_hygiene
 from .dhw_peaks import PEAK_DAYS, Peak, draws_from_runs, learn_peaks, peak_instant, standby, standby_kwh
 from .dhw_plan import (
     BUDGETS,
@@ -350,9 +350,12 @@ class HotWater:
             return MODE_LIVE
         return MODE_SHADOW
 
-    def level_a_rules(self, now: datetime, config: HeatConfig, days: Sequence[date]) -> tuple[dict[datetime, datetime], int | None] | None:
-        """Level A's rules for the heat plan of the local days given (`dhw_level_a`): the hours kept free before each
-        peak (to the peak's `ready`) and the day's cap; `None` where the path does not block hot water."""
+    def level_a_rules(
+        self, now: datetime, config: HeatConfig, days: Sequence[date]
+    ) -> tuple[dict[datetime, tuple[str, datetime | None]], int | None] | None:
+        """Level A's rules for the heat plan of the local days given (`dhw_level_a`): the hours kept free (before each
+        peak, the pump's periodic increase where the meter shows it) and the day's cap; `None` where the path does not
+        block hot water."""
         if not self.a_applies(config):
             return None
         pump = self._pump()
@@ -360,8 +363,9 @@ class HotWater:
         route = self.route(config, pump)
         if route is not None and route.verified and self.mode(config, route, pump) == MODE_LIVE:
             boosted = {pick.peak for pick in self.picks}
-        found = guards(self.peaks, days, self.zone, list(self.runs.values()), now, boosted)
-        return guard_hours(found), max_day_hours(self.tank_c(pump) is not None)
+        runs = list(self.runs.values())
+        found = guards(self.peaks, days, self.zone, runs, now, boosted)
+        return kept_hours(found, next_hygiene(runs, self.zone, now)), max_day_hours(self.tank_c(pump) is not None)
 
     def set_cuts(self, cuts: Sequence[Cut], live: bool) -> None:
         self.cuts, self.cuts_live = list(cuts), live

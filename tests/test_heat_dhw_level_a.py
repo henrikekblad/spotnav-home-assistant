@@ -16,6 +16,8 @@ from custom_components.spotnav.heat.dhw_level_a import (
     cold_risk,
     cuts,
     guard_hours,
+    kept_hours,
+    next_hygiene,
     guards,
     max_day_hours,
 )
@@ -92,7 +94,7 @@ def test_the_band_keeps_the_hours_before_a_peak() -> None:
     config = HeatConfig(target_c=21.0)
     raw, _ = band(config, HOURS, priced(), now, ZONE)
     assert lowered(raw) == [7, 8, 17, 18, 19]
-    kept = guard_hours(guards(PEAKS, [DAY], ZONE, [], now))
+    kept = kept_hours(guards(PEAKS, [DAY], ZONE, [], now))
     shaped, _ = band(config, HOURS, priced(), now, ZONE, keep_normal=kept)
     # 17:00 is the hour before the evening shower: kept normal; no other hour is dear enough, so the block is shorter.
     assert lowered(shaped) == [7, 8, 18, 19]
@@ -110,7 +112,7 @@ def test_a_block_kept_from_before_a_peak_moves_to_the_next_dear_hour() -> None:
     prices[local(21)] = 230.0
     now = local(0, 10)
     config = HeatConfig(target_c=21.0)
-    kept = guard_hours(guards(PEAKS, [DAY], ZONE, [], now))
+    kept = kept_hours(guards(PEAKS, [DAY], ZONE, [], now))
     raw, _ = band(config, HOURS, prices, now, ZONE)
     assert lowered(raw) == [7, 8, 17, 18, 19, 21]
     shaped, _ = band(config, HOURS, prices, now, ZONE, keep_normal=kept)
@@ -223,3 +225,59 @@ def test_the_level_a_gate_counts_its_own_shadow_days_and_asks_no_saving() -> Non
     ]
     assert back_off(risky, today, "A") and not back_off(risky, today)
     assert not back_off(risky[:2], today, "A")
+
+
+# ---- the pump's periodic increase
+
+
+def _week_of_runs(start_day: date, days: int, hygiene_days: tuple[int, ...], at: tuple[int, int] = (2, 0)) -> list[HotWaterRun]:
+    """A morning and an evening run each day, and a long night run (the periodic increase) on the days given."""
+    out = []
+    for index in range(days):
+        day = start_day + timedelta(days=index)
+        out += [run(6, 30, 30, day), run(19, 0, 25, day)]
+        if index in hygiene_days:
+            begin = local(at[0], at[1], day)
+            out.append(HotWaterRun(begin, begin + timedelta(minutes=90), 3.5))
+    return sorted(out, key=lambda item: item.start)
+
+
+def test_the_periodic_increase_seen_twice_a_week_apart_is_kept_free() -> None:
+    first = DAY - timedelta(days=13)
+    runs = _week_of_runs(first, 14, (0, 7))
+    found = next_hygiene(runs, ZONE, local(12))
+    # Last seen six days ago at 02:00 for 90 minutes: the next is a week after it, 02:00 tomorrow, kept free from 01:00
+    # to half an hour after its usual end (04:00).
+    last = local(2, 0, first + timedelta(days=7))
+    assert found == (last + timedelta(days=7) - timedelta(hours=1), last + timedelta(days=7, minutes=120))
+    kept = kept_hours([], found)
+    assert sorted(kept) == [found[0] + timedelta(hours=index) for index in range(3)]
+    assert set(kept.values()) == {("hygiene", None)}
+
+
+def test_a_two_week_period_and_a_shift_within_the_hour() -> None:
+    first = DAY - timedelta(days=20)
+    runs = _week_of_runs(first, 21, (0,)) + _week_of_runs(first + timedelta(days=14), 1, (0,), at=(2, 40))
+    found = next_hygiene(sorted(runs, key=lambda item: item.start), ZONE, local(12))
+    assert found is not None and found[0] == local(2, 40, first + timedelta(days=28)) - timedelta(hours=1)
+
+
+def test_the_periodic_increase_is_not_guessed() -> None:
+    first = DAY - timedelta(days=13)
+    # Seen once only, or twice at different times, or not a whole number of weeks apart, or in the day: not known.
+    assert next_hygiene(_week_of_runs(first, 14, (7,)), ZONE, local(12)) is None
+    assert next_hygiene(_week_of_runs(first, 14, (0,)) + _week_of_runs(first + timedelta(days=7), 1, (0,), at=(4, 30)), ZONE, local(12)) is None
+    assert next_hygiene(_week_of_runs(first, 14, (0, 5)), ZONE, local(12)) is None
+    assert next_hygiene(_week_of_runs(first, 14, (0, 7), at=(13, 0)), ZONE, local(12)) is None
+    assert next_hygiene([], ZONE, local(12)) is None
+
+
+def test_a_block_over_the_periodic_increase_is_cut() -> None:
+    prices = priced()
+    now = local(0, 10)
+    config = HeatConfig(target_c=21.0)
+    raw, _ = band(config, HOURS, prices, now, ZONE)
+    # Say the increase runs at 07:30 (a pump set so): the morning's dear hours are kept free of a block.
+    kept = kept_hours([], (local(6, 30), local(9, 30)))
+    shaped, _ = band(config, HOURS, prices, now, ZONE, keep_normal=kept)
+    assert [(c.start, c.kind) for c in cuts(raw, shaped, kept)] == [(local(7), "hygiene"), (local(8), "hygiene")]
