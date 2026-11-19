@@ -583,3 +583,44 @@ async def test_a_persons_start_outlives_a_restart_while_the_car_stays_plugged_in
 
     assert controller.charge_origin == "manual"
     assert not turn_off_calls
+
+
+async def test_a_site_unloaded_while_the_sun_runs_a_charge_is_let_go_and_its_reload_bound_again(
+    hass: HomeAssistant,
+) -> None:
+    """A member charger's sun never reads a site controller that has shut down: its readings are frozen at shutdown.
+    The coordinator lets go of it as the site unloads, keeps the charge as it is, and binds the new controller when
+    the site is set up again."""
+    charger, site_entry, controller, coordinator, clock, _on, turn_off_calls = await _setup(hass)
+    site = controller_of(hass, site_entry.entry_id)
+    set_site_power_w(hass, "solar_site", -4.0 * 230.0)
+    _self_start(hass, charger.entry_id, 6.0)
+    await tick_site(hass, site)
+    assert coordinator.state is not None and coordinator.state.state == "on"
+    assert coordinator.sun_keeps_charge()
+
+    assert await hass.config_entries.async_unload(site_entry.entry_id)
+    await hass.async_block_till_done()
+    assert coordinator._site is None  # noqa: SLF001
+    assert not coordinator.sun_keeps_charge()
+    assert not turn_off_calls, "letting go of the site is no stop"
+
+    assert await hass.config_entries.async_setup(site_entry.entry_id)
+    await hass.async_block_till_done()
+    fresh = controller_of(hass, site_entry.entry_id)
+    assert fresh is not site
+    assert coordinator._site is fresh  # noqa: SLF001
+
+
+async def test_a_site_removed_while_the_sun_runs_a_charge_leaves_no_controller_behind(hass: HomeAssistant) -> None:
+    charger, site_entry, controller, coordinator, clock, _on, _off = await _setup(hass)
+    site = controller_of(hass, site_entry.entry_id)
+    set_site_power_w(hass, "solar_site", -4.0 * 230.0)
+    _self_start(hass, charger.entry_id, 6.0)
+    await tick_site(hass, site)
+    assert coordinator.state is not None and coordinator.state.state == "on"
+
+    assert await hass.config_entries.async_remove(site_entry.entry_id)
+    await hass.async_block_till_done()
+    assert coordinator._site is None  # noqa: SLF001
+    assert not coordinator.sun_keeps_charge()
