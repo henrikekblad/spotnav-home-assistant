@@ -562,6 +562,8 @@ class Hangs(Writes):
 
     def __init__(self, hass: HomeAssistant, freezer: Any) -> None:
         self.hang: bool | set[str] = False
+        #: A hung call's write lands all the same (the integration applied it and never answered).
+        self.lands = False
         self.freezer = freezer
         super().__init__(hass)
         for domain, service in (
@@ -573,7 +575,10 @@ class Hangs(Writes):
         import asyncio
 
         if self.hang is True or (isinstance(self.hang, set) and call.service in self.hang):
-            self.calls.append((call.domain, call.service, dict(call.data)))
+            if self.lands:
+                self._call(call)
+            else:
+                self.calls.append((call.domain, call.service, dict(call.data)))
             self.freezer.tick(timedelta(seconds=1))
             await asyncio.Event().wait()
         self._call(call)
@@ -666,3 +671,24 @@ async def test_a_hung_stop_press_is_answered_as_failed(hass: HomeAssistant, free
     answer = await press(hass, "stop", site_id=site.entry_id)
     assert writes.calls[-1][1] == "set_value"
     assert answer["result"]["ok"] is False
+
+
+@pytest.mark.usefixtures("short_calls")
+async def test_a_start_given_up_on_that_lands_is_spotnavs_and_still_shed(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(NIBE_F, LUX))
+    hass.states.async_set(LUX, "Off", {"options": LUX_OPTIONS})
+    writes = Hangs(hass, freezer)
+    writes.hang, writes.lands = True, True
+    hot_water.tick(at)
+    await settle(hass)
+    assert hass.states.get(LUX).state != "Off", "the start landed"
+    entry = hot_water.ledger.last()
+    assert entry.read_back is True and entry.source == SOURCE_PLAN
+    # SpotNav's own boost: the fuse shed still ends it.
+    writes.hang, writes.lands = False, False
+    _fuse(monkeypatch, hot_water, "observing", {"l1": -2.0, "l2": 10.0, "l3": 10.0})
+    for minute in (1, 2, 3):
+        hot_water.tick(at + timedelta(minutes=minute))
+        await settle(hass)
+    assert hass.states.get(LUX).state == "Off" and hot_water.shed_day is not None
+

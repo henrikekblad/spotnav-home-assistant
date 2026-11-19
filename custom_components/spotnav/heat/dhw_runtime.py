@@ -1195,10 +1195,16 @@ class HotWater:
             try:
                 await _async_service(self.hass, domain, service, data)
             except TimeoutError:
-                if pulse:
-                    # Given up on, the switch may still close late: a pulse never stays on.
-                    await self.hass.services.async_call(domain, "turn_off", data, blocking=False)
-                raise
+                if route.kind == "pulse":
+                    # Given up on, the switch may still close late: a pulse never stays on. A pulse is read back by
+                    # its run, not here.
+                    if pulse:
+                        await self.hass.services.async_call(domain, "turn_off", data, blocking=False)
+                    raise
+                # Given up on, the write may still land: it is read back as one that answered, so a boost it
+                # started is SpotNav's and the backstop and the fuse shed still stop it.
+                _LOGGER.info("SpotNav hot water: starting the boost through %s did not answer in time; reading it back",
+                             route.entity_id)
             if pulse:
                 try:
                     await _pause(PULSE.total_seconds())
