@@ -102,7 +102,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   mode, a switch: 96 a day, `ExecState.writes_today`, shared with the export limit's instance) or a `setpoint` made
   for continuous control (the targets per phase: the brand's own figure, `ExecState.setpoint_writes_today`).
   Reaching the setpoints' cap is the runaway guard: a charge per phase is handed back (`setpoint_write_cap`, not
-  blocked) and none starts again that day, while every other action still runs. A grid charge of either kind also
+  blocked) and none starts again that day, while every other action still runs. The same holds for an action whose
+  own rate is a setpoint (`_rate_is_setpoint`: a battery power target), so a rate that must fall is never left
+  unwritten. A grid charge of either kind also
   leaves `CHARGE_WRITE_RESERVE` of the day's setting writes untouched (`charge_write_budget`), so a hold can still
   start after a day of charges that kept starting. Restores, the peak cover and watchdog renewals are never
   counted or held back.
@@ -1204,14 +1206,26 @@ class Executor:
     def _setpoints_spent(self) -> bool:
         return self.state.setpoint_writes_today >= self.control.write_cap("setpoint")
 
+    def _rate_is_setpoint(self, action: str | None) -> bool:
+        """Whether the brand's own command for the action carries its rate in a setpoint (a battery power target)."""
+        build = self.control.states.get(action or "")
+        return build is not None and any(
+            want.value != 0.0 and self.control.role(want.role).write_class == "setpoint"
+            for want in build(1.0, self.watchdog_s)
+        )
+
     def _charge_budget(self, inputs: ExecInputs) -> str | None:
-        """Why a grid charge may not run (on) for the day's writes: a charge per phase once the setpoints' cap is
-        reached (the runaway guard), and either kind once only `CHARGE_WRITE_RESERVE` of the settings' writes are
-        left (a hold must still be able to start)."""
-        if inputs.action != ACTION_GRID_CHARGE or self._export:
+        """Why an action may not run (on) for the day's writes: a charge per phase, or an action whose rate is a
+        setpoint, once the setpoints' cap is reached (the runaway guard), and a grid charge of either kind once only
+        `CHARGE_WRITE_RESERVE` of the settings' writes are left (a hold must still be able to start)."""
+        if self._export:
             return None
-        if self._per_phase(inputs) and inputs.phase_probe_kw is None and self._setpoints_spent():
+        if inputs.phase_probe_kw is None and self._setpoints_spent() and (
+            self._per_phase(inputs) or self._rate_is_setpoint(inputs.action)
+        ):
             return "setpoint_write_cap"
+        if inputs.action != ACTION_GRID_CHARGE:
+            return None
         if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP - CHARGE_WRITE_RESERVE:
             return "charge_write_budget"
         return None

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from custom_components.spotnav.battery.adapters import FERROAMP, adapter_for
@@ -15,7 +17,7 @@ from custom_components.spotnav.battery.commands import (
     table,
 )
 from custom_components.spotnav.battery.executor import Executor
-from tests.battery_control_fakes import FERROAMP_STATES, T0, FakeBattery, run, written
+from tests.battery_control_fakes import FERROAMP_STATES, T0, FakeBattery, events, run, written
 
 
 def test_the_recipe_is_in_the_table_and_covers_the_house_with_auto() -> None:
@@ -86,3 +88,16 @@ def test_every_action_ends_with_the_hub_back_on_auto(action: str) -> None:
     assert executor.state.phase == "active"
     run(executor, battery, now, 240, action, 3.0, stopping="stop")
     assert executor.state.phase in ("idle", "blocked") and ferroamp_last_cmd(battery.states["command"]) == "auto"
+
+
+def test_with_the_days_requests_spent_a_rate_that_must_fall_hands_the_hub_back() -> None:
+    """Every Ferroamp request is a setpoint: once the day's are spent, a lower rate is not left unwritten (the old
+    rate would stand); the hub is handed back with `auto`, which is never counted."""
+    executor = Executor(FERROAMP_CONTROL)
+    battery = FakeBattery(FERROAMP_CONTROL, dict(FERROAMP_STATES))
+    now, _ = run(executor, battery, T0, 4, "grid_charge", 3.0)
+    assert battery.states["command"] == "charge (3000)"
+    executor.state = replace(executor.state, setpoint_writes_today=SETPOINT_WRITES_UNSTATED)
+    _now, results = run(executor, battery, now, 6, "grid_charge", 1.0)
+    assert events(results, "hand_back")[0]["reason"] == "setpoint_write_cap"
+    assert written(results) == [("command", "auto")] and battery.states["command"] == "auto"
