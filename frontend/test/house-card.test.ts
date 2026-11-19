@@ -441,6 +441,19 @@ describe("the legend", () => {
     expect(onLegend).toHaveBeenLastCalledWith("energy", []);
   });
 
+  it("draws the raw sun forecast only from the running hour on: before now the sun is the measured area alone", () => {
+    const value = answer();
+    // A forecast in every hour, so the old line would start at the chart's left edge.
+    const sunny = { ...value, hours: value.hours.map((hour) => ({ ...hour, sun_forecast_kwh: 1 })) };
+    const svg = body(sunny).querySelector(".spotnav-house-surface svg")!;
+    const nowX = Number(svg.querySelector("line.spotnav-now")!.getAttribute("x1"));
+    const xs = Array.from((svg.querySelector(".spotnav-house-sun-raw")!.getAttribute("d") ?? "").matchAll(/[ML](-?[\d.]+)/g), (match) => Number(match[1]));
+    expect(xs.length).toBeGreaterThan(0);
+    // The running hour's centre is at most half an hour before now; nothing earlier.
+    const hourWidth = (xs[xs.length - 1]! - xs[0]!) / Math.max(1, xs.length - 1);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(nowX - hourWidth / 2 - 0.01);
+  });
+
   it("leaves a hidden series out of the chart and the readout", () => {
     const value = answer();
     const hidden = { energy: ["car", "heat", "sun", "forecast", "battery"] };

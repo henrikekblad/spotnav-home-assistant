@@ -14,7 +14,7 @@
 //   year's bars stack it, so the hour's whole bar is its mean power with the car; hidden until toggled on in the
 //   legend.
 // * The sun: a soft area, the production in the past and the corrected forecast ahead (the raw one where there is
-//   none); the raw forecast as a dotted line over all of it, since the Hybrid strategy reads that one.
+//   none); the raw forecast as a dotted line from the running hour on, since the Hybrid strategy reads that one.
 // * The battery (price view only, where its axis is labelled): its charge level on 0-100 % over the plot's height,
 //   measured in the past and as the plan expects it ahead (dashed); the hours the plan charges from the grid are
 //   tinted, the hours it sells lightly.
@@ -326,10 +326,11 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
     const area = svg("path", { class: H.sunArea, d: pathOf(sunPoints, true, base) });
     area.style.setProperty("fill", sunFill);
     root.append(area);
-    // Only where the sun is up (and the hour either side, so the line starts and ends on the baseline).
+    // Only ahead (from the running hour: the past is the measured sun alone) and where the sun is up (and the hour
+    // either side, so the line starts and ends on the baseline).
     const up = (index: number): boolean => (hours[index]?.sun_forecast_kwh ?? 0) > 0;
     const raw = hours.map((hour, index) =>
-      hour.sun_forecast_kwh === null || !(up(index - 1) || up(index) || up(index + 1))
+      hour.sun_forecast_kwh === null || hour.startMs + HOUR_MS <= nowMs || !(up(index - 1) || up(index) || up(index + 1))
         ? null
         : { x: centre(hour), y: yAt(scale, hour.sun_forecast_kwh) },
     );
