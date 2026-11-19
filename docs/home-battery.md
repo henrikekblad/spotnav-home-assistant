@@ -72,6 +72,10 @@ administrators can confirm, and never over the webhook. The entities per brand:
   ACCtrl Phase A, B and C Power Scheduling numbers (those three are disabled by default).
 * Ferroamp: nothing ships disabled; SpotNav reads the integration's "last request" sensor and calls its charge,
   discharge and autocharge services.
+* Victron (the core Victron GX integration and the HACS Victron MQTT; all enabled by default): ESS max charge power
+  limit, ESS max inverter power limit and AC power setpoint, and for the per-phase control ESS mode (Hub4), Hub4
+  disable charge, Hub4 disable feed-in, AC power setpoint L1, L2 and L3, and the Multi's Input power and Output
+  power L1, L2 and L3.
 
 **Ferroamp (EnergyHub), untested.** Control goes through the `ferroamp` integration's services (Ferroamp's MQTT API,
 which Ferroamp's support enables): a charge or discharge request with a power in watts for the whole system (steps of
@@ -198,8 +202,9 @@ effect is judged; anything unexpected hands the battery back (in Maximum Self Co
 * **At most 96 writes a day** to the plant's settings (limits, modes, switches), outside hand-backs. A grid charge
   leaves the last 12 of them untouched, so a hold can still start after a day of charges that kept starting. The
   targets per phase are setpoints made for an outside controller and have their own count, 500 a day on Sigenergy
-  (its protocol does not say how often they may be written, so not more); reaching it ends charging per phase for
-  the day and nothing else. The diagnostics show what is left of each.
+  (its protocol does not say how often they may be written, so not more) and 3 000 a day on Victron (whose
+  setpoints must be written again within a minute anyway; those renewals are not counted); reaching it ends charging
+  per phase for the day and nothing else. The diagnostics show what is left of each.
 
 ### The grid charge cap and the house's peaks
 
@@ -342,6 +347,74 @@ changes. SpotNav has the commands (the targets, then the scheduling mode, then t
 first, then the targets to 0), but **it cannot use them yet**: the check and the watch per phase need the inverter's
 own power per phase, and the integration reads only its current per phase without a direction. Until it does, a
 Solinteg grid charge is the balanced one under its cap.
+
+### Victron ESS (mapped, not yet tested on a plant)
+
+For a GX device with a MultiPlus or Quattro and the ESS assistant, through the **Victron GX** integration in Home
+Assistant core or the HACS **Victron MQTT**. Nobody has run it on a plant yet: it is built from Victron's own page
+"ESS mode 2 and 3" and the integrations' source, it sits behind the same switch and the same check, and a
+[field report](supported.md) is what it needs. The community Modbus integration (`victron`) is read only: its
+maximum inverter power cannot show "no limit" as a value SpotNav could write back. With the HACS integration set
+to its read-only operation mode the controls are sensors, and SpotNav finds nothing to write.
+
+SpotNav takes the plant only in an *Optimized* ESS mode with Dynamic ESS off, and uses Victron's two documented
+ways in:
+
+* **Mode 2, the GX keeps running its own loop.** A hold sets *ESS max inverter power limit* to 0 (the battery does
+  not discharge; the sun is still stored). A discharge for the house sets *ESS max charge power limit* to 0 (the
+  GX covers the house as always; an MPPT on the battery side still charges, the limit is the Multi's). A grid charge
+  sets the max charge power to the rate and the *AC power setpoint*, which is the **grid's** power and not the
+  battery's (positive takes from the grid), to the house's load now plus the rate. When the house then draws more
+  the battery takes less, and it helps once the house alone passes the setpoint; the setpoint is not moved to
+  follow the house, since it is a setting on the GX and Victron warns that writing it often wears the GX's flash.
+  These are settings and stay if Home Assistant stops, so this charge runs under the usual cap, reckoned as if the
+  Multis were all on one phase (the integration does not say how many there are).
+* **Mode 3, external control, for a charge per phase** on a three-phase system. SpotNav sets *ESS mode (Hub4)* to
+  external control and writes *AC power setpoint L1/L2/L3*. Such a setpoint is the power on that Multi's **AC
+  input**, not a battery target ("Power to/from AC-input = Power to/from battery + Power to/from AC-output"), so
+  SpotNav writes the load on that Multi's AC output plus the charge it wants there, and follows that load. Loads
+  wired beside the Multis are seen by your grid meter and by the fuse rule. Handing back is one write, the ESS
+  mode as it was found, and the GX runs all three phases again; SpotNav never leaves a setpoint behind, since
+  outside external control the GX writes them itself.
+
+**The watchdog, and what it does not change yet.** Victron: "These registers must be written once every 60
+seconds, or the Multi will go into Passthru." SpotNav writes each setpoint again every 20 seconds. By that rule a
+charge per phase would stop by itself within a minute of Home Assistant stopping, but nobody has seen it happen on
+a plant, and a firmware where it does not act, or something else on the GX that writes the setpoints (a Node-RED
+flow, a script), would leave them standing. So SpotNav counts on it nowhere: each phase's cap is reckoned as for
+Sigenergy, with the house at its learned peak on that phase, and covers the whole setpoint that would stand (the
+load behind the Multi plus the charge). On top of that each phase is filled only by what it has free **now**, to
+4 A under the fuse, checked at every look, and a phase within 1 A of the fuse hands everything back at once.
+If the Multis do fall back, they stay in passthru (the battery neither charges nor covers the house) until Home
+Assistant is back and hands the ESS mode back, which it does first thing.
+
+What a field test must show before the fallback may be counted on (per Venus OS version): a charge per phase of
+at least 1 kW on each phase, then Home Assistant stopped mid-charge with the ESS mode still in external control;
+within 70 seconds each Multi's AC input power falls to its AC output's load (the battery about 0 on each phase)
+and stays there for 5 minutes, while the setpoints still read what SpotNav last wrote; the same after 10 minutes
+of renewals, the charge never dropping meanwhile; and nothing else on the GX writing the setpoints (no Node-RED
+flow, Dynamic ESS off). Until a report shows that, a charge per phase on a house whose learned peak fills a phase
+gets nothing on that phase.
+
+The check's per-phase step is the same as above, with the Multi's own power per phase read as its output power
+less its input power.
+
+**If Home Assistant never comes back, or something goes wrong, restore by hand** (in Home Assistant, or on the
+GX under Settings → ESS):
+
+* **ESS mode (Hub4)** back to the mode you had, *Optimized (with BatteryLife)* or *Optimized (without
+  BatteryLife)*. Left in external control the Multis stay in passthru: no charging, no covering the house.
+* **AC power setpoint** (the grid setpoint) back to your usual value. Left at the house plus a charge rate, the
+  GX keeps importing that much and the battery stays full from the grid, day after day.
+* **ESS max charge power** and **ESS max inverter power limit** back to what you had (-1 is no limit). A hold
+  leaves the inverter limit at 0, a discharge for the house the charge power at 0.
+* **Hub4 disable charge** and **Hub4 disable feed-in**: SpotNav turns both off for a charge per phase and does not
+  turn them back, because outside external control the GX sets them itself. If either stays off while you had
+  feed-in disabled on the GX, set it back.
+
+**What the first field report should say,** beside the fallback test above: whether both Hub4 flags read what the
+GX sets again within a minute of a hand-back (SpotNav counts on that, from Victron's documentation, not from a
+plant); the setpoints the GX writes outside external control; and the Venus OS version.
 
 **Sigen AI mode.** SpotNav can take the plant over from AI mode only after you have read this: *SpotNav takes over
 the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the

@@ -23,7 +23,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   before it from the recorder's history), once a week of it is kept, with a further margin that falls to
   nothing at two weeks; until then a peak of at least `HOUSE_PEAK_DEFAULT_KW` all on one phase. Where the plant
   takes a target per phase (`commands.PhaseControl`, verified as the mode `per_phase`) the cap is each phase's own
-  (`grid_charge_phase_caps_kw`), so a house that loads one phase leaves the others' room to the charge.
+  (`grid_charge_phase_caps_kw`), so a house that loads one phase leaves the others' room to the charge. Where the
+  recipe states the plant's own dead-man (`commands.PhaseControl.silence_fallback_s`, set only once a field test has
+  seen it act; no recipe does yet) the targets do not stay, and each phase's cap is the fuse less the margin: the
+  live clamp per phase bounds the charge.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -113,6 +116,10 @@ _PHASE_NAMES: Final = PHASE_NAMES
 HOUSE_PEAK_DEFAULT_KW: Final = 4.0
 #: A grid charge below this is not worth running (kW), as the executor's `MIN_RATE_KW`.
 MIN_RATE_KW: Final = 0.5
+#: The longest a plant's own dead-man (`commands.PhaseControl.silence_fallback_s`) may take to stop a charge per
+#: phase for the HA-down cap to be lifted on its account (s): about what a fuse and a breaker carry a phase's
+#: overload for without opening (see `grid_charge_phase_caps_kw`).
+SILENCE_FALLBACK_MAX_S: Final = 60.0
 #: A held car's departure has room when this many hours at its planned power are left over (h).
 DEPARTURE_ROOM_H: Final = 2.0
 
@@ -527,9 +534,20 @@ def import_limit_holds(
     )
 
 
+def silence_guards(silence_fallback_s: float | None) -> bool:
+    """Whether a recipe's own dead-man (`commands.PhaseControl.silence_fallback_s`) stands in for the HA-down cap of
+    a charge per phase: the maker states that the plant stops following the targets by itself, within
+    `SILENCE_FALLBACK_MAX_S` of the last write."""
+    return (
+        silence_fallback_s is not None and not isinstance(silence_fallback_s, bool)
+        and math.isfinite(silence_fallback_s) and 0 < silence_fallback_s <= SILENCE_FALLBACK_MAX_S
+    )
+
+
 def grid_charge_phase_caps_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
+    silence_fallback_s: float | None = None,
 ) -> tuple[float, float, float]:
     """The most a grid charge may be commanded at on L1, L2 and L3 (kW) where the plant takes a target per phase,
     so that no phase passes the fuse even if Home Assistant stops while it runs (the targets stay, as each charger's
@@ -538,11 +556,32 @@ def grid_charge_phase_caps_kw(
         cap_i = V * max(0, fuse - margin - house_peak_i - cars) / 1000
 
     with each phase's own house peak (`house_peaks_a`) and the chargers' last currents (`cars_a`) counted on
-    every phase. With the fuse or the chargers unknown no phase may charge (0)."""
+    every phase. With the fuse or the chargers unknown no phase may charge (0).
+
+    **A plant with its own dead-man** (`silence_fallback_s`, `silence_guards`; a recipe states it only once a field
+    test has seen the plant stop following its targets when the writes stop. Victron's page promises it for Mode 3,
+    but it is not yet seen, so its recipe does not state it, `commands.py`): the targets do not stay, so the cap is
+    not reckoned for a house at its peak with nobody watching. It is the fuse less the margin on each phase,
+
+        cap_i = V * max(0, fuse - margin) / 1000
+
+    and what bounds the charge is the live clamp per phase (`executor._phase_room_kw`: the phase's headroom now,
+    the house and the cars as they are, less `HEADROOM_MARGIN_A`), which runs at every look while Home Assistant
+    does. What is left unguarded is the minute after Home Assistant stops: a load that starts on a phase in that
+    minute rides on top of the charge until the plant falls back. That is the same exposure a running Home Assistant
+    has between two looks and the plant's own settling, stretched from seconds to at most
+    `SILENCE_FALLBACK_MAX_S`; it ends by itself, and a breaker or a fuse carries a moderate overload far longer than
+    that (IEC 60898: a breaker holds 1.13 times its rating for an hour and may take an hour to open at 1.45 times;
+    a gG fuse 1.25 and 1.6 times). A large load starting on a full phase in that very minute can still open it: the
+    cost is a tripped fuse, not a danger, and it is the price of using the phase's live room. A recipe whose
+    fallback takes longer, or is not stated by the maker, keeps the cap above."""
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return (0.0, 0.0, 0.0)
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
+    if silence_guards(silence_fallback_s):
+        most = max(main_fuse_a - margin_a, 0.0) * volts / 1000.0
+        return (most, most, most)
     house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
     room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - peak, 0.0) * volts / 1000.0 for peak in house]
     return (room[0], room[1], room[2])

@@ -75,6 +75,26 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     ),
     # Nothing ships disabled in `ferroamp`; the sensor of the last request is the read-back.
     "ferroamp": (("sensor", "last_cmd"),),
+    # `victron_gx` and `victron_mqtt` enable all of these by default; listed for a person who disabled one.
+    "victron": (
+        ("number", "system_ess_max_charge_power"),
+        ("number", "system_ess_max_inverter_power_limit"),
+        ("number", "system_ac_power_set_point"),
+        # The charge per phase (external control): the ESS mode, both flags, a setpoint per phase, and the power on
+        # each Multi's AC output and AC input.
+        ("select", "system_ess_mode"),
+        ("switch", "vebus_hub4_disable_charge"),
+        ("switch", "vebus_hub4_disable_feed_in"),
+        ("number", "vebus_ac_power_setpoint_l1"),
+        ("number", "vebus_ac_power_setpoint_l2"),
+        ("number", "vebus_ac_power_setpoint_l3"),
+        ("sensor", "vebus_inverter_output_power_l1"),
+        ("sensor", "vebus_inverter_output_power_l2"),
+        ("sensor", "vebus_inverter_output_power_l3"),
+        ("sensor", "vebus_inverter_input_power_l1"),
+        ("sensor", "vebus_inverter_input_power_l2"),
+        ("sensor", "vebus_inverter_input_power_l3"),
+    ),
 }
 
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).

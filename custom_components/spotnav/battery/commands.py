@@ -172,9 +172,85 @@ The entity keys, options and services below were checked against each integratio
   the hub, but its reach (20 A per hub) and whether it acts on the batteries' own grid charge are not documented, nor is
   how the hub spreads a total over its three phases, so the grid charge cap counts the charge on one phase
   (`grid_charge_phases` 1) until a hub has shown an even split, and does not count on ACE.
-* Victron, GoodWe, Enphase and brands without an adapter: **none**. (Victron's discharge cap is a setting stored on
-  the GX; GoodWe's and Enphase's controls in core are whole-mode switches or a reserve trick, see
-  `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
+* **Victron ESS** (`VICTRON_CONTROL`, a GX with a VE.Bus Multi or Quattro and the ESS assistant; **not tested on a
+  plant**), `victron_gx` in Home Assistant core `c87112a6731db4df611917e171787d43b802b00f` (2026-11-08, library
+  victron-mqtt 2026.11.1, tomer-w/victron_mqtt `2e25f545c5d58ba105f6c7bb0ef0da481930d51d`, `_victron_topics.py`), and
+  the HACS `victron_mqtt` (tomer-w/ha-victron-mqtt `82cce7997c5b6f159b5a988fa622b0a509412cd2`, 2026.11.4, the same
+  short ids; its operation mode `read_only` makes every control a sensor, which no role here matches, while core
+  always runs `full`). Every entity is `<installation>_<device>_<short id>` and is enabled by default; a write is an MQTT
+  publish to the GX's `W/` topic (`writable_metric.py` `set`, always sent, also for the value it already has), and
+  the state changes only when the GX publishes the value back. Victron's own page "ESS mode 2 and 3"
+  (https://www.victronenergy.com/live/ess:ess_mode_2_and_3, read 2026-11-18, the raw text's sha256 `a8a3bfd8...`)
+  is the source of what each one does:
+  * **Mode 2** (the GX runs its own loop; SpotNav moves its control points, all settings stored on the GX, so
+    `setting` writes): number `system_ac_power_set_point` (`/Settings/CGwacs/AcPowerSetPoint`, W, step 10, the
+    **grid's** total: "Positive: take power from grid. Negative: send power to grid", default 50), number
+    `system_ess_max_charge_power` (`/Settings/CGwacs/MaxChargePower`, W, step 50, -1 no limit: the most the Multi
+    charges from AC), number `system_ess_max_inverter_power_limit` (`/Settings/CGwacs/MaxDischargePower`, W, step
+    50, "-1: No limit. Any positive number: Maximum power in Watt that the Multi will feed to the loads"). A hold is
+    the discharge power at 0 (the sun is still stored); a discharge to the house is the charge power at 0 (the GX
+    covers the house as it always does; a sun surplus on the AC side is exported, one from an MPPT on the DC side
+    is still stored: the limit is the Multi's); a grid charge is the charge power at the rate **and** the grid
+    setpoint at the house's net load now plus the rate (`BrandControl.house_states`: the setpoint is the grid's
+    power, not the battery's, so the house is added; the charge power is what bounds the battery's draw when the
+    house falls or Home Assistant stops, the setpoint what bounds the site's import while it runs; when the house
+    rises the battery takes less, and discharges once the house alone passes the setpoint); a discharge to the grid
+    is the grid setpoint at the house's net load less the rate. Nothing of this falls back by itself: the settings
+    stay until written, so the grid charge keeps the HA-down cap of a plant that puts it all on one phase
+    (`grid_charge_phases` 1: the entities do not say how many phases the Multis are on). The page warns that
+    2700 (this setpoint) is logged to VRM and wears the GX's flash when written repeatedly (Venus 3.50 added a
+    volatile 2716, `/Overrides/Setpoint` on the hub4 service, whose life the page does not describe: not used), so
+    the setpoint is written only when the rate changes, never to follow the house.
+  * **Mode 3** (`VICTRON_PHASES`, the charge per phase): select `system_ess_mode` (`/Settings/CGwacs/Hub4Mode`:
+    `phase_compensation_enabled` 1, `phase_compensation_disabled` 2, `external_control` 3), numbers
+    `vebus_ac_power_setpoint_l1..l3` (`/Hub4/L1..L3/AcPowerSetpoint` on the VE.Bus service, Modbus 37/40/41, W,
+    -10000 to 10000), switches `vebus_hub4_disable_charge` and `vebus_hub4_disable_feed_in` (38/39). In external
+    control the GX's loop stops and each Multi holds the power **on its AC input** at its setpoint: "the point of
+    control is the AC-input, not the inverter/charger itself. Power to/from AC-input = Power to/from battery + Power
+    to/from AC-output", "Positive: Take power from the grid. Negative: Send power to the grid." So a setpoint is not
+    a battery target: a charge of `c` on a phase is the load on that Multi's AC output plus `c`
+    (`PhaseControl.target_kind` `grid`, `behind`: sensors `vebus_inverter_output_power_l1..l3`, `/Ac/Out/Lx/P`; the
+    power at the point is `point`: `vebus_inverter_input_power_l1..l3`, `/Ac/ActiveIn/Lx/P`, + from the grid by
+    Victron's convention, which the verification's probe checks). Loads wired beside the Multi are not behind the
+    point and are not counted: they are the site meter's, and the live fuse clamp sees them. Outside external
+    control the GX writes the setpoints and both flags itself, many times a minute, so SpotNav writes them only in
+    external control, never parks them at 0 and never hands them back (`PhaseControl.park` false): the hand-back is
+    one write, the ESS mode back to the value found, and the GX takes all three phases over at once.
+    **The watchdog:** "These registers must be written once every 60 seconds, or the Multi will go into Passthru"
+    (3.2 a; 6.2 and 6.3 repeat it for D-Bus: "the AcPowerSetpoint value has to be written at least once every 60
+    seconds"). Passthru is the Multi neither charging nor discharging: its AC output's loads are fed from the grid.
+    So the three setpoints are renewed every `VICTRON_RENEW_S` (each is then written again within about 30 s). By
+    the page a charge per phase then stops by itself within `VICTRON_SILENCE_S` of the last write, but that is
+    quoted, not seen: a firmware where the rule does not act, or something else on the GX that republishes the
+    setpoints (Node-RED, a script), would leave them standing. So the recipe does **not** state the dead-man
+    (`PhaseControl.silence_fallback_s` `None`): each phase's HA-down cap is reckoned with the house at its learned
+    peak, as Sigenergy's (`gate.grid_charge_phase_caps_kw`), and bounds the whole target that would stand (the load
+    behind the point plus the charge, `executor._phase_room_kw`). **Before it may be stated** a field test on the
+    plant, per Venus OS version (the firmware key), must show: (1) a charge per phase of at least 1 kW on each
+    phase, SpotNav stopped mid-charge (Home Assistant stopped, not a hand-back), the ESS mode still
+    `external_control`; (2) within 70 s of the last write each Multi's AC input power falls to its AC output's load
+    (the battery's power per phase about 0) and stays there for 5 minutes, with the setpoints still reading what was
+    last written; (3) the same with a renewal running for 10 minutes first, the charge not interrupted meanwhile
+    (an unchanged value written again does renew the timer); (4) nothing else on the GX writes
+    `/Hub4/L1..L3/AcPowerSetpoint` (no Node-RED flow, Dynamic ESS off). After such a stop the plant stays in
+    passthru (the ESS mode is a setting) until Home Assistant is back and hands the mode back: it then neither
+    stores the sun nor covers the house. Both flags are written off for the charge (with feed-in allowed the
+    battery covers a load that passes the setpoint, instead of the grid). The setpoints are not stored in flash
+    (the GX's own loop writes them all the time in its modes) and are made for a control loop:
+    `SETPOINT_WRITES_WATCHED` a day.
+  * The minimum SoC (`system_ess_min_soc_limit`) is read as the floor (`adapters.VICTRON.reserves`) and never
+    written. A plant is taken only in an optimized ESS mode with Dynamic ESS off (`adapters.VICTRON`'s mode rules);
+    one found in external control is someone else's.
+  * **Not mapped: the community Modbus integration** (`victron`, sfstar/hass-victron
+    `32fb345f383f4d20efbffb5209c4c1868f5593b0`). It has the same registers (`const.py`: `settings_ess_acpowersetpoint`
+    2700, `settings_ess_maxdischargepower` 2704, `settings_ess_mode` 2902, `vebus_L1..L3_acpowersetpoint` 37/40/41,
+    `vebus_disablecharge` 38, `vebus_disablefeedin` 39), but only with its advanced options, and three things stand
+    in the way: 2704 is read as an unsigned register, so "no limit" (-1) reads as a large number that cannot be
+    written back; a negative number is written as 65535 plus the value (`number.py` `async_set_native_value`), one
+    off from two's complement; and its ESS mode select names Hub4Mode's values 1 and 2 `SELF_CONSUMPTION` and
+    `KEEP_CHARGED`. It has no entity for the maximum charge power.
+* GoodWe, Enphase and brands without an adapter: **none**. (GoodWe's and Enphase's controls in core are whole-mode
+  switches or a reserve trick, see `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
 
 Pure: no Home Assistant import. Nothing here writes; it says what would be written.
 """
@@ -187,7 +263,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
-from .adapters import FERROAMP, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, Adapter, Match, _key
+from .adapters import FERROAMP, HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, SOLINTEG, VICTRON, Adapter, Match, _key
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -204,7 +280,7 @@ SNAPSHOT: Final = "<snapshot>"
 WATCHDOG_S: Final = 1800
 WATCHDOG_RENEW_S: Final = 900
 
-RoleMethod = Literal["number", "select", "switch", "button", "service"]
+RoleMethod = Literal["number", "select", "switch", "button", "service", "sensor"]
 #: What a role is, for how often it may be written in a day (`BrandControl.write_caps`): a `setting` (a limit, a mode,
 #: a switch: possibly stored in flash) or a `setpoint` made for continuous outside control.
 WriteClass = Literal["setting", "setpoint"]
@@ -218,6 +294,9 @@ SETPOINT_WRITES_UNSTATED: Final = 500
 #: How long a write may take to read back (s) where the plant's link stops answering now and then (Solinteg's dongle:
 #: 4-8 s about once a minute, about 70 s seen once), instead of the ledger's `READBACK_DEADLINE_S`.
 READBACK_STALL_S: Final = 180.0
+#: A setpoint the maker says must be written again within a minute (Victron's Mode 3: more than 1440 a day by design;
+#: the renewals themselves are not counted, this bounds the changes).
+SETPOINT_WRITES_WATCHED: Final = 3000
 #: The export-limit rule's action (`export_curtail.py`): the site's export limit at 0 kW. Not a battery plan action.
 ACTION_CURTAIL_EXPORT: Final = "curtail_export"
 
@@ -271,6 +350,10 @@ class Role:
     #: A role whose state shows the last request, not that the device took it (Ferroamp's last command): the
     #: device's answer in the attributes, without which the state is no reading (`answered`).
     answer: Answer | None = None
+    #: How near a read must be to a value to count as it (in the entity's unit), where the entity's own step is too
+    #: coarse for that: a value one unit off means something else (Victron's -1, no limit, beside 0). `None`: the
+    #: entity's step, else `step`.
+    tolerance: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +415,8 @@ class PhaseControl:
     modes: tuple[Role, ...] = ()
     #: Roles renewed to keep a brand's watchdog alive while the phased control runs (added to the control's own).
     watchdog_roles: tuple[str, ...] = ()
+    #: Mode-rule labels and the states the phased control's own commands leave them in (added to the control's own).
+    own_states: Mapping[str, frozenset[str]] = field(default_factory=dict)
     #: Roles that must read one of these states for the targets to act, never written (`(role, states, reason)`).
     requires: tuple[tuple[Role, frozenset[str], str], ...] = ()
     #: The orders with the targets in them (`BrandControl.enter_order`, `restore_order`), and the roles that stop a
@@ -339,32 +424,94 @@ class PhaseControl:
     enter_order: tuple[str, ...] = ()
     restore_order: tuple[str, ...] = ()
     stop_first: tuple[str, ...] = ()
+    #: Further roles only the phased control writes (what `follow` sets beside the brand's own roles).
+    roles: tuple[Role, ...] = ()
+    #: Whether the targets are written to 0 in every other action and handed back as 0. `False` where the plant
+    #: itself writes them outside the state that follows them: they are then SpotNav's only during a charge per
+    #: phase, and are left to the plant on every change of action and hand-back.
+    park: bool = True
+    #: For a `grid` target: sensors of the load behind the target's point on L1, L2, L3 (what the point carries
+    #: beside the plant's own charge; never written), and of the power at the point (+ from the grid). A target is
+    #: then that load plus the charge, the plant's own power on a phase the load less the point's power, and the
+    #: effect is judged at the point against the target written (`grid_phases`). `scale` as for a written role.
+    behind: tuple[Role, Role, Role] | None = None
+    point: tuple[Role, Role, Role] | None = None
+    #: How often the `watchdog_roles` are renewed while the phased control runs a charge per phase (s); `None`:
+    #: `WATCHDOG_RENEW_S`.
+    watchdog_renew_s: int | None = None
+    #: The plant stops following the targets by itself this long after the last write of them (s): the maker's own
+    #: dead-man. `None`: the targets stay until written. Read by the gate (`gate.grid_charge_phase_caps_kw`): only
+    #: with it may a phase's HA-down cap be the fuse itself, so it is set only once a field test on a plant has seen
+    #: the fallback act (a maker's page alone is not enough); no recipe sets it yet.
+    silence_fallback_s: int | None = None
+    #: The three targets exist only on a three-phase plant (an entity per phase the plant has): finding them is
+    #: what shows the plant's phases, where the brand has no other reading of them.
+    three_phase_by_targets: bool = False
+    #: The largest size a `grid` target is written at (kW): the entity's own range, which a write beyond would be
+    #: refused by. A target cut to it leaves the battery less than its charge, never more.
+    limit_kw: float | None = None
 
     def names(self) -> tuple[str, str, str]:
         return (self.targets[0].name, self.targets[1].name, self.targets[2].name)
 
-    def value(self, index: int, charge_kw: float) -> float:
+    def value(self, index: int, charge_kw: float, behind_kw: float = 0.0) -> float:
         """The native target for a charge of `charge_kw` on that phase (negative: a discharge), its size rounded
-        down to the role's step."""
+        down to the role's step. For a `grid` target the power at the point: `behind_kw`, the load behind it, plus
+        the charge."""
+        if self.target_kind == "grid":
+            power = behind_kw + charge_kw
+            if self.limit_kw is not None:
+                power = max(min(power, self.limit_kw), -self.limit_kw)
+            size = native(self.targets[index], abs(power))
+            return 0.0 if size == 0 else round((-self.charge_sign if power < 0 else self.charge_sign) * size, 6)
         size = native(self.targets[index], abs(charge_kw))
         sign = self.charge_sign if charge_kw >= 0 else -self.charge_sign
         return 0.0 if size == 0 else round(sign * size, 6)
 
-    def wants(self, charge_kw: Phases) -> tuple[Want, ...]:
-        """A charge per phase: the state that follows the targets, the other targets at 0, and each phase's target."""
+    def wants(self, charge_kw: Phases, behind_kw: Phases | None = None) -> tuple[Want, ...]:
+        """A charge per phase: the state that follows the targets, the other targets at 0, and each phase's target
+        (for a `grid` target with the load behind each point, `behind_kw`, 0 where it is not given)."""
         follow = self.follow(charge_kw) if callable(self.follow) else self.follow
+        behind = behind_kw or (0.0, 0.0, 0.0)
         return (
             *follow, *(Want(role.name, 0.0) for role in self.zero),
-            *(Want(role.name, self.value(index, charge_kw[index])) for index, role in enumerate(self.targets)),
+            *(Want(role.name, self.value(index, charge_kw[index], behind[index]))
+              for index, role in enumerate(self.targets)),
         )
 
     def idle(self) -> tuple[Want, ...]:
-        """Every target at 0: what every action other than a charge per phase writes."""
-        return tuple(Want(role.name, 0.0) for role in (*self.zero, *self.targets))
+        """Every target at 0: what every action other than a charge per phase writes (nothing where the targets are
+        not parked)."""
+        return tuple(Want(role.name, 0.0) for role in (*self.zero, *self.targets)) if self.park else ()
 
     def owned(self) -> tuple[Role, ...]:
-        """Every role the phased control adds: the targets, the others kept at 0, its modes, and what must read so."""
-        return (*self.zero, *self.targets, *self.modes, *(role for role, _states, _why in self.requires))
+        """Every role the phased control adds: the targets, the others kept at 0, what `follow` writes, its modes, what
+        must read so, and for a `grid` target the sensors at and behind its point."""
+        return (
+            *self.zero, *self.roles, *self.targets, *self.modes, *(role for role, _states, _why in self.requires),
+            *(self.behind or ()), *(self.point or ()),
+        )
+
+    def grid_phases(self, states: Mapping[str, str | None]) -> tuple[Phases, Phases] | None:
+        """For a `grid` target with its sensors: the load behind the point and the power at the point on L1, L2, L3
+        (kW, the point's + from the grid), from the roles' states by name; `None` when the recipe has no such
+        sensors or one of them reads nothing."""
+        if self.behind is None or self.point is None:
+            return None
+        out: list[Phases] = []
+        for roles in (self.behind, self.point):
+            values: list[float] = []
+            for role in roles:
+                text = reading(role, states.get(role.name))
+                try:
+                    value = float(text) / role.scale if text is not None else math.nan
+                except ValueError:
+                    value = math.nan
+                if not math.isfinite(value):
+                    return None
+                values.append(value)
+            out.append((values[0], values[1], values[2]))
+        return out[0], out[1]
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,6 +584,12 @@ class BrandControl:
     #: write that starts or changes a command: a restore and a peak cover keep the ledger's own, so a dropped one is
     #: sent again soon.
     readback_s: float | None = None
+    #: Per action, the state as a function of the rate and of the house's net load now (kW, the site's import less
+    #: the battery's charge), where the brand sets the **grid's** power and not the battery's: used instead of
+    #: `states` when the load is known (`wanted`'s `house_kw`). An action in it does not run without that load.
+    house_states: Mapping[str, Callable[[float, float], tuple[Want, ...]]] = field(default_factory=dict)
+    #: How often the `watchdog_roles` are renewed (s); `None`: `WATCHDOG_RENEW_S`.
+    watchdog_renew_s: int | None = None
 
     def role(self, name: str) -> Role:
         for role in (*self.roles, *(role for role, _value, _why in self.watched)):
@@ -483,20 +636,23 @@ class BrandControl:
             return base.with_hold(self.variant)
         idle = spec.idle()
 
-        def with_idle(build: Callable[[float, int], tuple[Want, ...]]) -> Callable[[float, int], tuple[Want, ...]]:
-            return lambda rate_kw, watchdog_s: (*idle, *build(rate_kw, watchdog_s))
+        def with_idle(build: Callable[..., tuple[Want, ...]]) -> Callable[..., tuple[Want, ...]]:
+            return lambda rate_kw, other: (*idle, *build(rate_kw, other))
 
         owned = {role.name for role in spec.owned()}
         return replace(
             self,
             roles=(*self.roles, *spec.owned()),
             states={action: with_idle(build) for action, build in self.states.items()},
+            house_states={action: with_idle(build) for action, build in self.house_states.items()},
+            watchdog_renew_s=spec.watchdog_renew_s if spec.watchdog_renew_s is not None else self.watchdog_renew_s,
             enter_order=spec.enter_order, restore_order=spec.restore_order,
             peak_first={**self.peak_first, ACTION_GRID_CHARGE: spec.stop_first},
             requires=(*self.requires, *((role.name, states, why) for role, states, why in spec.requires)),
             # What it owns it writes itself; nothing of them is left to watch.
             watched=tuple(row for row in self.watched if row[0].name not in owned),
             watchdog_roles=(*self.watchdog_roles, *spec.watchdog_roles),
+            own_states={**self.own_states, **spec.own_states},
             phased=True,
         )
 
@@ -524,16 +680,20 @@ class BrandControl:
         return any(name in charged and value * charged[name] < 0 for name, value in rated(export).items())
 
     def wanted(
-        self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S, phases: Phases | None = None
+        self, action: str, rate_kw: float, watchdog_s: int = WATCHDOG_S, phases: Phases | None = None, *,
+        house_kw: float | None = None, behind_kw: Phases | None = None,
     ) -> dict[str, Native]:
         """Every restored role's wanted value for the action (`SNAPSHOT` where the action leaves it). `phases`: a
         grid charge per phase on a phased control (kW on L1, L2, L3, negative for a discharge), instead of the
-        brand's own charge at `rate_kw`."""
+        brand's own charge at `rate_kw`; `behind_kw`: the load behind each phase's point, for a `grid` target.
+        `house_kw`: the house's net load now, for an action the brand runs by the grid's power (`house_states`)."""
         wanted: dict[str, Native] = {role.name: SNAPSHOT for role in self.roles if role.restored}
         if action != ACTION_SELF_CONSUME:
             spec = self.phase_control
             if phases is not None and self.phased and spec is not None and action == ACTION_GRID_CHARGE:
-                wants = spec.wants(phases)
+                wants = spec.wants(phases, behind_kw)
+            elif house_kw is not None and action in self.house_states:
+                wants = self.house_states[action](rate_kw, house_kw)
             else:
                 wants = self.states[action](rate_kw, watchdog_s)
             for want in wants:
@@ -982,6 +1142,119 @@ _SOLINTEG_NORMAL: Final = {
     "working_mode": _SOL_GENERAL, "battery_target": 0.0, **{role.name: 0.0 for role in _SOL_PHASE_TARGETS},
 }
 
+# --- Victron ESS (see the module) ---------------------------------------------------------------------------------
+
+# -1 is "no limit" and 0 is "none at all", one watt apart on entities whose step is 50: read to the watt.
+_VIC_CHARGE = Role(
+    "charge_power", "number", _key("system_ess_max_charge_power", "number"), scale=1000.0, step=50.0, tolerance=1.0
+)
+_VIC_DISCHARGE = Role(
+    "discharge_power", "number", _key("system_ess_max_inverter_power_limit", "number"), scale=1000.0, step=50.0,
+    tolerance=1.0,
+)
+_VIC_GRID = Role(
+    "grid_setpoint", "number", _key("system_ac_power_set_point", "number"), scale=1000.0, step=10.0, tolerance=1.0
+)
+_VIC_MODE = Role("ess_mode", "select", _key("system_ess_mode", "select"))
+#: The two Hub4 flags are written off for a charge per phase and never handed back: outside external control the GX
+#: sets them itself, by Victron's documentation; no plant has shown it yet, so the first field report checks it
+#: (`docs/home-battery.md`).
+_VIC_NO_CHARGE = Role("disable_charge", "switch", _key("vebus_hub4_disable_charge", "switch"), restored=False)
+_VIC_NO_FEED_IN = Role("disable_feed_in", "switch", _key("vebus_hub4_disable_feed_in", "switch"), restored=False)
+_VIC_EXTERNAL: Final = "external_control"  # Hub4Mode 3
+#: The Multi falls back to passthru this long after the last write of a setpoint (s), by Victron's page, and how often
+#: each is renewed. The fallback is not yet seen on a plant, so it is not the recipe's `silence_fallback_s` (see the
+#: module for the field test that must come first).
+VICTRON_SILENCE_S: Final = 60
+VICTRON_RENEW_S: Final = 20
+#: The range of the setpoint entities (kW): `vebus_ac_power_setpoint_{phase}` is -10000 to 10000 W, and the grid
+#: setpoint's is the GX's own, 10000 W where the GX does not state it (victron-mqtt `_victron_topics.py`).
+VICTRON_SETPOINT_MAX_KW: Final = 10.0
+
+
+def _vic_grid(kw: float) -> float:
+    """The grid setpoint (W) for a site power of `kw` (+ import), its size rounded down to the role's step and cut
+    to the entity's range (the battery then takes or gives less than its rate, never more)."""
+    size = native(_VIC_GRID, min(abs(kw), VICTRON_SETPOINT_MAX_KW))
+    return 0.0 if size == 0 else round(math.copysign(size, kw), 6)
+
+
+def _vic_charge(rate_kw: float, house_kw: float) -> tuple[Want, ...]:
+    # The charge power bounds the battery's draw; the grid setpoint, the house now plus the rate, drives it.
+    return (Want("charge_power", native(_VIC_CHARGE, rate_kw)), Want("grid_setpoint", _vic_grid(house_kw + rate_kw)))
+
+
+def _vic_export(rate_kw: float, house_kw: float) -> tuple[Want, ...]:
+    return (Want("grid_setpoint", _vic_grid(house_kw - rate_kw)),)
+
+
+def _vic_phase_roles(name: str, key: str, method: RoleMethod = "sensor", **kwargs: Any) -> tuple[Role, Role, Role]:
+    """A role per phase (W, never restored): `phase_l<n>_<name>` on the short id `<key>_l<n>`."""
+    roles = [
+        Role(f"phase_l{n}_{name}", method, _key(f"{key}_l{n}", method), scale=1000.0, restored=False, **kwargs)
+        for n in (1, 2, 3)
+    ]
+    return (roles[0], roles[1], roles[2])
+
+
+_VIC_PHASE_TARGETS: Final = _vic_phase_roles(
+    "target", "vebus_ac_power_setpoint", "number", step=10.0, write_class="setpoint"
+)
+#: Victron's Mode 3 (see the module): a setpoint per phase is the power on that Multi's AC input, + from the grid,
+#: so a charge is written as the load on its AC output plus the charge. The Multis follow them only in external
+#: control, where SpotNav owns them and both flags; in every other state the GX writes them itself, so they are
+#: neither parked nor handed back, and the one write that stops a charge per phase on all three phases is the ESS
+#: mode back as found. Each setpoint is renewed well inside the Multi's 60 s watchdog; that the Multi goes to
+#: passthru by itself when the writes stop is the page's word only, so the HA-down cap is not lifted on it.
+VICTRON_PHASES: Final = PhaseControl(
+    targets=_VIC_PHASE_TARGETS,
+    charge_sign=1.0,
+    follow=(Want("ess_mode", _VIC_EXTERNAL), Want("disable_charge", False), Want("disable_feed_in", False)),
+    target_kind="grid",
+    roles=(_VIC_MODE, _VIC_NO_CHARGE, _VIC_NO_FEED_IN),
+    park=False,
+    behind=_vic_phase_roles("load", "vebus_inverter_output_power"),
+    point=_vic_phase_roles("input", "vebus_inverter_input_power"),
+    watchdog_roles=tuple(role.name for role in _VIC_PHASE_TARGETS),
+    watchdog_renew_s=VICTRON_RENEW_S,
+    # Not stated until a field test shows the fallback (the module): the targets are reckoned as if they stay.
+    silence_fallback_s=None,
+    three_phase_by_targets=True,
+    limit_kw=VICTRON_SETPOINT_MAX_KW,
+    own_states={"ESS mode": frozenset({_VIC_EXTERNAL})},
+    enter_order=(
+        "charge_power", "discharge_power", "grid_setpoint", "ess_mode", "disable_charge", "disable_feed_in",
+        "phase_l1_target", "phase_l2_target", "phase_l3_target",
+    ),
+    restore_order=("ess_mode", "grid_setpoint", "charge_power", "discharge_power"),
+    stop_first=("ess_mode",),
+)
+
+VICTRON_CONTROL: Final = BrandControl(
+    brand="victron",
+    adapter=VICTRON,
+    roles=(_VIC_CHARGE, _VIC_DISCHARGE, _VIC_GRID),
+    states={
+        ACTION_HOLD: lambda _rate, _w: (Want("discharge_power", 0.0),),
+        ACTION_GRID_CHARGE: lambda rate, _w: _vic_charge(rate, 0.0),
+        ACTION_DISCHARGE_HOUSE: lambda _rate, _w: (Want("charge_power", 0.0),),
+        ACTION_EXPORT_DISCHARGE: lambda rate, _w: _vic_export(rate, 0.0),
+    },
+    house_states={ACTION_GRID_CHARGE: _vic_charge, ACTION_EXPORT_DISCHARGE: _vic_export},
+    # The charge power is in place before the setpoint asks for import; back: the setpoint first, so the limit is
+    # never loosened while the plant is still asked to import.
+    enter_order=("charge_power", "discharge_power", "grid_setpoint"),
+    restore_order=("grid_setpoint", "charge_power", "discharge_power"),
+    peak_first={ACTION_HOLD: ("discharge_power",), ACTION_GRID_CHARGE: ("grid_setpoint",)},
+    # The entities do not say how many phases the Multis are on: the balanced charge is capped as if on one.
+    grid_charge_phases=1,
+    note="Mode 2 for a hold, a balanced charge and a discharge (settings on the GX, written rarely); external"
+    " control with a setpoint per phase, renewed inside the Multi's 60 s watchdog, for a charge per phase. Not"
+    " tested on a plant.",
+    phase_control=VICTRON_PHASES,
+    write_caps={"setpoint": SETPOINT_WRITES_WATCHED},
+)
+
 _SIG_EXPORT = Role(
     "export_limit", "number", _key("plant_grid_point_maximum_export_limitation", "number"), step=0.001,
     unset_as_rating="export", unknown_is_unset=True,
@@ -1070,6 +1343,7 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 
 CONTROLS: Final[tuple[BrandControl, ...]] = (
     SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL, SOLINTEG_CONTROL, FERROAMP_CONTROL,
+    VICTRON_CONTROL,
 )
 
 
