@@ -82,7 +82,8 @@ class Capability:
     start ends by itself (a one-time run, a timer), `duration` the timer's length where it has one (`None`: a
     one-time run, its length learned), `start` and `stop` what is written: a select's option (matched by these
     words, any case) or a number's value; a switch is turned on and off and needs neither. `stop` `None` on a select
-    or number: no way to end it early."""
+    or number: no way to end it early. `verified`: that a start ends by itself is confirmed on a real pump; an
+    unverified boost is offered to the Boost button only, and SpotNav stops it after its expected run."""
 
     kind: CapabilityKind
     match: Match
@@ -92,6 +93,7 @@ class Capability:
     duration: timedelta | None = None
     start: str | None = None
     stop: str | None = None
+    verified: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,7 +360,13 @@ HEISHAMON: Final = Adapter(
         ),
         Capability("setpoint", _dash("1", "climate"), "Zone 1 climate."),
         # Whether Force DHW ends by itself once the tank is full is not verified on a real pump.
-        Capability("hot_water_boost", _dash("SET10", "switch"), "Force DHW (ending by itself unverified).", self_ending=True),
+        Capability(
+            "hot_water_boost",
+            _dash("SET10", "switch"),
+            "Force DHW (ending by itself unverified).",
+            self_ending=True,
+            verified=False,
+        ),
         Capability("sg_ready", _dash("SetSmartGridMode", "select"), "Needs HeishaMon's optional PCB."),
     ),
 )

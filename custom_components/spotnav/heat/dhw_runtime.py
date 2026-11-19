@@ -91,6 +91,8 @@ POLL_S: Final = 5.0
 #: The heat control's safety reasons under which no planned boost starts (the compressor goes to the house).
 UNSAFE: Final = frozenset({"too_cold", "room_cold", "stale"})
 LOG_SIZE: Final = 48
+#: A boost not verified to end by itself is stopped this long after its expected run.
+BACKSTOP: Final = timedelta(minutes=15)
 #: Looks in a row over the fuse before SpotNav's own running boost is shed.
 SHED_LOOKS: Final = 2
 
@@ -238,7 +240,8 @@ class HotWater:
         from .paths import blocks_hot_water  # noqa: PLC0415
 
         if route is not None:
-            return LEVEL_B
+            # A boost not verified to end by itself is the button's only: nothing is planned on it.
+            return LEVEL_B if route.verified else None
         return LEVEL_A if blocks_hot_water(config) and config.control_entity else None
 
     def watched(self, pump: Any) -> bool:
@@ -431,7 +434,7 @@ class HotWater:
     def _plan(self, now: datetime) -> None:
         config = self.shadow.config()
         route = self.route(config)
-        if route is None:
+        if route is None or not route.verified:
             self.picks = []
             return
         before = {pick.peak: pick.start for pick in self.picks}
@@ -547,13 +550,14 @@ class HotWater:
             return
         config = self.shadow.config()
         self._observe(now, config)
+        self._backstop(now, config)
         self._shed_check(now, config)
         if not config.control_enabled or not self.picks:
             # Nothing planned is written without the opt-in: no need to read the pump each look.
             return
         pump = self._pump()
         route = self.route(config, pump)
-        if route is None or self.mode(config, route, pump) != MODE_LIVE:
+        if route is None or not route.verified or self.mode(config, route, pump) != MODE_LIVE:
             return
         today = now.astimezone(self.zone).date()
         if self.ended_day == today.isoformat():
@@ -647,6 +651,33 @@ class HotWater:
             return None
         entry = self._pulse_entry(route, now)
         return None if entry is None else entry.source
+
+    def _backstop(self, now: datetime, config: HeatConfig) -> None:
+        """A boost not verified to end by itself that SpotNav or the button started and that still reads on once
+        its run should be over (`run_len` and `BACKSTOP`): one stop write, so the pump is never left forcing hot
+        water."""
+        route = self.route(config)
+        if route is None or route.verified or route.kind == "pulse" or not self._on(route)[0]:
+            return
+        if self.ledger.owner(route.entity_id, now) is None:
+            return
+        last = next((entry for entry in reversed(self.ledger.entries) if entry.entity_id == route.entity_id), None)
+        if last is None or now - last.at < (route.duration or self.run_len) + BACKSTOP:
+            return
+        call = stop_call(route, self._options(route))
+        if call is None:
+            return
+        self.ledger.close(route.entity_id, now)
+        _LOGGER.info("SpotNav hot water: %s still on after its run; stopping it", route.entity_id)
+        self._pending = self.hass.async_create_background_task(
+            self._async_call_quietly(call), f"spotnav hot water backstop {self.shadow.site.entry_id}"
+        )
+
+    async def _async_call_quietly(self, call: tuple[str, str, dict[str, Any]]) -> None:
+        try:
+            await self.hass.services.async_call(call[0], call[1], call[2], blocking=True)
+        except Exception:  # noqa: BLE001 - logged; the next look tries again where it still applies
+            _LOGGER.info("SpotNav hot water: the stop through %s failed", call[2].get("entity_id"), exc_info=True)
 
     def _shed_check(self, now: datetime, config: HeatConfig) -> None:
         """SpotNav's own planned boost running while a phase is over the fuse for `SHED_LOOKS` looks: ended, and not

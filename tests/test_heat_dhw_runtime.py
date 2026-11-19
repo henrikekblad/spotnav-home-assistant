@@ -84,6 +84,7 @@ def _pump(adapter: Any, entity_id: str, *, price_control: str = "off", priority:
         duration_s=None if capability.duration is None else capability.duration.total_seconds(),
         start=capability.start,
         stop=capability.stop,
+        verified=capability.verified,
     )
     return SimpleNamespace(
         capabilities=(status,), cloud=adapter.cloud, price_control=SimpleNamespace(state=price_control), priority=priority

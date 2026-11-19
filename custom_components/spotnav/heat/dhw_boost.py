@@ -63,6 +63,8 @@ class Route:
     start: str | None = None
     stop: str | None = None
     duration: timedelta | None = None
+    #: That a start ends by itself is confirmed: only then may SpotNav plan boosts on it (the button may always).
+    verified: bool = True
 
     @property
     def domain(self) -> str:
@@ -85,6 +87,7 @@ class Route:
             "start": self.start,
             "stop": self.stop,
             "duration_s": None if self.duration is None else self.duration.total_seconds(),
+            "verified": self.verified,
         }
 
 
@@ -98,7 +101,8 @@ def boost_route(pump: Any, hot_water_entity: str | None) -> Route | None:
                 continue
             kind = ROUTE_CLOUD if pump.cloud else ROUTE_VOLATILE if capability.volatile else ROUTE_ONE_SHOT
             duration = None if capability.duration_s is None else timedelta(seconds=capability.duration_s)
-            return Route(capability.entity_id, kind, capability.start, capability.stop, duration)
+            verified = getattr(capability, "verified", True) is not False
+            return Route(capability.entity_id, kind, capability.start, capability.stop, duration, verified)
     if hot_water_entity is not None and hot_water_entity.split(".", 1)[0] in (*_SWITCH, *_BUTTON):
         return Route(hot_water_entity, ROUTE_PULSE)
     return None

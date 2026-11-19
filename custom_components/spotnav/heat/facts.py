@@ -119,6 +119,7 @@ class CapabilityStatus:
     duration_s: float | None = None
     start: str | None = None
     stop: str | None = None
+    verified: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -421,6 +422,7 @@ def _capabilities(capabilities: tuple[Capability, ...], scope: _Scope) -> tuple[
                     duration_s=None if capability.duration is None else capability.duration.total_seconds(),
                     start=capability.start,
                     stop=capability.stop,
+                    verified=capability.verified,
                 )
             )
     return tuple(found)

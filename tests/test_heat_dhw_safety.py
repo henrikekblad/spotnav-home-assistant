@@ -390,3 +390,43 @@ async def test_s4_a_pulse_relay_left_on_is_opened_at_the_start(hass: HomeAssista
     hass.states.async_set(PULSE_SWITCH, "on")
     await hot_water.async_start()
     assert writes.calls == []
+
+
+# ---- S5: a boost not verified to end by itself: the button only, with a backstop stop
+
+HEISHA = "switch.aquarea_force_dhw"
+
+
+async def test_s5_an_unverified_boost_is_the_buttons_only_and_is_stopped_after_its_run(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.heat.adapters import HEISHAMON
+
+    from .test_heat_dhw_runtime import press
+
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, _pump(HEISHAMON, HEISHA))
+    hass.states.async_set(HEISHA, "off")
+    writes = Writes(hass)
+    assert hot_water.route().verified is False
+    # No planned boost on it: not planned, not written.
+    hot_water.tick(at)
+    await settle(hass)
+    assert writes.calls == []
+    hot_water._plan(at)  # noqa: SLF001
+    assert hot_water.picks == []
+    assert hot_water.level(controller.heat_shadow.config(), hot_water.route()) is None
+    # The button may start it; SpotNav stops it once its run should be over.
+    site = hass.config_entries.async_entries("spotnav")
+    entry_id = next(entry.entry_id for entry in site if entry.data.get("heat") is not None)
+    assert (await press(hass, "start", site_id=entry_id))["result"]["ok"] is True
+    assert writes.calls == [("switch", "turn_on", {"entity_id": HEISHA})]
+    started = hot_water.ledger.last().at
+    hot_water.run_len = timedelta(minutes=30)
+    hot_water.tick(started + timedelta(minutes=40))
+    await settle(hass)
+    assert len(writes.calls) == 1
+    hot_water.tick(started + timedelta(minutes=46))
+    await settle(hass)
+    assert writes.calls[-1] == ("switch", "turn_off", {"entity_id": HEISHA})
+    # Once: it reads off and is the button's no more.
+    hot_water.tick(started + timedelta(minutes=48))
+    await settle(hass)
+    assert len(writes.calls) == 2
