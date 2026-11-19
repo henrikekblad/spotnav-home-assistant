@@ -133,7 +133,8 @@ TARGET_RISK_GROWTH_KWH: Final = 1.0
 TARGET_RELEASE_ACTION: Final = "SPOTNAV_IMPORT_TARGET_RELEASE_"
 #: The event Home Assistant's companion app fires when a notification's button is pressed.
 NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
-#: At most this many notifications per charger in an hour, whatever they are.
+#: At most this many notifications per charger in an hour, whatever they are (a limit of its own, apart from the
+#: wake-ups' `push.HOURLY_LIMIT`, though both are 12).
 HOURLY_LIMIT: Final = 12
 #: What a tap opens when no dashboard path is set: Home Assistant's default dashboard.
 DEFAULT_URL: Final = "/"
@@ -155,8 +156,8 @@ PLUG_IN_WAIT_S: Final = 45 * 60.0
 _EDGE_S: Final = 60.0
 #: A remainder may carry this much more energy than the told plan (rounding).
 _ENERGY_SLACK_KWH: Final = 0.05
-#: A completed charge's session is the open one, or one that closed this recently.
-_SESSION_RECENT_S: Final = 600.0
+#: A completed charge's session is the open one, or one that closed this recently (`event.py` uses the same rule).
+SESSION_RECENT_S: Final = 600.0
 
 #: The notices about the plan: none is told while a person's Stop holds (`plan_stopped`'s `charger_ignores_stop`
 #: excepted, which is about the Stop itself).
@@ -1121,6 +1122,6 @@ class ChargerNotifier:
         if not closed:
             return None
         last = closed[-1]
-        if last.end is None or (dt_util.utcnow() - last.end).total_seconds() > _SESSION_RECENT_S:
+        if last.end is None or (dt_util.utcnow() - last.end).total_seconds() > SESSION_RECENT_S:
             return None
         return last

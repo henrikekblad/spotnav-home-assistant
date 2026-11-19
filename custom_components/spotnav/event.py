@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any, Final
+from typing import Any
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import callback, HomeAssistant
@@ -21,16 +21,13 @@ from .execution.charger_events import (
 )
 from .execution.controller import ChargingController
 from .planning.auto_controller import AutoSnapshot
+from .notifications.notifier import SESSION_RECENT_S
 from .planning.auto_settings import AutoSettings
 from .runtime import ChargerConfigEntry, domain_data
 from .sessions.model import ChargeSession
 from .sessions.store import SessionStore
 from .sessions.summary import cost_figures
 from .vehicles.soc_estimate import read_energy_register_kwh
-
-#: Without the session as it stood when the charge began, a finished charge's session is the open one, or one
-#: that closed this recently (the notifier's rule for a completed charge).
-_SESSION_RECENT_S: Final = 600.0
 
 
 async def async_setup_entry(
@@ -141,7 +138,7 @@ def finished_session(store: SessionStore, charger_id: str, run_from: ChargeSessi
     if not closed:
         return None
     last = max(closed, key=lambda item: item.start)
-    if last.end is None or (dt_util.utcnow() - last.end).total_seconds() > _SESSION_RECENT_S:
+    if last.end is None or (dt_util.utcnow() - last.end).total_seconds() > SESSION_RECENT_S:
         return None
     return last
 

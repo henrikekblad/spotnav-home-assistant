@@ -201,7 +201,7 @@ from .commands import (
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
-from .gate import phase_split_kw
+from .gate import MIN_RATE_KW, phase_split_kw
 from .ledger import READBACK_DEADLINE_S, Ledger, same
 from .monitor import (
     CHARGE_TAPER_SOC_PCT,
@@ -249,8 +249,6 @@ HOLD_CHARGE_S: Final = 60.0
 CHARGE_OVER_KW: Final = 0.3
 CHARGE_OVER_S: Final = 60.0
 CHARGE_OVER_GRACE_S: Final = 120.0
-#: A grid charge below this is not worth running (kW).
-MIN_RATE_KW: Final = 0.5
 #: The rate goes up only by this much (kW), after this long since its last change (s).
 RATE_STEP_KW: Final = 0.5
 RATE_UP_DWELL_S: Final = 60.0

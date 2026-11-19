@@ -60,6 +60,7 @@ from ..const import (
     CHARGER_PRIORITY_LAST,
     CHARGER_PRIORITY_NORMAL,
     DEFAULT_CHARGER_PRIORITY,
+    DEFAULT_MIN_CURRENT_A,
 )
 
 
@@ -137,9 +138,6 @@ PhaseLiveness = Literal["fresh", "confirmed_unchanged", "unconfirmed_stale", "no
 # Why a per-phase diagnostic is `None`: "missing"/"invalid" mirror `PhaseProblem`;
 # "stale" is checked separately against `max_age_s` at the point of use.
 PhaseUnusableReason = Literal["missing", "invalid", "stale"]
-
-# Commonly the AC EVSE floor; overridable per charger (see `ChargerRequest`).
-DEFAULT_MIN_CURRENT_A = 6.0
 
 _PRIORITY_RANK = {CHARGER_PRIORITY_FIRST: 0, CHARGER_PRIORITY_NORMAL: 1, CHARGER_PRIORITY_LAST: 2}
 

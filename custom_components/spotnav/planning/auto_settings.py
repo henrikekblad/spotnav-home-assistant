@@ -29,7 +29,7 @@ from homeassistant.util import dt as dt_util
 from ..const import DOMAIN
 from ..execution.power_energy import configured_register_entity
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
-from .planner import high_load_window_problem, HighLoadWindow
+from .planner import high_load_window_problem, HighLoadWindow, MAX_PERIODS, MIN_PERIODS
 from ..runtime import domain_data
 from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
 
@@ -83,9 +83,7 @@ DEFAULT_REQUESTED_KWH: Final = 20.0
 DEFAULT_CONSUMPTION_KWH_PER_10KM: Final = 2.0
 #: Automatic charge periods (`planning/planner.py` `AUTO_PERIODS`): no cap, a start cost per period instead.
 DEFAULT_MAX_PERIODS: Final = None
-#: The numbers a person may set in place of automatic periods.
-MIN_PERIODS: Final = 1
-MAX_PERIODS: Final = 8
+#: The numbers a person may set in place of automatic periods (`MIN_PERIODS` and `MAX_PERIODS`, from the planner).
 DEFAULT_DEPARTURE: Final = time(8, 0)
 
 #: How a charger with more than one vehicle finds out which one is plugged in (`vehicles/identification.py`):

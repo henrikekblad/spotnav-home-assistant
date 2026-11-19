@@ -25,7 +25,7 @@ from .. import time_zones
 from .relay_contract import RELAY_PRICE_UNIT, SUPPORTED_VERSION
 
 #: The relay publishes EUR/kWh to five decimals.
-PRICE_DECIMALS: Final = 5
+RELAY_PRICE_DECIMALS: Final = 5
 
 
 def build_day_document(
@@ -59,7 +59,7 @@ def build_day_document(
             "start": start.astimezone(zone).isoformat(),
             "res": res,
             "unit": RELAY_PRICE_UNIT,
-            "prices": [round(value, PRICE_DECIMALS) for value in prices_eur_kwh],
+            "prices": [round(value, RELAY_PRICE_DECIMALS) for value in prices_eur_kwh],
             "fx": dict(fx or {}),
             "src": src,
         }

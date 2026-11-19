@@ -134,7 +134,7 @@ from .plan_model import (
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
-from .verify import TEST_CHARGE_KW, Sample, Timing, Verification, phase_charge_step
+from .verify import MAX_REPORTS, TEST_CHARGE_KW, Sample, Timing, Verification, phase_charge_step
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -149,8 +149,6 @@ HAND_BACK_LOOK_S: Final = 2.0
 #: How long an unload waits for a look in progress before it cancels it (s).
 LOOK_WAIT_S: Final = 10.0
 LOG_MAX: Final = 200
-#: Reports kept, one per firmware key.
-MAX_REPORTS: Final = 10
 #: After a restart, how long the restore of a stored snapshot waits for its controls' integration to load (s), and
 #: how often it looks.
 STARTUP_WAIT_S: Final = 120.0

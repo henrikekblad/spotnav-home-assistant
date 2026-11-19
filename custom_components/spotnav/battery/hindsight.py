@@ -74,7 +74,7 @@ WHOLE_DAY_SHARE: Final = 0.9
 MIN_PERFECT_SAVING: Final = 500.0
 #: A cell temperature above this (°C) counts as warm.
 HOT_C: Final = 30.0
-#: A battery power below this (kW) is idle: it neither charges nor discharges (`plan_shadow.IDLE_KW`).
+#: A battery power below this (kW) is idle: it neither charges nor discharges (`plan_shadow` imports it for its `actual_action`).
 IDLE_KW: Final = 0.2
 
 # Where the end value came from.

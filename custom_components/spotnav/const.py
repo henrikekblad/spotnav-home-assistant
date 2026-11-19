@@ -212,6 +212,7 @@ REGULATOR_DWELL_S = 60.0
 
 DEFAULT_MAX_AGE_S = 120.0
 
+# Commonly the AC EVSE floor; overridable per charger (see `ChargerRequest`).
 DEFAULT_MIN_CURRENT_A = 6.0
 
 SITE_RECOMPUTE_INTERVAL_S = 30

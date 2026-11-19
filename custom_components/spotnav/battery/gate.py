@@ -120,7 +120,7 @@ PHASE_NAMES: Final = ("L1", "L2", "L3")
 _PHASE_NAMES: Final = PHASE_NAMES
 #: The house's normal peak when its forecast has no p90 for the hour (kW), for the grid charge cap.
 HOUSE_PEAK_DEFAULT_KW: Final = 4.0
-#: A grid charge below this is not worth running (kW), as the executor's `MIN_RATE_KW`.
+#: A grid charge below this is not worth running (kW); the executor imports it.
 MIN_RATE_KW: Final = 0.5
 #: The longest a plant's own dead-man (`commands.PhaseControl.silence_fallback_s`) may take to stop a charge per
 #: phase for the HA-down cap to be lifted on its account (s): about what a fuse and a breaker carry a phase's

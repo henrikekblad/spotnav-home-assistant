@@ -98,7 +98,7 @@ READ_TIMEOUT_S: Final = 20.0
 NIGHTLY_HOUR: Final = 1
 #: Statistics are read this many days back: the window and the day before it.
 READ_DAYS: Final = WINDOW_DAYS + 1
-#: The diagnostics show the next this many hours of the raw and corrected forecast.
+#: The diagnostics show the next this many hours of the raw and corrected forecast (the weather shadow shows as many).
 SHOWN_HOURS: Final = 24
 STORE_VERSION: Final = 1
 SAVE_DELAY_S: Final = 30.0

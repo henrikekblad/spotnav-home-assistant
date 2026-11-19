@@ -50,6 +50,7 @@ from ..const import CONF_GRID_POWER_SOURCE, CONF_MEASUREMENT_MODE, DOMAIN
 from ..debug_day import DayStore
 from ..pricing.fx_rates import USER_AGENT
 from .energy_statistics import async_energy_ids, async_statistics, summed
+from .forecast_log import DAY_AHEAD_HOUR
 from .open_meteo import (
     ARCHIVE_CHUNK_DAYS,
     ARCHIVE_URL,
@@ -66,7 +67,7 @@ from .open_meteo import (
     rounded_position,
 )
 from .solar_capability import solar_capability
-from .solar_correction_shadow import hourly_cloud, pick_weather_entity
+from .solar_correction_shadow import NIGHTLY_HOUR, SHOWN_HOURS, hourly_cloud, pick_weather_entity
 from .solar_own import (
     CANDIDATE_PROVIDER,
     CANDIDATE_PROVIDER_CORRECTED,
@@ -102,11 +103,9 @@ TICK_S: Final = 300.0
 READ_TIMEOUT_S: Final = 20.0
 #: The local hours whose first refresh fetches the forecast.
 FETCH_HOURS: Final = (0, 6, 13, 18)
-NIGHTLY_HOUR: Final = 1
 MORNING_HOUR: Final = 6
 #: The morning issue is made only before this local hour (a later one would not be a morning issue).
 MORNING_LAST_HOUR: Final = 11
-DAY_AHEAD_HOUR: Final = 13
 PV_READ_HOURS: Final = 48
 #: The archive is fetched back this far (the sun-position factor's window).
 ARCHIVE_DAYS: Final = 365
@@ -119,8 +118,6 @@ YOUNG_DAYS: Final = 60
 WEATHER_MAX_AGE: Final = timedelta(hours=30)
 SAVE_DELAY_S: Final = 3 * 3600.0
 STORE_VERSION: Final = 1
-#: The diagnostics show the next this many hours of every candidate.
-SHOWN_HOURS: Final = 24
 
 STATUS_STARTING: Final = "starting"
 STATUS_NOT_SOLAR_CAPABLE: Final = "not_solar_capable"
