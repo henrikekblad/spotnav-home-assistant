@@ -80,9 +80,9 @@ last request seen on the bus and, beside it, the hub's answer to it: SpotNav cou
 hub has acknowledged it, and sends a refused hand-back again (the battery's power is still judged as for every
 brand); the hub takes one request at a time and refuses a second while one is running; and SpotNav does not start while another request
 (Ferroamp's own app, an automation) is standing. The hub's ACE moves energy between the phases to keep each grid
-phase under the threshold set in EnergyCloud (set it at the main fuse). It runs inside the hub, but Ferroamp does not
-document whether it acts on a grid charge, so SpotNav counts the charge as spread evenly over the three phases, and
-the cap does not depend on ACE.
+phase under the threshold set in EnergyCloud (set it at the main fuse). It runs inside the hub, but Ferroamp documents neither whether it acts on a grid charge nor how the hub spreads a
+charge over its three phases, so SpotNav's cap for a grid charge counts it all on one phase, as for a brand that
+does not say, and does not depend on ACE.
 
 **Read only: Sofar, Growatt and Solinteg.** SpotNav reads these three through their plugins of the SolaX Modbus
 integration (level and power, and what each states of its size and floor: see

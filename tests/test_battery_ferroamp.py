@@ -30,6 +30,8 @@ def test_the_recipe_is_in_the_table_and_covers_the_house_with_auto() -> None:
     assert FERROAMP_CONTROL.write_cap("setpoint") == SETPOINT_WRITES_UNSTATED
     assert FERROAMP_CONTROL.write_cap("setting") == 96
     assert NORMAL["ferroamp"] == {"command": "auto"}
+    # How the hub spreads a total over its phases is not documented: the HA-down cap counts it on one phase.
+    assert FERROAMP_CONTROL.grid_charge_phases == 1 and FERROAMP_CONTROL.output_type is None
 
 
 def test_the_power_is_the_whole_systems_in_whole_500_w_steps() -> None:

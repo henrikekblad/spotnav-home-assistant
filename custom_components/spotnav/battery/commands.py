@@ -120,8 +120,9 @@ The entity keys, options and services below were checked against each integratio
   strategy (`discharge` at a power may export); a person who has FerroAI or a peak-shaving strategy on in EnergyCloud
   gets that strategy there. **ACE** (adaptive current equalisation) moves
   energy between the phases in the hub to keep each grid phase under the threshold set in EnergyCloud; it runs in
-  the hub, but its reach (20 A per hub) and whether it acts on the batteries' own grid charge are not documented, so
-  the grid charge cap keeps the even split over three phases (`grid_charge_phases`) and does not count on ACE.
+  the hub, but its reach (20 A per hub) and whether it acts on the batteries' own grid charge are not documented, nor is
+  how the hub spreads a total over its three phases, so the grid charge cap counts the charge on one phase
+  (`grid_charge_phases` 1) until a hub has shown an even split, and does not count on ACE.
 * Victron, GoodWe, Enphase and brands without an adapter: **none**. (Victron's discharge cap is a setting stored on
   the GX; GoodWe's and Enphase's controls in core are whole-mode switches or a reserve trick, see
   `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
@@ -850,8 +851,10 @@ FERROAMP_CONTROL: Final = BrandControl(
     requires=(("command", frozenset({"auto"}), "ferroamp_command_running"),),
     peak_first={ACTION_HOLD: ("command",), ACTION_GRID_CHARGE: ("command",)},
     local_readback=True,
-    # The hub's three phases take a charge evenly unless ACE moves it (see the module): no reliance on ACE.
-    grid_charge_phases=3,
+    # The cap counts the whole charge on one phase (the default): the API takes the system's total and nobody
+    # documents how the hub spreads it, nor whether ACE acts on it. Raise it only once a hub has shown the split
+    # (the adapter reads the inverter's power per phase).
+    grid_charge_phases=1,
     hold_variants=FERROAMP_HOLDS,
     variant=FERROAMP_HOLDS[0].name,
     # The spec says nothing of how often a request may be sent, nor of a timeout: the moderate cap.
