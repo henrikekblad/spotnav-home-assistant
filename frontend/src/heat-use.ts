@@ -12,7 +12,7 @@
 //   it.
 // Every figure is the backend's; text is written with `textContent` only.
 
-import { kwhText, moneyMinorAsMajorFine as useMoney } from "./format";
+import { kwhText, moneyMinorAsMajor as useMoney } from "./format";
 import type { HeatHistory, HeatPart } from "./heat-history";
 import type { UseUnit } from "./heat-tabs";
 import { bucketWords } from "./house-history";

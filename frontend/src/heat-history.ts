@@ -8,7 +8,7 @@
 // runs one by one. The day's chart is the card's Plan tab. Every figure is the backend's; text is written with
 // `textContent` only.
 
-import { clock, dateLabel, formatFixed, formatNumber, kwhText, moneyMinorAsMajorFine as money, type FormatContext } from "./format";
+import { clock, dateLabel, formatFixed, formatNumber, kwhText, moneyMinorAsMajor as money, type FormatContext } from "./format";
 import { fits, HEAT_HISTORY_API_VERSION, INDOOR_DAY, REVIEW, roomName, type HeatReview, type IndoorDay } from "./heat-model";
 import { bucketWords, isoDay, periodKind } from "./house-history";
 import { periodPicker, type PeriodChoice } from "./house-tabs";

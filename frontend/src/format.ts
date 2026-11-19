@@ -174,22 +174,11 @@ export interface MoneyUnits {
 }
 
 /**
- * An amount given in the minor unit, shown in the major one: whole units from 10 up and at zero, one decimal
- * between ("25 kr", "4,0 kr", "0,8 kr", "0 kr"). Without a major unit the minor figure is shown whole.
+ * An amount given in the minor unit, shown in the major one: two decimals below 10 major units, so a small
+ * amount keeps its öre ("4,57 kr", "0,83 kr", "0,00 kr"), whole units from 10 up ("25 kr"). Negative amounts
+ * follow their absolute value. Without a major unit the minor figure is shown whole.
  */
 export function moneyMinorAsMajor(language: Language, minor: number, units: MoneyUnits | null): string {
-  if (units === null || units.major_unit === null) {
-    return `${formatNumber(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
-  }
-  const major = minor / 100;
-  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${units.major_unit}`;
-}
-
-/**
- * `moneyMinorAsMajor` for the heat card's use and history views: two decimals below 10 major units, so a
- * small saving keeps its öre ("4,57 kr", "3,36 kr"), whole units from 10 up.
- */
-export function moneyMinorAsMajorFine(language: Language, minor: number, units: MoneyUnits | null): string {
   if (units === null || units.major_unit === null) {
     return `${formatNumber(language, minor, 0)}${units?.minor_unit ? ` ${units.minor_unit}` : ""}`;
   }
