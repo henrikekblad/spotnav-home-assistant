@@ -429,7 +429,7 @@ async def test_a_car_that_starts_after_the_boost_was_placed(hass: HomeAssistant,
     hot_water.picks = [pick]
     hot_water.boost_kw = 3.0
     margins = {"l1": 20.0, "l2": 6.0, "l3": 18.0}
-    monkeypatch.setattr(hot_water, "_margins", lambda: margins)
+    monkeypatch.setattr(hot_water, "_margins", lambda **_kw: margins)
     monkeypatch.setattr(hot_water, "_site_state", lambda: "observing")
     at = max(now, pick.start)
     # 3 kW on one phase is 13 A: the car left 6 A on L2.
