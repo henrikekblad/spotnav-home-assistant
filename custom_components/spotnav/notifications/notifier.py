@@ -113,7 +113,7 @@ from ..vehicles.guest import is_guest
 from ..const import DOMAIN
 from ..texts import language_of
 from .messages import compose, EVENT_TEST, identify_text, import_target_release_text, import_target_text, Money
-from .push import HOURLY_LIMIT, ChargerPush
+from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedStopDetector
 
@@ -133,6 +133,9 @@ TARGET_RISK_GROWTH_KWH: Final = 1.0
 TARGET_RELEASE_ACTION: Final = "SPOTNAV_IMPORT_TARGET_RELEASE_"
 #: The event Home Assistant's companion app fires when a notification's button is pressed.
 NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
+#: At most this many notifications per charger in an hour, whatever they are (a limit of its own, apart from the
+#: wake-ups' `push.HOURLY_LIMIT`, though both are 12).
+HOURLY_LIMIT: Final = 12
 #: What a tap opens when no dashboard path is set: Home Assistant's default dashboard.
 DEFAULT_URL: Final = "/"
 #: `plan_stopped`'s reason when SpotNav gave up stopping a charger under a person's Stop.
