@@ -1538,12 +1538,8 @@ class Executor:
             return "off_grid"
         if not inputs.measurement_ok:
             return "stale_data"
-        if self._export or _fresh(inputs):
-            self.state = replace(self.state, silent_since=None)
-        elif not self._ride_out(inputs):
-            return "stale_data"
-        if inputs.headroom_a is None and not self._export:
-            return "headroom_unknown"
+        # The fuse before the battery's own reading: the headroom is the site meter's, so a plant that is silent or
+        # stale is still handed back for the fuse, every role at once (`_fuse_hand_back`), never a role a look.
         if action in _FUSE_HANDED_BACK or self.state.action in _FUSE_HANDED_BACK:
             headroom = (
                 inputs.headroom_a if action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT
@@ -1551,6 +1547,12 @@ class Executor:
             )
             if headroom is not None and headroom < RESTORE_HEADROOM_A:
                 return "fuse_headroom"
+        if self._export or _fresh(inputs):
+            self.state = replace(self.state, silent_since=None)
+        elif not self._ride_out(inputs):
+            return "stale_data"
+        if inputs.headroom_a is None and not self._export:
+            return "headroom_unknown"
         if self._hold_charges(inputs):
             return f"not_obeyed:{ACTION_HOLD}:charging"
         if self._charge_over(inputs):
@@ -1579,8 +1581,9 @@ class Executor:
         """Whether a running action may ride out a battery reading that is missing or stale (kept in the state):
         within `SILENCE_GRACE_S`, the plan's action unchanged, and the fuse safe on what is known
         without the battery's reading. A hold keeps `PEAK_COVER_A` and is not lifted for a peak; a balanced grid
-        charge fits under the cap counting none of its own charge back (the least it can be); a charge per phase is
-        not ridden out. Meanwhile nothing is written (`step`)."""
+        charge fits under the cap counting none of its own charge back (the least it can be); a sale keeps the rate
+        the plan allows now (its export cap); a charge per phase is not ridden out. Judged at every look on the
+        site meter's headroom now. Meanwhile nothing is written (`step`)."""
         state = self.state
         now = inputs.now
         since = state.silent_since or now
@@ -1595,6 +1598,10 @@ class Executor:
             blind = replace(inputs, facts=replace(inputs.facts, power_kw=None))
             cap = grid_charge_cap_kw(blind, state.rate_kw, yield_now=False)
             return cap is not None and cap >= state.rate_kw - RATE_TOLERANCE_KW
+        if state.action == ACTION_EXPORT_DISCHARGE:
+            # The export side's fuse rule is the rate the plan gives each look (`gate.export_discharge_cap_kw`), and
+            # no rate is written meanwhile: a sale asked to go lower is handed back instead.
+            return abs(inputs.rate_kw) >= state.rate_kw - RATE_TOLERANCE_KW
         return True
 
     def _silent_since(self, inputs: ExecInputs, written_at: datetime | None) -> bool:

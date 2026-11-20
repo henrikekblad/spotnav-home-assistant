@@ -13,6 +13,7 @@ import pytest
 from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL
 from custom_components.spotnav.battery.executor import (
     PEAK_COVER_A,
+    RESTORE_HEADROOM_A,
     SILENCE_GRACE_S,
     ExecInputs,
     Executor,
@@ -95,6 +96,32 @@ def test_the_fuse_still_hands_back_at_once_during_a_silence() -> None:
     executor, battery, now = _running("grid_charge", 3.0)
     _now, results = _quiet(executor, battery, now, 10.0, "grid_charge", 3.0, measurement_ok=False)
     assert events(results, "hand_back")[0]["reason"] == "stale_data"
+
+
+def test_a_fuse_hand_back_during_a_silence_writes_every_role_at_once() -> None:
+    # Under `RESTORE_HEADROOM_A` the fuse's reason wins over the stale reading: all roles in the first look.
+    for action, rate_kw in (("hold", 0.0), ("grid_charge", 3.0)):
+        executor, battery, now = _running(action, rate_kw)
+        result = executor.step(_silent(battery, now, action, rate_kw, headroom_a=RESTORE_HEADROOM_A - 0.1))
+        assert [event["reason"] for event in result.events if event["kind"] == "hand_back"] == ["fuse_headroom"]
+        assert len(result.ops) > 1 and all(op.restore for op in result.ops)
+    # In the middle of a ridden-out silence too.
+    executor, battery, now = _running("hold")
+    now, results = _quiet(executor, battery, now, 40.0, "hold")
+    assert not events(results, "hand_back")
+    result = executor.step(_silent(battery, now, "hold", headroom_a=RESTORE_HEADROOM_A - 0.1))
+    assert [event["reason"] for event in result.events if event["kind"] == "hand_back"] == ["fuse_headroom"]
+    assert len(result.ops) > 1
+
+
+def test_a_sale_is_ridden_out_only_at_the_rate_its_export_cap_allows_now() -> None:
+    executor, battery, now = _running("export_discharge", 3.0)
+    now, results = _quiet(executor, battery, now, 60.0, "export_discharge", 3.0)
+    assert not events(results, "hand_back") and [op for result in results for op in result.ops] == []
+    # The sun's export grows: the plan's rate under the export cap falls, and nothing may be written on stale data.
+    _now, results = _quiet(executor, battery, now, 10.0, "export_discharge", 1.5)
+    assert events(results, "hand_back")[0]["reason"] == "stale_data"
+    assert not events(results, "rate")
 
 
 def test_a_new_action_during_a_silence_hands_back_instead_of_writing() -> None:
