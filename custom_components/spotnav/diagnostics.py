@@ -233,12 +233,25 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
 
 
 def _demand_diagnostics(hass: HomeAssistant, entry: ConfigEntry, controller: Any) -> dict[str, Any] | None:
-    from .pricing.price_source import site_demand_components  # noqa: PLC0415
+    from .pricing.price_source import site_demand_components, site_power_level  # noqa: PLC0415
 
     try:
-        return controller.demand.diagnostics(
+        found = controller.demand.diagnostics(
             site_demand_components(hass, entry.entry_id), import_target_kw=stored_import_target_kw(entry.data)
         )
+        level = site_power_level(hass, entry.entry_id)
+        # The price's power level and its exceedances over the rolling year (`SiteDemand.level_count`), with every
+        # kept exceedance and the level it was measured against.
+        found["power_level"] = None if level is None else {
+            **level.as_dict(),
+            "exceeded": [start.isoformat() for start in controller.demand.level_count(level).exceeded],
+            "allowed": controller.demand.level_count(level).allowed,
+            "kept": [
+                [start.isoformat(), kw, level_kw]
+                for start, (kw, level_kw) in sorted(controller.demand.archive.exceeded.items())
+            ],
+        }
+        return found
     except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
         _LOGGER.debug("demand_diagnostics: ignored failure (diagnostics must never fail on one block)", exc_info=True)
         return None

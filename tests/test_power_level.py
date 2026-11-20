@@ -217,6 +217,11 @@ async def test_the_level_is_written_shown_with_its_count_and_kept_by_a_writer_th
         )
         return (await response.json())["grid_tariff"]["demand"]
 
+    from custom_components.spotnav.diagnostics import entry_diagnostics
+
+    shown = entry_diagnostics(hass, site)["demand"]["power_level"]
+    assert shown["level_kw"] == 3.0 and len(shown["exceeded"]) == 1 and shown["allowed"] == 3
+
     plain = await ask()
     assert "power_level" not in plain and "level_count" not in plain
     reading = await ask("power_level")
