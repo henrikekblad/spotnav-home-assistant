@@ -454,6 +454,51 @@ async def test_a_plant_that_stops_answering_while_held_is_handed_back_once_it_an
     assert not control.executor.state.holds_snapshot
 
 
+def _plant_silent(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, plant: Plant):
+    """Every entity of the plant `unavailable` and no battery reading, as when its Modbus link goes silent; Home
+    Assistant skips a service on an unavailable entity. Returns the plant's answer coming back."""
+    saved: dict[str, tuple[str, dict[str, Any]]] = {}
+    for entry in er.async_entries_for_config_entry(er.async_get(hass), "ENTRY"):
+        state = hass.states.get(entry.entity_id)
+        if state is not None:
+            saved[entry.entity_id] = (state.state, dict(state.attributes))
+            hass.states.async_set(entry.entity_id, "unavailable", dict(state.attributes))
+    monkeypatch.setattr(BatteryControl, "_battery_power", lambda self: (None, None))
+    plant.read_only = True
+
+    def back() -> None:
+        plant.read_only = False
+        for entity_id, (state, attributes) in saved.items():
+            hass.states.async_set(entity_id, state, attributes)
+        monkeypatch.setattr(BatteryControl, "_battery_power", lambda self: (plant.power_kw(), 5.0))
+
+    return back
+
+
+@pytest.mark.parametrize(("silent_s", "handed_back"), [(90, False), (240, True)])
+async def test_a_plant_silent_for_a_minute_and_a_half_is_ridden_out_and_a_longer_silence_handed_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], silent_s: int,
+    handed_back: bool,
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 3.0, None))
+    now = await _looks(control, dt_util.now(), 6)
+    assert control.executor.state.phase == "active"
+    calls, rows = len(plant.calls), len(list(control.log))
+    back = _plant_silent(hass, monkeypatch, plant)
+    now = await _looks(control, now, silent_s // 10)
+    back()
+    now = await _looks(control, now, 40)
+    new = list(control.log)[rows:]
+    hand_backs = [row["reason"] for row in new if row["kind"] == "hand_back"]
+    assert control.executor.state.blocked is None and control.executor.state.phase == "active"
+    assert hass.states.get(MODE).state == "Command Charging (Grid First)"
+    if handed_back:
+        assert hand_backs == ["stale_data"], "handed back once, never blocked, and taken again after the rearm"
+    else:
+        assert hand_backs == [] and len(plant.calls) == calls and new == []
+
+
 class ModbusIOException(Exception):
     """Not a Home Assistant error: what a Modbus library may raise through an integration's service."""
 

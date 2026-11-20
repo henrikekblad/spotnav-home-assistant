@@ -317,7 +317,8 @@ def test_a_stored_unknown_is_no_value_to_write_back() -> None:
     [
         ({"stopping": "stop"}, "stop", False),
         ({"stopping": "unload"}, "unload", False),
-        ({"battery_age_s": 600.0}, "stale_data", False),
+        # A stale reading alone is ridden out a while (`test_battery_silence.py`); with the fuse near, at once.
+        ({"battery_age_s": 600.0, "headroom_a": 1.2}, "stale_data", False),
         ({"measurement_ok": False}, "stale_data", False),
         ({"on_grid": False}, "off_grid", False),
         ({"headroom_a": 0.5}, "fuse_headroom", False),

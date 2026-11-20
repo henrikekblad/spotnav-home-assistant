@@ -78,6 +78,7 @@ from ..site.house_forecast import BASIS_GROSS, MEDIAN_QUANTILE
 from ..site.import_target import stored_import_target_kw
 from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
 from .defensive import NO_BAND, DefensiveInputs, defensive_inputs
+from .executor import SILENCE_GRACE_S
 from .facts import BatteryFacts
 from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_value_next_day, facit_day
 from .plan import plan_mode, self_consumption
@@ -514,6 +515,8 @@ class BatteryPlanShadow:
         self._facts = BatteryFacts()
         self._quarter: datetime | None = None
         self._checked_at: datetime | None = None
+        #: When the battery's level was last read: a plant silent for less than `SILENCE_GRACE_S` plans nothing new.
+        self._soc_read_at: datetime | None = None
         self._running = False
         #: Whether the sun's production for the reviews is being read (`_async_sun`).
         self._sun_running = False
@@ -640,6 +643,12 @@ class BatteryPlanShadow:
             return
         try:
             self._observe(now, facts)
+            if facts.soc_pct is not None:
+                self._soc_read_at = now
+            elif self._soc_read_at is not None and (now - self._soc_read_at).total_seconds() < SILENCE_GRACE_S:
+                # A plant whose link drops a minute or two (its entities unavailable): the plan in force stands, no
+                # "no plan" while it is silent and no extra plan on its return.
+                return
             if self._checked_at is None or (now - self._checked_at).total_seconds() >= CHECK_S:
                 self._checked_at = now
                 self._check(now, facts)

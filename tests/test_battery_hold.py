@@ -128,7 +128,8 @@ def test_a_brand_without_executor_commands_cannot_be_held_even_in_shadow() -> No
     ("changes", "reason"),
     [
         ({"facts": _facts(on_grid=False)}, "off_grid"),
-        ({"battery_age_s": 600.0}, "battery_reading_stale"),
+        # A stale reading alone is ridden out a while (`test_battery_silence.py`); with the fuse near, at once.
+        ({"battery_age_s": 600.0, "headroom_a": 1.2}, "battery_reading_stale"),
         ({"facts": _facts(3.0)}, "battery_charging"),
         ({"measurement_ok": False}, "measurement_lost"),
         ({"headroom_a": 0.5}, "headroom_low"),
