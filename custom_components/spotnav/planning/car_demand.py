@@ -172,6 +172,8 @@ def shadow_facts(shadow: CarDemandPlan, real: PlanResult, inputs: CarCeiling) ->
         "fits": shadow.fits,
         "raise_kw": round(shadow.raise_kw, 3),
         "plans_made": shadow.plans_made,
+        # The search under the caps was too large: the plan is the one without them (`per_hour_caps_dropped`).
+        "caps_dropped": result.per_hour_caps_dropped,
         "delivered_kwh": round(result.delivered_kwh, 3),
         "periods": [[start.isoformat(), end.isoformat()] for start, end in result.periods],
         "energy_cost": None if energy is None else round(energy, 2),
