@@ -6991,3 +6991,8 @@ def _log_regulator_decisions(
             charger_entry_id,
             phases_logged,
         )
+
+
+# Loaded with this module, so the hold's first import is never a disk read on the event loop (it imports this module,
+# hence here at the end rather than at the top; `__init__` takes the class from it).
+from . import import_target_hold as _import_target_hold  # noqa: E402,F401
