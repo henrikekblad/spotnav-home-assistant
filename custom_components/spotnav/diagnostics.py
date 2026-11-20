@@ -305,6 +305,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # Each clock hour's mean import this month, what each demand-charge component bills so far, the running hour
         # with its gaps, and the import target (`site/demand_tracker.py`).
         "demand": None if controller is None else _demand_diagnostics(hass, entry, controller),
+        # The soft ceiling under the demand charge in shadow (`site/demand_ceiling.py`): per part λ and T with the
+        # measured and predicted day peaks, per hour S_h and λ_h, and what the plans would cost against it.
+        "demand_ceiling": None if controller is None else controller.demand_ceiling.as_dict(),
         # The public holidays the high-load windows leave out and where they come from (`site/holidays.py`).
         "holidays": _part_snapshot(lambda: _holiday_diagnostics(hass)),
         # The house load forecast (`site/house_forecast.py`): its sources (weather entity, holiday calendar), the last

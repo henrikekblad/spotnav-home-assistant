@@ -306,6 +306,7 @@
       "sun_mae": 0.075
     }
   ],
+  "demand_ceiling": null,
   "energy_flow": {
     "car_hours": 17,
     "date": "2026-11-13",

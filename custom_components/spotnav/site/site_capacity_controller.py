@@ -77,6 +77,7 @@ from .phase_peaks import SAMPLE_S as PHASE_PEAKS_SAMPLE_S, SitePhasePeaks
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .house_forecast import SiteHouseForecast
+from .demand_ceiling import SiteDemandCeiling
 from .import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
@@ -790,6 +791,9 @@ class SiteCapacityController:
         # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes: shown
         # (the site state sensor's `forecast`, the diagnostics), counted on by a plan under the import target (its net
         # import forecast, `plan_kw_by_hour`) and by the battery plan (the house's whole load on a battery site).
+        # The soft ceiling under the demand charge, in shadow (`site/demand_ceiling.py`): worked out from the month's
+        # peaks and the house forecast as they move, shown and logged, read by no plan yet.
+        self.demand_ceiling = SiteDemandCeiling(self)
         self.house_forecast = SiteHouseForecast(
             hass,
             entry_id,
@@ -1496,6 +1500,7 @@ class SiteCapacityController:
                 power_level=lambda: site_power_level(self.hass, self.entry_id),
             )
             self.house_forecast.tick()
+            self.demand_ceiling.refresh(self.demand.now())
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)
         if self.demand.backfill_due():
