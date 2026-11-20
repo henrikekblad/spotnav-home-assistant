@@ -204,3 +204,25 @@ async def test_its_state_is_kept_in_the_heat_control_s_store(hass: HomeAssistant
     await heater.async_look(_outside_windows(heater, now))
     data = heater.control._data()  # noqa: SLF001
     assert data["water_heater"]["entity"] == HEATER and data["water_heater"]["held_off"] is True
+
+
+async def test_the_heat_card_and_the_diagnostics_show_the_water_heater_and_a_controlled_zone(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.api.heat import heat_settings_diagnostics
+
+    from .test_heat_api import read
+
+    site, heater, _switch, now = await _site(hass, freezer)
+    hass.states.async_set("climate.badrum", "heat", {"temperature": 22.0, "current_temperature": 22.0, "supported_features": 1})
+    heat = dict(site.data[CONF_HEAT])
+    heat["zones"] = [{"entity_id": "climate.badrum", "offset_c": 0.0, "control": True}]
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: heat})
+    heater.rules.kept.last_full = now
+    await heater.async_look(now)
+    result = (await read(hass, api_version=1, site_id=site.entry_id))["result"]
+    assert result["water_heater"]["entity_id"] == HEATER and result["water_heater"]["windows"]
+    assert result["zones"][0]["control"]["enabled"] is True
+    assert {item["entity_id"] for item in result["choices"]["water_heater"]} >= {HEATER}
+    assert "tank_sensor" in result["choices"]
+    diagnostics = heat_settings_diagnostics(hass, site)
+    assert diagnostics["control"]["water_heater"]["mode"] == "unmetered"
+    assert "zones" in diagnostics["control"]
