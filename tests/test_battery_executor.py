@@ -851,9 +851,85 @@ def test_fuse_a_sale_stepped_far_down_is_held_to_its_start_rule() -> None:
     assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
     results = stepped(0.5, headroom_a=0.8, phase_headroom_a=(16.0, 0.8, 0.8), grid_phase_kw=(0.9, -4.4, -4.4))
     assert events(results, "rate")[0]["rate_kw"] == 0.5 and events(results, "hand_back") == []
-    # A plant not known to spread its sale over three phases may take all of it back on one phase.
+    # A plant not known to spread its sale over three phases may take the whole step back on one phase (never more
+    # than the step): 1 kW is 4.3 A, which 20 A of headroom carries and 5 A does not; 9.5 kW is 41 A.
     results = stepped(9.0, headroom_a=20.0, charge_phases=1)
+    assert events(results, "rate")[0]["rate_kw"] == 9.0 and events(results, "hand_back") == []
+    results = stepped(9.0, headroom_a=5.0, charge_phases=1)
     assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+    results = stepped(0.5, headroom_a=20.0, charge_phases=1)
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+
+
+def test_a_sale_stepped_down_is_not_handed_back_for_headroom_on_the_export_side_or_for_the_sun() -> None:
+    """A phase that exports only exports less when the sale steps down, however little headroom it has on that side;
+    the sun in the plant's power per phase is no part of the step; a plant not known to be three-phase is judged by
+    the step, not by its whole sale. A phase that would be left importing without the margin still hands it back."""
+
+    def stepped(start_kw: float, new_kw: float, **look: object) -> list:
+        executor, battery = _sigenergy()
+        now, _ = run(executor, battery, T0, 8, "export_discharge", start_kw)
+        assert executor.state.action == "export_discharge" and executor.state.rate_kw == start_kw
+        _now, results = run(executor, battery, now, 1, "export_discharge", new_kw, power_kw=-start_kw, **look)
+        return results
+
+    def made(results: list, rate_kw: float) -> bool:
+        return events(results, "hand_back") == [] and events(results, "rate")[0]["rate_kw"] == rate_kw
+
+    # Every phase exports 13 A (7 A left on that side): 10 -> 4 kW leaves each exporting 4.3 A.
+    assert made(stepped(10.0, 4.0, headroom_a=7.0, phase_headroom_a=(7.0, 7.0, 7.0),
+                        grid_phase_kw=(-3.0, -3.0, -3.0)), 4.0)
+    # At the export cap (0.8 A left) the whole sale may go: the phases end near 0.
+    assert made(stepped(10.0, 0.5, headroom_a=0.8, phase_headroom_a=(0.8, 0.8, 0.8),
+                        grid_phase_kw=(-4.4, -4.4, -4.4)), 0.5)
+    # 6 kW of sun beside a sale of 5 kW (3.67 kW a phase on the plant's own reading), stepped to 4.7 kW: 0.3 kW.
+    sun = {"plant_phase_kw": (3.67, 3.67, 3.67)}
+    assert made(stepped(5.0, 4.7, headroom_a=5.5, phase_headroom_a=(5.5, 5.5, 5.5),
+                        grid_phase_kw=(-3.3, -3.3, -3.3), **sun), 4.7)
+    # The same with L1 importing and 3 A left there: still only the step.
+    assert made(stepped(5.0, 4.7, headroom_a=3.0, phase_headroom_a=(3.0, 9.0, 9.0),
+                        grid_phase_kw=(3.9, -2.5, -2.5), **sun), 4.7)
+    # A plant not known to be three-phase: 4 -> 3.7 kW is 1.3 A on one phase.
+    assert made(stepped(4.0, 3.7, headroom_a=19.0, charge_phases=1), 3.7)
+    # Still handed back: the step takes more back than a phase exports and leaves it importing without the margin
+    # (L1 exports 2 A with 18 A left there, so the fuse may be 20 A; 41 A comes back on it).
+    results = stepped(10.0, 0.5, headroom_a=18.0, phase_headroom_a=(18.0, 18.0, 18.0),
+                      grid_phase_kw=(-0.46, -0.46, -0.46), charge_phases=1)
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+    # And with the sun, a large step onto a phase that imports near the fuse (the sun's share is counted: cautious).
+    results = stepped(5.0, 0.5, headroom_a=3.0, phase_headroom_a=(3.0, 9.0, 9.0),
+                      grid_phase_kw=(3.9, -2.5, -2.5), **sun)
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+    # The meter's signs not known: the least headroom of any phase, as before.
+    results = stepped(10.0, 4.0, headroom_a=7.0)
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+
+
+def test_fuse_a_sale_step_the_rule_allows_leaves_every_phase_under_the_fuse_less_the_margin() -> None:
+    """Every house, sale, step and spread the step rule lets through leaves each phase at most the fuse less
+    `HEADROOM_MARGIN_A`, unless the step takes under the margin off every phase (the fuse hand-back's)."""
+    fuse, volts = 20.0, 400.0
+    phase_v = volts / 3**0.5
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    checked = 0
+    for sale_kw, new_kw in ((10.0, 0.5), (10.0, 4.0), (6.0, 2.0), (4.0, 0.5), (5.0, 4.0), (12.0, 6.0)):
+        for split, phases in (((1 / 3, 1 / 3, 1 / 3), 3), ((0.6, 0.2, 0.2), 3), ((1.0, 0.0, 0.0), 1),
+                              ((0.5, 0.5, 0.0), 1)):
+            for house in ((0.0, 0.0, 0.0), (18.0, 1.0, 1.0), (10.0, 10.0, 10.0), (17.9, 4.0, 0.0), (5.0, 16.0, 2.0),
+                          (12.0, 12.0, 17.0), (15.0, 15.0, 15.0)):
+                before = [load - sale_kw * part * 1000.0 / phase_v for load, part in zip(house, split, strict=True)]
+                after = [load - new_kw * part * 1000.0 / phase_v for load, part in zip(house, split, strict=True)]
+                rooms = tuple(fuse - abs(amps) for amps in before)
+                plant = None if split[0] == split[1] == split[2] else tuple(sale_kw * part for part in split)
+                for signs in (tuple(amps * phase_v / 1000.0 for amps in before), None):
+                    look = inputs(battery, T0, "export_discharge", new_kw, headroom_a=min(rooms), power_kw=-sale_kw,
+                                  phase_headroom_a=rooms if signs else None, grid_phase_kw=signs,
+                                  plant_phase_kw=plant, charge_phases=phases, volts_between_phases=volts)
+                    taken = max(new - old for new, old in zip(after, before, strict=True))
+                    if taken >= HEADROOM_MARGIN_A and not Executor._sale_step_too_large(look, new_kw):
+                        checked += 1
+                        assert max(after) <= fuse - HEADROOM_MARGIN_A + 1e-6, (sale_kw, new_kw, split, house, signs)
+    assert checked > 30
 
 
 def test_a_running_grid_charge_does_not_count_a_discharge_still_read_as_cover() -> None:

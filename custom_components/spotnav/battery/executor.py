@@ -1916,20 +1916,35 @@ class Executor:
 
     @staticmethod
     def _sale_step_too_large(inputs: ExecInputs, rate: float) -> bool:
-        """Whether a sale stepped down to `rate` fails the sale's start rule (`hold_headroom_ok` at that rate, from
-        the running sale): the step takes back the cover the sale gives now beyond its new share (`uncovered_a`), as
-        an end into a hold would, and that must leave `HEADROOM_MARGIN_A` on the phases that import
-        (`_import_headroom_a`; on every phase when none imports or the meter's signs are not known). A phase that
-        exports takes back at most the same and was below the fuse by its export: it stays within what an importing
-        phase is allowed. Judged only for a step that may take at least `HEADROOM_MARGIN_A` off a phase: a smaller
-        one is the fuse hand-back's (`RESTORE_HEADROOM_A`, the next look)."""
-        taken_a = uncovered_a(inputs, rate, from_sale=True)
+        """Whether a sale stepped down to `rate` fails the sale's start rule on a phase: the step takes back the cover
+        the sale gives now beyond its new share (`uncovered_a`, from the running sale), as an end into a hold would,
+        and never more off one phase than the step itself (what the battery discharges now less `rate`, all of it on
+        one phase): the sun in the plant's power per phase, and a plant not known to spread its sale over three
+        phases, are then judged by the step and not by the whole sale.
+
+        Each phase is judged by the site meter's sign. One that exports at least what is taken back only exports
+        less. Any other must keep `HEADROOM_MARGIN_A`: its headroom, plus what it exports now (the fuse is at least
+        the two together), less what is taken back. With the meter's signs or a phase's headroom not known, the
+        least headroom of any phase less what is taken back. Judged only for a step that may take at least
+        `HEADROOM_MARGIN_A` off a phase: a smaller one is the fuse hand-back's (`RESTORE_HEADROOM_A`, the next
+        look)."""
+        power = inputs.facts.power_kw
+        if power is None or not math.isfinite(power) or inputs.volts_between_phases <= 0:
+            return False
+        phase_v = inputs.volts_between_phases / math.sqrt(3.0)
+        step_a = max(-power - rate, 0.0) * 1000.0 / phase_v
+        taken_a = min(uncovered_a(inputs, rate, from_sale=True), step_a)
         if taken_a < HEADROOM_MARGIN_A:
             return False
-        headroom = _import_headroom_a(inputs)
-        if headroom is None:
-            headroom = inputs.headroom_a
-        return headroom is None or headroom - taken_a < HEADROOM_MARGIN_A
+        signed, rooms = inputs.grid_phase_kw, inputs.phase_headroom_a
+        if not _finite3(signed) or not _finite3(rooms):
+            return inputs.headroom_a is None or inputs.headroom_a - taken_a < HEADROOM_MARGIN_A
+        assert signed is not None and rooms is not None
+        for grid_kw, room in zip(signed, rooms, strict=True):
+            export_a = max(-grid_kw, 0.0) * 1000.0 / phase_v
+            if export_a < taken_a and room + export_a - taken_a < HEADROOM_MARGIN_A:
+                return True
+        return False
 
     def _blocker(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
