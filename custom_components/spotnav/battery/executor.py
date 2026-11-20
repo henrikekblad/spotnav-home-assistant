@@ -919,8 +919,9 @@ def cover_a(inputs: ExecInputs, *, sale: bool = False) -> float:
 
 def cover_phase_a(inputs: ExecInputs) -> Phases | None:
     """What the battery's discharge now gives each phase (A on L1, L2 and L3), where the plant's own power per phase
-    (`ExecInputs.plant_phase_kw`) is read: each phase's output, at most the whole discharge (the reading has the sun's
-    power in it too, so a phase's figure is never under the battery's share on it). In its own mode a SigenStor
+    (`ExecInputs.plant_phase_kw`) is read: each phase's whole output. The reading has the sun's power in it too, which
+    is counted as well: a grid charge may take the sun into the battery instead of the house, so the figure is never
+    under what comes back on the phase (and may then be above the whole discharge). In its own mode a SigenStor
     covers each phase's own load (on the owner's plant the grid read 0 on every phase with the house unbalanced and
     the output on L3 matched the heat pump there), so a third a phase is never assumed. `None` when the power per
     phase is not read or the battery does not discharge: then `cover_a`."""
@@ -932,7 +933,7 @@ def cover_phase_a(inputs: ExecInputs) -> Phases | None:
     ):
         return None
     scale = 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
-    out = [min(max(value, 0.0), -power) * scale for value in plant]
+    out = [max(value, 0.0) * scale for value in plant]
     return (out[0], out[1], out[2])
 
 

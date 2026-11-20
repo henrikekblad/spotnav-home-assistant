@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
 
-from hypothesis import assume, given, settings, strategies as st
+from hypothesis import assume, example, given, settings, strategies as st
 import pytest
 
 from custom_components.spotnav.battery import gate
@@ -1035,10 +1035,16 @@ def _idle_start_phases(
 
 
 _AMPS = st.floats(min_value=0.0, max_value=30.0, allow_nan=False)
-_SUN = st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=8.0, allow_nan=False))
+_SUN = st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=10.0, allow_nan=False))
 
 
-@settings(max_examples=400, deadline=None)
+@settings(max_examples=600, deadline=None)
+# The sun on the loaded phase beside a small discharge: it may end with the cover too.
+@example(fuse=20.0, house=(20.0, 0.0, 0.0), battery_a=(1.0, 0.0, 0.0), sun_a=(8.0, 0.0, 0.0), plan_kw=5.0,
+         plant_read=True, rooms_read=True, charge_phases=3)
+# An unbalanced cover: most of it on the loaded phase.
+@example(fuse=20.0, house=(18.0, 6.0, 6.0), battery_a=(12.0, 1.0, 1.0), sun_a=(0.0, 0.0, 0.0), plan_kw=5.0,
+         plant_read=True, rooms_read=False, charge_phases=3)
 @given(
     fuse=st.sampled_from((16.0, 20.0, 25.0, 35.0)),
     house=st.tuples(_AMPS, _AMPS, _AMPS),
