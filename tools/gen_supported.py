@@ -870,8 +870,8 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Emaldo",
-        "ha-emaldo (cloud and local UDP): not read",
-        control="Not possible locally. Planned later through its cloud, for slow actions that end by themselves",
+        "ha-emaldo (Emaldo's cloud, over HTTPS and UDP to Emaldo's servers): not read",
+        control="Not possible locally: the integration reads and controls the battery only through Emaldo's cloud, with your Emaldo login. Planned later through that cloud, for slow actions that end by themselves",
         note="Emaldo steers its batteries from its own cloud for grid services.",
     ),
     Overview(
