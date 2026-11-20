@@ -166,15 +166,15 @@ if (wanted("settings-beta")) {
   await shot("settings-beta", DIALOG(TAGS.house));
 }
 if (wanted("settings-home-battery")) {
-  // Battery control on: the plant is checked step by step (about twenty minutes here: the demo battery obeys, the
-  // driver waits for the result) and the section shows each step's outcome. The battery has to be discharging for the
+  // Battery control on: the plant is checked step by step (about two minutes here: the demo battery obeys and demo_fast.py
+  // shortens the check's waits; the driver polls for the result) and the section shows each step's outcome. The battery has to be discharging for the
   // check to start, so the scene is a cloudy evening.
   await scene({ sun: 0.4, house: 1.1, heat: 1.7, battery: -1.2, soc: 64 });
   const change = { type: "spotnav/battery_control", api_version: 1, site_id: ids.site };
   await api.ws({ ...change, changes: { battery_control_enabled: true }, enable_control_entities: true });
   let state = null;
-  for (let i = 0; i < 180 && state !== "on"; i++) {
-    await sleep(15000);
+  for (let i = 0; i < 540 && state !== "on"; i++) {
+    await sleep(5000);
     state = (await api.ws(change)).status?.state;
   }
   console.log(`   battery control: ${state}`);

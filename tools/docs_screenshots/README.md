@@ -134,9 +134,8 @@ before about 12:00, or just after midnight (there is no way to pin the demo's cl
 planning, so none is pinned); the driver waits for one for up to `HOT_WATER_WAIT_MIN` minutes (150). Taken just after
 midnight the Plan tab shows the day's planned runs ahead (hollow droplet) and its peak ticks, but no measured run yet
 (the day has none); take it after the night's boost and before noon to see one as well.
-`settings-home-battery` waits for the battery's check, about twenty minutes (beta on, battery control on, a cloudy
-evening pinned so that the battery discharges). The past days' prices come with the next price refresh cycle (hourly,
-and at midnight), which is what makes the month's cost and earnings in the app's pictures: take those after one.
+`settings-home-battery` waits for the battery's check, about two minutes on a new installation (beta on, battery control on, a
+cloudy evening pinned so that the battery discharges; a kept installation has passed it already). The past days' prices (the month's cost and earnings in the app's pictures) come within seconds of the start, see the quick demo waits below.
 
 **A kept installation.** With `DRIVER=v3shots.mjs` the finished configuration directory (the site, the charger, weeks
 of recorder history, the Energy dashboard, the hot-water and battery seeds) stays between runs: the driver stamps it
