@@ -1092,19 +1092,19 @@ async def test_a_hold_the_floor_stops_short_of_its_share_is_marked_and_not_plann
 ) -> None:
     """Lowered, but not as far as its share (the floor stopped it): `floor_limited`, not `inert` (something is held),
     and a plan does not count on the hold's power for it."""
-    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
-
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "floorlimited")
         controller = world.halo.controller
         charger = world.halo.charger.entry_id
+        # The sun sends 11 A out on L1 beside the house, and L2 and L3 carry 2 A more each: the budget holds the car
+        # to 9 A, but below 10 A L1 would export, so the floor stops the lowering there.
+        world.phase_extra_a = {"l1": -11.0, "l2": 2.0, "l3": 2.0}
         await world.step()
         await _charging(world)
         await world.run(3)
-        assert world.car_a == 7.0 and controller.import_target_plan_kw(charger) is not None
-        monkeypatch.setattr(SiteCapacityController, "_target_floor_a", lambda self, *args, **kwargs: 11.5)
-        await world.run(3)
+        assert world.car_a == 10.0
         snapshot = controller.import_target_snapshot()["chargers"][charger]
+        assert snapshot["cap_a"] == 9.0 and snapshot["lowered"] is True
         assert snapshot["floor_limited"] is True and snapshot["inert"] is None
         assert controller.import_target_plan_kw(charger) is None
 
