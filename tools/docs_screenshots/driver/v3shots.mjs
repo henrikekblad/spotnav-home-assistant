@@ -14,6 +14,8 @@ const OUT = path.join(REPO, "docs", "images");
 const only = new Set(process.argv.slice(2));
 const wanted = (name) => only.size === 0 || only.has(name);
 const done = [], failed = [];
+const t0 = Date.now();
+const phase = (name) => console.error(`[timing] driver ${name}: ${Math.round((Date.now() - t0) / 1000)} s since the driver started`);
 
 const api = await v3.signedIn();
 let ids;
@@ -23,18 +25,34 @@ if (process.env.REUSE) {
 } else {
   ids = await v3.setupInstall(api);
 }
+phase("signed in, installation ready");
 // A site that has only just been set up has read nothing yet: its energy flow, the day's plan and the heat's figures come
 // from the first minutes of reading, and an answer asked for earlier keeps the finished hours it saw (a house card
-// answer asked for too early shows a day without its heat). Give it a minute and a half before the first question.
-if (!process.env.REUSE) await sleep(90000);
+// answer asked for too early shows a day without its heat). So a new site is polled until its answers have what a
+// finished reading gives and stop changing; a reused one has read for a long time and is ready at once.
+if (!process.env.REUSE) {
+  await v3.settleSite(api, ids.site);
+  phase("new site settled");
+} else {
+  // A reused installation was not running since it was kept: the hours between are imported again.
+  await v3.importHistory(api);
+  phase("history topped up");
+}
+// The heat's figures (the hot-water picture waits for its own boost below).
 for (let i = 0; i < 60; i++) {
-  const heat = await api.ws({ type: "spotnav/get_heat", api_version: 1, site_id: ids.site });
-  if (heat.today?.heat_kwh != null && heat.hot_water?.planned?.length) break;
+  const { heat } = await v3.siteAnswers(api, ids.site);
+  if (heat.today?.heat_kwh != null) break;
   await sleep(3000);
+}
+phase("site answers ready");
+if (process.env.DOCS_CONFIG) {
+  // The finished installation: what run.sh keeps for the next run (--fresh throws it away).
+  try { fs.writeFileSync(path.join(process.env.DOCS_CONFIG, ".docs_built"), new Date().toLocaleDateString("sv-SE") + "\n"); } catch {}
 }
 const tokens = await ha.login();
 const b = await Browser.launch({ width: 1280, height: 1800 });
 await b.signIn(tokens);
+phase("browser ready");
 await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("selectedTheme", '{"dark":false}'); } catch (e) {}` });
 await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
 

@@ -1,5 +1,6 @@
 // The 3.0 demo installation, shared by the documentation screenshots and the app's: onboarding, the demo
 // integrations, a SpotNav charger ("Garage") and a site ("Home"), all through the config flow API.
+import fs from "node:fs";
 import * as ha from "./ha.mjs";
 import * as demo from "./demo.mjs";
 import { sleep } from "./ha.mjs";
@@ -31,7 +32,9 @@ export async function waitForState(api, entityId, timeoutS = 90) {
 export async function signedIn() {
   await ha.waitUp();
   await ha.onboard();
-  return new ha.Api(await ha.login());
+  const api = new ha.Api(await ha.login());
+  if (process.env.HA_ONBOARDED) await ha.waitRunning(api);
+  return api;
 }
 
 export const DEMOS = ["ocpp", "sigen", "kia_uvo", "demo_vision", "nordpool", "demo_house"];
@@ -84,8 +87,9 @@ export async function setupInstall(api, { appUrl } = {}) {
   return { garage, site };
 }
 
-/** The made-up house's history as recorder statistics, and the Energy dashboard's meters that point at it. */
-async function seedHouse(api) {
+/** Import the made-up house's weeks as recorder statistics (hourly and five-minute) and wait until the last rows are
+ * in. Idempotent: a reused installation does it again at its start, which fills the hours it was not running for. */
+export async function importHistory(api) {
   await waitForState(api, "sensor.demo_heat_pump_energy");
   await waitForState(api, "sensor.sigen_plant_ess_soc");
   await api.post("/api/services/demo_house/docs_seed", {});
@@ -99,6 +103,11 @@ async function seedHouse(api) {
     await sleep(2000);
   }
   await sleep(3000);
+}
+
+/** The made-up house's history as recorder statistics, and the Energy dashboard's meters that point at it. */
+async function seedHouse(api) {
+  await importHistory(api);
   await api.ws({
     type: "energy/save_prefs",
     energy_sources: [
@@ -123,4 +132,43 @@ async function setupHeat(api, site) {
   const expected = Object.fromEntries(Object.keys(changes).map((k) => [k, current[k]]));
   const r = await api.ws({ type: "spotnav/update_heat", api_version: 1, site_id: site, changes, expected });
   if (!r.ok) throw new Error("heat settings: " + JSON.stringify(r).slice(0, 400));
+}
+
+/** What the site answers about its heat and its day: the first answers of a new site keep the hours they saw. */
+export async function siteAnswers(api, site) {
+  const heat = await api.ws({ type: "spotnav/get_heat", api_version: 1, site_id: site });
+  const house = await api.ws({ type: "spotnav/get_house_history", api_version: 1, site_id: site, period: "day" });
+  return { heat, key: JSON.stringify([heat.today, heat.band, house]) };
+}
+
+/** Wait until a new site has read what a finished reading gives (the heat's figures) and its answers have stopped
+ * changing, at least `minMs` after the call (the first reading's hours come in over its first minute). */
+export async function settleSite(api, site, minMs = 30000) {
+  const started = Date.now();
+  let last = null;
+  for (let i = 0; i < 90; i++) {
+    const now = await siteAnswers(api, site).catch(() => null);
+    const ready = now && now.heat.today?.heat_kwh != null && Date.now() - started > minMs;
+    if (ready && now.key === last) return;
+    last = now?.key ?? null;
+    await sleep(6000);
+  }
+}
+
+/** Wait until the past days have prices. The price backfill fills them after the first price cycle (a few seconds
+ * here, see demo_fast.py; a real installation waits for its hourly cycle), and a restarted installation reads the days
+ * it kept a moment after it is up. The site keeps each answer it gives for the hour (a past day's until midnight), so
+ * a question asked while the prices were missing would keep the empty answer: the month's, which the pictures need,
+ * is never asked here. Each poll asks for another day (a day of its own is a question of its own). */
+export async function waitPastPrices(api, site, minutes = 10) {
+  const deadline = Date.now() + minutes * 60_000;
+  const today = new Date();
+  for (let i = 0; Date.now() < deadline; i++) {
+    const day = new Date(today.getTime() - (2 + (i % 24)) * 86400_000).toLocaleDateString("sv-SE");
+    const answer = await api.ws({ type: "spotnav/get_house_history", api_version: 1, site_id: site, period: "day", date: day });
+    const priced = answer.cost?.priced ?? 0;
+    if (priced > 20) { log(`past prices are in (${priced} periods priced on ${day})`); return; }
+    await sleep(4000);
+  }
+  throw new Error("the past days' prices did not arrive");
 }
