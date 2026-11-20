@@ -281,15 +281,16 @@ def build_slots(
     tz: str,
     *,
     hour_caps: Mapping[datetime, float] | None = None,
-    ceilings: Mapping[datetime, tuple[float, float]] | None = None,
+    ceilings: Mapping[datetime, tuple[float, float] | tuple[float, float, date | None]] | None = None,
 ) -> tuple[tuple[PlanSlot, ...], tuple[str, ...]]:
     """The plan's slots from now (see the module) and what was assumed. `house_by_hour` is keyed by the local hour's
     start (UTC), `solar_wh_by_hour` by the UTC hour's start; an hour the solar forecast does not hold has no sun.
 
     `hour_caps` (kW, keyed by the local hour's start) lowers `cap_kw` hour by hour: the hard cap H_h where the import
     target and the power level hold that hour (`plan_runtime.site_hour_caps`). `ceilings` gives an hour its soft
-    ceiling under the demand charge: `(S_h kW, λ_h minor per kW)`, the ceiling never above the hour's hard cap
-    (`PlanSlot.soft_cap_kw`, `peak_price`). Without either, the slots are exactly those of the scalar cap."""
+    ceiling under the demand charge: `(S_h kW, λ_h minor per kW[, the day its peak counts toward])`, the ceiling never
+    above the hour's hard cap (`PlanSlot.soft_cap_kw`, `peak_price`, `peak_day`: the hour's local day where the
+    ceiling does not say). Without either, the slots are exactly those of the scalar cap."""
     estimates: list[str] = []
     if solar_wh_by_hour is None:
         estimates.append(EST_NO_SOLAR)
@@ -317,10 +318,14 @@ def build_slots(
         ceiling = None if ceilings is None else ceilings.get(local_hour)
         soft_kw: float | None = None
         peak_price = 0.0
+        peak_day: date | None = None
         if ceiling is not None and _finite(ceiling[0]) and _finite(ceiling[1]) and ceiling[1] > 0:
             soft_kw = max(0.0, float(ceiling[0]))
             soft_kw = soft_kw if slot_cap is None else min(soft_kw, slot_cap)
             peak_price = float(ceiling[1])
+            counted = ceiling[2] if len(ceiling) > 2 else None
+            zone = time_zones.require_zone(tz)
+            peak_day = counted if isinstance(counted, date) else local_hour.astimezone(zone).date()
         slots.append(
             PlanSlot(
                 start=start,
@@ -333,6 +338,7 @@ def build_slots(
                 import_cap_kw=slot_cap,
                 soft_cap_kw=soft_kw,
                 peak_price=peak_price,
+                peak_day=peak_day,
             )
         )
         if len(slots) >= MAX_SLOTS:

@@ -35,9 +35,10 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **The demand variant** (`demand_plan.py`, plan v3_power_tariff step 5): where a demand-charge part is priced this
   month (the site's soft ceiling, `site/demand_ceiling.py`) or the power level holds some hours lower than the scalar
   cap, the site's mode is planned once more with the import target and the power level as hard caps hour by hour
-  (`site_hour_caps`), the soft ceiling's penalty and the shave action, the house at its p90 in the counted hours:
-  `demand`, kept per quarter hour and reviewed each night beside the modes, within the same CPU budget, never in
-  force (no executor runs a shave). Its shaves are written to the site's change log when they change
+  (`site_hour_caps`), the soft ceiling's penalty on what raises each day's peak (the running day's from its peak so
+  far, `site_peak_so_far`) and the shave action, the house at its p90 in the counted hours: `demand`, kept per
+  quarter hour and reviewed each night beside the modes, within the same CPU budget, never in force (no executor
+  runs a shave). Its shaves are written to the site's change log when they change
   (`battery_shave`). The night's review adds each run's demand cost where a part is priced (`demand_basis`).
 * **The perfect plan** (`hindsight.py`): each reviewed day, while its quarter hours are kept, is planned again in
   hindsight in the executor (`_async_facit`, one run at a time): the perfect plan, each way's share of it, the
@@ -85,7 +86,7 @@ from ..site.house_forecast import BASIS_GROSS, MEDIAN_QUANTILE
 from ..site.import_target import stored_import_target_kw
 from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
 from .defensive import NO_BAND, DefensiveInputs, defensive_inputs
-from .demand_plan import ceilings_minor, demand_basis, demand_house, needed, shave_rows
+from .demand_plan import ceilings_minor, demand_basis, demand_house, needed, peak_so_far, shave_rows
 from .executor import SILENCE_GRACE_S
 from .facts import BatteryFacts
 from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_value_next_day, facit_day
@@ -362,10 +363,18 @@ def site_hour_caps(hass: HomeAssistant, site: SiteCapacityController, now: datet
     return caps
 
 
-def site_ceilings(site: SiteCapacityController) -> dict[datetime, tuple[float, float]]:
+def site_ceilings(site: SiteCapacityController) -> dict[datetime, tuple[float, float, date | None]]:
     """The site's soft ceiling per hour as the plan takes it (`demand_plan.ceilings_minor`); none while it has none."""
     state = getattr(getattr(site, "demand_ceiling", None), "state", None)
     return ceilings_minor(None if state is None else state.hours)
+
+
+def site_peak_so_far(site: SiteCapacityController, now: datetime) -> float | None:
+    """The running day's highest counted hour so far under the site's priced parts (`demand_plan.peak_so_far`)."""
+    state = getattr(getattr(site, "demand_ceiling", None), "state", None)
+    if state is None:
+        return None
+    return peak_so_far(state.parts, now, site.demand.tracker.tz)
 
 
 class _NoPlan(Exception):
@@ -421,8 +430,9 @@ def _solve_demand(
     keep: tuple[str, float] | None,
     sell_margin: float,
     hour_caps: dict[datetime, float] | None,
-    ceilings: dict[datetime, tuple[float, float]] | None,
+    ceilings: dict[datetime, tuple[float, float, date | None]] | None,
     started: float,
+    peak_now: float | None = None,
 ) -> Solved:
     """[solved] with the demand variant (see the module) where it would plan anything the plan in force does not and
     the CPU budget allows; skipped and named otherwise."""
@@ -436,7 +446,9 @@ def _solve_demand(
     )
     if not slots:
         return solved
-    request = PlanRequest(slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
+    request = PlanRequest(
+        slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)), peak_now_kw=peak_now
+    )
     baseline = self_consumption(request)
     plan = plan_mode(
         request,
@@ -467,7 +479,8 @@ def _solve(
     | None = None,
     sell_margin: float = DEFAULT_SELL_MARGIN,
     hour_caps: dict[datetime, float] | None = None,
-    ceilings: dict[datetime, tuple[float, float]] | None = None,
+    ceilings: dict[datetime, tuple[float, float, date | None]] | None = None,
+    peak_now: float | None = None,
 ) -> Solved:
     """The executor's part: the slots, and each mode's plan, the site's [mode] first; then, from the logged
     [misses] (house, sun, holidays), the error bands and the defensive variant; then the demand variant from
@@ -480,7 +493,7 @@ def _solve(
     )
     return _solve_demand(
         solved, now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear,
-        keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started,
+        keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started, peak_now,
     )
 
 
@@ -1242,11 +1255,11 @@ class BatteryPlanShadow:
             pairs_from_log(log.hours(sun_kind)) if solar is not None else [],
             site_house.holidays,
         )
-        hour_caps, ceilings = self._demand_inputs(now)
+        hour_caps, ceilings, peak_now = self._demand_inputs(now)
         solved = await self.hass.async_add_executor_job(
             partial(
                 _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses,
-                sell_margin=self._sell_margin(), hour_caps=hour_caps, ceilings=ceilings,
+                sell_margin=self._sell_margin(), hour_caps=hour_caps, ceilings=ceilings, peak_now=peak_now,
             )
         )
         if self._closed:
@@ -1308,13 +1321,22 @@ class BatteryPlanShadow:
         }
         self._save()
 
-    def _demand_inputs(self, now: datetime) -> tuple[dict[datetime, float], dict[datetime, tuple[float, float]]]:
-        """The demand variant's hard caps per hour and soft ceilings; none where they cannot be read."""
+    def _demand_inputs(
+        self, now: datetime
+    ) -> tuple[dict[datetime, float], dict[datetime, tuple[float, float, date | None]], float | None]:
+        """The demand variant's hard caps per hour, soft ceilings and the running day's peak so far; none where they
+        cannot be read."""
         try:
-            return site_hour_caps(self.hass, self.site, now), site_ceilings(self.site)
+            caps, ceilings = site_hour_caps(self.hass, self.site, now), site_ceilings(self.site)
         except Exception:  # noqa: BLE001 - the shadow variant never stops the plan in force
             _LOGGER.debug("SpotNav battery plan: the demand variant's inputs could not be read", exc_info=True)
-            return {}, {}
+            return {}, {}, None
+        try:
+            peak = site_peak_so_far(self.site, now)
+        except Exception:  # noqa: BLE001 - without it the running day starts from its ceiling
+            _LOGGER.debug("SpotNav battery plan: the day's peak so far could not be read", exc_info=True)
+            peak = None
+        return caps, ceilings, peak
 
     def _keep_demand(self, solved: Solved, wanted: bool) -> None:
         """Keep the demand variant's plan and view, and log its shaves when they changed."""

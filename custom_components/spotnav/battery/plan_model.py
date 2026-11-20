@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Final
 
 #: Let the house, the car and the sun run through the battery as the inverter does by itself: the battery covers
@@ -25,8 +25,8 @@ ACTION_HOLD: Final = "hold"
 ACTION_DISCHARGE_HOUSE: Final = "discharge_house"
 #: Discharge at full power and sell what the house does not use. Only when `allow_export_discharge` is set.
 ACTION_EXPORT_DISCHARGE: Final = "export_discharge"
-#: Discharge just enough to bring the grid down to the slot's soft ceiling under a demand charge (`soft_cap_kw`), and
-#: no more: the rest of the stored energy is kept for later. Only in a slot with a priced soft ceiling; no executor
+#: Discharge just enough to bring the grid down to the slot's soft ceiling under a demand charge (`soft_cap_kw`), or
+#: to the day's peak so far where that is higher, and no more: the rest of the stored energy is kept for later. Only in a slot with a priced soft ceiling; no executor
 #: runs it yet (the demand variant is a shadow, `plan_shadow.VARIANT_DEMAND`).
 ACTION_SHAVE: Final = "shave"
 
@@ -64,6 +64,9 @@ DEFAULT_ROUND_TRIP_EFFICIENCY: Final = 0.90
 DEFAULT_SOC_STEPS: Final = 100
 #: The grid charge powers tried, as shares of the battery's rated charge power.
 DEFAULT_CHARGE_SHARES: Final = (0.25, 0.5, 0.75, 1.0)
+#: The day's highest import under a demand charge is tracked at this many steps between the day's lowest soft ceiling
+#: and the highest import its slots can reach (`plan.py`, the demand charge).
+DEFAULT_PEAK_STEPS: Final = 8
 #: Slots the plan accepts at most: two days of quarter hours with room for a long day.
 MAX_SLOTS: Final = 2 * 25 * 4
 
@@ -229,9 +232,10 @@ class PlanSlot:
     adds, `sell` what an exported kWh earns. `import_cap_kw` (the fuse less its margin, or the import target) and
     `export_cap_kw` bound the grid; `None` is no bound.
 
-    `soft_cap_kw` and `peak_price` are the hour's soft ceiling under a demand charge (`planning/demand_cost.py`): an
-    import above `soft_cap_kw` costs `peak_price` (minor per kW above it, for each hour it lasts) on top of the energy.
-    `None` (the default) or a price of 0 changes nothing.
+    `soft_cap_kw` and `peak_price` are the hour's soft ceiling under a demand charge (`planning/demand_cost.py`): a
+    day's highest import above `soft_cap_kw` costs `peak_price` (minor per kW above it) on top of the energy, once a
+    day. `peak_day` is the day whose peak the slot counts toward (the day the demand charge counts its hour under);
+    `None` is a day of its own. `None` (the default) or a price of 0 changes nothing.
     """
 
     start: datetime
@@ -245,6 +249,7 @@ class PlanSlot:
     export_cap_kw: float | None = None
     soft_cap_kw: float | None = None
     peak_price: float = 0.0
+    peak_day: date | None = None
 
     @property
     def hours(self) -> float:
@@ -287,7 +292,9 @@ class PlanRequest:
     the battery. `allow_export_discharge` lets the plan sell from the battery; off by default. `export_hurdle`
     (minor per kWh) is weighed against every kWh the battery sells: the spread gate's margin (`BatteryMode`).
     `export_reserve` (the gate's house first): a sale never takes the battery below what the house's deficit needs
-    from the next slot until the next cheap hours (`plan.house_reserve_kwh`).
+    from the next slot until the next cheap hours (`plan.house_reserve_kwh`). `peak_now_kw` is the running day's
+    highest counted import so far under a demand charge (kW): the first slot's day starts from it; `None` is none.
+    `peak_steps`: the steps the day's peak is tracked at (`DEFAULT_PEAK_STEPS`).
     """
 
     slots: tuple[PlanSlot, ...]
@@ -300,6 +307,8 @@ class PlanRequest:
     export_reserve: bool = False
     soc_steps: int = DEFAULT_SOC_STEPS
     charge_shares: tuple[float, ...] = DEFAULT_CHARGE_SHARES
+    peak_now_kw: float | None = None
+    peak_steps: int = DEFAULT_PEAK_STEPS
 
     def validate(self) -> None:
         if not self.slots:
@@ -325,6 +334,10 @@ class PlanRequest:
             raise PlanInputError("invalid_steps", "soc_steps must be at least 2")
         if any(not _finite(share) or not 0 < share <= 1 for share in self.charge_shares):
             raise PlanInputError("invalid_charge_shares", "charge shares must be in (0, 1]")
+        if self.peak_now_kw is not None and (not _finite(self.peak_now_kw) or self.peak_now_kw < 0):
+            raise PlanInputError("invalid_peak", "peak_now_kw must be zero or more")
+        if self.peak_steps < 1:
+            raise PlanInputError("invalid_steps", "peak_steps must be at least 1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,7 +357,8 @@ class SlotDecision:
     cost: float
     over_cap: bool = False
     curtailed_kwh: float = 0.0
-    #: What the import above the slot's soft ceiling would add to the demand charge (minor units; 0 without one).
+    #: What the slot's import adds to the demand charge by raising its day's peak above the soft ceiling (minor
+    #: units; 0 without one).
     demand: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:

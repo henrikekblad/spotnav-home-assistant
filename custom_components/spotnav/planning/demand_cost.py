@@ -7,15 +7,16 @@ plans (`plans/v3_power_tariff.md` §1). Nothing reads it yet: a later step makes
   above the month's N-th highest costs `p / N` per kW. `p` is the part's price in the month's season
   (`demand_charge.is_winter`); a price of 0 or none given is λ = 0, and a part with λ = 0 changes nothing.
 * **Threshold** (`threshold`, T). The N-th highest of the month's day peaks: the measured ones so far (each hour at
-  its floor, `demand_charge.free_level_hours`) together with a cautious prediction of the house's own peak on each
+  its floor, `demand_charge.free_level_hours`) together with a cautious prediction of the site's own peak on each
   remaining counted day (`predicted_day_peaks`), never below the month's free level (`free_kw`, already paid).
   With fewer than N days in all, every day enters the mean and nothing above the free level is free.
 * **Predicted day peaks**. Inside the house forecast's horizon (a day all of whose counted hours ahead it covers):
-  the highest counted hour of the forecast the caller gives, which is to be the house **without** car, battery or
+  the highest counted hour of the forecast the caller gives, which is to be the house **without** battery or
   SpotNav's heat changes at its `PREDICTED_QUANTILE` (p25: overestimating T costs λ per kW, underestimating only
-  moves energy). Beyond it: the median house-only day peak (`HourMean.house_kw`) of the same day type (a working
-  day, or a weekend day or holiday) over the last `HISTORY_DAYS` days, the hours counted as the part counts them
-  in any month. A day with neither is left out (a lower T: the cautious side).
+  moves energy), with the cars' planned charge added (a fixed load the battery plan never moves: a day a car will
+  peak anyway is known as such). Beyond it: the median house-only day peak (`HourMean.house_kw`) of the same day
+  type (a working day, or a weekend day or holiday) over the last `HISTORY_DAYS` days, the hours counted as the
+  part counts them in any month. A day with neither is left out (a lower T: the cautious side).
 * **Soft ceiling** (`soft_ceiling`, S_h and λ_h). Per hour: the lowest T among the priced parts that count it, and
   the sum of their λ (stacked parts add). An hour no priced part counts has no ceiling.
 * **Power level** (`level_count`). Göteborg Energi's tidsindelad tariff sells a power level (6, 10, 14 … kW) in its
@@ -27,7 +28,7 @@ plans (`plans/v3_power_tariff.md` §1). Nothing reads it yet: a later step makes
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from statistics import median
 from typing import Final
@@ -165,8 +166,9 @@ def predicted_day_peaks(
     now: datetime,
     tz: str,
 ) -> dict[date, float]:
-    """The house's own peak on each remaining counted day of the month (see the module). `house_by_hour` is the
-    house forecast without car, battery or heat changes at `PREDICTED_QUANTILE`, keyed by hour start (UTC)."""
+    """The site's predicted peak on each remaining counted day of the month (see the module). `house_by_hour` is the
+    house forecast without battery or heat changes at `PREDICTED_QUANTILE` with the cars' planned charge added, keyed
+    by hour start (UTC)."""
     current = hour_start(now, tz)
     year, month = month_of(current, tz)
     holidays = () if component.window is None else component.window.holidays
@@ -235,10 +237,12 @@ def part_cost(
 
 @dataclass(frozen=True, slots=True)
 class HourCeiling:
-    """An hour's soft ceiling: the import (kW) above which its day's peak costs `price` per kW."""
+    """An hour's soft ceiling: the import (kW) above which its day's peak costs `price` per kW. `day` is the day the
+    hour's import counts toward (the counting part's, `demand_charge.counted_day`); `None` where not known."""
 
     kw: float
     price: float
+    day: date | None = field(default=None, compare=False)
 
 
 def soft_ceiling(parts: Sequence[PartCost], starts: Iterable[datetime], tz: str) -> dict[datetime, HourCeiling]:
@@ -249,9 +253,11 @@ def soft_ceiling(parts: Sequence[PartCost], starts: Iterable[datetime], tz: str)
         found = [part for part in priced if counted_day(part.component, start, tz) is not None]
         if not found:
             continue
+        lowest = min(found, key=lambda part: part.threshold_kw or 0.0)
         ceilings[start] = HourCeiling(
-            kw=min(part.threshold_kw for part in found if part.threshold_kw is not None),
+            kw=lowest.threshold_kw or 0.0,
             price=sum(part.marginal for part in found),
+            day=counted_day(lowest.component, start, tz),
         )
     return ceilings
 

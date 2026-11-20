@@ -34,17 +34,37 @@ MINOR_PER_MAJOR: Final = 100.0
 class _Ceiling(Protocol):
     kw: float
     price: float
+    day: date | None
 
 
 class _Band(Protocol):
     def bounds(self, value: float, start: datetime) -> tuple[float, float]: ...
 
 
-def ceilings_minor(hours: Mapping[datetime, _Ceiling] | None) -> dict[datetime, tuple[float, float]]:
-    """The soft ceiling per hour as the plan takes it: `(S_h kW, λ_h minor per kW)`; hours without a price left out."""
+def ceilings_minor(hours: Mapping[datetime, _Ceiling] | None) -> dict[datetime, tuple[float, float, date | None]]:
+    """The soft ceiling per hour as the plan takes it: `(S_h kW, λ_h minor per kW, the day its peak counts toward)`;
+    hours without a price left out."""
     if not hours:
         return {}
-    return {start: (ceiling.kw, ceiling.price * MINOR_PER_MAJOR) for start, ceiling in hours.items() if ceiling.price > 0}
+    return {
+        start: (ceiling.kw, ceiling.price * MINOR_PER_MAJOR, ceiling.day)
+        for start, ceiling in hours.items()
+        if ceiling.price > 0
+    }
+
+
+def peak_so_far(parts: Sequence[Any], now: datetime, tz: str) -> float | None:
+    """The running day's highest counted hour measured so far (kW) among the priced parts (`demand_cost.PartCost`):
+    the day the demand variant's first slot starts from; `None` without one."""
+    current = hour_start(now, tz)
+    found = [
+        part.measured[day]
+        for part in parts
+        if part.marginal > 0
+        and (day := counted_day(part.component, current, tz)) is not None
+        and day in part.measured
+    ]
+    return max(found) if found else None
 
 
 def demand_house(
