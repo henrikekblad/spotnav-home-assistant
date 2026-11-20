@@ -390,6 +390,66 @@ async def test_home_assistant_s_stop_bounds_the_hand_back_and_leaves_the_rest_fo
     assert _of(recorder, 0).count("battery write") == 1
 
 
+async def test_a_water_heater_or_a_zone_that_does_not_answer_never_delays_the_heat_relay_s_opening(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The heat relay's opening, the water heater's on and the zones' setting back run side by side: at Home
+    Assistant's stop a switch and a thermostat that never answer use up the deadline, and the relay is opened all the
+    same; what they still hold is kept for the next start."""
+    from custom_components.spotnav.heat.water_heater_control import WaterHeaterControl
+    from custom_components.spotnav.heat.zones_control import ZonesControl
+
+    _site_, recorder = await _site(hass, monkeypatch)
+    controller = recorder.copies[0]
+    recorder.release.set()
+    saves: list[str] = []
+    hung: list[str] = []
+
+    async def heat_save(self: HeatControl) -> None:
+        saves.append("heat")
+
+    async def never(self: Any) -> None:
+        hung.append(type(self).__name__)
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(HeatControl, "async_save", heat_save)
+    monkeypatch.setattr(WaterHeaterControl, "async_shutdown", never)
+    monkeypatch.setattr(ZonesControl, "async_shutdown", never)
+    caplog.set_level(logging.WARNING)
+    loop = asyncio.get_running_loop()
+    async with asyncio.timeout(5):
+        await controller.async_shutdown(loop.time() + 0.2)
+    assert sorted(hung) == ["WaterHeaterControl", "ZonesControl"]
+    assert _of(recorder, 0).count("heat handed back") == 1
+    assert "left for the next start" in caplog.text and saves == ["heat"]
+
+
+async def test_the_heat_control_s_store_is_saved_again_after_the_water_heater_and_the_zones_are_handed_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.heat.water_heater_control import WaterHeaterControl
+    from custom_components.spotnav.heat.zones_control import ZonesControl
+
+    _site_, recorder = await _site(hass, monkeypatch)
+    controller = recorder.copies[0]
+    recorder.release.set()
+    order: list[str] = []
+
+    async def heat_save(self: HeatControl) -> None:
+        order.append("heat saved")
+
+    async def slow(self: Any) -> None:
+        await asyncio.sleep(0.05)
+        order.append(f"{type(self).__name__} handed back")
+
+    monkeypatch.setattr(HeatControl, "async_save", heat_save)
+    monkeypatch.setattr(WaterHeaterControl, "async_shutdown", slow)
+    monkeypatch.setattr(ZonesControl, "async_shutdown", slow)
+    await controller.async_shutdown()
+    assert sorted(order[:2]) == ["WaterHeaterControl handed back", "ZonesControl handed back"] and order[2:] == ["heat saved"]
+    assert _of(recorder, 0).count("heat handed back") == 1
+
+
 async def test_home_assistant_s_stop_returns_within_its_total_bound_even_when_a_site_hangs(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

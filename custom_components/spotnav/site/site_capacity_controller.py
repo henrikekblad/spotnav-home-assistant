@@ -1131,9 +1131,7 @@ class SiteCapacityController:
         steps: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
             ("ending the hardware test", self.hardware_test.async_shutdown),
             ("handing the battery back", self._async_battery_hand_back),
-            ("turning the water heater on", self.water_heater_control.async_shutdown),
-            ("setting the zones back", self.zones_control.async_shutdown),
-            ("opening the heat relay", self.heat_control.async_shutdown),
+            ("handing the heat back", self._async_heat_hand_back),
         )
         loop = asyncio.get_running_loop()
         for name, step in steps:
@@ -1153,6 +1151,23 @@ class SiteCapacityController:
         # hand-back (its shutdown, next, opens what it holds).
         self.heat_control.halt()
         await self.battery_control.async_shutdown()
+
+    async def _async_heat_hand_back(self) -> None:
+        """The heat relay opened, the water heater turned on and the zones set back, side by side: each writes to its
+        own entities, and a switch or a thermostat that does not answer must not use up the time the others have
+        (Home Assistant's stop gives the whole hand-back one deadline; the relay's opening waits for nothing new).
+        The heat control's store, which keeps all three, is saved once more when they have ended: the heat control's
+        own shutdown saves it, maybe before the other two were done."""
+        steps: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
+            ("opening the heat relay", self.heat_control.async_shutdown),
+            ("turning the water heater on", self.water_heater_control.async_shutdown),
+            ("setting the zones back", self.zones_control.async_shutdown),
+        )
+        results = await asyncio.gather(*(step() for _name, step in steps), return_exceptions=True)
+        for (name, _step), result in zip(steps, results, strict=True):
+            if isinstance(result, Exception):
+                _LOGGER.warning("SpotNav site: %s failed", name, exc_info=result)
+        await self.heat_control.async_save()
 
     async def _async_keep_after_cut(self) -> None:
         """The hand-back was cut short (Home Assistant's stop ran out of time): what is still held is saved as it
