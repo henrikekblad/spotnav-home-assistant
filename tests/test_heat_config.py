@@ -262,5 +262,12 @@ def test_the_water_heater_switch_its_opt_in_and_its_tank_sensor() -> None:
     assert codes(write({"water_heater": {"entity_id": "switch.boiler", "power": 1}})[1]) == [("water_heater", "invalid_value")]
     assert codes(write({"water_heater": {"entity_id": "switch.boiler", "control": "on"}})[1]) == [("water_heater", "invalid_value")]
     # A broken store reads as none, a broken tank sensor as none.
+    # Never the heat pump's relay, its second contact or its hot-water boost, whichever of them is chosen last.
+    relay = HeatConfig(control_path="relay", control_entity="switch.relay", hot_water_entity="switch.hot_water")
+    assert codes(write({"water_heater": {"entity_id": "switch.relay"}}, relay)[1]) == [("water_heater", "duplicate")]
+    assert codes(write({"water_heater": {"entity_id": "switch.hot_water"}}, relay)[1]) == [("water_heater", "duplicate")]
+    assert codes(write({"control_path": "relay", "control_entity": "switch.boiler"}, chosen)[1]) == [("control_entity", "duplicate")]
+    assert codes(write({"hot_water_entity": "switch.boiler"}, chosen)[1]) == [("hot_water_entity", "duplicate")]
+    assert not write({"target_c": 21.0}, chosen)[1] and not write({"hot_water_entity": "switch.hot_water"}, chosen)[1]
     assert read_config({"water_heater": {"entity_id": "sensor.x"}}).water_heater is None
     assert read_config({"water_heater": {"entity_id": "switch.boiler", "tank_sensor": 3}}).water_heater == WaterHeater("switch.boiler")

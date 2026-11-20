@@ -646,6 +646,23 @@ def apply_changes(
         else:
             updated = replace(updated, control_enabled=changes[F_CONTROL_ENABLED])
 
+    heater = updated.water_heater
+    if heater is not None:
+        # The water heater's switch is never the heat pump's relay, its second contact or its hot-water boost: the
+        # water heater's rules hold its switch on for hours, which on the relay would hold the heat pump lowered.
+        clash = next(
+            (
+                name
+                for name, entity in ((F_CONTROL, updated.control_entity), (F_CONTROL_B, updated.control_entity_b), (F_HOT_WATER, updated.hot_water_entity))
+                if entity == heater.entity_id
+            ),
+            None,
+        )
+        if clash is not None and F_WATER_HEATER in changes:
+            errors.append(FieldError(F_WATER_HEATER, ERR_DUPLICATE))
+        elif clash is not None and (clash in changes or F_PATH in changes):
+            errors.append(FieldError(clash, ERR_DUPLICATE))
+
     if errors:
         return current, _unique(errors)
     # A sensor no longer chosen takes its offset with it; the offsets follow the sensors' order.
