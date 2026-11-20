@@ -1631,7 +1631,6 @@
   "heat.now.waterHeaterWindows": "Warmwasserspeicher an {windows}",
   "heat.now.waterHeaterWould": "Warmwasserspeicher wäre an {windows}",
   "heat.note.water_heater_not_full": "Der Warmwasserspeicher hat seinen Thermostat seit zwei Tagen nicht erreicht: prüfe den Thermostat und den Heizstab.",
-  "heat.settings.offsetHelp": "Verschiebung gegenüber der Haustemperatur, −3 bis +3 °C.",
   "heat.settings.sensorOffsetHelp": "Das eigene Ziel des Raums gegenüber der Haustemperatur, −3 bis +3 °C. Ein kühleres Obergeschoss: −1,5. Ein Fühler, der ein halbes Grad zu warm misst: +0,5. Der kälteste Raum wird an seinem eigenen Ziel gemessen.",
   "heat.settings.airHelp": "Luft-Luft-Wärmepumpe: SpotNav ändert nur den Sollwert und schaltet sie nie ein oder aus.",
   "heat.zone.floor": "Fußbodenheizung",

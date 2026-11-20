@@ -1631,7 +1631,6 @@
   "heat.now.waterHeaterWindows": "Lämminvesivaraaja päällä {windows}",
   "heat.now.waterHeaterWould": "Lämminvesivaraaja olisi päällä {windows}",
   "heat.note.water_heater_not_full": "Lämminvesivaraaja ei ole saavuttanut termostaattiaan kahteen vuorokauteen: tarkista termostaatti ja vastus.",
-  "heat.settings.offsetHelp": "Siirto talon lämpötilaan nähden, −3…+3 °C.",
   "heat.settings.sensorOffsetHelp": "Huoneen oma tavoite talon lämpötilaan nähden, −3…+3 °C. Viileämpi yläkerta: −1,5. Anturi, joka näyttää puoli astetta liian lämmintä: +0,5. Kylmintä huonetta verrataan sen omaan tavoitteeseen.",
   "heat.settings.airHelp": "Ilmalämpöpumppu: SpotNav muuttaa vain asetusarvoa, ei koskaan kytke sitä päälle tai pois.",
   "heat.zone.floor": "Lattialämmitys",

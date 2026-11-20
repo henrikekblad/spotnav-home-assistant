@@ -1631,7 +1631,6 @@
   "heat.now.waterHeaterWindows": "Water heater on {windows}",
   "heat.now.waterHeaterWould": "Water heater would be on {windows}",
   "heat.note.water_heater_not_full": "The water heater has not reached its thermostat for two days: check the thermostat and the element.",
-  "heat.settings.offsetHelp": "Offset against the house temperature, −3 to +3 °C.",
   "heat.settings.sensorOffsetHelp": "The room's own aim against the house temperature, −3 to +3 °C. A cooler upstairs: −1.5. A sensor that reads half a degree warm: +0.5. The coldest room is judged against its own aim.",
   "heat.settings.airHelp": "Air-to-air heat pump: SpotNav only nudges its setpoint, never turns it on or off.",
   "heat.zone.floor": "Floor heating",

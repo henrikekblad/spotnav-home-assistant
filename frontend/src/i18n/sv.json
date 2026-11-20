@@ -1631,7 +1631,6 @@
   "heat.now.waterHeaterWindows": "Varmvattenberedaren på {windows}",
   "heat.now.waterHeaterWould": "Varmvattenberedaren skulle vara på {windows}",
   "heat.note.water_heater_not_full": "Varmvattenberedaren har inte nått sin termostat på två dygn: kontrollera termostaten och elementet.",
-  "heat.settings.offsetHelp": "Förskjutning mot husets temperatur, −3 till +3 °C.",
   "heat.settings.sensorOffsetHelp": "Rummets eget mål mot husets temperatur, −3 till +3 °C. En svalare övervåning: −1,5. En givare som visar en halv grad för varmt: +0,5. Kallaste rummet räknas mot sitt eget mål.",
   "heat.settings.airHelp": "Luft-luftvärmepump: SpotNav ändrar bara börvärdet, slår aldrig av eller på.",
   "heat.zone.floor": "Golvvärme",

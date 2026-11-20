@@ -1631,7 +1631,6 @@
   "heat.now.waterHeaterWindows": "Varmtvannsberederen på {windows}",
   "heat.now.waterHeaterWould": "Varmtvannsberederen ville vært på {windows}",
   "heat.note.water_heater_not_full": "Varmtvannsberederen har ikke nådd termostaten sin på to døgn: sjekk termostaten og varmeelementet.",
-  "heat.settings.offsetHelp": "Forskyvning mot husets temperatur, −3 til +3 °C.",
   "heat.settings.sensorOffsetHelp": "Rommets eget mål mot husets temperatur, −3 til +3 °C. En kjøligere overetasje: −1,5. En føler som viser en halv grad for varmt: +0,5. Det kaldeste rommet måles mot sitt eget mål.",
   "heat.settings.airHelp": "Luft-til-luft-varmepumpe: SpotNav endrer bare settpunktet, slår den aldri av eller på.",
   "heat.zone.floor": "Gulvvarme",

@@ -1631,7 +1631,6 @@
   "heat.now.waterHeaterWindows": "Varmtvandsbeholderen tændt {windows}",
   "heat.now.waterHeaterWould": "Varmtvandsbeholderen ville være tændt {windows}",
   "heat.note.water_heater_not_full": "Varmtvandsbeholderen har ikke nået sin termostat i to døgn: kontrollér termostaten og varmelegemet.",
-  "heat.settings.offsetHelp": "Forskydning i forhold til husets temperatur, −3 til +3 °C.",
   "heat.settings.sensorOffsetHelp": "Rummets eget mål i forhold til husets temperatur, −3 til +3 °C. En køligere 1. sal: −1,5. En føler der viser en halv grad for varmt: +0,5. Det koldeste rum måles mod sit eget mål.",
   "heat.settings.airHelp": "Luft-til-luft-varmepumpe: SpotNav ændrer kun sætpunktet og slår den aldrig til eller fra.",
   "heat.zone.floor": "Gulvvarme",
