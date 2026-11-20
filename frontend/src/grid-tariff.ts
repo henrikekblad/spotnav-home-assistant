@@ -17,6 +17,7 @@ import {
   type GridTariffFee,
   type HighLoadDays,
   type HighLoadWindow,
+  type PowerLevel,
 } from "./validate";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -39,6 +40,8 @@ export interface GridTariffBody {
   /** The supplier's two figures, whenever the backend states them (an older one refuses the keys). */
   supplier_markup?: GridTariffFeeBody;
   sell_adjustment?: GridTariffFeeBody;
+  /** The power level (`null`: none), whenever the backend states it (an older one refuses the key). */
+  power_level?: PowerLevel | null;
 }
 
 /** The write's refusal when the electricity price was written since the block was read. */
@@ -89,7 +92,29 @@ export function storedBody(block: GridTariffBlock): GridTariffBody {
     body.supplier_markup = feeBody(block.supplier_markup);
     body.sell_adjustment = feeBody(block.sell_adjustment);
   }
+  const level = block.demand?.power_level;
+  if (level !== undefined) {
+    body.power_level = level === null ? null : copyLevel(level);
+  }
   return body;
+}
+
+function copyLevel(level: PowerLevel): PowerLevel {
+  return { level_kw: level.level_kw, window: level.window === null ? null : { ...level.window }, outside: level.outside };
+}
+
+/** The power level set (`null` removes it), the rest as stored. */
+export function withPowerLevel(block: GridTariffBlock, level: PowerLevel | null): GridTariffBody {
+  return { ...storedBody(block), power_level: level === null ? null : copyLevel(level) };
+}
+
+/** Whether two power levels are the same. */
+export function sameLevel(a: PowerLevel | null | undefined, b: PowerLevel | null | undefined): boolean {
+  if (a === undefined || b === undefined || a === null || b === null) {
+    return a === b;
+  }
+  const window = a.window === null || b.window === null ? a.window === b.window : sameWindow(a.window, b.window);
+  return window && a.level_kw === b.level_kw && a.outside === b.outside;
 }
 
 /** The demand-charge components set, the rest as stored. */
@@ -176,7 +201,8 @@ export function sameBody(left: GridTariffBody, right: GridTariffBody): boolean {
     window(left.high_load_window, right.high_load_window) &&
     components(left.demand_components, right.demand_components) &&
     optional(left.supplier_markup, right.supplier_markup) &&
-    optional(left.sell_adjustment, right.sell_adjustment)
+    optional(left.sell_adjustment, right.sell_adjustment) &&
+    sameLevel(left.power_level, right.power_level)
   );
 }
 

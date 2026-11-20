@@ -17,7 +17,15 @@ import {
 } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { nominalPowerKw } from "./settings";
-import { STATUS_CODE_TABLE, type StatusCode, type StatusLine, type StatusParam, type StatusTone, type Status } from "./validate";
+import {
+  STATUS_CODE_TABLE,
+  type DemandBlock,
+  type StatusCode,
+  type StatusLine,
+  type StatusParam,
+  type StatusTone,
+  type Status,
+} from "./validate";
 
 export interface Issue {
   code: string;
@@ -435,6 +443,61 @@ function monthPeak(p: StatusLine["params"]): boolean {
 /** The lines that offer setting the import target aside (`releasable`): the target holds, pauses or would miss a
  * departure. */
 const RELEASE_LINES: ReadonlySet<string> = new Set(["import_target_held", "import_target_paused", "import_target_at_risk"]);
+
+/** What setting the import target aside would mean (`releaseConfirm`). */
+export interface ReleaseConfirm {
+  text: string;
+  /**
+   * The release would be the last exceedance of the power level allowed in 12 months, or past it: the dialog asks
+   * twice.
+   */
+  askTwice: boolean;
+}
+
+/**
+ * What setting the import target aside would mean, for the confirmation before it is sent: until the unplug (or the
+ * departure, at its time), and the month's peak it may reach against today's level; and where that peak is above the
+ * power level and the level holds before the release ends, which of the allowed exceedances it would be. `null`
+ * when no line offers it.
+ */
+export function releaseConfirm(
+  status: Status | null,
+  format: FormatContext,
+  nowMs: number,
+  demand: DemandBlock | null = null,
+): ReleaseConfirm | null {
+  const text = releaseConfirmText(status, format, nowMs);
+  if (text === null) {
+    return null;
+  }
+  const line = status?.lines.find((entry) => RELEASE_LINES.has(entry.code) && entry.params["releasable"] === true);
+  const level = demand?.power_level ?? null;
+  const count = demand?.level_count ?? null;
+  const peak = line === undefined ? null : num(line.params["release_peak_kw"]);
+  if (level === null || count === null || peak === null || peak <= level.level_kw) {
+    return { text, askTwice: false };
+  }
+  const next = count.next_counted_start === null ? null : Date.parse(count.next_counted_start);
+  const until = line === undefined ? null : ms(line.params["release_until"]);
+  if (next === null || !Number.isFinite(next) || (until !== null && next >= until)) {
+    return { text, askTwice: false };
+  }
+  const language = format.language;
+  const number = count.used + 1;
+  const sentences = [
+    text,
+    translate(language, "release.confirm.level", {
+      n: String(number),
+      allowed: String(count.allowed),
+      kw: formatFixed(language, level.level_kw, 1),
+    }),
+  ];
+  const last = number >= count.allowed;
+  if (last) {
+    sentences.push(translate(language, "release.confirm.levelLast"));
+  }
+  return { text: sentences.join(" "), askTwice: last };
+}
 
 /**
  * What setting the import target aside would mean, for the confirmation before it is sent: until the unplug (or the

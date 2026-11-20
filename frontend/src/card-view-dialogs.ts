@@ -92,12 +92,12 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
    * accidental press must not cost the month's peak).
    */
   function confirmRelease(opener: HTMLElement | null): void {
-    const text = model.releaseConfirm;
-    if (text === null || isDestroyed()) {
+    const confirm = model.releaseConfirm;
+    if (confirm === null || isDestroyed()) {
       return;
     }
     const body = element(doc, "div");
-    body.append(element(doc, "p", C.dialogIntro, text));
+    body.append(element(doc, "p", C.dialogIntro, confirm.text));
     const answers = element(doc, "div", C.suggestionAnswers);
     const cancel = element(doc, "button", C.choiceButton, translate(model.language, "settings.cancel"));
     cancel.setAttribute("type", "button");
@@ -106,7 +106,14 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
     const release = element(doc, "button", C.choiceButton, translate(model.language, "release.confirm.release"));
     release.setAttribute("type", "button");
     release.dataset["action"] = "release";
+    // At the power level's last allowed exceedance (or past it) the first press only asks again.
+    let asked = !confirm.askTwice;
     release.addEventListener("click", () => {
+      if (!asked) {
+        asked = true;
+        release.textContent = translate(model.language, "release.confirm.levelAgain");
+        return;
+      }
       releaseDialog.hide({ restoreFocus: false });
       input.onReleaseImportTarget?.();
     });

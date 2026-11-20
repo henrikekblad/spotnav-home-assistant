@@ -424,6 +424,27 @@ export interface DemandComponent {
   price_per_kw: { winter: number | null; summer: number | null };
 }
 
+/**
+ * The grid company's power level, as a write states it: the hourly mean of import not to exceed (kW) in its hours,
+ * all hours (`window` `null`), the window's hours, or with `outside` the hours the window does not count.
+ */
+export interface PowerLevel {
+  level_kw: number;
+  window: HighLoadWindow | null;
+  outside: boolean;
+}
+
+/** What the site counted of the power level: its exceedances in the rolling 12 months and when it holds. */
+export interface LevelCount {
+  used: number;
+  allowed: number;
+  /** The exceeding hours' starts, oldest first. */
+  exceeded: string[];
+  counts_now: boolean;
+  /** The next hour the level holds in within two days (the running one while `counts_now`), else `null`. */
+  next_counted_start: string | null;
+}
+
 /** A day's highest counted hour: the day it counts under, the hour's start and its mean import. */
 export interface DemandPeak {
   date: string;
@@ -458,6 +479,10 @@ export interface DemandBlock {
    * the hour, else the target; `null` without a target (and from a backend before it was stated).
    */
   effective_target_kw: number | null;
+  /** The power level; `undefined` from a backend before it (the card then writes the tariff without it). */
+  power_level?: PowerLevel | null;
+  /** What the site counted of it, `null` without a level or where it cannot measure. */
+  level_count?: LevelCount | null;
 }
 
 /** The dashboard's `grid_tariff` block. */
@@ -2154,6 +2179,28 @@ export function decodeDemandComponent(raw: unknown): DemandComponent {
   };
 }
 
+/** A power level as the backend states it (and a write sends it), or malformed. */
+export function decodePowerLevel(raw: unknown): PowerLevel {
+  const item = record(raw);
+  exactKeys(item, ["level_kw", "window", "outside"]);
+  const kw = numberValue(item, "level_kw");
+  const window = item.window === null ? null : decodeHighLoadWindow(item.window);
+  const outside = booleanValue(item, "outside");
+  return kw <= 0 || (outside && window === null) ? bad() : { level_kw: kw, window, outside };
+}
+
+function levelCount(raw: unknown): LevelCount {
+  const item = record(raw);
+  exactKeys(item, ["used", "allowed", "exceeded", "counts_now", "next_counted_start"]);
+  return {
+    used: wholeNumber(item, "used", 0, 100000),
+    allowed: wholeNumber(item, "allowed", 0, 1000),
+    exceeded: arrayValue(item, "exceeded").map((entry) => (typeof entry === "string" ? entry : bad())),
+    counts_now: booleanValue(item, "counts_now"),
+    next_counted_start: textOrNull(item, "next_counted_start"),
+  };
+}
+
 function demandMonth(raw: unknown): DemandMonth {
   const item = record(raw);
   exactKeys(item, ["bar_kw", "free_kw", "price_per_kw", "days_counted", "peaks"]);
@@ -2176,7 +2223,15 @@ export function decodeDemand(raw: unknown): DemandBlock {
   const value = record(raw);
   const keys = ["components", "available", "reason", "price_unit", "per_component", "hour", "import_target_kw"];
   // Stated since the import target's lift is shown: absent from an earlier 2.3 backend.
-  exactKeys(value, "effective_target_kw" in value ? [...keys, "effective_target_kw"] : keys);
+  if ("effective_target_kw" in value) {
+    keys.push("effective_target_kw");
+  }
+  // The power level and its count, together: absent from a backend before it.
+  const level = "power_level" in value;
+  if (level) {
+    keys.push("power_level", "level_count");
+  }
+  exactKeys(value, keys);
   const components = arrayValue(value, "components").map(decodeDemandComponent);
   if (components.length > MAX_DEMAND_COMPONENTS) {
     return bad();
@@ -2201,6 +2256,12 @@ export function decodeDemand(raw: unknown): DemandBlock {
     hour,
     import_target_kw: target,
     effective_target_kw: "effective_target_kw" in value ? nonNegativeOrNull(value, "effective_target_kw") : null,
+    ...(level
+      ? {
+          power_level: value.power_level === null ? null : decodePowerLevel(value.power_level),
+          level_count: value.level_count === null ? null : levelCount(value.level_count),
+        }
+      : {}),
   };
 }
 

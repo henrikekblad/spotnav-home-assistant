@@ -41,7 +41,8 @@ import {
   statusNote,
   statusText,
   type Issue,
-  releaseConfirmText,
+  releaseConfirm,
+  type ReleaseConfirm,
 } from "./status";
 import { chargeCeiling, effectiveTarget } from "./target-need";
 import { numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -270,9 +271,10 @@ export interface CardModel {
   issues: Issue[];
   /**
    * The import target may be set aside for this charge (a held, paused or at-risk line offers it): what doing so
-   * would mean, said in the confirmation before it is sent; `null` when nothing offers it.
+   * would mean, said in the confirmation before it is sent (asked twice at the power level's last allowed
+   * exceedance); `null` when nothing offers it.
    */
-  releaseConfirm: string | null;
+  releaseConfirm: ReleaseConfirm | null;
   severity: Severity | null;
   chart: ChartSeries;
   bands: PlanBands;
@@ -985,7 +987,7 @@ export function buildModel(input: BuildInput): CardModel {
     statusNeedsSiteSettings: statusNeedsSiteSettings(status),
     chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),
     issues,
-    releaseConfirm: releaseConfirmText(status, format, input.nowMs),
+    releaseConfirm: releaseConfirm(status, format, input.nowMs, dashboard.grid_tariff?.demand ?? null),
     severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
     bands,
