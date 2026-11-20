@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import decide, Keep, Stop
@@ -389,7 +389,7 @@ async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
     assert world.controller.session_runner.session.hold_stop_pending, "the core never heard back"
 
     freezer.tick(timedelta(seconds=31))
-    world.controller._cancel_person_hold_retry()  # noqa: SLF001 - the report below looks again first
+    # The retry armed for the awaited stop is not fired (no `async_fire_time_changed`): the report below looks first.
     hass.states.async_set(SWITCH, "on", {"report": "a gap later"})  # it reports charging again, a gap later
     await hass.async_block_till_done()
     assert len(world.stops) == stops + 1, "stopped now: the awaited stop no longer holds the next off"
@@ -418,10 +418,8 @@ async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
     assert controller._person_hold_retry_cancel is not None, "looked at again once overdue"  # noqa: SLF001
 
     freezer.tick(timedelta(seconds=31))
-    controller._cancel_person_hold_retry()  # noqa: SLF001 - fired by hand below, so not left behind
-    controller._person_hold_retry_callback(dt_util.utcnow())  # noqa: SLF001 - that timer's own entry
+    async_fire_time_changed(hass)  # the retry fires: no report in between
     await hass.async_block_till_done()
     assert len(calls) == 1
     assert len(controller._c7.stop_times) == 1, "the stop the core heard of is counted"  # noqa: SLF001
-    controller._cancel_person_hold_retry()  # noqa: SLF001 - the charger ignores it: not left behind
-    await world.shutdown()
+    await world.shutdown()  # the charger ignores the stop: its next retry is cancelled with the rest

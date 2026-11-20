@@ -155,9 +155,9 @@ from ..core.ownership import (
     NO_CAR_FACTS,
     automatic_allowed,
     owner_as_sent,
-    PERSON_HOLD_MAX_STOPS,
-    PERSON_HOLD_STOP_GAP_S,
-    PERSON_HOLD_WINDOW_S,
+    PERSON_HOLD_MAX_STOPS,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
+    PERSON_HOLD_STOP_GAP_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
+    PERSON_HOLD_WINDOW_S,  # noqa: F401 - the person hold's (`person_hold.py`), still read from here
     SENT_START,
     SENT_STOP,
     spotnav_owned,
@@ -272,7 +272,8 @@ START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
 UNHELD_CHECK_S: Final = 90.0
 UNHELD_CHECK_TRIES: Final = 3
 # The stops under a person's Stop (`PERSON_HOLD_STOP_GAP_S`, `PERSON_HOLD_MAX_STOPS`, `PERSON_HOLD_WINDOW_S`) are
-# defined once, in `core/ownership.py`, and imported above: the controller times and logs what the core enforces.
+# defined once, in `core/ownership.py`, and imported above: the controller's person hold (`person_hold.py`) times and
+# logs what the core enforces.
 
 
 class AutomaticGate(Protocol):
@@ -850,6 +851,10 @@ class ChargingController:
         # of this controller's own task, read as the fact `hold_stop_overdue` (`_hold_stop_overdue`).
         self._person_hold_task_running = False
         self._person_hold_task_ended_at: datetime | None = None
+        # The stops under a person's Stop (`execution/person_hold.py`): it keeps its state here, above.
+        from .person_hold import PersonHold  # noqa: PLC0415 - it imports us
+
+        self._person_hold = PersonHold(self)
         # Counts plug-in sessions that ended (an unplug, a first report of no car): a command's failure branch
         # that would put back what was held for a session compares it, so an unplug while the command was on
         # its way wins (`_session_unchanged`).
@@ -2700,61 +2705,11 @@ class ChargingController:
         self._observe_person_hold_timer()
 
     def _observe_person_hold(self) -> None:
-        """While a person's Stop pauses Auto, a charge the charger begins by itself (a free-charging OCPP
-        charger, an Easee without authorization, at plug-in or at any time) is stopped at once, whatever the
-        plan's windows say. Never a Start on its way: the person's own Start replaces their Stop, decided
-        again under the boundary's lock.
-
-        At most one stop per `PERSON_HOLD_STOP_GAP_S` (a charger whose status lags says `on` at every report
-        after a stop it took), and at most `PERSON_HOLD_MAX_STOPS` in any `PERSON_HOLD_WINDOW_S`, whether the
-        charger took them or not (one that takes each stop and begins again is cycled no more than that): then
-        no more, and the status says the charger does not take SpotNav's stop until the person acts or the car
-        is unplugged. The one gate for these stops, the stop's own retry included (`_async_retry_stop`)."""
-        if not self._held_off_by_person():
-            self._reset_person_hold()
-            return
-        # The core decided C7 for the report or the timer being fed (`_core_hold_verdict`): the give-up, a stop, or a
-        # look again after the gap. No verdict (it could not decide): nothing is sent, the next report decides again.
-        verdict = self._core_hold_verdict
-        if verdict is None:
-            return
-        if ("notify", "charger_ignores_stop") in verdict:
-            _LOGGER.warning(
-                "SpotNav charger %s: the charger began charging again after %s stops within %s minutes under a "
-                "person's Stop; no more are sent until the person acts or the car is unplugged",
-                self.entry_id,
-                PERSON_HOLD_MAX_STOPS,
-                int(PERSON_HOLD_WINDOW_S / 60),
-            )
-            self._notify()
-            return
-        if ("stop", "person_hold") in verdict:
-            self._spawn_person_hold_stop()
-            return
-        tried_at = self._c7.tried_at
-        if (
-            tried_at is None
-            or self._c7.stop_pending
-            or self._c7.gave_up
-            or self._control_observation is not True
-            or self.start_pending
-        ):
-            return
-        wait_s = PERSON_HOLD_STOP_GAP_S - (dt_util.utcnow() - tried_at).total_seconds()
-        if wait_s > 0 and self._person_hold_retry_cancel is None:
-            # Looked at again when the gap is over, even if the charger reports nothing new by then.
-            self._person_hold_retry_cancel = async_call_later(self.hass, wait_s, self._person_hold_retry_callback)
-
-    @callback
-    def _person_hold_retry_callback(self, _now: datetime) -> None:
-        self._person_hold_retry_cancel = None
-        self._observe_person_hold_timer()
+        """The one gate of the stops under a person's Stop (`PersonHold.observe`, `execution/person_hold.py`)."""
+        self._person_hold.observe()
 
     def _cancel_person_hold_retry(self) -> None:
-        cancel = self._person_hold_retry_cancel
-        self._person_hold_retry_cancel = None
-        if cancel is not None:
-            cancel()
+        self._person_hold.cancel_retry()
 
     def reset_person_hold(self) -> None:
         """A person's Start or Stop (`AutoExecutor`): they acted, so the stops under it start afresh, and the car's
@@ -2764,11 +2719,9 @@ class ChargingController:
         self.end_car_plug_fallback()
 
     def _reset_person_hold(self) -> None:
-        """A new plug-in session, the person acting, or no person's Stop any more: the stops start afresh."""
-        gave_up = self._c7.gave_up
-        self._cancel_person_hold_retry()
-        if gave_up:
-            self._notify()
+        """A new plug-in session, the person acting, or no person's Stop any more: the stops start afresh
+        (`PersonHold.reset`)."""
+        self._person_hold.reset()
 
     @property
     def ignores_person_stop(self) -> bool:
@@ -2776,46 +2729,9 @@ class ChargingController:
         within `PERSON_HOLD_WINDOW_S`: SpotNav sends no more, and the status says so."""
         return self._c7.gave_up and self._held_off_by_person()
 
-    def _spawn_person_hold_stop(self) -> None:
-        self._person_hold_task_running = True
-        self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
-
-    async def _async_person_hold_stop(self) -> None:
-        """The stop under a person's Stop a report or a timer decided, decided again under the boundary's lock
-        (`_recheck`): a person's Start may have replaced their Stop meanwhile."""
-        try:
-            async with self._automatic(AUTOMATIC_STOP):
-                await self._recheck(core_events.RECHECK_PERSON_HOLD, self._person_hold_stop_locked)
-        finally:
-            self._person_hold_task_running = False
-            self._person_hold_task_ended_at = dt_util.utcnow()
-            if self._c7.stop_pending and not self._shut_down and self._person_hold_retry_cancel is None:
-                # The core still awaits this stop (its re-check could not be fed): looked at again once it is
-                # overdue, so the stops under the person's Stop go on even if the charger reports nothing new.
-                self._person_hold_retry_cancel = async_call_later(
-                    self.hass, PERSON_HOLD_STOP_GAP_S + 1, self._person_hold_retry_callback
-                )
-
     def _hold_stop_overdue(self) -> bool:
-        """The fact `hold_stop_overdue`: a stop under a person's Stop is still awaited, but no task of it runs and
-        the last ended at least `PERSON_HOLD_STOP_GAP_S` ago (its decision never came back)."""
-        ended = self._person_hold_task_ended_at
-        return (
-            self._c7.stop_pending
-            and not self._person_hold_task_running
-            and ended is not None
-            and (dt_util.utcnow() - ended).total_seconds() >= PERSON_HOLD_STOP_GAP_S
-        )
-
-    async def _person_hold_stop_locked(self) -> bool:
-        """One stop of a charge a person's Stop holds off, counted (`_observe_person_hold`). Runs with the
-        operation lock held."""
-        _LOGGER.info(
-            "SpotNav charger %s: a charge began while a person's Stop pauses Auto; stopping it", self.entry_id
-        )
-        # Every attempt counts, taken or not, but one that sent nothing (a stop of ours still settles): the core counts
-        # it from the stop's result.
-        return await self._automatic_stop_locked("the stop under a person's Stop")
+        """The fact `hold_stop_overdue` (`PersonHold.hold_stop_overdue`)."""
+        return self._person_hold.hold_stop_overdue()
 
     @asynccontextmanager
     async def _automatic(self, kind: str) -> AsyncIterator[bool]:
@@ -7097,24 +7013,9 @@ class ChargingController:
         self._runner.end(token, event)
 
     def _observe_person_hold_timer(self) -> None:
-        """`_observe_person_hold` outside a report (its retry, a restore, a stop's retry), fed as a timer."""
-        token = self._runner.begin()
-        facts = self._core_facts(
-            lambda: {
-                "control_on": self._control_observation is True,
-                "start_pending": self._core_start_pending(),
-                "hold_stop_overdue": self._hold_stop_overdue(),
-            },
-            core_events.Timer.kind,
-            token=token,
-        )
-        if facts is not None:
-            self._core_hold_verdict = self._runner.verdict(core_events.Timer(**facts), token)
-        try:
-            self._observe_person_hold()
-        finally:
-            self._core_hold_verdict = None
-            self._core_end_event(token, facts, lambda: core_events.Timer(**facts))
+        """`_observe_person_hold` outside a report (its retry, a restore, a stop's retry), fed as a timer
+        (`PersonHold.observe_timer`)."""
+        self._person_hold.observe_timer()
 
     def _async_spawn(self, work: Any, what: str) -> None:
         """Run one decision a timer or a report made, as a task whose failure is logged, not raised into
@@ -7134,3 +7035,8 @@ class ChargingController:
         self._timer_cancels.clear()
         # The plan's timers go (a plan replaced or dropped, a re-arm, a shutdown): so does a window start's retry.
         self._cancel_start_retry()
+
+
+# Loaded with this module, so the person hold's first import is never a disk read on the event loop (it imports this
+# module, hence here at the end rather than at the top; `__init__` takes the class from it).
+from . import person_hold as _person_hold  # noqa: E402,F401
