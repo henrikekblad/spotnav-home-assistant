@@ -455,6 +455,13 @@ class SiteHouseForecast:
             except Exception:  # noqa: BLE001 - temperatures that cannot be read start again
                 self.temperature_history = TemperatureHistory()
                 _LOGGER.debug("SpotNav house forecast: the kept temperatures could not be read", exc_info=True)
+        # The heat meter at once (registries and the Energy dashboard, no statistics read): the house card's flow and
+        # the heat's readers take `heat.meter` as found, and a read before the first refresh would otherwise count
+        # the heat in the house (and keep that answer until the next 5-minute row).
+        try:
+            await self.heat.async_detect()
+        except Exception:  # noqa: BLE001 - found by the first refresh instead
+            _LOGGER.debug("SpotNav house forecast: the heat meter could not be found at load", exc_info=True)
         self._loaded = True
 
     def log_changed(self) -> None:

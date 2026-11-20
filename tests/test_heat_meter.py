@@ -252,6 +252,19 @@ async def test_a_chosen_meter_is_read_split_logged_and_shown(
     assert forecast.heat_split is None and not forecast.log.hours(KIND_HEAT)
 
 
+async def test_the_meter_is_found_at_load_before_the_first_refresh(hass: HomeAssistant, freezer) -> None:
+    """A site that has just started knows its meter before the house forecast's first refresh: the house card's
+    flow read in those first seconds splits the heat out instead of keeping it in the house."""
+    hass.states.async_set("sensor.varme_effekt", "1093", {"unit_of_measurement": "W", "device_class": "power"})
+    site = await pilot_site(hass, freezer, heat_meter_entity="sensor.varme_effekt")
+    forecast = site_controller_for(hass, site.entry_id).house_forecast
+    # As after a restart: nothing found yet; the load (before any refresh) finds it.
+    forecast.heat.meter = NO_METER
+    await forecast.async_load()
+    meter = forecast.heat.meter
+    assert (meter.status, meter.entity_id, meter.kind) == (STATUS_FOUND, "sensor.varme_effekt", KIND_POWER)
+
+
 async def test_the_energy_dashboards_heat_pump_is_found_without_a_setting(
     hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
