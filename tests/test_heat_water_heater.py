@@ -25,6 +25,7 @@ from custom_components.spotnav.heat.water_heater import (
     WINDOW_FULL_HEAT,
     WINDOW_MAX_OFF,
     Kept,
+    SENSOR_LOST_AFTER,
     Rules,
     Sizes,
     Window,
@@ -312,10 +313,13 @@ class Tank:
         return 3000.0 if switch_on and self.calling else 2.0
 
 
-def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: int = 5) -> dict[str, object]:
+def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: int = 5, *, planned: bool = True) -> dict[str, object]:
     """Run the rules for `days` with looks 30 to 300 s apart, random prices and tight hours, the losses given
     (`(start minute, minutes, what)`, what being meter, tank or plan), replanning every hour, and a switch that
-    always takes. Returns the longest off stretch, the full-heat gaps, the nights' longest on stretch."""
+    always takes. Not `planned`: no window at all on a plan that reads fresh, so only the live rules turn the switch
+    on. Returns the longest off stretch, the full-heat gaps, the nights' longest on stretch, the time off in all, and
+    the looks that left the switch off although the plan was missing or the mode's own sensor had not read for
+    `SENSOR_LOST_AFTER` (H3)."""
     rng = random.Random(seed)
     start = local(19, 12)
     end = start + days * 24 * H
@@ -336,6 +340,10 @@ def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: in
     on_start: datetime | None = start
     on_spans: list[tuple[datetime, datetime]] = []
     loss = rng.uniform(0.5, 3.0)
+    off_total = timedelta(0)
+    sensor = {MODE_METERED: "meter", MODE_TANK: "tank"}.get(mode)
+    sensor_lost_since: datetime | None = None
+    h3_off: list[tuple[datetime, str]] = []
     rules.start(now)
 
     def lost(what: str) -> bool:
@@ -343,7 +351,9 @@ def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: in
         return any(kind == what and begin <= minute < begin + length for begin, length, kind in outages)
 
     while now < end:
-        if not lost("plan") and (planned_at is None or now - planned_at >= H):
+        if not planned:
+            windows, planned_at = [], now
+        elif not lost("plan") and (planned_at is None or now - planned_at >= H):
             size = sizes(mode, [6.0] * 5 if mode != MODE_UNMETERED else [], 3.0)
             windows = plan_windows(
                 now, ZONE, prices, size, tight=tight, kept=[w for w in windows if w.start <= now], off_since=rules.kept.off_since
@@ -373,7 +383,14 @@ def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: in
                 if on_start is not None:
                     on_spans.append((on_start, now))
                     on_start = None
+        sensor_lost_since = (sensor_lost_since or now) if sensor is not None and lost(sensor) else None
+        if not switch_on and not fresh:
+            h3_off.append((now, "plan"))
+        if not switch_on and sensor_lost_since is not None and now - sensor_lost_since >= SENSOR_LOST_AFTER:
+            h3_off.append((now, sensor or ""))
         step = rng.uniform(30, 300)
+        if not switch_on:
+            off_total += timedelta(seconds=step)
         before = tank.full_at
         tank.run(now, step, switch_on, loss)
         if tank.full_at is not None and tank.full_at != before:
@@ -392,6 +409,9 @@ def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: in
         "full_gap": max(gaps),
         "hot_gap": max(hot_gaps),
         "on_spans": on_spans,
+        "off_total": off_total,
+        "fulls": len(fulls) - 1,
+        "h3_off": h3_off,
         "start": start,
         "end": now,
     }
@@ -433,3 +453,45 @@ def test_unmetered_every_night_has_five_hours_on_in_a_row(seed: int, outages) ->
         # looks' own spacing at its two ends, up to five minutes each here).
         assert any(b - a >= 5 * H - 10 * MIN and a < night_end + 5 * H and b > night_start for a, b in spans), day
         day += timedelta(days=1)
+
+
+@settings(max_examples=100, deadline=None)
+@given(seed=st.integers(0, 10**6), outages=OUTAGES, mode=st.sampled_from([MODE_METERED, MODE_TANK, MODE_UNMETERED]))
+def test_without_any_window_the_live_rule_alone_ends_every_off_stretch_by_eight_hours(seed: int, outages, mode: str) -> None:
+    """The windows are planned with gaps of seven hours, which hides the live rule in the runs above: here nothing is
+    planned at all, so only `Rules.want`'s own eight hours can turn the switch on."""
+    result = simulate(mode, seed, outages, planned=False)
+    assert result["longest_off"] <= MAX_OFF, result["longest_off"]
+    # And it is the live rule at work, not a switch that never went off.
+    assert result["longest_off"] >= 7 * H or mode != MODE_UNMETERED, result["longest_off"]
+
+
+@settings(max_examples=150, deadline=None)
+@given(seed=st.integers(0, 10**6), outages=OUTAGES, mode=st.sampled_from([MODE_METERED, MODE_TANK, MODE_UNMETERED]))
+def test_the_switch_is_never_left_off_without_a_plan_or_without_the_mode_s_own_sensor(seed: int, outages, mode: str) -> None:
+    """H3 at every look: no fresh plan, or the meter (metered) or the tank sensor (tank) not reading for ten minutes,
+    and the look leaves the switch on."""
+    result = simulate(mode, seed, outages)
+    assert result["h3_off"] == [], result["h3_off"][:3]
+
+
+def test_the_simulation_really_switches_the_water_heater_off_and_sees_full_heat() -> None:
+    """The properties above mean nothing on a switch that is never off: in each mode the runs spend at least a quarter
+    of their five days off, in stretches of over four hours, with full heat reached at least once a day where it can
+    be seen, and with losses that do reach the switch while it is off."""
+    for mode in (MODE_METERED, MODE_TANK, MODE_UNMETERED):
+        for seed in range(5):
+            result = simulate(mode, seed, [])
+            span = result["end"] - result["start"]
+            assert result["off_total"] >= span / 4, (mode, seed, result["off_total"])
+            assert result["longest_off"] >= 4 * H, (mode, seed, result["longest_off"])
+            assert len(result["on_spans"]) >= 10, (mode, seed)
+            if mode != MODE_UNMETERED:
+                assert result["fulls"] >= 4, (mode, seed, result["fulls"])
+    # A loss of each kind that begins while the switch is off turns it on (the run without it has it off then).
+    for mode, what in ((MODE_METERED, "meter"), (MODE_TANK, "tank"), (MODE_UNMETERED, "plan")):
+        calm = simulate(mode, 7, [])
+        off = next(b for (_a, b), (c, _d) in zip(calm["on_spans"], calm["on_spans"][1:]) if c - b >= 5 * H and b > calm["start"] + 30 * H)
+        minute = int((off - calm["start"]).total_seconds() // 60) + 20
+        lossy = simulate(mode, 7, [(minute, 240, what)])
+        assert lossy["h3_off"] == [] and lossy["off_total"] < calm["off_total"] - 2 * H, (mode, lossy["off_total"], calm["off_total"])
