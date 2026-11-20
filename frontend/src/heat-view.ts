@@ -1142,6 +1142,15 @@ export function windowsText(language: Language, answer: HeatAnswer, windows: { s
 /** The water heater's line under its switch: watched (the windows SpotNav would allow), on and why, off until when,
  * or what it waits for. `null` without a water heater. */
 export function waterHeaterLine(language: Language, answer: HeatAnswer): string | null {
+  const line = waterHeaterBaseLine(language, answer);
+  const heater = answer.water_heater;
+  if (line === null || heater === null || !heater.meter_waiting) {
+    return line;
+  }
+  return `${line} ${translate(language, "heat.waterHeater.meterWaiting")}`;
+}
+
+function waterHeaterBaseLine(language: Language, answer: HeatAnswer): string | null {
   const heater = answer.water_heater;
   if (heater === null) {
     return null;

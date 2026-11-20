@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Av till {until}.",
   "heat.waterHeater.on": "På: {why}.",
   "heat.waterHeater.verifying": "Kontrollerar att brytaren stänger av beredaren…",
+  "heat.waterHeater.meterWaiting": "Väntar på att se elementets effekt på mätaren.",
   "heat.waterHeater.why.cheap": "en billig timme",
   "heat.waterHeater.why.full_heat": "full uppvärmning",
   "heat.waterHeater.why.max_off": "aldrig av mer än 8 timmar",

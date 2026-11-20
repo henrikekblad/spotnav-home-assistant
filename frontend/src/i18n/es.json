@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Apagado hasta las {until}.",
   "heat.waterHeater.on": "Encendido: {why}.",
   "heat.waterHeater.verifying": "Comprobando que el interruptor apaga el termo…",
+  "heat.waterHeater.meterWaiting": "Esperando a ver la potencia de la resistencia en el medidor.",
   "heat.waterHeater.why.cheap": "una hora barata",
   "heat.waterHeater.why.full_heat": "calentamiento completo",
   "heat.waterHeater.why.max_off": "nunca apagado más de 8 horas",

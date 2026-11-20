@@ -1312,6 +1312,7 @@
     "kw": 3.0,
     "last_full": "2026-11-16T03:00:00+00:00",
     "live": true,
+    "meter_waiting": false,
     "metered": true,
     "mode": "metered",
     "name": "Varmvattenberedare",

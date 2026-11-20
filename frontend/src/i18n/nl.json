@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Uit tot {until}.",
   "heat.waterHeater.on": "Aan: {why}.",
   "heat.waterHeater.verifying": "Controleert of de schakelaar de boiler uitzet…",
+  "heat.waterHeater.meterWaiting": "Wacht tot het vermogen van het element op de meter te zien is.",
   "heat.waterHeater.why.cheap": "een goedkoop uur",
   "heat.waterHeater.why.full_heat": "volledige opwarming",
   "heat.waterHeater.why.max_off": "nooit langer dan 8 uur uit",

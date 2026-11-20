@@ -83,6 +83,7 @@ async def test_off_outside_the_windows_read_back_and_checked_by_the_next_on(hass
 async def test_h1_holds_it_on_until_full_heat_is_seen(hass: HomeAssistant, freezer) -> None:
     _site_, heater, switch, now = await _site(hass, freezer)
     # Metered: the element idle (its thermostat not calling yet), the last full heat 21 hours ago.
+    heater.meter_seen = {"entity": HEATER, "sensor": "sensor.varmvatten_effekt"}  # the element has been seen drawing
     heater._power = lambda _entity: ("sensor.varmvatten_effekt", 3.0)  # type: ignore[method-assign]  # noqa: SLF001
     heater.rules.kept.last_full = now - 21 * H
     for minute in range(0, 120, 10):
@@ -241,6 +242,7 @@ async def test_an_off_that_does_not_cut_the_element_fails_the_check(hass: HomeAs
 
 async def test_two_days_without_full_heat_stops_control_with_one_note(hass: HomeAssistant, freezer) -> None:
     _site_, heater, switch, now = await _site(hass, freezer)
+    heater.meter_seen = {"entity": HEATER, "sensor": "sensor.varmvatten_effekt"}
     heater._power = lambda _entity: ("sensor.varmvatten_effekt", 3.0)  # type: ignore[method-assign]  # noqa: SLF001
     heater.rules.kept.last_full = now - 3 * GIVE_UP_AFTER
     await heater.async_look(now)
@@ -278,3 +280,31 @@ async def test_the_heat_card_and_the_diagnostics_show_the_water_heater_and_a_con
     diagnostics = heat_settings_diagnostics(hass, site)
     assert diagnostics["control"]["water_heater"]["mode"] == "unmetered"
     assert "zones" in diagnostics["control"]
+
+
+async def test_a_meter_is_trusted_only_once_it_has_seen_the_element(hass: HomeAssistant, freezer) -> None:
+    _site_, heater, _switch, now = await _site(hass, freezer)
+    # A contactor's coil: a few watts, never 500.
+    heater._power = lambda _entity: ("sensor.coil", 4.0)  # type: ignore[method-assign]  # noqa: SLF001
+    for hour in range(60):
+        await heater.async_look(now + hour * H)
+    status = heater.status()
+    assert status is not None
+    assert status["metered"] is False and status["meter_waiting"] is True and status["mode"] == "unmetered"
+    assert heater.not_full() is False
+    assert heater.diagnostics()["meter_waiting"] is True
+    # The element is seen once: metered, and remembered through a restart.
+    heater._power = lambda _entity: ("sensor.coil", 2500.0)  # type: ignore[method-assign]  # noqa: SLF001
+    await heater.async_look(now + 61 * H)
+    heater._power = lambda _entity: ("sensor.coil", 1.0)  # type: ignore[method-assign]  # noqa: SLF001
+    await heater.async_look(now + 62 * H)
+    assert heater.metered is True and heater.meter_waiting is False and heater.mode(heater.shadow.config()) == "metered"
+    kept = heater.stored()
+    assert kept["meter_seen"] == {"entity": HEATER, "sensor": "sensor.coil"}
+    heater.meter_seen = None
+    heater.restore(kept)
+    assert heater.meter_seen == {"entity": HEATER, "sensor": "sensor.coil"}
+    # Another meter has to show the element itself.
+    heater._power = lambda _entity: ("sensor.other", 1.0)  # type: ignore[method-assign]  # noqa: SLF001
+    await heater.async_look(now + 63 * H)
+    assert heater.metered is False and heater.meter_waiting is True and heater.meter_seen is None

@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Slukket til {until}.",
   "heat.waterHeater.on": "Tændt: {why}.",
   "heat.waterHeater.verifying": "Kontrollerer, at kontakten slukker beholderen…",
+  "heat.waterHeater.meterWaiting": "Venter på at se varmelegemets effekt på måleren.",
   "heat.waterHeater.why.cheap": "en billig time",
   "heat.waterHeater.why.full_heat": "fuld opvarmning",
   "heat.waterHeater.why.max_off": "aldrig slukket mere end 8 timer",

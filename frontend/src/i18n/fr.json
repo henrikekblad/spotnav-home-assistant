@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Coupé jusqu'à {until}.",
   "heat.waterHeater.on": "Allumé : {why}.",
   "heat.waterHeater.verifying": "Vérification que l'interrupteur coupe le chauffe-eau…",
+  "heat.waterHeater.meterWaiting": "En attente de voir la puissance de la résistance sur le compteur.",
   "heat.waterHeater.why.cheap": "une heure bon marché",
   "heat.waterHeater.why.full_heat": "chauffe complète",
   "heat.waterHeater.why.max_off": "jamais coupé plus de 8 heures",

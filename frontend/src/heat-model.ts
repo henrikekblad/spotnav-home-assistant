@@ -208,6 +208,7 @@ export const WATER_HEATER = O({
   name: "string",
   on: N("boolean"),
   metered: "boolean",
+  meter_waiting: "boolean",
   mode: "string",
   kw: N("number"),
   state: "string",
@@ -583,6 +584,8 @@ export interface HeatWaterHeater {
   name: string;
   on: boolean | null;
   metered: boolean;
+  /** A power meter is there but has not yet been seen at the element's draw (500 W): treated as unmetered meanwhile. */
+  meter_waiting: boolean;
   /** How full heat is seen: "metered", "tank" or "unmetered" (a fixed night window). */
   mode: string;
   kw: number | null;
