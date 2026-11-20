@@ -519,20 +519,25 @@
     },
     "outdoor_sensor": null,
     "target_c": 21.0,
+    "water_heater": null,
     "zones": [
       {
+        "control": false,
         "entity_id": "climate.golvvarme_toalett_nere",
         "offset_c": 0.0
       },
       {
+        "control": false,
         "entity_id": "climate.golvvarme_toalett_uppe",
         "offset_c": 0.0
       },
       {
+        "control": false,
         "entity_id": "climate.golvvarme_tvattstuga",
         "offset_c": -1.0
       },
       {
+        "control": false,
         "entity_id": "climate.ovanvaning",
         "offset_c": -0.5
       }

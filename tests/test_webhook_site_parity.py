@@ -281,7 +281,8 @@ async def test_the_cooler_night_and_each_zones_offset_are_written_but_never_whic
     status, body = await post(
         client, HOOK, {"action": "update_heat", "changes": {"zones": offsets}, "expected": {"zones": heat["config"]["zones"]}}
     )
-    assert status == 200 and body["ok"] is True and body["config"]["zones"] == offsets, body
+    kept = [{**item, "control": False} for item in offsets]
+    assert status == 200 and body["ok"] is True and body["config"]["zones"] == kept, body
     _pinned("update_heat_zone_offsets.json", _pin(body))
     twin = await result(hass, websocket_update_heat, changes={"zones": offsets}, expected={"zones": offsets})
     assert body == {**twin, "action": "update_heat"}
@@ -298,10 +299,12 @@ async def test_the_cooler_night_and_each_zones_offset_are_written_but_never_whic
         [{"entity_id": "climate.gast", "offset_c": 0.5}, offsets[1]],
         [],
         None,
+        # Letting SpotNav set a thermostat is an administrator's opt-in, never the webhook's.
+        [{**offsets[0], "control": True}, offsets[1]],
     ):
         status, body = await post(client, HOOK, {"action": "update_heat", "changes": {"zones": changed}})
         assert status == 403 and body["error"] == "spotnav_not_permitted_over_webhook", (changed, body)
-        assert site.data[CONF_HEAT]["zones"] == offsets, changed
+        assert site.data[CONF_HEAT]["zones"] == kept, changed
     _pinned("update_heat_zones_not_permitted.json", _pin(body))
 
     # Each indoor sensor's offset against the house temperature: sparse, as stored (0 or left out is none).

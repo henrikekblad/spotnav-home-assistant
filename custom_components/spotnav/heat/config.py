@@ -24,7 +24,13 @@ hand-edited one never fails a read):
      (the relay or contact A, the SG Ready API's mode number, the offset number, the climate entity),
      control_entity_b: id | null (SG Ready's second contact; the SG Ready API's activation switch),
      hot_water_entity: id | null,
-     zones: [{entity_id: climate id, offset_c: -3..3 in 0.5 steps}] (up to 8)}
+     zones: [{entity_id: climate id, offset_c: -3..3 in 0.5 steps, control: bool}] (up to 8),
+     water_heater: {entity_id: switch id, control: bool, tank_sensor: sensor id | null} | null}
+
+A zone's `control` is the person's opt-in that lets SpotNav set that thermostat (`heat/zones_control.py`, relative to
+the person's own setpoint: the zone's `offset_c` is kept but no longer acts). `water_heater` is a plain water heater
+switched by a `switch` (an immersion element on its own thermostat): chosen alone it is watched, `control` lets
+SpotNav switch it inside the legionella rules (`heat/water_heater.py`); `tank_sensor` an optional tank temperature.
 """
 
 from __future__ import annotations
@@ -86,6 +92,9 @@ PATH_DOMAINS_B: Final[dict[str, tuple[str, ...]]] = {
     PATH_SG_READY_API: ("switch", "input_boolean"),
 }
 HOT_WATER_DOMAINS: Final = ("switch", "input_boolean", "button", "input_button")
+#: The plain water heater's switch, and its optional tank sensor.
+WATER_HEATER_DOMAINS: Final = ("switch", "input_boolean")
+TANK_SENSOR_DOMAINS: Final = ("sensor",)
 
 # The fields, as the write names them.
 F_TARGET: Final = "target_c"
@@ -102,9 +111,10 @@ F_HOT_WATER: Final = "hot_water_entity"
 F_ZONES: Final = "zones"
 F_INDOOR_OFFSETS: Final = "indoor_offsets"
 F_CONTROL_ENABLED: Final = "control_enabled"
+F_WATER_HEATER: Final = "water_heater"
 FIELDS: Final = (
     F_TARGET, F_MODE, F_AWAY_UNTIL, F_AWAY_DELTA, F_NIGHT, F_INDOOR, F_OUTDOOR, F_PATH, F_CONTROL, F_CONTROL_B, F_HOT_WATER, F_ZONES,
-    F_INDOOR_OFFSETS, F_CONTROL_ENABLED,
+    F_INDOOR_OFFSETS, F_CONTROL_ENABLED, F_WATER_HEATER,
 )
 #: What anyone who can see the card may change (the dial and home/away, a thermostat's own controls); the rest is an
 #: administrator's.
@@ -154,9 +164,23 @@ class Night:
 class Zone:
     entity_id: str
     offset_c: float = 0.0
+    #: The person's opt-in: SpotNav sets this thermostat (off: watched only).
+    control: bool = False
 
     def as_dict(self) -> dict[str, Any]:
-        return {"entity_id": self.entity_id, "offset_c": self.offset_c}
+        return {"entity_id": self.entity_id, "offset_c": self.offset_c, "control": self.control}
+
+
+@dataclass(frozen=True, slots=True)
+class WaterHeater:
+    """A plain water heater's switch, the person's opt-in to let SpotNav switch it, and an optional tank sensor."""
+
+    entity_id: str
+    control: bool = False
+    tank_sensor: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"entity_id": self.entity_id, "control": self.control, "tank_sensor": self.tank_sensor}
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +210,7 @@ class HeatConfig:
     zones: tuple[Zone, ...] = ()
     indoor_offsets: tuple[SensorOffset, ...] = ()
     control_enabled: bool = False
+    water_heater: WaterHeater | None = None
 
     def offset_of(self, entity_id: str) -> float:
         """An indoor sensor's offset (0 when it has none)."""
@@ -207,6 +232,7 @@ class HeatConfig:
             F_ZONES: [zone.as_dict() for zone in self.zones],
             F_INDOOR_OFFSETS: [item.as_dict() for item in self.indoor_offsets],
             F_CONTROL_ENABLED: self.control_enabled,
+            F_WATER_HEATER: None if self.water_heater is None else self.water_heater.as_dict(),
         }
 
     def away_end(self) -> datetime | None:
@@ -275,8 +301,17 @@ def _zones(raw: Any) -> tuple[Zone, ...]:
         if entity_id is None or any(zone.entity_id == entity_id for zone in zones):
             continue
         offset = _step_in(item.get("offset_c"), OFFSET_MIN_C, OFFSET_MAX_C)
-        zones.append(Zone(entity_id, 0.0 if offset is None else offset))
+        zones.append(Zone(entity_id, 0.0 if offset is None else offset, item.get("control") is True))
     return tuple(zones)
+
+
+def _water_heater(raw: Any) -> WaterHeater | None:
+    if not isinstance(raw, Mapping):
+        return None
+    entity_id = _entity(raw.get("entity_id"), WATER_HEATER_DOMAINS)
+    if entity_id is None:
+        return None
+    return WaterHeater(entity_id, raw.get("control") is True, _entity(raw.get("tank_sensor"), TANK_SENSOR_DOMAINS))
 
 
 def _offsets(raw: Any, sensors: tuple[str, ...]) -> tuple[SensorOffset, ...]:
@@ -325,6 +360,7 @@ def read_config(raw: Any) -> HeatConfig:
         control_entity_b=control_b,
         hot_water_entity=_entity(raw.get(F_HOT_WATER), HOT_WATER_DOMAINS),
         zones=_zones(raw.get(F_ZONES)),
+        water_heater=_water_heater(raw.get(F_WATER_HEATER)),
     )
 
 
@@ -347,7 +383,7 @@ class FieldError:
 
 #: What an entity id is, for the judge: `None` when Home Assistant knows no such entity, else whether it fits the
 #: role named (`indoor`, `outdoor`, `zone`, a control path's own name for its first entity and `<path>_b` for its
-#: second, `hot_water`).
+#: second, `hot_water`, `water_heater`, `tank`).
 EntityCheck = Callable[[str, str], bool | None]
 
 
@@ -524,15 +560,20 @@ def apply_changes(
         else:
             zones: list[Zone] = []
             before = len(errors)
+            stored = {zone.entity_id: zone.control for zone in current.zones}
             for item in raw:
-                if not isinstance(item, Mapping) or set(item) - {"entity_id", "offset_c"} or "entity_id" not in item:
+                if not isinstance(item, Mapping) or set(item) - {"entity_id", "offset_c", "control"} or "entity_id" not in item:
                     errors.append(FieldError(F_ZONES, ERR_INVALID))
                     continue
                 entity_id = item["entity_id"]
                 _check_entity(errors, F_ZONES, entity_id, "zone", ("climate",), check)
                 offset = item.get("offset_c", 0.0)
                 number = finite_number(offset)
-                if number is None:
+                # A zone named without `control` keeps its opt-in (an offsets-only write, the app's).
+                control = item.get("control", stored.get(entity_id, False) if isinstance(entity_id, str) else False)
+                if not isinstance(control, bool):
+                    errors.append(FieldError(F_ZONES, ERR_INVALID))
+                elif number is None:
                     errors.append(FieldError(F_ZONES, ERR_INVALID))
                 elif not OFFSET_MIN_C <= number <= OFFSET_MAX_C:
                     errors.append(FieldError(F_ZONES, ERR_RANGE))
@@ -541,7 +582,7 @@ def apply_changes(
                 elif any(zone.entity_id == entity_id for zone in zones):
                     errors.append(FieldError(F_ZONES, ERR_DUPLICATE))
                 else:
-                    zones.append(Zone(str(entity_id), number))
+                    zones.append(Zone(str(entity_id), number, control))
             if len(errors) == before:
                 updated = replace(updated, zones=tuple(zones))
 
@@ -573,6 +614,31 @@ def apply_changes(
                     offsets.append(SensorOffset(str(item["entity_id"]), number))
             if len(errors) == before:
                 updated = replace(updated, indoor_offsets=tuple(offsets))
+
+    if F_WATER_HEATER in changes:
+        raw = changes[F_WATER_HEATER]
+        if raw is None:
+            updated = replace(updated, water_heater=None)
+        elif not isinstance(raw, Mapping) or set(raw) - {"entity_id", "control", "tank_sensor"}:
+            errors.append(FieldError(F_WATER_HEATER, ERR_INVALID))
+        else:
+            # Each key named changes; one left out keeps its stored value (a new switch starts watched only).
+            old = current.water_heater
+            entity_id = raw.get("entity_id", None if old is None else old.entity_id)
+            moved = old is None or entity_id != old.entity_id
+            control = raw.get("control", False if moved or old is None else old.control)
+            tank = raw.get("tank_sensor", None if old is None else old.tank_sensor)
+            before = len(errors)
+            if entity_id is None:
+                errors.append(FieldError(F_WATER_HEATER, ERR_INVALID))
+            else:
+                _check_entity(errors, F_WATER_HEATER, entity_id, "water_heater", WATER_HEATER_DOMAINS, check)
+            if not isinstance(control, bool):
+                errors.append(FieldError(F_WATER_HEATER, ERR_INVALID))
+            if tank is not None:
+                _check_entity(errors, F_WATER_HEATER, tank, "tank", TANK_SENSOR_DOMAINS, check)
+            if len(errors) == before:
+                updated = replace(updated, water_heater=WaterHeater(str(entity_id), control, tank))
 
     if F_CONTROL_ENABLED in changes:
         if not isinstance(changes[F_CONTROL_ENABLED], bool):

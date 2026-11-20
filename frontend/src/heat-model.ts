@@ -64,9 +64,10 @@ const CONFIG = O({
   control_entity: N("string"),
   control_entity_b: N("string"),
   hot_water_entity: N("string"),
-  zones: A(O({ entity_id: "string", offset_c: "number" })),
+  zones: A(O({ entity_id: "string", offset_c: "number", control: "boolean" })),
   indoor_offsets: A(O({ entity_id: "string", offset_c: "number" })),
   control_enabled: "boolean",
+  water_heater: N(O({ entity_id: "string", control: "boolean", tank_sensor: N("string") })),
   heat_meter_entity: N("string"),
 });
 const CHOICE = O({ entity_id: "string", name: "string", value: N("string") });
@@ -370,12 +371,21 @@ export interface HeatConfig {
   control_entity: string | null;
   control_entity_b: string | null;
   hot_water_entity: string | null;
-  zones: { entity_id: string; offset_c: number }[];
+  /** `control`: the person's opt-in that lets SpotNav set the thermostat (relative to its own setpoint). */
+  zones: { entity_id: string; offset_c: number; control: boolean }[];
   /** Each indoor sensor's room aim against the house target (°C); a sensor without one is 0. */
   indoor_offsets: { entity_id: string; offset_c: number }[];
   /** SpotNav's opt-in to switch the heat pump's relay itself ("Styr värmen"). */
   control_enabled: boolean;
+  /** A plain water heater's switch, the opt-in to let SpotNav switch it, and an optional tank sensor. */
+  water_heater: HeatWaterHeaterConfig | null;
   heat_meter_entity: string | null;
+}
+
+export interface HeatWaterHeaterConfig {
+  entity_id: string;
+  control: boolean;
+  tank_sensor: string | null;
 }
 
 export interface HeatChoice {

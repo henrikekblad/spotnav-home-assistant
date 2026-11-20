@@ -536,7 +536,7 @@ describe("the element", () => {
     form.requestSubmit();
     await vi.advanceTimersByTimeAsync(0);
     const write = messages.find((message) => message["type"] === "spotnav/update_heat")!;
-    expect((write["changes"] as { zones: { entity_id: string; offset_c: number }[] }).zones[3]).toEqual({ entity_id: "climate.ovanvaning", offset_c: 1 });
+    expect((write["changes"] as { zones: { entity_id: string; offset_c: number }[] }).zones[3]).toEqual({ entity_id: "climate.ovanvaning", offset_c: 1, control: false });
   });
 
   it("writes an indoor sensor's offset with the others kept, a zero left out", async () => {

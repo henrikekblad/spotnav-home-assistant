@@ -24,12 +24,15 @@
     },
     "outdoor_sensor": null,
     "target_c": 21.0,
+    "water_heater": null,
     "zones": [
       {
+        "control": false,
         "entity_id": "climate.golvvarme",
         "offset_c": 0.0
       },
       {
+        "control": false,
         "entity_id": "climate.luft",
         "offset_c": -1.0
       }

@@ -186,7 +186,7 @@ def entity_check(hass: HomeAssistant) -> Any:
         known = hass.states.get(entity_id) is not None or er.async_get(hass).async_get(entity_id) is not None
         if not known:
             return None
-        if role in ("indoor", "outdoor") and entity_id.startswith("sensor."):
+        if role in ("indoor", "outdoor", "tank") and entity_id.startswith("sensor."):
             return bool(is_temperature(hass, entity_id))
         if role == PATH_SG_READY_API:
             # The SG Ready API writes 0..2 to its mode: only the pump's own SG Ready number, never any number.
@@ -208,6 +208,13 @@ class HeatWriteRefusal(Exception):
 def _same(name: str, stored: Any, expected: Any) -> bool:
     if name == F_METER and expected == "":
         expected = None
+    if name == F_ZONES and isinstance(stored, list) and isinstance(expected, list):
+        # A caller that does not know a zone's `control` yet (an older app) compares the rest.
+        known = {item.get("entity_id"): item.get("control", False) for item in stored if isinstance(item, Mapping)}
+        expected = [
+            {**item, "control": known.get(item.get("entity_id"), False)} if isinstance(item, Mapping) and "control" not in item else item
+            for item in expected
+        ]
     return comparable(name, stored) == comparable(name, expected)
 
 
@@ -238,7 +245,10 @@ def _same_zones(stored: HeatConfig, changes: Mapping[str, Any]) -> bool:
     raw = changes[F_ZONES]
     if not isinstance(raw, list) or any(not isinstance(item, Mapping) for item in raw):
         return raw is not None or not stored.zones
-    return [item.get("entity_id") for item in raw] == [zone.entity_id for zone in stored.zones]
+    if [item.get("entity_id") for item in raw] != [zone.entity_id for zone in stored.zones]:
+        return False
+    # The opt-in to set a thermostat is an administrator's: over the webhook a zone keeps its own.
+    return all("control" not in item or item["control"] == zone.control for item, zone in zip(raw, stored.zones, strict=True))
 
 
 def write_heat(

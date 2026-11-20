@@ -447,6 +447,7 @@
     },
     "outdoor_sensor": null,
     "target_c": 21.0,
+    "water_heater": null,
     "zones": []
   },
   "control": {
