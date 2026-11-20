@@ -6757,3 +6757,5 @@ def _log_regulator_decisions(
 # Loaded with this module, so the hold's first import is never a disk read on the event loop (it imports this module,
 # hence here at the end rather than at the top; `__init__` takes the class from it).
 from . import import_target_hold as _import_target_hold  # noqa: E402,F401
+# Loaded with this module too, for the same reason (the battery probe's runner).
+from . import battery_probe_runner as _battery_probe_runner  # noqa: E402,F401
