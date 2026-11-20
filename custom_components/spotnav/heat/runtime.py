@@ -310,6 +310,12 @@ class HeatShadow:
         self.relay_states: list[tuple[datetime, bool]] = []
         self.automations: list[SteeringAutomation] = []
         self.plan: list[BandHour] = []
+        #: The plan as first made, before the hot water's level A took hours out: what the zones and the water heater
+        #: follow (level A is about the heat pump's own hot water).
+        self.first_plan: list[BandHour] = []
+        #: Further changes to the forecast (the zones' lowerings, the water heater's windows), each `(now) -> {hour:
+        #: kW}`, set by their controls.
+        self.extra_deltas: list[Callable[[datetime], dict[datetime, float]]] = []
         self.guard: str | None = None
         self.tight: frozenset[datetime] = frozenset()
         self.made_at: datetime | None = None
@@ -514,16 +520,22 @@ class HeatShadow:
         (`relay_effect.forecast_delta`, kept per 5 minutes; none without a relay) and SpotNav's own hot-water boosts
         with the pump's reheats they replace (`HotWater.forecast_delta`), on every path."""
         heat = self._relay_delta(now)
+        extra: list[dict[datetime, float]] = []
         try:
-            water = self.hot_water.forecast_delta(now) if self._loaded else {}
+            extra.append(self.hot_water.forecast_delta(now) if self._loaded else {})
         except Exception:  # noqa: BLE001 - the hot water's change is extra: the heat's stands
             _LOGGER.debug("SpotNav hot water: its change to the forecast could not be made", exc_info=True)
-            water = {}
-        if not water:
+        for delta in self.extra_deltas:
+            try:
+                extra.append(delta(now))
+            except Exception:  # noqa: BLE001 - a zone's or the water heater's change is extra: the rest stands
+                _LOGGER.debug("SpotNav heat: a change to the forecast could not be made", exc_info=True)
+        if not any(extra):
             return heat
         out = dict(heat)
-        for hour, kw in water.items():
-            out[hour] = out.get(hour, 0.0) + kw
+        for part in extra:
+            for hour, kw in part.items():
+                out[hour] = out.get(hour, 0.0) + kw
         return out
 
     def _relay_delta(self, now: datetime) -> dict[datetime, float]:
@@ -560,7 +572,8 @@ class HeatShadow:
         closed_now, since = self._closed_now()
         if closed_now is not None and since is not None and (not self.relay_states or self.relay_states[-1][1] != closed_now):
             self.relay_states.append((since, closed_now))
-        watched = [entity for entity in (relay, config.control_entity_b, *(zone.entity_id for zone in config.zones)) if entity]
+        heater = None if config.water_heater is None else config.water_heater.entity_id
+        watched = [entity for entity in (relay, config.control_entity_b, *(zone.entity_id for zone in config.zones), heater) if entity]
         self.automations = steering_automations(self.hass, watched)
         self._step_warm(config, now)
         self._log_would(now, config)
@@ -788,6 +801,7 @@ class HeatShadow:
             room_warm=self.room_warm.active,
         )
         planned, guard = await self.hass.async_add_executor_job(make)
+        first = planned
         cut: list[Cut] = []
         live = False
         if rules is not None:
@@ -802,6 +816,7 @@ class HeatShadow:
             return
         self.hot_water.set_cuts(cut, live)
         self.plan, self.guard, self.tight, self.made_at = planned, guard, tight, now
+        self.first_plan = first
         self.status = "planned"
         self._log_would(now, config)
 
