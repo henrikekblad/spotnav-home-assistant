@@ -55,7 +55,8 @@ def ceilings_minor(hours: Mapping[datetime, _Ceiling] | None) -> dict[datetime, 
 
 def peak_so_far(parts: Sequence[Any], now: datetime, tz: str) -> float | None:
     """The running day's highest counted hour measured so far (kW) among the priced parts (`demand_cost.PartCost`):
-    the day the demand variant's first slot starts from; `None` without one."""
+    the day the demand variant's first slot starts from, never below 0 (a day that only exported); `None` without
+    one."""
     current = hour_start(now, tz)
     found = [
         part.measured[day]
@@ -64,7 +65,7 @@ def peak_so_far(parts: Sequence[Any], now: datetime, tz: str) -> float | None:
         and (day := counted_day(part.component, current, tz)) is not None
         and day in part.measured
     ]
-    return max(found) if found else None
+    return max(0.0, max(found)) if found else None
 
 
 def demand_house(

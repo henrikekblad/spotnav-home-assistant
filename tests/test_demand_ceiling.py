@@ -111,6 +111,9 @@ def test_the_running_days_peak_so_far() -> None:
     month = [*MONTH, measured(16, 7, 3.5), measured(16, 8, 4.5)]
     state = ceiling_state([GBG_TID], month, [], {}, local(11, 16, 9), TZ)
     assert peak_so_far(state.parts, local(11, 16, 9), TZ) == pytest.approx(4.5)
+    # A day that has only exported so far starts from 0.
+    exported = ceiling_state([GBG_TID], [*MONTH, measured(16, 7, -2.0)], [], {}, local(11, 16, 9), TZ)
+    assert peak_so_far(exported.parts, local(11, 16, 9), TZ) == 0.0
     # Outside the window's hours (a Sunday) no day counts: none.
     assert peak_so_far(state.parts, local(11, 15, 12), TZ) is None
 
