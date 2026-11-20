@@ -13,6 +13,11 @@ Beside them the site keeps, per month, one summary per day for `ARCHIVE_MONTHS` 
   peaks and its figure (`bar_kw`). These are worked out from the month's hours with the components set when its
   last hour completed: a later change of the components does not rewrite an older month.
 
+Beside the months, the hours that exceeded the price's power level (`PowerArchive.exceeded`, `{start: (kW, level kW)}`)
+are kept for `EXCEEDED_MONTHS` months: the tracker keeps the hours of two months only, and a power level counts its
+exceedances over a rolling year (`planning/demand_cost.level_count`). Refiled from the tracker's hours when an hour
+completes, with the level then set; an older month's keep the level they were measured against.
+
 Everything is refiled from the tracker's hours when an hour completes (`PowerArchive.file_month`), so the summaries
 of a month with hours are always those hours'. Pure: no Home Assistant; the clock is passed in. Storage is
 untrusted: a malformed record is dropped, never raised on. Nothing here decides anything a charger is told.
@@ -26,7 +31,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Final
 
 from ..core.parse import aware_utc, is_number
@@ -38,6 +43,8 @@ _LOGGER = logging.getLogger(__name__)
 
 #: How many months before the running one keep their day summaries (the history dialog's own reach).
 ARCHIVE_MONTHS: Final = 24
+#: How many months before the running one keep the hours that exceeded the power level (a rolling year, and one).
+EXCEEDED_MONTHS: Final = 13
 #: The view's power unit.
 UNIT_KW: Final = "kW"
 
@@ -86,6 +93,11 @@ class MonthRecord:
     components: tuple[DemandComponent, ...] = ()
     counted: tuple[tuple[datetime, ...], ...] = ()
     bars: tuple[float | None, ...] = ()
+
+
+def _month_of(moment: datetime, tz: str) -> Month:
+    local = moment.astimezone(time_zones.require_zone(tz))
+    return local.year, local.month
 
 
 def _local_date(moment: datetime, tz: str) -> date:
@@ -234,6 +246,20 @@ class PowerArchive:
     #: The back-fill from Home Assistant's statistics (`SiteDemand.async_backfill`): `{at, status, hours}` once it
     #: ran, `None` before.
     backfill: dict[str, Any] | None = None
+    #: The hours that exceeded the power level: `{start (UTC): (the hour's floor, kW; the level it exceeded, kW)}`.
+    exceeded: dict[datetime, tuple[float, float]] = field(default_factory=dict)
+
+    def file_exceeded(
+        self, months: Sequence[Month], exceeded: dict[datetime, tuple[float, float]], tz: str
+    ) -> None:
+        """Replace the kept exceedances of `months` (the tracker's, refiled from their hours) with `exceeded`."""
+        refiled = set(months)
+        self.exceeded = {
+            start: value
+            for start, value in self.exceeded.items()
+            if _month_of(start, tz) not in refiled
+        }
+        self.exceeded.update(exceeded)
 
     def file_month(
         self,
@@ -253,7 +279,12 @@ class PowerArchive:
         gone = [month for month in self.months if month < oldest]
         for month in gone:
             del self.months[month]
-        return bool(gone)
+        first = months_before(current, EXCEEDED_MONTHS)
+        first_start = datetime(first[0], first[1], 1, tzinfo=timezone.utc)
+        old = [start for start in self.exceeded if start < first_start]
+        for start in old:
+            del self.exceeded[start]
+        return bool(gone) or bool(old)
 
     def as_dict(self) -> dict[str, Any]:
         stored: dict[str, Any] = {
@@ -261,6 +292,10 @@ class PowerArchive:
         }
         if self.backfill is not None:
             stored["backfill"] = dict(self.backfill)
+        if self.exceeded:
+            stored["level_exceeded"] = [
+                [start.isoformat(), _kw(kw), _kw(level)] for start, (kw, level) in sorted(self.exceeded.items())
+            ]
         return stored
 
     def restore(self, raw: Any) -> None:
@@ -269,6 +304,14 @@ class PowerArchive:
             marker = raw["backfill"]
             if isinstance(marker.get("at"), str) and isinstance(marker.get("status"), str):
                 self.backfill = {"at": marker["at"], "status": marker["status"], "hours": marker.get("hours")}
+        exceeded = raw.get("level_exceeded") if isinstance(raw, dict) else None
+        for item in exceeded if isinstance(exceeded, list) else ():
+            if not isinstance(item, list) or len(item) != 3:
+                continue
+            start = aware_utc(item[0])
+            if start is None or not is_number(item[1]) or not is_number(item[2]):
+                continue
+            self.exceeded[start] = (float(item[1]), float(item[2]))
         months = raw.get("months") if isinstance(raw, dict) else None
         if not isinstance(months, dict):
             return

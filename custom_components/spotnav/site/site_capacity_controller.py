@@ -1470,7 +1470,7 @@ class SiteCapacityController:
             return
         try:
             from ..execution.solar_execution import site_car_w, site_net_grid_w  # noqa: PLC0415 - it imports us
-            from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
+            from ..pricing.price_source import site_demand_components, site_power_level  # noqa: PLC0415 - it imports the planner
 
             grid_w = site_net_grid_w(self)
             car_w = None if grid_w is None else site_car_w(self.hass, self, idle_unread_as_zero=True)
@@ -1488,6 +1488,7 @@ class SiteCapacityController:
                 components=lambda: site_demand_components(self.hass, self.entry_id),
                 outdoor_c=self.house_forecast.outdoor_c(),
                 battery_w=battery_w if battery_set else 0.0,
+                power_level=lambda: site_power_level(self.hass, self.entry_id),
             )
             self.house_forecast.tick()
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site

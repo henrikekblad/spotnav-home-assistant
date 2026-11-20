@@ -380,6 +380,62 @@ class DemandComponent:
         ).validated(what)
 
 
+#: An electricity price entry's power level (`PowerLevel`), beside its demand-charge components; absent or `null` for
+#: none. A key of its own, not a component: a release before it reads the components exactly and would drop them all.
+POWER_LEVEL: Final = "power_level"
+POWER_LEVEL_KEYS: Final = frozenset({"level_kw", "window", "outside"})
+#: The highest power level accepted (kW): far above any household's, a typing slip refused.
+MAX_POWER_LEVEL_KW: Final = 1000.0
+
+
+@dataclass(frozen=True, slots=True)
+class PowerLevel:
+    """A power level (Göteborg Energi's tidsindelad tariff: 6, 10, 14 … kW): the hourly mean of net import the
+    customer chose not to exceed in its hours, which it may exceed `planning/demand_cost.ALLOWED_EXCEEDANCES` times in
+    a rolling 12 months (one more moves the customer to another tariff). Its hours are all hours (`window` `None`),
+    the hours of `window`, or (`outside`) the hours `window` does not count: the low-price hours outside a
+    demand-charge window. Plans never exceed it, and the import target's hold keeps the hour under it."""
+
+    level_kw: float
+    window: HighLoadWindow | None = None
+    outside: bool = False
+
+    def validated(self, what: str = POWER_LEVEL) -> PowerLevel:
+        level = _finite(self.level_kw, "invalid_fiscal", f"{what}.level_kw")
+        if not 0 < level <= MAX_POWER_LEVEL_KW:
+            _refuse("invalid_fiscal", f"{what}.level_kw must be above 0 and at most {MAX_POWER_LEVEL_KW:g}")
+        if not isinstance(self.outside, bool):
+            _refuse("invalid_fiscal", f"{what}.outside must be a boolean")
+        window = self.window
+        if window is not None:
+            window = high_load_window_from(high_load_window_dict(window), f"{what}.window")
+        elif self.outside:
+            _refuse("invalid_fiscal", f"{what}.outside needs a window")
+        return PowerLevel(level_kw=level, window=window, outside=self.outside)
+
+    def counts(self, start: datetime, tz: str) -> bool:
+        """Whether the level holds in the hour starting at `start` on `tz`'s clock (the window with its holidays)."""
+        if self.window is None:
+            return True
+        inside = replace(self.window, tz=tz).window_day(start) is not None
+        return inside != self.outside
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "level_kw": self.level_kw,
+            "window": None if self.window is None else high_load_window_dict(self.window),
+            "outside": self.outside,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Any, what: str = POWER_LEVEL) -> PowerLevel:
+        """A stored or sent power level, exactly its keys, or `invalid_fiscal`. Never coerced."""
+        if not isinstance(raw, dict) or set(raw) != POWER_LEVEL_KEYS:
+            _refuse("invalid_fiscal", f"{what} must carry exactly {sorted(POWER_LEVEL_KEYS)}")
+        window = None if raw["window"] is None else high_load_window_from(raw["window"], f"{what}.window")
+        return cls(level_kw=raw["level_kw"], window=window, outside=raw["outside"]).validated(what)
+
+
 def demand_components_from(raw: Any) -> tuple[DemandComponent, ...]:
     """A stored or sent list of components (at most `MAX_DEMAND_COMPONENTS`), or `invalid_fiscal`."""
     if not isinstance(raw, list):
@@ -407,6 +463,7 @@ class GridTariff:
 
     `demand` is the demand charge's components (`DemandComponent`, at most `MAX_DEMAND_COMPONENTS`), empty for none.
     They price nothing: the site measures the hours they count (`site/demand_tracker.py`) and shows the peaks.
+    `power_level` is the grid operator's power level (`PowerLevel`), `None` for none: a hard cap in its hours.
     """
 
     transfer_percent: FiscalOverride = FiscalOverride()
@@ -415,6 +472,7 @@ class GridTariff:
     demand: tuple[DemandComponent, ...] = ()
     supplier_markup: FiscalOverride = FiscalOverride()
     sell_adjustment: FiscalOverride = FiscalOverride()
+    power_level: PowerLevel | None = None
 
     @property
     def empty(self) -> bool:
@@ -451,6 +509,7 @@ class GridTariff:
             demand=demand,
             supplier_markup=markup,
             sell_adjustment=sell,
+            power_level=None if self.power_level is None else self.power_level.validated(),
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -461,6 +520,7 @@ class GridTariff:
             DEMAND_COMPONENTS: [component.as_dict() for component in self.demand],
             SUPPLIER_MARKUP: self.supplier_markup.as_dict(),
             SELL_ADJUSTMENT: self.sell_adjustment.as_dict(),
+            POWER_LEVEL: None if self.power_level is None else self.power_level.as_dict(),
         }
 
     @classmethod
@@ -495,6 +555,12 @@ class GridTariff:
                 demand = demand_components_from(data.get(DEMAND_COMPONENTS))
             except AutoSettingsError:
                 demand = ()
+        level: PowerLevel | None = None
+        if data.get(POWER_LEVEL) is not None:
+            try:
+                level = PowerLevel.from_dict(data.get(POWER_LEVEL))
+            except AutoSettingsError:
+                level = None
         return cls(
             fees["transfer_percent"],
             fees["transfer_high"],
@@ -502,6 +568,7 @@ class GridTariff:
             demand,
             supplier_markup=fees[SUPPLIER_MARKUP],
             sell_adjustment=fees[SELL_ADJUSTMENT],
+            power_level=level,
         )
 
 
