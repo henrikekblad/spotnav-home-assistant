@@ -135,7 +135,7 @@ def test_no_reading_is_ever_a_value(name: str, state: str | None) -> None:
 
 @pytest.mark.parametrize("name", sorted(BRANDS))
 def test_a_disabled_entity_is_no_value_and_says_so(name: str) -> None:
-    anchor = next(row for row in BRANDS[name]["entities"] if row["unique_id"].endswith(("40004", "30002", "62000", "_outdoor_temp", "TOP14")))
+    anchor = next(row for row in BRANDS[name]["entities"] if row["unique_id"].endswith(("40004", "30002", "62000", "_outdoor_temp", "TOP14", "_input_outdoor_temperature")))
     changes = {anchor["entity_id"]: {"disabled": True}}
 
     pump = _pump(name, **changes)
@@ -385,3 +385,24 @@ def test_the_calculated_supply_is_read_where_the_pump_has_it_and_never_asked_for
     # Disabled, as the integration leaves every coil: still no note.
     disabled = find_heat_pumps([*entities, replace(calc, disabled=True)])[0]
     assert disabled.calc_supply_temp_c is None and "calc_supply_temp" not in disabled.missing
+
+
+@pytest.mark.parametrize(
+    ("demand", "expected"),
+    [("4", "heating"), ("3", "hot_water"), ("7", "hot_water"), ("5", "cooling"), ("6", "pool"), ("98", "off"), ("100", "off"),
+     ("2", None), ("1", None), ("4.5", None), ("Heat", None)],
+)
+def test_thermias_demand_is_read_by_its_number(demand: str, expected: str | None) -> None:
+    """Thermia states the demand in progress as a number: 2 (defrost) and 1 (manual) name no priority."""
+    pump = _pump("thermia_genesis", **{"sensor.first_prioritised_demand": {"state": demand}})
+
+    assert pump.priority == expected
+
+
+def test_thermias_comfort_wheel_is_its_only_control_and_a_stored_one() -> None:
+    pump = _pump("thermia_genesis")
+
+    assert [(capability.kind, capability.entity_id, capability.volatile) for capability in pump.capabilities] == [
+        ("offset", "number.comfort_wheel_setting", False)
+    ]
+    assert pump.calc_supply_temp_c == 35.0

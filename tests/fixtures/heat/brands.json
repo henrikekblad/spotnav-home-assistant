@@ -1240,5 +1240,178 @@
     ]
    }
   }
+ },
+ "thermia_genesis": {
+  "_source": "CJNE/thermiagenesis 0.0.12 and pythermiagenesis 0.1.8: unique id `thermiagenesis_<register key>`, one device \"Diplomat Inverter Duo\", every number and sensor disabled by default (here the ones SpotNav reads are enabled), the climate entities and the status sensor `thermiagenesis_heatpump` enabled. The demand in progress is a number (4: heat). The comfort wheel's number says -40..100 by the integration's default. States made up; no room sensor fitted.",
+  "platform": "thermiagenesis",
+  "entities": [
+   {
+    "entity_id": "sensor.outdoor_temperature",
+    "unique_id": "thermiagenesis_input_outdoor_temperature",
+    "device": "diplomat",
+    "state": "3.5",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.system_supply_line_temperature",
+    "unique_id": "thermiagenesis_input_system_supply_line_temperature",
+    "device": "diplomat",
+    "state": "34.2",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.system_supply_line_calculated_set_point",
+    "unique_id": "thermiagenesis_input_system_supply_line_calculated_set_point",
+    "device": "diplomat",
+    "state": "35.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.condenser_in_temperature",
+    "unique_id": "thermiagenesis_input_condenser_in_temperature",
+    "device": "diplomat",
+    "state": "29.8",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.room_temperature_sensor",
+    "unique_id": "thermiagenesis_input_room_temperature_sensor",
+    "device": "diplomat",
+    "state": null,
+    "unit": "°C",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.tap_water_weighted_temperature",
+    "unique_id": "thermiagenesis_input_tap_water_weighted_temperature",
+    "device": "diplomat",
+    "state": "48.6",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.tap_water_top_temperature",
+    "unique_id": "thermiagenesis_input_tap_water_top_temperature",
+    "device": "diplomat",
+    "state": "50.1",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.compressor_speed_percent",
+    "unique_id": "thermiagenesis_input_compressor_speed_percent",
+    "device": "diplomat",
+    "state": "42.0",
+    "unit": "%",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.compressor_speed_rpm",
+    "unique_id": "thermiagenesis_input_compressor_speed_rpm",
+    "device": "diplomat",
+    "state": "3120",
+    "unit": "rpm",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.first_prioritised_demand",
+    "unique_id": "thermiagenesis_input_first_prioritised_demand",
+    "device": "diplomat",
+    "state": "4",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.heatpump",
+    "unique_id": "thermiagenesis_heatpump",
+    "device": "diplomat",
+    "state": "4",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.comfort_wheel_setting",
+    "unique_id": "thermiagenesis_holding_comfort_wheel_setting",
+    "device": "diplomat",
+    "state": "20.0",
+    "unit": "°C",
+    "disabled": false,
+    "min": -40.0,
+    "max": 100.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "number.set_point_heat_curve_y_1",
+    "unique_id": "thermiagenesis_holding_set_point_heat_curve_y_1",
+    "device": "diplomat",
+    "state": "45.0",
+    "unit": "°C",
+    "disabled": false,
+    "min": -40.0,
+    "max": 100.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "number.start_temperature_tap_water",
+    "unique_id": "thermiagenesis_holding_start_temperature_tap_water",
+    "device": "diplomat",
+    "state": "45.0",
+    "unit": "°C",
+    "disabled": true,
+    "min": -40.0,
+    "max": 100.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "climate.heat",
+    "unique_id": "thermiagenesis_heat",
+    "device": "diplomat",
+    "state": "heat",
+    "unit": null,
+    "disabled": false,
+    "min": 10.0,
+    "max": 40.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "switch.enable_heat",
+    "unique_id": "thermiagenesis_coil_enable_heat",
+    "device": "diplomat",
+    "state": "on",
+    "unit": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "thermia_genesis",
+   "readings": {
+    "outdoor_temp_c": 3.5,
+    "supply_temp_c": 34.2,
+    "return_temp_c": 29.8,
+    "room_temp_c": null,
+    "hot_water_temp_c": 48.6,
+    "degree_minutes": null,
+    "compressor_speed": 42.0,
+    "compressor_speed_unit": "%",
+    "compressor_running": true,
+    "immersion_kw": null,
+    "immersion_on": null,
+    "priority": "heating"
+   },
+   "missing": {
+    "room_temp": "disabled"
+   },
+   "price_control": "none",
+   "control": "free",
+   "capabilities": {
+    "offset": [
+     "number.comfort_wheel_setting"
+    ]
+   }
+  }
  }
 }

@@ -418,6 +418,16 @@ def _capabilities(capabilities: tuple[Capability, ...], scope: _Scope) -> tuple[
     return tuple(found)
 
 
+def _priority(text: Any, adapter: Adapter) -> Priority | None:
+    """What the pump serves now: by the adapter's numbers where it states it as one (Thermia), else by its words."""
+    if not adapter.priority_codes:
+        return priority_of(text)
+    value = number_from_state(text) if isinstance(text, str) else None
+    if value is None or not value.is_integer():
+        return None
+    return adapter.priority_codes.get(str(int(value)))  # type: ignore[return-value]
+
+
 def heat_pump_facts(
     adapter: Adapter,
     anchor: HeatEntity,
@@ -486,7 +496,7 @@ def heat_pump_facts(
         compressor_running=running,
         immersion_kw=immersion_kw,
         immersion_on=immersion_on,
-        priority=priority_of(values.get("priority")),  # type: ignore[arg-type]
+        priority=_priority(values.get("priority"), adapter),  # type: ignore[arg-type]
         price_control=price,
         control=control,
         control_reason=reason,

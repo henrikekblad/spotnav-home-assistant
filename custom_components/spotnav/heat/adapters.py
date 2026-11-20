@@ -32,6 +32,12 @@ Sources, read 2026-11-15 (background: `plans/research_integrations/heat_pump_sur
 * Panasonic Aquarea through HeishaMon, `aquarea` (kamaradclimber/heishamon-homeassistant 2.14.0, `6c91321`; topics
   from heishamon/HeishaMon `MQTT-Topics.md`): unique id `<entry id>-<topic id>`, `TOP<n>` for readings, `SET<n>`
   or a command name for the writable ones. The HeishaMon YAML package has no unique ids and cannot be read so.
+* Thermia Genesis, `thermiagenesis` (CJNE/thermiagenesis 0.0.12, library pythermiagenesis 0.1.8; Thermia's "Modbus
+  protocol for Genesis platform" v10.0, read 2026-11-20; plan `plans/v3_thermia_genesis.md`): unique id
+  `thermiagenesis_<register key>` with no entry id, one pump per Home Assistant. Every number and sensor is disabled by
+  default, and the integration polls only the registers of enabled entities, every 30 s. Every holding register is
+  treated as a stored setting (the manual says nothing of flash wear), and the only single-value shift of the heat
+  curve is the comfort wheel (holding 5). The demand in progress is a number (`PRIORITY_CODES_THERMIA`).
 """
 
 from __future__ import annotations
@@ -121,6 +127,9 @@ class Adapter:
     price_control: tuple[PriceRule, ...] = ()
     #: Read through the vendor's cloud (a slow, rate-limited path: read only, plan section 4).
     cloud: bool = False
+    #: Where the pump states what it serves as a number (Thermia's demand in progress): the number, as text, to the
+    #: priority it means (`facts.Priority`); a number not listed reads as none.
+    priority_codes: Mapping[str, str] = field(default_factory=dict)
 
 
 def _dash(key: str, *domains: str) -> Match:
@@ -371,7 +380,50 @@ HEISHAMON: Final = Adapter(
     ),
 )
 
-ADAPTERS: Final[tuple[Adapter, ...]] = (NIBE_F, NIBE_S, MYUPLINK, CTC_BMS, CTC_LOCAL, HEISHAMON)
+#: Thermia's "first prioritised demand" (input register 1): 1 manual operation, 2 defrost, 3 hot water, 4 heat,
+#: 5 cool, 6 pool, 7 anti-legionella, 98 standby, 99 no demand, 100 off. Manual operation and defrost name no
+#: priority SpotNav knows and read as none.
+PRIORITY_CODES_THERMIA: Final = {
+    "3": "hot_water",
+    "4": "heating",
+    "5": "cooling",
+    "6": "pool",
+    "7": "hot_water",
+    "98": "off",
+    "99": "off",
+    "100": "off",
+}
+
+THERMIA_GENESIS: Final = Adapter(
+    brand="thermia_genesis",
+    label="Thermia Genesis (Modbus)",
+    platforms=("thermiagenesis",),
+    anchor=_under("input_outdoor_temperature"),
+    facts={
+        "outdoor_temp": (_under("input_outdoor_temperature"),),
+        "supply_temp": (_under("input_system_supply_line_temperature"),),
+        # The supply temperature the curve asks for now (input 18): the check's proof that the comfort wheel moves
+        # the curve.
+        "calc_supply_temp": (_under("input_system_supply_line_calculated_set_point"),),
+        # The pump's own return (condenser in); the base map has no system return line.
+        "return_temp": (_under("input_condenser_in_temperature"),),
+        "room_temp": (_under("input_room_temperature_sensor"),),
+        "hot_water_temp": (_under("input_tap_water_weighted_temperature"), _under("input_tap_water_top_temperature")),
+        # In per cent of the compressor's range (the rpm register is outside the role's plausible band).
+        "compressor_speed": (_under("input_compressor_speed_percent"),),
+        "priority": (_under("input_first_prioritised_demand"),),
+    },
+    capabilities=(
+        Capability(
+            "offset",
+            _under("holding_comfort_wheel_setting", "number"),
+            "Comfort wheel, whole steps; a stored setting (wear unknown).",
+        ),
+    ),
+    priority_codes=PRIORITY_CODES_THERMIA,
+)
+
+ADAPTERS: Final[tuple[Adapter, ...]] = (NIBE_F, NIBE_S, MYUPLINK, CTC_BMS, CTC_LOCAL, HEISHAMON, THERMIA_GENESIS)
 
 #: The integrations SpotNav reads heat pumps from.
 PLATFORMS: Final = frozenset(platform for adapter in ADAPTERS for platform in adapter.platforms)
