@@ -34,13 +34,15 @@ Go to **Settings → Devices & services → Add integration → SpotNav**.
 If the charger has its own smart charging, solar or load-balancing mode, turn it off first. Two controllers on one
 charger fight each other.
 
-No charger? Skip to step 3 and add a site.
+No charger? Skip to step 3 and add your home.
 
-## 3. Add a site (optional)
+## 3. Add your home
 
-A site is your main fuse and grid meter. Add one for load balancing, solar charging, the home battery or heating.
+Your home (a *site* in SpotNav's settings) is your main fuse and grid meter. SpotNav needs it for the house card,
+the home battery, the heating, solar charging and load balancing. Only a charger that just charges in the cheap
+hours works without it.
 
-1. Go to **Settings → Devices & services → SpotNav → Add entry** and choose **A site (load balancing)**.
+1. Go to **Settings → Devices & services → SpotNav → Add entry** and choose **Your home (house, battery, heat, load balancing)**.
 2. Enter your **main fuse** in amperes. SpotNav never guesses it.
 3. SpotNav looks for your grid meter and lists what it found. Pick it and confirm.
 

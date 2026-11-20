@@ -9,15 +9,15 @@ section: Settings
 
 For anyone with more than one charger, or a charger that must stay within the main fuse: how to add a site, what it measures and how load balancing acts.
 
-A **site** is an optional second kind of SpotNav entry. It represents one electrical connection,
-typically your main fuse, shared by one or more SpotNav chargers. It is what makes load
-balancing, [solar charging and hybrid](strategies.md) possible. A charger can belong to only
+A **site** (*your home* in the setup) is the second kind of SpotNav entry. It represents one electrical connection,
+typically your main fuse, shared by one or more SpotNav chargers. It is what makes the house card,
+the home battery, the heating, load balancing, [solar charging and hybrid](strategies.md) possible. A charger can belong to only
 one site.
 
 ## Add a site
 
-**Settings, Devices & services, Add integration, SpotNav, A site (load balancing).** The dialogs are
-shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
+**Settings, Devices & services, Add integration, SpotNav, Your home (house, battery, heat, load balancing).** The dialogs are
+shown in [Set up SpotNav](setup.md#2-add-your-home). You provide:
 
 - **Main fuse rating (A).** Always entered by you; it is never guessed from measured load.
 - **Safety margin (A)** kept below the fuse rating. It starts at 1 A. It can also be changed in the

@@ -12,10 +12,11 @@ This page walks through the whole setup in Home Assistant, dialog by dialog. For
 2026.11 and newer) or from HACS (older versions, then restart Home Assistant). SpotNav
 itself needs no account; the prices come from a source you add in Home Assistant (below).
 
-There are four steps, and only the first is required:
+There are four steps:
 
-1. [Add a charger](#1-add-a-charger).
-2. [Add a site](#2-add-a-site-optional) if you want load balancing or solar charging.
+1. [Add a charger](#1-add-a-charger), if you have one.
+2. [Add your home](#2-add-your-home): needed for the house card, the home battery, the heating, solar charging and
+   load balancing.
 3. [Add the card](#3-add-the-card).
 4. [Pair the app](#4-pair-the-app-optional) if you want to use the SpotNav app.
 
@@ -300,14 +301,14 @@ cannot start or stop the charger and that it can only be read. The
 SpotNav knows is not a charger, such as a heater or an outlet controller, is never offered in the
 list.
 
-## 2. Add a site (optional)
+## 2. Add your home
 
-A site is one electrical connection, usually your main fuse, shared by one or more chargers. You
-need it for [load balancing and solar charging](site-and-load-balancing.md). A charger can belong
-to only one site.
+Your home (a *site* in SpotNav's settings) is one electrical connection, usually your main fuse, shared by one or
+more chargers. You need it for the house card, the home battery, the heating, and
+[load balancing and solar charging](site-and-load-balancing.md). A charger can belong to only one site.
 
-Go to **Settings, Devices & services, Add integration, SpotNav** and choose **A site (load
-balancing)**.
+Go to **Settings, Devices & services, Add integration, SpotNav** and choose
+**Your home (house, battery, heat, load balancing)**.
 
 A site with no charger is fine: a home with only a battery or heating starts with the
 [house card](house-card.md), whose gear opens the site's settings (Get started, price, site, home battery, heating).
