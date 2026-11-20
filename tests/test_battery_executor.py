@@ -721,20 +721,65 @@ def test_a_change_from_a_grid_charge_into_a_hold_is_not_held_to_the_start_rule()
 
 def test_a_change_from_a_sale_into_a_hold_is_held_to_the_start_rule() -> None:
     """A sale covers the house and the cars behind the meter before it exports: ending it into a hold can put that
-    load back on a phase, so the hold's start rule judges it, and without room the battery is handed back."""
+    load back on a phase, so the hold's start rule judges it, and without room the battery is handed back. A plant
+    that spreads its sale evenly over three phases (SigenStor) gives each phase a third of it."""
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 8, "export_discharge", 5.0)
     assert executor.state.action == "export_discharge"
-    # 5 kW can all be on one phase: about 22 A, more than 12 A of headroom carries.
+    # 5 kW over three phases: 7.2 A a phase, which 12 A of headroom carries with the margin.
     _now, results = run(executor, battery, now, 6, "hold", headroom_a=12.0, power_kw=-5.0)
-    assert events(results, "change") == []
-    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
-    # With room for all of it the change is made directly.
-    executor, battery = _sigenergy()
-    now, _ = run(executor, battery, T0, 8, "export_discharge", 5.0)
-    _now, results = run(executor, battery, now, 6, "hold", headroom_a=30.0, power_kw=-5.0)
     assert events(results, "hand_back") == []
     assert events(results, "change")[0]["reason"] == "hold"
+    # 9 A does not (1.8 A left).
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "export_discharge", 5.0)
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=9.0, power_kw=-5.0)
+    assert events(results, "change") == []
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+
+
+def test_a_sale_into_a_hold_counts_all_of_it_on_one_phase_unless_the_plant_spreads_it_over_three() -> None:
+    """A plant not known to spread its power over three phases (`charge_phases` 1) may have all 5 kW (22 A) on one
+    phase, as before; a plant whose own power per phase shows more on one phase than a third is judged on that."""
+    for overrides, headroom_a, held in (
+        ({"charge_phases": 1}, 12.0, False),
+        ({"charge_phases": 1}, 30.0, True),
+        ({"plant_phase_kw": (4.0, 0.5, 0.5)}, 12.0, False),
+        ({"plant_phase_kw": (4.0, 0.5, 0.5)}, 20.0, True),
+        ({"plant_phase_kw": (1.7, 1.7, 1.6)}, 12.0, True),
+    ):
+        executor, battery = _sigenergy()
+        now, _ = run(executor, battery, T0, 8, "export_discharge", 5.0, **overrides)
+        assert executor.state.action == "export_discharge"
+        _now, results = run(executor, battery, now, 6, "hold", headroom_a=headroom_a, power_kw=-5.0, **overrides)
+        assert bool(events(results, "change")) is held, (overrides, headroom_a)
+        assert bool(events(results, "hand_back")) is not held, (overrides, headroom_a)
+
+
+def test_fuse_a_hold_after_a_three_phase_sale_never_puts_a_phase_over_the_fuse_less_the_margin() -> None:
+    """Every house (amps per phase, import or export) and sale the start rule lets a sale end into a hold leaves each
+    phase at most the fuse less `HEADROOM_MARGIN_A` once the sale's output is gone: with the plant spreading it
+    evenly, and with the plant's own power per phase read and spread unevenly."""
+    volts = 400.0
+    phase_v = volts / 3**0.5
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    fuse = 20.0
+    checked = 0
+    for sale_kw in (0.5, 2.0, 5.0, 8.0, 10.0, 15.0):
+        for split in ((1 / 3, 1 / 3, 1 / 3), (0.6, 0.2, 0.2), (1.0, 0.0, 0.0), (0.0, 0.5, 0.5)):
+            output_a = [sale_kw * part * 1000.0 / phase_v for part in split]
+            for house in ((0.0, 0.0, 0.0), (18.0, 1.0, 1.0), (10.0, 10.0, 10.0), (17.9, 4.0, 0.0), (25.0, 0.0, 0.0),
+                          (5.0, 16.0, 2.0), (12.0, 12.0, 17.0)):
+                current = [load - out for load, out in zip(house, output_a, strict=True)]
+                headroom = min(fuse - abs(amps) for amps in current)
+                balanced = split == (1 / 3, 1 / 3, 1 / 3)
+                plant = None if balanced else tuple(sale_kw * part for part in split)
+                look = inputs(battery, T0, "hold", headroom_a=headroom, power_kw=-sale_kw, plant_phase_kw=plant,
+                              volts_between_phases=volts)
+                if hold_headroom_ok(look, from_sale=True):
+                    checked += 1
+                    assert max(house) <= fuse - HEADROOM_MARGIN_A + 1e-9, (sale_kw, split, house)
+    assert checked > 20
 
 
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:

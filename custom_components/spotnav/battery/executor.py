@@ -860,25 +860,49 @@ def phase_charge_kw(
     return rates, None
 
 
-def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0) -> bool:
-    """Whether a hold may start (or a lifted one hold again, or a hold be changed into): the headroom keeps
-    `HEADROOM_MARGIN_A` once the battery stops covering what it discharges now.
+def cover_a(inputs: ExecInputs, *, sale: bool = False) -> float:
+    """What the battery's discharge now may give the most loaded phase (A): what comes back on it once the battery
+    stops covering. All of it on one phase (kW·1000 / the phase voltage): a SigenStor covers each phase on its own,
+    and the battery's power per phase is not known. A running sale (`sale`) on a plant that spreads its power evenly
+    over three phases (`ExecInputs.charge_phases`) gives each phase a third, unless the plant's own power per phase
+    (`ExecInputs.plant_phase_kw`) shows more on one: that phase's output is then counted, at most the discharge (the
+    sun's share of it is counted too, so the figure is never under the truth). 0 when the battery does not
+    discharge."""
+    power = inputs.facts.power_kw
+    if power is None or not math.isfinite(power) or power >= 0 or inputs.volts_between_phases <= 0:
+        return 0.0
+    kw = -power
+    if sale and inputs.charge_phases >= 3:
+        share = kw / 3.0
+        plant = inputs.plant_phase_kw
+        if plant is not None and _finite3(plant):
+            share = max(share, min(kw, max(plant)))
+        kw = share
+    return kw * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
 
-    The discharge is counted as if it were all on one phase (kW·1000 / the phase voltage): a SigenStor covers each
-    phase on its own, so what it gives may be one phase's load, and the battery's power per phase is not known.
+
+def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: bool = False) -> bool:
+    """Whether a hold may start (or a lifted one hold again, or a hold be changed into): the headroom keeps
+    `HEADROOM_MARGIN_A` once the battery stops covering what it discharges now (`cover_a`; `from_sale`: the
+    discharge now is a running sale's).
 
     A sale (`sale_kw`, its rate) uses the same rule less the sale's own share on each phase: spread evenly over a
     plant's three phases it still gives that back on the loaded one. A plant on fewer phases gets no share (the
     phase it puts out on is not known)."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
-    extra_a = 0.0
-    power = inputs.facts.power_kw
-    if power is not None and power < 0:
-        extra_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
+    return inputs.headroom_a - uncovered_a(inputs, sale_kw, from_sale=from_sale) >= HEADROOM_MARGIN_A
+
+
+def uncovered_a(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: bool = False) -> float:
+    """What the start rule (`hold_headroom_ok`) counts as coming back on the most loaded phase (A): the cover now
+    (`cover_a`) less a sale's own share on each phase at `sale_kw` (a plant on three phases only)."""
+    if inputs.volts_between_phases <= 0:
+        return 0.0
+    extra_a = cover_a(inputs, sale=from_sale)
     if sale_kw > 0 and inputs.charge_phases >= 3:
         extra_a = max(extra_a - sale_kw * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases), 0.0)
-    return inputs.headroom_a - extra_a >= HEADROOM_MARGIN_A
+    return extra_a
 
 
 # --- helpers -------------------------------------------------------------------------------------------------------
@@ -2065,15 +2089,17 @@ class Executor:
         ):
             # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
             return events
+        sale = state.action == ACTION_EXPORT_DISCHARGE
         if action != state.action and state.action != ACTION_GRID_CHARGE and (
-            (action == ACTION_HOLD and not hold_headroom_ok(inputs))
+            (action == ACTION_HOLD and not hold_headroom_ok(inputs, from_sale=sale))
             or (action == ACTION_EXPORT_DISCHARGE and not self._sale_headroom_ok(inputs))
         ):
             # A change into a hold or a sale from an action in which the battery may cover the house is held to that
             # action's start rule: the cover the battery gives now must not come off a phase that cannot carry it.
             # Handed back (plain self-consumption) instead. A sale covers the house and the cars behind the meter
-            # before it exports, so a sale into a hold is judged too. Only from a grid charge is the change made
-            # directly: ending a charge only frees room.
+            # before it exports, so a sale into a hold is judged too (on a plant known to spread a sale evenly over
+            # three phases, a third of it on each: `cover_a`). Only from a grid charge is the change made directly:
+            # ending a charge only frees room.
             return events + self._begin_restore(now, "headroom_too_small")
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
