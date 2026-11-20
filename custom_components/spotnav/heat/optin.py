@@ -1,7 +1,8 @@
 """The heat pump's control entities that ship disabled, and enabling them on the person's confirm (the heat side of
 `battery/optin.py`, the same pattern).
 
-`nibe_heatpump` creates every coil entity disabled in the entity registry. When the person turns "Styr värmen" on,
+`nibe_heatpump` creates every coil entity disabled in the entity registry, and `thermiagenesis` every number and
+sensor (it then does not even poll their registers). When the person turns "Styr värmen" on,
 the card lists the chosen path's disabled ones and asks; only on that confirm does `async_enable` clear `disabled_by`
 for exactly those entities and reload the integration's config entry once (Home Assistant would do it itself 30 s
 later). The check then runs as usual. Turning control off leaves them enabled. Nothing here runs without the confirm,
@@ -37,15 +38,26 @@ ENABLE_KEYS: Final[Mapping[tuple[str, str], tuple[tuple[str, str], ...]]] = {
     ),
     ("nibe_s", PATH_OFFSET): (("number", "40031"), ("sensor", "31018")),
     ("nibe_f", PATH_OFFSET): (("number", "47011"), ("sensor", "43009")),
+    # The comfort wheel, the calculated supply the check judges it by, and the demand in progress (the check waits
+    # for heating).
+    ("thermia_genesis", PATH_OFFSET): (
+        ("number", "holding_comfort_wheel_setting"),
+        ("sensor", "input_system_supply_line_calculated_set_point"),
+        ("sensor", "input_first_prioritised_demand"),
+    ),
 }
+
+#: The brands whose unique ids end in `_<key>` (`adapters._under`); the others' in `-<key>` (`adapters._dash`).
+_UNDERSCORE_BRANDS: Final = frozenset({"thermia_genesis"})
 
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).
 _LIFTABLE: Final = (er.RegistryEntryDisabler.INTEGRATION, er.RegistryEntryDisabler.USER)
 
 
-def _match(domain: str, key: str) -> Match:
-    """`<prefix>-<key>`, as `adapters._dash`."""
-    return Match((domain,), re.compile(rf"-{re.escape(key.lower())}$"))
+def _match(domain: str, key: str, brand: str) -> Match:
+    """`<prefix>-<key>` as `adapters._dash`, or `<prefix>_<key>` as `adapters._under` for `_UNDERSCORE_BRANDS`."""
+    separator = "_" if brand in _UNDERSCORE_BRANDS else "-"
+    return Match((domain,), re.compile(rf"{separator}{re.escape(key.lower())}$"))
 
 
 def disabled_control_entities(hass: HomeAssistant, config: HeatConfig) -> tuple[str | None, list[er.RegistryEntry]]:
@@ -59,7 +71,7 @@ def disabled_control_entities(hass: HomeAssistant, config: HeatConfig) -> tuple[
     brand = None
     for adapter in adapters_for(control.platform):
         keys = ENABLE_KEYS.get((adapter.brand, config.control_path), ())
-        if any(_match(domain, key).matches(control.domain, str(control.unique_id or "")) for domain, key in keys):
+        if any(_match(domain, key, adapter.brand).matches(control.domain, str(control.unique_id or "")) for domain, key in keys):
             brand = adapter.brand
             break
     if brand is None:
@@ -71,7 +83,7 @@ def disabled_control_entities(hass: HomeAssistant, config: HeatConfig) -> tuple[
     ]
     found: list[er.RegistryEntry] = []
     for domain, key in ENABLE_KEYS[(brand, config.control_path)]:
-        match = _match(domain, key)
+        match = _match(domain, key, brand)
         candidates = sorted(
             (entry for entry in entries if match.matches(entry.domain, str(entry.unique_id or ""))),
             key=lambda entry: entry.entity_id,
