@@ -169,11 +169,12 @@ night that ends on it. SpotNav finds the holidays itself, in this order:
 1. A **Workday** binary sensor (Home Assistant's Workday integration), so its own settings count: the one for Home
    Assistant's country when there are several, else the only one; a sensor with a day offset is not used. A day it
    calls no workday although its weekday is one of its work days is a holiday. Christmas Eve, Midsummer Eve and New
-   Year's Eve are only in its *de facto* holidays category: add that category (or the dates) in the sensor's
-   options where your operator counts them.
+   Year's Eve are only in its *de facto* holidays category, which the sensor leaves out unless chosen. Where your
+   operator counts Christmas Eve and New Year's Eve as red days (Göteborg Energi does), add the *de facto*
+   category in the sensor's options, or add the dates as holidays of their own.
 2. Else the **holiday calendar** the house load forecast reads (Home Assistant's Holiday integration). For Sweden,
-   Christmas Eve is added: Göteborg Energi counts it as a red day, and the Holiday integration leaves it out
-   unless its de facto category is chosen.
+   Christmas Eve and New Year's Eve are added: Göteborg Energi counts both as red days, and the Holiday
+   integration leaves them out unless its de facto category is chosen.
 3. Else none: a holiday counts as the weekday it falls on.
 
 The dates (about forty days back and ahead) are read once a day and are in the site's diagnostics (`holidays`).

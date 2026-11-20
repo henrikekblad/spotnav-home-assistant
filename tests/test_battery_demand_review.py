@@ -171,12 +171,17 @@ def test_the_slots_take_the_hours_hard_cap_and_soft_ceiling() -> None:
     # A soft ceiling never above the hour's hard cap; a ceiling at price 0 is none.
     assert [slot.soft_cap_kw for slot in slots] == [3.0, 6.0, None, None]
     assert [slot.peak_price for slot in slots] == [LAMBDA_TID, LAMBDA_TID, 0.0, 0.0]
+    # The day a slot's peak counts toward: the ceiling's own, else the hour's local day; none without a ceiling.
+    assert [slot.peak_day for slot in slots] == [DAY, DAY, None, None]
+    eve = DAY - timedelta(days=1)
+    counted, _ = build_slots(MIDNIGHT, prices, house, None, [], 13.8, TZ, ceilings={MIDNIGHT: (3.0, LAMBDA_TID, eve)})
+    assert counted[0].peak_day == eve
 
 
 def test_the_ceiling_in_minor_units_and_the_house_at_p90_in_counted_hours() -> None:
     hour = MIDNIGHT + timedelta(hours=17)
     ceilings = ceilings_minor({hour: HourCeiling(2.4, 45.0), MIDNIGHT: HourCeiling(1.0, 0.0)})
-    assert ceilings == {hour: (2.4, 4500.0)}
+    assert ceilings == {hour: (2.4, 4500.0, None)}
 
     class Band:
         def bounds(self, value: float, start: datetime) -> tuple[float, float]:

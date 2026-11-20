@@ -7,12 +7,14 @@ day the debug log says what the plans as made would cost against it.
   month's hours the tracker keeps (each at its floor, `demand_cost.part_cost`), the house's history (the tracker's
   two months, `HourMean.house_kw`: the import less the chargers) and the house forecast the import target counts on
   without the heat relay's change (`SiteHouseForecast.plan_kw_by_hour(heat=False)`), taken down to its
-  `PREDICTED_QUANTILE` (p25) with the house forecast's learnt error band at that quantile; while no band is learnt,
-  the forecast itself.
+  `PREDICTED_QUANTILE` (p25) with the house forecast's learnt error band at that quantile (while no band is learnt,
+  the forecast itself), plus the cars' installed plans (`with_cars`): a fixed load the battery plan never moves, so
+  a day a car will charge into its peak anyway is known as such and its hours are not shaved for nothing.
 * **Hours.** The running hour on, `HORIZON_H` of them, within the running month only: a later month's hours start
   from nothing and get their ceiling once it begins (`threshold` is the month's).
-* **Refreshed** when the inputs move: a new hour, a completed hour, a new house forecast or a change of the parts
-  (`SiteDemandCeiling.refresh`, from the site's measurement tick); never more than once per hour otherwise.
+* **Refreshed** when the inputs move: a new hour, a completed hour, a new house forecast, a change of the cars'
+  plans or of the parts (`SiteDemandCeiling.refresh`, from the site's measurement tick); never more than once per
+  hour otherwise.
 * **The plans against it** (`plan_cost`): per day of the horizon, the highest hour of what the plans as made import
   (the house forecast as the plans count on it, the cars' installed plans and the battery's planned grid charge, in
   shadow) among the hours with a ceiling, and what raising the day's peak there would cost (`raise_cost`). Logged
@@ -57,8 +59,8 @@ class CeilingState:
     parts: tuple[PartCost, ...]
     #: Per hour start (UTC) with a priced part counting it: S_h (kW) and λ_h (the area's major unit per kW).
     hours: Mapping[datetime, HourCeiling]
-    #: The house forecast the predicted peaks were taken from (kW, at `PREDICTED_QUANTILE`), and whether a learnt
-    #: band took it down to that quantile.
+    #: The house forecast the predicted peaks were taken from (kW, at `PREDICTED_QUANTILE`, the cars' plans added),
+    #: and whether a learnt band took it down to that quantile.
     house: Mapping[datetime, float]
     band: bool
 
@@ -160,6 +162,17 @@ def plan_cost(
     return [best[day] for day in sorted(best)]
 
 
+def with_cars(
+    by_hour: Mapping[datetime, float], windows: Sequence[tuple[datetime, datetime, float]]
+) -> dict[datetime, float]:
+    """The house forecast per hour with the cars' planned charge in that hour added (`(start, end, kW)` windows)."""
+    from ..battery.plan_shadow import car_kw_in  # noqa: PLC0415 - it imports the battery plan
+
+    if not windows:
+        return dict(by_hour)
+    return {start: kw + car_kw_in(start, start + HOUR, windows) for start, kw in by_hour.items()}
+
+
 def p25_house(
     by_hour: Mapping[datetime, float], low: Callable[[float, datetime], float] | None
 ) -> dict[datetime, float]:
@@ -199,7 +212,8 @@ class SiteDemandCeiling:
         components = site_demand_components(site.hass, site.entry_id)
         forecast = site.house_forecast
         made = getattr(getattr(forecast, "forecast", None), "made_at", None)
-        key = (components, hour_start(now, tz), len(tracker.hours), made, tz)
+        windows = _car_windows(site)
+        key = (components, hour_start(now, tz), len(tracker.hours), made, tuple(windows), tz)
         if key == self._key:
             return self.state
         self._key = key
@@ -207,7 +221,7 @@ class SiteDemandCeiling:
             self.state, self.reason = None, "no_parts"
             return None
         low = _band_low(forecast, now)
-        house = p25_house(forecast.plan_kw_by_hour(now, heat=False), low)
+        house = with_cars(p25_house(forecast.plan_kw_by_hour(now, heat=False), low), windows)
         self.state = ceiling_state(
             components,
             tracker.month_hours(now),
@@ -270,19 +284,25 @@ def _band_low(forecast: Any, now: datetime) -> Callable[[float, datetime], float
     return lambda value, start: band.bounds(value, start)[0]
 
 
+def _car_windows(site: Any) -> list[tuple[datetime, datetime, float]]:
+    """The cars' installed plans as `(start, end, kW)` windows; none where they cannot be read."""
+    from ..battery.plan_runtime import site_car_windows  # noqa: PLC0415 - it imports the site
+
+    try:
+        return site_car_windows(site.hass, site)
+    except Exception:  # noqa: BLE001 - no car plan: none counted
+        return []
+
+
 def planned_import(site: Any, now: datetime) -> Callable[[datetime], float | None]:
     """What the plans as made import in the hour starting at `start` (kW): the house forecast as the plans count on
     it, the cars' installed plans and the battery's planned grid charge; `None` for an hour the forecast does not
     know."""
-    from ..battery.plan_runtime import site_car_windows  # noqa: PLC0415 - it imports the site
     from ..battery.plan_shadow import car_kw_in  # noqa: PLC0415
     from ..heat.runtime import battery_charge_by_hour  # noqa: PLC0415
 
     house = site.house_forecast.plan_kw_by_hour(now)
-    try:
-        windows = site_car_windows(site.hass, site)
-    except Exception:  # noqa: BLE001 - no car plan: none counted
-        windows = []
+    windows = _car_windows(site)
     plan = getattr(site.battery_shadow, "plan", None)
     battery = battery_charge_by_hour(getattr(plan, "plan", ()) or ())
 

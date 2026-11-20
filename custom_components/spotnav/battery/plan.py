@@ -16,12 +16,16 @@ Pure: no `hass`, no clock, no storage. A shadow: it plans and prices, it writes 
   back (less charge, or more discharge), and a slot where even a full discharge cannot keep under it is marked
   `over_cap` (the house breaks the cap there, never the plan). An export above its cap is cut back the same way; sun
   that still does not fit is curtailed.
-* **The demand charge** (`PlanSlot.soft_cap_kw`, `peak_price`; `plans/v3_power_tariff.md` §3): in a slot with a
-  priced soft ceiling, the import above it costs `peak_price` per kW for each hour it lasts, on top of the energy
-  (`PlanRun.demand`, reported apart like the wear but money). One action more there, `ACTION_SHAVE`: discharge just
-  enough to bring the grid down to the ceiling. A peak is per day, so a slot's penalty over-counts several high
-  quarters of one day: the cautious side at these prices. A slot without a priced ceiling is planned exactly as
-  before.
+* **The demand charge** (`PlanSlot.soft_cap_kw`, `peak_price`, `peak_day`; `plans/v3_power_tariff.md` §3): the bill
+  counts each day's highest hour, so the plan charges only what raises the day's peak: a slot whose import takes the
+  day's highest so far (`PlanRequest.peak_now_kw` for the running day, else nothing) above both it and the slot's
+  soft ceiling S costs `peak_price · (max(new peak, S) − max(old peak, S))`, on top of the energy (`PlanRun.demand`,
+  reported apart like the wear but money). The search carries the day's peak as a second state from a day's second
+  priced slot to its last, at `PlanRequest.peak_steps` steps between the day's lowest ceiling and the highest import
+  its slots can reach, read off by linear interpolation as the energy is; forwards it follows the exact peak. A
+  quarter's import stands for its hour's mean (the cautious side when the quarters of an hour differ). One action
+  more in a priced slot, `ACTION_SHAVE`: discharge just enough to bring the grid down to the ceiling, or to the day's
+  peak so far where that is higher. A request without a priced ceiling is planned exactly as before.
 * **Money.** Import at `buy`, export at `sell`. The cycle cost (`cycle_cost` per kWh charged or discharged) steers the
   search against churn but is reported apart (`wear`), never as money; so does the spread gate's margin
   (`export_hurdle` per kWh the battery sells, reported as `hurdle`).
@@ -241,8 +245,7 @@ def _apply(
     wear = abs(power) * hours * cycle_cost
     # What the battery itself sold: its discharge beyond the site's own deficit.
     sold = max(0.0, min(-power, -grid)) * hours
-    peak = slot.peak_price * max(0.0, grid - slot.soft_cap_kw) * hours if slot.priced_ceiling else 0.0  # type: ignore[operator]
-    return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle, peak)
+    return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle)
 
 
 def run_slot(
@@ -325,11 +328,17 @@ def self_consumption(request: PlanRequest) -> PlanRun:
     request.validate()
     battery = request.battery
     soc = battery.usable_kwh * request.soc_now_pct / 100
+    days = _PeakDays(request) if _priced(request) else None
+    peak = 0.0
     decisions: list[SlotDecision] = []
     outcomes: list[_Outcome] = []
-    for slot in request.slots:
+    for index, slot in enumerate(request.slots):
         action, power = _candidates(slot, battery, soc, request)[0]
         outcome = _apply(slot, battery, soc, action, power, request.cycle_cost)
+        if days is not None:
+            peak = days.start(index, peak)
+            charge, peak = _raise(slot, peak, outcome.grid_kw)
+            outcome = outcome._replace(peak=charge)
         decisions.append(_decision(slot, battery, outcome))
         outcomes.append(outcome)
         soc = outcome.soc_end_kwh
@@ -363,6 +372,8 @@ def plan_battery(
     end_value = request.end_value if request.end_value is not None else default_end_value(request.slots, battery)
     grid = _Grid(battery, request.soc_steps)
     reserves = _reserves(request)
+    if _priced(request):
+        return _plan_peaks(request, keep, keep_min_gain, baseline, end_value, grid, reserves)
 
     # Backwards: the value-to-go at each grid point, from the horizon's end value.
     values: list[list[float]] = [[] for _ in range(len(request.slots) + 1)]
@@ -454,3 +465,230 @@ def plan_mode(
         )
         return BatteryPlan(plan=base, baseline=base, end_value=end_value, battery=request.battery)
     return plan_battery(mode_request(request, mode, wear, sell_margin), keep=keep, keep_min_gain=keep_min_gain, baseline=base)
+
+
+# ------------------------------------------------------------------------------------------------ the demand charge
+
+
+def _priced(request: PlanRequest) -> bool:
+    return any(slot.priced_ceiling for slot in request.slots)
+
+
+def _raise(slot: PlanSlot, peak: float, grid_kw: float) -> tuple[float, float]:
+    """What an import of [grid_kw] in [slot] adds to the demand charge when the day's peak so far is [peak], and the
+    day's peak after it (see the module). A slot without a priced ceiling adds nothing and leaves the peak."""
+    if not slot.priced_ceiling:
+        return 0.0, peak
+    floor = max(peak, slot.soft_cap_kw)  # type: ignore[type-var]
+    charge = slot.peak_price * (grid_kw - floor) if grid_kw > floor else 0.0
+    return charge, grid_kw if grid_kw > peak else peak
+
+
+def _reach(slot: PlanSlot, battery: BatteryParams) -> float:
+    """The highest import [slot] can come to: a full grid charge, held to the import cap unless even a full
+    discharge breaks it."""
+    high = slot.net_kw + battery.max_charge_kw
+    cap = slot.import_cap_kw
+    if cap is not None:
+        high = max(min(high, cap), slot.net_kw - battery.max_discharge_kw)
+    return high
+
+
+class _PeakDays:
+    """The days a demand charge counts, as the search tracks their peaks (see the module): per slot, the peaks its
+    value-to-go is kept at (`levels`): every step from a day's second priced slot to its last, the day's starting peak
+    up to its first, and a single row (the peak changes nothing) after its last."""
+
+    def __init__(self, request: PlanRequest) -> None:
+        slots = request.slots
+        battery = request.battery
+        self.keys: list[object] = [
+            slot.peak_day if slot.peak_day is not None else index for index, slot in enumerate(slots)
+        ]
+        low: dict[object, float] = {}
+        high: dict[object, float] = {}
+        first: dict[object, int] = {}
+        last: dict[object, int] = {}
+        for index, slot in enumerate(slots):
+            if not slot.priced_ceiling:
+                continue
+            key = self.keys[index]
+            low[key] = min(low.get(key, math.inf), slot.soft_cap_kw)  # type: ignore[type-var]
+            high[key] = max(high.get(key, -math.inf), _reach(slot, battery))
+            first.setdefault(key, index)
+            last[key] = index
+        self.init = dict(low)
+        head = self.keys[0]
+        if request.peak_now_kw is not None and head in low:
+            self.init[head] = max(low[head], request.peak_now_kw)
+        steps = request.peak_steps
+        self.levels: list[tuple[float, ...]] = []
+        for index, key in enumerate(self.keys):
+            if key in first and first[key] < index <= last[key]:
+                bottom, top = low[key], max(high[key], self.init[key])
+                if top - bottom > _SAME_KW:
+                    self.levels.append(tuple(bottom + (top - bottom) * k / steps for k in range(steps + 1)))
+                else:
+                    self.levels.append((bottom,))
+            elif key in first and index <= first[key]:
+                self.levels.append((self.init[key],))
+            else:
+                self.levels.append((0.0,))
+
+    def start(self, index: int, peak: float) -> float:
+        """The day's peak entering slot [index]: its day's starting peak where a new day begins, else [peak]."""
+        if index == 0 or self.keys[index] != self.keys[index - 1]:
+            return self.init.get(self.keys[index], 0.0)
+        return peak
+
+
+def _soc_at(grid: _Grid, soc_kwh: float) -> tuple[int, float]:
+    """Where [soc_kwh] falls on the energy grid: the step below and the share of the way to the next."""
+    position = (soc_kwh - grid.low) / grid.step
+    if position <= 0:
+        return 0, 0.0
+    if position >= grid.steps:
+        return grid.steps, 0.0
+    k = int(position)
+    return k, position - k
+
+
+def _row_value(row: Sequence[float], k: int, frac: float) -> float:
+    return row[k] + (row[k + 1] - row[k]) * frac if frac else row[k]
+
+
+def _value_at(rows: Sequence[Sequence[float]], levels: Sequence[float], peak: float, k: int, frac: float) -> float:
+    """The value-to-go at the energy point (k, frac) and the day's [peak], linear between the peak levels."""
+    if len(levels) == 1:
+        return _row_value(rows[0], k, frac)
+    position = (peak - levels[0]) / (levels[-1] - levels[0]) * (len(levels) - 1)
+    if position <= 0:
+        return _row_value(rows[0], k, frac)
+    if position >= len(levels) - 1:
+        return _row_value(rows[-1], k, frac)
+    j = int(position)
+    share = position - j
+    below = _row_value(rows[j], k, frac)
+    return below + (_row_value(rows[j + 1], k, frac) - below) * share if share else below
+
+
+def _shave_to(slot: PlanSlot, battery: BatteryParams, soc_kwh: float, peak: float) -> float | None:
+    """The discharge that brings [slot]'s import down to the day's [peak] where that is above its soft ceiling;
+    `None` where there is nothing of the kind to try."""
+    if not slot.priced_ceiling or slot.net_kw <= peak + _SAME_KW:
+        return None
+    if peak <= slot.soft_cap_kw + _SAME_KW:  # type: ignore[operator]
+        return None
+    _charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
+    power = -min(slot.net_kw - peak, discharge_lim)
+    return power if power < -_SAME_KW else None
+
+
+def _best_peak(
+    slot: PlanSlot,
+    request: PlanRequest,
+    soc_kwh: float,
+    peaks: Sequence[float],
+    after: Sequence[Sequence[float]],
+    after_levels: Sequence[float],
+    grid: _Grid,
+    reserve: float | None,
+) -> list[tuple[_Outcome, float]]:
+    """Per day's peak in [peaks]: the best outcome from [soc_kwh], and its total with the value-to-go."""
+    battery = request.battery
+    cycle_cost, hurdle = request.cycle_cost, request.export_hurdle
+    tried = []
+    for action, power in _candidates(slot, battery, soc_kwh, request, reserve):
+        outcome = _apply(slot, battery, soc_kwh, action, power, cycle_cost, hurdle)
+        tried.append((outcome, outcome.cost + outcome.wear + outcome.hurdle, *_soc_at(grid, outcome.soc_end_kwh)))
+    priced = slot.priced_ceiling
+    out: list[tuple[_Outcome, float]] = []
+    for peak in peaks:
+        options = tried
+        power = _shave_to(slot, battery, soc_kwh, peak)
+        if power is not None:
+            outcome = _apply(slot, battery, soc_kwh, ACTION_SHAVE, power, cycle_cost, hurdle)
+            extra = (outcome, outcome.cost + outcome.wear + outcome.hurdle, *_soc_at(grid, outcome.soc_end_kwh))
+            options = [*tried, extra]
+        best: _Outcome | None = None
+        best_total = 0.0
+        best_charge = 0.0
+        for outcome, money, k, frac in options:
+            if priced:
+                charge, new = _raise(slot, peak, outcome.grid_kw)
+            else:
+                charge, new = 0.0, peak
+            total = money + charge + _value_at(after, after_levels, new, k, frac)
+            if best is None or total < best_total - _TIE:
+                best, best_total, best_charge = outcome, total, charge
+        assert best is not None  # self-consumption is always open
+        out.append((best._replace(peak=best_charge), best_total))
+    return out
+
+
+def _plan_peaks(
+    request: PlanRequest,
+    keep: tuple[str, float] | None,
+    keep_min_gain: float,
+    baseline: PlanRun | None,
+    end_value: float,
+    grid: _Grid,
+    reserves: Sequence[float] | None,
+) -> BatteryPlan:
+    """`plan_battery` with the day's peak as a second state (see the module)."""
+    battery = request.battery
+    days = _PeakDays(request)
+    count = len(request.slots)
+    values: list[list[list[float]]] = [[] for _ in range(count + 1)]
+    values[-1] = [[-end_value * point for point in grid.points]]
+    levels: list[Sequence[float]] = [*days.levels, (0.0,)]
+    for index in range(count - 1, -1, -1):
+        slot = request.slots[index]
+        reserve = None if reserves is None else reserves[index]
+        peaks = levels[index]
+        rows: list[list[float]] = [[] for _ in peaks]
+        for point in grid.points:
+            found = _best_peak(slot, request, point, peaks, values[index + 1], levels[index + 1], grid, reserve)
+            for row, (_outcome, total) in zip(rows, found):
+                row.append(total)
+        values[index] = rows
+
+    def forward(first: tuple[str, float] | None) -> PlanRun:
+        soc = battery.usable_kwh * request.soc_now_pct / 100
+        peak = 0.0
+        decisions: list[SlotDecision] = []
+        outcomes: list[_Outcome] = []
+        for index, slot in enumerate(request.slots):
+            peak = days.start(index, peak)
+            if index == 0 and first is not None:
+                action, charge_kw = first
+                power = action_power(slot, battery, soc, action, charge_kw)
+                outcome = _apply(slot, battery, soc, action, power, request.cycle_cost, request.export_hurdle)
+                charge, _new = _raise(slot, peak, outcome.grid_kw)
+                outcome = outcome._replace(peak=charge)
+            else:
+                reserve = None if reserves is None else reserves[index]
+                found = _best_peak(slot, request, soc, (peak,), values[index + 1], levels[index + 1], grid, reserve)
+                outcome = found[0][0]
+            _charge, peak = _raise(slot, peak, outcome.grid_kw)
+            decisions.append(_decision(slot, battery, outcome))
+            outcomes.append(outcome)
+            soc = outcome.soc_end_kwh
+        return _run(decisions, outcomes, battery, soc)
+
+    best = forward(None)
+    kept = False
+    keep_gain: float | None = None
+    if keep is not None:
+        held = forward(keep)
+        keep_gain = objective(held, battery, end_value) - objective(best, battery, end_value)
+        if keep_gain <= keep_min_gain:
+            best, kept = held, True
+    return BatteryPlan(
+        plan=best,
+        baseline=self_consumption(request) if baseline is None else baseline,
+        end_value=end_value,
+        battery=battery,
+        kept=kept,
+        keep_gain=keep_gain,
+    )

@@ -12,9 +12,9 @@ The dates are read here once a day and set on each window when it is resolved (`
      no workday although its weekday is one of its work days (`workday.check_date`) is a holiday; its other days
      off (a Saturday, a Sunday) are left to the window's own days.
   2. else the **holiday calendar** the house load forecast reads (`site/house_forecast.py:pick_holiday_calendar`,
-     the core Holiday integration), its all-day events. Christmas Eve is added for Sweden: Swedish grid operators
-     (Göteborg Energi) count it as a red day while the Holiday integration lists it only among the de facto
-     holidays, which it leaves out unless chosen.
+     the core Holiday integration), its all-day events. Christmas Eve and New Year's Eve are added for Sweden:
+     Swedish grid operators (Göteborg Energi) count both as red days while the Holiday integration lists them only
+     among the de facto holidays, which it leaves out unless chosen.
   3. else **none**: a holiday counts as the weekday it falls on, as before (the safe side: an hour too many).
 
 * **Span**: `SPAN_BACK_DAYS` before today to `SPAN_AHEAD_DAYS` after, enough for the running month's hours (what is
@@ -80,13 +80,13 @@ def workday_holidays(answers: Mapping[date, bool], work_days: frozenset[int]) ->
 
 
 def calendar_holidays(dates: Iterable[date], country: str | None, first: date, last: date) -> frozenset[date]:
-    """A holiday calendar's dates, with Christmas Eve added for Sweden (see the module)."""
+    """A holiday calendar's dates, with Christmas Eve and New Year's Eve added for Sweden (see the module)."""
     found = set(dates)
     if country == "SE":
         for year in range(first.year, last.year + 1):
-            eve = date(year, 12, 24)
-            if first <= eve <= last:
-                found.add(eve)
+            for eve in (date(year, 12, 24), date(year, 12, 31)):
+                if first <= eve <= last:
+                    found.add(eve)
     return frozenset(found)
 
 

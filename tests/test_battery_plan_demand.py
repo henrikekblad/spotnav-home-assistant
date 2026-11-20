@@ -1,12 +1,12 @@
 """The battery plan with a demand charge priced in (`battery/plan.py`, plan v3_power_tariff step 5): the soft ceiling's
-penalty per slot, the shave action, and nothing changed where no part is priced."""
+penalty on what raises the day's peak, the shave action, and nothing changed where no part is priced."""
 
 from __future__ import annotations
 
 import json
 import random
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -35,7 +35,9 @@ BATTERY = BatteryParams(usable_kwh=10, max_charge_kw=5, max_discharge_kw=5, min_
 LAMBDA = 4500.0
 
 
-def _slots(buy: list[float], house: float | list[float], soft: float | None, price: float = LAMBDA) -> tuple[PlanSlot, ...]:
+def _slots(
+    buy: list[float], house: float | list[float], soft: float | None, price: float = LAMBDA, day: date | None = None
+) -> tuple[PlanSlot, ...]:
     return tuple(
         PlanSlot(
             start=T0 + timedelta(hours=i),
@@ -45,6 +47,7 @@ def _slots(buy: list[float], house: float | list[float], soft: float | None, pri
             house_kw=house[i] if isinstance(house, list) else house,
             soft_cap_kw=soft,
             peak_price=price if soft is not None else 0.0,
+            peak_day=day,
         )
         for i, value in enumerate(buy)
     )
@@ -159,3 +162,51 @@ def test_a_negative_peak_price_or_ceiling_is_refused() -> None:
         replace(slot, peak_price=-1.0).validate()
     with pytest.raises(PlanInputError):
         replace(slot, soft_cap_kw=-1.0).validate()
+    request = PlanRequest(slots=(slot,), battery=BATTERY, soc_now_pct=50)
+    bad_peaks = (replace(request, peak_now_kw=-1.0), replace(request, peak_now_kw=float("nan")))
+    for bad in (*bad_peaks, replace(request, peak_steps=0)):
+        with pytest.raises(PlanInputError):
+            bad.validate()
+
+
+DAY = date(2026, 11, 2)
+
+
+def test_only_what_raises_the_days_peak_is_charged() -> None:
+    # An empty battery, two hours of 6 kW against a 4 kW ceiling: one day's peak of 6 kW, charged once.
+    slots = _slots([200] * 2, 6.0, soft=4.0, day=DAY)
+    run = self_consumption(PlanRequest(slots=slots, battery=BATTERY, soc_now_pct=0))
+    assert [d.demand for d in run.decisions] == pytest.approx([2 * LAMBDA, 0.0])
+    # The same hours on two days: each day's peak is charged.
+    split = (slots[0], replace(slots[1], peak_day=DAY + timedelta(days=1)))
+    run = self_consumption(PlanRequest(slots=split, battery=BATTERY, soc_now_pct=0))
+    assert run.demand == pytest.approx(2 * 2 * LAMBDA)
+    # A running day already at 5 kW: only the last kW is charged.
+    run = self_consumption(PlanRequest(slots=slots, battery=BATTERY, soc_now_pct=0, peak_now_kw=5.0))
+    assert run.demand == pytest.approx(LAMBDA)
+
+
+def test_no_shave_under_a_peak_the_day_has_already_set() -> None:
+    # The running day already peaked at 8 kW: hours of 6 kW raise nothing, so the battery is kept for the dear hour
+    # instead of shaving the cheap ones down to the 4 kW ceiling.
+    slots = _slots([100, 100, 400], 6.0, soft=4.0, day=DAY)
+    request = PlanRequest(slots=slots, battery=BATTERY, soc_now_pct=50, cycle_cost=0, end_value=0, peak_now_kw=8.0)
+    result = plan_battery(request)
+    assert all(d.action != ACTION_SHAVE for d in result.plan.decisions)
+    assert result.plan.decisions[2].battery_kw == pytest.approx(-5.0)
+    assert result.plan.demand == pytest.approx(0.0)
+    # Without that peak the same hours are shaved.
+    fresh = plan_battery(replace(request, peak_now_kw=None))
+    assert any(d.action == ACTION_SHAVE for d in fresh.plan.decisions)
+
+
+def test_shave_down_to_a_peak_the_day_cannot_avoid() -> None:
+    # 12 kW in the first hour: a full discharge (5 kW) still leaves 7 kW, so the day's peak is 7 kW whatever the
+    # battery does. The next hour of 9 kW is shaved to 7 kW (2 kWh), not to the 4 kW ceiling, which the 5 kWh left
+    # could not hold for both hours; the last hour spends the 3 kWh left (nothing is worth keeping at the end).
+    slots = _slots([200] * 3, [12.0, 9.0, 9.0], soft=4.0, day=DAY)
+    result = plan_battery(PlanRequest(slots=slots, battery=BATTERY, soc_now_pct=100, cycle_cost=0, end_value=0))
+    decisions = result.plan.decisions
+    assert [d.grid_kw for d in decisions] == pytest.approx([7.0, 7.0, 6.0])
+    assert decisions[1].action == ACTION_SHAVE
+    assert result.plan.demand == pytest.approx(3 * LAMBDA)

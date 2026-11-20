@@ -26,7 +26,9 @@ from custom_components.spotnav.site.demand_ceiling import (
     p25_house,
     plan_cost,
     SiteDemandCeiling,
+    with_cars,
 )
+from custom_components.spotnav.battery.demand_plan import peak_so_far
 
 TZ = "Europe/Stockholm"
 STOCKHOLM = ZoneInfo(TZ)
@@ -87,6 +89,33 @@ def test_the_plans_cost_is_the_days_worst_hour_over_its_ceiling() -> None:
     (calm,) = plan_cost(ceilings, {local(11, 16, 9): 2.0, local(11, 16, 10): 2.5}.get, TZ)
     assert (calm.at, calm.cost) == (local(11, 16, 10), 0.0)
     assert plan_cost(ceilings, lambda _start: None, TZ) == []
+
+
+def test_the_cars_plans_are_in_the_predicted_peaks() -> None:
+    # A car charging 11 kW from 18:30 to 20:00 today: the 18-19 hour gets half of it, 19-20 all of it.
+    house = {local(11, 16, hour): 2.0 for hour in range(6, 24)}
+    windows = [(local(11, 16, 18) + timedelta(minutes=30), local(11, 16, 20), 11.0)]
+    loaded = with_cars(house, windows)
+    assert loaded[local(11, 16, 18)] == pytest.approx(7.5) and loaded[local(11, 16, 19)] == pytest.approx(13.0)
+    assert loaded[local(11, 16, 20)] == 2.0 and with_cars(house, []) == house
+    # Today's predicted peak is the car's 13 kW, among the three highest days: T rises from 3 kW to 4 kW (the third
+    # of 13, 5 and 4).
+    state = ceiling_state([GBG_TID], MONTH, [], loaded, NOW, TZ)
+    assert state.parts[0].predicted[local(11, 16, 12).astimezone(STOCKHOLM).date()] == pytest.approx(13.0)
+    assert state.parts[0].threshold_kw == pytest.approx(4.0)
+    # Each hour knows the day its peak counts toward.
+    assert state.hours[local(11, 16, 9)].day == local(11, 16, 9).astimezone(STOCKHOLM).date()
+
+
+def test_the_running_days_peak_so_far() -> None:
+    month = [*MONTH, measured(16, 7, 3.5), measured(16, 8, 4.5)]
+    state = ceiling_state([GBG_TID], month, [], {}, local(11, 16, 9), TZ)
+    assert peak_so_far(state.parts, local(11, 16, 9), TZ) == pytest.approx(4.5)
+    # A day that has only exported so far starts from 0.
+    exported = ceiling_state([GBG_TID], [*MONTH, measured(16, 7, -2.0)], [], {}, local(11, 16, 9), TZ)
+    assert peak_so_far(exported.parts, local(11, 16, 9), TZ) == 0.0
+    # Outside the window's hours (a Sunday) no day counts: none.
+    assert peak_so_far(state.parts, local(11, 15, 12), TZ) is None
 
 
 def test_the_house_is_taken_down_to_its_low_quantile_only_with_a_band() -> None:
