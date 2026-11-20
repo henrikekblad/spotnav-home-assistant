@@ -30,7 +30,7 @@ from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.planner import FiscalChoice, power_kw
 from ..pricing.price_repository import PriceRepository
 from ..pricing.price_source import effective_settings
-from ..runtime import charger_data, domain_data
+from ..runtime import charger_data, domain_data, holiday_dates
 from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
 from ..notifications.messages import identify_text
@@ -207,7 +207,7 @@ def price_market(hass: HomeAssistant, charger_id: str) -> PriceMarket | None:
     if area is None:
         return None
     return PriceMarket(
-        repository, area_id, area, time_zones.zone(area.tz), fiscal_choice_for(settings, area)
+        repository, area_id, area, time_zones.zone(area.tz), fiscal_choice_for(settings, area, holiday_dates(hass))
     )
 
 
@@ -250,4 +250,4 @@ def current_fiscal(hass: HomeAssistant, charger_id: str, area_id: str | None = N
     settings = effective_settings(hass, charger_id, store.settings(charger_id))
     chosen = area_id or settings.area_id
     area = None if chosen is None else repository.catalogue_snapshot().area(chosen)
-    return None if area is None else fiscal_choice_for(settings, area)
+    return None if area is None else fiscal_choice_for(settings, area, holiday_dates(hass))

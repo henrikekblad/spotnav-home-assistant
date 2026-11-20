@@ -169,8 +169,14 @@ class HighLoadWindow:
     Whole hours of the area's own clock (`tz`) on some days of the week (`days`) in some months, as
     `high_load_window_problem` states. The hours of a window that wraps over midnight belong to the day they
     start on: 22-06 on weekdays holds Friday night until Saturday 06:00 and not Sunday night, and its morning
-    hours take the month of the evening before. Public holidays count as the weekdays they fall on. `tz` is the
-    area's zone, set when the fees are resolved for an area; a stored window has none.
+    hours take the month of the evening before. `tz` is the area's zone, set when the fees are resolved for an
+    area; a stored window has none.
+
+    `holidays` are the site's public holidays (`site/holidays.py`: a Workday sensor's days off, else the holiday
+    calendar's), set beside `tz` when the window is resolved and never stored. A window on some days of the week
+    (`weekdays`, `mon_sat`) leaves a holiday out as it leaves out a Sunday, as the operators bill ("helgfri
+    vardag"); a night belongs to the day it starts on, so a holiday drops the night that starts on it. A window on
+    all days keeps them. Without any (no source) a holiday counts as the weekday it falls on.
     """
 
     days: str = "weekdays"
@@ -179,6 +185,7 @@ class HighLoadWindow:
     from_hour: int = 7
     to_hour: int = 19
     tz: str | None = None
+    holidays: frozenset[date] = frozenset()
 
     def validated(self) -> HighLoadWindow:
         """The same window, once it names its zone and its fields are a window."""
@@ -200,8 +207,8 @@ class HighLoadWindow:
 
     def window_day(self, start: datetime) -> date | None:
         """The day (on the area's clock) whose window the interval starting at this instant lies in, or `None`
-        when it lies outside the window. A wrapped window's morning hours belong to the day before; every other
-        hour to its own date. A demand charge's "different days" are these days (`planning/demand_charge.py`).
+        when it lies outside the window (or the day is a holiday the window leaves out). A wrapped window's
+        morning hours belong to the day before; every other hour to its own date. A demand charge's "different days" are these days (`planning/demand_charge.py`).
         """
         if self.tz is None:
             _refuse("invalid_fiscal", "a high-load window needs the area's time zone")
@@ -216,6 +223,8 @@ class HighLoadWindow:
         elif hour < self.from_hour:
             return None
         if day.isoweekday() > HIGH_LOAD_DAYS[self.days]:
+            return None
+        if self.days != "all" and day in self.holidays:
             return None
         if self.from_month <= self.to_month:
             in_months = self.from_month <= day.month <= self.to_month

@@ -131,6 +131,7 @@ from ..runtime import (
     controller_for,
     domain_data,
     executor_for,
+    holiday_dates,
     preview_for,
     site_controller_for,
 )
@@ -1237,7 +1238,7 @@ def _capture_dashboard(
     fiscal = (
         None
         if settings is None or area_entry is None
-        else fiscal_choice_for(settings, area_entry)
+        else fiscal_choice_for(settings, area_entry, holiday_dates(hass))
     )
     documents, days = _held_documents(
         repository, area_id, None if area_entry is None else area_entry.tz, now

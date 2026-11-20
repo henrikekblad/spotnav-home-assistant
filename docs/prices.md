@@ -156,9 +156,27 @@ for next time):
   run over midnight, such as 22-06; those night hours belong to the day the window starts on, so weekdays 22-06
   holds Friday night until Saturday 06:00 but not Sunday night, and 31 March 22-06 in a November-to-March window
   holds the morning of 1 April too. In Home Assistant its entities start from weekdays 07-19, November to March.
-  Public holidays count as the weekdays they fall on. There is one window and one high-load fee: where the
-  peak fee differs by season, set the window and fee of the season that matters (for example October to March),
-  and the other months pay the ordinary grid fee.
+  A window on weekdays or Monday to Saturday leaves public holidays out (see below); one on every day keeps them.
+  There is one window and one high-load fee: where the peak fee differs by season, set the window and fee of the
+  season that matters (for example October to March), and the other months pay the ordinary grid fee.
+
+**Public holidays** (no setting). Operators bill weekday hours without public holidays (*helgfri vardag*), so a
+window on weekdays or Monday to Saturday, the high-load fee's and a demand charge part's alike, leaves a public
+holiday out as it leaves out a Sunday: the high-load fee is not charged then and the hours set no peak. A window
+that runs over midnight leaves out the night that starts on the holiday (its morning hours too) and keeps the
+night that ends on it. SpotNav finds the holidays itself, in this order:
+
+1. A **Workday** binary sensor (Home Assistant's Workday integration), so its own settings count: the one for Home
+   Assistant's country when there are several, else the only one; a sensor with a day offset is not used. A day it
+   calls no workday although its weekday is one of its work days is a holiday. Christmas Eve, Midsummer Eve and New
+   Year's Eve are only in its *de facto* holidays category: add that category (or the dates) in the sensor's
+   options where your operator counts them.
+2. Else the **holiday calendar** the house load forecast reads (Home Assistant's Holiday integration). For Sweden,
+   Christmas Eve is added: Göteborg Energi counts it as a red day, and the Holiday integration leaves it out
+   unless its de facto category is chosen.
+3. Else none: a holiday counts as the weekday it falls on.
+
+The dates (about forty days back and ahead) are read once a day and are in the site's diagnostics (`holidays`).
 
 With both, the price of each interval is:
 
@@ -214,7 +232,9 @@ so you can compare it with your operator's figures. In the card's Settings the p
 
 - **Hours that count**: all hours, or only certain hours, set like the high-load hours (the days, the first and
   last month, from and to hour; an end before the start runs over midnight and the night counts as the day it
-  starts on). Public holidays count as the weekdays they fall on.
+  starts on). A part on weekdays or Monday to Saturday leaves public holidays out, found as for the high-load
+  hours ([Public holidays](#a-grid-fee-that-is-a-percentage-of-spot-or-higher-in-high-load-hours)): a holiday
+  hour sets no peak, as on the bill.
 - **Peaks per month**: the highest hour, or the mean of the 3 or 5 highest hours, each on a different day.
 - **Price per kW** in November to March and in April to October, in the area's currency. Either may stay empty;
   nothing is priced with it yet, it is shown beside the part.
@@ -223,6 +243,10 @@ Linköping's alternative tariff (Tekniska verken) is two parts with one peak eac
 45 / 23 kr/kW, and every day 23-06 all year at 12 / 8 kr/kW. Göteborg Energi's standard tariff is one part: all
 hours, the mean of the 3 highest days. A tariff that stacks a winter weekday part on an all-hours part (Karlstad,
 Borås) is two parts.
+
+SpotNav counts the hours on the area's own clock. Göteborg Energi counts its hours in standard time (*normaltid*):
+07-20 in winter time is 08-21 in summer time, so in the last days of March, after the clocks go forward, SpotNav
+may count one hour off (07-08 instead of 20-21) for a part that runs to March.
 
 Under each part the card shows this month's figure and its peaks, for example *This month: 7.0 kW – Tue 22 Sep
 09:00 · 7.0 kW*. An hour is the meter's net import over a clock hour of the area (export in the same hour counts

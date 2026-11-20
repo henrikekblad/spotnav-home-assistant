@@ -244,6 +244,11 @@ def _demand_diagnostics(hass: HomeAssistant, entry: ConfigEntry, controller: Any
         return None
 
 
+def _holiday_diagnostics(hass: HomeAssistant) -> dict[str, Any] | None:
+    source = domain_data(hass).holidays
+    return None if source is None else source.diagnostics()
+
+
 def _load_forecast_diagnostics(controller: Any) -> dict[str, Any] | None:
     try:
         return controller.house_forecast.diagnostics()
@@ -287,6 +292,8 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # Each clock hour's mean import this month, what each demand-charge component bills so far, the running hour
         # with its gaps, and the import target (`site/demand_tracker.py`).
         "demand": None if controller is None else _demand_diagnostics(hass, entry, controller),
+        # The public holidays the high-load windows leave out and where they come from (`site/holidays.py`).
+        "holidays": _part_snapshot(lambda: _holiday_diagnostics(hass)),
         # The house load forecast (`site/house_forecast.py`): its sources (weather entity, holiday calendar), the last
         # forecast for the next 48 hours, and the log of each hour's first forecast with the daily reviews.
         "load_forecast": None if controller is None else _load_forecast_diagnostics(controller),

@@ -573,7 +573,7 @@ published price already holds the grid fee: locked like `transfer`, nothing is a
 `explicit_value` is what is stored (kept while off), `effective_value` what is added (`null` while off or
 included). There is no `suggested` policy: no area suggests either figure. `high_load_window` is `null` or
 `{"days", "from_month", "to_month", "from_hour", "to_hour"}`, all on the area's own clock: `days` is `all`,
-`weekdays` (Monday to Friday; public holidays count as the weekdays they fall on) or `mon_sat`; `from_month` and
+`weekdays` (Monday to Friday; the public holidays SpotNav finds are left out, see `prices.md`) or `mon_sat`; `from_month` and
 `to_month` are 1-12, both included, wrapping over the new year (11 and 3 is November to March, equal is one month,
 1 and 12 is all year); `from_hour` 0-23 and `to_hour` 1-24 are whole hours, and a `from_hour` after `to_hour`
 wraps over midnight (22 and 6 is 22:00-06:00); equal hours are refused. The hours after midnight of such a window

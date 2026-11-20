@@ -105,12 +105,14 @@ def overrides_from_data(area_id: str, data: Mapping[str, Any]) -> AreaAutoSettin
     return fees_from_data(area_id, data)
 
 
-def fiscal_for(overrides: AreaAutoSettings, area: AreaEntry | None) -> FiscalChoice | None:
+def fiscal_for(
+    overrides: AreaAutoSettings, area: AreaEntry | None, holidays: frozenset[date] = frozenset()
+) -> FiscalChoice | None:
     """What the fees resolve to for the area, exactly as a charger's plan resolves them, or `None`
     when one cannot be (a suggestion the area does not publish)."""
     if area is None or area.id != overrides.area_id:
         return None
-    return fiscal_choice_for(AutoSettings(area_id=area.id, overrides=(overrides,)), area)
+    return fiscal_choice_for(AutoSettings(area_id=area.id, overrides=(overrides,)), area, holidays)
 
 
 def price_points(

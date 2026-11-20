@@ -40,6 +40,7 @@ import logging
 import hashlib
 import json
 from dataclasses import dataclass, replace
+from datetime import date
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
@@ -67,7 +68,7 @@ from ..planning.auto_settings import (
     GridTariff,
     SUPPLIER_FEES,
 )
-from ..runtime import domain_data
+from ..runtime import domain_data, holiday_dates
 from .relay_contract import AreaEntry
 
 _LOGGER = logging.getLogger(__name__)
@@ -128,6 +129,8 @@ class PriceSource:
     revision: str
     #: How many times the price entry's area or fees were written in place; 0 for the charger's own settings.
     write_revision: int = 0
+    #: The public holidays the high-load window leaves out (`site/holidays.py`), as read when the source was.
+    holidays: frozenset[date] = frozenset()
 
     @property
     def fiscal(self) -> FiscalChoice | None:
@@ -136,7 +139,9 @@ class PriceSource:
             return None
         from ..planning.auto_controller import fiscal_choice_for  # noqa: PLC0415 - the planner imports this module
 
-        return fiscal_choice_for(AutoSettings(area_id=self.area_id, overrides=(self.overrides,)), self.area)
+        return fiscal_choice_for(
+            AutoSettings(area_id=self.area_id, overrides=(self.overrides,)), self.area, self.holidays
+        )
 
     @property
     def currency(self) -> str | None:
@@ -257,6 +262,7 @@ def _from_entry(hass: HomeAssistant, entry: ConfigEntry, via: str) -> PriceSourc
         area=_area(hass, area_id),
         revision=source_revision(overrides),
         write_revision=price_write_revision(entry),
+        holidays=holiday_dates(hass),
     )
 
 
@@ -300,10 +306,18 @@ def site_price_source(hass: HomeAssistant, site_entry_id: str) -> PriceSource | 
 
 
 def site_demand_components(hass: HomeAssistant, site_entry_id: str) -> tuple[DemandComponent, ...]:
-    """The demand-charge components of the electricity price the site measures for (none without one)."""
+    """The demand-charge components of the electricity price the site measures for (none without one), each window
+    with the installation's public holidays (`site/holidays.py`): a holiday hour no window part counts."""
     source = site_price_source(hass, site_entry_id)
     tariff = None if source is None else source.overrides.grid_tariff
-    return () if tariff is None else tariff.demand
+    if tariff is None:
+        return ()
+    return tuple(
+        component
+        if component.window is None
+        else replace(component, window=replace(component.window, holidays=source.holidays))
+        for component in tariff.demand
+    )
 
 
 def price_source_for(
@@ -330,6 +344,7 @@ def price_source_for(
         overrides=overrides,
         area=_area(hass, settings.area_id),
         revision=source_revision(overrides),
+        holidays=holiday_dates(hass),
     )
 
 

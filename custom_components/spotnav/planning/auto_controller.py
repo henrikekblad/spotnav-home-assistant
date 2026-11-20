@@ -51,7 +51,7 @@ from ..pricing.market_observation import MarketObservation
 from ..pricing.price_refresh import PriceRefreshManager
 from ..pricing.price_source import entry_source_for, PriceSource, SIGNAL_PRICE_SOURCES, with_source
 from ..pricing.relay_contract import AreaEntry
-from ..runtime import charger_data, domain_data
+from ..runtime import charger_data, domain_data, holiday_dates
 from ..execution.controller import CONNECTION_PLUGGED_IN
 from ..sessions.model import STARTED_OTHER
 from ..sessions.recorder import RESET_TOLERANCE_KWH
@@ -1508,7 +1508,7 @@ class AutoPlannerController:
         departure_at = self._departure_instant(settings, calculated_at, entry)
         if departure_at is not None:
             energy["departure_at"] = departure_at
-        fiscal = self._fiscal_for(settings, entry)
+        fiscal = self._fiscal_for(settings, entry, holiday_dates(self._hass))
         if fiscal is None:
             return self._fresh_snapshot(
                 settings,
@@ -2546,7 +2546,9 @@ class AutoPlannerController:
         return reason
 
     @staticmethod
-    def _fiscal_for(settings: AutoSettings, entry: AreaEntry) -> FiscalChoice | None:
+    def _fiscal_for(
+        settings: AutoSettings, entry: AreaEntry, holidays: frozenset[date] = frozenset()
+    ) -> FiscalChoice | None:
         """What the fiscal figures resolve to, or `None` when one cannot be resolved.
 
         Per component: an explicit override wins, else the area's catalogue suggestion, else the
@@ -2570,7 +2572,7 @@ class AutoPlannerController:
         transfer = resolve(overrides.transfer, entry.suggested_grid_fee, locked["transfer"])
         if sentinel in (vat, tax, transfer):
             return None
-        grid = AutoPlannerController._grid_tariff_for(overrides.grid_tariff, entry, locked["transfer"])
+        grid = AutoPlannerController._grid_tariff_for(overrides.grid_tariff, entry, locked["transfer"], holidays)
         supplier = AutoPlannerController._supplier_fees_for(overrides.grid_tariff)
         if grid is None or supplier is None:
             return None
@@ -2602,13 +2604,15 @@ class AutoPlannerController:
         return fields
 
     @staticmethod
-    def _grid_tariff_for(tariff: GridTariff | None, entry: AreaEntry, included: bool) -> dict[str, Any] | None:
+    def _grid_tariff_for(
+        tariff: GridTariff | None, entry: AreaEntry, included: bool, holidays: frozenset[date] = frozenset()
+    ) -> dict[str, Any] | None:
         """The price entry's grid tariff as `FiscalChoice` fields, or `None` when it cannot be resolved.
 
         Nothing without a tariff, and nothing while the area's published price already includes the grid fee
         (locked like the transfer fee). A fee that is on needs its own figure (no area suggests one); the
-        high-load fee also needs its window, which takes the area's zone. A window kept while its fee is off
-        prices nothing and is left out.
+        high-load fee also needs its window, which takes the area's zone and the installation's public holidays
+        (`site/holidays.py`). A window kept while its fee is off prices nothing and is left out.
         """
         if tariff is None or included:
             return {}
@@ -2624,7 +2628,7 @@ class AutoPlannerController:
             fields.update(
                 transfer_high_enabled=True,
                 transfer_high_minor_per_kwh=tariff.transfer_high.value,
-                high_load_window=replace(window, tz=entry.tz),
+                high_load_window=replace(window, tz=entry.tz, holidays=holidays),
             )
         return fields
 
@@ -3706,13 +3710,15 @@ def component_included(entry: AreaEntry | None, component: str) -> bool:
     return entry is not None and entry.includes(INCLUDED_NAME[component])
 
 
-def fiscal_choice_for(settings: AutoSettings, entry: AreaEntry) -> FiscalChoice | None:
+def fiscal_choice_for(
+    settings: AutoSettings, entry: AreaEntry, holidays: frozenset[date] = frozenset()
+) -> FiscalChoice | None:
     """What the fiscal figures resolve to for one area, or `None` when one cannot resolve.
 
     Exposes `AutoPlannerController._fiscal_for` so anything showing a price (the dashboard contract)
     prices it exactly as the plan did.
     """
-    return AutoPlannerController._fiscal_for(settings, entry)
+    return AutoPlannerController._fiscal_for(settings, entry, holidays)
 
 
 async def async_remove_auto_state(hass: HomeAssistant, entry_id: str) -> None:
