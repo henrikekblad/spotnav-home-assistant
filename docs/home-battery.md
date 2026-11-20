@@ -161,6 +161,16 @@ integration (level and power, and what each states of its size and floor: see
 battery plan can run in shadow. It has no control for them and writes nothing to them. Both are read from the
 integration's source and not yet tested on a battery: [tell us](supported.md) how yours reads.
 
+**Read only: FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also the 1KOMMA5 `1K5-HI` units).** SpotNav reads these
+through the FoxESS Modbus integration (`foxess_modbus`): the battery's power and level, its floor (*Min SoC (On Grid)*)
+and, on the three-phase H3 family, the grid per phase for the site's meter. The H3-Pro and H3-Smart (and 1KOMMA5's
+units, which the integration reads as an H3-Smart) report a level per battery pack and none for the whole battery:
+SpotNav combines the packs, weighted by the energy each holds. The size is learnt; the ratings are learnt too, except
+on the H1 and KH once you enable their two sensors *BMS Charge Rate* and *BMS Discharge Rate* (disabled in Home
+Assistant by default). SpotNav has no control for FoxESS and writes nothing to it: the integration's force charge and
+discharge, work mode and charge periods stay yours. Read from the integration's source and not yet tested on a
+battery: [tell us](supported.md) how yours reads.
+
 **Solinteg (MHT, M2HT; also M-TEC Energy Butler and Wattsonic): mapped, never run on a device.** SpotNav has the
 commands for the Solinteg plugin of the SolaX Modbus integration behind the same switch and the same check, read from
 the plugin's source and from owners' notes. Nobody has run them on an inverter yet; the first to do so is a pilot.

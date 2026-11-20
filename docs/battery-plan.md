@@ -41,6 +41,7 @@ brand's integration offers:
 | Enphase | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
 | Sofar (the Sofar plugin of SolaX Modbus) | Runs once the size and the ratings are learnt | Only the level is read, for all battery inputs together. Read from the integration's source, not yet tested on a battery. |
 | Growatt (the Growatt plugin of SolaX Modbus) | Runs once the size and the ratings are learnt | Only the level is read: the SPH and SPA storage inverters and the TL-XH, TL3-XH and WIT hybrids. The off-grid SPF is not read. Not yet tested on a battery. |
+| FoxESS (FoxESS Modbus; also 1KOMMA5's `1K5-HI` units) | Runs once the size and the ratings are learnt | The level is read; on the H3-Pro and H3-Smart it is combined from the battery packs' levels. The size is learnt. The H1 and KH give their BMS's charge and discharge current, disabled in Home Assistant by default: once you enable *BMS Charge Rate* and *BMS Discharge Rate* the ratings are that current times the battery voltage (an estimate), else they are learnt. Read only. Not yet tested on a battery. |
 | Solinteg (the Solinteg plugin of SolaX Modbus; also M-TEC Energy Butler and Wattsonic) | Runs when the battery's BMS reports its limits | The size is read where the inverter's firmware states it (V27.52.3.0 and later), else learnt. The ratings are the BMS's allowed charge and discharge current times the battery voltage; the plan says it is an estimate. Not yet tested on a battery. |
 
 A battery from any other brand has no adapter in SpotNav yet and gets no plan: the integrations above are the whole list. Where the integration also gives the plant's maximum output (Sigenergy does), the plan uses the lower of the battery's rating and that maximum.
@@ -60,7 +61,7 @@ SpotNav reads a reserve only where it knows the integration's entity for it: Sol
 installer password in the integration. Sofar's is its depth of discharge (*BatConfig: Depth of Discharge*) and Growatt's
 TL-XH and TL3-XH's is *EMS Discharging Stop SOC (on grid)*; both are disabled in Home Assistant by default and are read
 once you enable them. Growatt's SPH and SPA give *Load First Battery Minimum SOC*, and Solinteg *Battery SOC Min On Grid*,
-which the inverter applies only while its *Battery SOC Protection On Grid* is on.
+which the inverter applies only while its *Battery SOC Protection On Grid* is on. FoxESS gives *Min SoC (On Grid)*.
 The round trip is assumed to be 90 %. Both are said to be assumed in the card's details.
 
 The plan is made again when the prices change (the next day's at 13:00), every hour with the forecast, when the cars' plans
