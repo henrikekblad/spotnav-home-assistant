@@ -16,6 +16,12 @@ Pure: no `hass`, no clock, no storage. A shadow: it plans and prices, it writes 
   back (less charge, or more discharge), and a slot where even a full discharge cannot keep under it is marked
   `over_cap` (the house breaks the cap there, never the plan). An export above its cap is cut back the same way; sun
   that still does not fit is curtailed.
+* **The demand charge** (`PlanSlot.soft_cap_kw`, `peak_price`; `plans/v3_power_tariff.md` §3): in a slot with a
+  priced soft ceiling, the import above it costs `peak_price` per kW for each hour it lasts, on top of the energy
+  (`PlanRun.demand`, reported apart like the wear but money). One action more there, `ACTION_SHAVE`: discharge just
+  enough to bring the grid down to the ceiling. A peak is per day, so a slot's penalty over-counts several high
+  quarters of one day: the cautious side at these prices. A slot without a priced ceiling is planned exactly as
+  before.
 * **Money.** Import at `buy`, export at `sell`. The cycle cost (`cycle_cost` per kWh charged or discharged) steers the
   search against churn but is reported apart (`wear`), never as money; so does the spread gate's margin
   (`export_hurdle` per kWh the battery sells, reported as `hurdle`).
@@ -46,6 +52,7 @@ from .plan_model import (
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
+    ACTION_SHAVE,
     DEFAULT_SELL_MARGIN,
     EXPORT_OFF,
     BatteryMode,
@@ -75,6 +82,7 @@ class _Outcome(NamedTuple):
     over_cap: bool
     curtailed_kwh: float
     hurdle: float = 0.0
+    peak: float = 0.0
 
 
 def buy_prices(spot_major_per_kwh: Sequence[float], starts: Sequence[datetime], fiscal: FiscalChoice) -> list[float]:
@@ -109,7 +117,9 @@ def action_power(
     Every action but a grid charge follows the slot's load and sun, so a plan made on a forecast is run against
     what really happens by calling this with the real slot. A grid charge asks for [charge_kw] (or the sun's whole
     surplus, if more). A discharge for export asks for all it can, or at most [charge_kw]'s size when one is given
-    (the planned kW, which house first may have held below that).
+    (the planned kW, which house first may have held below that). A shave discharges into the deficit above the
+    slot's soft ceiling, or (replaying a plan, where [charge_kw] is the planned kW) as much as was planned, never more
+    than the deficit; with nothing to shave it stores a sun surplus as a hold does.
     """
     charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
     net = slot.net_kw
@@ -125,6 +135,14 @@ def action_power(
         return min(charge_lim, max(charge_kw, surplus))
     if action == ACTION_EXPORT_DISCHARGE:
         return -min(discharge_lim, abs(charge_kw)) if charge_kw else -discharge_lim
+    if action == ACTION_SHAVE:
+        if charge_kw:
+            want = abs(charge_kw)
+        elif slot.soft_cap_kw is not None:
+            want = max(0.0, net - slot.soft_cap_kw)
+        else:
+            want = 0.0
+        return -min(deficit, want, discharge_lim) if want > 0 else min(surplus, charge_lim)
     raise ValueError(f"unknown action {action!r}")
 
 
@@ -172,6 +190,8 @@ def _candidates(
             power = max(power, -room)
         if reserve is None or -power > max(0.0, slot.net_kw) + _SAME_KW:
             wanted.append((ACTION_EXPORT_DISCHARGE, power))
+    if slot.priced_ceiling and slot.net_kw > (slot.soft_cap_kw or 0.0):
+        wanted.append((ACTION_SHAVE, action_power(slot, battery, soc_kwh, ACTION_SHAVE)))
 
     out: list[tuple[str, float]] = []
     for action, power in wanted:
@@ -221,7 +241,8 @@ def _apply(
     wear = abs(power) * hours * cycle_cost
     # What the battery itself sold: its discharge beyond the site's own deficit.
     sold = max(0.0, min(-power, -grid)) * hours
-    return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle)
+    peak = slot.peak_price * max(0.0, grid - slot.soft_cap_kw) * hours if slot.priced_ceiling else 0.0  # type: ignore[operator]
+    return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle, peak)
 
 
 def run_slot(
@@ -266,7 +287,7 @@ def _best(
     best_total = 0.0
     for action, power in _candidates(slot, battery, soc_kwh, request, reserve):
         outcome = _apply(slot, battery, soc_kwh, action, power, request.cycle_cost, request.export_hurdle)
-        total = outcome.cost + outcome.wear + outcome.hurdle + grid.value(after, outcome.soc_end_kwh)
+        total = outcome.cost + outcome.wear + outcome.hurdle + outcome.peak + grid.value(after, outcome.soc_end_kwh)
         if best is None or total < best_total - _TIE:
             best, best_total = outcome, total
     assert best is not None  # self-consumption is always open
@@ -284,6 +305,7 @@ def _decision(slot: PlanSlot, battery: BatteryParams, outcome: _Outcome) -> Slot
         cost=outcome.cost,
         over_cap=outcome.over_cap,
         curtailed_kwh=outcome.curtailed_kwh,
+        demand=outcome.peak,
     )
 
 
@@ -294,6 +316,7 @@ def _run(decisions: list[SlotDecision], outcomes: list[_Outcome], battery: Batte
         wear=sum(o.wear for o in outcomes),
         end_soc_pct=soc_kwh / battery.usable_kwh * 100,
         hurdle=sum(o.hurdle for o in outcomes),
+        demand=sum(o.peak for o in outcomes),
     )
 
 
@@ -314,9 +337,9 @@ def self_consumption(request: PlanRequest) -> PlanRun:
 
 
 def objective(run: PlanRun, battery: BatteryParams, end_value: float) -> float:
-    """What the search minimises over a run: its money, wear and gate margin, less the stored energy it leaves at
-    `end_value`."""
-    return run.cost + run.wear + run.hurdle - run.end_kwh(battery) * end_value
+    """What the search minimises over a run: its money, wear, gate margin and demand charge above the soft ceilings,
+    less the stored energy it leaves at `end_value`."""
+    return run.cost + run.wear + run.hurdle + run.demand - run.end_kwh(battery) * end_value
 
 
 def plan_battery(
