@@ -1460,10 +1460,20 @@ async def test_the_hours_end_does_not_keep_a_car_the_fuse_lowered(hass: HomeAssi
 
 
 async def test_a_paused_charge_is_counted_at_what_it_resumes_at_and_the_floors_at_nothing(hass: HomeAssistant, monkeypatch) -> None:
-    """A charge paused by load balancing is shared the budget at what it resumes at (16 A here, held to the 7 A the
-    budget leaves), unless it is the car's minimum level's charge, which the target never holds."""
+    """A charge paused by load balancing is shared the budget at what it resumes at (13 A here, not the 16 A the fuse
+    proposes; held to the 7 A the budget leaves), unless it is the car's minimum level's charge, which the target never
+    holds and counts at nothing while it waits."""
     from custom_components.spotnav.execution.controller import ChargingController
+    from custom_components.spotnav.site import import_target
 
+    counted: list[Any] = []
+    original = import_target.share_budget
+
+    def recorded(allowed_w: float, members: Any, **kwargs: Any) -> Any:
+        counted[:] = members
+        return original(allowed_w, members, **kwargs)
+
+    _patch_everywhere(monkeypatch, "share_budget", recorded)
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "personpaused")
         controller = world.halo.controller
@@ -1475,20 +1485,28 @@ async def test_a_paused_charge_is_counted_at_what_it_resumes_at_and_the_floors_a
         monkeypatch.setattr(ChargingController, "charge_origin", property(lambda _self: None))
         monkeypatch.setattr(ChargingController, "paused_charge_origin", property(lambda _self: origin["paused"]))
         monkeypatch.setattr(ChargingController, "paused_by_balancing", property(lambda _self: True))
-        monkeypatch.setattr(ChargingController, "requested_current_a", property(lambda _self: 16))
+        monkeypatch.setattr(ChargingController, "requested_current_a", property(lambda _self: 13))
 
         def share() -> tuple[str, float | None]:
             found = controller.import_target_snapshot()["chargers"][charger]
             return found["action"], found["cap_a"]
 
+        def member() -> tuple[bool, float, float]:
+            """The charger as the budget was shared on the last recompute: holdable, what it wants, what it draws."""
+            (found,) = [m for m in counted if m.charger_entry_id == charger]
+            return found.holdable, found.wants_a, found.draws_a
+
         await world.step()
-        assert share() == ("held", 7.0), "a person's Start paused is counted at what it resumes at"
+        assert member() == (True, 13.0, 0.0), "a person's Start paused is counted at what it resumes at"
+        assert share() == ("held", 7.0)
         origin["paused"] = "min_soc"
         await world.step()
-        assert share() == ("unheld", None), "the floor's charge is not the target's, and draws nothing"
+        assert member() == (False, 0.0, 0.0), "the floor's charge is not the target's, and draws nothing"
+        assert share() == ("unheld", None)
         origin["paused"] = "plan_window"
         await world.step()
-        assert share() == ("held", 7.0), "a plan's paused charge is counted at what it resumes at"
+        assert member() == (True, 13.0, 0.0), "a plan's paused charge is counted at what it resumes at"
+        assert share() == ("held", 7.0)
 
 
 # -- review: a charger the hold cannot act on
