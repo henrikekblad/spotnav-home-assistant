@@ -41,6 +41,11 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         # The plant's total active power target (40001): acts in the same mode; kept at 0, and read by the plain
         # control so a value left there never runs.
         ("number", "plant_active_power_fixed_target"),
+        # Read: the plant's own power per phase (`adapters.SIGENERGY.plant_phase_power`, disabled by default), which
+        # the per-phase control needs and which lets a grid charge from idle count the battery's cover per phase.
+        ("sensor", "plant_phase_a_active_power"),
+        ("sensor", "plant_phase_b_active_power"),
+        ("sensor", "plant_phase_c_active_power"),
     ),
     "solaredge": (
         ("number", "storage_command_timeout"),
