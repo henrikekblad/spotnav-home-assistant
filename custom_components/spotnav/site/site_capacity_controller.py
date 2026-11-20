@@ -6216,9 +6216,13 @@ class SiteCapacityController:
             return None
         # The target as set, less its margin as the hold keeps it (`held_level_kw`): the month's free level lifts the
         # running hour's hold only, and a plan's later hours may be counted by no part, a new day or a new month.
+        return held_level_kw(target_kw), self.plan_minimum_kw(charger_entry_id)
+
+    def plan_minimum_kw(self, charger_entry_id: str) -> float:
+        """The least power the charger charges at (kW): its minimum current on the phases it is reckoned on."""
+        wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         phases, _phase = self.reckoned_phases(charger_entry_id)
-        minimum_kw = member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
-        return held_level_kw(target_kw), minimum_kw
+        return member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
 
     def _target_start_cap(self, charger_entry_id: str) -> float | None:
         """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses

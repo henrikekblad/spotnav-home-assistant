@@ -9,7 +9,10 @@ day the debug log says what the plans as made would cost against it.
   without the heat relay's change (`SiteHouseForecast.plan_kw_by_hour(heat=False)`), taken down to its
   `PREDICTED_QUANTILE` (p25) with the house forecast's learnt error band at that quantile (while no band is learnt,
   the forecast itself), plus the cars' installed plans (`with_cars`): a fixed load the battery plan never moves, so
-  a day a car will charge into its peak anyway is known as such and its hours are not shaved for nothing.
+  a day a car will charge into its peak anyway is known as such and its hours are not shaved for nothing. Beyond
+  the forecast, the cars' charges their weekday habit predicts (`planning/car_days.py`, from the session store's
+  charges of the last four weeks, each plugged in to the charger's daily departure) at the least power each must
+  take in the counted hours.
 * **Hours.** The running hour on, `HORIZON_H` of them, within the running month only: a later month's hours start
   from nothing and get their ceiling once it begins (`threshold` is the month's).
 * **Refreshed** when the inputs move: a new hour, a completed hour, a new house forecast, a change of the cars'
@@ -19,6 +22,10 @@ day the debug log says what the plans as made would cost against it.
   (the house forecast as the plans count on it, the cars' installed plans and the battery's planned grid charge, in
   shadow) among the hours with a ceiling, and what raising the day's peak there would cost (`raise_cost`). Logged
   once per local day in the site's change log (`demand_ceiling`), kept for the debug bundle.
+
+* **The car's ceiling** (`car_inputs`): the same ceiling made without the asking charger's own installed plan (its
+  plan is what is being made), with the house's forecast as the car's plan counts on it and the other cars' plans per
+  hour, for the car's plan under the ceiling in shadow (`planning/car_demand.py`).
 
 Nothing here decides anything a charger, battery or heat pump is told.
 """
@@ -33,6 +40,8 @@ from typing import Any, Final
 
 from .. import time_zones
 from ..planning.auto_settings import DemandComponent
+from ..planning.car_days import Charge, plugged_window, predicted_charges, WEEKS
+from ..planning.car_demand import CarCeiling
 from ..planning.demand_charge import hour_start, HourMean, month_of
 from ..planning.demand_cost import (
     HourCeiling,
@@ -63,6 +72,8 @@ class CeilingState:
     #: and whether a learnt band took it down to that quantile.
     house: Mapping[datetime, float]
     band: bool
+    #: The cars' charges predicted beyond the forecast (`planning/car_days.py`).
+    charges: tuple[Charge, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -71,6 +82,7 @@ class CeilingState:
             "house_quantile": PREDICTED_QUANTILE,
             "band": "learnt" if self.band else "learning",
             "parts": [_part_dict(part) for part in self.parts],
+            "car_charges": [charge.as_dict() for charge in self.charges],
             # Per hour: [start, S_h (kW), λ_h (per kW)].
             "hours": [
                 [start.isoformat(), round(ceiling.kw, 3), round(ceiling.price, 3)]
@@ -106,10 +118,13 @@ def ceiling_state(
     tz: str,
     *,
     band: bool = False,
+    charges: Sequence[Charge] = (),
 ) -> CeilingState:
-    """The soft ceiling over the horizon from the parts, the month's hours, the house's history and its forecast at
-    `PREDICTED_QUANTILE` (see the module). Pure."""
-    parts = tuple(part_cost(component, month_hours, house_by_hour, history, now, tz) for component in components)
+    """The soft ceiling over the horizon from the parts, the month's hours, the house's history, its forecast at
+    `PREDICTED_QUANTILE` and the cars' predicted `charges` (see the module). Pure."""
+    parts = tuple(
+        part_cost(component, month_hours, house_by_hour, history, now, tz, charges) for component in components
+    )
     starts = horizon(now, tz)
     return CeilingState(
         made_at=now,
@@ -118,6 +133,7 @@ def ceiling_state(
         hours=soft_ceiling(parts, starts, tz),
         house=dict(house_by_hour),
         band=band,
+        charges=tuple(charges),
     )
 
 
@@ -193,6 +209,8 @@ class SiteDemandCeiling:
     _key: Any = None
     _logged_day: date | None = None
     last_cost: list[DayCost] = field(default_factory=list)
+    #: The cars' predicted charges, made once per hour start (`_predicted_charges`).
+    _charges: tuple[datetime, tuple[Charge, ...]] | None = None
 
     def refresh(self, now: datetime) -> CeilingState | None:
         """Work the ceiling out again when its inputs moved (see the module). Never raises."""
@@ -213,27 +231,85 @@ class SiteDemandCeiling:
         forecast = site.house_forecast
         made = getattr(getattr(forecast, "forecast", None), "made_at", None)
         windows = _car_windows(site)
-        key = (components, hour_start(now, tz), len(tracker.hours), made, tuple(windows), tz)
+        charges = self._predicted_charges(now, tz)
+        key = (components, hour_start(now, tz), len(tracker.hours), made, tuple(windows), charges, tz)
         if key == self._key:
             return self.state
         self._key = key
         if not components:
             self.state, self.reason = None, "no_parts"
             return None
+        self.state = self._make(components, windows, charges, now)
+        self.reason = None
+        self._log_day(now)
+        return self.state
+
+    def _make(
+        self,
+        components: Sequence[DemandComponent],
+        windows: Sequence[tuple[datetime, datetime, float]],
+        charges: Sequence[Charge],
+        now: datetime,
+    ) -> CeilingState:
+        site = self.site
+        tracker = site.demand.tracker
+        forecast = site.house_forecast
         low = _band_low(forecast, now)
         house = with_cars(p25_house(forecast.plan_kw_by_hour(now, heat=False), low), windows)
-        self.state = ceiling_state(
+        return ceiling_state(
             components,
             tracker.month_hours(now),
             [*tracker.previous, *tracker.hours],
             house,
             now,
-            tz,
+            tracker.tz,
             band=low is not None,
+            charges=charges,
         )
-        self.reason = None
-        self._log_day(now)
-        return self.state
+
+    def _predicted_charges(self, now: datetime, tz: str) -> tuple[Charge, ...]:
+        """The cars' charges predicted for the rest of the month, made again once per hour."""
+        current = hour_start(now, tz)
+        if self._charges is not None and self._charges[0] == current:
+            return self._charges[1]
+        try:
+            history = past_charges(self.site, now)
+        except Exception:  # noqa: BLE001 - no history read: no car day predicted
+            _LOGGER.debug("SpotNav site demand ceiling: the cars' charges could not be read", exc_info=True)
+            history = []
+        found = tuple(predicted_charges(history, now, last_day_of_month(now, tz), tz))
+        self._charges = (current, found)
+        return found
+
+    def car_inputs(self, charger_entry_id: str, now: datetime) -> CarCeiling | None:
+        """What `charger_entry_id`'s plan under the ceiling is held under (see the module), `None` without a priced
+        ceiling. Never raises."""
+        try:
+            return self._car_inputs(charger_entry_id, now)
+        except Exception:  # noqa: BLE001 - a shadow figure never disturbs the plan
+            _LOGGER.debug("SpotNav site demand ceiling: no ceiling for the car's plan", exc_info=True)
+            return None
+
+    def _car_inputs(self, charger_entry_id: str, now: datetime) -> CarCeiling | None:
+        from ..battery.plan_shadow import car_kw_in  # noqa: PLC0415 - it imports the battery plan
+        from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
+
+        state = self.refresh(now)
+        if state is None or not any(ceiling.price > 0 for ceiling in state.hours.values()):
+            return None
+        site = self.site
+        tz = site.demand.tracker.tz
+        others = _car_windows(site, exclude=charger_entry_id)
+        if len(others) != len(_car_windows(site)):
+            # The car's own installed plan is in the predicted peaks: made again without it.
+            components = site_demand_components(site.hass, site.entry_id)
+            state = self._make(components, others, state.charges, now)
+        return CarCeiling(
+            ceilings={start: ceiling for start, ceiling in state.hours.items() if ceiling.price > 0},
+            house_kw=site.house_forecast.plan_kw_by_hour(now),
+            others_kw={start: car_kw_in(start, start + HOUR, others) for start in state.hours},
+            tz=tz,
+        )
 
     def _log_day(self, now: datetime) -> None:
         """Once per local day: what the plans as made would cost against the ceiling, in the site's change log."""
@@ -284,14 +360,61 @@ def _band_low(forecast: Any, now: datetime) -> Callable[[float, datetime], float
     return lambda value, start: band.bounds(value, start)[0]
 
 
-def _car_windows(site: Any) -> list[tuple[datetime, datetime, float]]:
-    """The cars' installed plans as `(start, end, kW)` windows; none where they cannot be read."""
+def _car_windows(site: Any, exclude: str | None = None) -> list[tuple[datetime, datetime, float]]:
+    """The cars' installed plans as `(start, end, kW)` windows (all but `exclude`'s); none where they cannot be
+    read."""
     from ..battery.plan_runtime import site_car_windows  # noqa: PLC0415 - it imports the site
 
     try:
-        return site_car_windows(site.hass, site)
+        if exclude is None:
+            return site_car_windows(site.hass, site)
+        return site_car_windows(site.hass, site, exclude=exclude)
     except Exception:  # noqa: BLE001 - no car plan: none counted
         return []
+
+
+def last_day_of_month(now: datetime, tz: str) -> date:
+    """The running month's last local day."""
+    year, month = month_of(hour_start(now, tz), tz)
+    return date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1)
+
+
+def session_max_kw(session: Any) -> float:
+    """The most a stored charge drew over one of its price intervals (kW), else its mean over the charge."""
+    best = 0.0
+    for piece in getattr(session, "intervals", ()) or ():
+        hours = (piece.end - piece.start).total_seconds() / 3600.0
+        if hours > 0:
+            best = max(best, piece.kwh / hours)
+    if best <= 0 and session.end is not None:
+        hours = (session.end - session.start).total_seconds() / 3600.0
+        best = session.energy_kwh / hours if hours > 0 else 0.0
+    return best
+
+
+def past_charges(site: Any, now: datetime) -> list[Charge]:
+    """The site's chargers' finished charges of the last `WEEKS` weeks as `car_days.Charge`s: plugged in (else
+    started) to the charger's daily departure after it, else to the charge's end."""
+    from ..const import CONF_CHARGER_ENTRY_IDS  # noqa: PLC0415
+    from ..runtime import domain_data, preview_for  # noqa: PLC0415 - the charger side imports the site
+
+    store = domain_data(site.hass).session_store
+    if store is None:
+        return []
+    tz = site.demand.tracker.tz
+    since = now - timedelta(days=7 * WEEKS + 2)
+    found: list[Charge] = []
+    for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        preview = preview_for(site.hass, charger_entry_id)
+        departure = None if preview is None else preview.daily_departure()
+        for session in store.closed_raw(charger_entry_id):
+            if session.end is None or session.end < since or session.energy_kwh <= 0:
+                continue
+            plugged, leaves = plugged_window(session.plugged_in_at or session.start, session.end, departure, tz)
+            max_kw = session_max_kw(session)
+            if max_kw > 0:
+                found.append(Charge(plugged, leaves, session.energy_kwh, max_kw))
+    return found
 
 
 def planned_import(site: Any, now: datetime) -> Callable[[datetime], float | None]:

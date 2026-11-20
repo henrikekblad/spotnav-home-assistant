@@ -304,13 +304,17 @@ def price_days(hass: HomeAssistant, source: Any, now: datetime, days: int = PRIC
     return documents
 
 
-def site_car_windows(hass: HomeAssistant, site: SiteCapacityController) -> list[tuple[datetime, datetime, float]]:
-    """The site's chargers' installed plans: `(start, end, kW)` per window."""
+def site_car_windows(
+    hass: HomeAssistant, site: SiteCapacityController, exclude: str | None = None
+) -> list[tuple[datetime, datetime, float]]:
+    """The site's chargers' installed plans: `(start, end, kW)` per window; all but `exclude`'s when one is named."""
     from ..runtime import controller_for  # noqa: PLC0415 - the charger side imports the site
 
     windows: list[tuple[datetime, datetime, float]] = []
     volts = stored_voltage_between_phases_v(site.config)
     for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        if charger_entry_id == exclude:
+            continue
         charger = controller_for(hass, charger_entry_id)
         plan = None if charger is None else getattr(charger, "plan", None)
         if plan is None:

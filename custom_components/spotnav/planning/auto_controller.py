@@ -16,7 +16,7 @@ import asyncio
 import logging
 from collections.abc import Coroutine
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable, Final, Literal
 
 from homeassistant.core import callback, HomeAssistant
@@ -115,6 +115,7 @@ from .plan_watch import (
     WindowFacts,
 )
 from .phases import effective_phases
+from .car_demand import plan_under_ceiling, shadow_facts
 from .planner import (
     calculate_plan,
     ending_at_need,
@@ -765,6 +766,10 @@ class AutoPlannerController:
         # The last unexpected preview failure, as (error, request without its clock): a repeat of it is
         # logged at DEBUG, so a failure that every site update hits does not flood the log.
         self._last_failure: tuple[str, str, PlanRequest] | None = None
+        # The plan under the site's soft demand ceiling, in shadow (`car_demand.py`): its facts for the diagnostics,
+        # and what was last written to the site's change log (written again only when it changes).
+        self._demand_shadow: dict[str, Any] | None = None
+        self._demand_logged: tuple[Any, ...] | None = None
 
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
@@ -1685,7 +1690,53 @@ class AutoPlannerController:
             failed = replace(snapshot, last_error_code="proposal_not_saved")
             self._publish(failed, force=True)
             return failed
+        if not preview:
+            await self._plan_demand_shadow(plan_request, result)
         return snapshot
+
+    async def _plan_demand_shadow(self, request: PlanRequest, result: PlanResult) -> None:
+        """Plan the car once more under the site's soft demand ceiling, in shadow (`car_demand.py`, plan
+        v3_power_tariff step 6): kept for the diagnostics and written to the site's change log when it changes. The
+        plan in force is not touched; nothing here raises."""
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        ceiling = None if site is None else getattr(site, "demand_ceiling", None)
+        if ceiling is None:
+            self._demand_shadow = None
+            return
+        inputs = ceiling.car_inputs(self._entry_id, request.now)
+        if inputs is None:
+            self._demand_shadow = None
+            return
+        try:
+            shadow = await self._hass.async_add_executor_job(
+                plan_under_ceiling, request, inputs, site.plan_minimum_kw(self._entry_id)
+            )
+            facts = None if shadow is None else shadow_facts(shadow, result, inputs)
+        except Exception:  # noqa: BLE001 - a shadow plan never disturbs the plan in force
+            _LOGGER.debug("SpotNav car plan under the demand ceiling failed", exc_info=True)
+            self._demand_shadow = {"reason": "failed"}
+            return
+        if facts is None:
+            self._demand_shadow = None
+            return
+        self._demand_shadow = {**facts, "made_at": request.now.isoformat()}
+        key = (
+            tuple(map(tuple, facts["periods"])),
+            facts["raise_kw"],
+            facts["demand_cost"],
+            facts["in_force"]["demand_cost"],
+        )
+        if key != self._demand_logged:
+            self._demand_logged = key
+            site._log_target(self._entry_id, "demand_car", **facts)  # noqa: SLF001 - the site's own debug log
+
+    def daily_departure(self) -> time | None:
+        """The daily departure set for this charger's car (area-local wall time), `None` without one or with a
+        dated one."""
+        settings = self._store.settings(self._entry_id)
+        if not settings.departure_enabled or settings.departure_date is not None:
+            return None
+        return settings.departure
 
     async def _plan_in_executor(self, request: PlanRequest) -> PlanResult:
         """`calculate_plan` in the executor: a search with per-hour caps can take a noticeable part of a second."""
@@ -2029,6 +2080,8 @@ class AutoPlannerController:
                     "soc_percent": anchor.soc_percent, "at": anchor.at.isoformat(), "kwh": round(anchor.kwh, 3),
                 },
             },
+            # The plan under the site's soft demand ceiling, in shadow (`car_demand.py`).
+            "demand_shadow": self._demand_shadow,
         }
 
     def _learned_energy_for(self, facts: LiveVehicleFacts | None, *, drop: bool = False) -> LearnedEnergy:
