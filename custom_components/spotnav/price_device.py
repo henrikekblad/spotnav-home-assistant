@@ -53,6 +53,7 @@ from .pricing.price_refresh import AreaPriceSnapshot, PriceRefreshManager
 from .pricing.price_repository import CatalogueSnapshot
 from .pricing.providers.notices import SourceStatus
 from .pricing.relay_contract import AreaEntry
+from .runtime import holiday_dates
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -362,7 +363,7 @@ class PriceDevice:
 
     @property
     def fiscal(self) -> FiscalChoice | None:
-        return fiscal_for(self.overrides, self.area)
+        return fiscal_for(self.overrides, self.area, holiday_dates(self._hass))
 
     @property
     def points(self) -> tuple[PricePoint, ...]:
