@@ -38,6 +38,7 @@
       "start": "2026-09-22T08:00:00+00:00"
     },
     "import_target_kw": 6.0,
+    "level_count": null,
     "per_component": [
       {
         "bar_kw": 6.975,
@@ -60,6 +61,7 @@
         "price_per_kw": 8.0
       }
     ],
+    "power_level": null,
     "price_unit": "kr/kW",
     "reason": null
   },

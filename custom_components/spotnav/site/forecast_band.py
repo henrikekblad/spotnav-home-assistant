@@ -165,8 +165,10 @@ def learn(
     form: str,
     *,
     holidays: Collection[date] | None = None,
+    quantiles: tuple[float, float] = (LOW_Q, HIGH_Q),
 ) -> ErrorBand | None:
-    """The band of `pairs` (see the module), `None` while fewer than `MIN_DAYS` days have misses."""
+    """The band of `pairs` (see the module), `None` while fewer than `MIN_DAYS` days have misses. `quantiles` are the
+    low and high figure's (p10 and p90 unless a reader asks for others, as the demand ceiling's p25)."""
     misses = _misses(pairs, now, tz, form, holidays)
     days = len({miss.day for miss in misses})
     if days < MIN_DAYS:
@@ -184,7 +186,7 @@ def learn(
                 values = [miss.miss for miss in (near if by_day_type else misses)]
             if len(values) < MIN_SAMPLES:
                 continue
-            cells[(kind, hour)] = Spread(quantile(values, LOW_Q), quantile(values, HIGH_Q), len(values), pool)
+            cells[(kind, hour)] = Spread(quantile(values, quantiles[0]), quantile(values, quantiles[1]), len(values), pool)
     return ErrorBand(form, tz, days, cells, holidays, by_day_type)
 
 

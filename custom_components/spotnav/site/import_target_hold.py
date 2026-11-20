@@ -50,6 +50,7 @@ from .site_capacity_controller import (
     TARGET_INERT_NOT_JUDGED,
     TARGET_NOT_APPLIED_BATTERY_UNKNOWN,
     TARGET_NOT_APPLIED_LOAD_BALANCING_OFF,
+    TARGET_NOT_APPLIED_OUTSIDE_LEVEL,
     TARGET_STATE_APPLIED,
     TARGET_STATE_OFF,
     TargetRisk,
@@ -86,7 +87,7 @@ class ImportTargetHold:
         self._site._target_inert = {}
         self._site._target_floor_limited = set()
         self._site._target_budget = None
-        target_kw = self._site._import_target_kw()
+        target_kw = self._site._hold_set_kw()
         if target_kw is None:
             self._site._target_not_applied = None
             self._site._note_target_state(TARGET_STATE_OFF)
@@ -112,6 +113,14 @@ class ImportTargetHold:
         # The target lifted to the month's free level where a demand-charge part counts the running hour: only ever
         # higher than the target, to a level already paid for, and only the budget's; the fuse is untouched.
         self._site._target_effective = self._effective_import_target(target_kw, now)
+        if self._site._import_target_kw() is None and self._site._target_effective.level_kw is None:
+            # The power level alone, outside its hours: nothing holds this hour (a set-aside stays as it is).
+            self._site._target_effective = None
+            self._site._target_not_applied = TARGET_NOT_APPLIED_OUTSIDE_LEVEL
+            self._site._note_target_state(TARGET_NOT_APPLIED_OUTSIDE_LEVEL)
+            self._site._target_risk = {}
+            self._site._tell_target_risk()
+            return decisions
         budget, reason = self._import_target_budget(self._site._target_effective.kw, now)
         self._site._target_not_applied = reason
         self._site._note_target_state(TARGET_STATE_APPLIED if reason is None else reason)
@@ -472,17 +481,21 @@ class ImportTargetHold:
         )
         minimum_kw = member_w(member.phases, member.min_a) / 1000.0
 
-        def later(house: float) -> float:
-            kw = min(ceiling_kw, max(0.0, set_kw - max(0.0, house)))
+        def later(house: float, hold_kw: float = set_kw) -> float:
+            kw = min(ceiling_kw, max(0.0, hold_kw - max(0.0, house)))
             return 0.0 if kw < minimum_kw else kw
 
         later_kw = later(house_kw)
-        # A later hour the house load forecast knows at the target less its own expected load (`site/load_forecast.py`).
-        later_by_hour = {
-            start: later(kw)
-            for start, kw in self._site.house_forecast.plan_kw_by_hour(now).items()
-            if start >= budget.hour_end
-        }
+        # A later hour the house load forecast knows at the target less its own expected load (`site/load_forecast.py`),
+        # the target no more than the power level where it holds then (the level alone without a target).
+        target_kw = self._site._import_target_kw()
+        power_level = self._site._power_level()
+        later_by_hour = {}
+        for start, kw in self._site.house_forecast.plan_kw_by_hour(now).items():
+            if start < budget.hour_end:
+                continue
+            hold_kw = self._site.plan_hold_kw_at(start, target_kw, power_level)
+            later_by_hour[start] = ceiling_kw if hold_kw is None else later(kw, held_level_kw(hold_kw))
         held_kw = 0.0 if held_kw < minimum_kw else held_kw
         shortfall = departure_shortfall_kwh(
             need_kwh=need_kwh,

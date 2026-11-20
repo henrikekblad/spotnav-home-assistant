@@ -77,6 +77,7 @@ from .phase_peaks import SAMPLE_S as PHASE_PEAKS_SAMPLE_S, SitePhasePeaks
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .house_forecast import SiteHouseForecast
+from .demand_ceiling import SiteDemandCeiling
 from .import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
@@ -317,6 +318,11 @@ IMPORT_TARGET_REASONS = frozenset({REASON_IMPORT_TARGET_HELD, REASON_IMPORT_TARG
 #: Why the import target is not applied besides the hour itself (`site/import_target.py` names the rest).
 TARGET_NOT_APPLIED_LOAD_BALANCING_OFF = "load_balancing_off"
 TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
+#: No import target is set and the price's power level does not hold in the running hour: nothing to hold to.
+TARGET_NOT_APPLIED_OUTSIDE_LEVEL = "outside_power_level"
+#: How many hours ahead a plan is capped in the power level's hours when there is no house forecast
+#: (`import_target_plan_kw_by_hour`).
+PLAN_LEVEL_HOURS = 48
 #: Why a person's set-aside was refused (`async_release_import_target`).
 ERROR_NO_IMPORT_TARGET = "spotnav_no_import_target"
 #: What a set-aside with no departure ahead (a person's Start, a plan without one) is kept as, followed by "/" and the
@@ -785,6 +791,9 @@ class SiteCapacityController:
         # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes: shown
         # (the site state sensor's `forecast`, the diagnostics), counted on by a plan under the import target (its net
         # import forecast, `plan_kw_by_hour`) and by the battery plan (the house's whole load on a battery site).
+        # The soft ceiling under the demand charge, in shadow (`site/demand_ceiling.py`): worked out from the month's
+        # peaks and the house forecast as they move, shown and logged, read by no plan yet.
+        self.demand_ceiling = SiteDemandCeiling(self)
         self.house_forecast = SiteHouseForecast(
             hass,
             entry_id,
@@ -1470,7 +1479,7 @@ class SiteCapacityController:
             return
         try:
             from ..execution.solar_execution import site_car_w, site_net_grid_w  # noqa: PLC0415 - it imports us
-            from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
+            from ..pricing.price_source import site_demand_components, site_power_level  # noqa: PLC0415 - it imports the planner
 
             grid_w = site_net_grid_w(self)
             car_w = None if grid_w is None else site_car_w(self.hass, self, idle_unread_as_zero=True)
@@ -1488,8 +1497,10 @@ class SiteCapacityController:
                 components=lambda: site_demand_components(self.hass, self.entry_id),
                 outdoor_c=self.house_forecast.outdoor_c(),
                 battery_w=battery_w if battery_set else 0.0,
+                power_level=lambda: site_power_level(self.hass, self.entry_id),
             )
             self.house_forecast.tick()
+            self.demand_ceiling.refresh(self.demand.now())
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)
         if self.demand.backfill_due():
@@ -5455,6 +5466,31 @@ class SiteCapacityController:
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         return stored_import_target_kw(self.config if entry is None else entry.data)
 
+    def _power_level(self) -> Any:
+        """The power level of the electricity price the site measures for (`PowerLevel`), `None` without one."""
+        from ..pricing.price_source import site_power_level  # noqa: PLC0415 - it imports the planner
+
+        return site_power_level(self.hass, self.entry_id)
+
+    def _hold_set_kw(self) -> float | None:
+        """What the hold keeps the hour under before the month's free level and the power level: the import target
+        as set, else the power level (held in its own hours only), `None` with neither."""
+        target_kw = self._import_target_kw()
+        if target_kw is not None:
+            return target_kw
+        level = self._power_level()
+        return None if level is None else level.level_kw
+
+    def plan_hold_kw_at(self, start: datetime, target_kw: float | None, level: Any) -> float | None:
+        """The level a plan counts on the hold keeping the hour starting at `start` under (kW, before its margin): the
+        import target, no more than the power level where it holds then; the power level alone without a target, in
+        its hours; `None` where nothing holds the hour."""
+        tz = self.demand.tracker.tz
+        level_kw = level.level_kw if level is not None and level.counts(start, tz) else None
+        if target_kw is None:
+            return level_kw
+        return target_kw if level_kw is None else min(target_kw, level_kw)
+
     def _heat_zones(self) -> tuple[str, ...]:
         """The climates chosen as zones in the heat settings (`heat/config.py`), read from the entry: they are written
         without a reload."""
@@ -5497,11 +5533,17 @@ class SiteCapacityController:
 
         components = site_demand_components(self.hass, self.entry_id)
         tracker = self.demand.tracker
-        key = (set_kw, components, tracker.month, len(tracker.hours), hour_start(now, tracker.tz), tracker.tz)
+        current = hour_start(now, tracker.tz)
+        # The power level holding in the running hour: a cap nothing lifts.
+        power_level = self._power_level()
+        level_kw = (
+            power_level.level_kw if power_level is not None and power_level.counts(current, tracker.tz) else None
+        )
+        key = (set_kw, components, level_kw, tracker.month, len(tracker.hours), current, tracker.tz)
         if known_key is not None and key == known_key and self._target_effective is not None:
             return None, key
         if not components:
-            return effective_target(set_kw, ()), key
+            return effective_target(set_kw, (), level_kw), key
         from ..planning.demand_charge import component_month, free_level_hours  # noqa: PLC0415 - kept beside its only use
 
         # Each hour at its floor (its import over the whole hour, a gap counted as none): never above what the
@@ -5510,7 +5552,7 @@ class SiteCapacityController:
         # 5-minute rows, read once with the back-fill, never here).
         hours = free_level_hours(tracker.month_hours(now))
         levels = [component_month(component, hours, tracker.tz, now).free_kw for component in components]
-        return effective_target(set_kw, levels), key
+        return effective_target(set_kw, levels, level_kw), key
 
     def _battery_live_w(self) -> tuple[bool, float | None]:
         """Whether the site reads a home battery's power, and its signed power now (W, positive while it charges),
@@ -5888,10 +5930,12 @@ class SiteCapacityController:
     ) -> str | None:
         """Set the import target aside for this charger's charge (a person's choice, from the notification, the card or
         the app): until its plan's departure where one is ahead, else (a person's Start, a plan without a departure)
-        until the car is unplugged. The error's code, else `None`: `spotnav_no_import_target` (the site has none set),
+        until the car is unplugged. With no target, the power level the hold keeps in its hours is set aside the same
+        way (a release that exceeds it is asked with the count, by the card). The error's code, else `None`:
+        `spotnav_no_import_target` (the site has neither set),
         `spotnav_stale_departure` (a phone's button told for a departure, `for_departure` in epoch seconds, that is not
         the plan's any more). `source` (`phone`, `card`, `app`) is only kept in the change log, with any refusal."""
-        if self._import_target_kw() is None:
+        if self._hold_set_kw() is None:
             self._log_target(charger_entry_id, "release_refused", source=source, error=ERROR_NO_IMPORT_TARGET)
             return ERROR_NO_IMPORT_TARGET
         plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
@@ -6074,6 +6118,10 @@ class SiteCapacityController:
         the house's load is not known: the plan then counts on the car's
         own power, and a window the hold keeps short is planned again at its end (`planning/plan_watch.py`)."""
         level = self._target_plan_level(charger_entry_id)
+        if level is not None and self._import_target_kw() is None:
+            # The power level alone holds in its own hours only: those are capped hour by hour
+            # (`import_target_plan_kw_by_hour`), every other hour counts on the car's own power.
+            return None
         house_kw = None if level is None else self._typical_house_kw()
         if level is None or house_kw is None:
             return None
@@ -6085,21 +6133,40 @@ class SiteCapacityController:
         hour (`site/house_forecast.py`'s `plan_kw_by_hour`: the import less the chargers, also on a battery site whose
         house figure is the whole load) in place of its typical load: the target less it, never below the charger's
         minimum. Only the hours the forecast knows; the plan takes `import_target_plan_kw` for the rest
-        (`PlanRequest.power_cap_kw_by_hour`). `None` whenever `import_target_plan_kw` holds nothing for the charger, or
+        (`PlanRequest.power_cap_kw_by_hour`). In the power level's hours the target is no more than the level, and
+        without a target the level alone caps its own hours (`plan_hold_kw_at`), from the house's typical load where
+        there is no forecast. `None` whenever `import_target_plan_kw` holds nothing for the charger, or
         there is no forecast: the plan is then the one with the flat figure."""
+        from ..planning.demand_charge import hour_start  # noqa: PLC0415 - kept beside its use
+
         level = self._target_plan_level(charger_entry_id)
         if level is None:
             return None
-        by_hour = self.house_forecast.plan_kw_by_hour(self.demand.now())
+        now = self.demand.now()
+        by_hour = self.house_forecast.plan_kw_by_hour(now)
+        _held_kw, minimum_kw = level
+        target_kw = self._import_target_kw()
+        power_level = self._power_level()
+        if power_level is not None and not by_hour:
+            # No forecast: the power level's hours still hold, at the house's typical load.
+            typical = self._typical_house_kw()
+            if typical is None:
+                return None
+            current = hour_start(now, self.demand.tracker.tz)
+            by_hour = {current + timedelta(hours=offset): typical for offset in range(PLAN_LEVEL_HOURS)}
         if not by_hour:
             return None
-        held_kw, minimum_kw = level
-        return {start: max(minimum_kw, held_kw - house_kw) for start, house_kw in by_hour.items()}
+        caps: dict[datetime, float] = {}
+        for start, house_kw in by_hour.items():
+            hold_kw = self.plan_hold_kw_at(start, target_kw, power_level)
+            if hold_kw is not None:
+                caps[start] = max(minimum_kw, held_level_kw(hold_kw) - house_kw)
+        return caps or None
 
     def _target_plan_level(self, charger_entry_id: str) -> tuple[float, float] | None:
         """`(held level, the charger's minimum)` in kW for a plan under the import target (`import_target_plan_kw`), or
         `None` when the target holds nothing for this charger's plan."""
-        target_kw = self._import_target_kw()
+        target_kw = self._hold_set_kw()
         if target_kw is None or not self._active_control_allowed():
             return None
         wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
@@ -6208,6 +6275,8 @@ class SiteCapacityController:
             else {
                 "kw": self._target_effective.kw,
                 "free_kw": self._target_effective.free_kw,
+                # The price's power level where it holds this hour: the level is never above it.
+                "level_kw": self._target_effective.level_kw,
                 # What the hour is held under: the level less its margin, once.
                 "hold_kw": round(self._target_effective.hold_kw, 3),
             },

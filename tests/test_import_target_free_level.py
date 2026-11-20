@@ -143,6 +143,7 @@ async def test_the_hold_lets_the_hour_reach_the_months_peak_and_says_so(hass: Ho
         assert controller.load_balancing_limit(charger) == (8.0, LIMIT_CAUSE_IMPORT_TARGET)
         assert controller.import_target_snapshot()["effective"] == {
             "kw": pytest.approx(7.0), "free_kw": pytest.approx(7.0), "hold_kw": pytest.approx(_lifted(7.0)),
+            "level_kw": None,
         }
         assert controller.import_target_snapshot()["budget"]["hold_kw"] == pytest.approx(_lifted(7.0))
         # The plan counts on the target as set less its margin (5.88 kW) less the house: the lift is the running

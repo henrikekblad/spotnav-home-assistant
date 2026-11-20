@@ -6,7 +6,9 @@ site's chargers may still draw, and the site controller (`SiteCapacityController
 smaller of that and what the fuse allows.
 
 * **The level.** The import target as set, lifted to the month's free level where a demand-charge part counts the
-  running hour (`effective_target`): an hour may reach a peak the month has already paid for.
+  running hour (`effective_target`): an hour may reach a peak the month has already paid for. In the hours of the
+  price's power level (`planning/auto_settings.py:PowerLevel`) never above that level, which nothing lifts: a hard cap
+  the customer chose. Without a target the power level alone is held, in its own hours only.
 * **The margin.** The hold keeps the hour under that level less a margin (`held_level_kw`: the larger of
   `TARGET_MARGIN_KW` and `TARGET_MARGIN_SHARE` of it, never below nothing), applied once to the final level, for a
   meter that reads differently from the operator's and the hour's last minutes. What a person is shown is the level
@@ -112,6 +114,8 @@ class EffectiveTarget:
     set_kw: float
     free_kw: float | None
     kw: float
+    #: The power level holding in the running hour (kW), `None` where none does: `kw` is never above it.
+    level_kw: float | None = None
 
     @property
     def hold_kw(self) -> float:
@@ -122,6 +126,11 @@ class EffectiveTarget:
     def lifted(self) -> bool:
         """Whether the month's free level lifts the target this hour."""
         return self.kw > self.set_kw
+
+    @property
+    def capped(self) -> bool:
+        """Whether the power level holds the hour below the target (or the month's free level)."""
+        return self.level_kw is not None and self.kw < self.set_kw
 
 
 #: How far below its level (the target as set, or the month's free level) the hold keeps the hour: a meter that reads
@@ -138,7 +147,9 @@ def held_level_kw(level_kw: float) -> float:
     return max(0.0, level_kw - max(TARGET_MARGIN_KW, TARGET_MARGIN_SHARE * level_kw))
 
 
-def effective_target(set_kw: float, free_levels: Iterable[float | None]) -> EffectiveTarget:
+def effective_target(
+    set_kw: float, free_levels: Iterable[float | None], level_kw: float | None = None
+) -> EffectiveTarget:
     """The import target lifted to the month's free level: a demand charge bills the month's peaks, so an hour may
     reach what is already paid for without costing more. The free level is the lowest `free_kw`
     (`planning/demand_charge.component_month`) of the parts that count the running hour (`None` for one that does not):
@@ -146,12 +157,14 @@ def effective_target(set_kw: float, free_levels: Iterable[float | None]) -> Effe
     and with fewer than N days today's own peak or nothing (0). An hour no part counts keeps the target. Only ever
     raises the target, to a level an hour has already reached this month (an incomplete hour never sets a peak). The
     margin is not taken here: `EffectiveTarget.hold_kw` takes it once from the level found. The caller gives the levels from each hour's floor (its import over the whole hour), never more
-    than the meter billed."""
+    than the meter billed. `level_kw` is the power level where it holds in the running hour: the result is never
+    above it, whatever the month has reached."""
     counted = [level for level in free_levels if level is not None]
     free = min(counted) if counted else None
-    if free is None:
-        return EffectiveTarget(set_kw=set_kw, free_kw=None, kw=set_kw)
-    return EffectiveTarget(set_kw=set_kw, free_kw=free, kw=max(set_kw, free))
+    kw = set_kw if free is None else max(set_kw, free)
+    if level_kw is not None:
+        kw = min(kw, level_kw)
+    return EffectiveTarget(set_kw=set_kw, free_kw=free, kw=kw, level_kw=level_kw)
 
 
 @dataclass(frozen=True, slots=True)

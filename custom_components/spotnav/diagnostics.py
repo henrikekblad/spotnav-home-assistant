@@ -233,12 +233,25 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
 
 
 def _demand_diagnostics(hass: HomeAssistant, entry: ConfigEntry, controller: Any) -> dict[str, Any] | None:
-    from .pricing.price_source import site_demand_components  # noqa: PLC0415
+    from .pricing.price_source import site_demand_components, site_power_level  # noqa: PLC0415
 
     try:
-        return controller.demand.diagnostics(
+        found = controller.demand.diagnostics(
             site_demand_components(hass, entry.entry_id), import_target_kw=stored_import_target_kw(entry.data)
         )
+        level = site_power_level(hass, entry.entry_id)
+        # The price's power level and its exceedances over the rolling year (`SiteDemand.level_count`), with every
+        # kept exceedance and the level it was measured against.
+        found["power_level"] = None if level is None else {
+            **level.as_dict(),
+            "exceeded": [start.isoformat() for start in controller.demand.level_count(level).exceeded],
+            "allowed": controller.demand.level_count(level).allowed,
+            "kept": [
+                [start.isoformat(), kw, level_kw]
+                for start, (kw, level_kw) in sorted(controller.demand.archive.exceeded.items())
+            ],
+        }
+        return found
     except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
         _LOGGER.debug("demand_diagnostics: ignored failure (diagnostics must never fail on one block)", exc_info=True)
         return None
@@ -292,6 +305,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # Each clock hour's mean import this month, what each demand-charge component bills so far, the running hour
         # with its gaps, and the import target (`site/demand_tracker.py`).
         "demand": None if controller is None else _demand_diagnostics(hass, entry, controller),
+        # The soft ceiling under the demand charge in shadow (`site/demand_ceiling.py`): per part λ and T with the
+        # measured and predicted day peaks, per hour S_h and λ_h, and what the plans would cost against it.
+        "demand_ceiling": None if controller is None else controller.demand_ceiling.as_dict(),
         # The public holidays the high-load windows leave out and where they come from (`site/holidays.py`).
         "holidays": _part_snapshot(lambda: _holiday_diagnostics(hass)),
         # The house load forecast (`site/house_forecast.py`): its sources (weather entity, holiday calendar), the last

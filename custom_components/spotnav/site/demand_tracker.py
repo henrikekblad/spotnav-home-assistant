@@ -62,8 +62,9 @@ from ..core.parse import aware_utc, is_number
 from .. import time_zones
 from ..const import DOMAIN
 from ..debug_day import DayStore
-from ..planning.auto_settings import DemandComponent
-from ..planning.demand_charge import component_month, hour_start, HourMean, month_of
+from ..planning.auto_settings import DemandComponent, PowerLevel
+from ..planning.demand_charge import component_month, free_level_hours, hour_start, HourMean, month_of
+from ..planning.demand_cost import level_count, LevelCount, year_before
 from .power_history import months_before, power_month, PowerArchive
 
 _LOGGER = logging.getLogger(__name__)
@@ -677,11 +678,13 @@ class SiteDemand:
         components: Callable[[], Sequence[DemandComponent]] | None = None,
         outdoor_c: float | None = None,
         battery_w: float | None = None,
+        power_level: Callable[[], PowerLevel | None] | None = None,
     ) -> None:
         """One reading of the site (at most every `OBSERVE_MIN_S`). `target` marks the hour the import target held or
         paused a charger in; `components` gives the demand charge's components when an hour completes (its month's
         days are filed against them); `outdoor_c` is the outdoor temperature now (°C); `battery_w` a home battery's
-        signed power read live (W, positive while it charges). Never raises."""
+        signed power read live (W, positive while it charges); `power_level` the price's power level when an hour
+        completes (the hours that exceeded it are kept for a year, `PowerArchive.exceeded`). Never raises."""
         if not self.due():
             return
         try:
@@ -694,7 +697,11 @@ class SiteDemand:
             if changed:
                 if self._month_store is not None:
                     self._month_store.changed()
-                self._file_days(now, () if components is None else components())
+                self._file_days(
+                    now,
+                    () if components is None else components(),
+                    None if power_level is None else power_level(),
+                )
             running = self.tracker.running
             if self._running_store is not None and running is not None and (grid_w is not None or running.covered_s):
                 # A site that measures nothing writes nothing.
@@ -702,12 +709,19 @@ class SiteDemand:
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site demand: a reading could not be taken", exc_info=True)
 
-    def _file_days(self, now: datetime, components: Sequence[DemandComponent]) -> None:
-        """Refile the kept months' day summaries from their hours (an hour completed, or the month rolled)."""
+    def _file_days(
+        self, now: datetime, components: Sequence[DemandComponent], power_level: PowerLevel | None = None
+    ) -> None:
+        """Refile the kept months' day summaries from their hours (an hour completed, or the month rolled), and with a
+        power level the hours of those months that exceeded it (without one the kept ones stay as they are)."""
         tracker = self.tracker
         for month, hours in ((tracker.previous_month, tracker.previous), (tracker.month, tracker.hours)):
             if month is not None:
                 self.archive.file_month(month, hours, components, tracker.tz, now)
+        if power_level is not None:
+            months = self.tracker_months()
+            exceeded = self._tracker_exceeded(power_level, now)
+            self.archive.file_exceeded(tuple(months), exceeded, tracker.tz)
         if tracker.month is not None:
             self.archive.prune(tracker.month)
         if self._days_store is not None:
@@ -827,6 +841,36 @@ class SiteDemand:
                 self._month_store.changed()
             self._file_days(now, components)
         return filed
+
+    def _tracker_exceeded(self, power_level: PowerLevel, now: datetime) -> dict[datetime, tuple[float, float]]:
+        """The tracker's complete hours in the rolling year up to `now` that exceeded `power_level` in its hours
+        (`planning/demand_cost.level_count`), each at its floor."""
+        tz = self.tracker.tz
+        hours = [*self.tracker.previous, *self.tracker.hours]
+        counted = level_count(hours, power_level.level_kw, lambda start: power_level.counts(start, tz), now, tz)
+        floors = {hour.start: hour for hour in free_level_hours(hours)}
+        return {start: (floors[start].kw, power_level.level_kw) for start in counted.exceeded}
+
+    def level_count(self, power_level: PowerLevel, now: datetime | None = None) -> LevelCount:
+        """`power_level`'s exceedances in the rolling 12 months up to `now`: the tracker's own hours against the level
+        as set, and the hours kept of older months (`PowerArchive.exceeded`) against the level each was measured at."""
+        moment = self._now() if now is None else now
+        tz = self.tracker.tz
+        months = set(self.tracker_months())
+        since = year_before(moment, tz)
+        own = level_count(
+            [*self.tracker.previous, *self.tracker.hours],
+            power_level.level_kw,
+            lambda start: power_level.counts(start, tz),
+            moment,
+            tz,
+        )
+        kept = [
+            start
+            for start in self.archive.exceeded
+            if since <= start < moment and month_of(start, tz) not in months
+        ]
+        return LevelCount(level_kw=power_level.level_kw, exceeded=tuple(sorted({*own.exceeded, *kept})))
 
     def tracker_months(self) -> dict[tuple[int, int], Sequence[HourMean]]:
         """The months whose every hour the tracker keeps, and those hours."""

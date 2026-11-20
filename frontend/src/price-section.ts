@@ -20,12 +20,13 @@ import {
   withMarkup,
   withoutHighLoad,
   withPercent,
+  withPowerLevel,
   withSellAdjustment,
   SUPPLIER_MAX,
   type GridTariffRowKey,
   type SupplierRow,
 } from "./grid-tariff";
-import { componentEditor, demandRows } from "./demand-charge";
+import { componentEditor, demandRows, levelEditor } from "./demand-charge";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { fiscalRows } from "./settings";
 import type { Fiscal, GridTariffBlock, PriceProvider } from "./validate";
@@ -166,7 +167,10 @@ export function priceSectionBody(input: PriceSectionInput): HTMLElement {
     const fee = node.dataset["row"] === "supplier_markup" ? block?.supplier_markup : block?.sell_adjustment;
     place([node], fee == null || feeSet(fee));
   }
-  place(demandNodes(input), (block?.demand?.components.length ?? 0) > 0);
+  const demand = demandNodes(input);
+  place(demand.rows, (block?.demand?.components.length ?? 0) > 0 || (block?.demand?.power_level ?? null) !== null);
+  // Adding a power level waits under "More fees": few grid companies sell one.
+  place(demand.addLevel, false);
   if (more.length > 0) {
     const details = element(doc, "details", C.settingsMore);
     details.dataset["more"] = "fees";
@@ -184,21 +188,33 @@ function feeSet(fee: { policy: string; effective_value: number | null }): boolea
 
 /**
  * The demand charge's rows below the fees: "None" until a component is added, then each component with its
- * prices and this month's mean and peaks beneath, and a row adding another (at most three).
+ * prices and this month's mean and peaks beneath, the power level with its exceedances, and a row adding another
+ * component (at most three); apart, the row adding a power level (an administrator's only).
  */
-function demandNodes(input: PriceSectionInput): HTMLElement[] {
+function demandNodes(input: PriceSectionInput): { rows: HTMLElement[]; addLevel: HTMLElement[] } {
   const block = input.facts.gridTariff;
   if (block === null || block.demand === null) {
-    return [];
+    return { rows: [], addLevel: [] };
   }
   const nodes: HTMLElement[] = [];
+  const addLevel: HTMLElement[] = [];
   for (const row of demandRows(input.facts.format, block.demand)) {
+    if (row.key === "add_level") {
+      if (block.writable) {
+        addLevel.push(input.row("demand_add_level", row.label, row.value, () => editPowerLevel(input, block)));
+      }
+      continue;
+    }
     const key = row.key === "add" ? "demand_add" : `demand_${row.key}`;
     const index = row.key;
-    nodes.push(input.row(key, row.label, row.value, block.writable ? () => editDemandComponent(input, block, index) : undefined));
+    const edit =
+      index === "level"
+        ? () => editPowerLevel(input, block)
+        : () => editDemandComponent(input, block, index);
+    nodes.push(input.row(key, row.label, row.value, block.writable ? edit : undefined));
     row.lines.forEach((line, at) => nodes.push(input.rowHelp(`${key}_${at}`, line)));
   }
-  return nodes;
+  return { rows: nodes, addLevel };
 }
 
 /** One demand-charge component's editor (`add` adds one); Save writes the tariff with it, Remove without it. */
@@ -211,6 +227,20 @@ function editDemandComponent(input: PriceSectionInput, block: GridTariffBlock, k
       input.language,
       { current: key === "add" ? null : (components[key] ?? null), idPrefix: input.idPrefix, unit: block.demand?.price_unit ?? null },
       (component) => input.write({ kind: "gridTariff", change: (current) => withComponent(current, index, component) }),
+      handlers,
+    ),
+  );
+}
+
+/** The power level's editor (adding one starts from a demand-charge part's window); Save writes it, Remove clears it. */
+function editPowerLevel(input: PriceSectionInput, block: GridTariffBlock): void {
+  const part = block.demand?.components.find((component) => component.window !== null);
+  input.openValueEditor(translate(input.language, "demand.level.title"), (handlers) =>
+    levelEditor(
+      input.doc,
+      input.language,
+      { current: block.demand?.power_level ?? null, idPrefix: input.idPrefix, partWindow: part?.window ?? null },
+      (level) => input.write({ kind: "gridTariff", change: (current) => withPowerLevel(current, level) }),
       handlers,
     ),
   );

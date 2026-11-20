@@ -11,11 +11,13 @@ import { choiceSelect, labelled, SUGGESTED_WINDOW, windowFields, windowText } fr
 import { translate, type Language, type TranslationKey } from "./i18n";
 import {
   DEMAND_TOP_N,
+  type HighLoadWindow,
   MAX_DEMAND_COMPONENTS,
   type DemandBlock,
   type DemandComponent,
   type DemandMonth,
   type DemandTopN,
+  type PowerLevel,
 } from "./validate";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -70,8 +72,8 @@ export function monthText(format: FormatContext, month: DemandMonth): string {
 }
 
 export interface DemandRow {
-  /** The component's index, or `add` for the row that adds one. */
-  key: number | "add";
+  /** The component's index, `add` for the row that adds one, `level` for the power level, `add_level` to add it. */
+  key: number | "add" | "level" | "add_level";
   label: string;
   value: string;
   /** Lines under the row: the prices and what the month measured, or why nothing is measured. */
@@ -90,7 +92,8 @@ export function demandRows(format: FormatContext, demand: DemandBlock | null): D
   const language = format.language;
   const title = translate(language, "demand.title");
   if (demand.components.length === 0) {
-    return [{ key: "add", label: title, value: translate(language, "settings.value.none"), lines: [] }];
+    const none: DemandRow[] = [{ key: "add", label: title, value: translate(language, "settings.value.none"), lines: [] }];
+    return [...none, ...levelRows(format, demand)];
   }
   const rows: DemandRow[] = demand.components.map((component, index) => {
     const lines: string[] = [];
@@ -112,10 +115,66 @@ export function demandRows(format: FormatContext, demand: DemandBlock | null): D
   if (!demand.available) {
     rows[rows.length - 1]!.lines.push(reasonText(language, demand.reason));
   }
+  const level = levelRow(format, demand);
+  if (level !== null) {
+    rows.push(level);
+  }
   if (demand.components.length < MAX_DEMAND_COMPONENTS) {
     rows.push({ key: "add", label: translate(language, "demand.addPart"), value: translate(language, "demand.add"), lines: [] });
   }
-  return rows;
+  return [...rows, ...levelRows(format, demand).filter((row) => row.key === "add_level")];
+}
+
+/** The power level's row, or the row adding one (a backend that states it, without one); none from an older one. */
+function levelRows(format: FormatContext, demand: DemandBlock): DemandRow[] {
+  if (demand.power_level === null) {
+    const language = format.language;
+    return [{ key: "add_level", label: translate(language, "demand.level.add"), value: translate(language, "demand.add"), lines: [] }];
+  }
+  const level = levelRow(format, demand);
+  return level === null ? [] : [level];
+}
+
+/** The power level's hours in one line: "All hours", "Weekdays 07–20, Nov–Mar" or "Outside weekdays 07–20, Nov–Mar". */
+export function levelHoursText(language: Language, level: PowerLevel): string {
+  if (level.window === null) {
+    return translate(language, "demand.allHours");
+  }
+  const hours = windowText(language, level.window);
+  if (!level.outside) {
+    return hours;
+  }
+  // Inside the sentence the window's first word is in lower case, except in German, where a noun keeps its capital.
+  const inner = language === "de" ? hours : hours.charAt(0).toLowerCase() + hours.slice(1);
+  return translate(language, "demand.level.outside", { hours: inner });
+}
+
+/** "Exceedances: 1 of 3 in the last 12 months". */
+export function levelCountText(language: Language, used: number, allowed: number): string {
+  return translate(language, "demand.level.count", { n: String(used), allowed: String(allowed) });
+}
+
+/** The power level's row, with its exceedances (or why they are not counted) beneath; `null` without a level. */
+function levelRow(format: FormatContext, demand: DemandBlock): DemandRow | null {
+  const level = demand.power_level;
+  if (level === undefined || level === null) {
+    return null;
+  }
+  const language = format.language;
+  const count = demand.level_count ?? null;
+  const lines = [
+    count !== null
+      ? levelCountText(language, count.used, count.allowed)
+      : demand.available
+        ? translate(language, "demand.level.noCount")
+        : reasonText(language, demand.reason),
+  ];
+  return {
+    key: "level",
+    label: translate(language, "demand.level.title"),
+    value: translate(language, "demand.level.value", { kw: kwText(language, level.level_kw), hours: levelHoursText(language, level) }),
+    lines,
+  };
 }
 
 /** Why the site cannot measure, worded. */
@@ -126,7 +185,8 @@ export function reasonText(language: Language, reason: string | null): string {
 
 /**
  * The running hour against the import target: "This hour: 4,2 of 6,0 kW"; where the month's peak lifts the target
- * this hour, against that level: "This hour: 2,8 of 6,6 kW – the month's peak (import target 6,0 kW)". `null`
+ * this hour, against that level: "This hour: 2,8 of 6,6 kW – the month's peak (import target 6,0 kW)"; where the
+ * power level holds it lower, against the level. `null`
  * without a target; without a reading yet, or where the site cannot measure, it says so.
  */
 export function hourLine(language: Language, demand: DemandBlock | null): string | null {
@@ -140,6 +200,14 @@ export function hourLine(language: Language, demand: DemandBlock | null): string
     return translate(language, "site.importTarget.noHour");
   }
   const effective = demand.effective_target_kw;
+  if (effective !== null && effective < demand.import_target_kw) {
+    // The power level holds this hour below the target.
+    return translate(language, "site.importTarget.hourLevel", {
+      kw: formatFixed(language, demand.hour.kw_so_far, 1),
+      target: kwText(language, effective),
+      set: kwText(language, demand.import_target_kw),
+    });
+  }
   if (effective !== null && effective > demand.import_target_kw) {
     return translate(language, "site.importTarget.hourPeak", {
       kw: formatFixed(language, demand.hour.kw_so_far, 1),
@@ -275,6 +343,102 @@ export function componentEditor(
       price_per_kw: prices,
     };
     return await save(chosen);
+  });
+  return editor.form;
+}
+
+export interface LevelEditorInput {
+  /** The level as stored, or `null` to add one. */
+  current: PowerLevel | null;
+  idPrefix: string;
+  /** The window the hours start from when adding: a demand-charge part's (the level then holds outside it). */
+  partWindow: HighLoadWindow | null;
+}
+
+/** A power level as typed: a figure above 0, else `NaN`. */
+function parseLevel(text: string): number {
+  const value = Number(text.trim().replace(",", "."));
+  return Number.isFinite(value) && value > 0 && value <= 1000 ? value : Number.NaN;
+}
+
+/**
+ * The power level: the kW not to exceed, and its hours (all, a window's, or outside a window: the low-price hours
+ * outside a demand-charge window). Save hands `save` the level; an existing one also has Remove, which hands it `null`.
+ */
+export function levelEditor(
+  doc: Document,
+  language: Language,
+  input: LevelEditorInput,
+  save: SaveValue<PowerLevel | null>,
+  handlers: EditorHandlers,
+): HTMLFormElement {
+  const editor = shell(doc, language, "level", handlers);
+  const body = editor.body;
+  const help = doc.createElement("p");
+  help.className = C.entityHelp;
+  help.textContent = translate(language, "demand.level.help");
+  body.append(help);
+  const current = input.current;
+  const kw = priceInput(doc, `${input.idPrefix}-level-kw`, current?.level_kw ?? null);
+  kw.dataset["level"] = "kw";
+  const shownWindow = current?.window ?? input.partWindow ?? SUGGESTED_WINDOW;
+  const chosen = current === null ? (input.partWindow === null ? "all" : "outside") : current.window === null ? "all" : current.outside ? "outside" : "window";
+  const counted = choiceSelect(
+    doc,
+    `${input.idPrefix}-level-counted`,
+    [
+      { value: "all", text: translate(language, "demand.counted.all") },
+      { value: "window", text: translate(language, "demand.counted.window") },
+      { value: "outside", text: translate(language, "demand.level.counted.outside") },
+    ],
+    chosen,
+  );
+  counted.dataset["level"] = "counted";
+  const window = windowFields(doc, language, `${input.idPrefix}-level`, shownWindow);
+  const windowBox = doc.createElement("div");
+  windowBox.dataset["level"] = "window";
+  windowBox.append(...window.nodes);
+  windowBox.hidden = counted.value === "all";
+  counted.addEventListener("change", () => {
+    windowBox.hidden = counted.value === "all";
+  });
+  body.append(
+    labelled(doc, translate(language, "demand.level.kw"), kw),
+    labelled(doc, translate(language, "demand.counted"), counted),
+    windowBox,
+  );
+  if (current !== null) {
+    const remove = doc.createElement("button");
+    remove.type = "button";
+    remove.className = C.button;
+    remove.dataset["level"] = "remove";
+    remove.textContent = translate(language, "demand.remove");
+    remove.addEventListener("click", () => {
+      remove.disabled = true;
+      void save(null)
+        .then((message) => {
+          if (message === null) {
+            handlers.onDone();
+          } else {
+            editor.setError(message);
+          }
+        })
+        .finally(() => {
+          remove.disabled = false;
+        });
+    });
+    (editor.form.lastElementChild ?? body).append(remove);
+  }
+  editor.submit(async () => {
+    const level = parseLevel(kw.value);
+    if (Number.isNaN(level)) {
+      return translate(language, "demand.level.error.kw");
+    }
+    const hours = counted.value === "all" ? null : window.read();
+    if (hours !== null && hours.from_hour === hours.to_hour) {
+      return translate(language, "gridFee.window.sameHours");
+    }
+    return await save({ level_kw: level, window: hours, outside: hours !== null && counted.value === "outside" });
   });
   return editor.form;
 }

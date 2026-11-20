@@ -71,6 +71,9 @@ def test_house_band_is_the_p10_and_p90_of_the_misses_per_hour() -> None:
     # The hour's neighbours share in it: 16:00 pools 15-17, of which 17 is spread.
     low16, high16 = band.bounds(2.0, local(tomorrow, 16))
     assert low16 < 2.0 < high16
+    # Another reader's quantiles (the demand ceiling's p25): a smaller step down than p10.
+    p25 = learn(pairs, NOW, TZ, FORM_ADDITIVE, quantiles=(0.25, 0.9))
+    assert p25 is not None and low < p25.bounds(2.0, local(tomorrow, 18))[0] < 2.0
 
 
 def test_house_band_is_per_day_type_and_widens_when_a_day_type_is_thin() -> None:

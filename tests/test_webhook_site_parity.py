@@ -26,6 +26,7 @@ from custom_components.spotnav.api.house_history import websocket_get_house_hist
 from custom_components.spotnav.api.house_loads import websocket_get_house_loads
 from custom_components.spotnav.api.house_now import websocket_get_house_now
 from custom_components.spotnav.api.sessions import websocket_get_sessions
+from custom_components.spotnav.api.grid_tariff import without_power_level
 from custom_components.spotnav.api.site_view import websocket_get_site_settings_view
 from custom_components.spotnav.api.site_webhook import SITE_ACTIONS
 from custom_components.spotnav.battery import gate
@@ -128,8 +129,16 @@ async def test_the_site_settings_view_is_the_administrators_bar_load_balancing(
     assert expected["writable"] is True and expected["site"]["active_control"]["writable"] is True
     # As the webhook's dashboard: what its writes can change is writable, load balancing is not.
     expected["site"]["active_control"]["writable"] = False
+    # An app that does not read the power level never meets its keys (its decoder refuses a demand block with them).
+    reading = {**expected, "ok": True, "action": "get_site_settings_view"}
+    prices = expected["price_settings"]
+    expected["price_settings"] = {**prices, "grid_tariff": without_power_level(prices["grid_tariff"])}
     assert body == {**expected, "ok": True, "action": "get_site_settings_view"}
+    assert "power_level" not in body["price_settings"]["grid_tariff"]["demand"]
     _pinned("get_site_settings_view_success.json", _pin(body))
+    status, body = await post(client, HOOK, {"action": "get_site_settings_view", "reads": ["power_level"]})
+    assert status == 200 and body == reading
+    assert body["price_settings"]["grid_tariff"]["demand"]["power_level"] is None
 
 
 async def test_refusals_carry_the_commands_own_codes(hass: HomeAssistant, freezer, hass_client_no_auth) -> None:

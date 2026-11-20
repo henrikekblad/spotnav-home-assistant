@@ -65,12 +65,14 @@ describe("the demand block", () => {
       [0, "Effektavgift 1", "Högsta timmen, Alla dagar 06–23, hela året"],
       [1, "Effektavgift 2", "Högsta timmen, Alla dagar 23–06, hela året"],
       ["add", "Ytterligare en del av effektavgiften", "Lägg till"],
+      ["add_level", "Effektnivå", "Lägg till"],
     ]);
     expect(rows[0]!.lines).toEqual(["45 / 23 kr/kW (vinter / sommar)", "Den här månaden: 7,0 kW – tis 22 sep. 09:00 · 7,0 kW"]);
     expect(rows[1]!.lines).toEqual(["12 / 8 kr/kW (vinter / sommar)", "Ingen topp än den här månaden"]);
     // Nothing set: one row, "None".
     expect(demandRows(FORMAT, decodeDemand(NONE)).map((row) => [row.key, row.label, row.value])).toEqual([
       ["add", "Effektavgift", "Inget"],
+      ["add_level", "Effektnivå", "Lägg till"],
     ]);
     // A site that cannot measure says why, once.
     const blind = demandRows(FORMAT, decodeDemand({ ...DEMAND, available: false, reason: "needs_total_grid_power", per_component: [], hour: null }));
@@ -177,7 +179,7 @@ describe("the demand charge in the Electricity price section", () => {
   it("shows one row, None, until a component is added", async () => {
     const { element } = await open({ ...PILOT, demand: NONE });
     const keys = rowKeys(element, "market");
-    expect(keys.filter((key) => key!.startsWith("demand"))).toEqual(["demand_add"]);
+    expect(keys.filter((key) => key!.startsWith("demand"))).toEqual(["demand_add", "demand_add_level"]);
     expect(section(element, "market").querySelector("[data-row='demand_add']")!.textContent).toBe("Demand chargeNone");
   });
 
@@ -185,7 +187,8 @@ describe("the demand charge in the Electricity price section", () => {
     const { element } = await open(PILOT, { language: "sv" });
     const keys = rowKeys(element, "market");
     // After the fees that are set; the fees that are off wait under More fees.
-    expect(keys.filter((key) => key!.startsWith("demand"))).toEqual(["demand_0", "demand_1", "demand_add"]);
+    // Adding a power level waits under More fees, after them.
+    expect(keys.filter((key) => key!.startsWith("demand"))).toEqual(["demand_0", "demand_1", "demand_add", "demand_add_level"]);
     expect(keys.indexOf("demand_0")).toBeGreaterThan(keys.indexOf("transfer"));
     const help = section(element, "market").querySelector("[data-help='demand_0_1']")!;
     expect(help.textContent).toContain("Den här månaden: 7,0 kW");
@@ -226,6 +229,8 @@ describe("the demand charge in the Electricity price section", () => {
         // The supplier's two figures as stored: the backend states them, so the write carries them unchanged.
         supplier_markup: { enabled: false, value: null },
         sell_adjustment: { enabled: false, value: null },
+        // The power level as stored (none), likewise.
+        power_level: null,
       },
     ]);
   });

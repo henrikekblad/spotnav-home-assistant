@@ -59,7 +59,8 @@ function paths(value: unknown, path: string, into: Set<string>): void {
  * is the decision; a key neither read nor listed fails the audit.
  */
 const KNOWN_UNUSED: Record<string, readonly string[]> = {
-  house: [".state", ".days.[].arbitrage", ".today.battery_export_kwh", ".today.quarters"],
+  // `demand_ceiling`: the soft ceiling under the demand charge, in shadow; not drawn yet.
+  house: [".state", ".days.[].arbitrage", ".today.battery_export_kwh", ".today.quarters", ".demand_ceiling"],
   house_history: [".generated_at"],
   heat_history: [".generated_at"],
   power_month: [".site_id"],

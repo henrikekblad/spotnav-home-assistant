@@ -51,6 +51,9 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   past hours) and its forecast (`heat_forecast_kw`: past, the first logged; ahead, the latest); both are part of
   `house_kw`/`house_forecast_kw`, never added to them. Shown only: nothing plans on the split.
 
+* **`demand_ceiling`** (additive, shadow): the soft ceiling under the demand charge on today's view
+  (`site/demand_ceiling.py`): `{state: "shadow", reason, made_at, month, house_quantile, band, parts, hours:
+  [[start, S_h kW, λ_h per kW]], plan_cost}`; `null` on a past day. No plan reads it yet.
 * **`saving`**: what SpotNav saved on the shown day, `{date, total, battery, car, heat, battery_share, car_since}`
   (`site/spotnav_saving.py`, its docstring has each part's counterfactual and the rule against counting twice): each
   part `None` where the site does not have it or not yet for the day, `total` their sum; `battery_share` the share of
@@ -134,6 +137,7 @@ HOUSE_KEYS: Final = (
     "sources",
     "heat",
     "saving",
+    "demand_ceiling",
 )
 HOUR_KEYS: Final = (
     "start",
@@ -282,6 +286,9 @@ class HouseInputs:
     #: What SpotNav saved on the shown day (`site/spotnav_saving.saving_block`, the shell works it out); `None`
     #: without any part.
     saving: Mapping[str, Any] | None = None
+    #: The soft ceiling under the demand charge in shadow (`site/demand_ceiling.SiteDemandCeiling.as_dict`), shown on
+    #: today only; `None` elsewhere.
+    demand_ceiling: Mapping[str, Any] | None = None
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -787,4 +794,7 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
         },
         "heat": heat_block(inputs),
         "saving": None if inputs.saving is None else dict(inputs.saving),
+        "demand_ceiling": None
+        if inputs.demand_ceiling is None or inputs.day is not None
+        else dict(inputs.demand_ceiling),
     }

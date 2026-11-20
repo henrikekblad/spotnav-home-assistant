@@ -10,6 +10,7 @@
   },
   "day_review": null,
   "days": [],
+  "demand_ceiling": null,
   "energy_flow": null,
   "flow": null,
   "generated_at": "2026-11-13T16:20:00+00:00",

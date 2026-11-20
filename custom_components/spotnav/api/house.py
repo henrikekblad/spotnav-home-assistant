@@ -727,8 +727,21 @@ def house_answer(
             heat=_heat(hass, controller, heat or {}),
             learning=_learning(controller, demand.now()),
             saving=saving,
+            demand_ceiling=_demand_ceiling(controller),
         )
     )
+
+
+def _demand_ceiling(controller: Any) -> dict[str, Any] | None:
+    """The site's soft ceiling in shadow (`site/demand_ceiling.py`), `None` where it has none to show."""
+    ceiling = getattr(controller, "demand_ceiling", None)
+    if ceiling is None:
+        return None
+    try:
+        return ceiling.as_dict()
+    except Exception:  # noqa: BLE001 - a shadow block never fails the answer
+        _LOGGER.debug("house_answer: the demand ceiling could not be read", exc_info=True)
+        return None
 
 
 async def async_house_answer(hass: HomeAssistant, site: Any, date_raw: Any = None) -> dict[str, Any]:

@@ -66,6 +66,8 @@ from ..planning.auto_settings import (
     FiscalOverride,
     GRID_TARIFF_FEES,
     GridTariff,
+    POWER_LEVEL,
+    PowerLevel,
     SUPPLIER_FEES,
 )
 from ..runtime import domain_data, holiday_dates
@@ -175,7 +177,8 @@ def source_revision(overrides: AreaAutoSettings) -> str:
     """A digest of an area and its fees: equal for equal fees, different when the area or a fee moves.
 
     The grid tariff joins the digest only while one is stored, so an entry without one keeps the revision it had;
-    its demand-charge components only while there are any, so a tariff without them keeps its revision too; the
+    its demand-charge components only while there are any, so a tariff without them keeps its revision too (its power
+    level likewise only while one is set); the
     supplier's two figures likewise only while one is stored (off with no figure is none).
     """
     body = overrides.as_dict()
@@ -183,6 +186,8 @@ def source_revision(overrides: AreaAutoSettings) -> str:
         tariff = overrides.grid_tariff.as_dict()
         if not overrides.grid_tariff.demand:
             del tariff[DEMAND_COMPONENTS]
+        if overrides.grid_tariff.power_level is None:
+            del tariff[POWER_LEVEL]
         for name in SUPPLIER_FEES:
             if getattr(overrides.grid_tariff, name) == FiscalOverride():
                 del tariff[name]
@@ -318,6 +323,17 @@ def site_demand_components(hass: HomeAssistant, site_entry_id: str) -> tuple[Dem
         else replace(component, window=replace(component.window, holidays=source.holidays))
         for component in tariff.demand
     )
+
+
+def site_power_level(hass: HomeAssistant, site_entry_id: str) -> PowerLevel | None:
+    """The power level of the electricity price the site measures for (`None` without one), its window with the
+    installation's public holidays as the demand-charge parts' (`site_demand_components`)."""
+    source = site_price_source(hass, site_entry_id)
+    tariff = None if source is None else source.overrides.grid_tariff
+    level = None if tariff is None else tariff.power_level
+    if level is None or level.window is None:
+        return level
+    return replace(level, window=replace(level.window, holidays=source.holidays))
 
 
 def price_source_for(

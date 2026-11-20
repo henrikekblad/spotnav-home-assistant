@@ -77,6 +77,7 @@ from .house import async_house_answer
 from .house_loads import async_loads_answer
 from .house_now import async_house_now
 from .power_month import PowerMonthRefusal
+from .grid_tariff import READS_POWER_LEVEL, without_power_level
 from .site_view import SITE_VIEW_API_VERSION, site_settings_view
 
 type _Handler = Callable[[HomeAssistant, ConfigEntry, dict[str, Any]], Awaitable[web.Response]]
@@ -157,9 +158,19 @@ def site_settings_view_handler(*, price_writable: bool) -> SiteHandler:
             active_control_writable=False,
             price_writable=price_writable,
         )
+        prices = view.get("price_settings")
+        if isinstance(prices, dict) and not _reads(payload, READS_POWER_LEVEL):
+            # An app before the power level refuses a demand block with an unknown key (`webhook._grid_tariff_for_app`).
+            view = {**view, "price_settings": {**prices, "grid_tariff": without_power_level(prices.get("grid_tariff"))}}
         return web.json_response({"ok": True, "action": action, **view})
 
     return handler
+
+
+def _reads(payload: dict[str, Any], name: str) -> bool:
+    """Whether the request opts in to `name` (its top-level `reads` list, as the dashboard's)."""
+    reads = payload.get("reads")
+    return isinstance(reads, list) and name in reads
 
 
 async def _update_heat(hass: HomeAssistant, site: ConfigEntry | None, payload: dict[str, Any]) -> web.Response:
