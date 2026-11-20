@@ -1027,8 +1027,9 @@ def _import_limit(hass: HomeAssistant, state: str) -> None:
         # The default 4 kW peak on one phase leaves 5.7 A of 25 A (less the 2 A margin): 3.935 kW balanced.
         (25.0, False, None, "3.935"),
         # Shown to act and reading at most what keeps the worst phase under the fuse (7.93 kW in all with 4 kW on
-        # one phase): only the live clamp on the measured headroom.
-        (25.0, True, "7.5", "12.47"),
+        # one phase): only the live clamp on the measured headroom (started at 6.47 kW under the plant's cover of the
+        # house, which is counted out of the headroom, and up after the dwell).
+        (25.0, True, "7.5", "13.2"),
         # Shown to act but reading more than that (the plant limits the total, not each phase): the cap stays.
         (25.0, True, "10", "3.935"),
         (25.0, True, "100", "3.935"),
@@ -1043,9 +1044,9 @@ async def test_the_grid_charge_is_capped_per_phase_until_the_import_limit_is_sho
         _import_limit(hass, limit)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     _options(hass, site, import_limit_acts=import_limit_acts)
-    await _looks(control, dt_util.now(), 6)
+    await _looks(control, dt_util.now(), 16)
     assert hass.states.get(CHARGE).state[:len(written)] == written
-    assert any(row["kind"] == "restricted" for row in control.log) is (written != "12.47")
+    assert any(row["kind"] == "restricted" for row in control.log) is (written != "13.2")
 
 
 async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_and_never_writes_it(

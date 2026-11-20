@@ -157,7 +157,7 @@ def test_a_value_that_needs_a_reading_is_unresolved_without_it() -> None:
 
 
 def test_a_goodwe_grid_charge_writes_numbers_then_mode_and_hands_back_in_the_restore_order() -> None:
-    executor, battery = _goodwe()
+    executor, battery = _goodwe(idle_kw=0.0)
     now, results = run(executor, battery, T0, 10, "grid_charge", 4.0)
     assert written(results) == [("eco_soc", 100.0), ("eco_power", 40.0), ("operation_mode", "eco_charge")]
     assert battery.states["operation_mode"] == "eco_charge"
@@ -231,7 +231,7 @@ class _GoodweInverter(_Fake):
 
 def test_a_lowered_goodwe_rate_reaches_the_inverter_by_the_numbers_write() -> None:
     executor = Executor(GOODWE_CONTROL)
-    battery = _GoodweInverter(GOODWE_CONTROL, dict(GOODWE_STATES), soc_pct=42.7)
+    battery = _GoodweInverter(GOODWE_CONTROL, dict(GOODWE_STATES), soc_pct=42.7, idle_kw=0.0)
     now, _ = run(executor, battery, T0, 8, "grid_charge", 6.0, headroom_a=40.0)
     assert battery.sent == {"power": "60", "soc": "100"}
     # The headroom falls: the rate goes down, only the number is written, and the select sends the group again.
@@ -357,7 +357,7 @@ def test_core_goodwe_without_the_eco_numbers_says_it_needs_the_hacs_integration(
 
 
 def test_a_tesla_hold_and_grid_charge_and_the_hand_back_order() -> None:
-    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, capacity_kwh=13.5, rated_kw=None)
     now, results = run(executor, battery, T0, 8, "hold")
     assert written(results) == [("reserve", 40.0)]
     now += timedelta(hours=1)
@@ -383,7 +383,7 @@ def test_a_tesla_hold_turns_grid_charging_off_and_hands_it_back_as_found() -> No
 
 
 def test_a_switch_found_on_is_handed_back_on() -> None:
-    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, capacity_kwh=13.5, rated_kw=None)
     battery.states["grid_charging"] = "on"
     now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
     assert written(results) == [("reserve", 61.0)]
@@ -463,7 +463,7 @@ def test_a_tesla_grid_charge_runs_in_blocks_so_a_lost_home_assistant_leaves_one_
 
 
 def test_a_tesla_site_without_solar_has_no_grid_charging_switch_and_still_charges_by_the_reserve() -> None:
-    executor, battery = _tesla(missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, missing={"grid_charging"}, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
     assert written(results) == [("reserve", 61.0)]
     assert not events(results, "not_started")
@@ -538,11 +538,11 @@ def test_a_fixed_charge_that_does_not_fit_under_the_fuse_is_refused_not_lowered(
 
 
 def test_the_executor_refuses_a_fixed_charge_over_the_live_headroom() -> None:
-    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0, headroom_a=4.0)
     assert written(results) == []
     assert events(results, "not_started")[0]["reason"] == "fuse_headroom"
-    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=30.0)
     assert executor.state.phase == "active" and executor.state.rate_kw == 5.0
 
@@ -556,13 +556,13 @@ def test_a_fixed_charge_without_the_batterys_size_is_refused() -> None:
 def test_the_live_check_counts_a_fixed_charge_on_one_phase() -> None:
     # 5 kW on one phase is 21.7 A: 9.5 A of headroom (7.5 A once the margin is kept) is far too little, though as
     # three-phase power it would be 5.2 kW.
-    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0, headroom_a=9.5)
     assert written(results) == [] and events(results, "not_started")[0]["reason"] == "fuse_headroom"
-    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 4, "grid_charge", 3.0, headroom_a=23.0)
     assert written(results) == [] and events(results, "not_started")[0]["reason"] == "fuse_headroom"
-    executor, battery = _tesla(capacity_kwh=13.5, rated_kw=None)
+    executor, battery = _tesla(idle_kw=0.0, capacity_kwh=13.5, rated_kw=None)
     _now, results = run(executor, battery, T0, 8, "grid_charge", 3.0, headroom_a=24.0)
     assert executor.state.phase == "active"
 

@@ -144,6 +144,7 @@ def test_a_sigenergy_hold_is_written_limit_first_then_remote_ems_then_its_mode_e
 
 def test_plain_self_consumption_hands_a_sigenergy_back_in_the_restore_order() -> None:
     executor, battery = _sigenergy()
+    battery.idle_kw = 0.0  # nothing covered at the start: the cover is counted out of a start from idle
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
     assert battery.states["control_mode"] == "Command Charging (Grid First)"
     assert battery.states["charge_limit"] == "4"
@@ -438,6 +439,7 @@ def test_after_a_hand_back_a_new_action_waits_to_rearm() -> None:
 
 def test_a_grid_charge_is_clamped_by_the_live_headroom_and_the_battery_charge_counts_against_the_fuse() -> None:
     executor, battery = _sigenergy()
+    battery.idle_kw = 0.0  # nothing covered at the start: the cover is counted out of a start from idle
     # 6 A of headroom less the 2 A margin over three phases at 400 V: about 2.77 kW.
     _now, results = run(executor, battery, T0, 6, "grid_charge", 8.0, headroom_a=6.0, grid_import_kw=1.0)
     assert executor.state.rate_kw == pytest.approx(2.771, abs=0.001)
@@ -455,6 +457,7 @@ def test_the_counted_back_charge_is_never_above_the_site_import() -> None:
 
 def test_the_rate_goes_down_at_once_and_up_only_after_the_dwell() -> None:
     executor, battery = _sigenergy()
+    battery.idle_kw = 0.0  # nothing covered at the start: the cover is counted out of a start from idle
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0, headroom_a=20.0)
     assert executor.state.rate_kw == 4.0
     # The house switches on a kettle: headroom shrinks; the battery's own 4 kW is in the import and counts back.
@@ -475,6 +478,7 @@ def test_the_rate_goes_down_at_once_and_up_only_after_the_dwell() -> None:
 
 def test_with_car_first_the_battery_yields_to_a_held_car_and_with_battery_first_it_does_not() -> None:
     executor, battery = _sigenergy()
+    battery.idle_kw = 0.0  # nothing covered at the start: the cover is counted out of a start from idle
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
     now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, car_held=True, car_first=True, grid_import_kw=5.0)
     assert executor.state.rate_kw == pytest.approx(3.0)
@@ -933,6 +937,78 @@ def test_fuse_a_sale_step_the_rule_allows_leaves_every_phase_under_the_fuse_less
     assert checked > 30
 
 
+def _idle_start(fuse: float, house: tuple[float, float, float], cover: tuple[float, float, float], plan_kw: float):
+    """A grid charge started from idle with the house (A a phase) partly covered by the battery in its own mode
+    (A a phase): the headroom and the import are the meter's, under that cover."""
+    phase_v = 400.0 / 3**0.5
+    grid = [load - part for load, part in zip(house, cover, strict=True)]
+    executor, battery = _sigenergy()
+    _now, results = run(
+        executor, battery, T0, 1, "grid_charge", plan_kw, headroom_a=fuse - max(grid),
+        power_kw=-sum(cover) * phase_v / 1000.0, grid_import_kw=sum(grid) * phase_v / 1000.0,
+        volts_between_phases=400.0,
+    )
+    return executor, battery, results
+
+
+def test_fuse_a_grid_charge_from_idle_counts_the_cover_the_battery_gives_in_its_own_mode() -> None:
+    """The house takes 10 kW and the battery covers 4 kW of it in its own mode, so the meter reads 6 kW and its
+    headroom is 4 kW too large for a charge: the cover ends when the charge starts. A 5 kW charge sized on that
+    headroom alone would put a phase over the fuse less the margin; with the cover counted out first (all of it on
+    one phase, where it is on is not known) every phase stays under, or the charge is not started."""
+    phase_v = 400.0 / 3**0.5
+    total_a = 10_000.0 / phase_v
+    cover_total_a = 4_000.0 / phase_v
+    started = 0
+    for fuse in (25.0, 35.0, 50.0):
+        for split in ((1 / 3, 1 / 3, 1 / 3), (0.5, 0.3, 0.2), (0.7, 0.2, 0.1)):
+            house = tuple(total_a * part for part in split)
+            for cover_split in ((1 / 3, 1 / 3, 1 / 3), (1.0, 0.0, 0.0), split):
+                cover = tuple(min(cover_total_a * part, load) for part, load in zip(cover_split, house, strict=True))
+                if max(load - part for load, part in zip(house, cover, strict=True)) > fuse - HEADROOM_MARGIN_A:
+                    continue
+                executor, _battery, results = _idle_start(fuse, house, cover, 5.0)  # type: ignore[arg-type]
+                if executor.state.phase != "active":
+                    assert events(results, "not_started")[0]["reason"] == "fuse_headroom"
+                    continue
+                started += 1
+                charge_a = executor.state.rate_kw * 1000.0 / 3.0 / phase_v
+                assert max(house) + charge_a <= fuse - HEADROOM_MARGIN_A + 0.01, (fuse, house, cover, executor.state)
+    assert started > 5
+    # The example on a 35 A fuse: 26.3 A of headroom less the cover's 17.3 A and the margin leaves 4.86 kW of the 5.
+    house = (total_a / 3, total_a / 3, total_a / 3)
+    cover = (cover_total_a / 3, cover_total_a / 3, cover_total_a / 3)
+    executor, _battery, _results = _idle_start(35.0, house, cover, 5.0)
+    assert executor.state.rate_kw == pytest.approx(4.86, abs=0.01)
+
+
+def test_a_grid_charge_from_idle_without_a_cover_starts_as_before() -> None:
+    for power_kw in (0.0, 1.5):  # idle, or the battery storing the sun
+        executor, battery = _sigenergy()
+        _now, results = run(executor, battery, T0, 1, "grid_charge", 5.0, headroom_a=12.0, power_kw=power_kw,
+                            grid_import_kw=3.0)
+        # 12 A less the margin over three phases is 6.9 kW: the plan's 5 kW at once.
+        assert events(results, "enter")[0]["rate_kw"] == 5.0
+
+
+def test_a_grid_charge_started_low_for_the_cover_goes_up_once_the_cover_has_ended() -> None:
+    """10 kW of house, 1 kW covered, a 25 A fuse: started at 3.9 kW, and at the plan's 5 kW a dwell later, when the
+    meter reads the house without the cover."""
+    phase_v = 400.0 / 3**0.5
+    house_a = 10_000.0 / phase_v / 3
+    cover_a_phase = 1_000.0 / phase_v / 3
+    executor, battery, _results = _idle_start(25.0, (house_a,) * 3, (cover_a_phase,) * 3, 5.0)
+    first = executor.state.rate_kw
+    assert first == pytest.approx(3.93, abs=0.02)
+    now = T0 + TICK
+    for _ in range(int(RATE_UP_DWELL_S / TICK.total_seconds()) + 8):
+        rate = executor.state.rate_kw
+        now, _ = run(executor, battery, now, 1, "grid_charge", 5.0, power_kw=rate, grid_import_kw=10.0 + rate,
+                     headroom_a=25.0 - house_a - rate * 1000.0 / 3.0 / phase_v, volts_between_phases=400.0)
+        assert house_a + executor.state.rate_kw * 1000.0 / 3.0 / phase_v <= 25.0 - HEADROOM_MARGIN_A + 0.01
+    assert executor.state.phase == "active" and executor.state.rate_kw == 5.0
+
+
 def test_a_running_grid_charge_does_not_count_a_discharge_still_read_as_cover() -> None:
     """The cover is counted on the change only: in the running charge a battery that still reads a discharge (the
     plant ramping) does not lower the cap a second time."""
@@ -1242,6 +1318,7 @@ def test_the_preview_refuses_as_the_executor_does() -> None:
 
 def test_a_rate_change_never_writes_over_a_limit_someone_else_just_changed() -> None:
     executor, battery = _sigenergy()
+    battery.idle_kw = 0.0  # nothing covered at the start: the cover is counted out of a start from idle
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0, headroom_a=20.0)
     assert executor.state.phase == "active"
     battery.states["charge_limit"] = "9"  # the app sets its own limit, seconds ago

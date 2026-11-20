@@ -406,7 +406,12 @@ def test_the_live_clamp_takes_the_charge_as_all_on_the_tightest_phase() -> None:
     for phases in (SOLINTEG_CONTROL.grid_charge_phases, 3):
         executor, plant = _plant()
         plant.house_a = [12.0, 2.0, 2.0]
-        _now, results = _run(executor, plant, T0, 12, "grid_charge", 6.0, charge_phases=phases)
+        # Nothing covered before the start (the headroom here is the house's alone): a cover is counted out of it.
+        plant.obeys, plant.idle_kw = False, 0.0
+        _now, results = _run(executor, plant, T0, 1, "grid_charge", 6.0, charge_phases=phases)
+        plant.obeys = True
+        _now, more = _run(executor, plant, _now, 11, "grid_charge", 6.0, charge_phases=phases)
+        results += more
         first[phases] = -next(value for role, value in written(results) if role == "battery_target") * 1000 / VOLTS
         if phases == 1:
             assert max(plant.phase_a()) <= FUSE_A - HEADROOM_MARGIN_A + 1e-6 and executor.state.phase == "active"
