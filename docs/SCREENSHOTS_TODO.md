@@ -11,6 +11,5 @@ The pages already refer to these files. Until a file exists, the page shows its 
 
 | File (under `docs/images/`) | What it should show | Used in |
 | --- | --- | --- |
-| `heat-card-hot-water.png` | The heat card's **Plan** tab with planned hot-water runs (hollow droplets), measured runs and the peak ticks, and the shadow progress line. | hot-water.md |
 
 Use made-up names and figures. No real addresses, names or device serials in a picture.
