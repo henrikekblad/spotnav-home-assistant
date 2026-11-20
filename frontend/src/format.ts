@@ -63,18 +63,23 @@ function dateFormat(language: Language | "en-GB", options: Intl.DateTimeFormatOp
   return created;
 }
 
+/** A value that rounds to zero at `digits` decimals becomes a plain zero, so no figure ever reads "-0,00". */
+function unsigned(value: number, digits: number): number {
+  return Math.abs(value) < 0.5 * 10 ** -digits ? 0 : value;
+}
+
 export function formatFixed(language: Language, value: number, digits = 1): string {
   return numberFormat(language, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(value);
+  }).format(unsigned(value, digits));
 }
 
 export function formatNumber(language: Language, value: number, digits = 1): string {
   return numberFormat(language, {
     minimumFractionDigits: 0,
     maximumFractionDigits: digits,
-  }).format(value);
+  }).format(unsigned(value, digits));
 }
 
 /** Which unit per-kWh prices are shown in: one choice per device, the minor unit unless chosen otherwise. */
@@ -189,7 +194,7 @@ export function moneyMinorAsMajor(language: Language, minor: number, units: Mone
 /** An amount in a currency the way the language writes money, or the plain form if the code is unknown. */
 export function localeMoney(language: Language, value: number, currency: string, label: string | null): string {
   try {
-    return numberFormat(language, { style: "currency", currency, currencyDisplay: "narrowSymbol" }).format(value);
+    return numberFormat(language, { style: "currency", currency, currencyDisplay: "narrowSymbol" }).format(unsigned(value, 2));
   } catch {
     const amount = formatFixed(language, value, 2);
     return label === null ? amount : `${amount} ${label}`;
