@@ -130,7 +130,7 @@ for (const name of fixtures) {
 const models: Array<[string, () => CardModel]> = [
   ["base", () => baseModel()],
   ["external", () => externalModel()],
-  ["quarter", () => quarterModel()],
+  ["quarter", () => quarterModel(() => ({ proposal_planned: true }))],
   ["two-day", () => twoDayModel()],
   ["two-day-plan", () => twoDayPlanModel()],
   ["midnight", () => midnightModel()],
