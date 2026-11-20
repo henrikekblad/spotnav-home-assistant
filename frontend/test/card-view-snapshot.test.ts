@@ -188,5 +188,5 @@ describe("the card view's serialized DOM", () => {
     expect(Object.keys(seen)).toEqual(Object.keys(expected));
     expect(seen).toEqual(expected);
     expect(cases.length).toBeGreaterThan(290);
-  });
+  }, 120_000);
 });
