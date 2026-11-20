@@ -20,6 +20,7 @@ from custom_components.spotnav.heat.zone_control import (
     qualifies,
     read_back,
     same,
+    taken,
 )
 
 NOW = datetime(2026, 11, 20, 18, 0, tzinfo=timezone.utc)
@@ -82,6 +83,20 @@ def test_read_back_is_within_one_step_and_the_same_value_within_half_a_step() ->
     limits = Limits(step=0.5)
     assert read_back(20.5, 20.0, limits) and not read_back(21.0, 20.0, limits) and not read_back(None, 20.0, limits)
     assert same(20.0, 20.0, limits) and same(20.2, 20.0, limits) and not same(20.5, 20.0, limits)
+
+
+def test_a_write_has_taken_only_when_the_thermostat_no_longer_shows_the_value_before_it() -> None:
+    half, whole = Limits(0.5, 5.0, 30.0), Limits(1.0, 5.0, 30.0)
+    # Two steps apart: the old value is outside the read-back's reach anyway.
+    assert taken(21.0, 21.0, 22.0, half) and not taken(22.0, 21.0, 22.0, half)
+    # One step apart (a pre-heat handed back, a lowering on a whole-degree thermostat): the old value still showing
+    # is within a step of the one written, and is no read-back.
+    assert not taken(22.5, 22.0, 22.5, half) and taken(22.0, 22.0, 22.5, half)
+    assert not taken(22.0, 21.0, 22.0, whole) and taken(21.0, 21.0, 22.0, whole)
+    # A thermostat that rounds to a value of its own, neither the old one nor the one written: taken.
+    assert taken(21.5, 21.0, 22.0, half)
+    # Already showing the value written, or nothing known of before: the read-back alone.
+    assert taken(22.0, 22.0, 22.0, half) and taken(22.5, 22.0, None, half) and not taken(None, 22.0, 22.5, half)
 
 
 def test_a_planned_lowering_runs_by_the_relay_s_rules() -> None:

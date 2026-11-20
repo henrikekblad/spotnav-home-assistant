@@ -157,14 +157,74 @@ async def test_a_hand_change_wins_and_is_the_person_s_new_value(hass: HomeAssist
     assert zones.status(FLOOR)["home_c"] == 21.5  # type: ignore[index]
 
 
-async def test_the_mode_leaving_heat_gives_the_zone_up_at_once(hass: HomeAssistant, freezer) -> None:
+async def test_the_mode_leaving_heat_writes_nothing_and_the_person_s_value_comes_back_when_it_heats_again(hass: HomeAssistant, freezer) -> None:
+    _entry, zones, thermostat, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
+    await zones.async_look(now)
+    await zones.async_look(now + MIN)
+    thermostat.mode = "off"
+    thermostat.show()
+    for minute in range(2, 40, 5):
+        await zones.async_look(now + minute * MIN)
+    status = zones.status(FLOOR)
+    # Paused for the day, nothing written while off, and SpotNav's 21 is not taken for the person's value.
+    assert status is not None and (status["reason"], status["home_c"], status["held_c"]) == ("foreign_change", 22.0, 21.0)
+    assert status["paused_until"] is not None and thermostat.calls == [21.0]
+    # The stop writes nothing to a thermostat that is off either: it stays kept for the next start.
+    await zones.async_shutdown()
+    assert thermostat.calls == [21.0] and zones.holds_any()
+    zones._closed = False  # noqa: SLF001 - looked at again by hand
+    # Heating again and still showing SpotNav's value: the person's value is written back.
+    thermostat.mode = "heat"
+    thermostat.show()
+    await zones.async_look(now + 45 * MIN)
+    await zones.async_look(now + 46 * MIN)
+    status = zones.status(FLOOR)
+    assert thermostat.calls == [21.0, 22.0] and status is not None and (status["home_c"], status["held_c"]) == (22.0, None)
+
+
+async def test_a_setpoint_changed_while_the_mode_is_off_is_left_and_is_the_person_s(hass: HomeAssistant, freezer) -> None:
     _entry, zones, thermostat, now = await _running(hass, freezer, {0: "lower", 1: "lower"})
     await zones.async_look(now)
     await zones.async_look(now + MIN)
     thermostat.mode = "off"
     thermostat.show()
     await zones.async_look(now + 2 * MIN)
-    assert zones.status(FLOOR)["reason"] == "foreign_change" and thermostat.calls == [21.0]  # type: ignore[index]
+    thermostat.set_by_hand(19.0)
+    await zones.async_look(now + 3 * MIN)
+    await zones.async_look(now + 5 * MIN)
+    thermostat.mode = "heat"
+    thermostat.show()
+    await zones.async_look(now + 6 * MIN)
+    status = zones.status(FLOOR)
+    assert thermostat.calls == [21.0] and thermostat.setpoint == 19.0
+    assert status is not None and (status["home_c"], status["held_c"]) == (19.0, None)
+
+
+async def test_the_person_s_value_lost_on_its_way_back_is_never_taken_for_written_nor_let_go(hass: HomeAssistant, freezer) -> None:
+    """A pre-heat is half a degree above the person's value, one step of this thermostat: a write back that is lost
+    leaves the thermostat a step from the person's value. That is no read-back, SpotNav's value never becomes the
+    person's, and the write is tried again until it takes."""
+    _entry, zones, thermostat, now = await _running(hass, freezer, {0: "preheat"})
+    await zones.async_look(now)
+    await zones.async_look(now + MIN)
+    assert thermostat.calls == [22.5] and zones.status(FLOOR)["held_c"] == 22.5  # type: ignore[index]
+    thermostat.ignore = True
+    moment = now + H + MIN
+    await zones.async_look(moment)
+    assert thermostat.calls == [22.5, 22.0]
+    # Looked at for an hour and a half: tried again, three times at once and then every half hour; still held.
+    for step in range(1, 180):
+        await zones.async_look(moment + step * MIN / 2)
+        status = zones.status(FLOOR)
+        assert status is not None and (status["home_c"], status["held_c"]) == (22.0, 22.5), step
+    tries = thermostat.calls.count(22.0)
+    assert 4 <= tries <= 7 and set(thermostat.calls) == {22.5, 22.0}
+    # The thermostat takes writes again: the next try puts the person's value back.
+    thermostat.ignore = False
+    for step in range(180, 260):
+        await zones.async_look(moment + step * MIN / 2)
+    status = zones.status(FLOOR)
+    assert thermostat.setpoint == 22.0 and status is not None and (status["home_c"], status["held_c"]) == (22.0, None)
 
 
 async def test_turning_the_opt_in_off_writes_the_person_s_value_back(hass: HomeAssistant, freezer) -> None:

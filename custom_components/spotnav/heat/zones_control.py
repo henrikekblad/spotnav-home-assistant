@@ -12,12 +12,16 @@ written without it.
    the check's failure.
 2. **The person's value** (`home_c`) is the setpoint read while SpotNav holds nothing, taken again on every change it
    did not make. **Someone else's change wins**: the setpoint reading other than SpotNav's last write for
-   `FOREIGN_CONFIRM` while it holds one, or the mode leaving `heat`, gives the zone up: nothing written back, the value
-   read becomes the person's, the zone paused to the next local day (`foreign_change`).
+   `FOREIGN_CONFIRM` while it holds one gives the zone up: nothing written back, the value read becomes the person's,
+   the zone paused to the next local day (`foreign_change`). The mode leaving `heat` (or the setpoint no longer
+   shown) while the thermostat still reads SpotNav's value pauses the zone the same way and writes nothing in the
+   other mode, but SpotNav's value never becomes the person's: it is written back at the first look in `heat` mode
+   that still reads it.
 3. **Exits** (the opt-in off, a pause, a block, the zone no longer qualifying, the day's write cap, unload, Home
    Assistant's stop, and at the next start after a stop that could not): the person's value is written back where the
    thermostat still reads SpotNav's; a thermostat that does not read is written back at its first readable look. A
-   value someone else set is left.
+   value someone else set is left. A write of the person's value that does not show is tried again (`HOME_TRIES` at
+   once, then every `HOME_RETRY`) for as long as the thermostat reads SpotNav's value: it is never let go there.
 4. **Blocks**: an enabled automation whose actions reference the thermostat (`heat/automations.py`, the heat card's
    one note `automation_steers` with `blocks`) keeps SpotNav off it; SpotNav never turns an automation off.
 5. **The check**, once per thermostat (again after the opt-in is turned off and on): the first write is read back;
@@ -79,6 +83,7 @@ from .zone_control import (
     qualifies,
     read_back,
     same,
+    taken,
 )
 
 if TYPE_CHECKING:
@@ -101,8 +106,9 @@ DAYS_KEPT: Final = 3
 LOG_SIZE: Final = 100
 #: The zones' mean power is read again this often.
 POWER_REFRESH: Final = timedelta(hours=1)
-#: Writes of the person's value that may go unread before SpotNav lets the thermostat go.
+#: Writes of the person's value that may go unread in a row before the next ones are spaced `HOME_RETRY` apart.
 HOME_TRIES: Final = 3
+HOME_RETRY: Final = timedelta(minutes=30)
 
 STATE_OFF: Final = "off"
 STATE_VERIFYING: Final = "verifying"
@@ -132,6 +138,8 @@ class Pending:
     #: Writing the person's own value back (an exit), not a value SpotNav holds.
     home: bool
     action: str
+    #: What the thermostat showed for SpotNav before this write (`None`: not known): still showing it is no read-back.
+    before: float | None = None
 
 
 class ZoneState:
@@ -169,6 +177,8 @@ class ZoneState:
         self.restore = False
         #: Writes of the person's value in a row that were not read back.
         self.home_failures = 0
+        #: The next try to write the person's value back after `HOME_TRIES` that did not show.
+        self.home_retry_at: datetime | None = None
 
     def stored(self) -> dict[str, Any]:
         return {
@@ -295,12 +305,13 @@ class ZonesControl:
             attributes = {} if state is None else state.attributes
             limits = Limits.of(attributes)
             read = finite_number(attributes.get("temperature"))
-            if read is None or not zone.ours(read, limits):
+            if read is None or not zone.ours(read, limits) or state is None or state.state != "heat":
+                # Someone else's value, or not in heat mode: nothing written; kept, and judged at the next start.
                 continue
             try:
                 await self._async_set(zone.entity_id, zone.home_c)
                 async with asyncio.timeout(SHUTDOWN_WAIT_S):
-                    while not read_back(self._setpoint(zone.entity_id), zone.home_c, limits):
+                    while not taken(self._setpoint(zone.entity_id), zone.home_c, read, limits):
                         await asyncio.sleep(0.2)
                 self._handed_back(zone, now)
             except Exception:  # noqa: BLE001 - kept held: written back at the next start
@@ -391,7 +402,7 @@ class ZonesControl:
         # A write is read back first.
         if zone.pending is not None:
             pending = zone.pending
-            if available and read_back(read, pending.value, limits):
+            if available and taken(read, pending.value, pending.before, limits):
                 self._confirm(zone, pending, now)
             elif now - pending.at > READ_BACK:
                 zone.pending = None
@@ -409,13 +420,17 @@ class ZonesControl:
                 else:
                     zone.home_failures += 1
                     if zone.home_failures >= HOME_TRIES:
-                        # The thermostat takes no write: let go (logged) rather than write to it for ever.
-                        _LOGGER.warning(
-                            "SpotNav zones: %s did not take its own value %s back; let go", zone.entity_id, pending.value
-                        )
-                        self._log(now, zone, "let_go")
-                        self._handed_back(zone, now)
-                        zone.home_failures = 0
+                        # The thermostat takes no write now: tried again every `HOME_RETRY` while it reads SpotNav's
+                        # value, never let go there (SpotNav's value must not pass for the person's).
+                        if zone.home_failures == HOME_TRIES:
+                            _LOGGER.warning(
+                                "SpotNav zones: %s does not take its own value %s back; trying again every %s",
+                                zone.entity_id,
+                                pending.value,
+                                HOME_RETRY,
+                            )
+                        self._log(now, zone, "home_not_taken", tries=zone.home_failures)
+                        zone.home_retry_at = now + HOME_RETRY
                     self._pause(zone, now, WAIT_NO_READ_BACK)
                     zone.state, zone.reason = STATE_WAITING, WAIT_NO_READ_BACK
                 return
@@ -438,9 +453,22 @@ class ZonesControl:
 
         # Someone else's change wins.
         if zone.written_c is not None:
-            if mode != "heat" or not zone.ours(read, limits):
+            if read is None or (mode != "heat" and zone.ours(read, limits)):
+                # The mode left `heat` (or no setpoint is shown) while the thermostat holds SpotNav's value: nothing
+                # is written in another mode, and SpotNav's value is not the person's. Kept, paused for the day, and
+                # written back at the first look in heat mode that still reads it.
+                if zone.foreign_since is None and zone.reason != WAIT_FOREIGN_CHANGE:
+                    self._log(now, zone, "mode_left_heat", read=read, mode=mode)
+                    _LOGGER.info("SpotNav zones: %s left heat mode while held; set back when it heats again", zone.entity_id)
+                self._end(zone, now)
+                zone.effect = None
+                zone.foreign_since = None
+                self._pause(zone, now, WAIT_FOREIGN_CHANGE)
+                zone.state, zone.reason = STATE_WAITING, WAIT_FOREIGN_CHANGE
+                return
+            if not zone.ours(read, limits):
                 zone.foreign_since = zone.foreign_since or now
-                if mode != "heat" or now - zone.foreign_since >= FOREIGN_CONFIRM:
+                if now - zone.foreign_since >= FOREIGN_CONFIRM:
                     self._log(now, zone, "foreign_change", read=read, mode=mode)
                     _LOGGER.info("SpotNav zones: %s was changed by someone else; given up for the day", zone.entity_id)
                     self._end(zone, now)
@@ -527,7 +555,7 @@ class ZonesControl:
         if decision.reason == REASON_ZONE_WARM and zone.written_c is not None and zone.action in RAISES:
             zone.raise_ended = now
         if decision.setpoint_c is None:
-            if zone.written_c is not None:
+            if zone.written_c is not None and (zone.home_retry_at is None or now >= zone.home_retry_at):
                 await self._async_write(zone, zone.home_c, now, home=True, action=ACTION_NORMAL, limits=limits)
             return
         if zone.written_c is not None and same(zone.written_c, decision.setpoint_c, limits) and zone.action == decision.action:
@@ -588,7 +616,8 @@ class ZonesControl:
                 zone.written_c = zone.prior_c
                 zone.writes[day] -= 1
                 return
-        zone.pending = Pending(value, now, home, action)
+        # What the thermostat shows before this write: still showing it afterwards is no read-back (`taken`).
+        zone.pending = Pending(value, now, home, action, self._setpoint(zone.entity_id))
         self._log(now, zone, "write", value=value, action=action, home=home)
         if not home and zone.check is None and action == ACTION_LOWER and zone.effect is None:
             zone.effect = self._effect_start(zone, read, value, now)
@@ -619,6 +648,7 @@ class ZonesControl:
 
     def _handed_back(self, zone: ZoneState, now: datetime) -> None:
         zone.home_failures = 0
+        zone.home_retry_at = None
         self._end(zone, now)
         zone.written_c = zone.prior_c = zone.action = None
         zone.since = None
@@ -647,6 +677,13 @@ class ZonesControl:
             self._end(zone, now)
             zone.written_c = zone.prior_c = zone.action = None
             zone.home_c = read if zone.home_c is None or not zone.ours(read, limits) else zone.home_c
+            zone.home_failures, zone.home_retry_at = 0, None
+            return
+        if state.state != "heat":
+            # Not in heat mode: nothing is written there; written back at the first look in heat mode.
+            zone.restore = True
+            return
+        if zone.home_retry_at is not None and now < zone.home_retry_at:
             return
         self._log(now, zone, "exit", why=why)
         await self._async_write(zone, zone.home_c, now, home=True, action=ACTION_NORMAL, limits=limits)

@@ -139,6 +139,16 @@ def read_back(read: float | None, written: float, limits: Limits) -> bool:
     return read is not None and abs(read - written) <= limits.step + 1e-6
 
 
+def taken(read: float | None, written: float, before: float | None, limits: Limits) -> bool:
+    """Whether a write has shown on the thermostat: within one step of the value written (`read_back`), and no longer
+    the value it showed before the write. Where the two are a step or less apart (a pre-heat of half a degree on a
+    half-degree thermostat, a lowering of one on a whole-degree one) the old value still showing is no read-back: a
+    lost write must never pass for one that took, least of all the person's own value written back."""
+    if not read_back(read, written, limits):
+        return False
+    return before is None or same(read, written, limits) or not same(read, before, limits)
+
+
 def aim(action: str, home_c: float, limits: Limits, *, night_delta_c: float, away_delta_c: float) -> float | None:
     """The setpoint an action asks for (see the table), `None` for the person's own value."""
     if action == ACTION_LOWER:
