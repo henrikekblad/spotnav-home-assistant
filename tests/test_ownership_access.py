@@ -16,6 +16,9 @@ import pytest
 
 PACKAGE = Path(__file__).resolve().parent.parent / "custom_components" / "spotnav"
 CONTROLLER = PACKAGE / "execution" / "controller.py"
+#: The controller's own parts moved out of its file (`PersonHold` keeps its state on the controller): they read the
+#: accessors as the controller does, and keep no ownership of their own either.
+CONTROLLER_PARTS = (CONTROLLER, PACKAGE / "execution" / "person_hold.py")
 
 #: The controller's fields that mirrored the session before it was the truth: none may come back.
 GONE: frozenset[str] = frozenset(
@@ -71,8 +74,9 @@ def violations(source: str) -> list[str]:
     return found
 
 
-def test_the_controller_keeps_no_ownership_of_its_own() -> None:
-    assert violations(CONTROLLER.read_text(encoding="utf-8")) == []
+@pytest.mark.parametrize("path", CONTROLLER_PARTS, ids=lambda path: path.name)
+def test_the_controller_keeps_no_ownership_of_its_own(path: Path) -> None:
+    assert violations(path.read_text(encoding="utf-8")) == []
 
 
 def test_every_accessor_is_a_read_only_property() -> None:
@@ -94,7 +98,7 @@ def test_no_other_module_reaches_into_the_accessors() -> None:
     names = GONE | ACCESSORS
     found = []
     for path in sorted(PACKAGE.rglob("*.py")):
-        if path == CONTROLLER:
+        if path in CONTROLLER_PARTS:
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Attribute) and node.attr in names and not _is_self(node.value):
