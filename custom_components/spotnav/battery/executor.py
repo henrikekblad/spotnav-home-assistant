@@ -1908,6 +1908,23 @@ class Executor:
         rate, _why = self._rate(inputs, 0.0)
         return hold_headroom_ok(inputs, rate)
 
+    @staticmethod
+    def _sale_step_too_large(inputs: ExecInputs, rate: float) -> bool:
+        """Whether a sale stepped down to `rate` fails the sale's start rule (`hold_headroom_ok` at that rate, from
+        the running sale): the step takes back the cover the sale gives now beyond its new share (`uncovered_a`), as
+        an end into a hold would, and that must leave `HEADROOM_MARGIN_A` on the phases that import
+        (`_import_headroom_a`; on every phase when none imports or the meter's signs are not known). A phase that
+        exports takes back at most the same and was below the fuse by its export: it stays within what an importing
+        phase is allowed. Judged only for a step that may take at least `HEADROOM_MARGIN_A` off a phase: a smaller
+        one is the fuse hand-back's (`RESTORE_HEADROOM_A`, the next look)."""
+        taken_a = uncovered_a(inputs, rate, from_sale=True)
+        if taken_a < HEADROOM_MARGIN_A:
+            return False
+        headroom = _import_headroom_a(inputs)
+        if headroom is None:
+            headroom = inputs.headroom_a
+        return headroom is None or headroom - taken_a < HEADROOM_MARGIN_A
+
     def _blocker(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
         action = inputs.action
@@ -2142,6 +2159,8 @@ class Executor:
             since = (now - (state.rate_changed_at or now)).total_seconds()
             down = rate < state.rate_kw - RATE_TOLERANCE_KW
             up = rate >= state.rate_kw + RATE_STEP_KW and since >= RATE_UP_DWELL_S
+            if down and action == ACTION_EXPORT_DISCHARGE and self._sale_step_too_large(inputs, rate):
+                return events + self._begin_restore(now, "headroom_too_small")
             if down or up:
                 house, _behind = self._grid_terms(inputs, action, None)
                 self.state = replace(

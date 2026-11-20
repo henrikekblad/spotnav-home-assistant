@@ -825,6 +825,37 @@ def test_fuse_a_sale_that_turns_into_a_grid_charge_counts_its_own_cover_out_of_t
     assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
 
 
+def test_fuse_a_sale_stepped_far_down_is_held_to_its_start_rule() -> None:
+    """A sale stepped from 10 kW to 0.5 kW takes back 3.2 kW a phase (13.7 A) of cover at once, as an end into a
+    hold would: without that room on the importing phases (and the margin) it is handed back in the same look, not
+    a look later. A small step, and a step with room, are made as before."""
+
+    def stepped(new_kw: float, **look: object) -> list:
+        executor, battery = _sigenergy()
+        now, _ = run(executor, battery, T0, 8, "export_discharge", 10.0)
+        assert executor.state.action == "export_discharge" and executor.state.rate_kw == 10.0
+        _now, results = run(executor, battery, now, 1, "export_discharge", new_kw, power_kw=-10.0, **look)
+        return results
+
+    results = stepped(0.5, headroom_a=12.0)
+    assert events(results, "rate") == []
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+    results = stepped(0.5, headroom_a=16.0)
+    assert events(results, "rate")[0]["rate_kw"] == 0.5 and events(results, "hand_back") == []
+    # 10 -> 9 kW takes back 1.4 A a phase: left to the fuse hand-back, even with only 3 A of headroom.
+    results = stepped(9.0, headroom_a=3.0)
+    assert events(results, "rate")[0]["rate_kw"] == 9.0 and events(results, "hand_back") == []
+    # Judged on the phases that import: L1 imports with 3 A left (handed back); with 16 A on L1, the exporting
+    # phases' small headroom does not count (each exports more than the step takes back).
+    results = stepped(0.5, headroom_a=3.0, phase_headroom_a=(3.0, 9.0, 9.0), grid_phase_kw=(3.9, -1.0, -1.0))
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+    results = stepped(0.5, headroom_a=0.8, phase_headroom_a=(16.0, 0.8, 0.8), grid_phase_kw=(0.9, -4.4, -4.4))
+    assert events(results, "rate")[0]["rate_kw"] == 0.5 and events(results, "hand_back") == []
+    # A plant not known to spread its sale over three phases may take all of it back on one phase.
+    results = stepped(9.0, headroom_a=20.0, charge_phases=1)
+    assert events(results, "hand_back")[0]["reason"] == "headroom_too_small"
+
+
 def test_a_running_grid_charge_does_not_count_a_discharge_still_read_as_cover() -> None:
     """The cover is counted on the change only: in the running charge a battery that still reads a discharge (the
     plant ramping) does not lower the cap a second time."""
