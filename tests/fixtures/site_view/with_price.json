@@ -123,7 +123,9 @@
         "per_component": [],
         "hour": null,
         "import_target_kw": null,
-        "effective_target_kw": null
+        "effective_target_kw": null,
+        "power_level": null,
+        "level_count": null
       },
       "supplier_markup": {
         "policy": "manual",
