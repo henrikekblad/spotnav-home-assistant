@@ -7036,3 +7036,7 @@ class ChargingController:
         # The plan's timers go (a plan replaced or dropped, a re-arm, a shutdown): so does a window start's retry.
         self._cancel_start_retry()
 
+
+# Loaded with this module, so the person hold's first import is never a disk read on the event loop (it imports this
+# module, hence here at the end rather than at the top; `__init__` takes the class from it).
+from . import person_hold as _person_hold  # noqa: E402,F401
