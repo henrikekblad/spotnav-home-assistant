@@ -166,6 +166,7 @@ from .site.site_history import charger_alone_values, SiteHistory
 from .site.phase_peaks import SitePhasePeaks
 from .site.demand_tracker import SiteDemand
 from .site.house_forecast import SiteHouseForecast
+from .site.holidays import HolidaySource
 from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -219,6 +220,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     # The beta tester mode (off by default): its state and, while on, the nightly report's timer.
     data.beta = Beta(hass)
     await data.beta.async_load()
+    # The public holidays the grid fee's and the demand charge's windows leave out (no setting).
+    data.holidays = HolidaySource(hass)
+    data.holidays.async_start()
     await async_setup_auto_settings(hass)
     # The price entries' marker, duplicates and revision ledger, before any entry answers a settings record.
     await async_setup_price_store(hass)
@@ -358,6 +362,8 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
         await buffer.async_flush()
     if (beta := getattr(domain_data(hass), "beta", None)) is not None:
         await beta.async_stop()
+    if (holidays := getattr(domain_data(hass), "holidays", None)) is not None:
+        holidays.async_stop()
     if (sessions := getattr(domain_data(hass), "session_store", None)) is not None:
         # Both session stores current at a clean stop.
         await sessions.async_flush()

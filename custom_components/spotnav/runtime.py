@@ -17,7 +17,7 @@ import asyncio
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from .pricing.price_refresh import PriceRefreshManager
     from .pricing.price_repository import PriceRepository
     from .pricing.price_store import PriceSourceStore
+    from .site.holidays import HolidaySource
     from .site.site_capacity_controller import SiteCapacityController
     from .vehicles.soc_estimate import SocReader
     from .execution.solar_execution import SolarExecutionCoordinator
@@ -127,6 +128,8 @@ class SpotNavData:
     log_buffer: SpotNavLogBuffer | None = None
     #: The beta tester mode (`beta.py`), set up with the domain.
     beta: Beta | None = None
+    #: The public holidays the high-load windows leave out (`site/holidays.py`), read with the domain.
+    holidays: HolidaySource | None = None
     #: When the integration loaded; the start-up grace (`startup.py`) counts from here.
     started_at: datetime = field(default_factory=dt_util.utcnow)
     #: Entry id -> the webhook id registered for it now, chargers and sites alike (`api/webhook.py`,
@@ -151,6 +154,12 @@ def domain_data(hass: HomeAssistant) -> SpotNavData:
     if data is None:
         data = hass.data[DATA_KEY] = SpotNavData()
     return data
+
+
+def holiday_dates(hass: HomeAssistant) -> frozenset[date]:
+    """The public holidays the high-load windows leave out (`site/holidays.py`); none without a source."""
+    source = domain_data(hass).holidays
+    return frozenset() if source is None else source.dates
 
 
 def entry_kind(entry: ConfigEntry) -> str:
