@@ -16,7 +16,9 @@ plans (`plans/v3_power_tariff.md` §1). Nothing reads it yet: a later step makes
   moves energy), with the cars' planned charge added (a fixed load the battery plan never moves: a day a car will
   peak anyway is known as such). Beyond it: the median house-only day peak (`HourMean.house_kw`) of the same day
   type (a working day, or a weekend day or holiday) over the last `HISTORY_DAYS` days, the hours counted as the
-  part counts them in any month. A day with neither is left out (a lower T: the cautious side).
+  part counts them in any month, raised where the cars' history predicts a charge that day (`planning/car_days.py`:
+  the least power the charge must take in the counted hours, on the house's median for that hour of that day type).
+  A day with neither is left out (a lower T: the cautious side).
 * **Soft ceiling** (`soft_ceiling`, S_h and λ_h). Per hour: the lowest T among the priced parts that count it, and
   the sum of their λ (stacked parts add). An hour no priced part counts has no ceiling.
 * **Power level** (`level_count`). Göteborg Energi's tidsindelad tariff sells a power level (6, 10, 14 … kW) in its
@@ -35,6 +37,7 @@ from typing import Final
 
 from .. import time_zones
 from .auto_settings import DemandComponent
+from .car_days import car_kw_by_hour, Charge
 from .demand_charge import (
     component_month,
     counted_day,
@@ -159,20 +162,46 @@ def history_day_peaks(
     return {kind: median(values) for kind, values in by_kind.items()}
 
 
+def history_hour_profile(
+    component: DemandComponent, history: Sequence[HourMean], now: datetime, tz: str
+) -> dict[tuple[str, int], float]:
+    """Per day type and local hour of the day, the median house-only import over the last `HISTORY_DAYS` days before
+    today (the hours as `component` counts them in any month); a pair without an hour is missing."""
+    part = _any_month(component)
+    holidays = () if part.window is None else part.window.holidays
+    zone = time_zones.require_zone(tz)
+    today = hour_start(now, tz).astimezone(zone).date()
+    first = today - timedelta(days=HISTORY_DAYS)
+    found: dict[tuple[str, int], list[float]] = {}
+    for hour in history:
+        if hour.incomplete or hour.house_kw is None:
+            continue
+        day = counted_day(part, hour.start, tz)
+        if day is None or not first <= day < today:
+            continue
+        found.setdefault((day_kind(day, holidays), hour.start.astimezone(zone).hour), []).append(hour.house_kw)
+    return {key: median(values) for key, values in found.items()}
+
+
 def predicted_day_peaks(
     component: DemandComponent,
     house_by_hour: Mapping[datetime, float],
     history: Sequence[HourMean],
     now: datetime,
     tz: str,
+    charges: Sequence[Charge] = (),
 ) -> dict[date, float]:
     """The site's predicted peak on each remaining counted day of the month (see the module). `house_by_hour` is the
     house forecast without battery or heat changes at `PREDICTED_QUANTILE` with the cars' planned charge added, keyed
-    by hour start (UTC)."""
+    by hour start (UTC); `charges` the cars' predicted charges (`car_days.predicted_charges`), counted only on a day
+    beyond the forecast."""
     current = hour_start(now, tz)
     year, month = month_of(current, tz)
+    zone = time_zones.require_zone(tz)
     holidays = () if component.window is None else component.window.holidays
     usual = history_day_peaks(component, history, now, tz)
+    cars = car_kw_by_hour(charges, lambda start: counted_day(component, start, tz) is not None) if charges else {}
+    profile = history_hour_profile(component, history, now, tz) if cars else {}
     predicted: dict[date, float] = {}
     for day in remaining_days(component, now, tz):
         ahead = [
@@ -181,11 +210,22 @@ def predicted_day_peaks(
             if hour >= current and month_of(hour, tz) == (year, month)
         ]
         known = [house_by_hour[hour] for hour in ahead if hour in house_by_hour]
-        fallback = usual.get(day_kind(day, holidays))
         if known and len(known) == len(ahead):
             predicted[day] = max(known)
-        elif fallback is not None:
-            predicted[day] = fallback
+            continue
+        kind = day_kind(day, holidays)
+        fallback = usual.get(kind)
+        car_peak = max(
+            (
+                profile.get((kind, hour.astimezone(zone).hour), 0.0) + cars[hour]
+                for hour in ahead
+                if hour in cars and hour not in house_by_hour
+            ),
+            default=None,
+        )
+        found = [kw for kw in (fallback, car_peak) if kw is not None]
+        if found:
+            predicted[day] = max(found)
         elif known:
             predicted[day] = max(known)
     return predicted
@@ -212,8 +252,10 @@ def part_cost(
     history: Sequence[HourMean],
     now: datetime,
     tz: str,
+    charges: Sequence[Charge] = (),
 ) -> PartCost:
-    """`component` priced at `now` from the month's `hours`, the house forecast and the house's `history`."""
+    """`component` priced at `now` from the month's `hours`, the house forecast, the house's `history` and the cars'
+    predicted `charges`."""
     _year, month = month_of(hour_start(now, tz), tz)
     marginal = marginal_price(component, month)
     floored = free_level_hours(hours)
@@ -221,7 +263,7 @@ def part_cost(
     if marginal <= 0:
         return PartCost(component, 0.0, None, free_kw, {}, {})
     measured = {day: peak.kw for day, peak in day_peaks(component, floored, tz).items()}
-    predicted = predicted_day_peaks(component, house_by_hour, history, now, tz)
+    predicted = predicted_day_peaks(component, house_by_hour, history, now, tz, charges)
     return PartCost(
         component=component,
         marginal=marginal,
