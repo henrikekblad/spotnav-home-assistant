@@ -1956,7 +1956,7 @@ class BatteryControl:
         """Whether every charger load balancing holds back has a departure with room (`gate.departure_has_room`): its
         remaining energy need against the time left at its planned power. The need is what its plan still expects
         before the departure plus what the running window is already behind (`import_target_shortfall_kwh`), as the
-        site's import target reckons a departure (`SiteCapacityController._target_shortfall`)."""
+        site's import target reckons a departure (`ImportTargetHold._target_shortfall`)."""
         if not held:
             return False
         from ..runtime import controller_for, preview_for  # noqa: PLC0415 - the charger side imports the site

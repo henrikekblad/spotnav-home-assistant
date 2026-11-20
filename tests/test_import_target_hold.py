@@ -203,6 +203,19 @@ class _World:
         return self.halo.controller.regulator_decisions[self.halo.charger.entry_id]
 
 
+def _patch_everywhere(monkeypatch, name: str, replacement: Any) -> None:
+    """Replace one of `site/import_target.py`'s pure functions in every SpotNav module that imported it, so a test
+    reaches the import target's hold through the site's recompute wherever the hold's code lives."""
+    import sys
+
+    from custom_components.spotnav.site import import_target
+
+    original = getattr(import_target, name)
+    for module_name, module in list(sys.modules.items()):
+        if module_name.startswith("custom_components.spotnav") and getattr(module, name, None) is original:
+            monkeypatch.setattr(module, name, replacement)
+
+
 async def _world(
     hass: HomeAssistant,
     monkeypatch,
@@ -1027,32 +1040,54 @@ async def test_a_start_whose_charger_reads_late_is_not_held_for_its_own_draw(has
         assert controller.import_target_snapshot()["budget"]["house_w"] < 1500
 
 
+@pytest.mark.parametrize("priority", ["battery_first", "car_first"])
 async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(
-    hass: HomeAssistant, monkeypatch
+    hass: HomeAssistant, monkeypatch, priority: str
 ) -> None:
     """The extra drop needs a discharge read live under `battery_first`; without one, the per-phase floor alone."""
-    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+    from custom_components.spotnav.site import import_target
 
+    floors: list[tuple[dict[str, Any], float | None]] = []
+    original = import_target.lowering_floor_a
+
+    def recorded(**kwargs: Any) -> float | None:
+        found = original(**kwargs)
+        floors.append((kwargs, found))
+        return found
+
+    _patch_everywhere(monkeypatch, "lowering_floor_a", recorded)
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "battstale", battery_entity="sensor.battstale_battery_power")
         controller = world.halo.controller
-        controller.config["solar_priority"] = "battery_first"
+        controller.config["solar_priority"] = priority
         world.battery_w = -5000.0
         world.show()
         await world.step()
         await _charging(world)
         await world.run(2)
-        request = next(r for r in controller._build_requests(credit=False) if r.charger_entry_id == world.halo.charger.entry_id)  # noqa: SLF001
-        voltages = {phase: _V for phase in ("L1", "L2", "L3")}
-        # The hold gives the floor no discharge where it cannot be read live, nor under `car_first`.
-        monkeypatch.setattr(SiteCapacityController, "_battery_first_discharge", lambda self: (True, None))
-        assert (controller._battery_first_discharge()[1] or 0.0) == 0.0  # noqa: SLF001
-        base = controller._target_floor_a(request, voltages, 120.0)  # noqa: SLF001
-        assert controller._target_floor_a(request, voltages, 120.0, 0.0) == base  # noqa: SLF001
-        # Read live: at most the discharge's amps, and never more than the smallest fuse margin.
-        with_battery = controller._target_floor_a(request, voltages, 120.0, 5000.0)  # noqa: SLF001
-        margin = min(controller.result.measured_margin_a[phase] for phase in ("L1", "L2", "L3"))
-        assert base is not None and with_battery == pytest.approx(base - min(5000.0 / (3 * _V), max(0.0, margin)))
+        assert floors, "the hold lowered the car and worked out its floor"
+        for kwargs, found in floors:
+            base = original(**{**kwargs, "battery_discharge_w": 0.0})
+            assert base is not None
+            if priority == "car_first":
+                # Under `car_first` the hold gives the floor no discharge: the grid's phases alone decide.
+                assert kwargs["battery_discharge_w"] == 0.0 and found == base
+            else:
+                # Read live: at most the discharge's amps, and never more than the smallest fuse margin.
+                assert kwargs["battery_discharge_w"] == pytest.approx(5000.0)
+                # The fuse margins of the recompute the floor was worked out on.
+                margin = min(kwargs["fuse_margin_a"].values())
+                assert found == pytest.approx(base - min(5000.0 / (3 * _V), max(0.0, margin)))
+        # A battery that cannot be read live under `battery_first` holds nothing at all: no discharge is counted on.
+        floors.clear()
+        world.battery_w = None
+        hass.states.async_set("sensor.battstale_battery_power", "unavailable")
+        await world.run(1)
+        if priority == "battery_first":
+            assert controller.import_target_snapshot()["not_applied"] == "battery_unknown"
+            assert not floors
+        else:
+            assert all(kwargs["battery_discharge_w"] == 0.0 for kwargs, _ in floors)
 
 
 async def test_a_battery_that_does_not_follow_the_car_never_takes_a_phase_over_the_fuse(
@@ -1092,19 +1127,19 @@ async def test_a_hold_the_floor_stops_short_of_its_share_is_marked_and_not_plann
 ) -> None:
     """Lowered, but not as far as its share (the floor stopped it): `floor_limited`, not `inert` (something is held),
     and a plan does not count on the hold's power for it."""
-    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
-
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "floorlimited")
         controller = world.halo.controller
         charger = world.halo.charger.entry_id
+        # The sun sends 11 A out on L1 beside the house, and L2 and L3 carry 2 A more each: the budget holds the car
+        # to 9 A, but below 10 A L1 would export, so the floor stops the lowering there.
+        world.phase_extra_a = {"l1": -11.0, "l2": 2.0, "l3": 2.0}
         await world.step()
         await _charging(world)
         await world.run(3)
-        assert world.car_a == 7.0 and controller.import_target_plan_kw(charger) is not None
-        monkeypatch.setattr(SiteCapacityController, "_target_floor_a", lambda self, *args, **kwargs: 11.5)
-        await world.run(3)
+        assert world.car_a == 10.0
         snapshot = controller.import_target_snapshot()["chargers"][charger]
+        assert snapshot["cap_a"] == 9.0 and snapshot["lowered"] is True
         assert snapshot["floor_limited"] is True and snapshot["inert"] is None
         assert controller.import_target_plan_kw(charger) is None
 
@@ -1425,31 +1460,53 @@ async def test_the_hours_end_does_not_keep_a_car_the_fuse_lowered(hass: HomeAssi
 
 
 async def test_a_paused_charge_is_counted_at_what_it_resumes_at_and_the_floors_at_nothing(hass: HomeAssistant, monkeypatch) -> None:
-    from types import SimpleNamespace
+    """A charge paused by load balancing is shared the budget at what it resumes at (13 A here, not the 16 A the fuse
+    proposes; held to the 7 A the budget leaves), unless it is the car's minimum level's charge, which the target never
+    holds and counts at nothing while it waits."""
+    from custom_components.spotnav.execution.controller import ChargingController
+    from custom_components.spotnav.site import import_target
 
-    from custom_components.spotnav.site import site_capacity_controller as module
-    from custom_components.spotnav.site.import_target import HourBudget
+    counted: list[Any] = []
+    original = import_target.share_budget
 
+    def recorded(allowed_w: float, members: Any, **kwargs: Any) -> Any:
+        counted[:] = members
+        return original(allowed_w, members, **kwargs)
+
+    _patch_everywhere(monkeypatch, "share_budget", recorded)
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "personpaused")
         controller = world.halo.controller
-        request = controller._build_requests(credit=False)[0]  # noqa: SLF001
-        paused = SimpleNamespace(
-            charge_origin=None, paused_charge_origin="manual", paused_by_balancing=True, requested_current_a=16
-        )
-        monkeypatch.setattr(module, "controller_for", lambda _hass, _entry_id: paused)
-        budget = HourBudget(
-            target_kw=6.0, hour_start=_HOUR, hour_end=_HOUR + timedelta(hours=1), so_far_kwh=0.0, hour_kw=0.0,
-            remaining_s=3600.0, house_w=1000.0, rate_w=6000.0, allowed_w=5000.0, house_over=False,
-        )
-        member = controller._target_member(request, None, budget)  # noqa: SLF001
-        assert member.holdable and member.wants_a == 16.0, "a person's Start paused is counted at what it resumes at"
-        paused.paused_charge_origin = "min_soc"
-        member = controller._target_member(request, None, budget)  # noqa: SLF001
-        assert not member.holdable and member.wants_a == 0.0, "the floor's charge is not the target's, and draws nothing"
-        paused.paused_charge_origin = "plan_window"
-        member = controller._target_member(request, None, budget)  # noqa: SLF001
-        assert member.holdable and member.wants_a == 16.0, "a plan's paused charge is counted at what it resumes at"
+        charger = world.halo.charger.entry_id
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+        origin = {"paused": "manual"}
+        monkeypatch.setattr(ChargingController, "charge_origin", property(lambda _self: None))
+        monkeypatch.setattr(ChargingController, "paused_charge_origin", property(lambda _self: origin["paused"]))
+        monkeypatch.setattr(ChargingController, "paused_by_balancing", property(lambda _self: True))
+        monkeypatch.setattr(ChargingController, "requested_current_a", property(lambda _self: 13))
+
+        def share() -> tuple[str, float | None]:
+            found = controller.import_target_snapshot()["chargers"][charger]
+            return found["action"], found["cap_a"]
+
+        def member() -> tuple[bool, float, float]:
+            """The charger as the budget was shared on the last recompute: holdable, what it wants, what it draws."""
+            (found,) = [m for m in counted if m.charger_entry_id == charger]
+            return found.holdable, found.wants_a, found.draws_a
+
+        await world.step()
+        assert member() == (True, 13.0, 0.0), "a person's Start paused is counted at what it resumes at"
+        assert share() == ("held", 7.0)
+        origin["paused"] = "min_soc"
+        await world.step()
+        assert member() == (False, 0.0, 0.0), "the floor's charge is not the target's, and draws nothing"
+        assert share() == ("unheld", None)
+        origin["paused"] = "plan_window"
+        await world.step()
+        assert member() == (True, 13.0, 0.0), "a plan's paused charge is counted at what it resumes at"
+        assert share() == ("held", 7.0)
 
 
 # -- review: a charger the hold cannot act on
@@ -1466,7 +1523,8 @@ async def test_a_charger_whose_phase_cannot_be_judged_is_said_and_not_planned_as
         await _charging(world)
         await world.run(2)
         assert controller.import_target_plan_kw(charger) is not None
-        monkeypatch.setattr(type(controller), "_target_floor_a", lambda *_args: None)
+        # The floor cannot be worked out for a phase (`lowering_floor_a` says `None`), wherever the hold reads it from.
+        _patch_everywhere(monkeypatch, "lowering_floor_a", lambda **_kwargs: None)
         await world.run(2)
         snapshot = controller.import_target_snapshot()
         assert snapshot["chargers"][charger]["inert"] == "phase_cannot_be_judged"
@@ -1490,8 +1548,6 @@ async def test_a_charger_without_a_current_of_its_own_is_not_planned_as_held(has
 
 
 async def test_a_failing_target_never_delays_an_overload_lowering(hass: HomeAssistant, monkeypatch) -> None:
-    from custom_components.spotnav.site import site_capacity_controller as module
-
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "failing", target_kw=20.0)
         await world.step()
@@ -1501,7 +1557,7 @@ async def test_a_failing_target_never_delays_an_overload_lowering(hass: HomeAssi
         def broken(*_args, **_kwargs):
             raise RuntimeError("the target's own bug")
 
-        monkeypatch.setattr(module, "share_budget", broken)
+        _patch_everywhere(monkeypatch, "share_budget", broken)
         written = len(world.halo.written())
         world.house_a = 10.0  # 26 A on a 20 A fuse: lowered to 10 A at once
         world.show()
