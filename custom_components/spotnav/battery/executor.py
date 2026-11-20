@@ -1949,13 +1949,17 @@ class Executor:
         return round(rate, 3), None
 
     def _change_cover_a(self, inputs: ExecInputs) -> float:
-        """On a change into a grid charge from a running action, what the battery's discharge now gives the most
-        loaded phase (`cover_a`; a sale's spread as the sale is): the headroom is measured under that cover, which
-        ends with the change. 0 within a running charge (its own charge is counted back instead) and from idle."""
+        """On a start of a grid charge, or a change into one from a running action, what the battery's discharge now
+        gives the most loaded phase (`cover_a`; a sale's spread as the sale is): the headroom is measured under that
+        cover, which ends with the charge. From idle the plant covers the house in its own mode: all of it is counted
+        on one phase, as for a hold from idle (`hold_headroom_ok`), so the first rate is the lower for it and the
+        charge goes up once the cover has ended (`RATE_UP_DWELL_S`). 0 within a running charge (its own charge is
+        counted back instead)."""
         state = self.state
-        if state.phase != "active" or state.action in (None, ACTION_GRID_CHARGE):
+        running = state.phase == "active"
+        if running and state.action == ACTION_GRID_CHARGE:
             return 0.0
-        return cover_a(inputs, sale=state.action == ACTION_EXPORT_DISCHARGE)
+        return cover_a(inputs, sale=running and state.action == ACTION_EXPORT_DISCHARGE)
 
     def _hold_charge_problem(self, inputs: ExecInputs) -> str | None:
         """Why a hold that may itself charge from the grid at the plant's fixed rate
