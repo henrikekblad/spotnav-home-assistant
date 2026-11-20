@@ -417,6 +417,8 @@
       }
     ],
     "setpoint": [],
+    "tank_sensor": [],
+    "water_heater": [],
     "zones": []
   },
   "comfort": {
@@ -545,6 +547,7 @@
   },
   "time_zone": "Europe/Stockholm",
   "today": null,
+  "water_heater": null,
   "writable": true,
   "zones": []
 }

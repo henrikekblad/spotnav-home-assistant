@@ -581,6 +581,7 @@
   },
   "time_zone": "Europe/Stockholm",
   "today": null,
+  "water_heater": null,
   "writable": false,
   "zones": []
 }

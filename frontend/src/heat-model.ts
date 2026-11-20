@@ -189,6 +189,37 @@ export const HOT_WATER = O({
     }),
   ),
 });
+/** SpotNav setting a zone's thermostat (`heat/zones_control.py`); `null` for a zone watched only. */
+const ZONE_CONTROL = O({
+  enabled: "boolean",
+  state: "string",
+  reason: N("string"),
+  home_c: N("number"),
+  held_c: N("number"),
+  until: N("string"),
+  check: N("string"),
+  action: N("string"),
+  automation: N(O({ entity_id: "string", name: "string" })),
+  paused_until: N("string"),
+});
+/** A plain water heater on a switch (`heat/water_heater_control.py`). */
+export const WATER_HEATER = O({
+  entity_id: "string",
+  name: "string",
+  on: N("boolean"),
+  metered: "boolean",
+  mode: "string",
+  kw: N("number"),
+  state: "string",
+  reason: N("string"),
+  check: N("string"),
+  last_full: N("string"),
+  until: N("string"),
+  windows: A(O({ start: "string", end: "string", reason: "string" })),
+  live: "boolean",
+  automation: N(O({ entity_id: "string", name: "string" })),
+  paused_until: N("string"),
+});
 const BOOST_ANSWER = O({ api_version: "number", ok: "boolean", error: N("string"), boost: N(BOOST) });
 
 const ANSWER = O({
@@ -221,6 +252,7 @@ const ANSWER = O({
       heating: N("boolean"),
       power_w: N("number"),
       available: "boolean",
+      control: N(ZONE_CONTROL),
     }),
   ),
   pump: N(
@@ -306,6 +338,8 @@ const ANSWER = O({
       setpoint: A(CHOICE),
       hot_water: A(CHOICE),
       meter: N(A(CHOICE)),
+      water_heater: A(CHOICE),
+      tank_sensor: A(CHOICE),
     }),
   ),
   relay: N(
@@ -341,6 +375,7 @@ const ANSWER = O({
   ),
   ahead: A(O({ start: "string", action: "string", target_c: "number", reason: "string", hot_water: "boolean" })),
   hot_water: N(HOT_WATER),
+  water_heater: N(WATER_HEATER),
 });
 
 const WRITE = O({
@@ -463,6 +498,7 @@ export function heatFound(answer: HeatAnswer): boolean {
     (answer.choices?.zones.length ?? 0) > 0 ||
     answer.config.control_path !== "none" ||
     answer.config.indoor_sensors.length > 0 ||
+    answer.config.water_heater !== null ||
     answer.config.heat_meter_entity !== null
   );
 }
@@ -520,6 +556,47 @@ export interface HeatZone {
   heating: boolean | null;
   power_w: number | null;
   available: boolean;
+  /** SpotNav setting the thermostat; `null` while the zone is watched only. */
+  control: HeatZoneControl | null;
+}
+
+/** SpotNav setting a zone's thermostat, relative to the person's own setpoint (`home_c`). */
+export interface HeatZoneControl {
+  enabled: boolean;
+  /** "off", "verifying", "running" or "waiting". */
+  state: string;
+  reason: string | null;
+  home_c: number | null;
+  /** What SpotNav holds on the thermostat now; `null`: the person's own value stands. */
+  held_c: number | null;
+  until: string | null;
+  check: string | null;
+  /** The plan's action it holds for: "lower", "preheat", "return", "night" or "away". */
+  action: string | null;
+  automation: { entity_id: string; name: string } | null;
+  paused_until: string | null;
+}
+
+/** A plain water heater on a switch, watched or switched by SpotNav. */
+export interface HeatWaterHeater {
+  entity_id: string;
+  name: string;
+  on: boolean | null;
+  metered: boolean;
+  /** How full heat is seen: "metered", "tank" or "unmetered" (a fixed night window). */
+  mode: string;
+  kw: number | null;
+  state: string;
+  reason: string | null;
+  check: string | null;
+  last_full: string | null;
+  until: string | null;
+  /** The hours SpotNav allows it (or would, watched only): "cheap", "full_heat" or "max_off". */
+  windows: { start: string; end: string; reason: string }[];
+  /** SpotNav switches it now. */
+  live: boolean;
+  automation: { entity_id: string; name: string } | null;
+  paused_until: string | null;
 }
 
 export interface HeatAnswer {
@@ -602,6 +679,8 @@ export interface HeatAnswer {
     setpoint: HeatChoice[];
     hot_water: HeatChoice[];
     meter: HeatChoice[] | null;
+    water_heater: HeatChoice[];
+    tank_sensor: HeatChoice[];
   } | null;
   relay: HeatRelay | null;
   review: HeatReview | null;
@@ -611,6 +690,8 @@ export interface HeatAnswer {
   ahead: HeatAheadHour[];
   /** The site's hot water; `null` without the heat shadow. */
   hot_water: HeatHotWater | null;
+  /** A plain water heater on a switch; `null` without one. */
+  water_heater: HeatWaterHeater | null;
 }
 
 /** The Boost button (`hot_water.boost`). */

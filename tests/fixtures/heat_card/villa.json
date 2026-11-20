@@ -455,6 +455,25 @@
       }
     ],
     "setpoint": [],
+    "tank_sensor": [
+      {
+        "entity_id": "sensor.inomhus_kok_temperatur",
+        "name": "Inomhus kök temperatur",
+        "value": "21.3 °C"
+      }
+    ],
+    "water_heater": [
+      {
+        "entity_id": "switch.varmvattenberedare",
+        "name": "Varmvattenberedare",
+        "value": "on"
+      },
+      {
+        "entity_id": "switch.larm_utgang_2",
+        "name": "Larm utgång 2",
+        "value": "off"
+      }
+    ],
     "zones": [
       {
         "entity_id": "climate.golvvarme_toalett_nere",
@@ -1311,11 +1330,13 @@
     "total_kwh": 19.217,
     "zones_kwh": 3.6
   },
+  "water_heater": null,
   "writable": true,
   "zones": [
     {
       "aim_c": 20.5,
       "available": true,
+      "control": null,
       "current_c": 19.5,
       "entity_id": "climate.golvvarme_toalett_nere",
       "heating": false,
@@ -1329,6 +1350,7 @@
     {
       "aim_c": 20.5,
       "available": true,
+      "control": null,
       "current_c": 21.5,
       "entity_id": "climate.golvvarme_toalett_uppe",
       "heating": false,
@@ -1342,6 +1364,7 @@
     {
       "aim_c": 19.5,
       "available": true,
+      "control": null,
       "current_c": 20.4,
       "entity_id": "climate.golvvarme_tvattstuga",
       "heating": false,
@@ -1355,6 +1378,7 @@
     {
       "aim_c": 20.0,
       "available": true,
+      "control": null,
       "current_c": 21.5,
       "entity_id": "climate.ovanvaning",
       "heating": false,

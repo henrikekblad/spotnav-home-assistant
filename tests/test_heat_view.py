@@ -26,7 +26,7 @@ import pytest
 
 from custom_components.spotnav.api.heat import config_block
 from custom_components.spotnav.heat.automations import SteeringAutomation
-from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset, Zone
+from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset, WaterHeater, Zone
 from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts, PriceControl
 from custom_components.spotnav.heat.meter_split import levels, split_day
 from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
@@ -157,7 +157,8 @@ def villa_zone_periods() -> dict[datetime, float]:
     return out
 
 
-def villa_answer(zone_periods: Any = "villa", **overrides: Any) -> dict[str, Any]:
+def villa_answer(zone_periods: Any = "villa", more: bool = False, **overrides: Any) -> dict[str, Any]:
+    """The villa; `more`: the upstairs toilet's floor and the water heater switched by SpotNav too."""
     config = HeatConfig(
         target_c=21.0,
         night=Night(True, 1.0, "23:00", "06:00"),
@@ -166,13 +167,14 @@ def villa_answer(zone_periods: Any = "villa", **overrides: Any) -> dict[str, Any
         indoor_offsets=(SensorOffset("sensor.ovanvaning_temperatur", -1.0),),
         zones=(
             Zone("climate.golvvarme_toalett_nere", 0.0),
-            Zone("climate.golvvarme_toalett_uppe", 0.0),
+            Zone("climate.golvvarme_toalett_uppe", 0.0, more),
             Zone("climate.golvvarme_tvattstuga", -1.0),
             Zone("climate.ovanvaning", -0.5),
         ),
         control_path="relay",
         control_entity="switch.larm_utgang_1",
         control_enabled=True,
+        water_heater=WaterHeater("switch.varmvattenberedare", True) if more else None,
     )
     entry = _Entry({"heat": config.as_dict(), "heat_meter_entity": "sensor.varme_effekt"})
     # The last day of 5-minute rows: yesterday evening and today until now, the same shape each day.
@@ -208,7 +210,18 @@ def villa_answer(zone_periods: Any = "villa", **overrides: Any) -> dict[str, Any
         "setpoint": [],
         "hot_water": [_choice("switch.larm_utgang_2", "Larm utgång 2", "off")],
         "meter": [_choice("sensor.varme_effekt", "Elmätare värme (Nibe + panna) Effekt", "1128.84 W")],
+        "water_heater": [_choice("switch.varmvattenberedare", "Varmvattenberedare", "on"), _choice("switch.larm_utgang_2", "Larm utgång 2", "off")],
+        "tank_sensor": [_choice("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", "21.3 °C")],
     }
+    upstairs = (
+        {
+            "enabled": True, "state": "running", "reason": "planned", "home_c": 22.0, "held_c": 21.0,
+            "until": (MIDNIGHT + timedelta(hours=19)).isoformat(), "check": "passed", "action": "lower",
+            "automation": None, "paused_until": None,
+        }
+        if more
+        else None
+    )
     return heat_view(
         replace(HeatViewInputs(
             site_id="site_villa",
@@ -221,7 +234,7 @@ def villa_answer(zone_periods: Any = "villa", **overrides: Any) -> dict[str, Any
             outdoor=Outdoor(6.2, "sensor.utomhus_garage_temperatur", "Utomhus garage temperatur", "house_forecast"),
             zones=(
                 ZoneReading("climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåning", "floor", 0.0, 19.5, 17.0, "off", False, 0.0),
-                ZoneReading("climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåning", "floor", 0.0, 21.5, 17.0, "heat", False, 0.0),
+                ZoneReading("climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåning", "floor", 0.0, 21.5, 17.0, "heat", False, 0.0, control=upstairs),
                 ZoneReading("climate.golvvarme_tvattstuga", "Golvvärme tvättstuga", "floor", -1.0, 20.4, 17.0, "heat", False, 0.0),
                 ZoneReading("climate.ovanvaning", "Värmepump ovanvåning", "air", -0.5, 21.5, 21.0, "off", False, None),
             ),
@@ -374,7 +387,20 @@ def controlled_answer() -> dict[str, Any]:
         effect=Effect(0.46, 0.82, 7),
     )
     executed = {MIDNIGHT + timedelta(hours=7): 60, MIDNIGHT + timedelta(hours=8): 60, MIDNIGHT + timedelta(hours=17): 20}
+    heater = {
+        "entity_id": "switch.varmvattenberedare", "name": "Varmvattenberedare", "on": False, "metered": True,
+        "mode": "metered", "kw": 3.0, "state": "running", "reason": "planned_off", "check": "passed",
+        "last_full": (MIDNIGHT + timedelta(hours=4)).isoformat(), "until": (MIDNIGHT + timedelta(days=1, hours=1)).isoformat(),
+        "windows": [
+            {"start": (MIDNIGHT + timedelta(days=1, hours=1)).isoformat(), "end": (MIDNIGHT + timedelta(days=1, hours=4)).isoformat(), "reason": "cheap"},
+            {"start": (MIDNIGHT + timedelta(days=1, hours=13)).isoformat(), "end": (MIDNIGHT + timedelta(days=1, hours=15)).isoformat(), "reason": "cheap"},
+        ],
+        "live": True, "automation": None, "paused_until": None,
+    }
     return villa_answer(
+        more=True,
+        water_heater=heater,
+        controlled=frozenset({"climate.golvvarme_toalett_uppe", "switch.varmvattenberedare"}),
         relay=relay,
         automations=(),
         control=control_status(
@@ -468,7 +494,7 @@ def sg_api_pump_answer() -> dict[str, Any]:
             prices=_slots(),
             money=("SEK", "kr", "öre"),
             choices={
-                "indoor": [], "outdoor": [], "zones": [], "setpoint": [], "hot_water": [], "meter": None,
+                "indoor": [], "outdoor": [], "zones": [], "setpoint": [], "hot_water": [], "meter": None, "water_heater": [], "tank_sensor": [],
                 "offset": [{"entity_id": "number.s1155_heating_offset_climate_system_1_40031", "name": "Heating offset climate system 1", "value": "0"}],
                 "relay": [
                     {"entity_id": mode, "name": "Requested operating mode (SG Ready)", "value": None},
@@ -569,6 +595,9 @@ def test_the_villa_controlled_by_spotnav() -> None:
     assert tuple(answer) == HEAT_KEYS
     assert answer["shadow"] is False and answer["control"]["state"] == "running" and answer["control"]["lowered"] is True
     assert answer["relay"]["source"] == "spotnav" and answer["notes"] == []
+    # A zone's thermostat and the water heater are SpotNav's too.
+    assert answer["zones"][1]["control"]["held_c"] == 21.0 and answer["zones"][0]["control"] is None
+    assert answer["water_heater"]["live"] is True and answer["config"]["water_heater"]["control"] is True
     band_hours = answer["band"]["hours"]
     assert [band_hours[h]["executed_min"] for h in (6, 7, 8, 9, 17, 18)] == [0, 60, 60, 0, 20, 0]
     _write_or_compare("controlled.json", answer)
@@ -626,3 +655,16 @@ def test_the_hours_ahead_end_at_midnight_until_tomorrow_has_its_prices() -> None
     # The cooler night runs on past midnight; tomorrow's hot water is its planned boost at 03:30.
     assert longer[7]["action"] == "night"
     assert [hour["hot_water"] for hour in longer[7:]] == [False, False, False, True, False]
+
+
+def test_an_automation_on_a_controlled_zone_blocks_it_and_the_water_heater_s_note() -> None:
+    from custom_components.spotnav.heat.view import notes
+
+    automation = SteeringAutomation("automation.golv", "Golv", ("climate.golvvarme_toalett_uppe",))
+    out = notes(None, (), (automation,), "switch.larm_utgang_1", controlled=frozenset({"climate.golvvarme_toalett_uppe"}))
+    assert out[0]["params"]["blocks"] is True and out[0]["params"]["relay"] is False
+    assert notes(None, (), (automation,), "switch.larm_utgang_1")[0]["params"]["blocks"] is False
+    heater = {"entity_id": "switch.varmvattenberedare", "name": "Varmvattenberedare"}
+    assert notes(None, (), (), None, water_heater=heater) == [
+        {"code": "water_heater_not_full", "params": {"name": "Varmvattenberedare", "entity_id": "switch.varmvattenberedare"}}
+    ]

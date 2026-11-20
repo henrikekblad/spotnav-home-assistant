@@ -7,7 +7,10 @@
               relative_c: the coldest room's reading less its offset, what the comfort band is compared with},
      outdoor: {value_c, entity_id, name, source} | null,
      zones: [{entity_id, name, kind: "floor" | "air", offset_c, aim_c, current_c, setpoint_c, hvac_mode, heating,
-              power_w, available}],
+              power_w, available,
+              control: {enabled, state: "off" | "verifying" | "running" | "waiting", reason, home_c, held_c, until,
+                        check: "passed" | "failed" | null, action, automation: {entity_id, name} | null,
+                        paused_until} | null}],
      pump: {integration, brand, label, priority, compressor_running, supply_c, hot_water_c, degree_minutes,
             immersion_on, price_control, control, capabilities: [kind], disabled: [entity ids], device_id,
             paths: [{path, control_entity, control_entity_b}]} | null,
@@ -20,7 +23,8 @@
      indoor_day: the day's measured indoor curve up to now (`heat/indoor_day.py`, 15-minute steps, `setpoint` null:
                  the band's `target_c` is the setpoint) | null,
      notes: [{code, params}],
-     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter} | null (administrators only),
+     choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter, water_heater, tank_sensor} | null
+              (administrators only),
      relay: {entity_id, name, closed, since, source, automation: {entity_id, name} | null,
              effect: {lower_share, rebound, blocks}} | null,
      review: yesterday's review (`heat/review.py`) | null,
@@ -41,7 +45,17 @@
                  level: "A" | "B" | null, mode: "shadow" | "live" | "watch",
                  blocking: {mode: "shadow" | "live" | "watch", gate: {as gate}, tank: bool, strict: bool,
                             cuts: [{start, end, reason: "peak" | "day_cap" | "hygiene" | "moved", peak: "HH:MM" | null,
-                                   live}]} | null}
+                                   live}]} | null},
+     water_heater: {entity_id, name, on: bool | null, metered, mode: "metered" | "unmetered" | "tank", kw, state, reason,
+                    check, last_full, until, windows: [{start, end, reason: "cheap" | "full_heat" | "max_off"}], live,
+                    automation: {entity_id, name} | null, paused_until} | null}
+
+A zone's `control` is SpotNav setting its thermostat (`heat/zones_control.py`, `ZonesControl.status`), `null` for a
+zone watched only: `home_c` is the person's own setpoint, `held_c` what SpotNav holds now (`null`: nothing), `action`
+the plan's action it holds for (`lower`, `preheat`, `return`, `night`, `away`), `until` its end while running.
+`water_heater` is a plain water heater on a switch (`heat/water_heater_control.py`, `WaterHeaterControl.status`), `null`
+without one: `windows` the hours SpotNav allows it (or would, watched only), `live` while SpotNav switches it, `until`
+when what holds now ends, `last_full` the last full heat seen.
 
 `hot_water` is the site's hot water (`heat/dhw_runtime.py`, plan `plans/v3_dhw_plan.md`): the Boost button's state
 (`null` where the pump has no boost that ends by itself), the peaks (`learned` false: the defaults), the boosts
@@ -80,12 +94,14 @@ minutes the heat pump's relay was closed (`relay_min`, `null` without a relay in
 (`relay_expected`: the SpotNav blueprint's closings ahead, or a closing now running its course): what really steers
 the heat while SpotNav only watches.
 
-`notes` are only what the household can act on, one each (plan section 15): `pump_price_control` (the pump's own
+`notes` are only what the household can act on, one each (plan section 15): `water_heater_not_full` (the water
+heater has not reached its thermostat for two days while SpotNav switched it: control stopped, the switch on; `{name,
+entity_id}`), `pump_price_control` (the pump's own
 price control is on; `{label, where}`), `readings_disabled` (readings SpotNav needs are turned off in the integration;
 `{entities, device_id}`), `other_controller` (another optimiser steers the pump; `{names}`), `automation_steers` (an
 enabled automation of the household's references the relay or a zone, `heat/automations.py`; `{entity_id, name,
 targets: [names], relay, blocks}`, `relay` when the relay is among them, `blocks` when that keeps SpotNav's heat
-control from starting: one note per automation). A thing the household
+control, a zone's or the water heater's from starting: one note per automation). A thing the household
 cannot change (no writable control path) is no note: `pump.capabilities` says it.
 """
 
@@ -110,7 +126,7 @@ HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
     "zones", "pump", "meter", "today", "status", "band", "indoor_day", "notes", "choices", "relay", "review", "control",
-    "ahead", "hot_water",
+    "ahead", "hot_water", "water_heater",
 )
 AHEAD_HOUR_KEYS: Final = ("start", "action", "target_c", "reason", "hot_water")
 #: The hours the card's "now" strip shows from the running one on.
@@ -139,6 +155,8 @@ class ZoneReading:
     heating: bool | None = None
     power_w: float | None = None
     available: bool = True
+    #: SpotNav setting the thermostat (`ZonesControl.status`), `None` for a zone watched only.
+    control: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +245,13 @@ class HeatViewInputs:
     room_warm: bool = False
     #: The site's hot water (`heat/dhw_runtime.HotWater.view`), `None` without the heat shadow.
     hot_water: Mapping[str, Any] | None = None
+    #: The plain water heater (`WaterHeaterControl.status`), `None` without one.
+    water_heater: Mapping[str, Any] | None = None
+    #: The entities SpotNav controls besides the relay (the zones with their opt-in, the water heater's switch with
+    #: its): an automation that steers one of them blocks it.
+    controlled: frozenset[str] = frozenset()
+    #: The water heater has not reached its thermostat for two days while SpotNav switched it.
+    water_heater_not_full: bool = False
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -288,6 +313,8 @@ def notes(
     relay: str | None = None,
     names: Mapping[str, str] | None = None,
     control_enabled: bool = False,
+    controlled: frozenset[str] = frozenset(),
+    water_heater: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if pump is not None and pump.price_control.state == "active":
@@ -308,10 +335,14 @@ def notes(
                     "name": automation.name,
                     "targets": [(names or {}).get(target, target) for target in targets],
                     "relay": relay is not None and relay in automation.targets,
-                    "blocks": control_enabled and relay is not None and relay in automation.targets,
+                    "blocks": (control_enabled and relay is not None and relay in automation.targets)
+                    or bool(controlled.intersection(automation.targets)),
                 },
             }
         )
+    if water_heater is not None:
+        # Two days without full heat: control stopped, the switch on; clears itself on the next full heat.
+        out.append({"code": "water_heater_not_full", "params": {"name": water_heater.get("name"), "entity_id": water_heater.get("entity_id")}})
     return out
 
 
@@ -475,6 +506,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
                 "heating": zone.heating,
                 "power_w": _round(zone.power_w, 0),
                 "available": zone.available,
+                "control": None if zone.control is None else dict(zone.control),
             }
             for zone in inputs.zones
         ],
@@ -509,6 +541,8 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
             None if relay is None else relay.entity_id,
             inputs.names,
             control_enabled=inputs.control is not None and inputs.control.get("enabled") is True,
+            controlled=inputs.controlled,
+            water_heater=inputs.water_heater if inputs.water_heater_not_full else None,
         ),
         "choices": None if not inputs.writable or inputs.choices is None else dict(inputs.choices),
         "relay": None
@@ -526,5 +560,6 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         "control": None if inputs.control is None else dict(inputs.control),
         "ahead": ahead,
         "hot_water": None if inputs.hot_water is None else dict(inputs.hot_water),
+        "water_heater": None if inputs.water_heater is None else dict(inputs.water_heater),
     }
 

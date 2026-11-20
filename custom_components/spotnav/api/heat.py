@@ -20,7 +20,7 @@ shadow logs each change of what it would do now (in the diagnostics). Refusals a
     {type: "spotnav/update_heat", api_version: 1, site_id | charger_id,
      changes: {target_c?, mode?, away_until?, away_delta_c?, night?, indoor_sensors?, indoor_offsets?, outdoor_sensor?,
                control_path?, control_entity?, control_entity_b?, hot_water_entity?, zones?, control_enabled?,
-               heat_meter_entity?},
+               water_heater?, heat_meter_entity?},
      expected: {the same keys: the values the caller last saw},
      enable_control_entities?: true}
 
@@ -406,12 +406,23 @@ def heat_settings_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[s
     the kept days and their reviews)."""
     controller = site_controller_for(hass, entry.entry_id)
     shadow = getattr(controller, "heat_shadow", None)
+    control = getattr(controller, "heat_control", None)
+    block = None if control is None else control.diagnostics()
+    for name, attribute in (("zones", "zones_control"), ("water_heater", "water_heater_control")):
+        # The zones' and the water heater's own control: each zone's kept state, whether it qualifies and why, the
+        # writes and the log; the water heater's mode, power, need, last full heat, windows, the hard rule in force.
+        part = getattr(controller, attribute, None)
+        if block is not None and part is not None:
+            try:
+                block[name] = part.diagnostics()
+            except Exception:  # noqa: BLE001 - the rest of the diagnostics stands
+                _LOGGER.debug("SpotNav heat: the %s diagnostics could not be read", name, exc_info=True)
     return {
         "stored": entry.data.get(CONF_HEAT),
         "read": config_block(entry),
         "shadow_log": [] if shadow is None else shadow.log.as_list(),
         "shadow": None if shadow is None else shadow.diagnostics(),
-        "control": None if (control := getattr(controller, "heat_control", None)) is None else control.diagnostics(),
+        "control": block,
     }
 
 
@@ -486,7 +497,9 @@ def _heating_now(state: Any) -> bool | None:
     return None if state.state == "off" else None
 
 
-def read_zones(hass: HomeAssistant, config: HeatConfig) -> tuple[ZoneReading, ...]:
+def read_zones(hass: HomeAssistant, config: HeatConfig, control: Any = None) -> tuple[ZoneReading, ...]:
+    """The zones as they read now, each with SpotNav's control of it (`ZonesControl.status`) where `control` is
+    given."""
     zones: list[ZoneReading] = []
     for zone in config.zones:
         state = hass.states.get(zone.entity_id)
@@ -504,6 +517,7 @@ def read_zones(hass: HomeAssistant, config: HeatConfig) -> tuple[ZoneReading, ..
                 heating=_heating_now(state),
                 power_w=_power_w(hass, zone.entity_id),
                 available=available,
+                control=None if control is None else control.status(zone.entity_id, config),
             )
         )
     return tuple(zones)
@@ -763,7 +777,9 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
             and entry.hidden_by is None
         )
 
-    groups: dict[str, list[str]] = {name: [] for name in ("indoor", "outdoor", "zones", "relay", "offset", "setpoint", "hot_water", "meter")}
+    groups: dict[str, list[str]] = {
+        name: [] for name in ("indoor", "outdoor", "zones", "relay", "offset", "setpoint", "hot_water", "meter", "water_heater", "tank_sensor")
+    }
     for state in hass.states.async_all():
         entity_id = state.entity_id
         if not visible(entity_id):
@@ -774,6 +790,7 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
             if value is not None and INDOOR_CHOICE[0] <= value <= INDOOR_CHOICE[1]:
                 groups["indoor"].append(entity_id)
             groups["outdoor"].append(entity_id)
+            groups["tank_sensor"].append(entity_id)
         elif domain == "weather":
             groups["outdoor"].append(entity_id)
         elif domain == "climate" and "heat" in (state.attributes.get("hvac_modes") or ()):
@@ -783,6 +800,7 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
         elif domain in ("switch", "input_boolean"):
             groups["relay"].append(entity_id)
             groups["hot_water"].append(entity_id)
+            groups["water_heater"].append(entity_id)
         elif domain in ("button", "input_button"):
             groups["hot_water"].append(entity_id)
         elif domain in ("number", "input_number") and state.attributes.get("unit_of_measurement") in TEMPERATURE_UNITS:
@@ -800,6 +818,8 @@ def heat_choices(hass: HomeAssistant, config: HeatConfig, pump: HeatPumpFacts | 
         "setpoint": [config.control_entity] if config.control_path == "setpoint" and config.control_entity else [],
         "hot_water": [config.hot_water_entity] if config.hot_water_entity else [],
         "meter": [meter.entity_id] if meter is not None and meter.entity_id else [],
+        "water_heater": [config.water_heater.entity_id] if config.water_heater is not None else [],
+        "tank_sensor": [config.water_heater.tank_sensor] if config.water_heater is not None and config.water_heater.tank_sensor else [],
     }
     if pump is not None:
         for capability in pump.capabilities:
@@ -833,7 +853,25 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
     config = stored_config(site)
     pumps = read_heat_pumps(hass)
     pump = pumps[0] if pumps else None
-    zones = read_zones(hass, config)
+    zones_control = getattr(controller, "zones_control", None)
+    try:
+        zones = read_zones(hass, config, zones_control)
+    except Exception:  # noqa: BLE001 - the zones' control is extra: the zones as read
+        _LOGGER.debug("SpotNav heat: the zones' control could not be read", exc_info=True)
+        zones = read_zones(hass, config)
+    heater_control = getattr(controller, "water_heater_control", None)
+    water_heater: dict[str, Any] | None = None
+    not_full = False
+    if heater_control is not None:
+        try:
+            water_heater = heater_control.status(config)
+            not_full = heater_control.not_full()
+        except Exception:  # noqa: BLE001 - the water heater is extra: the card shows the rest
+            _LOGGER.debug("SpotNav heat: the water heater could not be read", exc_info=True)
+    controlled = frozenset(
+        [zone.entity_id for zone in config.zones if zone.control]
+        + ([config.water_heater.entity_id] if config.water_heater is not None and config.water_heater.control else [])
+    )
     rooms = await read_indoor(hass, site.entry_id, config, zones, now)
     meter = await read_meter(hass, site.entry_id, controller, now, day_start)
     following = local.date() + timedelta(days=1)
@@ -906,6 +944,9 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             indoor_day=curve,
             room_warm=room_warm,
             hot_water=hot_water,
+            water_heater=water_heater,
+            controlled=controlled,
+            water_heater_not_full=not_full,
         )
     )
     return answer
