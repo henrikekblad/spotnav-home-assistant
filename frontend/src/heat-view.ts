@@ -19,6 +19,7 @@ import {
   type HeatBlockingCut,
   type HeatChoice,
   type HeatHotWaterBlocking,
+  type HeatZone,
 } from "./heat-model";
 import { dayChart, hoursOf, type DayNote, type DayPeak, type DayPlannedWater, type DaySpan } from "./heat-day-chart";
 import type { HeatHistory } from "./heat-history";
@@ -1090,6 +1091,112 @@ export function noteLines(language: Language, answer: HeatAnswer): { code: strin
         ? "heat.note.automation_blocks"
         : params["relay"] === true ? "heat.note.automation_relay" : "heat.note.automation_zone";
       out.push({ code: note.code, text: translate(language, key, { name, targets: targets.join(", ") }) });
+    } else if (note.code === "water_heater_not_full") {
+      out.push({ code: note.code, text: translate(language, "heat.note.water_heater_not_full") });
+    }
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------------------------------------ zones and the water heater
+
+const ZONE_WAITS: readonly string[] = ["automation", "foreign_change", "no_read_back", "check_failed", "not_qualified", "unavailable", "write_cap"];
+const HEATER_WAITS: readonly string[] = ["automation", "foreign_on", "foreign_off", "no_read_back", "check_failed", "not_full", "unavailable"];
+const HEATER_WHY: readonly string[] = ["cheap", "full_heat", "max_off", "sensor_lost", "no_plan", "tank_low", "write_cap"];
+
+/** A zone's line under its switch: what SpotNav holds on the thermostat, or what it waits for; `null` while the zone
+ * is watched only. */
+export function zoneLine(language: Language, answer: HeatAnswer, zone: HeatZone): string | null {
+  const control = zone.control;
+  if (control === null || !control.enabled || control.state === "off") {
+    return null;
+  }
+  if (control.state === "verifying") {
+    return translate(language, "heat.zone.verifying");
+  }
+  if (control.state === "running") {
+    if (control.held_c !== null) {
+      const value = degrees(language, control.held_c);
+      return control.until === null
+        ? translate(language, "heat.zone.heldNow", { value })
+        : translate(language, "heat.zone.held", { value, until: whenLabel(language, answer, Date.parse(control.until)) });
+    }
+    return control.home_c === null ? null : translate(language, "heat.zone.own", { value: degrees(language, control.home_c) });
+  }
+  const reason = control.reason ?? "";
+  return ZONE_WAITS.includes(reason)
+    ? translate(language, `heat.zone.wait.${reason}` as TranslationKey, { name: control.automation?.name ?? "" })
+    : translate(language, "heat.zone.waiting");
+}
+
+/** The water heater's windows ahead as the strip says hours ("01:00–04:00, 14:00–17:00"), the first `count`. */
+export function windowsText(language: Language, answer: HeatAnswer, windows: { start: string; end: string }[], count = 3): string {
+  const nowMs = Date.parse(answer.now);
+  return windows
+    .filter((window) => Date.parse(window.end) > nowMs)
+    .slice(0, count)
+    .map((window) => `${whenLabel(language, answer, Math.max(Date.parse(window.start), nowMs))}–${clock(context(language, answer), Date.parse(window.end))}`)
+    .join(", ");
+}
+
+/** The water heater's line under its switch: watched (the windows SpotNav would allow), on and why, off until when,
+ * or what it waits for. `null` without a water heater. */
+export function waterHeaterLine(language: Language, answer: HeatAnswer): string | null {
+  const heater = answer.water_heater;
+  if (heater === null) {
+    return null;
+  }
+  if (!answer.config.water_heater?.control || heater.state === "off") {
+    const windows = windowsText(language, answer, heater.windows);
+    return windows === "" ? translate(language, "heat.waterHeater.watchedNone") : translate(language, "heat.waterHeater.watched", { windows });
+  }
+  if (heater.state === "verifying" && heater.reason === "check") {
+    return translate(language, "heat.waterHeater.verifying");
+  }
+  if (heater.state === "running" || heater.state === "verifying") {
+    if (heater.on === false && heater.until !== null) {
+      return translate(language, "heat.waterHeater.off", { until: whenLabel(language, answer, Date.parse(heater.until)) });
+    }
+    const reason = heater.reason ?? "";
+    if (heater.on === true && HEATER_WHY.includes(reason)) {
+      return translate(language, "heat.waterHeater.on", { why: translate(language, `heat.waterHeater.why.${reason}` as TranslationKey) });
+    }
+    return null;
+  }
+  const reason = heater.reason ?? "";
+  return HEATER_WAITS.includes(reason)
+    ? translate(language, `heat.waterHeater.wait.${reason}` as TranslationKey, { name: heater.automation?.name ?? "" })
+    : translate(language, "heat.zone.waiting");
+}
+
+/** Now: one line per thing SpotNav holds now beside the pump ("Badrumsgolv 20 °C till 19:00", "Varmvattenberedaren av
+ * till 01:00"), and the water heater's next windows. */
+export function holdLines(language: Language, answer: HeatAnswer): { key: string; text: string }[] {
+  const out: { key: string; text: string }[] = [];
+  for (const zone of answer.zones) {
+    const control = zone.control;
+    if (control === null || control.state !== "running" || control.held_c === null) {
+      continue;
+    }
+    const value = degrees(language, control.held_c);
+    out.push({
+      key: `zone:${zone.entity_id}`,
+      text: control.until === null
+        ? translate(language, "heat.now.zoneNow", { name: zone.name, value })
+        : translate(language, "heat.now.zone", { name: zone.name, value, until: whenLabel(language, answer, Date.parse(control.until)) }),
+    });
+  }
+  const heater = answer.water_heater;
+  if (heater !== null) {
+    if (heater.live && heater.on === false && heater.until !== null) {
+      out.push({ key: "waterHeater", text: translate(language, "heat.now.waterHeaterOff", { until: whenLabel(language, answer, Date.parse(heater.until)) }) });
+    }
+    // The windows within the strip's twelve hours.
+    const horizon = Date.parse(answer.now) + 12 * 3_600_000;
+    const ahead = heater.windows.filter((window) => Date.parse(window.start) < horizon);
+    const windows = windowsText(language, answer, ahead);
+    if (windows !== "") {
+      out.push({ key: "waterHeaterWindows", text: translate(language, heater.live ? "heat.now.waterHeaterWindows" : "heat.now.waterHeaterWould", { windows }) });
     }
   }
   return out;
@@ -1177,6 +1284,11 @@ function nowPanel(input: HeatRenderInput, answer: HeatAnswer, panel: HTMLElement
       line.dataset["line"] = key;
       lines.append(line);
     }
+  }
+  for (const hold of holdLines(language, answer)) {
+    const line = element(doc, "p", X.status, hold.text);
+    line.dataset["line"] = hold.key;
+    lines.append(line);
   }
   if (lines.childElementCount > 0) {
     panel.append(lines);
@@ -1380,7 +1492,10 @@ export type HeatSettingKey =
   | "steer"
   | "offsetHome"
   | "night"
-  | "awayDelta";
+  | "awayDelta"
+  | "waterHeater"
+  | "waterHeaterControl"
+  | "tankSensor";
 
 /** The "Heating" section of the settings dialog: one row per setting, each opening its editor (`onEdit`). */
 export function heatSettingsSection(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement {
@@ -1478,16 +1593,39 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     translate(language, "heat.settings.zones"),
     config.zones.length === 0 ? translate(language, "heat.settings.zonesNone") : String(config.zones.length),
   );
-  for (const zone of steers ? config.zones : []) {
+  // Each zone: watched, or set by SpotNav from the person's own setting (its offset no longer acts, so it is not shown).
+  for (const zone of config.zones) {
     const shown = answer.zones.find((item) => item.entity_id === zone.entity_id);
-    const kind = shown?.kind ?? answer.choices?.zones.find((item) => item.entity_id === zone.entity_id)?.kind ?? "floor";
-    // An air-to-air heat pump says so under its row; a floor thermostat's own name says what it is.
     row(
       `zone:${zone.entity_id}`,
       nameOf(names, zone.entity_id, zone.entity_id),
-      signedDegrees(language, zone.offset_c),
-      kind === "air" ? translate(language, "heat.settings.airHelp") : undefined,
+      translate(language, zone.control ? "heat.settings.zoneControlled" : "heat.settings.zoneWatched"),
     );
+    const line = shown === undefined ? null : zoneLine(language, answer, shown);
+    if (line !== null) {
+      const help = element(doc, "p", C.settingRowHelp, line);
+      help.dataset["help"] = `zone:${zone.entity_id}`;
+      help.dataset["controlState"] = shown?.control?.state ?? "off";
+      section.append(help);
+    }
+  }
+  // The plain water heater: its switch, then the opt-in and the optional tank sensor.
+  const heater = config.water_heater;
+  row("waterHeater", translate(language, "heat.settings.waterHeater"), nameOf(names, heater?.entity_id ?? null, none));
+  if (heater !== null) {
+    row(
+      "waterHeaterControl",
+      translate(language, "heat.settings.waterHeaterControl"),
+      translate(language, heater.control ? "settings.value.on" : "settings.value.off"),
+    );
+    const line = waterHeaterLine(language, answer);
+    if (line !== null) {
+      const help = element(doc, "p", C.settingRowHelp, line);
+      help.dataset["help"] = "waterHeater";
+      help.dataset["controlState"] = answer.water_heater?.state ?? "off";
+      section.append(help);
+    }
+    row("tankSensor", translate(language, "heat.settings.tankSensor"), nameOf(names, heater.tank_sensor, none));
   }
   if (!steers) {
     return section;

@@ -124,6 +124,8 @@ from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
 from ..heat.control import HeatControl
+from ..heat.water_heater_control import WaterHeaterControl
+from ..heat.zones_control import ZonesControl
 from ..heat.runtime import HeatShadow
 from .solar_correction_shadow import SiteSolarCorrection
 from .solar_shadow import SiteSolarShadow
@@ -921,6 +923,12 @@ class SiteCapacityController:
         # default) and a check that the pump answers it; every exit opens the relay. Shut down first beside the battery.
         self.heat_control = HeatControl(hass, self.heat_shadow)
         self.heat_shadow.control = self.heat_control
+        # SpotNav setting the zones' thermostats (`heat/zones_control.py`), each behind its own opt-in, kept in the heat
+        # control's store; every exit writes the person's own setpoint back.
+        self.zones_control = ZonesControl(hass, self.heat_shadow, self.heat_control)
+        # SpotNav switching a plain water heater (`heat/water_heater_control.py`) behind its opt-in, legionella first;
+        # every exit turns it on.
+        self.water_heater_control = WaterHeaterControl(hass, self.heat_shadow, self.heat_control)
         # A person's hardware test of the battery and the heat path (`hardware_test.py`), through their own engines;
         # never on a timer. Shut down first, before the battery and the heat control.
         self.hardware_test = HardwareTest(hass, self)
@@ -986,6 +994,8 @@ class SiteCapacityController:
         await self.solar_shadow.async_start()
         await self.heat_shadow.async_start()
         await self.heat_control.async_start()
+        await self.zones_control.async_start()
+        await self.water_heater_control.async_start()
         await self.hardware_test.async_load()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
@@ -1105,6 +1115,8 @@ class SiteCapacityController:
             ("solar correction", self.solar_correction.halt),
             ("solar shadow", self.solar_shadow.halt),
             ("heat shadow", self.heat_shadow.halt),
+            ("zones", self.zones_control.halt),
+            ("water heater", self.water_heater_control.halt),
             ("house forecast", self.house_forecast.halt),
         )
         for name, halt in halts:
@@ -1119,7 +1131,7 @@ class SiteCapacityController:
         steps: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
             ("ending the hardware test", self.hardware_test.async_shutdown),
             ("handing the battery back", self._async_battery_hand_back),
-            ("opening the heat relay", self.heat_control.async_shutdown),
+            ("handing the heat back", self._async_heat_hand_back),
         )
         loop = asyncio.get_running_loop()
         for name, step in steps:
@@ -1140,18 +1152,38 @@ class SiteCapacityController:
         self.heat_control.halt()
         await self.battery_control.async_shutdown()
 
+    async def _async_heat_hand_back(self) -> None:
+        """The heat relay opened, the water heater turned on and the zones set back, side by side: each writes to its
+        own entities, and a switch or a thermostat that does not answer must not use up the time the others have
+        (Home Assistant's stop gives the whole hand-back one deadline; the relay's opening waits for nothing new).
+        The heat control's store, which keeps all three, is saved once more when they have ended: the heat control's
+        own shutdown saves it, maybe before the other two were done."""
+        steps: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
+            ("opening the heat relay", self.heat_control.async_shutdown),
+            ("turning the water heater on", self.water_heater_control.async_shutdown),
+            ("setting the zones back", self.zones_control.async_shutdown),
+        )
+        results = await asyncio.gather(*(step() for _name, step in steps), return_exceptions=True)
+        for (name, _step), result in zip(steps, results, strict=True):
+            if isinstance(result, Exception):
+                _LOGGER.warning("SpotNav site: %s failed", name, exc_info=result)
+        await self.heat_control.async_save()
+
     async def _async_keep_after_cut(self) -> None:
         """The hand-back was cut short (Home Assistant's stop ran out of time): what is still held is saved as it
         stands and logged; the next start hands it back."""
         self.heat_control.halt()
         _LOGGER.warning(
             "SpotNav site %s: the hand-back did not finish by the stop's deadline; left for the next start: hardware"
-            " test running %s, home battery or export limit held %s, heat relay held %s, raise held %s",
+            " test running %s, home battery or export limit held %s, heat relay held %s, raise held %s, a zone held %s,"
+            " water heater held off %s",
             self.entry_id,
             self.hardware_test.running,
             self.battery_control.holds_anything(),
             self.heat_control.held,
             self.heat_control.raised,
+            self.zones_control.holds_any(),
+            self.water_heater_control.held_off,
         )
         for name, save in (("battery control", self.battery_control.async_save),
                            ("heat control", self.heat_control.async_save)):

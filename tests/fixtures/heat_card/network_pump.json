@@ -421,6 +421,7 @@
     },
     "outdoor_sensor": null,
     "target_c": 20.5,
+    "water_heater": null,
     "zones": []
   },
   "control": {
@@ -563,6 +564,7 @@
   },
   "time_zone": "Europe/Stockholm",
   "today": null,
+  "water_heater": null,
   "writable": false,
   "zones": []
 }

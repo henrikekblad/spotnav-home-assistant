@@ -908,6 +908,9 @@
     "switch": {
       "departure_enabled": {
         "name": "Hora límite de salida"
+      },
+      "heat_away": {
+        "name": "Calefacción fuera"
       }
     },
     "time": {

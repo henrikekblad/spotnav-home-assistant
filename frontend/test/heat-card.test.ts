@@ -377,18 +377,18 @@ describe("the settings section", () => {
       ["control", "StyrutgångLarm utgång 1"],
       ["hotWater", "VarmvattenIngen"],
       ["zones", "Zoner4"],
-      ["zone:climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåning0 °C"],
-      ["zone:climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåning0 °C"],
-      ["zone:climate.golvvarme_tvattstuga", "Golvvärme tvättstuga−1,0 °C"],
-      ["zone:climate.ovanvaning", "Värmepump ovanvåning−0,5 °C"],
+      ["zone:climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåningBevakas"],
+      ["zone:climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåningBevakas"],
+      ["zone:climate.golvvarme_tvattstuga", "Golvvärme tvättstugaBevakas"],
+      ["zone:climate.ovanvaning", "Värmepump ovanvåningBevakas"],
+      ["waterHeater", "VarmvattenberedareIngen"],
       ["night", "Svalare natt−1,0 °C 23:00–06:00"],
       ["awayDelta", "Sänkning när borta−3,0 °C"],
     ]);
     section.querySelector<HTMLButtonElement>("button[data-edit='zone:climate.ovanvaning']")!.click();
     expect(edits).toEqual(["zone:climate.ovanvaning"]);
-    expect(section.querySelector("[data-help='zone:climate.ovanvaning']")!.textContent).toBe(
-      "Luft-luftvärmepump: SpotNav ändrar bara börvärdet, slår aldrig av eller på.",
-    );
+    // A watched zone has no line under it.
+    expect(section.querySelector("[data-help='zone:climate.ovanvaning']")).toBeNull();
     // The switch's line: what it waits for, and no "test" intro while it is on.
     expect(section.querySelector("[data-help='steer']")!.textContent).toBe(
       "Väntar: stäng av automationen 'Värmepanna: sänk värmekurvan när elen är dyr' så att SpotNav kan styra värmen.",
@@ -521,22 +521,20 @@ describe("the element", () => {
     expect(root.querySelector("[data-popover='site'] [data-section='battery']")).not.toBeNull();
   });
 
-  it("refuses an offset off the half degree before writing", async () => {
+  it("turns a zone's own control on, keeping every zone's offset", async () => {
     const { messages, root } = await mount();
     root.querySelector<HTMLButtonElement>("button[data-action='settings']")!.click();
     await vi.advanceTimersByTimeAsync(0);
     root.querySelector<HTMLButtonElement>("button[data-edit='zone:climate.ovanvaning']")!.click();
-    const form = root.querySelector<HTMLFormElement>("form[data-value-editor='number']")!;
-    const input = form.querySelector<HTMLInputElement>("input")!;
-    input.value = "0,3";
-    form.requestSubmit();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(messages.some((message) => message["type"] === "spotnav/update_heat")).toBe(false);
-    input.value = "1";
+    const form = root.querySelector<HTMLFormElement>("form")!;
+    expect(form.textContent).toContain("1 °C lägre under dyra timmar");
+    form.querySelector<HTMLInputElement>("input[value='on']")!.click();
     form.requestSubmit();
     await vi.advanceTimersByTimeAsync(0);
     const write = messages.find((message) => message["type"] === "spotnav/update_heat")!;
-    expect((write["changes"] as { zones: { entity_id: string; offset_c: number }[] }).zones[3]).toEqual({ entity_id: "climate.ovanvaning", offset_c: 1 });
+    const zones = (write["changes"] as { zones: { entity_id: string; offset_c: number; control: boolean }[] }).zones;
+    expect(zones[3]).toEqual({ entity_id: "climate.ovanvaning", offset_c: -0.5, control: true });
+    expect(zones[2]).toEqual({ entity_id: "climate.golvvarme_tvattstuga", offset_c: -1, control: false });
   });
 
   it("writes an indoor sensor's offset with the others kept, a zero left out", async () => {
@@ -740,7 +738,9 @@ describe("SpotNav controlling the heat", () => {
     expect(rows).toContain("path");
     expect(rows).toContain("indoor");
     expect(rows).toContain("zones");
-    expect(rows.filter((row) => ["night", "awayDelta"].includes(row) || row.startsWith("sensor:") || row.startsWith("zone:"))).toEqual([]);
+    expect(rows.filter((row) => ["night", "awayDelta"].includes(row) || row.startsWith("sensor:"))).toEqual([]);
+    // A zone can be set by SpotNav on its own, without a path for the pump: its row stays.
+    expect(rows).toContain("zone:climate.golvvarme_toalett_nere");
     // On a steerable path, control still off, they stay: they feed the plan shown as Test.
     const steerable = { ...readOnly, config: { ...readOnly.config, control_path: "offset" } };
     const kept = [...heatSettingsSection(document, "sv", steerable, () => undefined).querySelectorAll<HTMLElement>("[data-row]")].map(
@@ -1014,5 +1014,44 @@ describe("the element's reads and timers", () => {
     element.remove();
     (element as never as { pollBoost(left: number): void }).pollBoost(5);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe("the zones and the water heater SpotNav controls", () => {
+  const handlers = { onCancel: vi.fn(), onDone: vi.fn() };
+
+  it("says what SpotNav holds on a zone and the water heater, under their rows and on Now", () => {
+    const value = answer("controlled.json");
+    const section = heatSettingsSection(document, "sv", value, () => undefined);
+    const rows = Object.fromEntries([...section.querySelectorAll<HTMLElement>("[data-row]")].map((row) => [row.dataset["row"]!, row.textContent]));
+    expect(rows["zone:climate.golvvarme_toalett_uppe"]).toBe("Golvvärme toalett ovanvåningStyrs");
+    expect(rows["zone:climate.golvvarme_toalett_nere"]).toBe("Golvvärme toalett nedervåningBevakas");
+    expect(rows["waterHeater"]).toBe("VarmvattenberedareVarmvattenberedare");
+    expect(rows["waterHeaterControl"]).toBe("Styr varmvattenberedarenPå");
+    expect(rows["tankSensor"]).toBe("TankgivareIngen");
+    expect(section.querySelector("[data-help='zone:climate.golvvarme_toalett_uppe']")!.textContent).toBe("SpotNav håller 21,0 °C till 19:00.");
+    expect(section.querySelector("[data-help='waterHeater']")!.textContent).toBe("Av till tis 17 nov. 01:00.");
+    const now = body(value);
+    expect(now.querySelector("[data-line='zone:climate.golvvarme_toalett_uppe']")!.textContent).toBe("Golvvärme toalett ovanvåning 21,0 °C till 19:00");
+    expect(now.querySelector("[data-line='waterHeater']")!.textContent).toBe("Varmvattenberedaren av till tis 17 nov. 01:00");
+  });
+
+  it("asks for 60 °C on the water heater's thermostat when it is turned on, and writes the opt-in", async () => {
+    const value = answer("controlled.json");
+    const write = vi.fn(async () => null);
+    const editor = heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: value, write } as never, "waterHeaterControl", handlers as never)!;
+    expect(editor.body.textContent).toContain("minst 60 °C");
+    document.body.append(editor.body);
+    editor.body.querySelector<HTMLInputElement>("input[value='off']")!.click();
+    (editor.body as HTMLFormElement).requestSubmit();
+    await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ water_heater: { entity_id: "switch.varmvattenberedare", control: false } }));
+  });
+
+  it("words the water heater's note", () => {
+    const value = answer("controlled.json");
+    const noted = { ...value, notes: [{ code: "water_heater_not_full", params: { name: "Varmvattenberedare" } }] };
+    expect(noteLines("sv", noted)).toEqual([
+      { code: "water_heater_not_full", text: "Varmvattenberedaren har inte nått sin termostat på två dygn: kontrollera termostaten och elementet." },
+    ]);
   });
 });

@@ -858,7 +858,9 @@ for once on opening a tab and then about once a minute.
 `comfort` (the band around the target now), `indoor` (the measured value, the coldest room, each sensor), `outdoor`,
 `zones`, `pump`, `meter`, `today` (the day's heat, hot water and `cost`, with `money`), `status` (what the pump does
 and what SpotNav would do or does), `band` (the day's plan by the hour), `control`, `relay`, `review`, `indoor_day`,
-`notes`, `ahead` (the next 12 hours of the plan) and `shadow` (`false` only while SpotNav's heat control runs). Over the webhook `writable` is `false` and
+`notes`, `ahead` (the next 12 hours of the plan), `water_heater` (a plain water heater on a switch, `null` without
+one: its state, windows and whether SpotNav switches it), each zone's `control` (SpotNav setting its thermostat, `null`
+while watched only) and `shadow` (`false` only while SpotNav's heat control runs). Over the webhook `writable` is `false` and
 `choices` is `null`: they describe the configuration (sensors, zones, control path), which is set in Home Assistant.
 The dial and home or away are everyone's, whatever `writable` says.
 
@@ -880,7 +882,9 @@ The dial and home or away are everyone's, whatever `writable` says.
 - `zones`: each zone's offset against the house temperature, `[{"entity_id", "offset_c"}]` with `offset_c` -3 to 3
   in steps of 0.5. The list must name exactly the zones stored (`config.zones`), in their order: which entities
   are zones is configuration, and a list that adds, drops, swaps or reorders one is
-  `spotnav_not_permitted_over_webhook`.
+  `spotnav_not_permitted_over_webhook`. Each stored zone also has `control` (SpotNav sets its thermostat): a zone
+  written without it keeps its own, and one that changes it is `spotnav_not_permitted_over_webhook`. Since 3.0 a
+  zone's offset no longer acts (SpotNav sets a controlled zone from its own setpoint); it is kept.
 - `indoor_offsets`: each indoor sensor's own aim against the house temperature, `[{"entity_id", "offset_c"}]` with
   `offset_c` -3 to 3 in steps of 0.5. The list is sparse, as `config.indoor_offsets` is: a sensor left out or at 0
   has no offset, and `null` clears them all. Every `entity_id` must be one of the stored `config.indoor_sensors`;

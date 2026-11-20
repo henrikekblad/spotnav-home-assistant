@@ -125,6 +125,37 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
       handlers),
     };
   }
+  if (key === "waterHeaterControl") {
+    // The opt-in's confirmation says the one thing SpotNav cannot see: the thermostat must be at 60 °C or more.
+    const heater = config.water_heater;
+    if (heater === null) {
+      return null;
+    }
+    return {
+      title: t("heat.settings.waterHeaterControl"),
+      body: onOffEditor(doc, language, { intro: t("heat.settings.waterHeaterControlHelp"), on: heater.control, idPrefix: prefix }, async (on) =>
+        on === heater.control ? null : await input.write({ water_heater: { entity_id: heater.entity_id, control: on } }),
+      handlers),
+    };
+  }
+  if (key.startsWith("zone:")) {
+    // A zone's own opt-in: SpotNav sets the thermostat from the person's own setting.
+    const entityId = key.slice("zone:".length);
+    const zone = config.zones.find((item) => item.entity_id === entityId);
+    if (zone === undefined) {
+      return null;
+    }
+    const air = answer.zones.find((item) => item.entity_id === entityId)?.kind === "air";
+    const intro = air ? `${t("heat.settings.zoneControlHelp")} ${t("heat.settings.airHelp")}` : t("heat.settings.zoneControlHelp");
+    return {
+      title: `${namesOf(answer).get(entityId) ?? entityId}: ${t("heat.settings.zoneControl")}`,
+      body: onOffEditor(doc, language, { intro, on: zone.control, idPrefix: prefix }, async (on) =>
+        on === zone.control
+          ? null
+          : await input.write({ zones: config.zones.map((item) => (item.entity_id === entityId ? { ...item, control: on } : item)) }),
+      handlers),
+    };
+  }
   if (key === "offsetHome") {
     // The stored offset reads other than the household's own value: put it back, or keep it. Nothing is written
     // without this answer.
@@ -226,6 +257,27 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
         input.write({ control_path: config.control_path, [field]: value }),
       helpKey === undefined ? undefined : t(helpKey));
     }
+    case "waterHeater":
+      return pick(
+        t("heat.settings.waterHeater"),
+        [none, ...choices.water_heater.map(option)],
+        config.water_heater?.entity_id ?? null,
+        (value) => input.write({ water_heater: value === null ? null : { entity_id: value } }),
+        t("heat.settings.waterHeaterHelp"),
+      );
+    case "tankSensor": {
+      const heater = config.water_heater;
+      if (heater === null) {
+        return null;
+      }
+      return pick(
+        t("heat.settings.tankSensor"),
+        [none, ...choices.tank_sensor.map(option)],
+        heater.tank_sensor,
+        (value) => input.write({ water_heater: { entity_id: heater.entity_id, tank_sensor: value } }),
+        t("heat.settings.tankSensorHelp"),
+      );
+    }
     case "hotWater":
       return pick(t("heat.settings.hotWater"), [none, ...choices.hot_water.map(option)], config.hot_water_entity, (value) => input.write({ hot_water_entity: value }), t("heat.settings.hotWaterHelp"));
     case "zones": {
@@ -236,7 +288,13 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
           doc,
           language,
           { intro: t("heat.settings.zonesHelp"), options: choices.zones.map((choice) => ({ value: choice.entity_id, label: `${choice.name} · ${kindWord(choice.kind)}` })), checked: config.zones.map((zone) => zone.entity_id) },
-          (values) => input.write({ zones: values.map((entity_id) => ({ entity_id, offset_c: config.zones.find((zone) => zone.entity_id === entity_id)?.offset_c ?? 0 })) }),
+          (values) =>
+            input.write({
+              zones: values.map((entity_id) => {
+                const kept = config.zones.find((zone) => zone.entity_id === entity_id);
+                return { entity_id, offset_c: kept?.offset_c ?? 0, control: kept?.control ?? false };
+              }),
+            }),
           handlers,
         ),
       };
@@ -245,29 +303,7 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
       if (key.startsWith("sensor:")) {
         return sensorOffsetEditor(input, key.slice("sensor:".length), prefix, handlers);
       }
-      const entityId = key.slice("zone:".length);
-      const zone = config.zones.find((item) => item.entity_id === entityId);
-      if (zone === undefined) {
-        return null;
-      }
-      const air = answer.zones.find((item) => item.entity_id === entityId)?.kind === "air";
-      const help = air ? `${t("heat.settings.offsetHelp")} ${t("heat.settings.airHelp")}` : t("heat.settings.offsetHelp");
-      return {
-        title: namesOf(answer).get(entityId) ?? entityId,
-        body: numberEditor(
-          doc,
-          language,
-          { help, unit: "°C", current: zone.offset_c, min: -3, max: 3, decimals: 1, rangeMessage: t("heat.error.range"), idPrefix: prefix },
-          async (value) => {
-            const offset = value ?? 0;
-            if (Math.abs(offset * 2 - Math.round(offset * 2)) > 1e-9) {
-              return t("heat.error.step");
-            }
-            return await input.write({ zones: config.zones.map((item) => (item.entity_id === entityId ? { ...item, offset_c: offset } : item)) });
-          },
-          handlers,
-        ),
-      };
+      return null;
     }
   }
 }

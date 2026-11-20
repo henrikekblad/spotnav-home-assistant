@@ -273,7 +273,7 @@ What SpotNav reads of a heat pump is in [Heat pumps](heat-pumps.md). This table 
 | Qvantum | `perosb/qvantum_custom_component`, HACS | Local (Modbus, writing is opt-in) or cloud | Not yet | Modes Eco, Normal, Extra, Smart, Off (unverified) |  |
 | Any pump with an SG Ready input | A switch entity for each of the two inputs | Local | SG Ready (never the forced state) | Only if the installer wired the input to extra hot water. Where the block also holds hot water, SpotNav keeps its blocks clear of the pump's own hot-water runs (in shadow first) |  |
 | Any pump with an input for a relay | A switch entity | Local | Relay: lowers the curve | A contact on an external hot water input, if the pump has one. Chosen as the hot water entity, SpotNav pulses it for the hot water button; planned boosts in shadow first. A relay that blocks the compressor holds the pump's own hot-water runs too: SpotNav keeps its blocks clear of them (in shadow first) |  |
-| Any water heater with an immersion element | A switch or smart plug | Local | No: use the price automation blueprint | Allow heating in the cheap hours only; the thermostat stays as the safety | Do not hold the tank cold for days. |
+| Any water heater with an immersion element | A switch or smart plug | Local | Yes: Control the water heater | Off in expensive hours, full heat every day, never off over 8 hours, on whenever a reading is missing; the thermostat (at least 60 °C) stays as the safety | Set its thermostat to at least 60 °C: SpotNav cannot see the tank. |
 
 A pump or route missing or wrong here? [Hardware tested](https://github.com/henrikekblad/spotnav-home-assistant/issues/new?template=hardware_report.yml).
 

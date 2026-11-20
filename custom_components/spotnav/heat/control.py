@@ -355,6 +355,9 @@ class HeatControl:
         #: `phase` engage, engaging, hold, releasing or done. Not kept: a restart opens what SpotNav holds anyway.
         self.test: dict[str, Any] | None = None
         self._test_stop: str | None = None
+        #: The parts that keep their state in this control's store under their own key (`zones`: the zones' control,
+        #: `water_heater`: the water heater's), each with `stored()` and `restore(raw)`.
+        self.parts: dict[str, Any] = {}
 
     # ---- life cycle
 
@@ -387,6 +390,11 @@ class HeatControl:
             self.raised, self.raised_since, self._reopen_b = True, None, True
 
     def _restore(self, raw: Any) -> None:
+        for name, part in self.parts.items():
+            try:
+                part.restore(raw.get(name) if isinstance(raw, dict) else None)
+            except Exception:  # noqa: BLE001 - a part whose kept state cannot be read starts anew
+                _LOGGER.warning("SpotNav heat control: the kept %s could not be read", name, exc_info=True)
         if not isinstance(raw, dict):
             return
         self.relay = raw.get("relay") if isinstance(raw.get("relay"), str) else None
@@ -465,6 +473,7 @@ class HeatControl:
             "renewals": self.renewals,
             "activations": self.activations,
             "offset_moves": [[at.isoformat(), direction] for at, direction in self.offset_moves],
+            **{name: part.stored() for name, part in self.parts.items()},
         }
 
     def _save(self) -> None:
@@ -476,6 +485,16 @@ class HeatControl:
             return
         self._saved = data
         self._store.async_delay_save(self._data, 1.0)
+
+    def keep_soon(self) -> None:
+        """A part's kept state changed: saved soon."""
+        self._save()
+
+    async def async_keep(self) -> bool:
+        """A part's kept state saved at once (before it writes what an exit must undo); `False` when not kept."""
+        if not self._loaded:
+            return False
+        return await self._async_save_now()
 
     async def _async_save_now(self) -> bool:
         """Save at once (before a closing is written); `False` when it could not be kept."""
@@ -572,16 +591,29 @@ class HeatControl:
                     kept["activation"] = None
                 except Exception:  # noqa: BLE001 - logged below
                     _LOGGER.debug("SpotNav heat control: %s could not be turned off at the removal", switch.entity_id, exc_info=True)
-        if isinstance(kept, dict) and (kept.get("held") or kept.get("raised") or kept.get("snapshots") or kept.get("activation")):
+        zones = kept.get("zones") if isinstance(kept, dict) else None
+        held_zones = (
+            {entity: item.get("home_c") for entity, item in (zones.get("zones") or {}).items() if isinstance(item, dict) and item.get("written_c") is not None}
+            if isinstance(zones, dict) and isinstance(zones.get("zones"), dict)
+            else {}
+        )
+        heater = kept.get("water_heater") if isinstance(kept, dict) else None
+        heater_off = heater.get("entity") if isinstance(heater, dict) and heater.get("held_off") else None
+        if isinstance(kept, dict) and (
+            kept.get("held") or kept.get("raised") or kept.get("snapshots") or kept.get("activation") or held_zones or heater_off
+        ):
             _LOGGER.warning(
                 "SpotNav heat control: removed while a change of its was not handed back; set it back by hand: "
-                "lowering %s held %s, raise %s held %s, offset values found %s, SG Ready switch turned on %s",
+                "lowering %s held %s, raise %s held %s, offset values found %s, SG Ready switch turned on %s, "
+                "thermostats to set back to %s, water heater to turn on %s",
                 kept.get("relay"),
                 kept.get("held"),
                 kept.get("raise_entity"),
                 kept.get("raised"),
                 kept.get("snapshots"),
                 kept.get("activation"),
+                held_zones,
+                heater_off,
             )
         await store.async_remove()
 

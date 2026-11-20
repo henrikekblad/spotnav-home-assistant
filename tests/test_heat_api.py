@@ -72,7 +72,7 @@ async def test_a_write_is_stored_without_a_reload_and_answered_reread(hass: Home
     assert (result["ok"], result["error"], result["field_errors"]) == (True, None, [])
     config = result["config"]
     assert config["target_c"] == 21.5 and config["indoor_sensors"] == ["sensor.kok", "sensor.ovanvaning"]
-    assert config["zones"] == [{"entity_id": "climate.golvvarme", "offset_c": -0.5}]
+    assert config["zones"] == [{"entity_id": "climate.golvvarme", "offset_c": -0.5, "control": False}]
     assert config["heat_meter_entity"] == "sensor.varme_effekt"
     assert site.data[CONF_HEAT]["control_entity"] == "switch.larm_rele_1"
     assert site.data[CONF_HEAT_METER_ENTITY] == "sensor.varme_effekt"

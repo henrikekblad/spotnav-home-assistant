@@ -908,6 +908,9 @@
     "switch": {
       "departure_enabled": {
         "name": "Abfahrtszeit einhalten"
+      },
+      "heat_away": {
+        "name": "Heizung abwesend"
       }
     },
     "time": {

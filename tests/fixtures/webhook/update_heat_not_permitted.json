@@ -24,6 +24,7 @@
     },
     "outdoor_sensor": null,
     "target_c": 21.0,
+    "water_heater": null,
     "zones": []
   },
   "error": "spotnav_not_permitted_over_webhook",

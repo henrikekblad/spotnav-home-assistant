@@ -217,7 +217,7 @@ DEFAULT_MIN_CURRENT_A = 6.0
 
 SITE_RECOMPUTE_INTERVAL_S = 30
 
-SITE_PLATFORMS = ["binary_sensor", "sensor"]
+SITE_PLATFORMS = ["binary_sensor", "sensor", "switch"]
 
 PRICE_PLATFORMS = ["binary_sensor", "number", "select", "sensor"]
 # A price entry's data: the area, and each fee as a charger's settings store it

@@ -1187,9 +1187,10 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "Any water heater with an immersion element",
         "A switch or smart plug",
         "Local",
-        "No: use the price automation blueprint",
-        "Allow heating in the cheap hours only; the thermostat stays as the safety",
-        "Do not hold the tank cold for days.",
+        "Yes: Control the water heater",
+        "Off in expensive hours, full heat every day, never off over 8 hours, on whenever a reading is missing; "
+        "the thermostat (at least 60 °C) stays as the safety",
+        "Set its thermostat to at least 60 °C: SpotNav cannot see the tank.",
     ),
 )
 

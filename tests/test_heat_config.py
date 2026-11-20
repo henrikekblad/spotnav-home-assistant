@@ -11,6 +11,7 @@ from custom_components.spotnav.heat.config import (
     HeatConfig,
     Night,
     SensorOffset,
+    WaterHeater,
     Zone,
     apply_changes,
     away_target,
@@ -29,6 +30,8 @@ KNOWN = {
     "switch.relay_b": "relay",
     "number.offset": "offset",
     "switch.hot_water": "hot_water",
+    "switch.boiler": "water_heater",
+    "sensor.tank": "tank",
 }
 
 
@@ -38,6 +41,8 @@ def check(entity_id: str, role: str) -> bool | None:
         return None
     if role in ("indoor", "outdoor"):
         return kind in ("indoor", "outdoor")
+    if role == "tank":
+        return kind == "tank"
     return True
 
 
@@ -222,3 +227,47 @@ def test_the_control_switch_is_a_plain_boolean_off_by_default() -> None:
     assert errors == [] and on.control_enabled is True and read_config(on.as_dict()).control_enabled is True
     same, errors = apply_changes(on, {"control_enabled": 1}, now=NOW, check=check)
     assert same == on and [error.code for error in errors] == ["invalid_value"]
+
+
+def test_a_zone_s_control_is_an_opt_in_kept_by_an_offsets_only_write() -> None:
+    assert read_config({"zones": [{"entity_id": "climate.floor", "control": "yes"}]}).zones == (Zone("climate.floor"),)
+    on, errors = write({"zones": [{"entity_id": "climate.floor", "offset_c": 0.0, "control": True}, {"entity_id": "climate.air"}]})
+    assert not errors and on.zones == (Zone("climate.floor", 0.0, True), Zone("climate.air", 0.0, False))
+    assert read_config(on.as_dict()) == on
+    # The app writes offsets only: each zone keeps its opt-in.
+    kept, errors = write({"zones": [{"entity_id": "climate.floor", "offset_c": 1.0}, {"entity_id": "climate.air"}]}, on)
+    assert not errors and kept.zones == (Zone("climate.floor", 1.0, True), Zone("climate.air", 0.0, False))
+    off, errors = write({"zones": [{"entity_id": "climate.floor", "control": False}]}, on)
+    assert not errors and off.zones == (Zone("climate.floor", 0.0, False),)
+    assert codes(write({"zones": [{"entity_id": "climate.floor", "control": 1}]})[1]) == [("zones", "invalid_value")]
+
+
+def test_the_water_heater_switch_its_opt_in_and_its_tank_sensor() -> None:
+    assert HeatConfig().water_heater is None and HeatConfig().as_dict()["water_heater"] is None
+    chosen, errors = write({"water_heater": {"entity_id": "switch.boiler"}})
+    assert not errors and chosen.water_heater == WaterHeater("switch.boiler", False, None)
+    on, errors = write({"water_heater": {"control": True, "tank_sensor": "sensor.tank"}}, chosen)
+    assert not errors and on.water_heater == WaterHeater("switch.boiler", True, "sensor.tank")
+    assert read_config(on.as_dict()) == on
+    # Another switch starts watched only; null clears it all.
+    moved, errors = write({"water_heater": {"entity_id": "switch.hot_water"}}, on)
+    assert not errors and moved.water_heater == WaterHeater("switch.hot_water", False, "sensor.tank")
+    assert write({"water_heater": None}, on)[0].water_heater is None
+    assert codes(write({"water_heater": {"control": True}})[1]) == [("water_heater", "invalid_value")]
+    assert codes(write({"water_heater": {"entity_id": "climate.floor"}})[1]) == [("water_heater", "wrong_kind")]
+    assert codes(write({"water_heater": {"entity_id": "switch.gone"}})[1]) == [("water_heater", "entity_not_found")]
+    assert codes(write({"water_heater": {"entity_id": "switch.boiler", "tank_sensor": "sensor.cpu"}})[1]) == [
+        ("water_heater", "wrong_kind")
+    ]
+    assert codes(write({"water_heater": {"entity_id": "switch.boiler", "power": 1}})[1]) == [("water_heater", "invalid_value")]
+    assert codes(write({"water_heater": {"entity_id": "switch.boiler", "control": "on"}})[1]) == [("water_heater", "invalid_value")]
+    # A broken store reads as none, a broken tank sensor as none.
+    # Never the heat pump's relay, its second contact or its hot-water boost, whichever of them is chosen last.
+    relay = HeatConfig(control_path="relay", control_entity="switch.relay", hot_water_entity="switch.hot_water")
+    assert codes(write({"water_heater": {"entity_id": "switch.relay"}}, relay)[1]) == [("water_heater", "duplicate")]
+    assert codes(write({"water_heater": {"entity_id": "switch.hot_water"}}, relay)[1]) == [("water_heater", "duplicate")]
+    assert codes(write({"control_path": "relay", "control_entity": "switch.boiler"}, chosen)[1]) == [("control_entity", "duplicate")]
+    assert codes(write({"hot_water_entity": "switch.boiler"}, chosen)[1]) == [("hot_water_entity", "duplicate")]
+    assert not write({"target_c": 21.0}, chosen)[1] and not write({"hot_water_entity": "switch.hot_water"}, chosen)[1]
+    assert read_config({"water_heater": {"entity_id": "sensor.x"}}).water_heater is None
+    assert read_config({"water_heater": {"entity_id": "switch.boiler", "tank_sensor": 3}}).water_heater == WaterHeater("switch.boiler")

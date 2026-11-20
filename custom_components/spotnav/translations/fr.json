@@ -908,6 +908,9 @@
     "switch": {
       "departure_enabled": {
         "name": "Échéance de départ"
+      },
+      "heat_away": {
+        "name": "Chauffage absent"
       }
     },
     "time": {
