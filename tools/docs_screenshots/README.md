@@ -6,16 +6,24 @@ machine (127.0.0.1, port 8129). Nothing touches a real installation.
     tools/docs_screenshots/run.sh              # every screenshot
     tools/docs_screenshots/run.sh card-hero    # only the named ones
     tools/docs_screenshots/run.sh --keep-ha    # leave Home Assistant running afterwards (Ctrl-C ends it)
+    DRIVER=v3shots.mjs tools/docs_screenshots/run.sh [--fresh|--reuse] house-card-now   # the 3.0 pictures, see below
+
+Every phase's start and end is printed to stderr as `[timing] ...` (the 3.0 driver also prints its own steps), so a
+slow run shows where its time goes. To take a subset, name the pictures: the card, tab and settings pictures are
+independent of each other, and a run that names only some does only their work. There is no "changed only" mode:
+which pictures a change touches is a judgement (a card change touches every picture of that card), so name them.
 
 Needs `python3`, `node` (22 or newer) and `chromium`. The first run creates `.venv` and installs the
 versions in `requirements.txt` (network needed once; Home Assistant also fetches a few component
-requirements then). A run takes about four minutes, of which about two are a wait for a car to count as
-unplugged (see [Car identification](#car-identification)).
+requirements then). A run of the 2.x driver takes about four minutes, of which about two are a wait for a car to count as
+unplugged (see [Car identification](#car-identification)); a 3.0 run on a kept installation takes about a minute
+for a card picture.
 
 ## What it does
 
-1. `run.sh` rebuilds `.config/` from nothing: a minimal `configuration.yaml`, the repository's
-   `custom_components/spotnav` linked in, and the demo integrations below.
+1. `run.sh` rebuilds `.config/` from nothing (the 2.x driver, and the 3.0 driver with `--fresh` or when the kept one
+   is from another day; see below): a minimal `configuration.yaml`, the repository's `custom_components/spotnav`
+   linked in, and the demo integrations below.
 2. Prices come from the demo `nordpool` integration below, as they come from Home Assistant's own Nord Pool
    integration in a real installation (the SpotNav relay delivers no prices since 2.0). Converting SE4's EUR
    prices to SEK needs the ECB's reference rates: `rates_stub.py` serves the recorded rates
@@ -91,6 +99,62 @@ Not produced (they need real-world state): card-waiting (only before about 13:45
 prices; `STUB_TOMORROW=0` removes tomorrow from the demo Nord Pool, but the integration decides by the real clock),
 card-charging (a running charge), card-solar (a sunny day and a forecast source), pairing-approve (a
 real app pairing).
+
+## The 3.0 pictures (`driver/v3shots.mjs`)
+
+The house card, the heat card, the hero picture with the three cards, the settings pictures of the home battery and
+the beta tester box, and the pictures for the banner are taken by a driver of their own, in Home Assistant's light
+theme (`DRIVER=v3shots.mjs tools/docs_screenshots/run.sh [--keep-ha] [shot-name ...]`; the older `shots.mjs` still
+takes the 2.x pictures of the charger flow, in the dark theme). Written: `house-card-now`, `heat-card-now`,
+`heat-card-hot-water`, `settings-home-battery`, `settings-beta`, `readme-hero` and `docs-home` (a copy of it); only
+when named: `social-card` (the house card at twice the pixels, `tools/social/card-light.png`).
+
+`driver/v3setup.mjs` sets the installation up through the config flow API (the app's screenshot tool uses it too):
+the demo integrations, a charger "Garage" with two cars, a site "Home" and the site's heating. What the site finds
+beyond the 2.x demo:
+
+- `demo_components/demo_house`: a made-up house, one deterministic simulation in five-minute steps (`model.py`: a sun, the
+  house's load, a heat pump with hot-water runs, a home battery, the grid, the rooms and the weather) behind the sensors
+  (solar, grid and battery energy counters, the heat pump's meter, three rooms and the outdoor temperature) and two
+  switches (a relay that lowers the pump's curve, a hot-water boost). Its service `demo_house.docs_seed` imports the
+  simulation's weeks as the recorder's statistics (hourly for 56 days, five-minute for ten), which `v3setup.mjs`
+  points the Energy dashboard at; `demo_house.docs_scene` pins the live power (sun, house, heat, battery in kW) for a
+  picture, so that no picture depends on the hour it is taken.
+- `demo_components/sigen` now also has the home battery: its level, ratings, work mode and the controls the battery
+  check writes (a Remote EMS switch, the control mode select and the charge and discharge limits); they move the
+  simulated battery, so the check of its control sees a plant that obeys.
+- `seed_house.py` (loaded by `ha_launch.py` with `DOCS_SEED_HOUSE`): the house-load history the forecast needs, the heat
+  store's hot-water runs and five shadow days (the progress line under the heat card's Plan), and a month of reviewed
+  battery days and the battery's day money (the earnings). In memory only, as `seed_sessions.py`.
+
+Time of day: the live figures are pinned, but SpotNav plans from the real clock. The pictures of today's energy want an
+evening or a day (not just after midnight, when today holds no hours yet). **`heat-card-hot-water` needs a boost
+planned for the rest of today**, which is in the cheap hours before the day's peaks (02:30 and 12:30 here): take it
+before about 12:00, or just after midnight (there is no way to pin the demo's clock without touching the integration's
+planning, so none is pinned); the driver waits for one for up to `HOT_WATER_WAIT_MIN` minutes (150). Taken just after
+midnight the Plan tab shows the day's planned runs ahead (hollow droplet) and its peak ticks, but no measured run yet
+(the day has none); take it after the night's boost and before noon to see one as well.
+`settings-home-battery` waits for the battery's check, about two minutes on a new installation (beta on, battery control on, a
+cloudy evening pinned so that the battery discharges; a kept installation has passed it already). The past days' prices (the month's cost and earnings in the app's pictures) come within seconds of the start, see the quick demo waits below.
+
+**A kept installation.** With `DRIVER=v3shots.mjs` the finished configuration directory (the site, the charger, weeks
+of recorder history, the Energy dashboard, the hot-water and battery seeds) stays between runs: the driver stamps it
+(`.config/.docs_built`, the day it was built) once the site is set up, and the next run reuses it while the stamp is
+today's (the demo house's weeks end at the day it was built), which skips onboarding, the demo devices and the site
+set-up, the 90-second wait for a new site's first reading and the check of the home battery (a kept installation has
+passed it). `--reuse` keeps it whatever its day; `--fresh` rebuilds it. The hours since it was last running are imported
+again at its start (`importHistory` in `v3setup.mjs`), and a kept installation answers its REST API before its
+integrations are set up, which `HA_ONBOARDED=1` (set by `run.sh` then) makes the driver wait out.
+
+**Quick demo waits (`demo_fast.py`, loaded with `DOCS_FAST_CHECK`, set by `run.sh`).** The demo battery obeys at once, so
+the check of its control (`settings-home-battery`) settles in about two minutes instead of twenty: its settle and
+reading times and the re-arm pause are cut. The price backfill and the ECB's exchange rates (the past days' prices, which
+the month's cost and earnings need) are read within seconds of the start instead of waiting for the hourly cycle, and the
+rates stub serves a 90-day file with a table for every weekday, so the past days are converted at all (they were not
+before: a day older than the one table had no rate). All of it patches the running Home Assistant process in memory; the
+integration's files are never changed, and a real installation never loads it.
+
+`HA_PORT`, `STUB_PORT`, `DOCS_CONFIG` and `DOCS_LOGS` move the instance, so that two can run side by side.
 
 ## Things that can break
 

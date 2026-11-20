@@ -21,10 +21,20 @@ FIXTURE = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "ecb" / "
 PATHS = ("/stats/eurofxref/eurofxref-daily.xml", "/stats/eurofxref/eurofxref-hist-90d.xml")
 
 
-def rates() -> bytes:
+def rates(history: bool = False) -> bytes:
+    """The recorded day's table dated yesterday; for the 90-day file the same table for every weekday of the last
+    ninety days (the past days' prices are converted with the table of their own day)."""
     yesterday = datetime.now(ZoneInfo("Europe/Berlin")).date() - timedelta(days=1)
     text = FIXTURE.read_text(encoding="utf-8")
-    return re.sub(r"time='\d{4}-\d{2}-\d{2}'", f"time='{yesterday.isoformat()}'", text).encode("utf-8")
+    if not history:
+        return re.sub(r"time='\d{4}-\d{2}-\d{2}'", f"time='{yesterday.isoformat()}'", text).encode("utf-8")
+    cube = re.search(r"\t\t<Cube time='[^']*'>.*?</Cube>\n", text, re.S)
+    if cube is None:
+        raise RuntimeError("the recorded rate table has no daily cube")
+    days = [yesterday - timedelta(days=n) for n in range(90)]
+    tables = "".join(re.sub(r"time='[^']*'", f"time='{day.isoformat()}'", cube.group(0), count=1)
+                     for day in days if day.weekday() < 5)
+    return (text[:cube.start()] + tables + text[cube.end():]).encode("utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -33,7 +43,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        data = rates()
+        data = rates(history="hist" in self.path)
         self.send_response(200)
         self.send_header("Content-Type", "text/xml")
         self.send_header("Content-Length", str(len(data)))

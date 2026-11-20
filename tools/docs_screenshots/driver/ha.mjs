@@ -7,9 +7,14 @@ export const USER = { name: "Demo", username: "demo", password: "demo-docs-pass-
 const json = (r) => r.json();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Home Assistant answers. A new instance serves its onboarding steps; one that is onboarded (`HA_ONBOARDED=1`, a kept
+ * installation) has no such page, and answers the REST API's root with 401 once its login is up. */
 export async function waitUp(timeoutS = 240) {
   for (let i = 0; i < timeoutS * 2; i++) {
-    try { if ((await fetch(BASE + "/api/onboarding")).ok) return; } catch {}
+    try {
+      if ((await fetch(BASE + "/api/onboarding")).ok) return;
+      if (process.env.HA_ONBOARDED && (await fetch(BASE + "/api/")).status === 401 && (await fetch(BASE + "/auth/providers")).ok) return;
+    } catch {}
     await sleep(500);
   }
   throw new Error("Home Assistant did not come up");
@@ -24,7 +29,9 @@ async function tokenFromCode(code) {
 
 /** Onboard a fresh instance (user, core config, analytics, integrations) through its onboarding API. */
 export async function onboard() {
-  const steps = await json(await fetch(BASE + "/api/onboarding"));
+  const page = await fetch(BASE + "/api/onboarding");
+  if (!page.ok) return; // an onboarded instance has no onboarding page
+  const steps = await json(page);
   if (steps.every((s) => s.done)) return;
   let r = await fetch(BASE + "/api/onboarding/users", {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -83,6 +90,15 @@ export class Api {
   }
   async abortFlow(id) { await fetch(`${BASE}/api/config/config_entries/flow/${id}`, { method: "DELETE", headers: this.h }); }
   async entries(domain) { return (await this.get("/api/config/config_entries/entry")).filter((e) => !domain || e.domain === domain); }
+}
+
+/** A kept installation answers before its integrations are set up: wait until Home Assistant says it is running. */
+export async function waitRunning(api, timeoutS = 240) {
+  for (let i = 0; i < timeoutS * 2; i++) {
+    try { if ((await api.get("/api/config")).state === "RUNNING") return; } catch {}
+    await sleep(500);
+  }
+  throw new Error("Home Assistant did not reach the running state");
 }
 
 export async function setLocation(api) {
