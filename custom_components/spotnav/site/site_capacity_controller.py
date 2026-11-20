@@ -577,6 +577,71 @@ class SiteEvaluation:
     grid_power: dict[str, Any]
 
 
+ChargerRouteKind = Literal[
+    "held",
+    "switch_only",
+    "battery_probe",
+    "step_to_minimum",
+    "resume_direction_unknown",
+    "resume_or_probe_unusable",
+    "no_proposal",
+    "magnitude_lowering",
+    "magnitude_raise",
+    "regulate",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ChargerRoute:
+    """Which path one charger's step takes (`SiteCapacityController._charger_route`), decided before anything is
+    awaited; `regulate` is the regulator's own current, decided by `_regulation_start` and `_decide_regulated_step`.
+    `detail`/`detail_phase` name a hold, `probe` the running battery probe, `lost` how the measurement is lost."""
+
+    kind: ChargerRouteKind
+    detail: str | None = None
+    detail_phase: PhaseName | None = None
+    probe: Any = None
+    lost: ApplyabilityFailure | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RegulationStart:
+    """A regulated step as it stands before the resume and the battery probe are awaited
+    (`SiteCapacityController._regulation_start`): the decision with an overload's proposal capped at what was
+    written, what is taken to be on the charger (`previous_setpoint`), what was written (`written_a`), and whether a
+    lowering is due."""
+
+    decision: RegulatorDecision
+    proposed: float
+    damper: RegulatorDamper
+    previous_setpoint: float | None
+    written_a: float | None
+    overload: bool
+    lowering_due: bool
+
+
+RegulatedStepKind = Literal["held", "must_lower", "write", "stopped"]
+
+
+@dataclass(frozen=True, slots=True)
+class RegulatedStep:
+    """What a regulated step does (`SiteCapacityController._decide_regulated_step`), carried out by
+    `_async_take_regulated_step`: a hold (logged, with what was written given back to the damper first when
+    `restore_written_a` is set and differs), a must-lower to `target_a`, a write of `setpoint` under `damping`, or
+    nothing because active control was turned off or the site closed (`stopped`)."""
+
+    kind: RegulatedStepKind
+    decision: RegulatorDecision
+    yield_verdict: YieldVerdict | None = None
+    detail: str | None = None
+    restore_written_a: float | None = None
+    target_a: float | None = None
+    damping: DampingDecision | None = None
+    setpoint: int | None = None
+    site_read_at: float | None = None
+    phases_read_at: Mapping[PhaseName, float | None] | None = None
+
+
 class SiteCapacityController:
     """Computes and exposes the site capacity snapshot and, when opted in, applies active control.
 
@@ -2640,75 +2705,85 @@ class SiteCapacityController:
         margin_by_charger: dict[str, float | None],
     ) -> bool:
         """One charger's step of `_async_apply_active_control`, run as that charger's operation
-        (`_async_charger_step`). `False` when active control was turned off meanwhile."""
+        (`_async_charger_step`). `False` when active control was turned off meanwhile.
+
+        Decide and write alternate in a fixed order, and nothing is decided across an await: the path is chosen
+        (`_charger_route`) and taken (`_async_take_route`); a regulated step is prepared (`_regulation_start`), the
+        resume and the battery probe are tried (awaited), and only then its current is decided
+        (`_decide_regulated_step`) and written (`_async_take_regulated_step`)."""
         # Re-checked per charger: a pass admitted while active control was on must not
         # keep writing after it was turned off (see `async_disable_active_control`).
         if not self._active_control_allowed():
             return False
         charger_controller = controller_for(self.hass, charger_entry_id)
+        route = self._charger_route(charger_entry_id, charger_controller, decision, fresh, max_age_s)
+        if route.kind != "regulate":
+            await self._async_take_route(
+                route, charger_entry_id, charger_controller, decision, fresh, max_age_s, margin_by_charger
+            )
+            return True
+        start = self._regulation_start(charger_entry_id, charger_controller, decision)
+        # A grid-charging battery that may give way to the car: start the car at its minimum as
+        # a probe (only where nothing else would start it; see `site/battery_probe.py`). Never in place of a
+        # lowering that is due; a charger the overload has already stopped may still be resumed or probed.
+        if not start.lowering_due and await self._async_maybe_resume_paused_charge(
+            charger_entry_id, charger_controller, start.decision, fresh, start.damper, start.previous_setpoint
+        ):
+            return True
+        if not start.lowering_due and await self._async_maybe_start_battery_probe(
+            charger_entry_id, charger_controller, start.decision, fresh, start.damper, start.previous_setpoint
+        ):
+            return True
+        step = self._decide_regulated_step(charger_entry_id, charger_controller, start, fresh, margin_by_charger)
+        return await self._async_take_regulated_step(
+            charger_entry_id, charger_controller, start, step, fresh, margin_by_charger
+        )
+
+    def _charger_route(
+        self,
+        charger_entry_id: str,
+        charger_controller: Any,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        max_age_s: float,
+    ) -> ChargerRoute:
+        """Which path this charger's step takes, the first that applies: a charger whose current is not set (a
+        switch-only one, else held), a running battery probe, a lost measurement, a phase switch settling, no
+        proposal, a decision on the current's magnitude, the fresh readings re-checked; else the regulator's own
+        current (`regulate`). Nothing is awaited here."""
         if not self._is_commandable_charger(charger_controller):
             if self._is_switch_only_charger(charger_controller):
-                await self._async_apply_to_switch_only(charger_entry_id, charger_controller, decision, fresh, max_age_s)
-                return True
-            self._log_active_control_outcome(
-                charger_entry_id,
-                decision,
-                outcome="held",
+                return ChargerRoute("switch_only")
+            return ChargerRoute(
+                "held",
                 detail=(
                     "charger_not_commandable"
                     if charger_controller is not None
                     else "charger_not_loaded"
                 ),
             )
-            return True
         probe = self._battery_probes.get(charger_entry_id)
         if probe is not None and probe.probing:
             # A battery probe is running (or its stop is not confirmed yet): it alone judges
             # this charger until it is over, on the freshly read measurements. It is a safety judge of its
             # own, an import overload included: bounded by the fuse (`PROBE_MAX_FUSE_FACTOR`), by what the car
             # can explain and by its window, and ended by a hard stop (`_async_battery_probe_pass`).
-            await self._async_battery_probe_pass(
-                charger_entry_id, charger_controller, decision, fresh, probe
-            )
-            return True
+            return ChargerRoute("battery_probe", probe=probe)
         lost = self._measurement_lost_due(charger_entry_id, fresh)
         if lost is not None and self._draws_above_minimum(charger_entry_id, charger_controller):
-            await self._async_step_to_minimum(charger_entry_id, charger_controller, decision, lost)
-            return True
+            return ChargerRoute("step_to_minimum", lost=lost)
         if self._held_while_phases_settle(charger_entry_id, charger_controller, decision):
-            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="phase_switch_settling")
-            return True
-        proposed = decision.proposed_current_a
-        if proposed is None:
+            return ChargerRoute("held", detail="phase_switch_settling")
+        if decision.proposed_current_a is None:
             if decision.reason in DIRECTION_UNKNOWN_REASONS and charger_controller.paused_by_balancing:
-                # A charge an overload by |I| paused on a phase whose direction is not known: resumed as any balancing
-                # pause is, within the room |I| leaves (a start needs no direction), never probed.
-                damper = self._damper_for(charger_entry_id)
-                await self._async_maybe_resume_paused_charge(
-                    charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
-                )
-                return True
+                return ChargerRoute("resume_direction_unknown")
             if decision.reason == REASON_CHARGER_MEASUREMENT_UNUSABLE and charger_controller.paused_by_balancing:
-                # A charger load balancing stopped is off by its own control, and an OCPP charger sends no meter
-                # values then: its reading grows too old to decide a current on, but a stopped charger draws
-                # nothing, and the resume and the probe judge the site's own readings. Without this the charge it
-                # holds back is never tried again (the night of 2026-10-09).
-                damper = self._damper_for(charger_entry_id)
-                if not await self._async_maybe_resume_paused_charge(
-                    charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
-                ):
-                    await self._async_maybe_start_battery_probe(
-                        charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
-                    )
-            return True
+                return ChargerRoute("resume_or_probe_unusable")
+            return ChargerRoute("no_proposal")
         if decision.reason == REASON_MAGNITUDE_LOWERING:
-            await self._async_apply_magnitude_lowering(charger_entry_id, charger_controller, decision, fresh, max_age_s)
-            return True
+            return ChargerRoute("magnitude_lowering")
         if decision.reason == REASON_MAGNITUDE_RAISE:
-            await self._async_apply_magnitude_raise(
-                charger_entry_id, charger_controller, decision, fresh, max_age_s, margin_by_charger.get(charger_entry_id)
-            )
-            return True
+            return ChargerRoute("magnitude_raise")
         failure = applyability_failure(
             decision=decision,
             signed_active_power_w=fresh.phase_signed_active_power_w,
@@ -2718,14 +2793,67 @@ class SiteCapacityController:
             zero_margin_w=DEFAULT_ZERO_MARGIN_W,
         )
         if failure is not None:
+            return ChargerRoute("held", detail=failure.kind, detail_phase=failure.phase)
+        return ChargerRoute("regulate")
+
+    async def _async_take_route(
+        self,
+        route: ChargerRoute,
+        charger_entry_id: str,
+        charger_controller: Any,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        max_age_s: float,
+        margin_by_charger: dict[str, float | None],
+    ) -> None:
+        """Take a path `_charger_route` chose, other than `regulate`: log a hold, or hand the charger to the
+        path's own step."""
+        kind = route.kind
+        if kind == "held":
             self._log_active_control_outcome(
-                charger_entry_id,
-                decision,
-                outcome="held",
-                detail=failure.kind,
-                detail_phase=failure.phase,
+                charger_entry_id, decision, outcome="held", detail=route.detail, detail_phase=route.detail_phase
             )
-            return True
+        elif kind == "switch_only":
+            await self._async_apply_to_switch_only(charger_entry_id, charger_controller, decision, fresh, max_age_s)
+        elif kind == "battery_probe":
+            await self._async_battery_probe_pass(
+                charger_entry_id, charger_controller, decision, fresh, route.probe
+            )
+        elif kind == "step_to_minimum":
+            await self._async_step_to_minimum(charger_entry_id, charger_controller, decision, route.lost)
+        elif kind == "resume_direction_unknown":
+            # A charge an overload by |I| paused on a phase whose direction is not known: resumed as any balancing
+            # pause is, within the room |I| leaves (a start needs no direction), never probed.
+            damper = self._damper_for(charger_entry_id)
+            await self._async_maybe_resume_paused_charge(
+                charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
+            )
+        elif kind == "resume_or_probe_unusable":
+            # A charger load balancing stopped is off by its own control, and an OCPP charger sends no meter
+            # values then: its reading grows too old to decide a current on, but a stopped charger draws
+            # nothing, and the resume and the probe judge the site's own readings. Without this the charge it
+            # holds back is never tried again (the night of 2026-10-09).
+            damper = self._damper_for(charger_entry_id)
+            if not await self._async_maybe_resume_paused_charge(
+                charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
+            ):
+                await self._async_maybe_start_battery_probe(
+                    charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
+                )
+        elif kind == "magnitude_lowering":
+            await self._async_apply_magnitude_lowering(charger_entry_id, charger_controller, decision, fresh, max_age_s)
+        elif kind == "magnitude_raise":
+            await self._async_apply_magnitude_raise(
+                charger_entry_id, charger_controller, decision, fresh, max_age_s, margin_by_charger.get(charger_entry_id)
+            )
+
+    def _regulation_start(
+        self, charger_entry_id: str, charger_controller: Any, decision: RegulatorDecision
+    ) -> RegulationStart:
+        """A regulated step up to the resume and the battery probe: what was written, what is on the charger, the
+        overload's proposal capped at what was written, and whether a lowering is due."""
+        # `_charger_route` routes a decision without a proposal elsewhere.
+        proposed = cast(float, decision.proposed_current_a)
         # Damping decides write or hold; consulted every pass so a pending value's dwell
         # advances.
         damper = self._damper_for(charger_entry_id)
@@ -2760,22 +2888,34 @@ class SiteCapacityController:
         # charger is already at or below the proposal (`_async_apply_must_lower`).
         overload = is_import_overload(decision)
         lowering_due = overload and (previous_setpoint is None or proposed < previous_setpoint)
+        return RegulationStart(
+            decision=decision,
+            proposed=proposed,
+            damper=damper,
+            previous_setpoint=previous_setpoint,
+            written_a=written_a,
+            overload=overload,
+            lowering_due=lowering_due,
+        )
 
-        # A grid-charging battery that may give way to the car: start the car at its minimum as
-        # a probe (only where nothing else would start it; see `site/battery_probe.py`). Never in place of a
-        # lowering that is due; a charger the overload has already stopped may still be resumed or probed.
-        if not lowering_due and await self._async_maybe_resume_paused_charge(
-            charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
-        ):
-            return True
-        if not lowering_due and await self._async_maybe_start_battery_probe(
-            charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
-        ):
-            return True
-
+    def _decide_regulated_step(
+        self,
+        charger_entry_id: str,
+        charger_controller: Any,
+        start: RegulationStart,
+        fresh: SiteCapacityResult,
+        margin_by_charger: dict[str, float | None],
+    ) -> RegulatedStep:
+        """What a regulated step does once the resume and the probe have passed: the proposal guarded
+        (`_guarded_proposal`), the yield stepper consulted (`_regulated_yield_verdict`), and then an overload's
+        lowering (`_overload_step`) or the damper's write or hold (`_damped_step`). Nothing is awaited; the damper's
+        and the stepper's bookkeeping advance as they are consulted."""
+        decision = start.decision
+        proposed = start.proposed
+        previous_setpoint = start.previous_setpoint
         minimum = self._min_current_a(charger_entry_id)
         if (
-            not lowering_due
+            not start.lowering_due
             and previous_setpoint is not None
             and previous_setpoint < minimum
             and proposed > previous_setpoint
@@ -2786,8 +2926,52 @@ class SiteCapacityController:
             # stand for one on it (the damper's), which no resume follows any more. The raise comes from the stopped
             # charger's last reading (an OCPP charger sends none without a transaction), the car's draw from before
             # the pause, which the regulator keeps "unchanged" once the overload is gone.
-            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="paused_by_balancing")
-            return True
+            return RegulatedStep("held", decision, detail="paused_by_balancing")
+        decision, proposed, site_read_at, phases_read_at = self._guarded_proposal(
+            charger_entry_id, start, decision, proposed, minimum, fresh, margin_by_charger
+        )
+        yield_verdict = self._regulated_yield_verdict(charger_entry_id, decision, fresh, previous_setpoint)
+        if start.overload and not (
+            yield_verdict is not None
+            and (yield_verdict.yield_verified or yield_verdict.battery_share_step)
+            and yield_verdict.reason != "passthrough_ceiling"
+        ):
+            return self._overload_step(
+                charger_entry_id,
+                charger_controller,
+                start,
+                decision,
+                proposed,
+                yield_verdict,
+                fresh,
+                site_read_at,
+                phases_read_at,
+            )
+        return self._damped_step(
+            charger_entry_id,
+            charger_controller,
+            start,
+            decision,
+            proposed,
+            yield_verdict,
+            fresh,
+            margin_by_charger,
+            site_read_at,
+        )
+
+    def _guarded_proposal(
+        self,
+        charger_entry_id: str,
+        start: RegulationStart,
+        decision: RegulatorDecision,
+        proposed: float,
+        minimum: float,
+        fresh: SiteCapacityResult,
+        margin_by_charger: dict[str, float | None],
+    ) -> tuple[RegulatorDecision, float, float | None, dict[PhaseName, float | None]]:
+        """The proposal after the first word on a charge with the battery filling the fuse and after the step
+        guard, with the readings it was guarded on: `(decision, proposed, site_read_at, phases_read_at)`."""
+        previous_setpoint = start.previous_setpoint
         if (
             previous_setpoint is None
             and proposed > minimum
@@ -2820,7 +3004,7 @@ class SiteCapacityController:
             guarded.rule is not None
             and guarded.proposed_a != proposed
             # An overload takes the guard's gentler lowering (a trimmed overshoot), never its hold.
-            and not (overload and (previous_setpoint is None or guarded.proposed_a >= previous_setpoint))
+            and not (start.overload and (previous_setpoint is None or guarded.proposed_a >= previous_setpoint))
         ):
             _LOGGER.debug(
                 "SpotNav site %s active control: charger %s proposal %sA taken as %sA (%s)",
@@ -2832,7 +3016,16 @@ class SiteCapacityController:
             )
             decision = replace(decision, proposed_current_a=guarded.proposed_a)
             proposed = guarded.proposed_a
+        return decision, proposed, site_read_at, phases_read_at
 
+    def _regulated_yield_verdict(
+        self,
+        charger_entry_id: str,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        previous_setpoint: float | None,
+    ) -> YieldVerdict | None:
+        """The yield stepper's verdict on this step, recorded and logged; `None` with yield stepping off."""
         # Yield-verified stepping, only when enabled.
         yield_verdict: YieldVerdict | None = None
         if bool(self.config.get(CONF_YIELD_STEPPING_ENABLED, DEFAULT_YIELD_STEPPING_ENABLED)):
@@ -2857,72 +3050,85 @@ class SiteCapacityController:
                 # A still phase is trusted for holding and lowering, never for raising: not the stepper's step or
                 # probe either (its readings of the phase come from the same still power).
                 yield_verdict = replace(yield_verdict, action="hold", current_a=None, reason=REASON_HELD_STILL_NO_RAISE)
+        return yield_verdict
 
-        if overload and not (
-            yield_verdict is not None
-            and (yield_verdict.yield_verified or yield_verdict.battery_share_step)
-            and yield_verdict.reason != "passthrough_ceiling"
+    def _overload_step(
+        self,
+        charger_entry_id: str,
+        charger_controller: Any,
+        start: RegulationStart,
+        decision: RegulatorDecision,
+        proposed: float,
+        yield_verdict: YieldVerdict | None,
+        fresh: SiteCapacityResult,
+        site_read_at: float | None,
+        phases_read_at: dict[PhaseName, float | None],
+    ) -> RegulatedStep:
+        """An import overload the stepper does not judge: its lowering (`must_lower`), or the battery's band holding
+        it."""
+        previous_setpoint = start.previous_setpoint
+        # The stepper is still fed the observation (its bookkeeping follows the site), but only its own lowering
+        # is taken from it; a hold, a step up or a passthrough leaves the overload's proposal as it is. The
+        # exceptions are a battery whose yield is verified on this site, below the yield ceiling (the stepper's
+        # hard ceiling, `yield_ceiling_a`), and a step into the battery's share within its allowance over the
+        # limit, which is how that yield gets verified on a battery holding the grid at the fuse: the stepper
+        # judges that overload, and takes the step back unless the battery gives way.
+        stepped = (
+            yield_verdict.current_a
+            if yield_verdict is not None
+            and yield_verdict.action == "write"
+            and yield_verdict.current_a is not None
+            and previous_setpoint is not None
+            and yield_verdict.current_a < previous_setpoint
+            else None
+        )
+        # The stepper's own lowering (a step taken back) never goes above the overload's: the lower one is written.
+        target_a = proposed if stepped is None else (stepped if proposed is None else min(stepped, proposed))
+        if self._lowering_held_by_battery(
+            charger_entry_id, charger_controller, decision, fresh, previous_setpoint, target_a
         ):
-            # The stepper is still fed the observation (its bookkeeping follows the site), but only its own lowering
-            # is taken from it; a hold, a step up or a passthrough leaves the overload's proposal as it is. The
-            # exceptions are a battery whose yield is verified on this site, below the yield ceiling (the stepper's
-            # hard ceiling, `yield_ceiling_a`), and a step into the battery's share within its allowance over the
-            # limit, which is how that yield gets verified on a battery holding the grid at the fuse: the stepper
-            # judges that overload, and takes the step back unless the battery gives way.
-            stepped = (
-                yield_verdict.current_a
-                if yield_verdict is not None
-                and yield_verdict.action == "write"
-                and yield_verdict.current_a is not None
-                and previous_setpoint is not None
-                and yield_verdict.current_a < previous_setpoint
-                else None
-            )
-            # The stepper's own lowering (a step taken back) never goes above the overload's: the lower one is written.
-            target_a = proposed if stepped is None else (stepped if proposed is None else min(stepped, proposed))
-            if self._lowering_held_by_battery(
-                charger_entry_id, charger_controller, decision, fresh, previous_setpoint, target_a
-            ):
-                # Within the band, the battery's own regulation: the car keeps its current (the fuse still holds as
-                # the ceiling of every step until the battery is seen to give way). Nothing is lowered, so what is
-                # on the charger is what was written: a reading above it that the overload took for the charger's
-                # (an OCPP meter value half a minute behind a cut) must not stand for it, or the next raise to the
-                # plan's current would be lost in the deadband.
-                if written_a is not None and damper.last_written_a != written_a:
-                    damper.forget_write(written_a)
-                self._log_active_control_outcome(
-                    charger_entry_id,
-                    decision,
-                    outcome="held",
-                    detail=DETAIL_HELD_BATTERY_AT_LIMIT,
-                    yield_verdict=yield_verdict,
-                )
-                return True
-            return await self._async_apply_must_lower(
-                charger_entry_id,
-                charger_controller,
+            # Within the band, the battery's own regulation: the car keeps its current (the fuse still holds as
+            # the ceiling of every step until the battery is seen to give way). Nothing is lowered, so what is
+            # on the charger is what was written: a reading above it that the overload took for the charger's
+            # (an OCPP meter value half a minute behind a cut) must not stand for it, or the next raise to the
+            # plan's current would be lost in the deadband.
+            return RegulatedStep(
+                "held",
                 decision,
-                damper,
-                target_a,
-                previous_setpoint,
-                margin_by_charger.get(charger_entry_id),
-                yield_verdict,
-                site_read_at,
-                written_a=written_a,
-                fresh=fresh,
-                phases_read_at=phases_read_at,
+                yield_verdict=yield_verdict,
+                detail=DETAIL_HELD_BATTERY_AT_LIMIT,
+                restore_written_a=start.written_a,
             )
+        return RegulatedStep(
+            "must_lower",
+            decision,
+            yield_verdict=yield_verdict,
+            target_a=target_a,
+            site_read_at=site_read_at,
+            phases_read_at=phases_read_at,
+        )
 
+    def _damped_step(
+        self,
+        charger_entry_id: str,
+        charger_controller: Any,
+        start: RegulationStart,
+        decision: RegulatorDecision,
+        proposed: float,
+        yield_verdict: YieldVerdict | None,
+        fresh: SiteCapacityResult,
+        margin_by_charger: dict[str, float | None],
+        site_read_at: float | None,
+    ) -> RegulatedStep:
+        """Any other regulated step: the stepper's hold, the battery's band, or the damper's write or hold."""
+        damper = start.damper
+        previous_setpoint = start.previous_setpoint
+        overload = start.overload
         if yield_verdict is not None and yield_verdict.action == "hold":
             # A hold carries no current: skip the damper and write nothing.
-            self._log_active_control_outcome(
-                charger_entry_id,
-                decision,
-                outcome="held",
-                detail=f"yield_stepping_{yield_verdict.reason}",
-                yield_verdict=yield_verdict,
+            return RegulatedStep(
+                "held", decision, yield_verdict=yield_verdict, detail=f"yield_stepping_{yield_verdict.reason}"
             )
-            return True
 
         if (
             not overload
@@ -2945,14 +3151,9 @@ class SiteCapacityController:
         ):
             # The battery regulating the grid to the limit, not an overload: the car is not
             # stepped down for it. Anything above the band never gets here.
-            self._log_active_control_outcome(
-                charger_entry_id,
-                decision,
-                outcome="held",
-                detail=DETAIL_HELD_BATTERY_AT_LIMIT,
-                yield_verdict=yield_verdict,
+            return RegulatedStep(
+                "held", decision, yield_verdict=yield_verdict, detail=DETAIL_HELD_BATTERY_AT_LIMIT
             )
-            return True
 
         # An overload the stepper judges (a verified battery below the yield ceiling) is never held for the dwell:
         # urgency only ever hastens a reduction. The import target's lowering to a current is not held either: an amp's
@@ -2990,14 +3191,9 @@ class SiteCapacityController:
                 reaches_request=self._restores_target_lowering(charger_entry_id, proposed, previous_setpoint),
             )
         if not damping.write or damping.current_a is None:
-            self._log_active_control_outcome(
-                charger_entry_id,
-                decision,
-                outcome="held",
-                detail=f"damping_{damping.reason}",
-                yield_verdict=yield_verdict,
+            return RegulatedStep(
+                "held", decision, yield_verdict=yield_verdict, detail=f"damping_{damping.reason}"
             )
-            return True
         setpoint = round(damping.current_a)
         if setpoint != damping.current_a:
             _LOGGER.debug(
@@ -3011,17 +3207,67 @@ class SiteCapacityController:
         # Last synchronous check before the write; nothing awaits between here and the charger's
         # lock.
         if not self._active_control_allowed() or self._closed:
+            return RegulatedStep("stopped", decision)
+        return RegulatedStep(
+            "write",
+            decision,
+            yield_verdict=yield_verdict,
+            damping=damping,
+            setpoint=int(setpoint),
+            site_read_at=site_read_at,
+        )
+
+    async def _async_take_regulated_step(
+        self,
+        charger_entry_id: str,
+        charger_controller: Any,
+        start: RegulationStart,
+        step: RegulatedStep,
+        fresh: SiteCapacityResult,
+        margin_by_charger: dict[str, float | None],
+    ) -> bool:
+        """Carry out what `_decide_regulated_step` decided, at once (nothing is awaited before the write itself):
+        log a hold, or write the must-lower or the damped setpoint. `False` when active control was turned off."""
+        damper = start.damper
+        if step.kind == "held":
+            restore = step.restore_written_a
+            if restore is not None and damper.last_written_a != restore:
+                damper.forget_write(restore)
+            self._log_active_control_outcome(
+                charger_entry_id,
+                step.decision,
+                outcome="held",
+                detail=step.detail,
+                yield_verdict=step.yield_verdict,
+            )
+            return True
+        if step.kind == "stopped":
             return False
+        if step.kind == "must_lower":
+            return await self._async_apply_must_lower(
+                charger_entry_id,
+                charger_controller,
+                step.decision,
+                damper,
+                cast(float, step.target_a),
+                start.previous_setpoint,
+                margin_by_charger.get(charger_entry_id),
+                step.yield_verdict,
+                step.site_read_at,
+                written_a=start.written_a,
+                fresh=fresh,
+                phases_read_at=cast(Mapping[PhaseName, float | None], step.phases_read_at),
+            )
         await self._async_write_regulated(
             charger_entry_id,
             charger_controller,
-            decision,
+            step.decision,
             damper,
-            damping,
-            int(setpoint),
-            previous_setpoint,
-            yield_verdict,
-            site_read_at=site_read_at,
+            cast(DampingDecision, step.damping),
+            cast(int, step.setpoint),
+            start.previous_setpoint,
+            step.yield_verdict,
+            site_read_at=step.site_read_at,
         )
         return True
 
