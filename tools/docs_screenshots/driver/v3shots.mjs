@@ -227,6 +227,32 @@ if (only.has("social-card")) {
   } catch (err) { failed.push(`social-card: ${err.message}`); }
 }
 
+// The README's hero picture in the dark theme: the three cards side by side on the dark dashboard background,
+// docs/images/readme-hero-dark.png. Only on request (`run.sh readme-hero-dark`), and after every light picture, since
+// it switches the page to the dark theme.
+if (only.has("readme-hero-dark")) {
+  await scene();
+  await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("selectedTheme", '{"dark":true}'); } catch (e) {}` });
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+  const parts = [];
+  for (const [page, tag] of [["v3-charger", TAGS.charger], ["v3-house", TAGS.house], ["v3-heat", TAGS.heat]]) {
+    await open(page, tag, 700);
+    // The house card's heat figure can arrive a little after the card has drawn: wait for it rather than show a dash.
+    for (let i = 0; i < 20 && tag === TAGS.house && (await b.eval(`/HEAT TODAY\\s*–/i.test(${CARD(tag)}.shadowRoot.textContent.replace(/\\s+/g, " "))`)); i++) await sleep(1500);
+    const file = path.join(os.tmpdir(), `docs-hero-dark-${process.pid}-${parts.length}.png`);
+    await b.shotElement(file, CARD(tag), 0);
+    parts.push(file);
+  }
+  const imgs = parts.map((f) => `<img src="data:image/png;base64,${fs.readFileSync(f).toString("base64")}">`).join("");
+  const html = `<!doctype html><meta charset=utf-8><style>html{background:#111111}body{margin:0;width:1600px;height:660px;display:flex;gap:28px;
+    justify-content:center;align-items:flex-start;padding-top:40px;box-sizing:border-box}img{display:block}</style>${imgs}`;
+  await b.send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 660, deviceScaleFactor: 1, mobile: false });
+  await b.goto("data:text/html;base64," + Buffer.from(html).toString("base64"), 1500);
+  await b.shotRect(path.join(OUT, "readme-hero-dark.png"), { x: 0, y: 0, w: 1600, h: 660 });
+  done.push("readme-hero-dark");
+  for (const f of parts) fs.rmSync(f, { force: true });
+}
+
 // The house card in the dark theme at twice the pixels, one picture per tab (Now, Energy flow, Earnings), for the
 // banner's overlapping cards: tools/social/card-dark-<tab>.png. Only on request: `run.sh social-dark`. Last, since it
 // switches the page to the dark theme.
