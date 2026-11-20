@@ -2,9 +2,10 @@
 // few nodes and functions one section needs of another. `createCardView` builds one of these and hands it to each
 // section builder (`card-view-*.ts`), so a section is a function of this object instead of a stretch of one closure.
 
-import type { CardViewInput } from "./card-view";
+import type { CardViewInput, EntityViewState } from "./card-view";
 import type { DialogHandle } from "./dialog";
 import type { CardModel } from "./model";
+import type { Vehicle } from "./validate";
 
 /** Every dialog the card view owns, by the name its section uses. */
 export interface ViewDialogs {
@@ -45,4 +46,18 @@ export interface ViewContext {
   /** The entity editor opened from a row of the Settings page, which part it focuses. */
   entityFocus: () => { scope: string; part: string; title: string } | null;
   openSiteSettings: () => void;
+}
+
+/**
+ * What the Settings page and its sections share as they paint: the body being shown, the entity config's state and
+ * the slots the rows are painted into. Written by whichever section owns the moment (opening the page, an answer
+ * arriving), read by the others.
+ */
+export interface SettingsPageState {
+  overviewBodyNode: HTMLElement | null;
+  entityState: EntityViewState;
+  entitySlot: HTMLElement | null;
+  vehicleListSlot: HTMLElement | null;
+  vehicleRows: Vehicle[];
+  siteEntitySlot: HTMLElement | null;
 }
