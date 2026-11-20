@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Aus bis {until}.",
   "heat.waterHeater.on": "An: {why}.",
   "heat.waterHeater.verifying": "Prüft, ob der Schalter den Speicher ausschaltet…",
+  "heat.waterHeater.meterWaiting": "Wartet darauf, die Leistung des Heizstabs am Zähler zu sehen.",
   "heat.waterHeater.why.cheap": "eine günstige Stunde",
   "heat.waterHeater.why.full_heat": "volles Aufheizen",
   "heat.waterHeater.why.max_off": "nie länger als 8 Stunden aus",

@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Off until {until}.",
   "heat.waterHeater.on": "On: {why}.",
   "heat.waterHeater.verifying": "Checking that the switch turns the water heater off…",
+  "heat.waterHeater.meterWaiting": "Waiting to see the element's power on the meter.",
   "heat.waterHeater.why.cheap": "a cheap hour",
   "heat.waterHeater.why.full_heat": "full heat",
   "heat.waterHeater.why.max_off": "never off more than 8 hours",

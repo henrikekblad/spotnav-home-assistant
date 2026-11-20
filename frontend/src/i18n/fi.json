@@ -1611,6 +1611,7 @@
   "heat.waterHeater.off": "Pois päältä klo {until} asti.",
   "heat.waterHeater.on": "Päällä: {why}.",
   "heat.waterHeater.verifying": "Tarkistetaan, että kytkin sammuttaa varaajan…",
+  "heat.waterHeater.meterWaiting": "Odotetaan, että mittari näyttää vastuksen tehon.",
   "heat.waterHeater.why.cheap": "halpa tunti",
   "heat.waterHeater.why.full_heat": "täysi lämmitys",
   "heat.waterHeater.why.max_off": "ei koskaan pois päältä yli 8 tuntia",

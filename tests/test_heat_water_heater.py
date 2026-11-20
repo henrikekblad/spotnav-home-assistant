@@ -313,7 +313,9 @@ class Tank:
         return 3000.0 if switch_on and self.calling else 2.0
 
 
-def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: int = 5, *, planned: bool = True) -> dict[str, object]:
+def simulate(
+    mode: str, seed: int, outages: list[tuple[int, int, str]], days: int = 5, *, planned: bool = True, coil: bool = False
+) -> dict[str, object]:
     """Run the rules for `days` with looks 30 to 300 s apart, random prices and tight hours, the losses given
     (`(start minute, minutes, what)`, what being meter, tank or plan), replanning every hour, and a switch that
     always takes. Not `planned`: no window at all on a plan that reads fresh, so only the live rules turn the switch
@@ -363,7 +365,8 @@ def simulate(mode: str, seed: int, outages: list[tuple[int, int, str]], days: in
         rules.observe(
             now,
             on=switch_on,
-            power_w=None if lost("meter") else tank.power_w(switch_on),
+            # A meter on a contactor's coil reads a few watts whatever the element does.
+            power_w=None if lost("meter") else (4.0 if coil else tank.power_w(switch_on)),
             metered=metered,
             tank_c=None if lost("tank") else tank.temp,
             tank=tank_sensor,
@@ -495,3 +498,25 @@ def test_the_simulation_really_switches_the_water_heater_off_and_sees_full_heat(
         minute = int((off - calm["start"]).total_seconds() // 60) + 20
         lossy = simulate(mode, 7, [(minute, 240, what)])
         assert lossy["h3_off"] == [] and lossy["off_total"] < calm["off_total"] - 2 * H, (mode, lossy["off_total"], calm["off_total"])
+
+
+@settings(max_examples=100, deadline=None)
+@given(seed=st.integers(0, 10**6), outages=OUTAGES)
+def test_a_meter_on_a_contactor_coil_behaves_as_unmetered(seed: int, outages) -> None:
+    """The meter never reads 500 W, so the water heater is not metered (the controller says so): the five-hour night
+    every day, never off over eight hours, and control never stops for want of full heat."""
+    result = simulate(MODE_UNMETERED, seed, outages, coil=True)
+    assert result["longest_off"] <= MAX_OFF, result["longest_off"]
+    spans = result["on_spans"]
+    day = result["start"].astimezone(ZONE).date() + timedelta(days=1)
+    last = result["end"].astimezone(ZONE).date()
+    while day < last:
+        night_start, night_end = local(day.day - 1 if day.day > 1 else day.day, 22), local(day.day, 7)
+        assert any(b - a >= 5 * H - 10 * MIN and a < night_end + 5 * H and b > night_start for a, b in spans), day
+        day += timedelta(days=1)
+    rules = Rules()
+    rules.start(NOON)
+    for hour in range(0, 60):
+        rules.observe(NOON + hour * H, on=True, power_w=4.0, metered=False, tank_c=None, tank=False)
+        assert not rules.gave_up(NOON + hour * H, MODE_UNMETERED)
+    assert not rules.kept.stopped
