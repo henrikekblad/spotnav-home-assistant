@@ -39,7 +39,9 @@ or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0
   against self-consumption) is the one figure to show, `mode_savings` the same per mode (and for the defensive
   variant, `VARIANT_DEFENSIVE`: the site's mode planned on the learnt error band's pessimistic side); `actual_saving` says
   what the battery's own way earned against the same baseline: the figure a battery in its own AI mode is judged
-  by before SpotNav is ever given the battery.
+  by before SpotNav is ever given the battery. Where a demand-charge part is priced that month, each run also gets
+  what its own day peak adds to the month's demand charge against the month's measured peaks before the day
+  (`demand_plan.day_demand_cost`, `demand`), and the savings on the full bill (`bill_savings`, energy plus demand).
 
 What the review cannot tell: the battery's real losses and ramp limits (the sim's battery is ideal and its power is
 the battery's own reading, so the plan is flattered by a few percent); a slot where the meters were lost counts in
@@ -69,6 +71,7 @@ from .plan_model import (
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
+    ACTION_SHAVE,
     ACTIONS,
     DEFAULT_ROUND_TRIP_EFFICIENCY,
     MAX_SLOTS,
@@ -78,6 +81,7 @@ from .plan_model import (
     PlanSlot,
     SlotDecision,
 )
+from .demand_plan import DemandBasis, day_demand_cost
 from .review_baselines import no_battery_cost, sun_gave
 from .shadow import parse_aware_datetime
 
@@ -132,8 +136,13 @@ EST_HORIZON_CUT: Final = "horizon_cut_by_forecast"
 #: The defensive variant (`battery/defensive.py`): the site's mode planned on the learnt error band's pessimistic side
 #: (the house's p90 in the dear hours, the sun's p10). Planned and reviewed beside the modes, never in force.
 VARIANT_DEFENSIVE: Final = "defensive"
-#: Every plan kept per quarter hour and reviewed beside the plan in force: the modes and the defensive variant.
-REVIEWED: Final = (*MODES, VARIANT_DEFENSIVE)
+#: The demand variant (plan v3_power_tariff step 5): the site's mode planned with the demand charge priced in, the
+#: soft ceiling per hour (`site/demand_ceiling.py`) as a penalty, the shave action, and the import target and the power
+#: level as hard caps hour by hour. Planned and reviewed beside the modes while a part is priced, never in force: no
+#: executor runs a shave.
+VARIANT_DEMAND: Final = "demand"
+#: Every plan kept per quarter hour and reviewed beside the plan in force: the modes and the variants.
+REVIEWED: Final = (*MODES, VARIANT_DEFENSIVE, VARIANT_DEMAND)
 
 # Each slot's reasons: stable codes, params in fixed units (minor per kWh, kW, kWh, %).
 REASON_CHARGE_FOR_LATER: Final = "charge_for_later"
@@ -150,6 +159,7 @@ REASON_CURTAILED: Final = "curtailed"
 REASON_AT_FLOOR: Final = "at_floor"
 REASON_AT_CEILING: Final = "at_ceiling"
 REASON_KEPT_RUNNING: Final = "kept_running"
+REASON_SHAVE_PEAK: Final = "shave_peak"
 REASON_CODES: Final = (
     REASON_CHARGE_FOR_LATER,
     REASON_CHARGE_FOR_END,
@@ -165,6 +175,7 @@ REASON_CODES: Final = (
     REASON_AT_FLOOR,
     REASON_AT_CEILING,
     REASON_KEPT_RUNNING,
+    REASON_SHAVE_PEAK,
 )
 
 # What a quarter hour's battery really did (`actual_action`).
@@ -268,9 +279,17 @@ def build_slots(
     car_windows: Sequence[tuple[datetime, datetime, float]],
     cap_kw: float | None,
     tz: str,
+    *,
+    hour_caps: Mapping[datetime, float] | None = None,
+    ceilings: Mapping[datetime, tuple[float, float]] | None = None,
 ) -> tuple[tuple[PlanSlot, ...], tuple[str, ...]]:
     """The plan's slots from now (see the module) and what was assumed. `house_by_hour` is keyed by the local hour's
-    start (UTC), `solar_wh_by_hour` by the UTC hour's start; an hour the solar forecast does not hold has no sun."""
+    start (UTC), `solar_wh_by_hour` by the UTC hour's start; an hour the solar forecast does not hold has no sun.
+
+    `hour_caps` (kW, keyed by the local hour's start) lowers `cap_kw` hour by hour: the hard cap H_h where the import
+    target and the power level hold that hour (`plan_runtime.site_hour_caps`). `ceilings` gives an hour its soft
+    ceiling under the demand charge: `(S_h kW, λ_h minor per kW)`, the ceiling never above the hour's hard cap
+    (`PlanSlot.soft_cap_kw`, `peak_price`). Without either, the slots are exactly those of the scalar cap."""
     estimates: list[str] = []
     if solar_wh_by_hour is None:
         estimates.append(EST_NO_SOLAR)
@@ -290,6 +309,18 @@ def build_slots(
             break
         utc_hour = start.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
         wh = None if solar_wh_by_hour is None else solar_wh_by_hour.get(utc_hour)
+        local_hour = hour_start(start, tz)
+        slot_cap = cap_kw
+        hour_cap = None if hour_caps is None else hour_caps.get(local_hour)
+        if hour_cap is not None and _finite(hour_cap):
+            slot_cap = float(hour_cap) if slot_cap is None else min(slot_cap, float(hour_cap))
+        ceiling = None if ceilings is None else ceilings.get(local_hour)
+        soft_kw: float | None = None
+        peak_price = 0.0
+        if ceiling is not None and _finite(ceiling[0]) and _finite(ceiling[1]) and ceiling[1] > 0:
+            soft_kw = max(0.0, float(ceiling[0]))
+            soft_kw = soft_kw if slot_cap is None else min(soft_kw, slot_cap)
+            peak_price = float(ceiling[1])
         slots.append(
             PlanSlot(
                 start=start,
@@ -299,7 +330,9 @@ def build_slots(
                 house_kw=max(0.0, float(house)),
                 solar_kw=max(0.0, float(wh) / 1000.0) if _finite(wh) else 0.0,
                 car_kw=car_kw_in(start, price.end, car_windows),
-                import_cap_kw=cap_kw,
+                import_cap_kw=slot_cap,
+                soft_cap_kw=soft_kw,
+                peak_price=peak_price,
             )
         )
         if len(slots) >= MAX_SLOTS:
@@ -459,6 +492,15 @@ def explain(plan: BatteryPlan, slots: Sequence[PlanSlot]) -> list[list[dict[str,
             reasons.append(_reason(REASON_SELL_SUN, sell=slot.sell))
         elif decision.action == ACTION_EXPORT_DISCHARGE:
             reasons.append(_reason(REASON_EXPORT_DEAR, sell=slot.sell, kw=-decision.battery_kw))
+        elif decision.action == ACTION_SHAVE:
+            reasons.append(
+                _reason(
+                    REASON_SHAVE_PEAK,
+                    ceiling_kw=float(slot.soft_cap_kw or 0.0),
+                    peak_price=slot.peak_price,
+                    kw=-decision.battery_kw,
+                )
+            )
         elif decision.battery_kw < -1e-6:
             reasons.append(_reason(REASON_COVER_HOUSE, price=slot.buy, kw=-decision.battery_kw))
         elif decision.battery_kw > 1e-6:
@@ -858,6 +900,9 @@ class DayReview:
     facit: Facit | None = None
     #: The battery's cells over the day, where the battery reports their temperature (`hindsight.cell_temperature`).
     cell_temperature: CellTemperature | None = None
+    #: What each run's day peak adds to the month's demand charge (minor units; `demand_plan.day_demand_cost`), keyed
+    #: `actual`, `plan`, `self_consumption` and each mode reviewed; `None` without a priced part that month.
+    demand: Mapping[str, float] | None = None
 
     def net(self, run: Run) -> float:
         return run.cost - (run.end_soc_pct - self.start_soc_pct) / 100 * self.usable_kwh * self.end_value
@@ -895,6 +940,16 @@ class DayReview:
         production; `None` otherwise."""
         battery, sun = self.battery_saving, self.sun_value
         return None if battery is None or sun is None or self.sun_quarters != self.covered else battery + sun
+
+    @property
+    def bill_savings(self) -> dict[str, float] | None:
+        """Each run against self-consumption on the full bill: its net plus its demand cost; `None` without one."""
+        demand = self.demand
+        if demand is None:
+            return None
+        runs = {"actual": self.actual, "plan": self.plan, **self.modes}
+        base = self.net(self.self_consumption) + demand.get("self_consumption", 0.0)
+        return {name: base - (self.net(run) + demand.get(name, 0.0)) for name, run in runs.items()}
 
     def with_sun(self, usable: Iterable[Bucket], sun_kwh: Mapping[datetime, float]) -> DayReview:
         """This review with what the sun gave over [usable] (the day's covered quarter hours) from [sun_kwh] (per UTC
@@ -934,6 +989,18 @@ class DayReview:
             },
             "facit": None if self.facit is None else self.facit.as_dict(),
             "cell_temperature": None if self.cell_temperature is None else self.cell_temperature.as_dict(),
+            **self._demand_dict(),
+        }
+
+    def _demand_dict(self) -> dict[str, Any]:
+        """`demand` in the review's dict: only where a part was priced, so a review without one reads as before."""
+        if self.demand is None:
+            return {}
+        return {
+            "demand": {
+                "cost": {name: round(value, 2) for name, value in sorted(self.demand.items())},
+                "bill_savings": {name: round(value, 2) for name, value in sorted((self.bill_savings or {}).items())},
+            }
         }
 
     @classmethod
@@ -968,6 +1035,7 @@ class DayReview:
                 **_baselines_from(raw.get("baselines")),
                 facit=Facit.from_dict(raw.get("facit")),
                 cell_temperature=CellTemperature.from_dict(raw.get("cell_temperature")),
+                demand=_demand_from(raw.get("demand")),
             )
         except (AttributeError, KeyError, TypeError, ValueError):
             return None
@@ -976,6 +1044,14 @@ class DayReview:
 def _list(value: Any) -> list[Any]:
     """A stored list, or none when the record holds something else there."""
     return value if isinstance(value, list) else []
+
+
+def _demand_from(raw: Any) -> dict[str, float] | None:
+    """A stored review's demand costs; a review from before them, or without a priced part, has none."""
+    cost = raw.get("cost") if isinstance(raw, Mapping) else None
+    if not isinstance(cost, Mapping):
+        return None
+    return {str(name): float(value) for name, value in cost.items() if _finite(value)}
 
 
 def _curtail_from(raw: Any) -> dict[str, float]:
@@ -1032,6 +1108,28 @@ def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
             "kwh": round(sum(review.curtail_kwh for review in reviews), 3),
             "saving": round(sum(review.curtail_saving for review in reviews), 2),
         },
+        **_demand_totals(reviews),
+    }
+
+
+def _demand_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
+    """The days with a demand cost summed: each run's cost and its saving on the full bill; nothing without one."""
+    priced = [review for review in reviews if review.demand is not None]
+    if not priced:
+        return {}
+    cost: dict[str, float] = {}
+    savings: dict[str, float] = {}
+    for review in priced:
+        for name, value in (review.demand or {}).items():
+            cost[name] = cost.get(name, 0.0) + value
+        for name, value in (review.bill_savings or {}).items():
+            savings[name] = savings.get(name, 0.0) + value
+    return {
+        "demand": {
+            "days": len(priced),
+            "cost": {name: round(value, 2) for name, value in sorted(cost.items())},
+            "bill_savings": {name: round(value, 2) for name, value in sorted(savings.items())},
+        }
     }
 
 
@@ -1046,12 +1144,14 @@ class _Sim:
         self.battery = battery
         self.kwh = start_kwh
         self.cost = 0.0
+        self.grid: list[tuple[datetime, float]] = []
 
     def step(self, slot: PlanSlot, action: str, charge_kw: float) -> None:
         power = action_power(slot, self.battery, self.kwh, action, charge_kw)
         ran = run_slot(slot, self.battery, self.kwh, action, power)
         self.cost += ran.cost
         self.kwh = ran.soc_end_pct / 100 * self.battery.usable_kwh
+        self.grid.append((slot.start, ran.grid_kw))
 
     def run(self) -> Run:
         return Run(self.cost, self.kwh / self.battery.usable_kwh * 100)
@@ -1065,11 +1165,12 @@ def review_day(
     now: datetime,
     modes: Iterable[str] = (),
     mode: str | None = None,
+    demand: DemandBasis | None = None,
 ) -> DayReview | None:
     """The day's runs over its measured quarter hours (see the module); `None` when no quarter hour was measured
     with its prices or no SoC was read. [battery] is the battery at its own floor, which every run keeps; [modes] the
     planning modes to review beside the plan, and [mode] the site's. A mode is reviewed when it ran in every planned
-    quarter hour."""
+    quarter hour. [demand] (`demand_plan.demand_basis`) adds each run's demand cost where a part is priced."""
     zone = time_zones.require_zone(tz)
     rows = sorted(
         (bucket for bucket in buckets if bucket.start.astimezone(zone).date() == day), key=lambda bucket: bucket.start
@@ -1092,12 +1193,14 @@ def review_day(
     unplanned = 0
     errors: list[float] = []
     curtail_kwh = curtail_saving = 0.0
+    actual_grid: list[tuple[datetime, float]] = []
     for bucket in usable:  # no run counts a quarter hour the meters lost; the sims' battery idles through it
         if curtails(bucket.sell):
             exported = bucket.scaled(bucket.export_kwh)
             curtail_kwh += exported
             curtail_saving += would_save(exported, float(bucket.sell))  # type: ignore[arg-type]
         actual_cost += bucket.scaled(bucket.import_kwh) * bucket.buy - bucket.scaled(bucket.export_kwh) * bucket.sell  # type: ignore[operator]
+        actual_grid.append((bucket.start, (bucket.scaled(bucket.import_kwh) - bucket.scaled(bucket.export_kwh)) / (BUCKET.total_seconds() / 3600)))
         slot = _actual_slot(bucket)
         if bucket.ran_action is None:
             unplanned += 1
@@ -1108,6 +1211,14 @@ def review_day(
         base.step(slot, ACTION_SELF_CONSUME, 0.0)
         if bucket.ran_soc is not None and bucket.soc_end is not None:
             errors.append(abs(bucket.soc_end - bucket.ran_soc))
+    demand_cost: dict[str, float] | None = None
+    if demand is not None and demand.priced:
+        demand_cost = {
+            "actual": day_demand_cost(demand, actual_grid),
+            "plan": day_demand_cost(demand, plan.grid),
+            "self_consumption": day_demand_cost(demand, base.grid),
+            **{name: day_demand_cost(demand, sim.grid) for name, sim in sims.items()},
+        }
     return DayReview(
         day=day,
         reviewed_at=now,
@@ -1126,6 +1237,7 @@ def review_day(
         curtail_kwh=curtail_kwh,
         curtail_saving=curtail_saving,
         no_battery_cost=no_battery_cost(usable),
+        demand=demand_cost,
     )
 
 
