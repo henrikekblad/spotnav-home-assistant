@@ -421,6 +421,10 @@ class ExecInputs:
     #: The plant's own power on each phase now (kW, + output; the adapter's `plant_phase_power`), `None` when it is
     #: not read or stale.
     plant_phase_kw: Phases | None = None
+    #: The plant's phases A, B and C are shown to be the meter's L1, L2 and L3 (the verification's mode `per_phase`
+    #: passed on this firmware, `gate.per_phase`). Without it nothing pairs a phase of `plant_phase_kw` with a phase
+    #: of `phase_headroom_a`: the cover per phase then takes its largest off the least headroom.
+    plant_phases_mapped: bool = False
     #: The site meter's power on each phase now (kW, + import), `None` when one is unknown: what a charge per phase
     #: is judged on where the recipe's targets are the grid's (`PhaseControl.target_kind`).
     grid_phase_kw: Phases | None = None
@@ -736,8 +740,9 @@ def grid_charge_cap_kw(
 
     `covered_a`: what the battery's discharge now gives the most loaded phase (`cover_a`), counted out of the headroom
     on a change into the charge (from a sale, say): the headroom is measured while the battery still covers, and that
-    cover ends with the change. Given per phase (`cover_phase_a`, A on L1, L2 and L3), each phase's own cover comes
-    out of that phase's headroom (`_room_after_cover_a`)."""
+    cover ends with the change. Given per phase (`cover_phase_a`), each phase's own cover comes out of that phase's
+    headroom where the plant's phases are shown to be the meter's (`ExecInputs.plant_phases_mapped`), else the
+    largest cover out of the least headroom (`_room_after_cover_a`)."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return None
     battery = inputs.facts.power_kw
@@ -746,7 +751,8 @@ def grid_charge_cap_kw(
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
         measured = max(min(battery, inputs.grid_import_kw), 0.0)
     phases = min(max(inputs.charge_phases, 1), 3)
-    room_a = _room_after_cover_a(inputs.headroom_a, inputs.phase_headroom_a, covered_a) - HEADROOM_MARGIN_A
+    paired = inputs.phase_headroom_a if inputs.plant_phases_mapped else None
+    room_a = _room_after_cover_a(inputs.headroom_a, paired, covered_a) - HEADROOM_MARGIN_A
     cap = own + _kw(room_a, inputs.volts_between_phases) * phases / 3
     if inputs.car_first and inputs.car_held:
         cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
@@ -756,9 +762,10 @@ def grid_charge_cap_kw(
 def _room_after_cover_a(headroom_a: float, phase_headroom_a: Phases | None, covered_a: float | Phases) -> float:
     """The least headroom on a phase once the battery's cover has ended (A, before the margin). One figure
     (`cover_a`) is taken off the least headroom: it may all be on that phase. Per phase (`cover_phase_a`), each
-    phase's cover comes off its own headroom where every phase's headroom is known (the plant's phase A, B and C
-    being the meter's L1, L2 and L3, as `_phase_room_kw` takes them), and never more than the least headroom less the
-    least cover; with the headroom per phase unknown, the largest cover comes off the least headroom."""
+    phase's cover comes off its own headroom where every phase's headroom is given, and never more than the least
+    headroom less the least cover. The caller gives the headroom per phase only where the plant's phase A, B and C
+    are shown to be the meter's L1, L2 and L3 (`ExecInputs.plant_phases_mapped`); without it (or with a phase's
+    headroom unknown) the largest cover comes off the least headroom, which holds whichever phase is which."""
     if not isinstance(covered_a, tuple):
         return headroom_a - max(covered_a, 0.0)
     cover = [max(value, 0.0) for value in covered_a]
@@ -918,7 +925,7 @@ def cover_a(inputs: ExecInputs, *, sale: bool = False) -> float:
 
 
 def cover_phase_a(inputs: ExecInputs) -> Phases | None:
-    """What the battery's discharge now gives each phase (A on L1, L2 and L3), where the plant's own power per phase
+    """What the battery's discharge now gives each phase (A on the plant's A, B and C), where the plant's own power per phase
     (`ExecInputs.plant_phase_kw`) is read: each phase's whole output. The reading has the sun's power in it too, which
     is counted as well: a grid charge may take the sun into the battery instead of the house, so the figure is never
     under what comes back on the phase (and may then be above the whole discharge). In its own mode a SigenStor

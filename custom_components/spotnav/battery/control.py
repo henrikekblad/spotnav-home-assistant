@@ -703,6 +703,16 @@ class BatteryControl:
         report = self.reports.get(self.firmware_key())
         return report if isinstance(report, dict) else None
 
+    def _phases_mapped(self) -> bool:
+        """Whether the plant's phases A, B and C are shown to be the meter's L1, L2 and L3: only the verification's
+        mode `per_phase`, passed on the firmware last read, shows it (`gate.per_phase`). Reads the key as it stands
+        (`firmware_key` would set it from the facts of this look)."""
+        key = self._key
+        if key is None or not gate.firmware_known(key):
+            return False
+        report = self.reports.get(key)
+        return isinstance(report, dict) and gate.per_phase(report) == "verified"
+
     def state(self, options: gate.Options | None = None) -> str:
         """`off`, `shadow_only`, `verifying`, `waiting` (for the routine), `on` or `failed`."""
         options = options or self.options()
@@ -2160,6 +2170,7 @@ class BatteryControl:
             phase_caps_kw=phase_caps,
             phase_headroom_a=self._phase_headroom_a(),
             plant_phase_kw=plant_phase_kw,
+            plant_phases_mapped=self._phases_mapped(),
             phase_behind_kw=behind,
             phase_point_kw=point,
             grid_phase_kw=self._grid_phase_kw() if result.state not in UNHEALTHY_STATES else None,

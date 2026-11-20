@@ -1015,21 +1015,22 @@ _PHASE_V = 400.0 / 3**0.5
 
 def _idle_start_phases(
     fuse: float, house: tuple[float, ...], battery_a: tuple[float, ...], sun_a: tuple[float, ...], plan_kw: float, *,
-    plant_read: bool, rooms_read: bool, charge_phases: int = 3,
+    plant_read: bool, rooms_read: bool, charge_phases: int = 3, mapped: bool = True, order: tuple[int, ...] = (0, 1, 2),
 ):
     """A grid charge started from idle on a SigenStor in its own mode (A a phase): the battery puts `battery_a` out on
     each phase and the sun `sun_a`; the meter is the house less the two (signed, an export as it is), its headroom
     the fuse less the magnitude. The plant's power per phase and the headroom per phase are read or not; the meter's
-    signs are never given."""
+    signs are never given. `order`: which of the meter's phases the plant's A, B and C are; `mapped`: the
+    verification has shown them to be L1, L2 and L3 (then `order` is that)."""
     grid = [load - part - sun for load, part, sun in zip(house, battery_a, sun_a, strict=True)]
     rooms = tuple(fuse - abs(value) for value in grid)
-    plant = tuple((part + sun) * _PHASE_V / 1000.0 for part, sun in zip(battery_a, sun_a, strict=True))
+    plant = tuple((battery_a[index] + sun_a[index]) * _PHASE_V / 1000.0 for index in order)
     executor, battery = _sigenergy()
     _now, results = run(
         executor, battery, T0, 1, "grid_charge", plan_kw, headroom_a=min(rooms),
         phase_headroom_a=rooms if rooms_read else None, plant_phase_kw=plant if plant_read else None,
         power_kw=-sum(battery_a) * _PHASE_V / 1000.0, grid_import_kw=sum(grid) * _PHASE_V / 1000.0,
-        volts_between_phases=400.0, charge_phases=charge_phases,
+        volts_between_phases=400.0, charge_phases=charge_phases, plant_phases_mapped=mapped,
     )
     return executor, results
 
@@ -1041,10 +1042,13 @@ _SUN = st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=10.0, allow_na
 @settings(max_examples=600, deadline=None)
 # The sun on the loaded phase beside a small discharge: it may end with the cover too.
 @example(fuse=20.0, house=(20.0, 0.0, 0.0), battery_a=(1.0, 0.0, 0.0), sun_a=(8.0, 0.0, 0.0), plan_kw=5.0,
-         plant_read=True, rooms_read=True, charge_phases=3)
+         plant_read=True, rooms_read=True, charge_phases=3, order=None)
 # An unbalanced cover: most of it on the loaded phase.
 @example(fuse=20.0, house=(18.0, 6.0, 6.0), battery_a=(12.0, 1.0, 1.0), sun_a=(0.0, 0.0, 0.0), plan_kw=5.0,
-         plant_read=True, rooms_read=False, charge_phases=3)
+         plant_read=True, rooms_read=False, charge_phases=3, order=None)
+# The plant's phase C is the meter's L1, not shown yet: the cover on L1 is read on another name.
+@example(fuse=20.0, house=(19.0, 3.0, 3.0), battery_a=(12.0, 1.0, 1.0), sun_a=(0.0, 0.0, 0.0), plan_kw=5.0,
+         plant_read=True, rooms_read=True, charge_phases=3, order=(1, 2, 0))
 @given(
     fuse=st.sampled_from((16.0, 20.0, 25.0, 35.0)),
     house=st.tuples(_AMPS, _AMPS, _AMPS),
@@ -1054,20 +1058,24 @@ _SUN = st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=10.0, allow_na
     plant_read=st.booleans(),
     rooms_read=st.booleans(),
     charge_phases=st.sampled_from((1, 3)),
+    order=st.one_of(st.none(), st.permutations((0, 1, 2))),
 )
 def test_fuse_a_grid_charge_from_idle_with_the_cover_per_phase_leaves_every_phase_under_the_fuse(
     fuse: float, house: tuple[float, float, float], battery_a: tuple[float, float, float],
     sun_a: tuple[float, float, float], plan_kw: float, plant_read: bool, rooms_read: bool, charge_phases: int,
+    order: tuple[int, ...] | None,
 ) -> None:
     """Every start from idle the rule allows leaves each phase at most the fuse less the margin once the battery's
     cover has ended: balanced and unbalanced houses and covers, the plant's power per phase and the headroom per
     phase read or not, the meter's signs never known. A charge on one phase may land on any of them. With the
     plant's power per phase read the sun's share on a phase may end with the cover too (the reading has it in it);
-    without it the rule counts the battery's discharge only, and the sun is taken to keep feeding the house."""
+    without it the rule counts the battery's discharge only, and the sun is taken to keep feeding the house.
+    `order` none: the verification has shown the plant's A, B and C to be L1, L2 and L3; else it has not, and they
+    may be any of the meter's phases."""
     assume(sum(battery_a) > 0.05)
     executor, results = _idle_start_phases(
         fuse, house, battery_a, sun_a, plan_kw, plant_read=plant_read, rooms_read=rooms_read,
-        charge_phases=charge_phases,
+        charge_phases=charge_phases, mapped=order is None, order=tuple(order) if order is not None else (0, 1, 2),
     )
     if executor.state.phase != "active":
         return
@@ -1106,6 +1114,33 @@ def test_fuse_a_on_a_20_a_fuse_the_cover_per_phase_lets_a_charge_from_idle_start
     assert 16.0 + executor.state.rate_kw * 1000.0 / _PHASE_V / 3 <= 20.0 - HEADROOM_MARGIN_A + 0.01
     executor, _results = _idle_start_phases(20.0, house, cover, (0.0,) * 3, 5.0, plant_read=False, rooms_read=True)
     assert executor.state.phase != "active"
+
+
+def test_fuse_a_cover_per_phase_is_not_paired_with_the_meters_phases_before_the_mapping_is_shown() -> None:
+    """The plant's phase A may be the meter's L3 until the verification's mode `per_phase` has shown otherwise. A
+    house with 19 A on L1 that the battery covers 12 A of, read by the plant as its phase C: paired by name, L1's
+    12 A of headroom would lose only the 1 A the plant reports on its A, and the charge would put L1 above the fuse
+    once the cover ends. Unmapped, the largest cover comes off the least headroom and nothing starts; mapped and in
+    the meter's order, the same house starts within the fuse."""
+    house, cover = (19.0, 3.0, 3.0), (12.0, 1.0, 1.0)
+    executor, results = _idle_start_phases(20.0, house, cover, (0.0,) * 3, 5.0, plant_read=True, rooms_read=True,
+                                           mapped=False, order=(1, 2, 0))
+    assert executor.state.phase != "active"
+    assert events(results, "not_started")[0]["reason"] == "fuse_headroom"
+    # The same readings in the meter's order, unmapped: still the largest cover off the least headroom.
+    executor, _results = _idle_start_phases(20.0, house, cover, (0.0,) * 3, 5.0, plant_read=True, rooms_read=True,
+                                            mapped=False)
+    assert executor.state.phase != "active"
+    # A lighter house, mapped: each phase's own cover; unmapped the start is lower, never higher.
+    house = (14.0, 3.0, 3.0)
+    rates = []
+    for mapped in (True, False):
+        executor, _results = _idle_start_phases(20.0, house, (8.0, 1.0, 1.0), (0.0,) * 3, 9.0, plant_read=True,
+                                                rooms_read=True, mapped=mapped)
+        assert executor.state.phase == "active"
+        assert 14.0 + executor.state.rate_kw * 1000.0 / _PHASE_V / 3 <= 20.0 - HEADROOM_MARGIN_A + 0.01
+        rates.append(executor.state.rate_kw)
+    assert rates[1] <= rates[0]
 
 
 def test_a_running_grid_charge_does_not_count_a_discharge_still_read_as_cover() -> None:
