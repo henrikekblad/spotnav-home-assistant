@@ -74,6 +74,8 @@ def test_the_energy_dashboards_heating_device_is_found_by_its_integration_or_its
     owner = DashboardDevice("sensor.varme_energi", None, ("Elmätare värme (Nibe + panna)",), ("zwave_js",))
     washer = DashboardDevice("sensor.washer_energy", "sensor.washer_power", ("Tvättmaskin",), ("shelly",))
     floor = DashboardDevice("sensor.floor", None, ("Golvvärme badrum",), ("shelly",))
+    thermia = DashboardDevice("sensor.thermia_energy", None, ("Energy",), ("thermiagenesis",))
+    assert dashboard_candidates([thermia, washer]) == [("sensor.thermia_energy", KIND_ENERGY)]
     # A heat pump integration's statistic, the energy statistic when no power sensor is given.
     assert dashboard_candidates([nibe, washer]) == [("sensor.nibe_energy", KIND_ENERGY)]
     # A name that says heating: the power sensor where the device has one.

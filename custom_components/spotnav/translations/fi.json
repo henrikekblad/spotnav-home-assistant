@@ -75,8 +75,8 @@
         }
       },
       "site": {
-        "title": "Kohde",
-        "description": "Kohde pitää laturiensa yhteenlasketun virran pääsulakkeen alapuolella. Kuormanhallinnan voi kytkeä päälle ja pois myöhemmin; se toimii parhaan kyvyn mukaan, eikä se ole suojalaite. Pääsulakkeen koko on annettava erikseen -- sitä ei koskaan arvata mitatusta kuormasta. {charger_hint}",
+        "title": "Kotisi",
+        "description": "Kotisi tarkoittaa pääsulaketta ja sähkömittaria. SpotNav tarvitsee sen talokorttia, kotiakkua, lämmitystä, aurinkolatausta ja kuormanhallintaa varten. Kuormanhallinnan voi kytkeä päälle myöhemmin; se toimii parhaan kyvyn mukaan, eikä se ole suojalaite. Pääsulakkeen koko on annettava, sitä ei koskaan arvata mitatusta kuormasta. {charger_hint}",
         "data": {
           "name": "Kohteen nimi",
           "main_fuse_a": "Pääsulakkeen koko (A)",

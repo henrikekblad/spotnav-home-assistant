@@ -75,8 +75,8 @@
         }
       },
       "site": {
-        "title": "Instalación",
-        "description": "La instalación mantiene la corriente combinada de sus cargadores por debajo del fusible general. El equilibrado de carga se puede activar y desactivar más tarde; funciona lo mejor posible, pero no es un dispositivo de protección. El calibre del fusible general debe introducirse explícitamente -- nunca se deduce de la carga medida. {charger_hint}",
+        "title": "Tu hogar",
+        "description": "Tu hogar es el fusible general y el contador de red. SpotNav lo necesita para la tarjeta de la casa, la batería doméstica, la calefacción, la carga solar y el equilibrado de carga. El equilibrado de carga se puede activar más tarde; funciona lo mejor posible, pero no es un dispositivo de protección. El calibre del fusible general debe introducirse, nunca deducirse de la carga medida. {charger_hint}",
         "data": {
           "name": "Nombre de la instalación",
           "main_fuse_a": "Calibre del fusible general (A)",

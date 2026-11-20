@@ -75,8 +75,8 @@
         }
       },
       "site": {
-        "title": "Site",
-        "description": "Siten håller laddarnas sammanlagda ström under huvudsäkringen. Lastbalansering kan slås på och av senare; den är bästa möjliga försök, inte ett skyddsorgan. Huvudsäkringens storlek måste anges uttryckligen -- den gissas aldrig utifrån uppmätt last. {charger_hint}",
+        "title": "Ditt hem",
+        "description": "Ditt hem är huvudsäkringen och elmätaren. SpotNav behöver det för huskortet, hembatteriet, värmen, solladdning och lastbalansering. Lastbalansering kan slås på senare; den är bästa möjliga försök, inte ett skyddsorgan. Huvudsäkringens storlek måste anges, aldrig gissas utifrån uppmätt last. {charger_hint}",
         "data": {
           "name": "Sitenamn",
           "main_fuse_a": "Huvudsäkring (A)",

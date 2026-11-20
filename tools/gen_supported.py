@@ -876,9 +876,9 @@ OVERVIEW: tuple[Overview, ...] = (
     ),
     Overview(
         "Pixii (Pixii Home)",
-        "None found",
+        "Pixiihome Controller, local through the Pixii gateway's MQTT: not read",
         control="Unknown: its command documentation is not public",
-        note="Greenely runs Pixii Home in Sweden. An owner reports local MQTT readings.",
+        note="Greenely runs Pixii Home in Sweden. An owner reports local Modbus TCP and MQTT with the installer login.",
     ),
     Overview(
         "Ferroamp (EnergyHub)",
