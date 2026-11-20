@@ -9,6 +9,7 @@ from datetime import timedelta
 
 import pytest
 
+from custom_components.spotnav.battery import gate
 from custom_components.spotnav.battery.commands import (
     FERROAMP_CONTROL,
     HUAWEI_CONTROL,
@@ -780,6 +781,58 @@ def test_fuse_a_hold_after_a_three_phase_sale_never_puts_a_phase_over_the_fuse_l
                     checked += 1
                     assert max(house) <= fuse - HEADROOM_MARGIN_A + 1e-9, (sale_kw, split, house)
     assert checked > 20
+
+
+def test_fuse_a_sale_that_turns_into_a_grid_charge_counts_its_own_cover_out_of_the_headroom() -> None:
+    """The headroom is measured while the sale still covers the house: 5 kW spread over three phases gives each 7.2 A.
+    The house draws 16 A on L1, above its learned peak of 8 A, and the plant's own import limit acts, so the
+    plan's HA-down cap does not hold the charge back (`None`, the plan's 10 kW). Changed into a charge, the sale's
+    cover is counted out first: L1 ends at the fuse less the margin, not 7 A over the fuse."""
+    fuse, volts = 20.0, 400.0
+    phase_v = volts / 3**0.5
+    peaks = {"L1": 8.0, "L2": 2.0, "L3": 2.0}
+    limit = gate.import_limit_max_kw(fuse, volts, margin_a=HEADROOM_MARGIN_A, cars_a=0.0, house_peak_kw=None,
+                                     house_phase_peaks_a=peaks)
+    plan_cap = gate.grid_charge_cap_kw(fuse, volts, margin_a=HEADROOM_MARGIN_A, cars_a=0.0, house_peak_kw=None,
+                                       plant_phases=3, import_limit_kw=limit, import_limit_acts=True,
+                                       house_phase_peaks_a=peaks)
+    assert plan_cap is None
+    without_limit = gate.grid_charge_cap_kw(fuse, volts, margin_a=HEADROOM_MARGIN_A, cars_a=0.0, house_peak_kw=None,
+                                            plant_phases=3, house_phase_peaks_a=peaks)
+    sale_kw = 5.0
+    share_a = sale_kw * 1000.0 / 3.0 / phase_v
+    for house in ((16.0, 2.0, 2.0), (12.0, 12.0, 12.0)):
+        for plan_kw in (10.0, without_limit):
+            assert plan_kw is not None
+            executor, battery = _sigenergy()
+            now, _ = run(executor, battery, T0, 8, "export_discharge", sale_kw)
+            assert executor.state.action == "export_discharge"
+            headroom = min(fuse - abs(load - share_a) for load in house)
+            grid_kw = (sum(house) - 3 * share_a) * phase_v / 1000.0
+            _now, results = run(executor, battery, now, 1, "grid_charge", plan_kw, headroom_a=headroom,
+                                power_kw=-sale_kw, grid_import_kw=grid_kw, volts_between_phases=volts)
+            change = events(results, "change")[0]
+            charge_a = change["rate_kw"] * 1000.0 / 3.0 / phase_v
+            assert max(house) + charge_a <= fuse - HEADROOM_MARGIN_A + 0.01, (house, plan_kw, change)
+    # With the house at 17.5 A on L1 under the sale there is no room for a charge worth running: handed back.
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "export_discharge", sale_kw)
+    house = (17.5, 2.0, 2.0)
+    _now, results = run(executor, battery, now, 1, "grid_charge", 10.0,
+                        headroom_a=min(fuse - abs(load - share_a) for load in house), power_kw=-sale_kw,
+                        grid_import_kw=0.0, volts_between_phases=volts)
+    assert events(results, "change") == []
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+
+
+def test_a_running_grid_charge_does_not_count_a_discharge_still_read_as_cover() -> None:
+    """The cover is counted on the change only: in the running charge a battery that still reads a discharge (the
+    plant ramping) does not lower the cap a second time."""
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 8, "grid_charge", 4.0)
+    assert executor.state.action == "grid_charge" and executor.state.rate_kw == 4.0
+    _now, results = run(executor, battery, now, 1, "grid_charge", 4.0, headroom_a=12.0, power_kw=-3.0)
+    assert events(results, "rate") == [] and executor.state.rate_kw == 4.0
 
 
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:

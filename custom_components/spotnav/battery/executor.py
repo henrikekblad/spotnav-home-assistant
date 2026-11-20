@@ -715,7 +715,9 @@ def _kw(amps: float, volts: float) -> float:
     return amps * math.sqrt(3.0) * volts / 1000.0
 
 
-def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True) -> float | None:
+def grid_charge_cap_kw(
+    inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True, covered_a: float = 0.0
+) -> float | None:
     """The most the battery may charge from the grid now (kW), `None` when the headroom is unknown.
 
     What the battery already takes from the grid is counted back (it is in the measured import): at most its own
@@ -723,7 +725,11 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
     above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse, on as many phases as the plant spreads
     the charge over (`ExecInputs.charge_phases`: a charge not known to be balanced may land on the tightest one). With "car first" and a car held, the
     battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
-    it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
+    it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate.
+
+    `covered_a`: what the battery's discharge now gives the most loaded phase (`cover_a`), counted out of the headroom
+    on a change into the charge (from a sale, say): the headroom is measured while the battery still covers, and that
+    cover ends with the change."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return None
     battery = inputs.facts.power_kw
@@ -732,7 +738,8 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
         measured = max(min(battery, inputs.grid_import_kw), 0.0)
     phases = min(max(inputs.charge_phases, 1), 3)
-    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
+    room_a = inputs.headroom_a - max(covered_a, 0.0) - HEADROOM_MARGIN_A
+    cap = own + _kw(room_a, inputs.volts_between_phases) * phases / 3
     if inputs.car_first and inputs.car_held:
         cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap
@@ -1834,12 +1841,13 @@ class Executor:
         facts = inputs.facts
         action = inputs.action
         rate = abs(inputs.rate_kw)
+        covered_a = self._change_cover_a(inputs) if action == ACTION_GRID_CHARGE else 0.0
         if action == ACTION_GRID_CHARGE and self.control.fixed_charge:
             # The plant charges at its own rate: it must fit under the fuse cap as it is, never lowered.
             fixed = fixed_rate_kw(self.control, facts)
             if fixed is None or not math.isfinite(fixed):
                 return 0.0, "size_unknown"
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False)
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False, covered_a=covered_a)
             if cap is None:
                 return 0.0, "headroom_unknown"
             if fixed > cap + RATE_TOLERANCE_KW:
@@ -1854,7 +1862,7 @@ class Executor:
                 self.state.phase != "active" or changed is None
                 or (inputs.now - changed).total_seconds() >= RATE_UP_DWELL_S
             )
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now)
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now, covered_a=covered_a)
             if cap is None:
                 return 0.0, "headroom_unknown"
             rate = min(rate, cap)
@@ -1867,6 +1875,15 @@ class Executor:
             if rate < MIN_RATE_KW:
                 return 0.0, "rate_too_small"
         return round(rate, 3), None
+
+    def _change_cover_a(self, inputs: ExecInputs) -> float:
+        """On a change into a grid charge from a running action, what the battery's discharge now gives the most
+        loaded phase (`cover_a`; a sale's spread as the sale is): the headroom is measured under that cover, which
+        ends with the change. 0 within a running charge (its own charge is counted back instead) and from idle."""
+        state = self.state
+        if state.phase != "active" or state.action in (None, ACTION_GRID_CHARGE):
+            return 0.0
+        return cover_a(inputs, sale=state.action == ACTION_EXPORT_DISCHARGE)
 
     def _hold_charge_problem(self, inputs: ExecInputs) -> str | None:
         """Why a hold that may itself charge from the grid at the plant's fixed rate
