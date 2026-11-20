@@ -1089,6 +1089,137 @@ def test_fuse_a_grid_charge_from_idle_with_the_cover_per_phase_leaves_every_phas
         assert worst <= fuse - HEADROOM_MARGIN_A + 0.01, (sun_kept, worst, events(results, "enter"))
 
 
+def _sun_start_phases(
+    fuse: float, house: tuple[float, ...], plant_a: tuple[float, ...], storing_kw: float, plan_kw: float, *,
+    plant_read: bool = True, rooms_read: bool = True, charge_phases: int = 3, mapped: bool = True,
+    order: tuple[int, ...] = (0, 1, 2),
+):
+    """A grid charge started with the battery idle or storing the sun (`storing_kw`, on the DC side) while the plant
+    puts `plant_a` of sun out on each phase (A): the meter is the house less that (signed), its headroom the fuse
+    less the magnitude. `order` and `mapped` as in `_idle_start_phases`."""
+    grid = [load - part for load, part in zip(house, plant_a, strict=True)]
+    rooms = tuple(fuse - abs(value) for value in grid)
+    plant = tuple(plant_a[index] * _PHASE_V / 1000.0 for index in order)
+    executor, battery = _sigenergy()
+    _now, results = run(
+        executor, battery, T0, 1, "grid_charge", plan_kw, headroom_a=min(rooms),
+        phase_headroom_a=rooms if rooms_read else None, plant_phase_kw=plant if plant_read else None,
+        power_kw=storing_kw, grid_import_kw=sum(grid) * _PHASE_V / 1000.0,
+        volts_between_phases=400.0, charge_phases=charge_phases, plant_phases_mapped=mapped,
+    )
+    return executor, results
+
+
+def _after_sun_start(
+    house: tuple[float, ...], plant_a: tuple[float, ...], storing_kw: float, rate_kw: float, charge_phases: int, *,
+    even: bool,
+) -> float:
+    """The most a phase imports (A) once the charge runs at `rate_kw`: the plant then takes `rate_kw` less what the
+    battery stored already more from its AC side. `even`: its power is then the same on each phase (what it had
+    above its average on a phase is gone from there); else the sun stays where it was and the change is spread over
+    the plant's phases, or all on one where the charge is not known to be balanced."""
+    step_a = (rate_kw - storing_kw) * 1000.0 / _PHASE_V
+    if even:
+        each = (sum(plant_a) - step_a) / 3.0
+        return max(load - each for load in house)
+    grid = [load - part for load, part in zip(house, plant_a, strict=True)]
+    return max(grid) + (step_a / 3.0 if charge_phases >= 3 else max(step_a, 0.0))
+
+
+@settings(max_examples=800, deadline=None)
+# The owner's review case: 13 A of house on L1 all met by the sun on a 16 A fuse, the battery idle.
+@example(fuse=16.0, house=(13.0, 0.0, 0.0), even_a=0.0, extra_a=(13.0, 0.0, 0.0), storing_kw=0.0, plan_kw=12.0,
+         plant_read=True, rooms_read=True, charge_phases=3, order=None)
+# The same read on another of the plant's names, the mapping not shown.
+@example(fuse=16.0, house=(13.0, 0.0, 0.0), even_a=0.0, extra_a=(13.0, 0.0, 0.0), storing_kw=0.0, plan_kw=12.0,
+         plant_read=True, rooms_read=True, charge_phases=3, order=(1, 2, 0))
+# Strong even sun the battery stores most of, and a little more on the loaded phase.
+@example(fuse=16.0, house=(12.0, 2.0, 2.0), even_a=4.0, extra_a=(8.0, 0.0, 0.0), storing_kw=4.0, plan_kw=8.0,
+         plant_read=True, rooms_read=False, charge_phases=3, order=None)
+# A charge not known to be balanced.
+@example(fuse=20.0, house=(15.0, 5.0, 0.0), even_a=2.0, extra_a=(10.0, 3.0, 0.0), storing_kw=0.0, plan_kw=6.0,
+         plant_read=True, rooms_read=True, charge_phases=1, order=None)
+@given(
+    fuse=st.sampled_from((16.0, 20.0, 25.0, 35.0)),
+    house=st.tuples(_AMPS, _AMPS, _AMPS),
+    even_a=st.floats(min_value=0.0, max_value=20.0, allow_nan=False),
+    extra_a=st.one_of(st.just((0.0, 0.0, 0.0)), st.tuples(_SUN, _SUN, _SUN), st.tuples(_AMPS, _SUN, _SUN)),
+    storing_kw=st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=8.0, allow_nan=False)),
+    plan_kw=st.floats(min_value=0.5, max_value=12.0),
+    plant_read=st.booleans(),
+    rooms_read=st.booleans(),
+    charge_phases=st.sampled_from((1, 3)),
+    order=st.one_of(st.none(), st.permutations((0, 1, 2))),
+)
+def test_fuse_a_grid_charge_started_under_the_sun_leaves_every_phase_under_the_fuse(
+    fuse: float, house: tuple[float, float, float], even_a: float, extra_a: tuple[float, float, float],
+    storing_kw: float, plan_kw: float, plant_read: bool, rooms_read: bool, charge_phases: int,
+    order: tuple[int, ...] | None,
+) -> None:
+    """Every start the rule allows with the battery idle or storing the sun leaves each phase at most the fuse less
+    the margin: the sun the same on every phase (`even_a`) and more on some (`extra_a`), balanced and unbalanced
+    houses, the plant's power per phase and the headroom per phase read or not, the mapping shown or not (`order` as
+    in the test above), a charge on three phases or on any one.
+
+    What is assumed of the plant under the charge is one of two things. Its power is the same on each of its phases,
+    so a phase loses what the sun gave it above the plant's average: held wherever the plant's power per phase is
+    read. Or the sun stays where it was and only the charge's own change is added: held always. Not held, and not
+    claimed: a plant whose power per phase is not read and that still moves the sun off a loaded phase when the
+    charge starts (the rule then has nothing to count it by), and a plant that under the charge puts less sun on a
+    phase than a third of what it has left."""
+    plant_a = tuple(even_a + part for part in extra_a)
+    executor, results = _sun_start_phases(
+        fuse, house, plant_a, storing_kw, plan_kw, plant_read=plant_read, rooms_read=rooms_read,
+        charge_phases=charge_phases, mapped=order is None, order=tuple(order) if order is not None else (0, 1, 2),
+    )
+    if executor.state.phase != "active":
+        return
+    rate = executor.state.rate_kw
+    for even in ((True, False) if plant_read else (False,)):
+        worst = _after_sun_start(house, plant_a, storing_kw, rate, charge_phases, even=even)
+        assert worst <= fuse - HEADROOM_MARGIN_A + 0.01, (even, worst, events(results, "enter"))
+
+
+def test_fuse_a_grid_charge_counts_the_sun_a_phase_has_above_the_plants_average() -> None:
+    """13 A of house on L1 of a 16 A fuse, all met by the sun the plant puts there, the battery idle: the meter
+    reads 0 A and 16 A of headroom on every phase. Sized on that alone the charge is 9.7 kW, and with the plant's
+    power even under it L1 ends near 23 A. L1's sun is 8.7 A above the plant's average of 4.3 A: counted out, the
+    start is 5.3 A a phase (3.68 kW) and L1 ends at the fuse less the margin."""
+    house, sun = (13.0, 0.0, 0.0), (13.0, 0.0, 0.0)
+    executor, _results = _sun_start_phases(16.0, house, sun, 0.0, 12.0, plant_read=False)
+    assert executor.state.rate_kw == pytest.approx(3 * 14.0 * _PHASE_V / 1000.0, abs=0.01)
+    assert _after_sun_start(house, sun, 0.0, executor.state.rate_kw, 3, even=True) == pytest.approx(22.67, abs=0.02)
+    executor, _results = _sun_start_phases(16.0, house, sun, 0.0, 12.0)
+    assert executor.state.rate_kw == pytest.approx(3 * (16.0 - 26.0 / 3 - 2.0) * _PHASE_V / 1000.0, abs=0.01)
+    assert _after_sun_start(house, sun, 0.0, executor.state.rate_kw, 3, even=True) == pytest.approx(14.0, abs=0.01)
+    # The mapping not shown: the largest cover off the least headroom, the same start here whichever phase it is on.
+    for order in ((0, 1, 2), (1, 2, 0), (2, 0, 1)):
+        unmapped, _results = _sun_start_phases(16.0, house, sun, 0.0, 12.0, mapped=False, order=order)
+        assert unmapped.state.rate_kw == executor.state.rate_kw
+    # The battery storing 2 kW of a larger sun beside it: the same cover, the same start.
+    storing, _results = _sun_start_phases(16.0, (15.0, 2.0, 2.0), (15.0, 2.0, 2.0), 2.0, 12.0)
+    assert storing.state.rate_kw == pytest.approx(executor.state.rate_kw, abs=0.01)
+
+
+def test_a_grid_charge_under_the_same_sun_on_every_phase_starts_as_without_the_reading() -> None:
+    """The sun the plant puts evenly on its phases is no cover: a midday charge is sized as it was before the
+    plant's power per phase was read, the battery idle or storing the sun."""
+    cases = (
+        ((2.0, 2.0, 2.0), (5.0, 5.0, 5.0), 0.0, 6.0),   # 3.45 kW of sun, each phase exporting 3 A
+        ((3.0, 1.0, 0.5), (4.3, 4.3, 4.3), 0.0, 12.0),  # an unbalanced house under 3 kW of even sun
+        ((1.0, 1.0, 1.0), (1.0, 1.0, 1.0), 9.0, 12.0),  # 9.7 kW of sun, 9 kW of it stored, a 12 kW plan
+        ((1.0, 1.0, 1.0), (14.4, 14.4, 14.4), 0.0, 6.0),  # 10 kW of even sun all exported
+    )
+    started = 0
+    for house, sun, storing_kw, plan_kw in cases:
+        with_reading, _results = _sun_start_phases(16.0, house, sun, storing_kw, plan_kw)
+        without, _results = _sun_start_phases(16.0, house, sun, storing_kw, plan_kw, plant_read=False)
+        assert with_reading.state.phase == without.state.phase
+        assert with_reading.state.rate_kw == pytest.approx(without.state.rate_kw, abs=0.001)
+        started += with_reading.state.phase == "active"
+    assert started == 3  # the last one exports 13.4 A a phase: 2.6 A of headroom by the meter, with or without
+
+
 def test_fuse_a_on_a_20_a_fuse_the_cover_per_phase_lets_a_charge_from_idle_start() -> None:
     """The owner's case: a SigenStor on a 20 A fuse, the house at 10 kW and the battery covering 4 kW of it in its own
     mode (17.3 A on one phase, more than the 11.3 A of headroom). Without the plant's power per phase nothing starts.
