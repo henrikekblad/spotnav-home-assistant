@@ -70,6 +70,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
@@ -305,7 +306,8 @@ def write_heat(
         data.pop(CONF_HEAT_METER_ENTITY, None)
     else:
         data[CONF_HEAT_METER_ENTITY] = meter
-    if data != dict(site.data):
+    changed = data != dict(site.data)
+    if changed:
         hass.config_entries.async_update_entry(site, data=data)
         _LOGGER.debug("SpotNav heat settings changed: %s", sorted(changes))
         if F_ZONES in changes or F_METER in changes:
@@ -313,12 +315,21 @@ def write_heat(
             from .site_settings import _forget_energy_reads  # noqa: PLC0415 - site_settings imports this module's peers
 
             _forget_energy_reads(hass, site.entry_id)
+    if changed:
+        # The site's Away switch (`switch.py`) shows the new settings at once.
+        from ..switch import heat_changed_signal  # noqa: PLC0415 - the platform imports this module
+
+        async_dispatcher_send(hass, heat_changed_signal(site.entry_id))
     controller = site_controller_for(hass, site.entry_id)
     if F_METER in changes and controller is not None:
         controller.house_forecast.request_refresh()
     if controller is not None and (control := getattr(controller, "heat_control", None)) is not None:
         # The heat control looks at once: turned off or the relay changed, it opens what it holds right away.
         control.request_look()
+    for name in ("zones_control", "water_heater_control"):
+        # The zones and the water heater too: an opt-in turned off gives back at once.
+        if controller is not None and (part := getattr(controller, name, None)) is not None:
+            part.request_look()
 
 
 def write_envelope(site: ConfigEntry | None, error: str | None = None, field_errors: list[FieldError] | None = None) -> dict[str, Any]:

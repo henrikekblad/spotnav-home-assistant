@@ -908,6 +908,9 @@
     "switch": {
       "departure_enabled": {
         "name": "Avreisefrist"
+      },
+      "heat_away": {
+        "name": "Varme borte"
       }
     },
     "time": {

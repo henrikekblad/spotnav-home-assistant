@@ -171,6 +171,12 @@
     "switch": {
       "departure_enabled": {
         "default": "mdi:clock-alert-outline"
+      },
+      "heat_away": {
+        "default": "mdi:home-export-outline",
+        "state": {
+          "off": "mdi:home-thermometer-outline"
+        }
       }
     },
     "time": {

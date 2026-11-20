@@ -908,6 +908,9 @@
     "switch": {
       "departure_enabled": {
         "name": "Frist for afgang"
+      },
+      "heat_away": {
+        "name": "Varme ude"
       }
     },
     "time": {
