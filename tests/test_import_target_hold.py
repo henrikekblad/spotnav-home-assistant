@@ -203,6 +203,19 @@ class _World:
         return self.halo.controller.regulator_decisions[self.halo.charger.entry_id]
 
 
+def _patch_everywhere(monkeypatch, name: str, replacement: Any) -> None:
+    """Replace one of `site/import_target.py`'s pure functions in every SpotNav module that imported it, so a test
+    reaches the import target's hold through the site's recompute wherever the hold's code lives."""
+    import sys
+
+    from custom_components.spotnav.site import import_target
+
+    original = getattr(import_target, name)
+    for module_name, module in list(sys.modules.items()):
+        if module_name.startswith("custom_components.spotnav") and getattr(module, name, None) is original:
+            monkeypatch.setattr(module, name, replacement)
+
+
 async def _world(
     hass: HomeAssistant,
     monkeypatch,
@@ -1470,7 +1483,8 @@ async def test_a_charger_whose_phase_cannot_be_judged_is_said_and_not_planned_as
         await _charging(world)
         await world.run(2)
         assert controller.import_target_plan_kw(charger) is not None
-        monkeypatch.setattr(type(controller), "_target_floor_a", lambda *_args: None)
+        # The floor cannot be worked out for a phase (`lowering_floor_a` says `None`), wherever the hold reads it from.
+        _patch_everywhere(monkeypatch, "lowering_floor_a", lambda **_kwargs: None)
         await world.run(2)
         snapshot = controller.import_target_snapshot()
         assert snapshot["chargers"][charger]["inert"] == "phase_cannot_be_judged"
@@ -1494,8 +1508,6 @@ async def test_a_charger_without_a_current_of_its_own_is_not_planned_as_held(has
 
 
 async def test_a_failing_target_never_delays_an_overload_lowering(hass: HomeAssistant, monkeypatch) -> None:
-    from custom_components.spotnav.site import site_capacity_controller as module
-
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "failing", target_kw=20.0)
         await world.step()
@@ -1505,7 +1517,7 @@ async def test_a_failing_target_never_delays_an_overload_lowering(hass: HomeAssi
         def broken(*_args, **_kwargs):
             raise RuntimeError("the target's own bug")
 
-        monkeypatch.setattr(module, "share_budget", broken)
+        _patch_everywhere(monkeypatch, "share_budget", broken)
         written = len(world.halo.written())
         world.house_a = 10.0  # 26 A on a 20 A fuse: lowered to 10 A at once
         world.show()
