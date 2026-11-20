@@ -183,6 +183,55 @@ async def test_home_assistant_s_stop_leaves_the_chargers_capped(
     assert charger._start_cap is None  # noqa: SLF001
 
 
+async def test_a_battery_hand_back_that_fails_still_ends_the_shutdown_and_lets_the_chargers_go(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A hand-back step that raises is logged and the rest runs on: the shutdown ends, and the chargers' start cap
+    goes with it (what the battery still holds stays stored for the next start)."""
+    site, recorder = await _site(hass, monkeypatch)
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None and charger._start_cap is not None  # noqa: SLF001
+
+    async def fails(self: BatteryControl) -> None:
+        recorder.add(self, "battery write")
+        raise RuntimeError("the plant refused")
+
+    monkeypatch.setattr(BatteryControl, "async_shutdown", fails)
+    caplog.set_level(logging.WARNING)
+    assert await hass.config_entries.async_unload(site.entry_id)
+    assert "handing the battery back failed" in caplog.text
+    assert "heat handed back" in _of(recorder, 0), "the heat path is handed back all the same"
+    assert charger._start_cap is None  # noqa: SLF001
+
+
+@pytest.mark.parametrize("at_stop", [False, True])
+async def test_a_shutdown_that_fails_lets_the_chargers_go_except_at_home_assistant_s_stop(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, at_stop: bool
+) -> None:
+    """A shutdown that raises is over all the same: the chargers' start caps must not point at a site that is gone,
+    so they go. At Home Assistant's stop (a deadline) the chargers run on to the end and keep the cap."""
+    site, recorder = await _site(hass, monkeypatch)
+    controller = recorder.copies[0]
+    charger = controller_for(hass, "entry_a")
+    assert charger is not None and charger._start_cap is not None  # noqa: SLF001
+    real_hand_back = type(controller)._async_hand_back  # noqa: SLF001
+
+    async def fails(self: Any, deadline: float | None) -> bool:
+        raise RuntimeError("hand-back failed")
+
+    monkeypatch.setattr(type(controller), "_async_hand_back", fails)
+    deadline = asyncio.get_running_loop().time() + 5.0 if at_stop else None
+    with pytest.raises(RuntimeError):
+        await controller.async_shutdown(deadline)
+    assert (charger._start_cap is not None) is at_stop  # noqa: SLF001
+    # Clean up: a fresh shutdown hands back for real and lets go.
+    monkeypatch.setattr(type(controller), "_async_hand_back", real_hand_back)
+    controller._shutdown_task = None  # noqa: SLF001
+    recorder.release.set()
+    assert await hass.config_entries.async_unload(site.entry_id)
+    assert charger._start_cap is None  # noqa: SLF001
+
+
 # The platforms that failed to unload (faked here) keep their timers.
 @pytest.mark.parametrize("expected_lingering_timers", [True])
 async def test_a_failed_platform_unload_leaves_the_site_running(
