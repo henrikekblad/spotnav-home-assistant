@@ -13,6 +13,7 @@
   "days": [],
   "demand_ceiling": {
     "band": "learning",
+    "car_charges": [],
     "hours": [
       [
         "2026-09-22T07:00:00+00:00",
