@@ -2,7 +2,7 @@
 each is read as SpotNav's two contacts and what is written to it. The shell is `heat/control.py`, whose rules, check,
 read-back and foreign-writer pause are the relay's own (`heat/relay_control.py`), unchanged.
 
-**None of these three paths has run on a real heat pump yet** (`UNTESTED`): the registers and their ranges are read
+**None of these paths has run on a real heat pump yet** (`UNTESTED`): the registers and their ranges are read
 from the integrations' sources, the meaning of each value from the makers' manuals, and the card says so.
 
 **A contact** is what the heat control holds: A lowers, B raises, never both. On the relay paths a contact is a
@@ -28,6 +28,15 @@ switch. On the paths here both contacts are one entity read two ways, named by a
     steps; any other number a person chooses): the value found is kept before the lowering is written and written
     back when it ends, at Home Assistant's stop and at the next start (`Snapshot`). `CLASS_SETTING`, at most
     `OFFSET_WRITES_DAY` a day (the plan's section 8).
+  * **Thermia Genesis, stored** (`thermiagenesis` holding 5 "Comfort Wheel Setting", whole steps; plan
+    `plans/v3_thermia_genesis.md`): the only single value that shifts a Genesis heat curve. What one step does to the
+    room is not confirmed, so the check judges it by the calculated supply alone (`SUPPLY_PROOF`): a wheel that does
+    not move the curve fails the check and nothing more is written. The manual says nothing of where the registers
+    are kept, so the wheel is a stored setting with a lower cap (`OFFSET_WRITES_DAY_BY_BRAND`, until a field test says
+    otherwise), and a value found outside the integration's own 10..40 or not a whole step is no start
+    (`FOUND_RANGE`). The integration polls every 30 s and swallows a write that failed: the read-back
+    (`control.READ_BACK`, 90 s) is the only proof that a write took. Nothing else of the pump is ever written (not
+    its operational mode, its enable coils, its gear or supply limits, nor its hot-water temperatures).
   * **Volatile** (CTC `ctc_bms` 1023 "Curve adjustment override", -10..10 °C; dklemm/home-assistant-ctc-bms 0.6.0,
     `controls.py` and `hold.py`, read 2026-11-18): the controller forgets the value five minutes after the last
     write. The entity reads `unknown` while nothing is held (read as open) and takes 0 as "release": the integration
@@ -49,8 +58,9 @@ leave it (0.54 °C). Two steps is also the shallow end of what the plan suggests
 (-2 to -3). So NIBE lowers 2 steps (1 when cold) and raises 1. CTC's adjustment is in °C of supply: at a radiator
 curve a degree of room is 2 to 3 °C of supply, so -3 °C is about one NIBE step in the room, shallower than NIBE's
 two on purpose (the path is new), yet twice the fall the check must see on the calculated supply
-(`relay_control.SUPPLY_DROP_C`), and -2 °C when cold still shows. It raises 2 °C (the raise check's 1 °C). A number
-SpotNav does not know is treated as NIBE's.
+(`relay_control.SUPPLY_DROP_C`), and -2 °C when cold still shows. It raises 2 °C (the raise check's 1 °C). Thermia's
+comfort wheel takes NIBE's whole steps until a field test measures one. A number SpotNav does not know is treated as
+NIBE's.
 """
 
 from __future__ import annotations
@@ -80,6 +90,8 @@ CLASS_SETPOINT: Final = "setpoint"
 SWITCH_WRITES_DAY: Final = MAX_WRITES_DAY
 #: The same on a curve offset (the plan's section 8: at most 24 writes a day, whole steps).
 OFFSET_WRITES_DAY: Final = 24
+#: A lower cap per adapter brand: Thermia's registers are treated as flash of unknown endurance.
+OFFSET_WRITES_DAY_BY_BRAND: Final[dict[str, int]] = {"thermia_genesis": 12}
 #: SG Ready's activation switch turned on at most this often a day (each hand-back turns it off again).
 ACTIVATION_WRITES_DAY: Final = 4
 #: A volatile value is written again this often: well inside the controller's five minutes.
@@ -121,13 +133,34 @@ class Depth:
 DEPTH_NIBE: Final = Depth(2.0, 1.0, 1.0)
 DEPTH_CTC: Final = Depth(3.0, 2.0, 2.0)
 #: Per adapter brand (`adapters.Adapter.brand`); a number SpotNav does not know is treated as NIBE's.
-DEPTHS: Final[dict[str, Depth]] = {"nibe_f": DEPTH_NIBE, "nibe_s": DEPTH_NIBE, "ctc_bms": DEPTH_CTC}
+DEPTHS: Final[dict[str, Depth]] = {
+    "nibe_f": DEPTH_NIBE,
+    "nibe_s": DEPTH_NIBE,
+    "ctc_bms": DEPTH_CTC,
+    "thermia_genesis": DEPTH_NIBE,
+}
 #: The adapters whose offset SpotNav offers by itself (the others' are read through a cloud, or are no plain shift).
 OFFSET_BRANDS: Final = frozenset(DEPTHS)
 
 
+#: The values an offset may be found at before SpotNav moves it, per brand (Thermia's comfort wheel: the integration's
+#: own climate range; its number says -40..100, which is no range at all). It is also the range written within.
+FOUND_RANGE: Final[dict[str, tuple[float, float]]] = {"thermia_genesis": (10.0, 40.0)}
+#: The brands whose offset must show on the calculated supply in the check: the power alone proves nothing there.
+SUPPLY_PROOF: Final = frozenset({"thermia_genesis"})
+
+
 def depth_of(brand: str | None) -> Depth:
     return DEPTHS.get(brand or "", DEPTH_NIBE)
+
+
+def found_fits(brand: str | None, found: float | None) -> bool:
+    """Whether a stored offset found at `found` may be moved: inside its brand's `FOUND_RANGE` and a whole step there;
+    any value where the brand has no range."""
+    bounds = FOUND_RANGE.get(brand or "")
+    if bounds is None:
+        return True
+    return found is not None and bounds[0] <= found <= bounds[1] and float(found).is_integer()
 
 
 # ------------------------------------------------------------------------------------------------ contacts
@@ -188,9 +221,11 @@ def activation_switch(config: HeatConfig) -> str | None:
     return None
 
 
-def max_writes(key: str | None) -> int:
-    """A day's closings and openings on a contact's path."""
-    return OFFSET_WRITES_DAY if key is not None and parse(key)[1] == KIND_OFFSET else SWITCH_WRITES_DAY
+def max_writes(key: str | None, brand: str | None = None) -> int:
+    """A day's closings and openings on a contact's path (`brand`: the offset's adapter, where SpotNav knows it)."""
+    if key is None or parse(key)[1] != KIND_OFFSET:
+        return SWITCH_WRITES_DAY
+    return OFFSET_WRITES_DAY_BY_BRAND.get(brand or "", OFFSET_WRITES_DAY)
 
 
 def write_class(key: str, volatile: bool = False) -> str:
@@ -405,6 +440,9 @@ __all__ = [
     "REVERSAL_SPACING",
     "OFFSET_BRANDS",
     "OFFSET_WRITES_DAY",
+    "OFFSET_WRITES_DAY_BY_BRAND",
+    "FOUND_RANGE",
+    "SUPPLY_PROOF",
     "RELEASE",
     "RENEW",
     "RENEWALS_DAY",
@@ -421,6 +459,7 @@ __all__ = [
     "depth_of",
     "detected_paths",
     "entity_of",
+    "found_fits",
     "lower_contact",
     "max_writes",
     "mode_closed",

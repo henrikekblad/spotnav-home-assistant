@@ -126,6 +126,7 @@ from .relay_control import (
     SAFETY_SG_READY_B,
     SAFETY_STALE,
     SAFETY_TOO_COLD,
+    STATE_HOT_WATER,
     Check,
     Decision,
     RaiseCheck,
@@ -205,6 +206,9 @@ RAISE_OFF: Final = "raise_off"
 TEST_HOLD: Final = timedelta(seconds=60)
 #: The reason under the switch while a hardware test runs.
 REASON_HARDWARE_TEST: Final = "hardware_test"
+
+#: The check waits while a pump whose effect is judged on the supply alone says it does not heat.
+CHECK_NOT_HEATING: Final = "not_heating"
 
 #: The relay's states that read as closed.
 CLOSED: Final = frozenset({"on"})
@@ -332,6 +336,8 @@ class HeatControl:
         self._power: deque[tuple[datetime, float]] = deque()
         #: Whether anything can show the check an effect: a power meter or a calculated supply the pump reports.
         self.signal = False
+        #: What the pump said it serves at the last sample (`facts.HeatPumpFacts.priority`).
+        self.pump_priority: str | None = None
         self._levels_hour: datetime | None = None
         self._loaded = False
         #: The kept data as last saved (or loaded).
@@ -876,7 +882,7 @@ class HeatControl:
                 lowered_24h=self.lowered_24h(now),
                 writes_today=self.writes.get(self._day(now), 0),
                 safety=safety,
-                max_writes=paths.max_writes(relay),
+                max_writes=self._max_writes(relay),
             )
         )
         self._set(STATE_RUNNING, self.decision.reason)
@@ -901,7 +907,10 @@ class HeatControl:
             self._set(STATE_WAITING, WAIT_NO_SIGNAL)
             return
         blocked = None if safety in (None, SAFETY_SETTLING) else safety
-        room = self.writes.get(self._day(now), 0) + 2 <= paths.max_writes(relay)
+        if blocked is None and self._supply_proof(relay) and self.pump_priority not in (None, "heating"):
+            # Judged only while the pump says it heats (hot water, cooling, a pool or standby cannot show the curve).
+            blocked = CHECK_NOT_HEATING
+        room = self.writes.get(self._day(now), 0) + 2 <= self._max_writes(relay)
         step = self.check.step(now, sample, read, blocked, measured=self._measured(), may_start=room)
         if step.outcome is not None:
             self._log(now, "check", outcome=step.outcome)
@@ -932,7 +941,7 @@ class HeatControl:
             return "busy"
         if self.safety not in (None, SAFETY_SETTLING):
             return f"safety:{self.safety}"
-        if self.writes.get(self._day(now), 0) + 2 > paths.max_writes(self.relay):
+        if self.writes.get(self._day(now), 0) + 2 > self._max_writes(self.relay):
             return "write_cap"
         return None
 
@@ -1020,6 +1029,23 @@ class HeatControl:
             return None if mode is None else paths.mode_closed(mode, role)
         return paths.offset_closed(paths.number_of(state.state), role, self.snapshots.get(key), self._volatile(key))
 
+    def _offset_brand(self, key: str | None) -> str | None:
+        """The adapter brand of an offset contact SpotNav knows (`detect.offset_capability`), `None` for any other."""
+        from .detect import offset_capability  # noqa: PLC0415 - read only when it matters
+
+        if key is None or paths.parse(key)[1] != paths.KIND_OFFSET:
+            return None
+        known = offset_capability(self.hass, paths.entity_of(key))
+        return None if known is None else known[0]
+
+    def _max_writes(self, key: str | None) -> int:
+        """A day's writes on the contact's path, the brand's lower cap counted (`paths.max_writes`)."""
+        return paths.max_writes(key, self._offset_brand(key))
+
+    def _supply_proof(self, key: str | None) -> bool:
+        """Whether the path's effect is judged on the calculated supply alone (`paths.SUPPLY_PROOF`)."""
+        return self._offset_brand(key) in paths.SUPPLY_PROOF
+
     def _gone(self, key: str) -> bool:
         """Whether a contact's entity is no longer in Home Assistant."""
         return self.hass.states.get(paths.entity_of(key)) is None
@@ -1072,16 +1098,26 @@ class HeatControl:
         found = None if state is None else paths.number_of(state.state)
         if state is None or (found is None and not (volatile and state.state == "unknown")):
             return "offset_unreadable"
+        brand = None if known is None else known[0]
+        if not volatile and not paths.found_fits(brand, found):
+            # Thermia's comfort wheel outside the integration's own range, or not a whole step: no start.
+            return "offset_out_of_range"
+        bounds = paths.FOUND_RANGE.get(brand or "")
 
         def limit(name: str) -> float | None:
             value = state.attributes.get(name)
-            return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+            figure = float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+            if bounds is not None and name in ("min", "max"):
+                # The brand's own range where the entity's says nothing useful (Thermia: -40..100).
+                own = bounds[0] if name == "min" else bounds[1]
+                figure = own if figure is None else max(figure, own) if name == "min" else min(figure, own)
+            return figure
 
         coldest = self.coldest_outdoor(self.shadow.config(), now)
         target = paths.offset_target(
             role,
             found,
-            paths.depth_of(None if known is None else known[0]),
+            paths.depth_of(brand),
             cold=coldest is not None and coldest < paths.COLD_BELOW_C,
             minimum=limit("min"),
             maximum=limit("max"),
@@ -1361,8 +1397,15 @@ class HeatControl:
                 self._levels = None
         pumps = read_heat_pumps(self.hass)
         supply = pumps[0].calc_supply_temp_c if pumps else None
+        self.pump_priority = pumps[0].priority if pumps else None
+        supply_known = (bool(pumps) and "calc_supply_temp" in pumps[0].sources) or supply is not None
+        if self._supply_proof(self.relay):
+            # An offset whose meaning is unconfirmed (Thermia's comfort wheel): only the calculated supply proves that
+            # it moves the curve; the power falls and rises by itself. A hot-water run is no moment to judge.
+            self.signal = supply_known
+            return Sample(None, STATE_HOT_WATER if self.pump_priority == "hot_water" else None, supply)
         # A meter without its levels yet, or a supply that reads unavailable for a while, is no reason to say none.
-        self.signal = power_meter or (bool(pumps) and "calc_supply_temp" in pumps[0].sources) or supply is not None
+        self.signal = power_meter or supply_known
         state_now_ = state_now(kw, self._levels, self._power_mean(now, kw)) if kw is not None else None
         return Sample(kw if state_now_ is not None else None, state_now_, supply)
 
@@ -1887,7 +1930,7 @@ class HeatControl:
                 raised_24h=self.raised_24h(now),
                 writes_today=self.writes.get(self._day(now), 0),
                 block=self._raise_block(config, now),
-                max_writes=paths.max_writes(self.relay),
+                max_writes=self._max_writes(self.relay),
             )
         )
 
@@ -2109,7 +2152,7 @@ class HeatControl:
             writes=self.writes,
             day_of=self._day,
             safety=self.safety,
-            max_writes=paths.max_writes(self.relay),
+            max_writes=self._max_writes(self.relay),
         )
 
     def _set(self, state: str, reason: str | None) -> None:
@@ -2181,7 +2224,7 @@ class HeatControl:
         volatile = self.relay is not None and paths.parse(self.relay)[1] == paths.KIND_OFFSET and self._volatile(self.relay)
         return {
             "class": None if self.relay is None else paths.write_class(self.relay, volatile),
-            "cap": paths.max_writes(self.relay),
+            "cap": self._max_writes(self.relay),
             "used": self.writes.get(today, 0),
             "renewals": {"cap": paths.RENEWALS_DAY, "used": self.renewals.get(today, 0)},
             "activations": {"cap": paths.ACTIVATION_WRITES_DAY, "used": self.activations.get(today, 0)},

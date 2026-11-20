@@ -259,8 +259,9 @@ def test_the_enable_list_is_the_adapters_own_control_entities() -> None:
     for (brand, _path), keys in optin.ENABLE_KEYS.items():
         adapter = by_brand[brand]
         known = [capability.match for capability in adapter.capabilities] + [match for found in adapter.facts.values() for match in found]
+        prefix = "thermiagenesis_" if brand == "thermia_genesis" else "entry-"
         for domain, key in keys:
-            assert any(match.matches(domain, f"entry-{key}") for match in known), (brand, domain, key)
+            assert any(match.matches(domain, f"{prefix}{key}") for match in known), (brand, domain, key)
 
 
 def test_the_settings_take_the_sg_ready_api_as_a_number_and_a_switch(hass: HomeAssistant) -> None:
