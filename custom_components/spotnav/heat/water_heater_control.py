@@ -294,7 +294,7 @@ class WaterHeaterControl:
             _LOGGER.warning("SpotNav water heater: a look failed", exc_info=True)
             self.state, self.reason = STATE_WAITING, "error"
             try:
-                await self._async_exit(now, "error")
+                await self._async_release(now, "error")
             except Exception:  # noqa: BLE001 - tried again at the next look
                 _LOGGER.warning("SpotNav water heater: the switch could not be turned on", exc_info=True)
         try:
@@ -314,10 +314,8 @@ class WaterHeaterControl:
 
         if self.entity is not None and switch != self.entity:
             # Another switch (or none): the old one is turned on first where SpotNav holds it off.
-            if self.held_off:
-                await self._async_exit(now, "switch_changed")
-                if self.held_off:
-                    return
+            if not await self._async_release(now, "switch_changed"):
+                return
             self.entity, self.pending, self.trial, self._foreign, self._seen_on = None, None, None, None, False
             self.rules = Rules(Kept(last_full=None))
         if switch is None:
@@ -562,6 +560,23 @@ class WaterHeaterControl:
             return
         self._log(now, "exit", why=why)
         await self._async_write(True, now, planned=False, why=why)
+
+    async def _async_release(self, now: datetime, why: str) -> bool:
+        """Turn on the switch SpotNav holds off where the look's own read-back does not run (another switch was chosen
+        in the settings, a look failed): an on that has not shown within `READ_BACK` is written again, an off still
+        awaited is overruled. `True` once nothing is held off."""
+        if not self.held_off or self.entity is None:
+            return True
+        if self._read(self.entity) is True:
+            self.held_off, self.pending, self._restore_on = False, None, False
+            return True
+        if self.pending is not None:
+            on, at, _planned = self.pending
+            if on and now - at <= READ_BACK:
+                return False
+            self.pending = None
+        await self._async_exit(now, why)
+        return not self.held_off
 
     def _pause(self, now: datetime, reason: str) -> None:
         if self.paused_until is not None:

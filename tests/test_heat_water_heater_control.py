@@ -168,6 +168,58 @@ async def test_on_at_the_stop_and_at_the_next_start(hass: HomeAssistant, freezer
     assert switch.calls[-1] == "on"
 
 
+async def test_another_switch_chosen_while_held_off_turns_the_old_one_on_until_it_reads_on(hass: HomeAssistant, freezer) -> None:
+    site, heater, switch, now = await _site(hass, freezer)
+    heater.rules.kept.last_full = now
+    await heater.async_look(now)
+    moment = _outside_windows(heater, now)
+    await heater.async_look(moment)
+    assert switch.calls == ["off"] and heater.held_off
+    hass.states.async_set("switch.annan", "on")
+    heat = dict(site.data[CONF_HEAT])
+    heat["water_heater"] = {"entity_id": "switch.annan", "control": False, "tank_sensor": None}
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: heat})
+    # The first on is lost: the old switch stays SpotNav's to turn on, and the on is written again.
+    switch.ignore = True
+    await heater.async_look(moment + MIN)
+    assert switch.calls == ["off", "on"] and heater.entity == HEATER and heater.held_off
+    await heater.async_look(moment + 2 * MIN)
+    assert switch.calls == ["off", "on"]
+    switch.ignore = False
+    await heater.async_look(moment + 3 * MIN)
+    assert switch.calls == ["off", "on", "on"] and switch.state == "on"
+    # Read on: let go, and the new switch is the one looked at.
+    await heater.async_look(moment + 4 * MIN)
+    assert heater.entity == "switch.annan" and not heater.held_off
+    assert switch.calls == ["off", "on", "on"]
+
+
+async def test_a_look_that_fails_turns_it_on_and_keeps_trying(hass: HomeAssistant, freezer) -> None:
+    _site_, heater, switch, now = await _site(hass, freezer)
+    heater.rules.kept.last_full = now
+    await heater.async_look(now)
+    moment = _outside_windows(heater, now)
+    await heater.async_look(moment)
+    await heater.async_look(moment + MIN // 2)
+    assert switch.calls == ["off"] and heater.held_off
+
+    def broken(_now: datetime) -> dict[datetime, float]:
+        raise RuntimeError("no prices")
+
+    heater._prices = broken  # type: ignore[method-assign]  # noqa: SLF001
+    switch.ignore = True
+    await heater.async_look(moment + MIN)
+    await heater.async_look(moment + 2 * MIN)
+    assert switch.calls == ["off", "on"] and heater.held_off
+    # Not seen within the read-back: written again, look after look, until it reads on.
+    await heater.async_look(moment + 3 * MIN)
+    assert switch.calls == ["off", "on", "on"]
+    switch.ignore = False
+    await heater.async_look(moment + 5 * MIN)
+    await heater.async_look(moment + 6 * MIN)
+    assert switch.state == "on" and not heater.held_off
+
+
 async def test_an_off_that_does_not_cut_the_element_fails_the_check(hass: HomeAssistant, freezer) -> None:
     _site_, heater, switch, now = await _site(hass, freezer)
     heater.rules.kept.last_full = now
