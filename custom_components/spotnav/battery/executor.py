@@ -292,6 +292,11 @@ YIELD_STEP_KW: Final = 1.0
 REARM_S: Final = 120.0
 #: A management reading may be unknown this long (Sigenergy's Remote EMS entities blink, issue #427) (s).
 MANAGEMENT_GRACE_S: Final = 60.0
+#: A running action whose battery reading is missing or stale (a plant whose link goes silent a while: one Sigenergy
+#: plant does not answer Modbus for about 90 s each night) is ridden out this long (s) before it is handed back as
+#: stale data: nothing is written meanwhile, and only while the fuse allows it without the battery's own reading
+#: (`Executor._ride_out`). The site's measurement lost is still handed back at once.
+SILENCE_GRACE_S: Final = 180.0
 #: A block for a real management change (the app, the plant's own optimiser) clears by itself this long after the
 #: hand-back (s): the start rule still refuses a plant that is not free, so nothing is fought.
 MANAGEMENT_BLOCK_S: Final = 6 * 3600.0
@@ -478,6 +483,8 @@ class ExecState:
     watchdog_at: datetime | None = None
     released_at: datetime | None = None
     management_unknown_since: datetime | None = None
+    #: Since when a running action's battery reading has been missing or stale (`SILENCE_GRACE_S`); not stored.
+    silent_since: datetime | None = None
     #: Restore writes not read back: per role, the attempts made and when to try again.
     retries: dict[str, tuple[int, datetime]] = field(default_factory=dict)
     #: Roles whose restore was given up after every attempt (the snapshot is kept for them).
@@ -1171,13 +1178,13 @@ class Executor:
             started, start_events = self._try_start(inputs)
             events += start_events
             persist_first = started
-        elif self.state.phase == "active":
+        elif self.state.phase == "active" and not self._riding_out():
             events += self._cover(inputs)
             if self.state.phase == "active":
                 events += self._retarget(inputs)
         self._settle_retries(inputs)
         ops: list[Op] = []
-        while True:
+        while not self._riding_out():
             events += self._precheck(inputs)
             batch = self._progress(inputs)
             ops += batch
@@ -1203,10 +1210,15 @@ class Executor:
                 self.state = replace(self.state, pending=None if self.state.pending == role_name else self.state.pending,
                                      in_flight=_without(self.state.in_flight, role_name))
                 why = "call_timeout" if role_name in inputs.timed_out else "service_failed"
-                events += self._not_taken(now, role_name, why)
+                if why == "service_failed" and self._silent_since(inputs, None):
+                    # A call that failed while the plant says nothing at all: no finding about the control.
+                    events += self._silent_not_taken(now, role_name, why)
+                else:
+                    events += self._not_taken(now, role_name, why)
         for role in self.control.roles:
             entity_id = self.state.entities.get(role.name)
-            if entity_id is None or self.ledger.claim(entity_id) is None:
+            claim = None if entity_id is None else self.ledger.claim(entity_id)
+            if entity_id is None or claim is None:
                 continue
             read = inputs.reads.get(role.name)
             event = self.ledger.observe(entity_id, reading(role, None if read is None else read.state), now)
@@ -1233,6 +1245,8 @@ class Executor:
                     # the role is judged afresh against its restore value. Likewise one for a role the action no
                     # longer sets.
                     events.append(_event(now, "not_taken", role.name, why="superseded", read=event.read))
+                elif self._silent_since(inputs, claim.at):
+                    events += self._silent_not_taken(now, role.name, "no_read_back", read=event.read)
                 else:
                     events += self._not_taken(now, role.name, "no_read_back", read=event.read)
             else:
@@ -1485,7 +1499,11 @@ class Executor:
             return "per_phase_changed"
         if facts.on_grid is False:
             return "off_grid"
-        if not inputs.measurement_ok or (not self._export and not _fresh(inputs)):
+        if not inputs.measurement_ok:
+            return "stale_data"
+        if self._export or _fresh(inputs):
+            self.state = replace(self.state, silent_since=None)
+        elif not self._ride_out(inputs):
             return "stale_data"
         if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
@@ -1508,7 +1526,8 @@ class Executor:
         if management == "unknown":
             since = self.state.management_unknown_since or inputs.now
             self.state = replace(self.state, management_unknown_since=since)
-            if (inputs.now - since).total_seconds() >= MANAGEMENT_GRACE_S:
+            grace = MANAGEMENT_GRACE_S if self.state.silent_since is None else SILENCE_GRACE_S
+            if (inputs.now - since).total_seconds() >= grace:
                 # No evidence of another owner: handed back as stale data is, the next start re-arms.
                 return "management_unknown"
         elif management is not None:
@@ -1518,6 +1537,46 @@ class Executor:
         if _writes_today(self.state, inputs) >= self._daily_cap:
             return "daily_write_cap"
         return self._charge_budget(inputs)
+
+    def _ride_out(self, inputs: ExecInputs) -> bool:
+        """Whether a running action may ride out a battery reading that is missing or stale (kept in the state):
+        within `SILENCE_GRACE_S`, the plan's action unchanged, and the fuse safe on what is known
+        without the battery's reading. A hold keeps `PEAK_COVER_A` and is not lifted for a peak; a balanced grid
+        charge fits under the cap counting none of its own charge back (the least it can be); a charge per phase is
+        not ridden out. Meanwhile nothing is written (`step`)."""
+        state = self.state
+        now = inputs.now
+        since = state.silent_since or now
+        self.state = replace(state, silent_since=since)
+        if (now - since).total_seconds() >= SILENCE_GRACE_S or inputs.action != state.action:
+            return False
+        if state.phase_kw is not None or inputs.headroom_a is None:
+            return False
+        if state.action == ACTION_HOLD:
+            return state.covered_at is None and inputs.headroom_a >= PEAK_COVER_A
+        if state.action == ACTION_GRID_CHARGE:
+            blind = replace(inputs, facts=replace(inputs.facts, power_kw=None))
+            cap = grid_charge_cap_kw(blind, state.rate_kw, yield_now=False)
+            return cap is not None and cap >= state.rate_kw - RATE_TOLERANCE_KW
+        return True
+
+    def _silent_since(self, inputs: ExecInputs, written_at: datetime | None) -> bool:
+        """Whether a running action's plant has said nothing since `written_at` (or is silent now, `None`): its
+        battery reading is missing, or (for a write) not reported since the write was made, or stale."""
+        if self.state.phase != "active" or self._export:
+            return False
+        age = inputs.battery_age_s
+        if inputs.facts.power_kw is None or age is None or not _fresh(inputs):
+            return True
+        return written_at is not None and age >= (inputs.now - written_at).total_seconds()
+
+    def _silent_not_taken(self, now: datetime, role: str, why: str, **detail: Any) -> list[dict[str, Any]]:
+        """A write not taken while the plant was silent: handed back as stale data is (no block, the next start
+        re-arms), never repeated, and no finding against the control or its verification."""
+        return [_event(now, "not_taken", role, why=why, silent=True, **detail), *self._begin_restore(now, "stale_data")]
+
+    def _riding_out(self) -> bool:
+        return self.state.phase == "active" and self.state.silent_since is not None
 
     def _setpoints_spent(self) -> bool:
         return self.state.setpoint_writes_today >= self.control.write_cap("setpoint")
@@ -1619,7 +1678,7 @@ class Executor:
             state = replace(state, pending=None, in_flight=(*_without(state.in_flight, state.pending), state.pending))
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
-            retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
+            retries={}, unrestored=(), management_unknown_since=None, silent_since=None, covered_at=None, peak_low_since=None,
             charging_since=None, over_since=None, priming=False, confirmed=(), phase_bad=(), house_kw=None,
         )
         self._release_unset()

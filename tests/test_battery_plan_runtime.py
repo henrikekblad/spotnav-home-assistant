@@ -37,6 +37,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     NO_PRICES,
     REASON_CODES,
     TRIGGER_FORECAST,
+    TRIGGER_INPUTS,
     TRIGGER_PRICES,
     TRIGGER_START,
     VARIANT_DEFENSIVE,
@@ -228,6 +229,43 @@ async def test_it_plans_again_on_new_prices_and_a_forecast_refresh_and_not_in_be
     shadow.tick(now + timedelta(seconds=3 * CHECK_S + 3))
     await hass.async_block_till_done()
     assert (plan.runs, plan.trigger) == (3, TRIGGER_PRICES)
+
+
+def _plant_states(hass: HomeAssistant, unavailable: bool, saved: dict[str, Any]) -> None:
+    """Every entity of the plant `unavailable` (its Modbus link silent), or back as it was."""
+    for state in hass.states.async_all():
+        if not state.entity_id.split(".", 1)[1].startswith("sigen_"):
+            continue
+        if unavailable:
+            saved[state.entity_id] = (state.state, dict(state.attributes))
+            hass.states.async_set(state.entity_id, "unavailable", dict(state.attributes))
+        elif state.entity_id in saved:
+            hass.states.async_set(state.entity_id, *saved[state.entity_id])
+
+
+@pytest.mark.parametrize(("silent_s", "plans_again"), [(90, False), (300, True)])
+async def test_a_plant_silent_a_minute_and_a_half_leaves_the_plan_in_force_and_plans_nothing_new(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, silent_s: int, plans_again: bool
+) -> None:
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    shadow = controller.battery_shadow
+    plan = shadow.plan
+    kept = plan.plan
+    assert plan.runs == 1 and kept
+    saved: dict[str, Any] = {}
+    _plant_states(hass, True, saved)
+    for seconds in range(10, silent_s + 1, 10):
+        shadow.tick(now + timedelta(seconds=seconds))
+        await hass.async_block_till_done()
+    assert plan.plan == kept
+    assert (plan.runs > 1) is plans_again
+    assert (plan.snapshot()["status"] == "no_plan") is plans_again
+    _plant_states(hass, False, saved)
+    for seconds in range(silent_s + 10, silent_s + 2 * int(CHECK_S) + 10, 10):
+        shadow.tick(now + timedelta(seconds=seconds))
+        await hass.async_block_till_done()
+    # Back: a silence ridden out leaves nothing to plan again for (its inputs never changed); a longer one does.
+    assert (plan.trigger == TRIGGER_INPUTS) is plans_again
 
 
 async def test_one_plan_at_a_time(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:

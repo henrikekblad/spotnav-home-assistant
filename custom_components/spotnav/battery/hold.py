@@ -24,7 +24,8 @@ The rules follow `plans/research_integrations/battery_control_2026-10-03.md` §3
   `REARM_S` (the executor's) after a restore.
 * The snapshot and the hand-back are the executor's: every role it would write is kept as found and written back
   (a never-set limit, Sigenergy's `unknown`, as the rating; never `unknown` itself).
-* Restore at once when the car stops charging from the grid, the battery charges, a reading goes stale, the plant
+* Restore at once when the car stops charging from the grid, the battery charges, a reading stays stale past the
+  executor's `SILENCE_GRACE_S` (sooner when the headroom falls under `PEAK_COVER_A` meanwhile), the plant
   leaves the grid, the measurement is lost, the headroom falls under `RESTORE_HEADROOM_A`, the battery stops being
   free (judged as the executor judges it: the Remote EMS SpotNav's own hold turns on is not the plant's own
   management, and a reading that blinks is the executor's to judge after its grace) or a control role goes away;
@@ -50,8 +51,10 @@ from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from .commands import SNAPSHOT, Native, control_for
 from .executor import (
     BATTERY_MAX_AGE_S,
+    PEAK_COVER_A,
     REARM_S,
     RESTORE_HEADROOM_A,
+    SILENCE_GRACE_S,
     ExecInputs,
     Preview,
     RoleRead,
@@ -129,6 +132,8 @@ class HoldMemory:
     #: The kWh the battery gave the car per local day (ISO date), and the last time it was counted.
     gave_car_kwh: dict[str, float] = field(default_factory=dict)
     counted_at: datetime | None = None
+    #: Since when a hold's battery reading has been missing or stale (ridden out as the executor does); not stored.
+    stale_since: datetime | None = None
 
     def as_dict(self) -> dict[str, Any]:
         def iso(moment: datetime | None) -> str | None:
@@ -302,6 +307,7 @@ def _released(memory: HoldMemory, now: datetime) -> HoldMemory:
         restore={},
         armed_since=None,
         last_change=now,
+        stale_since=None,
     )
 
 
@@ -312,7 +318,11 @@ def _restore_reason(inputs: HoldInputs, memory: HoldMemory) -> str | None:
         return "car_not_charging_from_grid"
     if facts.on_grid is False:
         return "off_grid"
-    if not _fresh(inputs):
+    if not _fresh(inputs) and (
+        memory.stale_since is None or (inputs.now - memory.stale_since).total_seconds() >= SILENCE_GRACE_S
+        or inputs.headroom_a is None or inputs.headroom_a < PEAK_COVER_A
+    ):
+        # A plant silent a while (its link drops for a minute or two) is ridden out as the executor rides it out.
         return "battery_reading_stale"
     if power is not None and power > DISCHARGE_KW:
         return "battery_charging"
@@ -347,6 +357,7 @@ def step(memory: HoldMemory, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecisi
         memory = replace(memory, noted=())
 
     if memory.held:
+        memory = replace(memory, stale_since=None if _fresh(inputs) else memory.stale_since or now)
         reason = _restore_reason(inputs, memory)
         if reason is None:
             return memory, None

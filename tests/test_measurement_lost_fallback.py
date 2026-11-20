@@ -257,3 +257,25 @@ async def test_a_measurement_back_lets_the_regulator_raise_again_by_its_own_rule
         await halo.tick()
     assert _amps(halo)[-1] > 6, "raised again once the measurement is back"
     assert halo.turn_off == []
+
+
+async def test_a_meter_silent_for_a_minute_and_a_half_never_raises_a_charger_and_steps_it_down_after_the_grace(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """The site's meter is the plant's own (a Sigenergy plant that does not answer Modbus for about 90 s at night):
+    nothing is raised on it, the charger is held for the grace and then at its minimum, never paused, and comes back
+    only by the regulator's own damped rules."""
+    halo = await _charging_at_16(hass, monkeypatch, "lost_silent_90")
+    for phase in ("l1", "l2", "l3"):
+        hass.states.async_set(f"sensor.{halo.site}_power_{phase}", "unavailable")
+    await hass.async_block_till_done()
+    await halo.tick()
+    await _lose_for(halo, MEASUREMENT_LOST_GRACE_S - 30.0)
+    assert halo.written() == [], "held within the grace"
+    await _lose_for(halo, 90.0 - (MEASUREMENT_LOST_GRACE_S - 30.0), step=10.0)
+    assert _amps(halo) == [6] and halo.turn_off == []
+    halo.reads(6.0)
+    _meter_reads(hass, halo, 7.0)
+    await hass.async_block_till_done()
+    await halo.tick()
+    assert _amps(halo) == [6], "no jump back on the meter's return"
