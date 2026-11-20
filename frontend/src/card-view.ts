@@ -63,11 +63,9 @@ import {
 import type { ActiveControlNotice } from "./site-settings";
 import {
   conflictText,
-  entityEditorBody,
   entityNameIn,
   modeLabel,
   siteWarningRows,
-  type EntityEditorBody,
 } from "./entity-editor";
 import {
   fieldsOf,
@@ -81,12 +79,9 @@ import {
 } from "./entity-config";
 import { type MarketFormValues } from "./market";
 import { type RegionLookup } from "./market-editor";
-import {
-  marketEditorBody,
-  type MarketEditorForm,
-} from "./market-editor";
-import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
-import { renderPlanPreview, type PreviewState } from "./plan-preview";
+import type { MarketEditorForm } from "./market-editor";
+import { settingsTrigger, type SettingsEditorForm } from "./settings-editor";
+import type { PreviewState } from "./plan-preview";
 import {
   GUEST_KWH_MAX,
   GUEST_KWH_MIN,
@@ -136,8 +131,8 @@ import { sendDebugEditor, type SendDebug } from "./send-debug";
 import { disconnectPhonesEditor, makeHomeEditor } from "./phones";
 import { betaEditor, betaSummary, readBeta, type BetaAnswer, type BetaCall } from "./beta";
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
-import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
-import type { PowerState, PowerUi } from "./power-view";
+import type { HistoryState } from "./history";
+import type { PowerState } from "./power-view";
 import { connectionLabel, guestLineFor, vehicleLineFor, type VehicleLineFacts } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
 import {
@@ -158,6 +153,11 @@ import type { SiteTarget } from "./api";
 import { SiteSections } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
 import { element } from "./dom";
+import type { ViewContext } from "./card-view-context";
+import { createEntityEditorSection } from "./card-view-entity-editor";
+import { createHistorySection } from "./card-view-history";
+import { createMarketEditorSection } from "./card-view-market-editor";
+import { createSettingsEditorSection } from "./card-view-settings-editor";
 
 /** What the camera's editors ask the card for. */
 export type CameraPictureRequest =
@@ -559,16 +559,6 @@ function nowSummaryText(model: CardModel, figure: string | null): string | null 
 
 /** The price the Display choice shows each unit with, in the minor unit ("163,1 öre/kWh", "1,63 kr/kWh"). */
 const PRICE_UNIT_EXAMPLE = 163.1;
-
-/** `hass.config.country`, when Home Assistant states one. */
-function homeAssistantCountry(hass: unknown): string | null {
-  if (typeof hass !== "object" || hass === null) {
-    return null;
-  }
-  const config = (hass as { config?: unknown }).config;
-  const country = typeof config === "object" && config !== null ? (config as { country?: unknown }).country : undefined;
-  return typeof country === "string" && country.trim() !== "" ? country : null;
-}
 
 export function bannerSeverity(model: CardModel): "blocking" | "notice" | null {
   return model.severity;
@@ -4479,141 +4469,38 @@ export function createCardView(input: CardViewInput): CardView {
     input.onSettingsOverviewOpened?.();
   }
 
-  // ---- the charge history dialog. The card owns the request; this holds what was last said and
-  // what the reader chose in it (the month, the day under the readout), and repaints on any change.
-  let historyState: HistoryState = { kind: "loading" };
-  const historyUi: HistoryUi = { view: "charges", month: null, pending: false, day: null, exporting: false, notice: null };
-  // The Power view: offered where the site measures its import; read when first chosen, then with the month.
-  let powerState: PowerState | null = null;
-  const powerUi: PowerUi = { day: null, pending: false };
-
-  function historyPower(): HistoryPower {
-    return {
-      offered: model.powerView,
-      state: powerState,
-      ui: powerUi,
-      handlers: {
-        onDay: (day) => {
-          powerUi.day = day;
-          paintHistory();
-          // Into a day: its way back takes the focus; back to the month: the day's bar does.
-          const target =
-            day === null
-              ? null
-              : historyDialog.element.querySelector<HTMLElement>("[data-action='power-month']");
-          target?.focus();
-        },
-      },
-    };
-  }
-
-  function chooseView(view: HistoryView): void {
-    historyUi.view = view;
-    historyUi.notice = null;
-    if (view === "power") {
-      powerUi.day = null;
-      const shown = powerState?.kind === "ready" ? powerState.answer.month : null;
-      if (powerState === null || powerState.kind === "failed" || (historyUi.month !== null && shown !== historyUi.month)) {
-        if (powerState?.kind === "ready") {
-          powerUi.pending = true;
-        } else {
-          powerState = { kind: "loading" };
-        }
-        paintHistory();
-        input.onPowerMonth?.(historyUi.month);
-        return;
-      }
-    } else if (historyState.kind === "ready" && historyUi.month !== null && historyState.answer.month !== historyUi.month) {
-      historyUi.pending = true;
-      paintHistory();
-      input.onHistoryMonth?.(historyUi.month);
-      return;
-    }
-    paintHistory();
-  }
-
-  function paintHistory(): void {
-    if (destroyed || !historyDialog.isOpen()) {
-      return;
-    }
-    const focused = (input.mount instanceof ShadowRoot ? input.mount.activeElement : doc.activeElement) as
-      | HTMLElement
-      | null;
-    const refocus =
-      focused !== null && historyDialog.element.contains(focused)
-        ? focused.dataset["view"] !== undefined
-          ? `button[data-view="${focused.dataset["view"]}"]`
-          : focused.dataset["month"] !== undefined
-          ? `button[data-month="${focused.dataset["month"]}"]`
-          : focused.dataset["action"] === "export"
-            ? "[data-action='export']"
-            : focused.dataset["monthSelect"] !== undefined
-              ? "[data-month-select]"
-              : null
-        : null;
-    historyDialog.show({
-      title:
-        model.chargerName === null
-          ? translate(model.language, "history.title")
-          : translate(model.language, "history.titleNamed", { name: model.chargerName }),
-      body: historyBody(doc, model.language, historyState, historyUi, {
-        onMonth: (month) => {
-          historyUi.month = month;
-          historyUi.day = null;
-          historyUi.notice = null;
-          if (historyUi.view === "power") {
-            powerUi.day = null;
-            powerUi.pending = true;
-            paintHistory();
-            input.onPowerMonth?.(month);
-            return;
-          }
-          historyUi.pending = true;
-          paintHistory();
-          input.onHistoryMonth?.(month);
-        },
-        onExport: () => {
-          input.onExportHistory?.();
-        },
-        onView: chooseView,
-      }, model.priceUnit, historyPower()),
-    });
-    if (refocus !== null) {
-      historyDialog.element.querySelector<HTMLElement>(refocus)?.focus();
-    }
-  }
-
-  function openHistory(): void {
-    if (destroyed) {
-      return;
-    }
-    issuesDialog.hide({ restoreFocus: false });
-    capabilityDialog.hide({ restoreFocus: false });
-    pauseDialog.hide({ restoreFocus: false });
-    strategyDialog.hide({ restoreFocus: false });
-    vehicleDialog.hide({ restoreFocus: false });
-    settingsOverviewDialog.hide({ restoreFocus: false });
-    historyUi.notice = null;
-    historyUi.exporting = false;
-    historyUi.month = null;
-    historyUi.pending = false;
-    historyUi.day = null;
-    historyUi.view = "charges";
-    historyState = { kind: "loading" };
-    powerState = null;
-    powerUi.day = null;
-    powerUi.pending = false;
-    historyDialog.show({
-      title: translate(model.language, "history.title"),
-      body: historyBody(doc, model.language, historyState, historyUi, {
-        onMonth: () => undefined,
-        onExport: () => undefined,
-      }, model.priceUnit),
-      opener: historyButton,
-    });
-    paintHistory();
-    input.onOpenHistory?.();
-  }
+  const viewContext: ViewContext = {
+    input,
+    model,
+    doc,
+    idPrefix,
+    now,
+    isDestroyed: () => destroyed,
+    dialogs: {
+      issues: issuesDialog,
+      release: releaseDialog,
+      capability: capabilityDialog,
+      pause: pauseDialog,
+      strategy: strategyDialog,
+      vehicle: vehicleDialog,
+      settings: settingsDialog,
+      market: marketDialog,
+      entity: entityDialog,
+      settingsOverview: settingsOverviewDialog,
+      history: historyDialog,
+      value: valueDialog,
+    },
+    bar,
+    settingsError,
+    settingsGeneral,
+    historyButton,
+    fit,
+    leaveSettingsChild,
+    entityFocus: () => entityFocus,
+    openSiteSettings,
+  };
+  const historySection = createHistorySection(viewContext);
+  const { openHistory } = historySection;
 
   historyButton.addEventListener("click", () => {
     openHistory();
@@ -4626,456 +4513,32 @@ export function createCardView(input: CardViewInput): CardView {
     openSettingsOverview();
   });
 
-  // The settings row and its dialog. The row labels itself from the dashboard's settings section (no
-  // request); a press is reported and the card hands back the form. One overlay serves all three
-  // editors, and opening one closes the others first.
-  let settingsKind: SettingsEditorKind | null = null;
-  let settingsForm: SettingsEditorForm | null = null;
-  let settingsBody: HTMLElement | null = null;
-  let settingsNotice: FailureSentence | null = null;
-  let settingsNoticeNode: HTMLParagraphElement | null = null;
-  /** The fixed row under the form (the notice, Save and Cancel); `null` while there is no form. */
-  let settingsFooter: HTMLElement | null = null;
-  let settingsSaveButton: HTMLButtonElement | null = null;
-  let settingsReapplyButton: HTMLButtonElement | null = null;
-  let settingsPending = false;
-  let settingsBodyReader: (() => SettingsFormValues) | null = null;
-  /** Where the Plan dialog's live preview is painted, while an editable Plan dialog is shown. */
-  let settingsPreviewSlot: HTMLElement | null = null;
-  /** The car the Plan popover is about, as its body last said ("Charging plan for EV6"); `null` for none. */
-  let settingsVehicleName: string | null = null;
+  const settingsEditorSection = createSettingsEditorSection(viewContext);
+  const {
+    openSettingsEditor,
+    showSettingsEditorForm,
+    showSettingsEditorConflict,
+    setSettingsEditorNotice,
+    setSettingsEditorPending,
+    setSettingsPreview,
+    settingsEditorOpen,
+    closeSettingsEditor,
+    setSettingsError,
+  } = settingsEditorSection;
 
-  function settingsTitleKey(kind: SettingsEditorKind): TranslationKey {
-    return `settings.${kind}.title` as TranslationKey;
-  }
+  const marketEditorSection = createMarketEditorSection(viewContext);
+  const {
+    openMarketEditor,
+    showMarketEditorForm,
+    showMarketEditorConflict,
+    setMarketEditorNotice,
+    setMarketEditorPending,
+    marketEditorOpen,
+    closeMarketEditor,
+  } = marketEditorSection;
 
-  function settingsTitle(kind: SettingsEditorKind): string {
-    return kind === "plan" && settingsVehicleName !== null
-      ? translate(model.language, "settings.plan.titleFor", { name: settingsVehicleName })
-      : translate(model.language, settingsTitleKey(kind));
-  }
-
-  function settingsTriggerFor(kind: SettingsEditorKind): HTMLElement | null {
-    return bar.querySelector<HTMLElement>(`[data-setting="${kind}"]`);
-  }
-
-  function applySettingsPending(): void {
-    if (settingsSaveButton !== null) {
-      settingsSaveButton.disabled = settingsPending;
-    }
-    if (settingsReapplyButton !== null) {
-      settingsReapplyButton.disabled = settingsPending;
-    }
-    const cancel = settingsFooter?.querySelector<HTMLButtonElement>("[data-action='cancel']") ?? null;
-    if (cancel !== null) {
-      cancel.disabled = settingsPending;
-    }
-  }
-
-  /**
-   * Notices inside the dialog: one sentence, re-inserted whenever the body is rebuilt. Validation
-   * errors and refusals share one node; the stable code stays as subdued detail.
-   */
-  function paintSettingsNotice(): void {
-    settingsNoticeNode?.remove();
-    settingsNoticeNode = null;
-    if (settingsBody !== null && settingsNotice !== null) {
-      if (settingsForm === null) {
-        settingsBody.replaceChildren();
-      }
-      const paragraph = element(doc, "p", C.settingsNotice, translate(model.language, settingsNotice.sentenceKey));
-      if (settingsNotice.code !== null) {
-        paragraph.dataset["code"] = settingsNotice.code;
-      }
-      // Beside Save, in the fixed row, so a refusal is seen however far down the form is scrolled.
-      if (settingsForm !== null && settingsFooter !== null) {
-        settingsFooter.prepend(paragraph);
-      } else {
-        settingsBody.append(paragraph);
-      }
-      settingsNoticeNode = paragraph;
-    }
-    applySettingsPending();
-  }
-
-  function renderSettingsBody(): void {
-    const form = settingsForm;
-    if (form === null || destroyed) {
-      return;
-    }
-    settingsVehicleName = null;
-    let building = true;
-    const built = settingsEditorBody(
-      doc,
-      model.language,
-      form,
-      {
-        onSave: (values) => input.onSaveSettings(form.kind, values),
-        onCancel: () => closeSettingsEditor(),
-        onReload: () => input.onReloadSettings(form.kind),
-        onReapply: (values) => input.onReapplySettings(form.kind, values),
-        ...(input.onPreviewSettings === undefined
-          ? {}
-          : { onDraft: (values: SettingsFormValues) => input.onPreviewSettings?.(form.kind, values) }),
-        // The title follows the Vehicle select and the mode at once, before anything is saved.
-        onVehicleName: (name) => {
-          settingsVehicleName = name;
-          if (!building && settingsForm === form && settingsDialog.isOpen()) {
-            settingsDialog.setTitle(settingsTitle(form.kind));
-          }
-        },
-      },
-      `${idPrefix}-settings-${form.kind}`,
-    );
-    building = false;
-    settingsBody = built.body;
-    settingsBodyReader = built.values;
-    settingsPreviewSlot = built.preview;
-    settingsSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
-    settingsReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
-    settingsFooter = takeActions(built.body, `${idPrefix}-settings`);
-    settingsDialog.show({
-      title: settingsTitle(form.kind),
-      body: built.body,
-      opener: settingsTriggerFor(form.kind),
-      actions: settingsFooter,
-    });
-    paintSettingsNotice();
-  }
-
-  function openSettingsEditor(kind: SettingsEditorKind): void {
-    if (destroyed) {
-      return;
-    }
-    settingsKind = kind;
-    settingsForm = null;
-    settingsBody = null;
-    settingsFooter = null;
-    settingsBodyReader = null;
-    settingsPreviewSlot = null;
-    settingsNotice = null;
-    settingsNoticeNode = null;
-    settingsSaveButton = null;
-    settingsReapplyButton = null;
-    settingsPending = false;
-    // One overlay at a time, and the others do not restore focus on the way out.
-    issuesDialog.hide({ restoreFocus: false });
-    capabilityDialog.hide({ restoreFocus: false });
-    pauseDialog.hide({ restoreFocus: false });
-    strategyDialog.hide({ restoreFocus: false });
-    vehicleDialog.hide({ restoreFocus: false });
-    marketDialog.hide({ restoreFocus: false });
-    settingsOverviewDialog.hide({ restoreFocus: false });
-    const loading = element(
-      doc,
-      "p",
-      `${C.muted} ${C.dialogIntro}`,
-      translate(model.language, "settings.loading"),
-    );
-    // This paragraph is the dialog's body until a form replaces it, so a failure that arrives while the
-    // record is still being read has a node to be shown in rather than a sentence with nowhere to go.
-    settingsBody = loading;
-    settingsFooter = null;
-    settingsDialog.show({
-      title: translate(model.language, settingsTitleKey(kind)),
-      body: loading,
-      opener: settingsTriggerFor(kind),
-    });
-  }
-
-  function showSettingsEditorForm(form: SettingsEditorForm): void {
-    if (destroyed || settingsKind !== form.kind) {
-      return;
-    }
-    settingsForm = form;
-    settingsNotice = null;
-    settingsPending = false;
-    renderSettingsBody();
-  }
-
-  function showSettingsEditorConflict(revision: number, phases: number | null): void {
-    const form = settingsForm;
-    if (destroyed || form === null) {
-      return;
-    }
-    const values = settingsBodyReader === null ? form.values : settingsBodyReader();
-    // The server's own phase count comes with the conflict: a reapply is built on that record, so the
-    // nominal power the form names must be the one that record would actually draw.
-    settingsForm = { ...form, values, conflict: revision, phases };
-    settingsNotice = null;
-    settingsPending = false;
-    renderSettingsBody();
-  }
-
-  function setSettingsEditorNotice(failure: FailureSentence | null): void {
-    settingsNotice = failure;
-    paintSettingsNotice();
-  }
-
-  function setSettingsEditorPending(pending: boolean): void {
-    settingsPending = pending;
-    applySettingsPending();
-  }
-
-  function setSettingsPreview(state: PreviewState): void {
-    const slot = settingsPreviewSlot;
-    if (destroyed || slot === null || !slot.isConnected || settingsKind !== "plan") {
-      return;
-    }
-    renderPlanPreview(doc, slot, state, model.format, now());
-  }
-
-  function closeSettingsEditor(): void {
-    settingsDialog.hide();
-    settingsKind = null;
-    settingsForm = null;
-    settingsBody = null;
-    settingsFooter = null;
-    settingsBodyReader = null;
-    settingsPreviewSlot = null;
-    settingsNotice = null;
-    settingsNoticeNode = null;
-    settingsSaveButton = null;
-    settingsReapplyButton = null;
-    settingsPending = false;
-  }
-
-  function settingsEditorOpen(): SettingsEditorKind | null {
-    return settingsDialog.isOpen() ? settingsKind : null;
-  }
-
-  function setSettingsError(failure: FailureSentence | null): void {
-    if (failure === null) {
-      settingsError.hidden = true;
-      settingsError.textContent = "";
-      settingsError.removeAttribute("data-code");
-      fit();
-      return;
-    }
-    settingsError.hidden = false;
-    settingsError.textContent = translate(model.language, failure.sentenceKey);
-    if (failure.code === null) {
-      settingsError.removeAttribute("data-code");
-    } else {
-      settingsError.dataset["code"] = failure.code;
-    }
-    // A sentence appearing or going changes the rows above the chart: in a box of fixed height, fit again.
-    fit();
-  }
-
-  // The area/fiscal dialog: the card owns the record, catalogue context and drafts. Picking another area
-  // rebuilds nothing here; the choice is reported with the values on screen and the card hands back the
-  // form for that area.
-  let marketForm: MarketEditorForm | null = null;
-  let marketBody: HTMLElement | null = null;
-  let marketNotice: FailureSentence | null = null;
-  let marketNoticeNode: HTMLParagraphElement | null = null;
-  /** The fixed row under the form (the notice, Save and Cancel); `null` while there is no form. */
-  let marketFooter: HTMLElement | null = null;
-  let marketSaveButton: HTMLButtonElement | null = null;
-  let marketReapplyButton: HTMLButtonElement | null = null;
-  let marketPending = false;
-  let marketBodyReader: (() => MarketFormValues) | null = null;
-
-  function marketTriggerFor(): HTMLElement | null {
-    // The area/fiscal editor is reached from the Settings popover: closing it returns focus to the
-    // button that opened that surface, the same rule the consumption editor follows.
-    return settingsGeneral;
-  }
-
-  function applyMarketPending(): void {
-    if (marketSaveButton !== null) {
-      marketSaveButton.disabled = marketPending;
-    }
-    if (marketReapplyButton !== null) {
-      marketReapplyButton.disabled = marketPending;
-    }
-  }
-
-  function paintMarketNotice(): void {
-    marketNoticeNode?.remove();
-    marketNoticeNode = null;
-    if (marketBody !== null && marketNotice !== null) {
-      if (marketForm === null) {
-        marketBody.replaceChildren();
-      }
-      const paragraph = element(doc, "p", C.settingsNotice, translate(model.language, marketNotice.sentenceKey));
-      if (marketNotice.code !== null) {
-        paragraph.dataset["code"] = marketNotice.code;
-      }
-      if (marketForm !== null && marketFooter !== null) {
-        marketFooter.prepend(paragraph);
-      } else {
-        marketBody.append(paragraph);
-      }
-      marketNoticeNode = paragraph;
-    }
-    applyMarketPending();
-  }
-
-  function renderMarketBody(): void {
-    const form = marketForm;
-    if (form === null || destroyed) {
-      return;
-    }
-    const built = marketEditorBody(
-      doc,
-      model.language,
-      form,
-      {
-        onSave: (values) => input.onSaveMarket(values),
-        onReload: () => input.onReloadMarket(),
-        onReapply: (values) => input.onReapplyMarket(values),
-        onCancel: () => leaveSettingsChild(marketDialog, input.onCancelMarket),
-        onAreaChange: (areaId, live) => input.onMarketAreaChange(areaId, live),
-        ...(input.onFindRegion === undefined ? {} : { onFindRegion: input.onFindRegion }),
-      },
-      idPrefix,
-      homeAssistantCountry(input.hass?.()),
-    );
-    marketBody = built.body;
-    marketBodyReader = built.values;
-    marketSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
-    marketReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
-    marketFooter = takeActions(built.body, `${idPrefix}-market`);
-    marketDialog.show({
-      title: translate(model.language, "market.title"),
-      body: built.body,
-      opener: marketTriggerFor(),
-      actions: marketFooter,
-    });
-    paintMarketNotice();
-  }
-
-  function openMarketEditor(): void {
-    if (destroyed) {
-      return;
-    }
-    marketForm = null;
-    marketBody = null;
-    marketFooter = null;
-    marketBodyReader = null;
-    marketNotice = null;
-    marketNoticeNode = null;
-    marketSaveButton = null;
-    marketReapplyButton = null;
-    marketPending = false;
-    // One overlay at a time, and the others do not restore focus on the way out.
-    issuesDialog.hide({ restoreFocus: false });
-    capabilityDialog.hide({ restoreFocus: false });
-    pauseDialog.hide({ restoreFocus: false });
-    strategyDialog.hide({ restoreFocus: false });
-    vehicleDialog.hide({ restoreFocus: false });
-    settingsDialog.hide({ restoreFocus: false });
-    settingsOverviewDialog.hide({ restoreFocus: false });
-    const loading = element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "market.loading"));
-    // This paragraph is the dialog's body until a form replaces it, so a failure that arrives while the
-    // two reads are still out has a node to be shown in rather than a sentence with nowhere to go.
-    marketBody = loading;
-    marketFooter = null;
-    marketDialog.show({
-      title: translate(model.language, "market.title"),
-      body: loading,
-      opener: marketTriggerFor(),
-    });
-  }
-
-  function showMarketEditorForm(form: MarketEditorForm): void {
-    if (destroyed || !marketDialog.isOpen()) {
-      return;
-    }
-    marketForm = form;
-    marketNotice = null;
-    marketPending = false;
-    renderMarketBody();
-  }
-
-  function showMarketEditorConflict(revision: number): void {
-    const form = marketForm;
-    if (destroyed || form === null) {
-      return;
-    }
-    const values = marketBodyReader === null ? form.values : marketBodyReader();
-    // The reader's own area and figures stay exactly as they are; only the base they would be applied
-    // to changes, and that base is the server's record the caller kept.
-    marketForm = { ...form, values, conflict: revision };
-    marketNotice = null;
-    marketPending = false;
-    renderMarketBody();
-  }
-
-  function setMarketEditorNotice(failure: FailureSentence | null): void {
-    marketNotice = failure;
-    paintMarketNotice();
-  }
-
-  function setMarketEditorPending(pending: boolean): void {
-    marketPending = pending;
-    applyMarketPending();
-  }
-
-  function marketEditorOpen(): boolean {
-    return marketDialog.isOpen();
-  }
-
-  function closeMarketEditor(options: { restoreFocus?: boolean } = {}): void {
-    marketDialog.hide(options);
-    marketForm = null;
-    marketBody = null;
-    marketFooter = null;
-    marketBodyReader = null;
-    marketNotice = null;
-    marketNoticeNode = null;
-    marketSaveButton = null;
-    marketReapplyButton = null;
-    marketPending = false;
-  }
-
-  // The entity editors: one overlay drawn from the config the card read, never optimistic.
-  let entityEditor: { scope: EntityScope | "vehicle" | "solar"; built: EntityEditorBody } | null = null;
-
-  function openEntityEditor(scope: EntityScope, config: EntityConfig, notice: FailureSentence | null = null): void {
-    if (destroyed) {
-      return;
-    }
-    const focus = entityFocus !== null && entityFocus.scope === scope ? entityFocus : null;
-    issuesDialog.hide({ restoreFocus: false });
-    capabilityDialog.hide({ restoreFocus: false });
-    pauseDialog.hide({ restoreFocus: false });
-    strategyDialog.hide({ restoreFocus: false });
-    vehicleDialog.hide({ restoreFocus: false });
-    settingsDialog.hide({ restoreFocus: false });
-    marketDialog.hide({ restoreFocus: false });
-    settingsOverviewDialog.hide({ restoreFocus: false });
-    const built = entityEditorBody(
-      doc,
-      model.language,
-      {
-        scope,
-        config,
-        hass: () => input.hass?.(),
-        appliesText: scope === "site" ? (model.site?.appliesToText ?? null) : null,
-        ...(model.chargerName === null ? {} : { chargerName: model.chargerName }),
-        ...(focus === null ? {} : { focus: focus.part }),
-      },
-      {
-        onSave: (draft) => input.onSaveEntities?.(scope, draft),
-        onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
-        onOpenSite: openSiteSettings,
-      },
-      idPrefix,
-    );
-    entityEditor = { scope, built };
-    if (notice !== null) {
-      built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
-    }
-    entityDialog.show({
-      actions: takeActions(built.body, `${idPrefix}-entity`),
-      title: focus !== null ? focus.title : translate(model.language, scope === "site" ? "entity.editor.site" : "entity.editor.charger"),
-      body: built.body,
-      opener: settingsGeneral,
-    });
-  }
+  const entityEditorSection = createEntityEditorSection(viewContext);
+  const { openEntityEditor, entityEditorOpen, closeEntityEditor } = entityEditorSection;
 
   /** The scrolling panel of the Settings page. */
   function overviewPanel(): HTMLElement {
@@ -5101,16 +4564,6 @@ export function createCardView(input: CardViewInput): CardView {
     settingsOverviewDialog.hide({ restoreFocus: false });
   }
 
-  function entityEditorOpen(): EntityScope | null {
-    return entityEditor !== null && entityEditor.scope !== "vehicle" && entityEditor.scope !== "solar" && entityDialog.isOpen()
-      ? entityEditor.scope
-      : null;
-  }
-
-  function closeEntityEditor(): void {
-    entityDialog.hide({ restoreFocus: false });
-    entityEditor = null;
-  }
 
   return {
     element: card,
@@ -5126,30 +4579,9 @@ export function createCardView(input: CardViewInput): CardView {
     openStrategy,
     openSettingsOverview,
     openHistory,
-    setHistoryState(state: HistoryState): void {
-      historyState = state;
-      historyUi.pending = false;
-      if (state.kind === "ready") {
-        historyUi.month = state.answer.month;
-      }
-      paintHistory();
-    },
-    setPowerState(state: PowerState): void {
-      powerUi.pending = false;
-      powerState = state;
-      if (state.kind === "ready") {
-        historyUi.month = state.answer.month;
-        if (powerUi.day !== null && !state.answer.days.some((day) => day.date === powerUi.day)) {
-          powerUi.day = null;
-        }
-      }
-      paintHistory();
-    },
-    setHistoryExport(notice: TranslationKey | null, exporting: boolean): void {
-      historyUi.notice = notice;
-      historyUi.exporting = exporting;
-      paintHistory();
-    },
+    setHistoryState: historySection.setHistoryState,
+    setPowerState: historySection.setPowerState,
+    setHistoryExport: historySection.setHistoryExport,
     dialogOpen: (kind) => {
       if (kind === "issues") {
         return issuesDialog.isOpen();
@@ -5256,21 +4688,10 @@ export function createCardView(input: CardViewInput): CardView {
       );
     },
     entityEditorOpen,
-    setEntityEditorNotice(failure: FailureSentence | null): void {
-      entityEditor?.built.setNotice(
-        failure === null ? null : translate(model.language, failure.sentenceKey),
-        failure === null ? null : failure.code,
-      );
-    },
-    markEntityFieldErrors(errors: readonly EntityFieldError[]): void {
-      entityEditor?.built.markErrors(errors);
-    },
-    setEntityEditorPending(pending: boolean): void {
-      entityEditor?.built.setPending(pending);
-    },
-    setEntityHass(hass: unknown): void {
-      entityEditor?.built.setHass(hass);
-    },
+    setEntityEditorNotice: entityEditorSection.setEntityEditorNotice,
+    markEntityFieldErrors: entityEditorSection.markEntityFieldErrors,
+    setEntityEditorPending: entityEditorSection.setEntityEditorPending,
+    setEntityHass: entityEditorSection.setEntityHass,
     closeEntityEditor,
     setDebugPending(pending: boolean): void {
       debugPending = pending;
