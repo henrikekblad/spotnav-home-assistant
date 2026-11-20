@@ -89,6 +89,9 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     ("battery", "solax_modbus/sofar"): "The older inverters of the integration's \"Sofar Old\" plugin are not detected.",
     ("battery", "solax_modbus/growatt"): "The off-grid SPF is not detected.",
     ("battery", "solax_modbus/solinteg"): "Also M-TEC Energy Butler and Wattsonic.",
+    ("meter", "foxess_modbus"): "The three-phase H3 family only (H3, AC3, AIO-H3, H3-Pro, H3-Smart, 1KOMMA5 "
+    "`1K5-HI`). The grid voltage per phase is disabled by default and is offered to be enabled. H1 and KH report "
+    "a total only, so the site needs its own grid meter.",
     ("charger", "wallbox"): "Since mid-2025 the Wallbox cloud allows about one request a minute per account, and "
     "Home Assistant's own polling already uses it: keep one charger per account, or use OCPP, which is recommended "
     "for Wallbox.",
