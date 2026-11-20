@@ -71,6 +71,9 @@ out until there is a path SpotNav steers.
   **Away** holds the house **3 °C below the wanted temperature** (never below 16 °C) until two hours before the
   return time, then warms it up. The gear's **Setback when away** sets those degrees, 1 to 6
   in half degrees; the warm-up before the return is the same.
+  The site also has a switch, **Heat away** (`switch.<site>_heat_away`), for an alarm or presence automation: on is
+  Away until it is turned off (the return time is set 90 days ahead), off is Home again at once. Away set by date on
+  the card reads as on.
 * **Plan**: the day's chart: the rooms, the comfort band, the setpoint, SpotNav's lowerings (what it did solid, what it
   plans lighter), the relay, hot water and the car. The arrows step back through past days (tap the day to choose
   one); this tab shows days only. Tap or point at the chart for a time's figures.
@@ -117,6 +120,52 @@ heat pump's meter, or nested inside it, is left out), and a zone without a meter
 * **The house card**: its flow's Heat is the same sum, with its own pie where it holds more than one source
   ([house card](house-card.md#heat-in-the-flow)).
 
+## SpotNav setting the zones' thermostats (off by default)
+
+A zone (an electric floor's thermostat, an air-to-air heat pump in heat mode) can follow the same heat plan as the
+heat pump. Each zone has its own switch, **Let SpotNav set this thermostat**: open the zone's row under **Zones** in
+the settings popover's **Heating** section. Off, the zone is **Watched**: read and counted, never written. A site with
+zones only, and no heat pump path, can use them.
+
+**From your own setting.** SpotNav keeps the setpoint it reads while it holds nothing as *your* value, and every write
+is relative to it: change the thermostat yourself and that is your new value. The zone's old offset no longer acts.
+
+| The plan's hour | What SpotNav sets |
+| --- | --- |
+| normal | nothing: your value stands |
+| lowered (an expensive or tight hour) | your value − 1 °C |
+| pre-heat, the warm-up before the return | your value + 0.5 °C |
+| the cooler night | your value − the night's degrees |
+| away | your value − the away setback |
+
+Each value is rounded to the thermostat's step and kept within its own limits. One degree is enough for the element
+to stop, and small enough that the thermostat keeps the room within a degree if Home Assistant stops mid-lowering.
+
+* **The zone's own comfort**: a lowering ends at once when the zone reads more than half a degree below your value,
+  and none starts there; a pre-heat ends at your value + 0.5 °C. The cooler night and away are what you asked for:
+  they are not released.
+* **The rules** are the relay's: a lowering lasts 45 minutes to 3 hours, an hour between, at most 6 hours a day, never
+  at −15 °C or colder, nothing while the plan or the outdoor reading is missing. At most 24 setpoint writes a day per
+  zone; then your value is written back and the zone is left for the day.
+* **Which thermostats**: one setpoint (not a range), in **heat** mode (not auto, which runs its own schedule, nor cool
+  or off: an air-to-air pump in summer is left alone), reading its temperature. SpotNav never changes the mode, the
+  fan or a preset.
+* **A check** on the first write: it must show on the thermostat within 90 seconds, and where the zone heats (its
+  power sensor draws, or it says it is heating) the heating must stop within 10 minutes of the first lowering. A
+  failed check says so under the zone's switch; turn it off and on to try again.
+* **Someone else's change wins.** A setpoint changed by hand (or the mode changed) while SpotNav holds one: SpotNav
+  writes nothing back, takes the new value as yours and leaves the zone until tomorrow.
+* **An automation that sets the thermostat blocks it** (one note on the card). A price automation that rewrites the
+  setpoint on every run would fight SpotNav: turn it off first. SpotNav never turns an automation off. An alarm that
+  set the house to away can drive the **Heat away** switch instead.
+* **Every way out writes your value back** where the thermostat still shows SpotNav's: the switch turned off, a
+  pause, a block, unload, Home Assistant stopping, and at the next start after a stop that could not.
+* A lowered zone with its own meter counts in the house forecast: its last day's mean power off over the lowering and
+  the same energy back over the two hours after, so the cars and the battery see it.
+
+The diagnostics (`heat_settings.control.zones`) show each zone's kept state, whether it qualifies and why not, the
+writes and a log.
+
 ## Indoor sensors and their offsets
 
 In the heat settings (the settings popover's **Heating** section) you choose one or more indoor temperature sensors.
@@ -125,7 +174,7 @@ half a degree), SpotNav lowers nothing. A sensor that rises fast while the other
 through a window) is left out while it lasts.
 
 Each chosen sensor has an **offset** against the house temperature, from −3 to +3 °C in half degrees (0 by default),
-edited on its own row under the sensors, like a zone's offset. Use it for a room that is meant to be cooler (an
+edited on its own row under the sensors. Use it for a room that is meant to be cooler (an
 upstairs kept at −1.5) or for a sensor that reads wrong (one that shows half a degree too warm: +0.5). SpotNav then
 compares each room's reading less its offset with the house's band, both in the coldest-room rule and in the
 comfort figures of the day's review and the heat history. The card still shows each room's own reading.

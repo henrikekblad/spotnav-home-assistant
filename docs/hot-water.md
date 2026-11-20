@@ -143,6 +143,54 @@ stricter rules after late reheats apply there too.
 **With the cars and the battery.** A peak's expected reheat that falls in a block SpotNav will hold is moved to the
 block's end in the house's expected load, so the cars' and the battery's plans see it there.
 
+## A plain water heater on a switch
+
+A water heater with an immersion element and its own thermostat, switched by a relay or contactor in Home Assistant
+(a Shelly on a contactor), can be chosen under **Water heater** in the settings popover's **Heating** section. Chosen
+alone it is **watched**: the card shows which hours SpotNav would allow it. **Control the water heater** lets SpotNav
+switch it, off in expensive hours and on in the cheap ones.
+
+**Set the water heater's own thermostat to at least 60 °C** (Boverket's advice for the tank; use a mixing valve
+against scalding). SpotNav cannot see the tank: what it can promise is that the element is *allowed* to run long
+enough for its own thermostat to finish, and is never kept off long. It cannot tell a thermostat set lower, an element
+that has failed, or a tank that cools faster than expected.
+
+**The rules that come before any price**, checked every 30 seconds:
+
+* **Full heat every day.** With a power sensor on the switch's device, full heat is the element drawing (500 W or
+  more) and then idle (under 50 W) for 15 minutes in a row while on: its thermostat is satisfied. From **20 hours**
+  after the last full heat the switch stays on, whatever the price, until full heat is seen again. With an optional
+  **tank sensor**, full heat is the tank at 60 °C for 10 minutes, and under 40 °C it is turned on at once until it
+  reads 45 °C. Without either, it gets one **5-hour window every night** (the cheapest five hours between 22:00 and
+  07:00; without prices 01:00-06:00), never shortened.
+* **Never off more than 8 hours in a row**: the windows are planned with gaps of at most 7 hours, and an off stretch
+  reaching 8 hours turns it on for at least an hour.
+* **On whenever something is missing**: no prices for the hour, the power sensor or the tank sensor not reading for
+  10 minutes, the switch not reading (nothing is written to it; it is turned on as soon as it reads).
+* **On at every way out**: the switch turned off, a pause, a block, a failed check, unload and Home Assistant stopping;
+  a stop that could not turn it on is made good at the next start before anything else.
+* **Two days without full heat** (with a power or tank sensor): control stops with the water heater on and one note,
+  "The water heater has not reached its thermostat for two days: check the thermostat and the element". It clears
+  itself at the next full heat; turning the switch off and on starts control again.
+
+**Yours first.** Turned on by anyone else while SpotNav holds it off, it is left on and SpotNav leaves it until
+tomorrow; turned off by someone else, it is left off (a holiday) until tomorrow, and then the rules above apply again.
+An automation that switches it (the solar surplus blueprint) blocks SpotNav's control with one note.
+
+**The cheap windows.** With a power sensor and three days of history, the day's need is the 80th percentile of the
+last 14 days' kWh plus 20 %; the hours are that need over the element's power, plus one (at least three), split 60/40
+into a night window ending by 05:00 and a day window ending by 17:00, each the cheapest block, avoiding the hours the
+import cap is tight where a block fits. Otherwise a 5-hour night window and a 3-hour day window ending by 17:00. Away
+changes nothing: the tank is not held cold. At most 8 planned switchings a day; after that it stays on for the day.
+
+**The check.** The first off and the following on must show on the switch within 90 seconds; where the element was
+drawing when switched off, its power must fall under 100 W within two minutes, else the switch does not cut the element
+(the wrong entity) and control stops with it on.
+
+With a power sensor the windows' energy counts in the house forecast, moved from the rest of the day into them, so
+the cars and the battery see it. The diagnostics (`heat_settings.control.water_heater`) show the mode, the element's
+power, the need, the last full heat, the windows, the hard rule in force, the writes and a log.
+
 ## What SpotNav never does
 
 It never turns off the pump's own periodic increase (NIBE's periodic hot-water increase, CTC's
