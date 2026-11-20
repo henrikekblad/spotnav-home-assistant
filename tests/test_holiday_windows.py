@@ -138,10 +138,10 @@ def test_workday_holidays_are_its_work_days_it_calls_no_workday() -> None:
     assert workday_answer({"binary_sensor.other": {"workday": False}}, "binary_sensor.workday") is None
 
 
-def test_the_calendar_fallback_adds_christmas_eve_for_sweden_only() -> None:
+def test_the_calendar_fallback_adds_christmas_and_new_years_eve_for_sweden_only() -> None:
     first, last = span(date(2026, 12, 1))
     listed = {date(2026, 12, 25), date(2026, 12, 26)}
-    assert calendar_holidays(listed, "SE", first, last) == {CHRISTMAS_EVE, *listed}
+    assert calendar_holidays(listed, "SE", first, last) == {CHRISTMAS_EVE, date(2026, 12, 31), *listed}
     assert calendar_holidays(listed, "DK", first, last) == listed
     # Outside the span read, nothing is added.
     first, last = span(date(2026, 6, 1))
@@ -203,12 +203,12 @@ async def test_a_workday_sensor_is_the_source_first(hass: HomeAssistant) -> None
     assert window.window_day(_local(2027, 1, 6, 12)) is None
 
 
-async def test_the_holiday_calendar_is_the_fallback_with_christmas_eve(hass: HomeAssistant) -> None:
+async def test_the_holiday_calendar_is_the_fallback_with_christmas_and_new_years_eve(hass: HomeAssistant) -> None:
     _calendar(hass, {date(2026, 12, 25), date(2026, 12, 26), EPIPHANY})
     source = _source(hass)
     await source.async_refresh()
     assert (source.source, source.entity_id) == (SOURCE_CALENDAR, "calendar.sverige")
-    assert source.dates == {CHRISTMAS_EVE, date(2026, 12, 25), date(2026, 12, 26), EPIPHANY}
+    assert source.dates == {CHRISTMAS_EVE, date(2026, 12, 25), date(2026, 12, 26), date(2026, 12, 31), EPIPHANY}
     window = HighLoadWindow(**{**_fields(GBG), "holidays": source.dates})
     assert window.window_day(_local(2026, 12, 24, 12)) is None
     assert window.window_day(_local(2027, 1, 6, 12)) is None
