@@ -1040,32 +1040,54 @@ async def test_a_start_whose_charger_reads_late_is_not_held_for_its_own_draw(has
         assert controller.import_target_snapshot()["budget"]["house_w"] < 1500
 
 
+@pytest.mark.parametrize("priority", ["battery_first", "car_first"])
 async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(
-    hass: HomeAssistant, monkeypatch
+    hass: HomeAssistant, monkeypatch, priority: str
 ) -> None:
     """The extra drop needs a discharge read live under `battery_first`; without one, the per-phase floor alone."""
-    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+    from custom_components.spotnav.site import import_target
 
+    floors: list[tuple[dict[str, Any], float | None]] = []
+    original = import_target.lowering_floor_a
+
+    def recorded(**kwargs: Any) -> float | None:
+        found = original(**kwargs)
+        floors.append((kwargs, found))
+        return found
+
+    _patch_everywhere(monkeypatch, "lowering_floor_a", recorded)
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "battstale", battery_entity="sensor.battstale_battery_power")
         controller = world.halo.controller
-        controller.config["solar_priority"] = "battery_first"
+        controller.config["solar_priority"] = priority
         world.battery_w = -5000.0
         world.show()
         await world.step()
         await _charging(world)
         await world.run(2)
-        request = next(r for r in controller._build_requests(credit=False) if r.charger_entry_id == world.halo.charger.entry_id)  # noqa: SLF001
-        voltages = {phase: _V for phase in ("L1", "L2", "L3")}
-        # The hold gives the floor no discharge where it cannot be read live, nor under `car_first`.
-        monkeypatch.setattr(SiteCapacityController, "_battery_first_discharge", lambda self: (True, None))
-        assert (controller._battery_first_discharge()[1] or 0.0) == 0.0  # noqa: SLF001
-        base = controller._target_floor_a(request, voltages, 120.0)  # noqa: SLF001
-        assert controller._target_floor_a(request, voltages, 120.0, 0.0) == base  # noqa: SLF001
-        # Read live: at most the discharge's amps, and never more than the smallest fuse margin.
-        with_battery = controller._target_floor_a(request, voltages, 120.0, 5000.0)  # noqa: SLF001
-        margin = min(controller.result.measured_margin_a[phase] for phase in ("L1", "L2", "L3"))
-        assert base is not None and with_battery == pytest.approx(base - min(5000.0 / (3 * _V), max(0.0, margin)))
+        assert floors, "the hold lowered the car and worked out its floor"
+        for kwargs, found in floors:
+            base = original(**{**kwargs, "battery_discharge_w": 0.0})
+            assert base is not None
+            if priority == "car_first":
+                # Under `car_first` the hold gives the floor no discharge: the grid's phases alone decide.
+                assert kwargs["battery_discharge_w"] == 0.0 and found == base
+            else:
+                # Read live: at most the discharge's amps, and never more than the smallest fuse margin.
+                assert kwargs["battery_discharge_w"] == pytest.approx(5000.0)
+                # The fuse margins of the recompute the floor was worked out on.
+                margin = min(kwargs["fuse_margin_a"].values())
+                assert found == pytest.approx(base - min(5000.0 / (3 * _V), max(0.0, margin)))
+        # A battery that cannot be read live under `battery_first` holds nothing at all: no discharge is counted on.
+        floors.clear()
+        world.battery_w = None
+        hass.states.async_set("sensor.battstale_battery_power", "unavailable")
+        await world.run(1)
+        if priority == "battery_first":
+            assert controller.import_target_snapshot()["not_applied"] == "battery_unknown"
+            assert not floors
+        else:
+            assert all(kwargs["battery_discharge_w"] == 0.0 for kwargs, _ in floors)
 
 
 async def test_a_battery_that_does_not_follow_the_car_never_takes_a_phase_over_the_fuse(
