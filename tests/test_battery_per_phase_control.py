@@ -323,6 +323,12 @@ async def test_the_check_probes_each_phase_with_a_small_discharge_and_records_th
     assert not any(value < 0 for _entity_id, value in targets), "the check never charges"
     assert world.targets() == (0.0, 0.0, 0.0) and hass.states.get(SWITCH).state == "off"
     assert control.status()["per_phase"]["state"] == "verified" and gate.per_phase(control.report()) == "verified"
+    # Only now are the plant's phases taken as the meter's of the same name (the cover per phase before a charge).
+    executor = control.executor
+    assert control.inputs(dt_util.now(), executor.control).plant_phases_mapped is True
+    control.reports[control.firmware_key()]["modes"]["per_phase"]["outcome"] = "wrong_phase"
+    assert control.inputs(dt_util.now(), executor.control).plant_phases_mapped is False
+    control.reports[control.firmware_key()]["modes"]["per_phase"]["outcome"] = "obeyed"
     # The other modes' rows are as they were, and control runs.
     assert control.report()["modes"]["hold"]["outcome"] == "obeyed" and control.state() == "on"
     # Decided: no further run.
