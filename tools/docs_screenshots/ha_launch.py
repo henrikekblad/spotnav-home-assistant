@@ -42,5 +42,11 @@ if os.environ.get("DOCS_SEED_HOUSE"):
 
     seed_house.install()
 
+if os.environ.get("DOCS_FAST_CHECK"):
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import demo_fast  # noqa: E402
+
+    demo_fast.install()
+
 if __name__ == "__main__":
     sys.exit(main())
