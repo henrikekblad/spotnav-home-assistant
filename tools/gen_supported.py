@@ -1071,9 +1071,11 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "Thermia Genesis",
         "`CJNE/thermiagenesis`, HACS",
         "Local (Modbus TCP)",
-        "Not yet",
-        "Setpoint: start and stop temperatures as numbers (disabled by default). No boost entity seen",
-        "A field tester is needed to check the registers.",
+        "Offset: the comfort wheel (stored, at most 12 writes a day), untested",
+        "No boost entity or register. The start and stop temperatures (numbers, disabled by default) are stored "
+        "settings SpotNav does not write",
+        "Every register is treated as a stored setting. The check must see the calculated supply move, else the path "
+        "stays read only. A field tester is needed.",
     ),
     (
         "Thermia Online",
