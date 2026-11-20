@@ -71,9 +71,11 @@ out until there is a path SpotNav steers.
   **Away** holds the house **3 °C below the wanted temperature** (never below 16 °C) until two hours before the
   return time, then warms it up. The gear's **Setback when away** sets those degrees, 1 to 6
   in half degrees; the warm-up before the return is the same.
-  The site also has a switch, **Heat away** (`switch.<site>_heat_away`), for an alarm or presence automation: on is
+  The site also has a switch, **Heat away**, for an alarm or presence automation: on is
   Away until it is turned off (the return time is set 90 days ahead), off is Home again at once. Away set by date on
-  the card reads as on.
+  the card reads as on. Its entity id is `switch.<site>_heat_away` on a Home Assistant in English; in another
+  language Home Assistant names it in that language when it is first created (as SpotNav's other entities), so pick
+  it from the site's device and rename it if the automation should read the same everywhere.
 * **Plan**: the day's chart: the rooms, the comfort band, the setpoint, SpotNav's lowerings (what it did solid, what it
   plans lighter), the relay, hot water and the car. The arrows step back through past days (tap the day to choose
   one); this tab shows days only. Tap or point at the chart for a time's figures.

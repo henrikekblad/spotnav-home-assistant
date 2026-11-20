@@ -169,6 +169,11 @@ that has failed, or a tank that cools faster than expected.
   10 minutes, the switch not reading (nothing is written to it; it is turned on as soon as it reads).
 * **On at every way out**: the switch turned off, a pause, a block, a failed check, unload and Home Assistant stopping;
   a stop that could not turn it on is made good at the next start before anything else.
+  **What SpotNav cannot do is act while Home Assistant is not running.** If Home Assistant crashes, loses power or
+  loses the relay's network while the water heater is off, it stays off until Home Assistant is back and reaches
+  the relay again. Where the relay has a timer of its own, set it to turn on by itself: on a Shelly, **Auto ON**
+  after 9 hours (32400 seconds), just past SpotNav's own 8 hours, so the tank is never left cold by a computer that
+  is gone.
 * **Two days without full heat** (with a power or tank sensor): control stops with the water heater on and one note,
   "The water heater has not reached its thermostat for two days: check the thermostat and the element". It clears
   itself at the next full heat; turning the switch off and on starts control again.
