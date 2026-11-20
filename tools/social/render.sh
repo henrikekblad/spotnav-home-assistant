@@ -9,8 +9,11 @@
 # from banner.html, card-and-app.html and feature-graphic.html with headless chromium. No Home Assistant needed: the pages use two
 # pictures kept in this folder. Refresh them when the card or the app changes, then run this again:
 #
-#   card-light.png  the house card in Home Assistant's light theme at twice the pixels:
+#   card-light.png  the house card in Home Assistant's light theme at twice the pixels (card-and-app, feature graphic):
 #                   DRIVER=v3shots.mjs tools/docs_screenshots/run.sh social-card
+#   card-dark-now.png, card-dark-flow.png, card-dark-earn.png
+#                   the house card's Now, Energy flow (month) and Earnings (month) tabs in the dark theme at twice
+#                   the pixels, for the banner: DRIVER=v3shots.mjs tools/docs_screenshots/run.sh social-dark
 #   app-main.png    the app's English store screenshot, copied from the app repository
 #                   (fastlane/metadata/android/en-US/images/phoneScreenshots/1_main.png)
 set -euo pipefail
