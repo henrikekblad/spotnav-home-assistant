@@ -925,22 +925,30 @@ def cover_a(inputs: ExecInputs, *, sale: bool = False) -> float:
 
 
 def cover_phase_a(inputs: ExecInputs) -> Phases | None:
-    """What the battery's discharge now gives each phase (A on the plant's A, B and C), where the plant's own power per phase
-    (`ExecInputs.plant_phase_kw`) is read: each phase's whole output. The reading has the sun's power in it too, which
-    is counted as well: a grid charge may take the sun into the battery instead of the house, so the figure is never
-    under what comes back on the phase (and may then be above the whole discharge). In its own mode a SigenStor
-    covers each phase's own load (on the owner's plant the grid read 0 on every phase with the house unbalanced and
-    the output on L3 matched the heat pump there), so a third a phase is never assumed. `None` when the power per
-    phase is not read or the battery does not discharge: then `cover_a`."""
+    """What ends on each phase when a grid charge starts (A on the plant's A, B and C), where the plant's own power
+    per phase (`ExecInputs.plant_phase_kw`) is read. `None` when it is not read: then `cover_a`.
+
+    The battery discharges: each phase's whole output. The reading has the sun's power in it too, which is counted
+    as well: a grid charge may take the sun into the battery instead of the house, so the figure is never under what
+    comes back on the phase (and may then be above the whole discharge). In its own mode a SigenStor covers each
+    phase's own load (on the owner's plant the grid read 0 on every phase with the house unbalanced and the output
+    on L3 matched the heat pump there), so a third a phase is never assumed.
+
+    The battery idle or charging: what the plant puts out is the sun's, which the plant in its own mode may put
+    where the house's load is (13 A of house on L1 all met by the sun reads 0 A there). Under the charge the plant's
+    power is taken to be the same on each of its phases, so a phase loses what it has above the plant's average
+    over the three: that part is its cover, and nothing where it is at or under the average. The same sun on every
+    phase is no cover: the charge takes a third of what it changes off each phase, which the cap already counts."""
     power = inputs.facts.power_kw
     plant = inputs.plant_phase_kw
     if (
-        power is None or not math.isfinite(power) or power >= 0 or inputs.volts_between_phases <= 0
+        power is None or not math.isfinite(power) or inputs.volts_between_phases <= 0
         or plant is None or not _finite3(plant)
     ):
         return None
     scale = 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
-    out = [max(value, 0.0) * scale for value in plant]
+    base = 0.0 if power < 0 else sum(plant) / 3.0
+    out = [max(value - base, 0.0) * scale for value in plant]
     return (out[0], out[1], out[2])
 
 
@@ -1996,7 +2004,9 @@ class Executor:
         gives the most loaded phase (`cover_a`; a sale's spread as the sale is): the headroom is measured under that
         cover, which ends with the charge. From idle the plant covers the house in its own mode, which follows the
         house's load on each phase: with the plant's power per phase read, each phase's own cover (`cover_phase_a`),
-        else all of it on one phase, as for a hold from idle (`hold_headroom_ok`). The first rate is the lower for it
+        else all of it on one phase, as for a hold from idle (`hold_headroom_ok`). With the battery idle or
+        charging, the sun the plant puts on a phase above its average over the three is that phase's cover (read
+        per phase only; without the reading the sun is taken to stay where it is). The first rate is the lower for it
         and the charge goes up once the cover has ended (`RATE_UP_DWELL_S`). 0 within a running charge (its own charge
         is counted back instead)."""
         state = self.state
