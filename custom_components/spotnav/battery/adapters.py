@@ -45,6 +45,18 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   100, a battery monitor or BMS at 225 by default.
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
 * Enphase, core `enphase_envoy`: `<serial>_<key>`.
+* FoxESS, `foxess_modbus` (nathanmarlor/foxess_modbus `94252f0`, read 2026-11-20, `plans/v3_foxess.md`): unique id
+  `foxess_modbus_[<prefix>_]<key>`, read only (no control is mapped). One integration for the H1 (G1, G2, LAN), AC1,
+  KH, H3, AC3, AIO-H3, H3-Pro and H3-Smart families; the 1KOMMA5 `1K5-HI-<kW>-V1` is read as an H3-Smart. The
+  level is `battery_soc` on H1, KH and H3; the H3-Pro and H3-Smart (and 1K5) have no total, only `battery_soc_1` and
+  `battery_soc_2` per battery input, which are combined (`soc_packs`, weighted by each pack's `bms_kwh_remaining`;
+  a site with one pack has `_2` unknown). No size is an entity anywhere (`bms_kwh_remaining` is the energy left now),
+  so it is learnt. The ratings exist only on H1 and KH: `bms_charge_rate` and `bms_discharge_rate` (A, the BMS's
+  allowed currents, both disabled by default) times the inverter's battery voltage `invbatvolt`, an estimate as for
+  GoodWe; elsewhere they are learnt. The floor is `min_soc_on_grid` (a number and a sensor of the same key); `min_soc`
+  is the off-grid floor and is not read. The mode is the select `work_mode`, free in "Self Use" ("Force Charge" and
+  "Force Discharge" appear there while the integration's remote control runs); the H1 LAN and early AIO-H3 have no
+  mode entity, so it is not required. The firmware is `master_version`.
 * Ferroamp, `ferroamp` (henricm/ha-ferroamp `b18097f`, 1.18.0, read 2026-11-18): `<slug>_ehub-<key>` on the EnergyHub
   and `<slug>_ehub-<key>-L1..L3` per phase (`sensor.py` `KeyedFerroampSensor`, `SinglePhaseFerroampSensor`); the
   ESOs and ESMs carry `<slug>_eso_<id>-<key>` and are not read. `soc` (%) and `ratedcap` (Wh) are the whole system's
@@ -171,6 +183,14 @@ class ReserveSource:
 
 
 @dataclass(frozen=True, slots=True)
+class SocPack:
+    """One battery pack's level (%) and, to weigh it by, the energy it holds now (kWh)."""
+
+    soc: Match
+    remaining: Match | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Adapter:
     brand: str
     label: str
@@ -193,6 +213,9 @@ class Adapter:
     plant_phase_sign: float = 1.0
     #: Where the battery's average cell temperature is read, the first found (see the module).
     cell_temperature: tuple[Match, ...] = ()
+    #: A battery that states no level of its own but one per pack (FoxESS H3-Pro, H3-Smart): read only when the
+    #: `soc` fact reads none, and combined by `facts.packs_soc`.
+    soc_packs: tuple[SocPack, ...] = ()
 
 
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
@@ -503,6 +526,26 @@ ENPHASE: Final = Adapter(
     ),
 )
 
+FOXESS: Final = Adapter(
+    brand="foxess",
+    label="FoxESS",
+    platforms=("foxess_modbus",),
+    facts={
+        "soc": _key("battery_soc"),
+        "charge_current": _key("bms_charge_rate"),
+        "discharge_current": _key("bms_discharge_rate"),
+        "voltage": _key("invbatvolt"),
+        "firmware": _key("master_version"),
+    },
+    soc_packs=(
+        SocPack(_key("battery_soc_1"), _key("bms_kwh_remaining_1")),
+        SocPack(_key("battery_soc_2"), _key("bms_kwh_remaining_2")),
+    ),
+    modes=(ModeRule(_key("work_mode", "select"), frozenset({"Self Use"}), "work mode", required=False),),
+    reserves=(ReserveSource(_key("min_soc_on_grid", "number", "sensor")),),
+)
+
+
 def _ehub(key: str, *domains: str) -> Match:
     """Ferroamp's EnergyHub entity: `<slug>_ehub-<key>` (the ESOs' and ESMs' `<slug>_eso_<id>-<key>` never match)."""
     return Match(domains or ("sensor",), re.compile(rf"_ehub-{re.escape(key)}$"))
@@ -521,7 +564,7 @@ FERROAMP: Final = Adapter(
 
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP,
+    FERROAMP, FOXESS,
 )
 
 

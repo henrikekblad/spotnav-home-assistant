@@ -20,6 +20,8 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   (wills106 `4acd644`: "Energy Storage Mode", "Priority", "Working Mode"), not an app's names. Solinteg's
   aggregators are the third-party EMS a Swedish retailer lists as compatible (KP Energy [F],
   `plans/research_integrations/solinteg_m2ht_2026-11.md`).
+* FoxESS's own modes are the options of `foxess_modbus`'s `work_mode` select (nathanmarlor `94252f0`). That
+  1KOMMA5's Heartbeat steers its `1K5-HI` units is an assumption of `plans/v3_foxess.md` [U].
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -70,6 +72,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 "Growatt: battery-first and grid-first time slots"),
     Coexistence("solinteg", "Solinteg", ("solax_modbus",), "Solinteg app: economic and time-of-use modes",
                 ("CheckWatt [F]", "Samvolt [F]", "Enequi [F]")),
+    Coexistence("foxess", "FoxESS", ("foxess_modbus",), "FoxESS: Feed-in First, Back-up and Peak Shaving work modes",
+                ("1KOMMA5 Heartbeat (1K5 units) [U]",)),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi",), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

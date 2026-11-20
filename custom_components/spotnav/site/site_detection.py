@@ -729,6 +729,9 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("fronius",), _re(r"power_battery$"), inverted=True),
     BatteryRow(("goodwe",), _re(r"pbattery1$"), inverted=True),
     BatteryRow(("solarman",), _re(r"battery_power$"), inverted=True),
+    # FoxESS (`94252f0`): `invbatpower` is the whole battery's power on every family, discharge-positive (its
+    # `battery_discharge` is the value while positive); the H1-US register's opposite sign is negated by the
+    # integration itself. The H3-Pro's and H3-Smart's per-input `invbatpower_1` and `_2` are not read.
     BatteryRow(("foxess_modbus",), _re(r"invbatpower$"), inverted=True),
     BatteryRow(("enphase_envoy",), _re(r"battery_discharge$"), inverted=True),
     # Sungrow reports the battery in two conventions. Local Modbus (the `battery_power` register of

@@ -830,11 +830,15 @@ OVERVIEW: tuple[Overview, ...] = (
         note="The meter may sit on the load or the PV side: check that it measures the main feed.",
     ),
     Overview(
-        "FoxESS (H1, H3, KH, AC1, AC3)",
+        "FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also 1KOMMA5)",
         "`foxess_modbus`, HACS (nathanmarlor/foxess_modbus). The cloud integration (`foxess`) is not read",
         keys=("foxess_modbus",),
-        control="Not mapped. Work mode, charge periods and SoC limits exist locally, depending on the model",
-        note="Only the battery's power is read, not the grid.",
+        adapter="foxess",
+        control="Not mapped: read only. Remote control (force charge and discharge), work mode, charge periods and "
+        "SoC limits exist locally, depending on the model",
+        note="Only the three-phase H3 family reports the grid per phase; H1 and KH need their own grid meter. The "
+        "size is learnt everywhere, and the ratings too except on H1 and KH with the two BMS rate sensors enabled. "
+        "The H3-Pro and H3-Smart report a level per battery pack, which SpotNav combines.",
     ),
     Overview(
         "SMA",

@@ -330,6 +330,8 @@ PLAN_REASON = {
     "ferroamp": "no_rated_power",
     # The other `solax_modbus` plugins: Sofar and Growatt state no size (learnt), Solinteg states all the plan needs.
     "sofar": "no_capacity", "growatt": "no_capacity", "solinteg": None,
+    # FoxESS states no size on any family (learnt).
+    "foxess": "no_capacity",
 }
 
 
