@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/spotnav-social-preview.png" alt="SpotNav for Home Assistant: the house card's energy flow, earnings and live flows beside the Android app">
+</p>
+
 # SpotNav for Home Assistant
 
 **Learns your home. Plans your energy.**
@@ -5,7 +9,7 @@
 Local control for your EV, battery and heating, planned around spot prices, solar and weather. Built for Home
 Assistant.
 
-![The SpotNav charging, house and heat cards on a Home Assistant dashboard](docs/images/readme-hero.png)
+![The SpotNav charging, house and heat cards on a Home Assistant dashboard](docs/images/readme-hero-dark.png)
 
 ## What it does
 
@@ -25,15 +29,23 @@ Assistant.
 3. Add the **SpotNav** card to a dashboard. The card comes with the integration: there is
    no dashboard resource to add.
 
-**[Read the documentation]({{SITE_URL}})** (the same pages are in [docs/](docs/index.md)).
+**[Read the documentation](https://spotnav.sensnology.se)** (the same pages are in [docs/](docs/index.md)).
 
-## Support
+## Support SpotNav
 
-- Questions and problems: [Troubleshooting](docs/troubleshooting.md), then a
-  [GitHub issue](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose).
-- Tell us how your hardware works: a short hardware report on the same page helps the next person.
-- Like it? Star the repository, or support the project through
-  [GitHub Sponsors](https://github.com/sponsors/henrikekblad).
+- **Report a problem.** Open an issue with the [bug report form](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose).
+  Then send the debug info from the card (**Settings, Support, Send debug info**) and mention the reference it
+  shows in the issue. The file holds your entity names and charging times, so please don't attach it to the public
+  issue. [Troubleshooting](docs/troubleshooting.md) covers the common problems.
+- **Become a beta tester.** In the card, **Settings, Support, Beta tester** sends the redacted debug info once a
+  night for 14 days and offers a short hardware test; see [Beta testing](docs/beta-testing.md).
+- **Tell how your hardware works.** A short [hardware report](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose)
+  moves a charger, meter, battery or heat pump from "supported" to "confirmed" and helps the next person decide.
+- **Contribute.** Pull requests are welcome, for code as well as [translations](docs/translating.md); see
+  [Development](docs/development.md).
+- ⭐ **Star the repository.** Stars help others find SpotNav on GitHub and in HACS.
+- 💖 **Sponsor.** If SpotNav saves you money, [GitHub Sponsors](https://github.com/sponsors/henrikekblad) takes a
+  one-time or monthly contribution and keeps the project going.
 
 SpotNav sends nothing about your installation unless you ask it to. See [Privacy](docs/privacy.md).
 
