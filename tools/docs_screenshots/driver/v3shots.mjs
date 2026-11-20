@@ -227,6 +227,31 @@ if (only.has("social-card")) {
   } catch (err) { failed.push(`social-card: ${err.message}`); }
 }
 
+// The house card in the dark theme at twice the pixels, one picture per tab (Now, Energy flow, Earnings), for the
+// banner's overlapping cards: tools/social/card-dark-<tab>.png. Only on request: `run.sh social-dark`. Last, since it
+// switches the page to the dark theme.
+if (only.has("social-dark")) {
+  await scene();
+  await b.send("Page.addScriptToEvaluateOnNewDocument", { source: `try { localStorage.setItem("selectedTheme", '{"dark":true}'); } catch (e) {}` });
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+  await b.send("Emulation.setDeviceMetricsOverride", { width: 700, height: 1800, deviceScaleFactor: 2, mobile: false });
+  await b.gotoReady(`${ha.BASE}/v3-house/view`, `!!${CARD(TAGS.house)} && ${CARD(TAGS.house)}.shadowRoot.innerHTML.length > 2000`);
+  await sleep(2500);
+  for (const name of ["now", "flow", "earn"]) {
+    try {
+      await tab(TAGS.house, name);
+      // The month reads better than a morning's day: the earnings have days behind them, the flow has the battery in it.
+      if (name !== "now") {
+        await b.eval(`[...${CARD(TAGS.house)}.shadowRoot.querySelectorAll("button")].find((e) => (e.innerText || "").trim() === "Month")?.click()`);
+        await sleep(2500);
+      }
+      const clip = await b.shotElement(path.join(REPO, "tools", "social", `card-dark-${name}.png`), CARD(TAGS.house), 0);
+      console.log(`   card-dark-${name} ${clip.width}x${clip.height} (twice the pixels)`);
+    } catch (err) { failed.push(`social-dark ${name}: ${err.message}`); }
+  }
+  done.push("social-dark");
+}
+
 await b.close();
 console.log(`\nwritten: ${done.length}  failed: ${failed.length}`);
 for (const f of failed) console.log("FAILED " + f);
