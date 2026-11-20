@@ -166,11 +166,14 @@ OUTDOOR_WEATHER: Final = "weather"
 
 #: A heat pump integration's outdoor temperature sensor, by the key at the end of its unique id: NIBE's BT1 (40004
 #: on the F series, VVM and SMO, 30002 on the S series, `nibe_heatpump` `<entry>-<coil>`; myUplink's parameter
-#: 40004, `<device>-<parameter>`) and MELCloud's `<serial>-<mac>-outside_temperature` (read 2026-11-13).
+#: 40004, `<device>-<parameter>`) and MELCloud's `<serial>-<mac>-outside_temperature` (read 2026-11-13). Thermia Genesis has
+#: no entry id: its unique id is `thermiagenesis_<register key>`, here `input_outdoor_temperature` (read from the
+#: integration's register list 2026-11-20, `heat/adapters.py`).
 OUTDOOR_SENSORS: Final[dict[str, re.Pattern[str]]] = {
     "nibe_heatpump": re.compile(r"-(?:40004|30002)$"),
     "myuplink": re.compile(r"-40004$"),
     "melcloud": re.compile(r"-outside_temperature$"),
+    "thermiagenesis": re.compile(r"^thermiagenesis_input_outdoor_temperature$"),
 }
 
 

@@ -75,8 +75,8 @@
         }
       },
       "site": {
-        "title": "Anlæg",
-        "description": "Anlægget holder sine laderes samlede strøm under hovedsikringen. Lastbalancering kan slås til og fra senere; den er bedste indsats, ikke en beskyttelsesanordning. Hovedsikringens størrelse skal angives udtrykkeligt -- den gættes aldrig ud fra målt last. {charger_hint}",
+        "title": "Dit hjem",
+        "description": "Dit hjem er hovedsikringen og elmåleren. SpotNav har brug for det til huskortet, hjemmebatteriet, varmen, solopladning og lastbalancering. Lastbalancering kan slås til senere; den er bedste indsats, ikke en beskyttelsesanordning. Hovedsikringens størrelse skal angives, aldrig gættes ud fra målt last. {charger_hint}",
         "data": {
           "name": "Anlæggets navn",
           "main_fuse_a": "Hovedsikring (A)",

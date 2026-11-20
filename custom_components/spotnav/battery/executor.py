@@ -100,7 +100,7 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   (`ExecInputs.phase_caps_kw`, `gate.grid_charge_phase_caps_kw`), a grid charge is written as three targets instead
   of the brand's own balanced charge (`phase_charge_kw`). Each phase gets at most its HA-down cap and at most its
   own live room (what the plant already takes on that phase, by its own power per phase, plus that phase's headroom
-  less `HEADROOM_MARGIN_A`); the plan's power and the battery's rating bound the sum, spread as evenly as the caps
+  less `HEADROOM_MARGIN_A`, less what the plant puts out on it now, which a target ends); the plan's power and the battery's rating bound the sum, spread as evenly as the caps
   allow (`gate.phase_split_kw`). The targets stay if Home Assistant stops, so every one of them is within the cap
   that keeps its phase under the fuse at the house's learned peak. A phase's charge is a whole number of amps
   (`PHASE_STEP_A`, rounded down), so a reading that wobbles writes nothing. It goes down at once
@@ -722,7 +722,9 @@ def _kw(amps: float, volts: float) -> float:
     return amps * math.sqrt(3.0) * volts / 1000.0
 
 
-def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True) -> float | None:
+def grid_charge_cap_kw(
+    inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True, covered_a: float = 0.0
+) -> float | None:
     """The most the battery may charge from the grid now (kW), `None` when the headroom is unknown.
 
     What the battery already takes from the grid is counted back (it is in the measured import): at most its own
@@ -730,7 +732,11 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
     above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse, on as many phases as the plant spreads
     the charge over (`ExecInputs.charge_phases`: a charge not known to be balanced may land on the tightest one). With "car first" and a car held, the
     battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
-    it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
+    it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate.
+
+    `covered_a`: what the battery's discharge now gives the most loaded phase (`cover_a`), counted out of the headroom
+    on a change into the charge (from a sale, say): the headroom is measured while the battery still covers, and that
+    cover ends with the change."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return None
     battery = inputs.facts.power_kw
@@ -739,7 +745,8 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bo
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
         measured = max(min(battery, inputs.grid_import_kw), 0.0)
     phases = min(max(inputs.charge_phases, 1), 3)
-    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases) * phases / 3
+    room_a = inputs.headroom_a - max(covered_a, 0.0) - HEADROOM_MARGIN_A
+    cap = own + _kw(room_a, inputs.volts_between_phases) * phases / 3
     if inputs.car_first and inputs.car_held:
         cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap
@@ -778,7 +785,10 @@ def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool =
     """The most each phase may charge now (kW): its HA-down cap (`ExecInputs.phase_caps_kw`, 0 without one) and its
     live room, what the plant already takes on that phase (at most what was commanded on it and what the plant's own
     power per phase shows, nothing when that is unknown, so never above the truth) plus the phase's headroom less
-    `HEADROOM_MARGIN_A`. `None` when a phase's headroom is unknown.
+    `HEADROOM_MARGIN_A`, less what the plant puts out on the phase now: the headroom is measured under that output (a
+    sale's, the cover the plant gives in its own mode, the sun's), and a target makes the phase's power the charge
+    instead. Without the plant's power per phase, all the battery discharges now is counted on each phase. `None`
+    when a phase's headroom is unknown.
 
     `grid`: the targets are the grid's (`PhaseControl.target_kind`), where the phase's cap may be the fuse itself
     (`gate.grid_charge_phase_caps_kw`), so the live room is reckoned exactly and is the one bound. A target of the
@@ -795,6 +805,8 @@ def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool =
         inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
     )
     plant = inputs.plant_phase_kw if _finite3(inputs.plant_phase_kw) else None
+    power = inputs.facts.power_kw
+    discharge = max(-power, 0.0) if power is not None and math.isfinite(power) else 0.0
     room: list[float] = []
     for index in range(3):
         if grid:
@@ -807,7 +819,8 @@ def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool =
         own = 0.0
         if plant is not None and commanded is not None:
             own = max(min(commanded[index], -plant[index]), 0.0)
-        live = own + (inputs.phase_headroom_a[index] - HEADROOM_MARGIN_A) * volts / 1000.0
+        output = max(plant[index], 0.0) if plant is not None else discharge
+        live = own + (inputs.phase_headroom_a[index] - HEADROOM_MARGIN_A) * volts / 1000.0 - output
         room.append(max(min(caps[index], live), 0.0))  # type: ignore[index]
     return (room[0], room[1], room[2])
 
@@ -867,25 +880,49 @@ def phase_charge_kw(
     return rates, None
 
 
-def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0) -> bool:
-    """Whether a hold may start (or a lifted one hold again, or a hold be changed into): the headroom keeps
-    `HEADROOM_MARGIN_A` once the battery stops covering what it discharges now.
+def cover_a(inputs: ExecInputs, *, sale: bool = False) -> float:
+    """What the battery's discharge now may give the most loaded phase (A): what comes back on it once the battery
+    stops covering. All of it on one phase (kW·1000 / the phase voltage): a SigenStor covers each phase on its own,
+    and the battery's power per phase is not known. A running sale (`sale`) on a plant that spreads its power evenly
+    over three phases (`ExecInputs.charge_phases`) gives each phase a third, unless the plant's own power per phase
+    (`ExecInputs.plant_phase_kw`) shows more on one: that phase's output is then counted, at most the discharge (the
+    sun's share of it is counted too, so the figure is never under the truth). 0 when the battery does not
+    discharge."""
+    power = inputs.facts.power_kw
+    if power is None or not math.isfinite(power) or power >= 0 or inputs.volts_between_phases <= 0:
+        return 0.0
+    kw = -power
+    if sale and inputs.charge_phases >= 3:
+        share = kw / 3.0
+        plant = inputs.plant_phase_kw
+        if plant is not None and _finite3(plant):
+            share = max(share, min(kw, max(plant)))
+        kw = share
+    return kw * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
 
-    The discharge is counted as if it were all on one phase (kW·1000 / the phase voltage): a SigenStor covers each
-    phase on its own, so what it gives may be one phase's load, and the battery's power per phase is not known.
+
+def hold_headroom_ok(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: bool = False) -> bool:
+    """Whether a hold may start (or a lifted one hold again, or a hold be changed into): the headroom keeps
+    `HEADROOM_MARGIN_A` once the battery stops covering what it discharges now (`cover_a`; `from_sale`: the
+    discharge now is a running sale's).
 
     A sale (`sale_kw`, its rate) uses the same rule less the sale's own share on each phase: spread evenly over a
     plant's three phases it still gives that back on the loaded one. A plant on fewer phases gets no share (the
     phase it puts out on is not known)."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
-    extra_a = 0.0
-    power = inputs.facts.power_kw
-    if power is not None and power < 0:
-        extra_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
+    return inputs.headroom_a - uncovered_a(inputs, sale_kw, from_sale=from_sale) >= HEADROOM_MARGIN_A
+
+
+def uncovered_a(inputs: ExecInputs, sale_kw: float = 0.0, *, from_sale: bool = False) -> float:
+    """What the start rule (`hold_headroom_ok`) counts as coming back on the most loaded phase (A): the cover now
+    (`cover_a`) less a sale's own share on each phase at `sale_kw` (a plant on three phases only)."""
+    if inputs.volts_between_phases <= 0:
+        return 0.0
+    extra_a = cover_a(inputs, sale=from_sale)
     if sale_kw > 0 and inputs.charge_phases >= 3:
         extra_a = max(extra_a - sale_kw * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases), 0.0)
-    return inputs.headroom_a - extra_a >= HEADROOM_MARGIN_A
+    return extra_a
 
 
 # --- helpers -------------------------------------------------------------------------------------------------------
@@ -1869,12 +1906,13 @@ class Executor:
         facts = inputs.facts
         action = inputs.action
         rate = abs(inputs.rate_kw)
+        covered_a = self._change_cover_a(inputs) if action == ACTION_GRID_CHARGE else 0.0
         if action == ACTION_GRID_CHARGE and self.control.fixed_charge:
             # The plant charges at its own rate: it must fit under the fuse cap as it is, never lowered.
             fixed = fixed_rate_kw(self.control, facts)
             if fixed is None or not math.isfinite(fixed):
                 return 0.0, "size_unknown"
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False)
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=False, covered_a=covered_a)
             if cap is None:
                 return 0.0, "headroom_unknown"
             if fixed > cap + RATE_TOLERANCE_KW:
@@ -1889,7 +1927,7 @@ class Executor:
                 self.state.phase != "active" or changed is None
                 or (inputs.now - changed).total_seconds() >= RATE_UP_DWELL_S
             )
-            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now)
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now, covered_a=covered_a)
             if cap is None:
                 return 0.0, "headroom_unknown"
             rate = min(rate, cap)
@@ -1902,6 +1940,15 @@ class Executor:
             if rate < MIN_RATE_KW:
                 return 0.0, "rate_too_small"
         return round(rate, 3), None
+
+    def _change_cover_a(self, inputs: ExecInputs) -> float:
+        """On a change into a grid charge from a running action, what the battery's discharge now gives the most
+        loaded phase (`cover_a`; a sale's spread as the sale is): the headroom is measured under that cover, which
+        ends with the change. 0 within a running charge (its own charge is counted back instead) and from idle."""
+        state = self.state
+        if state.phase != "active" or state.action in (None, ACTION_GRID_CHARGE):
+            return 0.0
+        return cover_a(inputs, sale=state.action == ACTION_EXPORT_DISCHARGE)
 
     def _hold_charge_problem(self, inputs: ExecInputs) -> str | None:
         """Why a hold that may itself charge from the grid at the plant's fixed rate
@@ -1925,6 +1972,38 @@ class Executor:
         rate it would run (`hold_headroom_ok`)."""
         rate, _why = self._rate(inputs, 0.0)
         return hold_headroom_ok(inputs, rate)
+
+    @staticmethod
+    def _sale_step_too_large(inputs: ExecInputs, rate: float) -> bool:
+        """Whether a sale stepped down to `rate` fails the sale's start rule on a phase: the step takes back the cover
+        the sale gives now beyond its new share (`uncovered_a`, from the running sale), as an end into a hold would,
+        and never more off one phase than the step itself (what the battery discharges now less `rate`, all of it on
+        one phase): the sun in the plant's power per phase, and a plant not known to spread its sale over three
+        phases, are then judged by the step and not by the whole sale.
+
+        Each phase is judged by the site meter's sign. One that exports at least what is taken back only exports
+        less. Any other must keep `HEADROOM_MARGIN_A`: its headroom, plus what it exports now (the fuse is at least
+        the two together), less what is taken back. With the meter's signs or a phase's headroom not known, the
+        least headroom of any phase less what is taken back. Judged only for a step that may take at least
+        `HEADROOM_MARGIN_A` off a phase: a smaller one is the fuse hand-back's (`RESTORE_HEADROOM_A`, the next
+        look)."""
+        power = inputs.facts.power_kw
+        if power is None or not math.isfinite(power) or inputs.volts_between_phases <= 0:
+            return False
+        phase_v = inputs.volts_between_phases / math.sqrt(3.0)
+        step_a = max(-power - rate, 0.0) * 1000.0 / phase_v
+        taken_a = min(uncovered_a(inputs, rate, from_sale=True), step_a)
+        if taken_a < HEADROOM_MARGIN_A:
+            return False
+        signed, rooms = inputs.grid_phase_kw, inputs.phase_headroom_a
+        if not _finite3(signed) or not _finite3(rooms):
+            return inputs.headroom_a is None or inputs.headroom_a - taken_a < HEADROOM_MARGIN_A
+        assert signed is not None and rooms is not None
+        for grid_kw, room in zip(signed, rooms, strict=True):
+            export_a = max(-grid_kw, 0.0) * 1000.0 / phase_v
+            if export_a < taken_a and room + export_a - taken_a < HEADROOM_MARGIN_A:
+                return True
+        return False
 
     def _blocker(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
@@ -2124,15 +2203,17 @@ class Executor:
         ):
             # A slow control (a cloud) changes its action no sooner than its own minimum: the plan's next look asks again.
             return events
+        sale = state.action == ACTION_EXPORT_DISCHARGE
         if action != state.action and state.action != ACTION_GRID_CHARGE and (
-            (action == ACTION_HOLD and not hold_headroom_ok(inputs))
+            (action == ACTION_HOLD and not hold_headroom_ok(inputs, from_sale=sale))
             or (action == ACTION_EXPORT_DISCHARGE and not self._sale_headroom_ok(inputs))
         ):
             # A change into a hold or a sale from an action in which the battery may cover the house is held to that
             # action's start rule: the cover the battery gives now must not come off a phase that cannot carry it.
             # Handed back (plain self-consumption) instead. A sale covers the house and the cars behind the meter
-            # before it exports, so a sale into a hold is judged too. Only from a grid charge is the change made
-            # directly: ending a charge only frees room.
+            # before it exports, so a sale into a hold is judged too (on a plant known to spread a sale evenly over
+            # three phases, a third of it on each: `cover_a`). Only from a grid charge is the change made directly:
+            # ending a charge only frees room.
             return events + self._begin_restore(now, "headroom_too_small")
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
@@ -2158,6 +2239,8 @@ class Executor:
             since = (now - (state.rate_changed_at or now)).total_seconds()
             down = rate < state.rate_kw - RATE_TOLERANCE_KW
             up = rate >= state.rate_kw + RATE_STEP_KW and since >= RATE_UP_DWELL_S
+            if down and action == ACTION_EXPORT_DISCHARGE and self._sale_step_too_large(inputs, rate):
+                return events + self._begin_restore(now, "headroom_too_small")
             if down or up:
                 house, _behind = self._grid_terms(inputs, action, None)
                 self.state = replace(

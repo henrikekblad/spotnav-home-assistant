@@ -75,8 +75,8 @@
         }
       },
       "site": {
-        "title": "Standort",
-        "description": "Der Standort hält den gemeinsamen Strom seiner Ladestationen unter der Hauptsicherung. Das Lastmanagement lässt sich später ein- und ausschalten; es arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Die Hauptsicherung muss ausdrücklich eingegeben werden -- sie wird nie aus der gemessenen Last geschätzt. {charger_hint}",
+        "title": "Dein Zuhause",
+        "description": "Dein Zuhause ist die Hauptsicherung und der Netzzähler. SpotNav braucht sie für die Hauskarte, den Heimspeicher, die Heizung, das Solarladen und das Lastmanagement. Das Lastmanagement lässt sich später einschalten; es arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Die Hauptsicherung muss eingegeben werden und wird nie aus der gemessenen Last geschätzt. {charger_hint}",
         "data": {
           "name": "Name des Standorts",
           "main_fuse_a": "Hauptsicherung (A)",

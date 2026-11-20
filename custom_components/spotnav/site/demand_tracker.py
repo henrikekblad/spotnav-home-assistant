@@ -306,9 +306,8 @@ class HourTracker:
     previous_month: tuple[int, int] | None = None
     previous: list[HourMean] = field(default_factory=list)
     running: RunningHour | None = None
-    #: The month document's keys a later release wrote beside the rows (3.0's `outdoor_c` and `ex_battery_kw`, by
-    #: hour start), as they were read: not used here, written back so going back to this release, and forward again,
-    #: keeps them.
+    #: The month document's keys this release does not know (`_MONTH_DOCUMENT_KEYS`), a later release's, as they
+    #: were read: not used here, written back so going back to this release, and forward again, keeps them.
     later_release: dict[str, Any] = field(default_factory=dict)
 
     def observe(

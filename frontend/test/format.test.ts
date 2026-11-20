@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { clock, dateLabel, departureDayLabel, energyAmount, formatNumber, hasZone, money, offsetLabel, periodIsAmbiguous, periodLabel, pricePerKwh, wallTimeRepeats, weekdayDate, weekdaySingular } from "../src/format";
+import { clock, dateLabel, departureDayLabel, energyAmount, formatFixed, formatNumber, hasZone, money, moneyMinorAsMajor, offsetLabel, periodIsAmbiguous, periodLabel, pricePerKwh, wallTimeRepeats, weekdayDate, weekdaySingular } from "../src/format";
 import { LANGUAGES, type Language } from "../src/i18n";
 
 const stockholm = {
@@ -194,5 +194,17 @@ describe("a weekday as the prices-for sentence takes it", () => {
     for (const bad of [0, 8, 1.5, Number.NaN, 1234]) {
       expect(weekdaySingular("en", bad)).toBeNull();
     }
+  });
+});
+
+describe("zero never carries a minus sign", () => {
+  const units = { major_unit: "kr", minor_unit: "öre" };
+  it("prints a negative amount that rounds to zero without the sign", () => {
+    expect(moneyMinorAsMajor("sv", -0.4, units)).toBe("0,00 kr");
+    expect(moneyMinorAsMajor("en", -0.4, units)).toBe("0.00 kr");
+    expect(formatFixed("en", -0.004, 2)).toBe("0.00");
+    expect(formatNumber("sv", -0.004, 2)).toBe("0");
+    expect(money({ ...stockholm, language: "sv" }, -0.004)).toBe("0 kr");
+    expect(formatFixed("en", -0.5, 2)).toBe("-0.50");
   });
 });
