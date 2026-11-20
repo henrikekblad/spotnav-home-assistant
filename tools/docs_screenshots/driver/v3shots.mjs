@@ -227,7 +227,7 @@ if (only.has("social-card")) {
   } catch (err) { failed.push(`social-card: ${err.message}`); }
 }
 
-// The README's hero picture in the dark theme: the three cards side by side on the dark dashboard background,
+// The README's hero picture in the dark theme: the three cards side by side on a transparent background,
 // docs/images/readme-hero-dark.png. Only on request (`run.sh readme-hero-dark`), and after every light picture, since
 // it switches the page to the dark theme.
 if (only.has("readme-hero-dark")) {
@@ -244,11 +244,14 @@ if (only.has("readme-hero-dark")) {
     parts.push(file);
   }
   const imgs = parts.map((f) => `<img src="data:image/png;base64,${fs.readFileSync(f).toString("base64")}">`).join("");
-  const html = `<!doctype html><meta charset=utf-8><style>html{background:#111111}body{margin:0;width:1600px;height:660px;display:flex;gap:28px;
+  const html = `<!doctype html><meta charset=utf-8><style>html{background:transparent}body{margin:0;width:1600px;height:660px;display:flex;gap:28px;
     justify-content:center;align-items:flex-start;padding-top:40px;box-sizing:border-box}img{display:block}</style>${imgs}`;
   await b.send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 660, deviceScaleFactor: 1, mobile: false });
   await b.goto("data:text/html;base64," + Buffer.from(html).toString("base64"), 1500);
+  // A transparent background, so the cards sit on the page's own colour (GitHub's, the website's) without a grey box.
+  await b.send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
   await b.shotRect(path.join(OUT, "readme-hero-dark.png"), { x: 0, y: 0, w: 1600, h: 660 });
+  await b.send("Emulation.setDefaultBackgroundColorOverride", {});
   done.push("readme-hero-dark");
   for (const f of parts) fs.rmSync(f, { force: true });
 }
