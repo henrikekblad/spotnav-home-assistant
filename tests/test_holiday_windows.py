@@ -238,3 +238,23 @@ async def test_a_failed_read_keeps_the_last_dates_and_is_tried_again(hass: HomeA
     await source.async_refresh()
     assert source.dates == kept
     assert source._read_day is None
+
+
+# ------------------------------------------------------------------------------------------------ the wiring
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_the_sites_window_parts_and_a_price_source_carry_the_holidays(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.pricing.price_source import site_demand_components, site_price_source
+    from custom_components.spotnav.runtime import domain_data
+
+    from .test_demand_site import pilot_site
+
+    entry = await pilot_site(hass, freezer)
+    source = domain_data(hass).holidays
+    assert source is not None
+    source.dates = HOLIDAYS
+    parts = site_demand_components(hass, entry.entry_id)
+    assert parts and all(part.window is not None and part.window.holidays == HOLIDAYS for part in parts)
+    price = site_price_source(hass, entry.entry_id)
+    assert price is not None and price.holidays == HOLIDAYS
