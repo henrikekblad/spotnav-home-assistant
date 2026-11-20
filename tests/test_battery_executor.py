@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
 
+from hypothesis import assume, given, settings, strategies as st
 import pytest
 
 from custom_components.spotnav.battery import gate
@@ -1007,6 +1008,98 @@ def test_a_grid_charge_started_low_for_the_cover_goes_up_once_the_cover_has_ende
                      headroom_a=25.0 - house_a - rate * 1000.0 / 3.0 / phase_v, volts_between_phases=400.0)
         assert house_a + executor.state.rate_kw * 1000.0 / 3.0 / phase_v <= 25.0 - HEADROOM_MARGIN_A + 0.01
     assert executor.state.phase == "active" and executor.state.rate_kw == 5.0
+
+
+_PHASE_V = 400.0 / 3**0.5
+
+
+def _idle_start_phases(
+    fuse: float, house: tuple[float, ...], battery_a: tuple[float, ...], sun_a: tuple[float, ...], plan_kw: float, *,
+    plant_read: bool, rooms_read: bool, charge_phases: int = 3,
+):
+    """A grid charge started from idle on a SigenStor in its own mode (A a phase): the battery puts `battery_a` out on
+    each phase and the sun `sun_a`; the meter is the house less the two (signed, an export as it is), its headroom
+    the fuse less the magnitude. The plant's power per phase and the headroom per phase are read or not; the meter's
+    signs are never given."""
+    grid = [load - part - sun for load, part, sun in zip(house, battery_a, sun_a, strict=True)]
+    rooms = tuple(fuse - abs(value) for value in grid)
+    plant = tuple((part + sun) * _PHASE_V / 1000.0 for part, sun in zip(battery_a, sun_a, strict=True))
+    executor, battery = _sigenergy()
+    _now, results = run(
+        executor, battery, T0, 1, "grid_charge", plan_kw, headroom_a=min(rooms),
+        phase_headroom_a=rooms if rooms_read else None, plant_phase_kw=plant if plant_read else None,
+        power_kw=-sum(battery_a) * _PHASE_V / 1000.0, grid_import_kw=sum(grid) * _PHASE_V / 1000.0,
+        volts_between_phases=400.0, charge_phases=charge_phases,
+    )
+    return executor, results
+
+
+_AMPS = st.floats(min_value=0.0, max_value=30.0, allow_nan=False)
+_SUN = st.one_of(st.just(0.0), st.floats(min_value=0.0, max_value=8.0, allow_nan=False))
+
+
+@settings(max_examples=400, deadline=None)
+@given(
+    fuse=st.sampled_from((16.0, 20.0, 25.0, 35.0)),
+    house=st.tuples(_AMPS, _AMPS, _AMPS),
+    battery_a=st.tuples(_AMPS, _AMPS, _AMPS),
+    sun_a=st.tuples(_SUN, _SUN, _SUN),
+    plan_kw=st.floats(min_value=0.5, max_value=12.0),
+    plant_read=st.booleans(),
+    rooms_read=st.booleans(),
+    charge_phases=st.sampled_from((1, 3)),
+)
+def test_fuse_a_grid_charge_from_idle_with_the_cover_per_phase_leaves_every_phase_under_the_fuse(
+    fuse: float, house: tuple[float, float, float], battery_a: tuple[float, float, float],
+    sun_a: tuple[float, float, float], plan_kw: float, plant_read: bool, rooms_read: bool, charge_phases: int,
+) -> None:
+    """Every start from idle the rule allows leaves each phase at most the fuse less the margin once the battery's
+    cover has ended: balanced and unbalanced houses and covers, the plant's power per phase and the headroom per
+    phase read or not, the meter's signs never known. A charge on one phase may land on any of them. With the
+    plant's power per phase read the sun's share on a phase may end with the cover too (the reading has it in it);
+    without it the rule counts the battery's discharge only, and the sun is taken to keep feeding the house."""
+    assume(sum(battery_a) > 0.05)
+    executor, results = _idle_start_phases(
+        fuse, house, battery_a, sun_a, plan_kw, plant_read=plant_read, rooms_read=rooms_read,
+        charge_phases=charge_phases,
+    )
+    if executor.state.phase != "active":
+        return
+    rate_a = executor.state.rate_kw * 1000.0 / _PHASE_V
+    for sun_kept in ((True, False) if plant_read else (True,)):
+        after = [load - (sun if sun_kept else 0.0) for load, sun in zip(house, sun_a, strict=True)]
+        if charge_phases >= 3:
+            worst = max(value + rate_a / 3.0 for value in after)
+        else:
+            worst = max(after) + rate_a
+        assert worst <= fuse - HEADROOM_MARGIN_A + 0.01, (sun_kept, worst, events(results, "enter"))
+
+
+def test_fuse_a_on_a_20_a_fuse_the_cover_per_phase_lets_a_charge_from_idle_start() -> None:
+    """The owner's case: a SigenStor on a 20 A fuse, the house at 10 kW and the battery covering 4 kW of it in its own
+    mode (17.3 A on one phase, more than the 11.3 A of headroom). Without the plant's power per phase nothing starts.
+    With it each phase's own 5.8 A of cover comes off that phase: 3.5 A a phase above the margin, a 2.47 kW start,
+    which puts every phase at the fuse less the margin once the cover has ended."""
+    house = (10_000.0 / _PHASE_V / 3,) * 3
+    cover = (4_000.0 / _PHASE_V / 3,) * 3
+    for rooms_read in (True, False):
+        executor, results = _idle_start_phases(20.0, house, cover, (0.0,) * 3, 5.0, plant_read=False,
+                                               rooms_read=rooms_read)
+        assert executor.state.phase != "active"
+        assert events(results, "not_started")[0]["reason"] == "fuse_headroom"
+        executor, _results = _idle_start_phases(20.0, house, cover, (0.0,) * 3, 5.0, plant_read=True,
+                                                rooms_read=rooms_read)
+        assert executor.state.phase == "active"
+        assert executor.state.rate_kw == pytest.approx(2.47, abs=0.01)
+    # An unbalanced house (L2 the heaviest) the battery covers phase by phase: L2's own cover and headroom decide.
+    house = (9.0, 16.0, 12.0)
+    cover = (2.5, 8.0, 6.8)  # 17.3 A, 4 kW in all
+    executor, _results = _idle_start_phases(20.0, house, cover, (0.0,) * 3, 5.0, plant_read=True, rooms_read=True)
+    assert executor.state.phase == "active"
+    assert executor.state.rate_kw == pytest.approx(3 * 2.0 * _PHASE_V / 1000.0, abs=0.01)  # 2 A a phase: 1.39 kW
+    assert 16.0 + executor.state.rate_kw * 1000.0 / _PHASE_V / 3 <= 20.0 - HEADROOM_MARGIN_A + 0.01
+    executor, _results = _idle_start_phases(20.0, house, cover, (0.0,) * 3, 5.0, plant_read=False, rooms_read=True)
+    assert executor.state.phase != "active"
 
 
 def test_a_running_grid_charge_does_not_count_a_discharge_still_read_as_cover() -> None:
