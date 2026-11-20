@@ -1425,31 +1425,35 @@ async def test_the_hours_end_does_not_keep_a_car_the_fuse_lowered(hass: HomeAssi
 
 
 async def test_a_paused_charge_is_counted_at_what_it_resumes_at_and_the_floors_at_nothing(hass: HomeAssistant, monkeypatch) -> None:
-    from types import SimpleNamespace
-
-    from custom_components.spotnav.site import site_capacity_controller as module
-    from custom_components.spotnav.site.import_target import HourBudget
+    """A charge paused by load balancing is shared the budget at what it resumes at (16 A here, held to the 7 A the
+    budget leaves), unless it is the car's minimum level's charge, which the target never holds."""
+    from custom_components.spotnav.execution.controller import ChargingController
 
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "personpaused")
         controller = world.halo.controller
-        request = controller._build_requests(credit=False)[0]  # noqa: SLF001
-        paused = SimpleNamespace(
-            charge_origin=None, paused_charge_origin="manual", paused_by_balancing=True, requested_current_a=16
-        )
-        monkeypatch.setattr(module, "controller_for", lambda _hass, _entry_id: paused)
-        budget = HourBudget(
-            target_kw=6.0, hour_start=_HOUR, hour_end=_HOUR + timedelta(hours=1), so_far_kwh=0.0, hour_kw=0.0,
-            remaining_s=3600.0, house_w=1000.0, rate_w=6000.0, allowed_w=5000.0, house_over=False,
-        )
-        member = controller._target_member(request, None, budget)  # noqa: SLF001
-        assert member.holdable and member.wants_a == 16.0, "a person's Start paused is counted at what it resumes at"
-        paused.paused_charge_origin = "min_soc"
-        member = controller._target_member(request, None, budget)  # noqa: SLF001
-        assert not member.holdable and member.wants_a == 0.0, "the floor's charge is not the target's, and draws nothing"
-        paused.paused_charge_origin = "plan_window"
-        member = controller._target_member(request, None, budget)  # noqa: SLF001
-        assert member.holdable and member.wants_a == 16.0, "a plan's paused charge is counted at what it resumes at"
+        charger = world.halo.charger.entry_id
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+        origin = {"paused": "manual"}
+        monkeypatch.setattr(ChargingController, "charge_origin", property(lambda _self: None))
+        monkeypatch.setattr(ChargingController, "paused_charge_origin", property(lambda _self: origin["paused"]))
+        monkeypatch.setattr(ChargingController, "paused_by_balancing", property(lambda _self: True))
+        monkeypatch.setattr(ChargingController, "requested_current_a", property(lambda _self: 16))
+
+        def share() -> tuple[str, float | None]:
+            found = controller.import_target_snapshot()["chargers"][charger]
+            return found["action"], found["cap_a"]
+
+        await world.step()
+        assert share() == ("held", 7.0), "a person's Start paused is counted at what it resumes at"
+        origin["paused"] = "min_soc"
+        await world.step()
+        assert share() == ("unheld", None), "the floor's charge is not the target's, and draws nothing"
+        origin["paused"] = "plan_window"
+        await world.step()
+        assert share() == ("held", 7.0), "a plan's paused charge is counted at what it resumes at"
 
 
 # -- review: a charger the hold cannot act on
