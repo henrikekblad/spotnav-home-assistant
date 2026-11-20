@@ -48,6 +48,14 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
   level the running hour is held under (`site/import_target.effective_target`): the target lifted to the month's
   free level where a demand-charge part counts the hour and the month has already reached more (the month's peak),
   else the target itself; `null` without a target or where the site cannot measure.
+  `power_level` (additive) is the price entry's power level as a write states it (`{level_kw, window, outside}`,
+  `null` for none; `window` `null` holds it in all hours, else in the window's hours, or with `outside` in the hours
+  the window does not count, `planning/auto_settings.py:PowerLevel`). `level_count` (additive) is what the site
+  measured of it, `null` without a level or where the site cannot measure: `{used, allowed, exceeded, counts_now,
+  next_counted_start}`, the complete hours over the level in its hours in the rolling 12 months (`exceeded`, their
+  starts, oldest first; `used` how many), how many are allowed (`allowed`, 3), whether the level holds in the running
+  hour, and the start of the next hour it holds in within two days (the running one while `counts_now`; `null` for
+  none). A plan never exceeds it; a release of the import target that would is asked with the count.
 * `write_revision`: the price entry's write counter, which a write names as `expected_write_revision`.
 * `writable`: whether this caller may change it (an administrator; the paired app).
 
@@ -63,7 +71,8 @@ compare-and-set against the entry's write counter:
 
 `grid_tariff` is `{transfer_percent: {enabled, value}, transfer_high: {enabled, value}, high_load_window}` and,
 optionally, `demand_components` (the list as `demand.components` states it; absent keeps the stored components, so
-a writer that does not know them leaves them alone), `supplier_markup` and `sell_adjustment` (each `{enabled,
+a writer that does not know them leaves them alone), `power_level` (as `demand.power_level` states it, `null` removes
+it; absent keeps the stored one), `supplier_markup` and `sell_adjustment` (each `{enabled,
 value}`; absent keeps the stored figure the same way; only `sell_adjustment` takes a negative value). A fee that is on needs its figure (no area suggests one); the
 high-load fee needs a window. A component needs `top_n` 1, 3 or 5, a window of whole hours (or `null`) and prices
 that are `null` or not negative. A tariff equal to the stored one (all off equals none stored) writes nothing and
@@ -76,6 +85,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from typing import Any, Final, Mapping
 
 import voluptuous as vol
@@ -86,6 +96,8 @@ from homeassistant.core import callback, HomeAssistant
 from ..planning.auto_settings import (
     AutoSettingsError,
     DEMAND_COMPONENTS,
+    POWER_LEVEL,
+    PowerLevel,
     demand_components_from,
     DemandComponent,
     FiscalOverride,
@@ -97,7 +109,14 @@ from ..planning.auto_settings import (
     SUPPLIER_MARKUP,
 )
 from ..planning.first_run import site_for_charger
-from ..pricing.price_source import async_write_price_entry, entry_source_for, PriceSource, site_price_source
+from ..planning.demand_charge import hour_start
+from ..pricing.price_source import (
+    async_write_price_entry,
+    entry_source_for,
+    PriceSource,
+    site_power_level,
+    site_price_source,
+)
 from ..runtime import site_controller_for
 from ..site.demand_tracker import DemandSnapshot
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER, solar_capability
@@ -125,7 +144,9 @@ ERROR_NO_PRICE_ENTRY: Final = "spotnav_no_price_entry"
 GRID_TARIFF_KEYS: Final = frozenset({"transfer_percent", "transfer_high", "high_load_window"})
 FEE_KEYS: Final = frozenset({"enabled", "value"})
 #: The body's optional keys: each absent one keeps what is stored.
-OPTIONAL_KEYS: Final = frozenset({DEMAND_COMPONENTS, *SUPPLIER_FEES})
+OPTIONAL_KEYS: Final = frozenset({DEMAND_COMPONENTS, POWER_LEVEL, *SUPPLIER_FEES})
+#: How far ahead the dashboard looks for the next hour a power level holds in (`level_count.next_counted_start`).
+LEVEL_LOOKAHEAD_H: Final = 48
 
 POLICY_OFF: Final = "off"
 POLICY_MANUAL: Final = "manual"
@@ -148,6 +169,11 @@ class CapturedDemand:
     import_target_kw: float | None
     #: The level the running hour is held under (the target lifted to the month's free level), `None` without one.
     effective_target_kw: float | None = None
+    #: The power level's exceedances in the rolling year (`planning/demand_cost.LevelCount`), `None` without a level
+    #: or where the site cannot measure; whether the level holds in the running hour, and the next hour it holds in.
+    level_count: Any = None
+    level_counts_now: bool = False
+    level_next_start: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +202,7 @@ def capture_grid_tariff(hass: HomeAssistant, charger_id: str) -> CapturedGridTar
     captured = _captured(source)
     return replace(
         captured,
-        demand=capture_demand(hass, charger_id, captured.tariff.demand),
+        demand=capture_demand(hass, charger_id, captured.tariff.demand, captured.tariff.power_level),
         sells=price_sells(hass, source.entry_id),
     )
 
@@ -190,7 +216,7 @@ def capture_site_grid_tariff(hass: HomeAssistant, site: ConfigEntry) -> Captured
     captured = _captured(source)
     return replace(
         captured,
-        demand=capture_site_demand(hass, site, captured.tariff.demand),
+        demand=capture_site_demand(hass, site, captured.tariff.demand, captured.tariff.power_level),
         sells=price_sells(hass, source.entry_id),
     )
 
@@ -229,16 +255,35 @@ def price_sells(hass: HomeAssistant, entry_id: str) -> bool:
     return False
 
 
-def capture_demand(hass: HomeAssistant, charger_id: str, components: tuple[DemandComponent, ...]) -> CapturedDemand:
-    """What the charger's site measures for `components` and its import target (see the module)."""
+def capture_demand(
+    hass: HomeAssistant,
+    charger_id: str,
+    components: tuple[DemandComponent, ...],
+    power_level: PowerLevel | None = None,
+) -> CapturedDemand:
+    """What the charger's site measures for `components`, its power level and its import target (see the module)."""
     site = site_for_charger(hass, charger_id)
     if site is None:
         return CapturedDemand(available=False, reason=DEMAND_NO_SITE, snapshot=None, import_target_kw=None)
-    return capture_site_demand(hass, site, components)
+    return capture_site_demand(hass, site, components, power_level)
+
+
+def _level_hours(level: PowerLevel, now: datetime, tz: str) -> tuple[bool, datetime | None]:
+    """Whether `level` holds in the hour running at `now`, and the start of the next hour it holds in (the running one
+    while it does) within `LEVEL_LOOKAHEAD_H`, `None` for none."""
+    current = hour_start(now, tz)
+    for offset in range(LEVEL_LOOKAHEAD_H):
+        start = current + timedelta(hours=offset)
+        if level.counts(start, tz):
+            return offset == 0, start
+    return False, None
 
 
 def capture_site_demand(
-    hass: HomeAssistant, site: ConfigEntry, components: tuple[DemandComponent, ...]
+    hass: HomeAssistant,
+    site: ConfigEntry,
+    components: tuple[DemandComponent, ...],
+    power_level: PowerLevel | None = None,
 ) -> CapturedDemand:
     """What a site measures for `components` and its import target (see the module)."""
     capability = solar_capability(site.data.get(CONF_MEASUREMENT_MODE), site.data.get(CONF_GRID_POWER_SOURCE))
@@ -256,8 +301,27 @@ def capture_site_demand(
         except Exception:  # noqa: BLE001 - a figure shown only: the target itself stands in for it
             _LOGGER.debug("capture_site_demand: ignored failure (a figure shown only: the target itself stands in for it)", exc_info=True)
             effective = target
+    count = None
+    counts_now, next_start = False, None
+    if controller is not None and power_level is not None:
+        try:
+            # The window with the installation's holidays, as the hold reads it.
+            level = site_power_level(hass, site.entry_id) or power_level
+            now = controller.demand.now()
+            count = controller.demand.level_count(level, now)
+            counts_now, next_start = _level_hours(level, now, controller.demand.tracker.tz)
+        except Exception:  # noqa: BLE001 - a figure shown only
+            _LOGGER.debug("capture_site_demand: the power level could not be counted", exc_info=True)
+            count = None
     return CapturedDemand(
-        available=True, reason=None, snapshot=snapshot, import_target_kw=target, effective_target_kw=effective
+        available=True,
+        reason=None,
+        snapshot=snapshot,
+        import_target_kw=target,
+        effective_target_kw=effective,
+        level_count=count,
+        level_counts_now=counts_now,
+        level_next_start=next_start,
     )
 
 
@@ -337,7 +401,39 @@ def serialize_demand(captured: CapturedGridTariff) -> dict[str, Any]:
         "hour": hour,
         "import_target_kw": demand.import_target_kw,
         "effective_target_kw": _kw(demand.effective_target_kw),
+        POWER_LEVEL: None if tariff.power_level is None else tariff.power_level.as_dict(),
+        "level_count": _level_count(demand) if tariff.power_level is not None else None,
     }
+
+
+def _level_count(demand: CapturedDemand) -> dict[str, Any] | None:
+    """The block's `demand.level_count` (see the module), `None` while nothing is counted."""
+    count = demand.level_count
+    if count is None:
+        return None
+    return {
+        "used": count.used,
+        "allowed": count.allowed,
+        "exceeded": [start.isoformat() for start in count.exceeded],
+        "counts_now": demand.level_counts_now,
+        "next_counted_start": None if demand.level_next_start is None else demand.level_next_start.isoformat(),
+    }
+
+
+#: The `reads` name an app opts in to the power level with (`demand.power_level`, `demand.level_count`).
+READS_POWER_LEVEL: Final = "power_level"
+#: The demand block's keys an app before the power level does not read.
+POWER_LEVEL_KEYS: Final = (POWER_LEVEL, "level_count")
+
+
+def without_power_level(block: Any) -> Any:
+    """A `grid_tariff` block without the power level's two keys in its `demand`, for an app before them."""
+    if not isinstance(block, dict):
+        return block
+    demand = block.get("demand")
+    if not isinstance(demand, dict) or not set(POWER_LEVEL_KEYS) & set(demand):
+        return block
+    return {**block, "demand": {key: value for key, value in demand.items() if key not in POWER_LEVEL_KEYS}}
 
 
 def serialize_grid_tariff(grid_tariff: CapturedGridTariff | None, *, can_act: bool) -> dict[str, Any] | None:
@@ -394,8 +490,8 @@ def _decode_fee(raw: Any, name: str, *, signed: bool = False) -> FiscalOverride:
 
 
 def decode_grid_tariff(raw: Any) -> tuple[GridTariff, bool]:
-    """A write's `grid_tariff`: exactly its three parts and optionally `demand_components`, `supplier_markup` and
-    `sell_adjustment`, validated, or `invalid_fiscal`. Also whether the body named the components (absent keeps the
+    """A write's `grid_tariff`: exactly its three parts and optionally `demand_components`, `power_level`,
+    `supplier_markup` and `sell_adjustment`, validated, or `invalid_fiscal`. Also whether the body named the components (absent keeps the
     stored ones); an absent supplier figure decodes as off, and the write keeps the stored one in its place."""
     keys = set(raw) if isinstance(raw, Mapping) else set()
     if not isinstance(raw, Mapping) or keys - OPTIONAL_KEYS != GRID_TARIFF_KEYS:
@@ -415,6 +511,12 @@ def decode_grid_tariff(raw: Any) -> tuple[GridTariff, bool]:
             demand = demand_components_from(raw[DEMAND_COMPONENTS])
         except AutoSettingsError as err:
             raise _invalid(str(err), DEMAND_COMPONENTS) from err
+    level: PowerLevel | None = None
+    if keys and raw.get(POWER_LEVEL) is not None:
+        try:
+            level = PowerLevel.from_dict(raw[POWER_LEVEL])
+        except AutoSettingsError as err:
+            raise _invalid(str(err), POWER_LEVEL) from err
     tariff = GridTariff(
         transfer_percent=_decode_fee(raw["transfer_percent"], "transfer_percent"),
         transfer_high=_decode_fee(raw["transfer_high"], "transfer_high"),
@@ -426,6 +528,7 @@ def decode_grid_tariff(raw: Any) -> tuple[GridTariff, bool]:
         sell_adjustment=_decode_fee(raw[SELL_ADJUSTMENT], SELL_ADJUSTMENT, signed=True)
         if SELL_ADJUSTMENT in keys
         else FiscalOverride(),
+        power_level=level,
     )
     try:
         return tariff.validated(), named
@@ -471,6 +574,9 @@ def _write_grid_tariff(hass: HomeAssistant, source: PriceSource | None, expected
     if not demand_named:
         # A writer that does not know the demand charge leaves it as stored.
         tariff = replace(tariff, demand=stored.demand)
+    if not isinstance(body, Mapping) or POWER_LEVEL not in body:
+        # A writer that does not know the power level (an app before it) leaves it as stored.
+        tariff = replace(tariff, power_level=stored.power_level)
     for name in SUPPLIER_FEES:
         if not isinstance(body, Mapping) or name not in body:
             # Likewise a writer that does not know the supplier's figures (an app before them).

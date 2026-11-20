@@ -52,7 +52,7 @@ from .own_mode import webhook_fix_own_mode
 from .plan_preview import async_webhook_plan_preview
 from .setup import webhook_dismiss_setup_item
 from .price_days import webhook_price_days
-from .grid_tariff import async_webhook_update_grid_tariff
+from .grid_tariff import async_webhook_update_grid_tariff, POWER_LEVEL_KEYS, READS_POWER_LEVEL
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle, webhook_update_guest
@@ -211,6 +211,11 @@ APP_READS_EFFECTIVE_TARGET: Final = "effective_target"
 #: in the dashboard and in `update_grid_tariff`'s answer. Its write without them keeps the stored figures.
 APP_READS_SUPPLIER_FEES: Final = "supplier_fees"
 APP_UNREAD_SUPPLIER_FEE_KEYS: Final = ("supplier_markup", "sell_adjustment", "sells")
+#: The price entry's power level and its count (`grid_tariff.demand.power_level`, `.level_count`): left out for an app
+#: that does not read `APP_READS_POWER_LEVEL` (its decoder refuses a demand block with an unknown key), in the
+#: dashboard and in `update_grid_tariff`'s answer. Its write without `power_level` keeps the stored one.
+APP_READS_POWER_LEVEL: Final = READS_POWER_LEVEL
+APP_UNREAD_POWER_LEVEL_KEYS: Final = POWER_LEVEL_KEYS
 #: What SpotNav saved against charging at once on plug-in (`plug_in_saving` on the `sessions` answer's summaries and
 #: sessions, `api/sessions.py`): left out for an app that does not read `APP_READS_PLUG_IN_SAVING` (its decoder
 #: refuses a session with an unknown key).
@@ -322,18 +327,21 @@ def _vehicle_answer_for_app(body: dict[str, Any], payload: dict[str, Any]) -> di
 
 
 def _grid_tariff_for_app(block: Any, opted_in: set[str]) -> Any:
-    """A `grid_tariff` block as the app reads it: without `demand.effective_target_kw` and without the supplier's
-    figures unless it opted in to each."""
+    """A `grid_tariff` block as the app reads it: without `demand.effective_target_kw`, without the power level
+    (`demand.power_level`, `demand.level_count`) and without the supplier's figures unless it opted in to each."""
     if not isinstance(block, dict):
         return block
     if APP_READS_SUPPLIER_FEES not in opted_in and any(key in block for key in APP_UNREAD_SUPPLIER_FEE_KEYS):
         block = {key: value for key, value in block.items() if key not in APP_UNREAD_SUPPLIER_FEE_KEYS}
-    if APP_READS_EFFECTIVE_TARGET in opted_in:
-        return block
+    withheld = set()
+    if APP_READS_EFFECTIVE_TARGET not in opted_in:
+        withheld.add("effective_target_kw")
+    if APP_READS_POWER_LEVEL not in opted_in:
+        withheld.update(APP_UNREAD_POWER_LEVEL_KEYS)
     demand = block.get("demand")
-    if not isinstance(demand, dict) or "effective_target_kw" not in demand:
+    if not isinstance(demand, dict) or not withheld & set(demand):
         return block
-    return {**block, "demand": {key: value for key, value in demand.items() if key != "effective_target_kw"}}
+    return {**block, "demand": {key: value for key, value in demand.items() if key not in withheld}}
 
 
 def _grid_tariff_answer_for_app(answer: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
@@ -355,7 +363,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
     `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`; `import_target_status` for the import
-    target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`; `supplier_fees` for
+    target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`; `power_level` for
+    `grid_tariff.demand.power_level` and `.level_count`; `supplier_fees` for
     `grid_tariff.supplier_markup`, `.sell_adjustment` and `.sells`; `guest` for the guest
     car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle;
     `stop_unplug_unseen` for the status line of a person's Stop nothing can see end; `departure_calendar` for the
