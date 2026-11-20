@@ -238,6 +238,17 @@ class _BatteryProbe:
 
 
 @dataclass(frozen=True, slots=True)
+class _Readings:
+    """One observation's readings on the charger's phases, every one known, its limit (`None` when unknown), and
+    whether the battery charges (`car_first` and at least `battery_charging_w`)."""
+
+    site_a: dict[PhaseName, float]
+    delivered_a: dict[PhaseName, float]
+    limit_a: dict[PhaseName, float] | None
+    battery_charging: bool
+
+
+@dataclass(frozen=True, slots=True)
 class YieldVerdict:
     """What to do about one charger this observation, and why.
 
@@ -431,6 +442,104 @@ class YieldStepper:
         ):
             return self._verdict(now, "passthrough", None, "passthrough_no_basis", False)
 
+        readings = self._take_readings(assigned_a, observation)
+        site_a = readings.site_a
+        delivered_a = readings.delivered_a
+        limit_a = readings.limit_a
+
+        # Session reset: the car stopped drawing, so nothing from the last session applies.
+        if all(delivered_a[phase] < cfg.session_floor_a for phase in phases):
+            # A car that is not drawing can confirm nothing, so no step may be licensed.
+            self._reset_session()
+            return self._verdict(now, "passthrough", None, "passthrough_not_drawing", False)
+
+        self._end_elapsed_backoff(now)
+        self._track_baseline(assigned_a, site_a, delivered_a, observation)
+
+        # 2. Hard ceiling.
+        verdict = self._check_ceiling(raw_proposed_current_a, assigned_a, site_a, limit_a, observation)
+        if verdict is not None:
+            return verdict
+
+        # 3. Settling: hold until `settle_s` elapses, then measure.
+        if self._state == "settling":
+            verdict = self._measure_settling(site_a, delivered_a, limit_a, observation)
+            if verdict is not None:
+                return verdict
+
+        # 3b. A lowering awaiting its measurement.
+        verified = self._verify_down_step(
+            now, assigned_a, site_a, delivered_a, limit_a, requested_a
+        )
+        if verified is not None:
+            return verified
+
+        # 3c. A step into the battery's share the car's reading has not shown yet.
+        pending = self._battery_probe_pending(
+            now, assigned_a, site_a, delivered_a, limit_a, observation.battery_charge_a
+        )
+        if pending is not None:
+            return pending
+
+        # 4. Raw wants to go up: real headroom on its own evidence, so it wins.
+        if raw_proposed_current_a > assigned_a:
+            return self._verdict(now, "passthrough", None, "passthrough_raw_increase", False)
+
+        # --- 5. Raw wants to reduce or pause.
+        following = all(
+            delivered_a[phase] >= cfg.follow_ratio * assigned_a for phase in phases
+        )
+        battery_room = self._battery_room(observation, site_a, limit_a)
+        step5_verdict: YieldVerdict | None = None
+        if raw_proposed_current_a < assigned_a:
+            step5_verdict = self._judge_reduction(
+                raw_proposed_current_a,
+                requested_a,
+                assigned_a,
+                site_a,
+                limit_a,
+                readings.battery_charging,
+                following,
+                battery_room,
+                now,
+            )
+            if step5_verdict.action == "passthrough":
+                return step5_verdict
+
+        # A lowering still being measured: nothing is stepped up meanwhile, which would only
+        # confuse the measurement.
+        if self._down is not None:
+            return step5_verdict or self._verdict(
+                now, "hold", None, "held_while_verifying_down_step", False
+            )
+
+        # 6. Raw holds, or step 5 held: consider one step up.
+        verdict = self._consider_step_up(
+            requested_a,
+            assigned_a,
+            site_a,
+            delivered_a,
+            limit_a,
+            following,
+            battery_room,
+            step5_verdict,
+            observation,
+        )
+        if verdict is not None:
+            return verdict
+
+        if step5_verdict is not None:
+            return step5_verdict
+        return self._verdict(now, "passthrough", None, "passthrough_raw_holds", False)
+
+    def _take_readings(self, assigned_a: float, observation: YieldObservation) -> _Readings:
+        """This observation's readings on the charger's phases (every one known), its limit and the held band's
+        widening, and whether the battery charges; starts a down-step verification when the assignment was lowered."""
+        cfg = self._config
+        now = observation.now
+        phases = observation.phases
+        site = observation.site_current_a
+        delivered = observation.delivered_current_a
         site_a = {phase: site[phase] for phase in phases}
         delivered_a = {phase: delivered[phase] for phase in phases}
 
@@ -450,15 +559,11 @@ class YieldStepper:
         if not battery_charging:
             self._battery_absorbs = False
             self._down = None
+        return _Readings(site_a, delivered_a, limit_a, battery_charging)
 
-        # Session reset: the car stopped drawing, so nothing from the last session applies.
-        if all(delivered_a[phase] < cfg.session_floor_a for phase in phases):
-            # A car that is not drawing can confirm nothing, so no step may be licensed.
-            self._reset_session()
-            return self._verdict(now, "passthrough", None, "passthrough_not_drawing", False)
-
-        # An elapsed backoff is over: probing restarts from "unknown", not from confirmed
-        # data a revert already disproved.
+    def _end_elapsed_backoff(self, now: float) -> None:
+        """An elapsed backoff is over: probing restarts from "unknown", not from confirmed
+        data a revert already disproved."""
         if (
             self._state == "backoff"
             and self._backoff_until is not None
@@ -470,8 +575,18 @@ class YieldStepper:
             self._y_at = None
             self._reference = None
 
-        # Stable baseline and step detection, only while not settling: a ramp must not
-        # overwrite the pre-ramp baseline nor be redetected against a moved one.
+    def _track_baseline(
+        self,
+        assigned_a: float,
+        site_a: dict[PhaseName, float],
+        delivered_a: dict[PhaseName, float],
+        observation: YieldObservation,
+    ) -> None:
+        """Stable baseline and step detection, only while not settling: a ramp must not
+        overwrite the pre-ramp baseline nor be redetected against a moved one."""
+        cfg = self._config
+        now = observation.now
+        phases = observation.phases
         prev_delivered = self._prev_delivered
         self._prev_delivered = dict(delivered_a)
         if self._state != "settling":
@@ -531,9 +646,20 @@ class YieldStepper:
                 # The car's reading shows the step: settling measures it from here.
                 self._battery_probe = None
 
-        # 2. Hard ceiling: checked before everything else; nothing overrides it. A step into the battery's share is
-        # bound by its allowance instead (`_over_allowance`, checked where the step is measured), and a grid the
-        # battery holds within the band over the limit is not over the unverified ceiling for one about to start.
+    def _check_ceiling(
+        self,
+        raw_proposed_current_a: float,
+        assigned_a: float,
+        site_a: dict[PhaseName, float],
+        limit_a: dict[PhaseName, float] | None,
+        observation: YieldObservation,
+    ) -> YieldVerdict | None:
+        """2. Hard ceiling: checked before everything else; nothing overrides it. A step into the battery's share is
+        bound by its allowance instead (`_over_allowance`, checked where the step is measured), and a grid the
+        battery holds within the band over the limit is not over the unverified ceiling for one about to start.
+        `None` when no phase is over it."""
+        now = observation.now
+        phases = observation.phases
         ceiling_a = self._hard_ceiling_a(observation, site_a, limit_a)
         over_ceiling = [site_a[phase] - ceiling_a for phase in phases if site_a[phase] >= ceiling_a]
         if not over_ceiling:
@@ -547,168 +673,174 @@ class YieldStepper:
                 self._enter_backoff(now)
             urgent = raw_proposed_current_a < assigned_a
             return self._verdict(now, "passthrough", None, "passthrough_ceiling", urgent)
+        return None
 
-        # 3. Settling: hold until `settle_s` elapses, then measure.
-        if self._state == "settling":
-            assert self._t_step is not None
-            if self._over_limit_steps and self._over_allowance(site_a, limit_a):
-                revert_to = self._baseline_assigned
-                self._enter_backoff(now)
-                if revert_to is None:
-                    return self._verdict(now, "passthrough", None, "passthrough_ceiling", True)
-                return self._verdict(now, "write", revert_to, "revert_over_allowance", True)
-            if now - self._t_step < cfg.settle_s:
-                return self._verdict(now, "hold", None, "settling_hold", False)
+    def _measure_settling(
+        self,
+        site_a: dict[PhaseName, float],
+        delivered_a: dict[PhaseName, float],
+        limit_a: dict[PhaseName, float] | None,
+        observation: YieldObservation,
+    ) -> YieldVerdict | None:
+        """3. Settling (called only in "settling"): hold until `settle_s` elapses, then measure. `None` when the car
+        did not follow the step: the state returns to what it was before settling and the rules go on."""
+        cfg = self._config
+        now = observation.now
+        phases = observation.phases
+        assert self._t_step is not None
+        if self._over_limit_steps and self._over_allowance(site_a, limit_a):
+            revert_to = self._baseline_assigned
+            self._enter_backoff(now)
+            if revert_to is None:
+                return self._verdict(now, "passthrough", None, "passthrough_ceiling", True)
+            return self._verdict(now, "write", revert_to, "revert_over_allowance", True)
+        if now - self._t_step < cfg.settle_s:
+            return self._verdict(now, "hold", None, "settling_hold", False)
 
-            assert self._baseline_delivered is not None
-            changed_phases = [
-                phase
-                for phase in phases
-                if delivered_a[phase] - self._baseline_delivered[phase]
-                >= (cfg.min_delta_a if self._settle_delta_a is None else self._settle_delta_a)
-            ]
-            if not changed_phases:
-                # The car did not follow (not a failure): return to the pre-settling state and
-                # continue as if it had never begun.
-                if self._was_confirmed_before_settling:
-                    self._state = "confirmed"
-                else:
-                    self._state = "unknown"
-                    self._battery_verified = False
-                    self._y = None
-                    self._y_at = None
-                    self._reference = None
+        assert self._baseline_delivered is not None
+        changed_phases = [
+            phase
+            for phase in phases
+            if delivered_a[phase] - self._baseline_delivered[phase]
+            >= (cfg.min_delta_a if self._settle_delta_a is None else self._settle_delta_a)
+        ]
+        if not changed_phases:
+            # The car did not follow (not a failure): return to the pre-settling state and
+            # continue as if it had never begun.
+            if self._was_confirmed_before_settling:
+                self._state = "confirmed"
             else:
-                assert self._baseline_site is not None
-                y_values = [
-                    _clamp01(
-                        1.0
-                        - (site_a[phase] - self._baseline_site[phase])
-                        / (delivered_a[phase] - self._baseline_delivered[phase])
-                    )
-                    for phase in changed_phases
-                ]
-                y = min(y_values)
-                if y >= cfg.confirm_y:
-                    rise = max(
-                        delivered_a[phase] - self._baseline_delivered[phase] for phase in changed_phases
-                    )
-                    self._battery_verified = self._battery_gave_way(
-                        self._baseline_battery, observation.battery_charge_a, rise
-                    )
-                    self._state = "confirmed"
-                    self._y = y
-                    self._y_at = now
-                    self._reference = dict(site_a)
-                    self._next_backoff_s = cfg.backoff_initial_s
-                    # A hold: a further step waits for a later observation.
-                    return self._verdict(now, "hold", None, "confirmed_after_settling", False)
-                else:
-                    within_limit = limit_a is not None and all(
-                        site_a[phase] <= limit_a[phase] for phase in phases
-                    )
-                    if within_limit and self._baseline_battery_idle and not self._over_limit_steps:
-                        # A fresh reading showed the battery idle when the step began, so nothing could give way: an ordinary
-                        # raise the grid carries, not a failed yield. No backoff, or a later battery's
-                        # first step would wait for every such raise doubled (the night of 2026-11-09:
-                        # two raises with the battery idle held the car at 7 A for 24 minutes).
-                        self._state = "unknown"
-                        self._battery_verified = False
-                        self._y = None
-                        self._y_at = None
-                        self._reference = None
-                        return self._verdict(
-                            now, "passthrough", None, "kept_not_absorbed_within_limit", False
-                        )
-                    self._enter_backoff(now)
-                    if within_limit:
-                        # Nothing gave way, but the grid carries the raise within its limit: an ordinary
-                        # raise, not one to take back. A revert is for a step that took the site over.
-                        return self._verdict(
-                            now, "passthrough", None, "kept_not_absorbed_within_limit", False
-                        )
-                    return self._verdict(
-                        now, "write", self._baseline_assigned, "revert_not_absorbed", True
-                    )
-
-        # 3b. A lowering awaiting its measurement.
-        verified = self._verify_down_step(
-            now, assigned_a, site_a, delivered_a, limit_a, requested_a
-        )
-        if verified is not None:
-            return verified
-
-        # 3c. A step into the battery's share the car's reading has not shown yet.
-        pending = self._battery_probe_pending(
-            now, assigned_a, site_a, delivered_a, limit_a, observation.battery_charge_a
-        )
-        if pending is not None:
-            return pending
-
-        # 4. Raw wants to go up: real headroom on its own evidence, so it wins.
-        if raw_proposed_current_a > assigned_a:
-            return self._verdict(now, "passthrough", None, "passthrough_raw_increase", False)
-
-        # --- 5. Raw wants to reduce or pause.
-        following = all(
-            delivered_a[phase] >= cfg.follow_ratio * assigned_a for phase in phases
-        )
-        battery_room = self._battery_room(observation, site_a, limit_a)
-        fresh_y = self._y_at is not None and (now - self._y_at) <= cfg.ttl_s
-        step5_verdict: YieldVerdict | None = None
-        if raw_proposed_current_a < assigned_a:
-            floor_pause = raw_proposed_current_a < cfg.min_current_a and assigned_a <= cfg.min_current_a
-            if floor_pause:
-                # A pause that cannot legally be carried out (below the charger minimum) with
-                # nothing left to reduce is not a real "wants to reduce" signal; hold the previous
-                # assignment and let step 6 consider a probe.
-                step5_verdict = self._verdict(
-                    now, "hold", None, "held_at_floor_raw_pause", False
-                )
-            elif (
-                battery_room
-                and following
-                and assigned_a < requested_a
-                and self._down is None
-                and (self._state == "unknown" or (self._state == "confirmed" and not fresh_y))
-            ):
-                # The site sits at its limit only because the battery charges from the grid by
-                # more than a step: not a reason to lower the car, and step 6 may try a step
-                # into the battery's share.
-                step5_verdict = self._verdict(now, "hold", None, "held_for_battery_probe", False)
-            elif battery_charging and (
-                self._battery_absorbs or self._battery_verified or self._down is not None
-            ) and not self._real_excess(site_a, limit_a):
-                step5_verdict = self._verdict(
-                    now,
-                    "hold",
-                    None,
-                    "held_while_verifying_down_step"
-                    if self._down is not None and not self._battery_absorbs
-                    else "held_at_limit_battery_absorbs",
-                    False,
-                )
-            elif self._state == "confirmed" and all(
-                site_a[phase] <= self._reference[phase] + cfg.absorb_tol_a for phase in phases
-            ):
-                step5_verdict = self._verdict(
-                    now, "hold", None, "held_at_yield_setpoint", False
-                )
-            else:
-                reason: YieldReason = (
-                    "passthrough_site_rising" if self._reference is not None else "passthrough_raw_reduce"
-                )
-                return self._verdict(now, "passthrough", None, reason, True)
-
-        # A lowering still being measured: nothing is stepped up meanwhile, which would only
-        # confuse the measurement.
-        if self._down is not None:
-            return step5_verdict or self._verdict(
-                now, "hold", None, "held_while_verifying_down_step", False
+                self._state = "unknown"
+                self._battery_verified = False
+                self._y = None
+                self._y_at = None
+                self._reference = None
+            return None
+        assert self._baseline_site is not None
+        y_values = [
+            _clamp01(
+                1.0
+                - (site_a[phase] - self._baseline_site[phase])
+                / (delivered_a[phase] - self._baseline_delivered[phase])
             )
+            for phase in changed_phases
+        ]
+        y = min(y_values)
+        if y >= cfg.confirm_y:
+            rise = max(
+                delivered_a[phase] - self._baseline_delivered[phase] for phase in changed_phases
+            )
+            self._battery_verified = self._battery_gave_way(
+                self._baseline_battery, observation.battery_charge_a, rise
+            )
+            self._state = "confirmed"
+            self._y = y
+            self._y_at = now
+            self._reference = dict(site_a)
+            self._next_backoff_s = cfg.backoff_initial_s
+            # A hold: a further step waits for a later observation.
+            return self._verdict(now, "hold", None, "confirmed_after_settling", False)
+        within_limit = limit_a is not None and all(
+            site_a[phase] <= limit_a[phase] for phase in phases
+        )
+        if within_limit and self._baseline_battery_idle and not self._over_limit_steps:
+            # A fresh reading showed the battery idle when the step began, so nothing could give way: an ordinary
+            # raise the grid carries, not a failed yield. No backoff, or a later battery's
+            # first step would wait for every such raise doubled (the night of 2026-11-09:
+            # two raises with the battery idle held the car at 7 A for 24 minutes).
+            self._state = "unknown"
+            self._battery_verified = False
+            self._y = None
+            self._y_at = None
+            self._reference = None
+            return self._verdict(
+                now, "passthrough", None, "kept_not_absorbed_within_limit", False
+            )
+        self._enter_backoff(now)
+        if within_limit:
+            # Nothing gave way, but the grid carries the raise within its limit: an ordinary
+            # raise, not one to take back. A revert is for a step that took the site over.
+            return self._verdict(
+                now, "passthrough", None, "kept_not_absorbed_within_limit", False
+            )
+        return self._verdict(
+            now, "write", self._baseline_assigned, "revert_not_absorbed", True
+        )
 
-        # 6. Raw holds, or step 5 held: consider one step up. Reached only when raw equals
-        # `assigned_a` or step 5 held.
+    def _judge_reduction(
+        self,
+        raw_proposed_current_a: float,
+        requested_a: float,
+        assigned_a: float,
+        site_a: dict[PhaseName, float],
+        limit_a: dict[PhaseName, float] | None,
+        battery_charging: bool,
+        following: bool,
+        battery_room: bool,
+        now: float,
+    ) -> YieldVerdict:
+        """5. Raw wants to reduce or pause (`raw_proposed_current_a < assigned_a`). A `"hold"` lets step 6 still
+        consider a step and is returned only if none is taken; a `"passthrough"` is the verdict at once."""
+        cfg = self._config
+        fresh_y = self._y_at is not None and (now - self._y_at) <= cfg.ttl_s
+        floor_pause = raw_proposed_current_a < cfg.min_current_a and assigned_a <= cfg.min_current_a
+        if floor_pause:
+            # A pause that cannot legally be carried out (below the charger minimum) with
+            # nothing left to reduce is not a real "wants to reduce" signal; hold the previous
+            # assignment and let step 6 consider a probe.
+            return self._verdict(
+                now, "hold", None, "held_at_floor_raw_pause", False
+            )
+        if (
+            battery_room
+            and following
+            and assigned_a < requested_a
+            and self._down is None
+            and (self._state == "unknown" or (self._state == "confirmed" and not fresh_y))
+        ):
+            # The site sits at its limit only because the battery charges from the grid by
+            # more than a step: not a reason to lower the car, and step 6 may try a step
+            # into the battery's share.
+            return self._verdict(now, "hold", None, "held_for_battery_probe", False)
+        if battery_charging and (
+            self._battery_absorbs or self._battery_verified or self._down is not None
+        ) and not self._real_excess(site_a, limit_a):
+            return self._verdict(
+                now,
+                "hold",
+                None,
+                "held_while_verifying_down_step"
+                if self._down is not None and not self._battery_absorbs
+                else "held_at_limit_battery_absorbs",
+                False,
+            )
+        if self._state == "confirmed" and all(
+            site_a[phase] <= self._reference[phase] + cfg.absorb_tol_a for phase in site_a
+        ):
+            return self._verdict(
+                now, "hold", None, "held_at_yield_setpoint", False
+            )
+        reason: YieldReason = (
+            "passthrough_site_rising" if self._reference is not None else "passthrough_raw_reduce"
+        )
+        return self._verdict(now, "passthrough", None, reason, True)
+
+    def _consider_step_up(
+        self,
+        requested_a: float,
+        assigned_a: float,
+        site_a: dict[PhaseName, float],
+        delivered_a: dict[PhaseName, float],
+        limit_a: dict[PhaseName, float] | None,
+        following: bool,
+        battery_room: bool,
+        step5_verdict: YieldVerdict | None,
+        observation: YieldObservation,
+    ) -> YieldVerdict | None:
+        """6. Raw holds, or step 5 held: consider one step up. Reached only when raw equals
+        `assigned_a` or step 5 held. `None` when no step is licensed and the car uses its assignment."""
+        cfg = self._config
+        now = observation.now
         if assigned_a < requested_a and self._state != "backoff" and not following:
             if step5_verdict is not None:
                 return step5_verdict
@@ -718,91 +850,127 @@ class YieldStepper:
         if assigned_a < requested_a and self._state != "backoff":
             fresh = self._y_at is not None and (now - self._y_at) <= cfg.ttl_s
             absorbed = self._reference is not None and all(
-                site_a[phase] <= self._reference[phase] + cfg.absorb_tol_a for phase in phases
+                site_a[phase] <= self._reference[phase] + cfg.absorb_tol_a for phase in observation.phases
             )
 
             if self._state == "confirmed" and fresh and absorbed:
-                credit_a = (
-                    observation.battery_charge_a
-                    if self._battery_verified and observation.credit_allowed
-                    else None
+                verdict = self._confirmed_step(
+                    requested_a, assigned_a, site_a, delivered_a, limit_a, observation
                 )
-                if credit_a is None:
-                    step_a = cfg.step_a
-                    unabsorbed_a = step_a
-                else:
-                    # The battery gives up what the car takes, so only the part it did not absorb
-                    # in the verified step can reach the grid. At least one whole amp.
-                    step_a = float(math.floor(min(cfg.max_step_a, credit_a)))
-                    if requested_a - assigned_a <= cfg.near_target_a:
-                        step_a = min(step_a, 1.0)
-                    unabsorbed_a = step_a * (1.0 - (self._y or 0.0))
-                if self._over_limit_steps:
-                    # Over the limit: sized as if the battery gave up nothing until it is measured,
-                    # so the site stays within the allowance whatever the battery's own lag.
-                    room_a = self._allowance_room(site_a, limit_a)
-                    step_a = float(math.floor(min(step_a, room_a)))
-                    unabsorbed_a = step_a
-                if (
-                    step_a >= (cfg.step_a if credit_a is None else cfg.credit_min_a)
-                    and now >= self._next_step_at
-                    and all(site_a[phase] + unabsorbed_a <= self._ceiling_a() for phase in phases)
-                ):
-                    target = min(requested_a, assigned_a + step_a)
-                    self._last_step_a = step_a
-                    if self._over_limit_steps:
-                        # Watched like the first step until the car's reading shows it.
-                        self._battery_probe = _BatteryProbe(
-                            from_a=assigned_a,
-                            to_a=target,
-                            delivered_before_a=max(delivered_a.values()),
-                        )
-                    if credit_a is not None:
-                        self._next_step_at = now + cfg.step_gap_s
-                    return self._verdict(
-                        now,
-                        "write",
-                        target,
-                        "confirmed_step",
-                        False,
-                        battery_credit_a=credit_a,
-                        reaches_request=assigned_a + step_a > requested_a,
-                    )
+                if verdict is not None:
+                    return verdict
 
-            # A step into the battery's share is bound by its allowance (`_battery_room`), not by the unverified ceiling.
-            ceiling_ok = battery_room or all(
-                site_a[phase] + cfg.step_a <= self._ceiling_a() for phase in phases
+            return self._probe_step(
+                requested_a, assigned_a, site_a, delivered_a, battery_room, fresh, observation
             )
-            stale_confirmed = self._state == "confirmed" and not fresh
-            if (self._state == "unknown" or stale_confirmed) and ceiling_ok:
-                target = min(requested_a, assigned_a + cfg.step_a)
-                self._last_step_a = cfg.step_a
-                if battery_room:
-                    # Into the battery's share: watched until the car's reading shows it, and
-                    # bound by the allowance over the limit until a backoff. Measured, and taken
-                    # back, from the readings before it.
-                    if self._battery_probe is None or self._battery_probe.to_a != target:
-                        self._battery_probe = _BatteryProbe(
-                            from_a=assigned_a,
-                            to_a=target,
-                            delivered_before_a=max(delivered_a.values()),
-                            site_before=dict(site_a),
-                            delivered_before=dict(delivered_a),
-                            battery_before_a=observation.battery_charge_a,
-                        )
-                    self._over_limit_steps = True
-                return self._verdict(
-                    now,
-                    "write",
-                    target,
-                    "probe_step",
-                    False,
-                    reaches_request=assigned_a + cfg.step_a > requested_a,
-                )
+        return None
 
-        if step5_verdict is not None:
-            return step5_verdict
-        return self._verdict(now, "passthrough", None, "passthrough_raw_holds", False)
+    def _confirmed_step(
+        self,
+        requested_a: float,
+        assigned_a: float,
+        site_a: dict[PhaseName, float],
+        delivered_a: dict[PhaseName, float],
+        limit_a: dict[PhaseName, float] | None,
+        observation: YieldObservation,
+    ) -> YieldVerdict | None:
+        """6, confirmed, fresh and absorbed: a licensed step, sized by the battery's credit when verified and by the
+        allowance over the limit while steps go into the battery's share. `None` when no step is licensed."""
+        cfg = self._config
+        now = observation.now
+        credit_a = (
+            observation.battery_charge_a
+            if self._battery_verified and observation.credit_allowed
+            else None
+        )
+        if credit_a is None:
+            step_a = cfg.step_a
+            unabsorbed_a = step_a
+        else:
+            # The battery gives up what the car takes, so only the part it did not absorb
+            # in the verified step can reach the grid. At least one whole amp.
+            step_a = float(math.floor(min(cfg.max_step_a, credit_a)))
+            if requested_a - assigned_a <= cfg.near_target_a:
+                step_a = min(step_a, 1.0)
+            unabsorbed_a = step_a * (1.0 - (self._y or 0.0))
+        if self._over_limit_steps:
+            # Over the limit: sized as if the battery gave up nothing until it is measured,
+            # so the site stays within the allowance whatever the battery's own lag.
+            room_a = self._allowance_room(site_a, limit_a)
+            step_a = float(math.floor(min(step_a, room_a)))
+            unabsorbed_a = step_a
+        if (
+            step_a >= (cfg.step_a if credit_a is None else cfg.credit_min_a)
+            and now >= self._next_step_at
+            and all(site_a[phase] + unabsorbed_a <= self._ceiling_a() for phase in observation.phases)
+        ):
+            target = min(requested_a, assigned_a + step_a)
+            self._last_step_a = step_a
+            if self._over_limit_steps:
+                # Watched like the first step until the car's reading shows it.
+                self._battery_probe = _BatteryProbe(
+                    from_a=assigned_a,
+                    to_a=target,
+                    delivered_before_a=max(delivered_a.values()),
+                )
+            if credit_a is not None:
+                self._next_step_at = now + cfg.step_gap_s
+            return self._verdict(
+                now,
+                "write",
+                target,
+                "confirmed_step",
+                False,
+                battery_credit_a=credit_a,
+                reaches_request=assigned_a + step_a > requested_a,
+            )
+        return None
+
+    def _probe_step(
+        self,
+        requested_a: float,
+        assigned_a: float,
+        site_a: dict[PhaseName, float],
+        delivered_a: dict[PhaseName, float],
+        battery_room: bool,
+        fresh: bool,
+        observation: YieldObservation,
+    ) -> YieldVerdict | None:
+        """6, unknown or confirmed but stale: an unverified probe, into the battery's share when it has room.
+        `None` when none may be taken."""
+        cfg = self._config
+        now = observation.now
+        # A step into the battery's share is bound by its allowance (`_battery_room`), not by the unverified ceiling.
+        ceiling_ok = battery_room or all(
+            site_a[phase] + cfg.step_a <= self._ceiling_a() for phase in observation.phases
+        )
+        stale_confirmed = self._state == "confirmed" and not fresh
+        if (self._state == "unknown" or stale_confirmed) and ceiling_ok:
+            target = min(requested_a, assigned_a + cfg.step_a)
+            self._last_step_a = cfg.step_a
+            if battery_room:
+                # Into the battery's share: watched until the car's reading shows it, and
+                # bound by the allowance over the limit until a backoff. Measured, and taken
+                # back, from the readings before it.
+                if self._battery_probe is None or self._battery_probe.to_a != target:
+                    self._battery_probe = _BatteryProbe(
+                        from_a=assigned_a,
+                        to_a=target,
+                        delivered_before_a=max(delivered_a.values()),
+                        site_before=dict(site_a),
+                        delivered_before=dict(delivered_a),
+                        battery_before_a=observation.battery_charge_a,
+                    )
+                self._over_limit_steps = True
+            return self._verdict(
+                now,
+                "write",
+                target,
+                "probe_step",
+                False,
+                reaches_request=assigned_a + cfg.step_a > requested_a,
+            )
+        return None
 
     def _over_allowance(
         self, site_a: Mapping[PhaseName, float], limit_a: Mapping[PhaseName, float] | None
