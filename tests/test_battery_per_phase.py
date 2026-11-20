@@ -182,6 +182,45 @@ def test_each_phase_gets_what_its_own_headroom_allows_within_the_plan_s_power_an
     assert phase_charge_kw(held, (0.92, 0.0, 0.0), yield_now=False) == ((0.92, 0.0, 0.0), None)
 
 
+def test_fuse_a_charge_per_phase_counts_what_the_plant_puts_out_on_a_phase_out_of_its_room() -> None:
+    """The headroom is measured while the plant still puts out on the phase (a sale's share, the cover of its own
+    mode): a target makes the phase's power the charge instead, so that output comes back on the grid with it. With
+    the house above its learned peak the phase's HA-down cap does not hold the charge back, and the room must."""
+    _executor, site = _site()
+    wide = (4.0, 4.0, 4.0)
+    for house_a, plant in (
+        ((16.0, 2.0, 2.0), (1.667, 1.667, 1.667)),   # a sale of 5 kW spread evenly
+        ((16.0, 2.0, 2.0), (3.0, 0.2, 0.0)),         # the plant's own mode covering L1
+        ((10.0, 10.0, 10.0), (2.0, 2.0, 2.0)),
+        ((3.0, 15.0, 0.0), (0.0, 3.2, 0.0)),
+    ):
+        now_a = [load - out * 1000 / VOLTS for load, out in zip(house_a, plant, strict=True)]
+        headroom = tuple(FUSE_A - abs(amps) for amps in now_a)
+        for known in (True, False):
+            look = replace(
+                site.inputs(T0, "grid_charge", 12.0), phase_caps_kw=wide, phase_headroom_a=headroom,
+                headroom_a=min(headroom), plant_phase_kw=plant if known else None,
+                facts=replace(site.battery.facts(-sum(plant)), power_kw=-sum(plant)),
+            )
+            rates, _why = phase_charge_kw(look, None)
+            for index, load in enumerate(house_a):
+                charge_a = 0.0 if rates is None else rates[index] * 1000 / VOLTS
+                assert load + charge_a <= FUSE_A - HEADROOM_MARGIN_A + 1e-6, (house_a, plant, known, rates)
+    # Known per phase, each phase is sized on its own: 15 A on L1 leaves it 3 A; L2 and L3, which export 5.2 A under
+    # the sale, get their headroom (14.8 A) less the margin and the 7.2 A that comes back.
+    look = replace(
+        site.inputs(T0, "grid_charge", 12.0), phase_caps_kw=wide,
+        phase_headroom_a=tuple(FUSE_A - abs(load - 1.667 * 1000 / VOLTS) for load in (15.0, 2.0, 2.0)),
+        plant_phase_kw=(1.667, 1.667, 1.667), facts=replace(site.battery.facts(-5.0), power_kw=-5.0),
+    )
+    rates, _why = phase_charge_kw(look, None)
+    assert rates is not None and rates == (0.69, 1.15, 1.15)
+    # A plant that already charges on a phase puts nothing out there: its own draw is counted back as before.
+    running = replace(look, phase_headroom_a=(3.0, 17.0, 17.4), plant_phase_kw=(-0.92, 0.0, 0.0),
+                      phase_caps_kw=_caps(), facts=replace(look.facts, power_kw=0.9))
+    assert phase_charge_kw(running, (0.92, 0.0, 0.0)) == ((0.92, 0.0, 0.0), None)
+
+
 # --- the writes ------------------------------------------------------------------------------------------------------
 
 

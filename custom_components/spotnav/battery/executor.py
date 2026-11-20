@@ -100,7 +100,7 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   (`ExecInputs.phase_caps_kw`, `gate.grid_charge_phase_caps_kw`), a grid charge is written as three targets instead
   of the brand's own balanced charge (`phase_charge_kw`). Each phase gets at most its HA-down cap and at most its
   own live room (what the plant already takes on that phase, by its own power per phase, plus that phase's headroom
-  less `HEADROOM_MARGIN_A`); the plan's power and the battery's rating bound the sum, spread as evenly as the caps
+  less `HEADROOM_MARGIN_A`, less what the plant puts out on it now, which a target ends); the plan's power and the battery's rating bound the sum, spread as evenly as the caps
   allow (`gate.phase_split_kw`). The targets stay if Home Assistant stops, so every one of them is within the cap
   that keeps its phase under the fuse at the house's learned peak. A phase's charge is a whole number of amps
   (`PHASE_STEP_A`, rounded down), so a reading that wobbles writes nothing. It goes down at once
@@ -778,7 +778,10 @@ def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool =
     """The most each phase may charge now (kW): its HA-down cap (`ExecInputs.phase_caps_kw`, 0 without one) and its
     live room, what the plant already takes on that phase (at most what was commanded on it and what the plant's own
     power per phase shows, nothing when that is unknown, so never above the truth) plus the phase's headroom less
-    `HEADROOM_MARGIN_A`. `None` when a phase's headroom is unknown.
+    `HEADROOM_MARGIN_A`, less what the plant puts out on the phase now: the headroom is measured under that output (a
+    sale's, the cover the plant gives in its own mode, the sun's), and a target makes the phase's power the charge
+    instead. Without the plant's power per phase, all the battery discharges now is counted on each phase. `None`
+    when a phase's headroom is unknown.
 
     `grid`: the targets are the grid's (`PhaseControl.target_kind`), where the phase's cap may be the fuse itself
     (`gate.grid_charge_phase_caps_kw`), so the live room is reckoned exactly and is the one bound. A target of the
@@ -795,6 +798,8 @@ def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool =
         inputs.phase_caps_kw if _finite3(inputs.phase_caps_kw) else (0.0, 0.0, 0.0)
     )
     plant = inputs.plant_phase_kw if _finite3(inputs.plant_phase_kw) else None
+    power = inputs.facts.power_kw
+    discharge = max(-power, 0.0) if power is not None and math.isfinite(power) else 0.0
     room: list[float] = []
     for index in range(3):
         if grid:
@@ -807,7 +812,8 @@ def _phase_room_kw(inputs: ExecInputs, commanded: Phases | None, *, grid: bool =
         own = 0.0
         if plant is not None and commanded is not None:
             own = max(min(commanded[index], -plant[index]), 0.0)
-        live = own + (inputs.phase_headroom_a[index] - HEADROOM_MARGIN_A) * volts / 1000.0
+        output = max(plant[index], 0.0) if plant is not None else discharge
+        live = own + (inputs.phase_headroom_a[index] - HEADROOM_MARGIN_A) * volts / 1000.0 - output
         room.append(max(min(caps[index], live), 0.0))  # type: ignore[index]
     return (room[0], room[1], room[2])
 
