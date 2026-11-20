@@ -65,6 +65,9 @@ def test_a_heat_pumps_outdoor_sensor_is_taken_only_when_it_is_the_one() -> None:
     nibe_s = ("sensor.current_outdoor_temperature_bt1", "nibe_heatpump", "entry-30002")
     uplink = ("sensor.current_outd_temp_bt1", "myuplink", "robin-r-1234-aa-bb-40004")
     melcloud = ("sensor.ecodan_outside_temperature", "melcloud", "123-aa:bb-outside_temperature")
+    thermia = ("sensor.outdoor_temperature", "thermiagenesis", "thermiagenesis_input_outdoor_temperature")
+    assert pick_outdoor_sensor([thermia]) == thermia[0]
+    assert pick_outdoor_sensor([("sensor.x", "thermiagenesis", "thermiagenesis_input_room_temperature_sensor")]) is None
     assert pick_outdoor_sensor([nibe]) == nibe[0]
     assert pick_outdoor_sensor([nibe_s]) == nibe_s[0]
     assert pick_outdoor_sensor([uplink]) == uplink[0]
