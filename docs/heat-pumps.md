@@ -27,10 +27,12 @@ in [Supported heat pumps](supported.md#supported-heat-pumps).
 | NIBE (F series, SMO 20) | myUplink (`myuplink`, cloud) | Read through NIBE's cloud. |
 | CTC (EcoZenith, EcoLogic, EcoAir ...) | CTC Heat Pump (BMS) (`ctc_bms`) or CTC Local Easyconf (`ctc_ecozenith`) | Local Modbus. |
 | Panasonic Aquarea | HeishaMon (`aquarea`, MQTT) | Needs the HeishaMon board. The HeishaMon YAML package is not read. |
+| Thermia Genesis (Diplomat Inverter, Mega, Calibra, Atlas ...) | Thermia Genesis (`thermiagenesis`, local Modbus) | Its numbers and sensors are disabled by default, and the integration reads only the enabled ones: enable the readings under "What is read". Pumps on Thermia's older controller or on the Athena platform are not covered. |
 
 ## What is read
 
-Where the pump has it: the outdoor, supply, calculated supply (NIBE F 43009, NIBE S 31018, CTC 62007), return, room
+Where the pump has it: the outdoor, supply, calculated supply (NIBE F 43009, NIBE S 31018, CTC 62007, Thermia's
+"System Supply Line Calculated Set Point"), return, room
 and hot water temperatures,
 the degree minutes, the
 compressor's speed and whether it runs, the immersion heater's power or state, and whether the pump is heating the
@@ -230,7 +232,7 @@ results and why each decision was made.
 
 ## Control through the pump's own integration (not yet tried on a real pump)
 
-Three control paths need no relay and no electrician: SpotNav writes to an entity of the heat pump's own
+The control paths below need no relay and no electrician: SpotNav writes to an entity of the heat pump's own
 integration. **None of them has run on a real heat pump yet.** The registers, their ranges and what the integrations
 do with them are read from the integrations' sources, and the settings say under the switch that the path is untried.
 If you run one, watch the first days and tell us what you see.
@@ -247,13 +249,15 @@ its rebound after), and so in the battery's and the cars' plans and the day's re
 | SG Ready through the integration | NIBE S series, NIBE Heat Pump (`nibe_heatpump`, local) | number 46009 "Requested operating mode (SG Ready)", with switch 43033 "Activate SG Ready via API" on | at most 6 mode changes; the switch on at most 4 times | mode normal, then the switch off |
 | Heating curve offset, stored | NIBE F series 47011 "Heat Offset S1", NIBE S series 40031 "Heating offset climate system 1" (`nibe_heatpump`, local); any other number you choose | the offset: the value found less 2 steps (1 step below −5 °C outdoors), plus 1 step for a raise | at most 24 | the value found written back |
 | Heating curve offset, volatile | CTC, CTC Heat Pump (BMS) (`ctc_bms`) 1023 "Curve adjustment override" | the override: −3 °C (−2 °C below −5 °C outdoors), +2 °C for a raise | at most 24 changes; renewed every 2 minutes while held | the override released |
+| Heating curve offset, stored | Thermia Genesis, Thermia Genesis (`thermiagenesis`, local) "Comfort Wheel Setting" | the comfort wheel: the value found less 2 steps (1 step below −5 °C outdoors), plus 1 step for a raise, within 10..40 | at most 12 | the value found written back |
 
 SpotNav finds these entities on the pump: under **Control** a path the pump has is marked **Found on the heat pump**,
 and choosing it fills its entities in. Through NIBE's cloud (myUplink) nothing is steered, and CTC Local Easyconf
 (`ctc_ecozenith`) has no curve adjustment among its controls, so it has no offset path.
 
-**NIBE's entities are disabled by default.** When you turn **Control the heat** on, the dialog lists the path's entities
-that are still disabled in NIBE Heat Pump (the ones written, and the calculated supply the check reads). Saving
+**NIBE's and Thermia's entities are disabled by default.** When you turn **Control the heat** on, the dialog lists the
+path's entities that are still disabled in NIBE Heat Pump or Thermia Genesis (the ones written, and the calculated
+supply the check reads; on a Thermia also "First Prioritised Demand", so the check knows when the pump heats). Saving
 enables exactly those and reloads the integration once. Nothing is enabled before you save, and turning control off
 leaves them enabled.
 
@@ -328,6 +332,31 @@ They are no dead-man: while Home Assistant runs, the integration keeps the hold 
 which the integration takes as "release": nothing more is written and the pump is back on its own curve within five
 minutes. So if Home Assistant or the link to the pump stops, the lowering ends by itself within five minutes; while
 Home Assistant runs, it is SpotNav's rules that end it. An override that someone else holds is left alone.
+
+**Thermia Genesis (stored, comfort wheel).** The Genesis controller has no curve offset register: its comfort wheel
+(holding register 5, the heat climate entity's target) is the only single value that moves the heat curve, and
+what one step does to the room is not confirmed yet. SpotNav therefore treats it as NIBE's stored offset above, with
+these differences:
+
+* **The check needs the calculated supply.** The check looks only at "System Supply Line Calculated Set Point", and
+  only while the pump says it heats ("First Prioritised Demand" 4; a hot-water or anti-legionella run ends a try
+  unjudged and the wheel goes back at once). The heat pump meter's power is not taken as proof here. If the
+  calculated supply does not fall by 1.5 °C within 20 minutes of the lowering, the wheel does not move the curve on
+  that pump: the check fails, the value found is written back and nothing more is written.
+* **At most 12 writes a day.** Thermia's manual says nothing about where the registers are kept or how often they may
+  be written, so every one is treated as flash memory, at half the NIBE cap until a field test shows more is safe.
+* **Only from a whole step between 10 and 40**, the range of the integration's own heat climate entity (its number
+  says −40..100, which is no limit). A wheel found outside that range, or between steps, is not moved.
+* **A write shows only at the integration's next poll** (every 30 seconds), and the integration does not report a
+  write that failed: SpotNav's read-back, up to 90 seconds, is the only proof that a write took. One not read back
+  puts the value found back and pauses control for the day.
+* There is no dead-man: if Home Assistant or the network goes down during a lowering, the wheel stays lowered until
+  SpotNav puts it back at the next start.
+
+Nothing else on a Thermia is ever written: not its operational mode, the heat or hot-water enable switches, its gear
+limits, its supply limits, or its hot-water start and stop temperatures. A turn of the wheel on the pump's display,
+or through the integration's heat climate entity, while SpotNav holds a lowering is your change, and it wins. This
+path has not run on a real Thermia yet.
 
 The diagnostics (`heat_settings.control`) show the path's write class and the day's counts (`writes`), the kept
 offset moves (`kept.snapshots`) and whether SpotNav holds the SG Ready switch (`kept.activation`).
