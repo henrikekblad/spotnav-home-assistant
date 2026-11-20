@@ -13,8 +13,9 @@ the margin, active control turned off before the write, and the result of a must
 its deadband, dwell and protection band are met as they are.
 
 The resume and the battery probe are awaited in the middle of the function; their stand-ins sometimes change what is
-read after them (the charger's pause, the damper's last write, yield stepping, active control), so a read moved across
-one of those awaits changes the record.
+read after them (the charger's pause, the damper's last write, yield stepping, active control, the site closing, the
+charger's minimum, its margin, and the damper kept for the charger replaced by another), so a read moved across one of
+those awaits changes the record. Each outcome line carries the damper as it is when the line is logged.
 
 A second set (`_exact_case`) draws from values exact in binary placed on the thresholds the function compares against:
 a proposal equal to what was written (no lowering due), a last write at exactly the charger's minimum, a proposal at the
@@ -288,7 +289,18 @@ def _install(controller: SiteCapacityController, sc: _Scenario, charger: Any, st
         previous_setpoint: Any = None,
         yield_verdict: Any = None,
     ) -> None:
-        sc.ev("OUTCOME", cid, _d(decision), outcome, detail, detail_phase, setpoint, previous_setpoint, yield_verdict)
+        sc.ev(
+            "OUTCOME",
+            cid,
+            _d(decision),
+            outcome,
+            detail,
+            detail_phase,
+            setpoint,
+            previous_setpoint,
+            yield_verdict,
+            _dm(state["damper"]),
+        )
 
     def applyability(**kwargs: Any) -> Any:
         sc.ev("applyability", _d(kwargs["decision"]), *(kwargs[key] for key in sorted(kwargs) if key != "decision"))
@@ -310,6 +322,22 @@ def _install(controller: SiteCapacityController, sc: _Scenario, charger: Any, st
         elif r < 0.3:
             allowed.insert(0, False)
             sc.ev(name, "side:off")
+        elif r < 0.35:
+            controller._closed = True
+            sc.ev(name, "side:closed")
+        elif r < 0.42:
+            wiring = controller.config[CONF_PHASE_WIRING][CID]
+            wiring["min_current_a"] = rng.choice([5.0, 6.0, 8.0, 10.0])
+            sc.ev(name, "side:minimum", wiring["min_current_a"])
+        elif r < 0.48:
+            # The step goes on with the damper it began with, whatever the site keeps for the charger by then.
+            other = state["new_damper"]()
+            other.record_write(_amps(rng))
+            controller._dampers[CID] = other
+            sc.ev(name, "side:damper", _dm(other))
+        elif r < 0.53:
+            state["margins"][CID] = rng.choice([None, -1.0, 0.0, 1.0, 3.0])
+            sc.ev(name, "side:margin", state["margins"][CID])
 
     async def switch_only(cid: str, cc: Any, decision: Any, fresh: Any, max_age_s: float) -> None:
         sc.ev("AWAIT switch_only", cid, cc, _d(decision), fresh.tag, max_age_s)
@@ -497,7 +525,11 @@ def _draw_state(sc: _Scenario) -> tuple[dict[str, Any], Any, RegulatorDecision, 
             paused=rng.random() < 0.3,
             settling=rng.choices([None, False, True], [2, 10, 1])[0],
         )
-    damper = RegulatorDamper(deadband_a=deadband, dwell_s=dwell, now=lambda: _T0 + timedelta(seconds=sc.clock))
+
+    def new_damper() -> RegulatorDamper:
+        return RegulatorDamper(deadband_a=deadband, dwell_s=dwell, now=lambda: _T0 + timedelta(seconds=sc.clock))
+
+    damper = new_damper()
     if previous is not None:
         damper.record_write(previous)
     if rng.random() < 0.3:
@@ -520,6 +552,9 @@ def _draw_state(sc: _Scenario) -> tuple[dict[str, Any], Any, RegulatorDecision, 
         "yield": rng.random() < 0.6,
         "minimum": minimum,
         "margin": margin,
+        "margins": {CID: margin, "other": 9.0},
+        "damper": damper,
+        "new_damper": new_damper,
     }
     sc.clock = rng.choice([0.0, 0.0, 59.0, 60.0, 600.0])
     return state, charger, decision, damper, margin
@@ -567,8 +602,8 @@ async def _run(seed: int, exact: bool, monkeypatch: pytest.MonkeyPatch) -> list[
         phase_signed_active_power_reason="spr",
     )
     sc.ev("START", _d(decision), _dm(damper), state["margin"], charger)
-    result = await controller._async_apply_to_charger(CID, decision, fresh, 30.0, {CID: margin, "other": 9.0})
-    sc.ev("RESULT", result, _dm(controller._dampers[CID]), charger, sorted(controller._dampers))
+    result = await controller._async_apply_to_charger(CID, decision, fresh, 30.0, state["margins"])
+    sc.ev("RESULT", result, _dm(damper), _dm(controller._dampers[CID]), charger, sorted(controller._dampers))
     return sc.events
 
 
@@ -589,44 +624,44 @@ async def _digests(count: int, exact: bool, monkeypatch: pytest.MonkeyPatch) -> 
 
 # Recorded from `_async_apply_to_charger` before it was split into a decide part and a write part.
 EXPECTED = [
-    "f7c725041c3dfeee",
-    "741a70a011fa0018",
-    "5548e81cb3442143",
-    "8f61b0db4d038218",
-    "1f33f14d21ecd704",
-    "5e9dfb626665ffb5",
-    "5904b66dd8e0ce01",
-    "ac0f64271591d27b",
-    "31ff0bc20c826466",
-    "aba746c519dc7a8b",
-    "36c0dff798e051f6",
-    "bc02e93830ab6af0",
-    "b2caaa453a56e1e7",
-    "16e747a8ab0a0859",
-    "090b137eb19ec10a",
-    "d4fd26fff5609ae3",
-    "3c3cd9cc1e869d65",
-    "8f19351581d75e70",
-    "8bc46f3084042322",
-    "b06236d9b546c4ec",
-    "03ecaab2555be300",
-    "9056ccfbf258409b",
-    "1d291285f8fea9e3",
-    "d24d82d5f320b0c3",
+    "725f5add8635b90c",
+    "69d2b04b6d7f9265",
+    "7322f7c25b91c4a5",
+    "3a34f3e484bfd115",
+    "9e5faa3a4753af6d",
+    "24bc2521a6a18a5d",
+    "c969b98ae4822565",
+    "2c4c7dca4867bdef",
+    "a91cacd048ebde7a",
+    "01508662d3417295",
+    "e94cd58e240c0017",
+    "4f469bdcd56f02ad",
+    "52f2b06904aa80a7",
+    "943011d16efdd3db",
+    "930d77ef538c72e0",
+    "7f174532295c2bd7",
+    "a69d302bb7540a74",
+    "71f2bead0c9c983c",
+    "d35262d6225092f6",
+    "747bcbb4f6ebea6c",
+    "f7183e19aeb2fba3",
+    "6563472a4802bccf",
+    "af0341549287ba68",
+    "45d7bf2c5f4ec8d2",
 ]
 EXPECTED_EXACT = [
-    "f02c1b9eaf8347a6",
-    "adde0a43e5a5804c",
-    "9cb5580c1c2ce067",
-    "855168c4e3ba994d",
-    "380a96ee71a7deab",
-    "ce3b589a6c183493",
-    "9beeee28d295ff17",
-    "937710225365e0ec",
-    "926297fb132f99b2",
-    "75c65838e64f281a",
-    "b0ba5f8fe6b79806",
-    "83518ed65e14bfc8",
+    "e718b864a889efce",
+    "ce4cd2688cd36c53",
+    "b9313fdeed289a78",
+    "6c2b8bf651939624",
+    "9af68a66eaa2fb2c",
+    "1dc4dac317218a21",
+    "f20b690c2904ad99",
+    "110e8cd0c497cee9",
+    "65480b99dce829be",
+    "55eec3f5c3aaeac2",
+    "05eecc5b230101e7",
+    "24af91e8d733a4c1",
 ]
 
 
