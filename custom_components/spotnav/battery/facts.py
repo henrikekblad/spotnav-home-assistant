@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from ..core.parse import number_from_state
-from .adapters import Adapter, ControlSpec, FactRole, Match, ReserveSource, adapter_for
+from .adapters import Adapter, ControlSpec, FactRole, Match, ReserveSource, SocPack, adapter_for
 
 ManagementState = Literal["free", "self_managed", "unknown", "externally_controlled"]
 
@@ -267,6 +267,43 @@ def _fact(adapter: Adapter, role: FactRole, entities: Sequence[EntityFact], batt
     return entity if entity is not None and entity.available else None
 
 
+#: Below this level (%) a pack's size worked out from its energy left over its level is too coarse to weigh by.
+PACK_WEIGHT_MIN_SOC: Final = 10.0
+
+
+def packs_soc(
+    packs: Sequence[SocPack], entities: Sequence[EntityFact], battery: EntityFact
+) -> tuple[float | None, list[str]]:
+    """The battery's level (%) from its packs' levels, with the pack entities read; `None` when no pack reads one.
+
+    A pack that reads nothing (a site with one pack, a BMS that is offline) is left out. Where every pack read also
+    states the energy it holds now and none is nearly empty, each pack's size is that energy over its level, and the
+    level is the energy of all packs over their size together; otherwise the levels' plain mean."""
+    levels: list[float] = []
+    energies: list[float | None] = []
+    read: list[str] = []
+    for pack in packs:
+        entity = find_entity(pack.soc, entities, battery)
+        level = None if entity is None or not entity.available else _percent(entity.state)
+        if level is None:
+            continue
+        levels.append(level)
+        read.append(entity.entity_id)  # type: ignore[union-attr]
+        remaining = None if pack.remaining is None else find_entity(pack.remaining, entities, battery)
+        energies.append(
+            None if remaining is None or not remaining.available else to_kwh(remaining.state, remaining.unit)
+        )
+    if not levels:
+        return None, read
+    if len(levels) == 1:
+        return levels[0], read
+    if all(energy is not None and energy > 0 for energy in energies) and min(levels) >= PACK_WEIGHT_MIN_SOC:
+        stored = sum(energy for energy in energies if energy is not None)
+        size = sum(energy * 100.0 / level for energy, level in zip(energies, levels) if energy is not None)
+        return round(stored * 100.0 / size, 1), read
+    return round(sum(levels) / len(levels), 1), read
+
+
 def _plant_phase_entities(
     adapter: Adapter, entities: Sequence[EntityFact], battery: EntityFact
 ) -> tuple[str, str, str] | None:
@@ -440,6 +477,13 @@ def battery_facts(
         return None if entity is None else to_kw(entity.state, entity.unit)
 
     soc_entity, capacity_entity, firmware_entity = found.get("soc"), found.get("capacity"), found.get("firmware")
+    soc_pct = None if soc_entity is None else _percent(soc_entity.state)
+    if soc_pct is None and adapter.soc_packs:
+        soc_pct, packs_read = packs_soc(adapter.soc_packs, entities, battery)
+        if packs_read:
+            # The first pack stands for the level's history (the card's recorded level); all are named.
+            sources["soc"] = packs_read[0]
+            sources["soc_packs"] = ", ".join(packs_read)
     capacity_kwh = None if capacity_entity is None else to_kwh(capacity_entity.state, capacity_entity.unit)
     if capacity_kwh is not None and capacity_kwh <= 0:
         capacity_kwh = None
@@ -493,7 +537,7 @@ def battery_facts(
         integration=battery.platform,
         brand=adapter.brand,
         label=adapter.label,
-        soc_pct=None if soc_entity is None else _percent(soc_entity.state),
+        soc_pct=soc_pct,
         power_kw=power_kw,
         capacity_kwh=capacity_kwh,
         rated_charge_kw=rated_charge_kw,

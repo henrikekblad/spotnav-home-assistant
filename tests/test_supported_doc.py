@@ -79,5 +79,8 @@ def test_the_overview_names_every_battery_spotnav_reads_and_works_out_what_it_do
     # Solinteg: read untested, its commands mapped and never run on a device.
     row = next(row for name, row in rows.items() if name.startswith("Solinteg"))
     assert row[2].startswith("Yes, untested: ") and row[3] == gen.CONTROL_MAPPED and row[4] == "Nothing yet"
+    # FoxESS: grid meter, battery power and level read, untested, and read only.
+    row = next(row for name, row in rows.items() if name.startswith("FoxESS"))
+    assert row[2] == "Yes, untested: grid meter, battery power, battery level" and row[3].startswith("Not mapped: read only")
     assert rows["SAJ"][1:5] == ("Unknown", "No", "Unknown", "Nothing yet")
     assert "\n## Hybrid inverters and home batteries: overview\n" in gen.render()

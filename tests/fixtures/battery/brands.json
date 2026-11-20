@@ -1226,5 +1226,125 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "foxess": {
+  "_source": "Unique ids from nathanmarlor/foxess_modbus 94252f0 (`foxess_modbus_<key>`, no prefix), an H3-Pro with two battery packs; the whole family sets are in tests/fixtures/foxess.",
+  "platform": "foxess_modbus",
+  "manufacturer": "FoxESS",
+  "battery": "sensor.invbatpower",
+  "entities": [
+   {
+    "entity_id": "sensor.invbatpower",
+    "unique_id": "foxess_modbus_invbatpower",
+    "device": "inverter",
+    "state": "-1.2",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.invbatpower_1",
+    "unique_id": "foxess_modbus_invbatpower_1",
+    "device": "inverter",
+    "state": "-0.8",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.invbatpower_2",
+    "unique_id": "foxess_modbus_invbatpower_2",
+    "device": "inverter",
+    "state": "-0.4",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_soc_1",
+    "unique_id": "foxess_modbus_battery_soc_1",
+    "device": "inverter",
+    "state": "60",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.battery_soc_2",
+    "unique_id": "foxess_modbus_battery_soc_2",
+    "device": "inverter",
+    "state": "60",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.bms_kwh_remaining_1",
+    "unique_id": "foxess_modbus_bms_kwh_remaining_1",
+    "device": "inverter",
+    "state": "6.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.bms_kwh_remaining_2",
+    "unique_id": "foxess_modbus_bms_kwh_remaining_2",
+    "device": "inverter",
+    "state": "3.0",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.min_soc_on_grid",
+    "unique_id": "foxess_modbus_min_soc_on_grid",
+    "device": "inverter",
+    "state": "15",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.min_soc_on_grid",
+    "unique_id": "foxess_modbus_min_soc_on_grid",
+    "device": "inverter",
+    "state": "15",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.work_mode",
+    "unique_id": "foxess_modbus_work_mode",
+    "device": "inverter",
+    "state": "Self Use",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.master_version",
+    "unique_id": "foxess_modbus_master_version",
+    "device": "inverter",
+    "state": "1.22",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "foxess",
+   "soc_pct": 60.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

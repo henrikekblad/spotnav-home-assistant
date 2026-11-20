@@ -657,6 +657,24 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
         warnings=(WARNING_SIGN_UNVERIFIED,),
         label="SolaX Modbus, Solinteg plugin",
     ),
+    # FoxESS Modbus (nathanmarlor/foxess_modbus `94252f0`, read 2026-11-20). Unique ids are
+    # `foxess_modbus_[<prefix>_]<key>`. The three-phase H3 family (H3, AC3, AIO-H3, H3-Pro, H3-Smart and the
+    # 1KOMMA5 `1K5-HI-<kW>-V1`, read as an H3-Smart) reports the grid CT per phase, `grid_ct_R/S/T` (kW), and the
+    # H3-Pro and H3-Smart also its total `grid_ct`. The integration states the sign: its `feed_in` is the CT's value
+    # while positive and its `grid_consumption` the value negated while negative ("negative = import"), so the power
+    # is export-positive: negated. `grid_voltage_R/S/T` is the grid's voltage (disabled by default, offered to be
+    # enabled). There is no grid current per phase: `inv_current_R/S/T` is the inverter's own, so the current is
+    # estimated from the power. The single-phase H1 and KH have only the total `grid_ct`, which makes no meter;
+    # the reactive, apparent and power-factor CT entities (`grid_ct_reactive_R`...) end otherwise and are not read.
+    MeterRow(
+        platforms=("foxess_modbus",),
+        patterns=(
+            _p("power", r"(?:^|_)grid_ct_(?P<a>[rst])$"),
+            _p("voltage", r"(?:^|_)grid_voltage_(?P<a>[rst])$"),
+        ),
+        totals=(_p("grid_power", r"(?:^|_)grid_ct$"),),
+        invert_power=True,
+    ),
 )
 
 # Integrations whose rows are device-filtered because the platform hosts unrelated devices.
@@ -729,6 +747,9 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("fronius",), _re(r"power_battery$"), inverted=True),
     BatteryRow(("goodwe",), _re(r"pbattery1$"), inverted=True),
     BatteryRow(("solarman",), _re(r"battery_power$"), inverted=True),
+    # FoxESS (`94252f0`): `invbatpower` is the whole battery's power on every family, discharge-positive (its
+    # `battery_discharge` is the value while positive); the H1-US register's opposite sign is negated by the
+    # integration itself. The H3-Pro's and H3-Smart's per-input `invbatpower_1` and `_2` are not read.
     BatteryRow(("foxess_modbus",), _re(r"invbatpower$"), inverted=True),
     BatteryRow(("enphase_envoy",), _re(r"battery_discharge$"), inverted=True),
     # Sungrow reports the battery in two conventions. Local Modbus (the `battery_power` register of

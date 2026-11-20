@@ -1,0 +1,280 @@
+{
+ "_source": "nathanmarlor/foxess_modbus 94252f0, entities/entity_descriptions.py: the keys, names and units of the entities of the KH (firmware 1.33 and later) profile registers that SpotNav reads or that end like them. Hand-picked, not every entity of the family.",
+ "manufacturer": "FoxESS",
+ "model": "KH10 - TCP",
+ "prefix": "",
+ "entities": [
+  {
+   "domain": "sensor",
+   "key": "invbatpower",
+   "name": "Inverter Battery Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_discharge",
+   "name": "Battery Discharge",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_charge",
+   "name": "Battery Charge",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "invbatvolt",
+   "name": "Inverter Battery Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "invbatcurrent",
+   "name": "Inverter Battery Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_soc",
+   "name": "Battery SoC",
+   "unit": "%",
+   "device_class": "battery",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "battery_temp",
+   "name": "Battery Temp",
+   "unit": "°C",
+   "device_class": "temperature",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_kwh_remaining",
+   "name": "BMS kWh Remaining",
+   "unit": "kWh",
+   "device_class": "energy",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_cycle_count",
+   "name": "BMS Cycle Count",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_ct",
+   "name": "Grid CT",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "feed_in",
+   "name": "Feed-in",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "grid_consumption",
+   "name": "Grid Consumption",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "ct2_meter",
+   "name": "CT2 Meter",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "load_power",
+   "name": "Load Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "rvolt",
+   "name": "Grid Voltage",
+   "unit": "V",
+   "device_class": "voltage",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "rcurrent",
+   "name": "Grid Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "rpower",
+   "name": "Grid Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "pv1_power",
+   "name": "PV1 Power",
+   "unit": "kW",
+   "device_class": "power",
+   "enabled": true
+  },
+  {
+   "domain": "select",
+   "key": "work_mode",
+   "name": "Work Mode",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "min_soc",
+   "name": "Min SoC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "min_soc",
+   "name": "Min SoC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "max_soc",
+   "name": "Max SoC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "max_soc",
+   "name": "Max SoC",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "min_soc_on_grid",
+   "name": "Min SoC (On Grid)",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "min_soc_on_grid",
+   "name": "Min SoC (On Grid)",
+   "unit": "%",
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "max_charge_current",
+   "name": "Max Charge Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "max_charge_current",
+   "name": "Max Charge Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "max_discharge_current",
+   "name": "Max Discharge Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "number",
+   "key": "max_discharge_current",
+   "name": "Max Discharge Current",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "master_version",
+   "name": "Version: Master",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "slave_version",
+   "name": "Version: Slave",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "manager_version",
+   "name": "Version: Manager",
+   "unit": null,
+   "device_class": null,
+   "enabled": true
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_charge_rate",
+   "name": "BMS Charge Rate",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  },
+  {
+   "domain": "sensor",
+   "key": "bms_discharge_rate",
+   "name": "BMS Discharge Rate",
+   "unit": "A",
+   "device_class": "current",
+   "enabled": false
+  }
+ ]
+}

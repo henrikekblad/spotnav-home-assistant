@@ -89,6 +89,9 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     ("battery", "solax_modbus/sofar"): "The older inverters of the integration's \"Sofar Old\" plugin are not detected.",
     ("battery", "solax_modbus/growatt"): "The off-grid SPF is not detected.",
     ("battery", "solax_modbus/solinteg"): "Also M-TEC Energy Butler and Wattsonic.",
+    ("meter", "foxess_modbus"): "The three-phase H3 family only (H3, AC3, AIO-H3, H3-Pro, H3-Smart, 1KOMMA5 "
+    "`1K5-HI`). The grid voltage per phase is disabled by default and is offered to be enabled. H1 and KH report "
+    "a total only, so the site needs its own grid meter.",
     ("charger", "wallbox"): "Since mid-2025 the Wallbox cloud allows about one request a minute per account, and "
     "Home Assistant's own polling already uses it: keep one charger per account, or use OCPP, which is recommended "
     "for Wallbox.",
@@ -830,11 +833,15 @@ OVERVIEW: tuple[Overview, ...] = (
         note="The meter may sit on the load or the PV side: check that it measures the main feed.",
     ),
     Overview(
-        "FoxESS (H1, H3, KH, AC1, AC3)",
+        "FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also 1KOMMA5)",
         "`foxess_modbus`, HACS (nathanmarlor/foxess_modbus). The cloud integration (`foxess`) is not read",
         keys=("foxess_modbus",),
-        control="Not mapped. Work mode, charge periods and SoC limits exist locally, depending on the model",
-        note="Only the battery's power is read, not the grid.",
+        adapter="foxess",
+        control="Not mapped: read only. Remote control (force charge and discharge), work mode, charge periods and "
+        "SoC limits exist locally, depending on the model",
+        note="Only the three-phase H3 family reports the grid per phase; H1 and KH need their own grid meter. The "
+        "size is learnt everywhere, and the ratings too except on H1 and KH with the two BMS rate sensors enabled. "
+        "The H3-Pro and H3-Smart report a level per battery pack, which SpotNav combines.",
     ),
     Overview(
         "SMA",
@@ -1071,9 +1078,11 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "Thermia Genesis",
         "`CJNE/thermiagenesis`, HACS",
         "Local (Modbus TCP)",
-        "Not yet",
-        "Setpoint: start and stop temperatures as numbers (disabled by default). No boost entity seen",
-        "A field tester is needed to check the registers.",
+        "Offset: the comfort wheel (stored, at most 12 writes a day), untested",
+        "No boost entity or register. The start and stop temperatures (numbers, disabled by default) are stored "
+        "settings SpotNav does not write",
+        "Every register is treated as a stored setting. The check must see the calculated supply move, else the path "
+        "stays read only. A field tester is needed.",
     ),
     (
         "Thermia Online",
