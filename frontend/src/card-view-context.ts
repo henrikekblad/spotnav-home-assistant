@@ -5,6 +5,9 @@
 import type { CardViewInput, EntityViewState } from "./card-view";
 import type { DialogHandle } from "./dialog";
 import type { CardModel } from "./model";
+import type { EntityScope } from "./entity-config";
+import type { ChoiceOption, EditorHandlers, NumberEditorInput } from "./value-editors";
+import type { ValueWrite } from "./value-writes";
 import type { Vehicle } from "./validate";
 
 /** Every dialog the card view owns, by the name its section uses. */
@@ -60,4 +63,37 @@ export interface SettingsPageState {
   vehicleListSlot: HTMLElement | null;
   vehicleRows: Vehicle[];
   siteEntitySlot: HTMLElement | null;
+}
+
+/** The row and editor builders of the Settings page, which the sections of the page build their rows from. */
+export interface PageHelpers {
+  writeValue: (write: ValueWrite) => Promise<string | null>;
+  overviewRow: (key: string, label: string, value: string, onTap?: () => void) => HTMLElement;
+  rowHelp: (key: string, text: string) => HTMLElement;
+  entityRow: (key: string, label: string, value: string, scope: EntityScope, part?: string) => HTMLElement;
+  openValueEditor: (
+    title: string,
+    build: (handlers: EditorHandlers) => HTMLFormElement | { form: HTMLFormElement; close: () => void },
+    options?: { anyone?: boolean },
+  ) => void;
+  editNumber: (
+    title: string,
+    spec: Omit<NumberEditorInput, "idPrefix" | "rangeMessage">,
+    save: (value: number | null) => Promise<string | null>,
+  ) => void;
+  editSingle: (
+    title: string,
+    options: readonly ChoiceOption[],
+    selected: string | null,
+    save: (value: string) => Promise<string | null>,
+    intro?: string,
+    status?: string,
+  ) => void;
+  editMulti: (
+    title: string,
+    options: readonly ChoiceOption[],
+    checked: readonly string[],
+    save: (values: string[]) => Promise<string | null>,
+    extra?: { intro?: string; atLeastOne?: string },
+  ) => void;
 }

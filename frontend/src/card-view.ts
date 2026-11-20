@@ -33,7 +33,6 @@ import {
   hasZone,
   priceAxisLabel,
   pricePerKwh,
-  priceUnitChoosable,
   priceUnitName,
   wallTimeRepeats,
   weekdayDate,
@@ -72,9 +71,9 @@ import {
 } from "./price-section";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
-import { sendDebugEditor, type SendDebug } from "./send-debug";
-import { disconnectPhonesEditor, makeHomeEditor } from "./phones";
-import { betaEditor, betaSummary, readBeta, type BetaAnswer, type BetaCall } from "./beta";
+import { type SendDebug } from "./send-debug";
+import { makeHomeEditor } from "./phones";
+import { type BetaCall } from "./beta";
 import { cardHeader, headerButton, headerStatus, headerTitle } from "./card-header";
 import type { HistoryState } from "./history";
 import type { PowerState } from "./power-view";
@@ -92,6 +91,7 @@ import { SiteSections } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
 import { element } from "./dom";
 import type { SettingsPageState, ViewContext } from "./card-view-context";
+import { createSupportSection } from "./card-view-support";
 import { createEntityRowsSection } from "./card-view-entity-rows";
 import { createEntityEditorSection } from "./card-view-entity-editor";
 import { createHistorySection } from "./card-view-history";
@@ -495,9 +495,6 @@ function currentPriceText(model: CardModel, mark: ChartMark | null): string | nu
 function nowSummaryText(model: CardModel, figure: string | null): string | null {
   return figure === null ? null : `${translate(model.language, "graph.summary.current")} ${figure}`;
 }
-
-/** The price the Display choice shows each unit with, in the minor unit ("163,1 öre/kWh", "1,63 kr/kWh"). */
-const PRICE_UNIT_EXAMPLE = 163.1;
 
 export function bannerSeverity(model: CardModel): "blocking" | "notice" | null {
   return model.severity;
@@ -2638,296 +2635,6 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** The chart axis this view shows as chosen: the model's, then whatever was chosen here since. */
-  let chartAxisChoice: ChartAxisMode = model.chartAxis;
-
-  /**
-   * Display: how this device draws the card, not a charger setting. Stored in this browser for every
-   * SpotNav card in it, and marked so (as the site's sections say which chargers they apply to). Anyone may
-   * change it, administrator or not.
-   */
-  function displaySectionBody(): HTMLElement {
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "display";
-    section.append(sectionHeading(doc, "display", translate(model.language, "settings.section.display")));
-    const applies = element(doc, "p", C.siteApplies, translate(model.language, "display.applies"));
-    applies.dataset["deviceOnly"] = "true";
-    section.append(applies);
-    const label = translate(model.language, "display.chartAxis");
-    const value = translate(model.language, chartAxisChoice === "from_now" ? "display.chartAxis.fromNow" : "display.chartAxis.day");
-    const options: ChoiceOption[] = [
-      {
-        value: "day",
-        label: translate(model.language, "display.chartAxis.day"),
-        help: translate(model.language, "display.chartAxis.dayHelp"),
-      },
-      {
-        value: "from_now",
-        label: translate(model.language, "display.chartAxis.fromNow"),
-        help: translate(model.language, "display.chartAxis.fromNowHelp"),
-      },
-    ];
-    const [row] = settingRow(doc, {
-      key: "chart_axis",
-      label,
-      value,
-      onTap: () =>
-        openValueEditor(
-          label,
-          (handlers) =>
-            singleEditor(
-              doc,
-              model.language,
-              { options, selected: chartAxisChoice, idPrefix: `${idPrefix}-chart-axis` },
-              async (chosen) => {
-                chartAxisChoice = chosen === "from_now" ? "from_now" : "day";
-                input.onChartAxisChange?.(chartAxisChoice);
-                return null;
-              },
-              handlers,
-            ),
-          { anyone: true },
-        ),
-      changeableText: translate(model.language, "settings.row.changeable", { label, value }),
-    });
-    section.append(row!);
-    if (priceUnitChoosable(model.format)) {
-      section.append(priceUnitRow());
-    }
-    if (model.sunOffered) {
-      section.append(chartSunRow());
-    }
-    return section;
-  }
-
-  /** The sun this view shows as chosen: the model's, then whatever was chosen here since. */
-  let chartSunChoice: boolean = model.sunOn;
-
-  /** Display's "Sol": whether the price chart draws the sun. Offered only where the site has a sun source. */
-  function chartSunRow(): HTMLElement {
-    const label = translate(model.language, "display.sun");
-    const onOff = (on: boolean): string => translate(model.language, on ? "settings.value.on" : "settings.value.off");
-    const value = onOff(chartSunChoice);
-    const [row] = settingRow(doc, {
-      key: "chart_sun",
-      label,
-      value,
-      onTap: () =>
-        openValueEditor(
-          label,
-          (handlers) =>
-            onOffEditor(
-              doc,
-              model.language,
-              { intro: translate(model.language, "display.sun.help"), on: chartSunChoice, idPrefix: `${idPrefix}-chart-sun` },
-              async (chosen) => {
-                chartSunChoice = chosen;
-                input.onChartSunChange?.(chosen);
-                return null;
-              },
-              handlers,
-            ),
-          { anyone: true },
-        ),
-      changeableText: translate(model.language, "settings.row.changeable", { label, value }),
-    });
-    return row!;
-  }
-
-  /** The price unit this view shows as chosen: the model's, then whatever was chosen here since. */
-  let priceUnitChoice: PriceUnit = model.priceUnit;
-
-  /**
-   * Display's price unit: the market's minor unit ("öre/kWh", "cent/kWh") or its major one ("kr/kWh",
-   * "€/kWh"), named from the market itself. Offered only when the market names both.
-   */
-  function priceUnitRow(): HTMLElement {
-    const minorName = `${model.format.unit}/kWh`;
-    const majorName = `${model.format.majorUnit ?? ""}/kWh`;
-    const label = translate(model.language, "display.priceUnit");
-    const example = (unit: PriceUnit): string =>
-      translate(model.language, "display.priceUnit.example", {
-        price: pricePerKwh({ ...model.format, priceUnit: unit }, PRICE_UNIT_EXAMPLE),
-      });
-    const value = priceUnitChoice === "major" ? majorName : minorName;
-    const options: ChoiceOption[] = [
-      {
-        value: "minor",
-        label: minorName,
-        help: example("minor"),
-      },
-      {
-        value: "major",
-        label: majorName,
-        help: example("major"),
-      },
-    ];
-    const [row] = settingRow(doc, {
-      key: "price_unit",
-      label,
-      value,
-      onTap: () =>
-        openValueEditor(
-          label,
-          (handlers) =>
-            singleEditor(
-              doc,
-              model.language,
-              { options, selected: priceUnitChoice, idPrefix: `${idPrefix}-price-unit` },
-              async (chosen) => {
-                priceUnitChoice = chosen === "major" ? "major" : "minor";
-                input.onPriceUnitChange?.(priceUnitChoice);
-                return null;
-              },
-              handlers,
-            ),
-          { anyone: true },
-        ),
-      changeableText: translate(model.language, "settings.row.changeable", { label, value }),
-    });
-    return row!;
-  }
-
-  /**
-   * Support: "About this card" (the capability list, for everyone) and, for administrators only, the
-   * "Automations" row (SpotNav's blueprints), the button that saves the debug bundle and the one that sends it to
-   * SpotNav's developer (only from its dialog, with the reader's consent).
-   */
-  function supportSectionBody(): HTMLElement {
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "support";
-    section.append(
-      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.support")),
-    );
-    const outdatedNote = element(doc, "p", C.muted, translate(model.language, "debug.cardOutdated"));
-    outdatedNote.dataset["cardOutdated"] = "true";
-    outdatedNote.setAttribute("role", "status");
-    cardOutdatedNote = outdatedNote;
-    paintCardOutdated();
-    section.append(outdatedNote);
-    if (input.isAdmin) {
-      section.append(
-        overviewRow(
-          "automations",
-          translate(model.language, "settings.automations.label"),
-          translate(model.language, "settings.automations.value"),
-          () => openAutomations(),
-        ),
-      );
-      if (input.onBeta !== undefined) {
-        section.append(betaRow());
-      }
-      section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
-    }
-    const actions = element(doc, "div", C.settingsSupportActions);
-    const about = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-    about.type = "button";
-    about.dataset["about"] = "open";
-    about.textContent = translate(model.language, "settings.about.open");
-    about.addEventListener("click", () => {
-      openCapabilities();
-    });
-    actions.append(about);
-    if (input.isAdmin) {
-      const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-      button.type = "button";
-      button.dataset["downloadDebug"] = "true";
-      button.addEventListener("click", () => {
-        if (!debugPending) {
-          input.onDownloadDebug?.();
-        }
-      });
-      debugButton = button;
-      paintDebugButton();
-      actions.append(button);
-      const send = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-      send.type = "button";
-      send.dataset["sendDebug"] = "open";
-      send.textContent = translate(model.language, "sendDebug.open");
-      send.addEventListener("click", () => openSendDebug());
-      actions.append(send);
-      const disconnect = input.onDisconnectPhones;
-      if (disconnect !== undefined) {
-        const phones = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "phones.disconnect.open")) as HTMLButtonElement;
-        phones.type = "button";
-        phones.dataset["disconnectPhones"] = "open";
-        phones.addEventListener("click", () =>
-          openValueEditor(translate(model.language, "phones.disconnect.open"), (handlers) =>
-            disconnectPhonesEditor(doc, model.language, disconnect, handlers),
-          ),
-        );
-        actions.append(phones);
-      }
-    }
-    section.append(actions);
-    return section;
-  }
-
-  /** The "Betatestare" row's value, read once and then from every answer its dialog reads. */
-  let betaAnswer: BetaAnswer | null = null;
-  let betaRead = false;
-  let betaValue: HTMLElement | null = null;
-
-  function betaRow(): HTMLElement {
-    const row = overviewRow("beta", translate(model.language, "beta.label"), betaSummary(model.language, betaAnswer), () => openBeta());
-    betaValue = row.querySelector<HTMLElement>("[data-edit='beta']");
-    const call = input.onBeta;
-    if (!betaRead && call !== undefined) {
-      betaRead = true;
-      void readBeta(call).then((answer) => showBeta(answer));
-    }
-    return row;
-  }
-
-  function showBeta(answer: BetaAnswer | null): void {
-    if (answer === null || destroyed) {
-      return;
-    }
-    betaAnswer = answer;
-    if (betaValue !== null) {
-      betaValue.textContent = betaSummary(model.language, answer);
-    }
-  }
-
-  /** The beta box and the hardware test, in the value editors' dialog, back to Settings when closed. */
-  function openBeta(): void {
-    const call = input.onBeta;
-    if (call === undefined) {
-      return;
-    }
-    openValueEditor(translate(model.language, "beta.label"), (handlers) =>
-      betaEditor({ doc, language: model.language, idPrefix, call, onAnswer: (answer) => showBeta(answer) }, () => handlers.onDone()),
-    );
-  }
-
-  /** "Send debug info": its dialog, in the value editors' dialog, back to Settings when closed. Administrators only. */
-  function openSendDebug(): void {
-    const send = input.onSendDebug;
-    if (send === undefined) {
-      return;
-    }
-    openValueEditor(translate(model.language, "sendDebug.title"), (handlers) =>
-      sendDebugEditor(doc, model.language, idPrefix, send, handlers),
-    );
-  }
-
-  let debugButton: HTMLButtonElement | null = null;
-  let debugPending = false;
-  let cardOutdatedNote: HTMLElement | null = null;
-  let cardIsOutdated = false;
-
-  function paintCardOutdated(): void {
-    if (cardOutdatedNote !== null) {
-      cardOutdatedNote.hidden = !cardIsOutdated;
-    }
-  }
-
-  function paintDebugButton(): void {
-    if (debugButton === null) {
-      return;
-    }
-    debugButton.disabled = debugPending;
-    debugButton.textContent = translate(model.language, debugPending ? "debug.preparing" : "debug.download");
-  }
 
   /**
    * One value row (`value-editors.settingRow`): tappable in the accent colour when `onTap` changes it (only an
@@ -3157,6 +2864,13 @@ export function createCardView(input: CardViewInput): CardView {
     siteFollowsSolar,
     importTargetShown,
   });
+  const supportSection = createSupportSection(viewContext, {
+    overviewRow,
+    openValueEditor,
+    openAutomations,
+    openCapabilities,
+  });
+  const { displaySectionBody, supportSectionBody } = supportSection;
 
   let homeOffered = false;
   let makeHomeSlot: HTMLElement | null = null;
@@ -3611,14 +3325,8 @@ export function createCardView(input: CardViewInput): CardView {
     setEntityEditorPending: entityEditorSection.setEntityEditorPending,
     setEntityHass: entityEditorSection.setEntityHass,
     closeEntityEditor,
-    setDebugPending(pending: boolean): void {
-      debugPending = pending;
-      paintDebugButton();
-    },
-    setCardOutdated(outdated: boolean): void {
-      cardIsOutdated = outdated;
-      paintCardOutdated();
-    },
+    setDebugPending: supportSection.setDebugPending,
+    setCardOutdated: supportSection.setCardOutdated,
     setOverviewNotice(failure: FailureSentence | null): void {
       overviewNotice = failure;
       paintOverviewNotice();

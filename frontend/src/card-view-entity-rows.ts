@@ -56,38 +56,9 @@ import {
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
 import type { EntityViewState } from "./card-view";
-import type { SettingsPageState, ViewContext } from "./card-view-context";
+import type { PageHelpers, SettingsPageState, ViewContext } from "./card-view-context";
 
-export interface EntityRowsDeps {
-  writeValue: (write: ValueWrite) => Promise<string | null>;
-  overviewRow: (key: string, label: string, value: string, onTap?: () => void) => HTMLElement;
-  rowHelp: (key: string, text: string) => HTMLElement;
-  entityRow: (key: string, label: string, value: string, scope: EntityScope, part?: string) => HTMLElement;
-  openValueEditor: (
-    title: string,
-    build: (handlers: EditorHandlers) => HTMLFormElement | { form: HTMLFormElement; close: () => void },
-    options?: { anyone?: boolean },
-  ) => void;
-  editNumber: (
-    title: string,
-    spec: Omit<NumberEditorInput, "idPrefix" | "rangeMessage">,
-    save: (value: number | null) => Promise<string | null>,
-  ) => void;
-  editSingle: (
-    title: string,
-    options: readonly ChoiceOption[],
-    selected: string | null,
-    save: (value: string) => Promise<string | null>,
-    intro?: string,
-    status?: string,
-  ) => void;
-  editMulti: (
-    title: string,
-    options: readonly ChoiceOption[],
-    checked: readonly string[],
-    save: (values: string[]) => Promise<string | null>,
-    extra?: { intro?: string; atLeastOne?: string },
-  ) => void;
+export interface EntityRowsDeps extends PageHelpers {
   siteFollowsSolar: (rows: ReadonlyArray<{ id: string; available: boolean }>) => boolean;
   importTargetShown: (demand: { available: boolean; reason: string | null } | null, value: number | null) => boolean;
 }
