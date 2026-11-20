@@ -20,6 +20,7 @@ from homeassistant.util import dt as dt_util
 from custom_components.spotnav.battery import plan_runtime
 from custom_components.spotnav.battery.plan_model import (
     ACTION_SELF_CONSUME,
+    ACTION_SHAVE,
     MODE_BALANCED,
     MODE_MAX_PROFIT,
     MODE_SELF_CONSUMPTION,
@@ -41,6 +42,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     TRIGGER_PRICES,
     TRIGGER_START,
     VARIANT_DEFENSIVE,
+    VARIANT_DEMAND,
     PriceSlot,
     bucket_start,
 )
@@ -874,3 +876,107 @@ async def test_the_day_is_held_against_its_perfect_plan_once_reviewed_and_again_
     controller.battery_shadow.tick(now + timedelta(minutes=32))
     await hass.async_block_till_done()
     assert len(reads) == 2
+
+
+# ------------------------------------------------------------------------------------------------ the demand variant
+
+
+def _cheap_hour_ceilings(controller: Any, now: datetime, kw: float = 1.0, price: float = 4500.0) -> dict:
+    """A soft ceiling of [kw] at [price] öre per kW in the first eight (cheap) hours, as the site's would be."""
+    first = hour_start(now, controller.demand.tracker.tz)
+    return {first + timedelta(hours=i): (kw, price) for i in range(8)}
+
+
+async def test_without_a_priced_part_there_is_no_demand_variant(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
+    _site_entry, controller, _now = await _planned(hass, monkeypatch)
+    plan = controller.battery_shadow.snapshot()["plan"]
+    assert plan["demand"] == {"status": "not_needed", "plan": None}
+    assert VARIANT_DEMAND not in controller.battery_shadow.plan.mode_plans
+
+
+async def test_a_priced_ceiling_plans_the_demand_variant_beside_the_plan_in_force_and_logs_its_shaves(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _service_calls(hass)
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    shadow = controller.battery_shadow.plan
+    # Planned again at the same moment without and then with the ceiling (both keep the running slot's action).
+    await shadow.async_plan(now, TRIGGER_INPUTS)
+    before = shadow.snapshot()["plan"]
+    logged: list[tuple[str, dict]] = []
+    monkeypatch.setattr(controller, "_log_target", lambda charger, action, budget=None, **fields: logged.append((action, fields)))
+    monkeypatch.setattr(plan_runtime, "site_ceilings", lambda site: _cheap_hour_ceilings(controller, now))
+    await shadow.async_plan(now, TRIGGER_INPUTS)
+    plan = shadow.snapshot()
+    # The plan in force is exactly the one without the demand charge: only the variant prices it.
+    assert plan["plan"] == before
+    demand = plan["demand"]
+    assert demand["status"] == "planned"
+    actions = [slot["action"] for slot in demand["plan"]["slots"]]
+    # The house's 1.5 kW is above the 1 kW ceiling in the cheap hours (the first 31 slots from 08:21 UTC): the variant
+    # shaves there and charges nowhere.
+    assert ACTION_SHAVE in actions[:31] and "grid_charge" not in actions[:31]
+    assert all(slot["grid_kw"] <= 1.0 + 1e-6 for slot in demand["plan"]["slots"][:31])
+    # Held under the ceiling throughout, it adds nothing to the demand charge (the field is left out at 0).
+    assert demand["plan"].get("demand", 0.0) == 0.0
+    assert any(reason["code"] == "shave_peak" for slot in demand["plan"]["slots"] for reason in slot["reasons"])
+    assert VARIANT_DEMAND in shadow.mode_plans and shadow.plan is not shadow.mode_plans[VARIANT_DEMAND]
+    [(action, fields)] = [item for item in logged if item[0] == "battery_shave"]
+    assert fields["slots"] and fields["slots"][0][1] == pytest.approx(0.5, abs=0.01)
+    # The same shaves planned again are not logged again.
+    await shadow.async_plan(now, TRIGGER_INPUTS)
+    assert len([item for item in logged if item[0] == "battery_shave"]) == 1
+    # The next quarter hour records what the variant planned for it, and nothing is written to the battery.
+    later = bucket_start(now) + BUCKET + timedelta(seconds=1)
+    controller.battery_shadow.tick(later)
+    await hass.async_block_till_done()
+    assert VARIANT_DEMAND in shadow.actuals.buckets[bucket_start(later)].ran_modes
+    assert [call for call in calls if call.data.get("domain") not in ("system_log", "logger")] == []
+
+
+async def test_the_power_level_caps_the_variants_hours(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    first = hour_start(now, controller.demand.tracker.tz)
+    monkeypatch.setattr(
+        plan_runtime, "site_hour_caps", lambda hass, site, now: {first + timedelta(hours=i): 1.0 for i in range(8)}
+    )
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    plan = controller.battery_shadow.snapshot()["plan"]
+    assert plan["demand"]["status"] == "planned"
+    # The house's 1.5 kW from the grid in the plan in force; held under the level's 1 kW by the battery in the variant.
+    # (The first slot starts now, 08:21 UTC: the eight hours from 08:00 are its first 31 slots.)
+    assert max(slot["grid_kw"] for slot in plan["plan"]["slots"][:31]) == pytest.approx(1.5)
+    assert all(slot["grid_kw"] <= 1.0 + 1e-6 for slot in plan["demand"]["plan"]["slots"][:31])
+
+
+async def test_the_demand_variant_is_skipped_when_the_modes_took_too_long(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    monkeypatch.setattr(plan_runtime, "site_ceilings", lambda site: _cheap_hour_ceilings(controller, now))
+    ticks = iter([0.0] * 2 + [plan_runtime.MODES_BUDGET_S + 1.0] * 10)
+    monkeypatch.setattr(plan_runtime, "budget_clock", lambda: next(ticks))
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    plan = controller.battery_shadow.snapshot()["plan"]
+    assert VARIANT_DEMAND in plan["modes_skipped"] and plan["demand"] == {"status": "skipped", "plan": None}
+
+
+async def test_the_hard_cap_per_hour_follows_the_power_level_in_its_hours(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.planning.auto_settings import PowerLevel
+    from custom_components.spotnav.pricing import price_source
+    from custom_components.spotnav.site.import_target import held_level_kw
+
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    # No import target and no power level: nothing holds any hour.
+    assert plan_runtime.site_hour_caps(hass, controller, now) == {}
+    monkeypatch.setattr(price_source, "site_power_level", lambda hass, entry_id: PowerLevel(level_kw=6.0))
+    caps = plan_runtime.site_hour_caps(hass, controller, now)
+    assert len(caps) == plan_runtime.HOUR_CAPS_H
+    assert all(kw == pytest.approx(held_level_kw(6.0)) for kw in caps.values())
+    assert min(caps) == hour_start(now, controller.demand.tracker.tz)

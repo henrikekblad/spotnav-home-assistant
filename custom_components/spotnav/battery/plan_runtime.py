@@ -32,6 +32,13 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
   (`band`), and the site's mode is planned once more on the pessimistic side (the house's p90 in the dear hours, the
   sun's p10) as `defensive`: kept per quarter hour and reviewed each night beside the modes, within the same CPU
   budget, never in force. Nothing changes for the car.
+* **The demand variant** (`demand_plan.py`, plan v3_power_tariff step 5): where a demand-charge part is priced this
+  month (the site's soft ceiling, `site/demand_ceiling.py`) or the power level holds some hours lower than the scalar
+  cap, the site's mode is planned once more with the import target and the power level as hard caps hour by hour
+  (`site_hour_caps`), the soft ceiling's penalty and the shave action, the house at its p90 in the counted hours:
+  `demand`, kept per quarter hour and reviewed each night beside the modes, within the same CPU budget, never in
+  force (no executor runs a shave). Its shaves are written to the site's change log when they change
+  (`battery_shave`). The night's review adds each run's demand cost where a part is priced (`demand_basis`).
 * **The perfect plan** (`hindsight.py`): each reviewed day, while its quarter hours are kept, is planned again in
   hindsight in the executor (`_async_facit`, one run at a time): the perfect plan, each way's share of it, the
   battery's work and, where the battery reports it, the cells' temperature over the day (the recorder's statistics).
@@ -78,6 +85,7 @@ from ..site.house_forecast import BASIS_GROSS, MEDIAN_QUANTILE
 from ..site.import_target import stored_import_target_kw
 from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
 from .defensive import NO_BAND, DefensiveInputs, defensive_inputs
+from .demand_plan import ceilings_minor, demand_basis, demand_house, needed, shave_rows
 from .executor import SILENCE_GRACE_S
 from .facts import BatteryFacts
 from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_value_next_day, facit_day
@@ -109,6 +117,7 @@ from .plan_shadow import (
     REVIEWED,
     TRIGGER_SOC,
     VARIANT_DEFENSIVE,
+    VARIANT_DEMAND,
     DayReview,
     PlanActuals,
     PlannedSlot,
@@ -173,6 +182,8 @@ STATUS_PLANNED: Final = "planned"
 STATUS_NO_PLAN: Final = "no_plan"
 #: The defensive variant left out for the CPU budget.
 DEFENSIVE_SKIPPED: Final = "skipped"
+#: The demand variant not planned: no part priced and no hour held below the scalar cap.
+DEMAND_NOT_NEEDED: Final = "not_needed"
 #: The plan's house: the site's forecast of the house's whole load, or (until the site has enough of its hours) of the
 #: import less the chargers, which counts the battery.
 HOUSE_GROSS: Final = "site_gross"
@@ -324,6 +335,39 @@ def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> flo
     )
 
 
+#: The hours ahead the hard caps per hour are worked out for (the plan's horizon is at most two days).
+HOUR_CAPS_H: Final = 50
+
+
+def site_hour_caps(hass: HomeAssistant, site: SiteCapacityController, now: datetime) -> dict[datetime, float]:
+    """Per local hour from the running one (`HOUR_CAPS_H` of them): the level the import target's hold keeps it under
+    as a plan counts on it (`SiteCapacityController.plan_hold_kw_at`: the target, no more than the power level in its
+    hours, the level alone without a target), less the hold's margin. Hours nothing holds are left out; the main fuse
+    stays the scalar cap's (`site_import_cap_kw`)."""
+    from ..pricing.price_source import site_power_level  # noqa: PLC0415 - it imports the planner
+    from ..site.import_target import held_level_kw  # noqa: PLC0415
+
+    entry = hass.config_entries.async_get_entry(site.entry_id)
+    target = stored_import_target_kw(site.config if entry is None else entry.data)
+    level = site_power_level(hass, site.entry_id)
+    if target is None and level is None:
+        return {}
+    first = hour_start(now, site.demand.tracker.tz)
+    caps: dict[datetime, float] = {}
+    for offset in range(HOUR_CAPS_H):
+        start = first + timedelta(hours=offset)
+        hold = site.plan_hold_kw_at(start, target, level)
+        if hold is not None and hold > 0:
+            caps[start] = held_level_kw(hold)
+    return caps
+
+
+def site_ceilings(site: SiteCapacityController) -> dict[datetime, tuple[float, float]]:
+    """The site's soft ceiling per hour as the plan takes it (`demand_plan.ceilings_minor`); none while it has none."""
+    state = getattr(getattr(site, "demand_ceiling", None), "state", None)
+    return ceilings_minor(None if state is None else state.hours)
+
+
 class _NoPlan(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -357,6 +401,53 @@ class Solved(NamedTuple):
     defensive_inputs: DefensiveInputs | None = None
     defensive_slots: tuple[PlanSlot, ...] = ()
     defensive: Any = None
+    demand_slots: tuple[PlanSlot, ...] = ()
+    demand: Any = None
+
+
+def _solve_demand(
+    solved: Solved,
+    now: datetime,
+    tz: str,
+    prices: Sequence[PriceSlot],
+    house: dict[datetime, float],
+    solar_wh: dict[datetime, float] | None,
+    car_windows: list[tuple[datetime, datetime, float]],
+    cap_kw: float | None,
+    params: BatteryParams,
+    soc_pct: float,
+    mode: str,
+    wear: float,
+    keep: tuple[str, float] | None,
+    sell_margin: float,
+    hour_caps: dict[datetime, float] | None,
+    ceilings: dict[datetime, tuple[float, float]] | None,
+    started: float,
+) -> Solved:
+    """[solved] with the demand variant (see the module) where it would plan anything the plan in force does not and
+    the CPU budget allows; skipped and named otherwise."""
+    if not needed(ceilings or {}, hour_caps, cap_kw):
+        return solved
+    if budget_clock() - started > MODES_BUDGET_S:
+        return solved._replace(skipped=(*solved.skipped, VARIANT_DEMAND))
+    planned_house = demand_house(house, solved.house_band, ceilings or {})
+    slots, _more = build_slots(
+        now, prices, planned_house, solar_wh, car_windows, cap_kw, tz, hour_caps=hour_caps, ceilings=ceilings
+    )
+    if not slots:
+        return solved
+    request = PlanRequest(slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
+    baseline = self_consumption(request)
+    plan = plan_mode(
+        request,
+        MODE_DEFS[mode],
+        wear,
+        sell_margin=sell_margin,
+        keep=keep,
+        keep_min_gain=keep_min_gain(baseline.cost, sum(slot.hours for slot in slots)),
+        baseline=baseline,
+    )
+    return solved._replace(demand_slots=slots, demand=plan)
 
 
 def _solve(
@@ -375,11 +466,43 @@ def _solve(
     misses: tuple[list[tuple[datetime, float, float]], list[tuple[datetime, float, float]], frozenset[date] | None]
     | None = None,
     sell_margin: float = DEFAULT_SELL_MARGIN,
+    hour_caps: dict[datetime, float] | None = None,
+    ceilings: dict[datetime, tuple[float, float]] | None = None,
 ) -> Solved:
     """The executor's part: the slots, and each mode's plan, the site's [mode] first; then, from the logged
-    [misses] (house, sun, holidays), the error bands and the defensive variant. What is left when the solve took
-    longer than `MODES_BUDGET_S` is skipped and named."""
+    [misses] (house, sun, holidays), the error bands and the defensive variant; then the demand variant from
+    [hour_caps] and [ceilings] (`_solve_demand`). What is left when the solve took longer than `MODES_BUDGET_S` is
+    skipped and named."""
     started = budget_clock()
+    solved = _solve_modes(
+        now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear, keeps, misses,
+        sell_margin, started,
+    )
+    return _solve_demand(
+        solved, now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear,
+        keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started,
+    )
+
+
+def _solve_modes(
+    now: datetime,
+    tz: str,
+    prices: Sequence[PriceSlot],
+    house: dict[datetime, float],
+    solar_wh: dict[datetime, float] | None,
+    car_windows: list[tuple[datetime, datetime, float]],
+    cap_kw: float | None,
+    params: BatteryParams,
+    soc_pct: float,
+    mode: str,
+    wear: float,
+    keeps: dict[str, tuple[str, float] | None],
+    misses: tuple[list[tuple[datetime, float, float]], list[tuple[datetime, float, float]], frozenset[date] | None]
+    | None,
+    sell_margin: float,
+    started: float,
+) -> Solved:
+    """The modes and the defensive variant (see `_solve`)."""
     if not house:
         raise _NoPlan(NO_HOUSE_FORECAST)
     slots, estimates = build_slots(now, prices, house, solar_wh, car_windows, cap_kw, tz)
@@ -499,6 +622,10 @@ class BatteryPlanShadow:
         self.bands: dict[str, BandView] = {}
         self.defensive_inputs: DefensiveInputs | None = None
         self.defensive_view: dict[str, Any] | None = None
+        #: The demand variant's view as last planned (`None` while it is not planned), and the shaves last logged.
+        self.demand_view: dict[str, Any] | None = None
+        self.demand_status: str = DEMAND_NOT_NEEDED
+        self._shaves_logged: Any = None
         self.status = STATUS_WAITING
         self.reason: str | None = None
         self.trigger: str | None = None
@@ -713,9 +840,11 @@ class BatteryPlanShadow:
         )
         if params is not None:
             reviewed = [review.day for review in self.reviews]
-            planning = [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE]
+            planning = [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE, VARIANT_DEMAND]
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
-                review = review_day(day, self.actuals.buckets.values(), params, tz, now, planning, self.mode)
+                review = review_day(
+                    day, self.actuals.buckets.values(), params, tz, now, planning, self.mode, self._demand_basis(day)
+                )
                 if review is not None:
                     self.reviews.append(review)
                     _LOGGER.debug("SpotNav battery plan: %s reviewed, saving %.0f", day, review.saving)
@@ -724,6 +853,21 @@ class BatteryPlanShadow:
             self._ask_facit(now)
         self.actuals.prune(now)
         self._save()
+
+    def _demand_basis(self, day: date) -> Any:
+        """What [day]'s demand cost is measured against (`demand_plan.demand_basis`); `None` without a priced part or
+        where it cannot be read (the review then has no demand cost)."""
+        from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
+
+        try:
+            components = site_demand_components(self.hass, self.site.entry_id)
+            if not components:
+                return None
+            tracker = self.site.demand.tracker
+            return demand_basis(components, [*tracker.previous, *tracker.hours], day, tracker.tz)
+        except Exception:  # noqa: BLE001 - a review without its demand cost is still a review
+            _LOGGER.debug("SpotNav battery plan: the demand basis could not be read", exc_info=True)
+            return None
 
     def _ask_sun(self, now: datetime) -> None:
         """Read what the sun gave for the reviews that wait for its production (one read at a time)."""
@@ -1098,10 +1242,11 @@ class BatteryPlanShadow:
             pairs_from_log(log.hours(sun_kind)) if solar is not None else [],
             site_house.holidays,
         )
+        hour_caps, ceilings = self._demand_inputs(now)
         solved = await self.hass.async_add_executor_job(
             partial(
                 _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses,
-                sell_margin=self._sell_margin(),
+                sell_margin=self._sell_margin(), hour_caps=hour_caps, ceilings=ceilings,
             )
         )
         if self._closed:
@@ -1131,6 +1276,7 @@ class BatteryPlanShadow:
         if solved.defensive is not None:
             self.mode_plans[VARIANT_DEFENSIVE] = planned_slots(solved.defensive.plan.decisions)
             self.defensive_view = plan_view(solved.defensive, solved.defensive_slots)
+        self._keep_demand(solved, needed(ceilings, hour_caps, cap))
         self.modes_skipped = skipped
         self.status, self.reason, self.made_at = STATUS_PLANNED, None, now
         self.inputs = {
@@ -1161,6 +1307,45 @@ class BatteryPlanShadow:
             "estimates": sorted(set(estimates) | set(more)),
         }
         self._save()
+
+    def _demand_inputs(self, now: datetime) -> tuple[dict[datetime, float], dict[datetime, tuple[float, float]]]:
+        """The demand variant's hard caps per hour and soft ceilings; none where they cannot be read."""
+        try:
+            return site_hour_caps(self.hass, self.site, now), site_ceilings(self.site)
+        except Exception:  # noqa: BLE001 - the shadow variant never stops the plan in force
+            _LOGGER.debug("SpotNav battery plan: the demand variant's inputs could not be read", exc_info=True)
+            return {}, {}
+
+    def _keep_demand(self, solved: Solved, wanted: bool) -> None:
+        """Keep the demand variant's plan and view, and log its shaves when they changed."""
+        self.demand_view = None
+        if solved.demand is None:
+            self.mode_plans.pop(VARIANT_DEMAND, None)
+            if not wanted:
+                self.demand_status = DEMAND_NOT_NEEDED
+            elif VARIANT_DEMAND in solved.skipped:
+                self.demand_status = DEFENSIVE_SKIPPED
+            else:
+                self.demand_status = STATUS_NO_PLAN
+            return
+        self.demand_status = STATUS_PLANNED
+        self.mode_plans[VARIANT_DEMAND] = planned_slots(solved.demand.plan.decisions)
+        self.demand_view = plan_view(solved.demand, solved.demand_slots)
+        shaves = shave_rows(solved.demand.plan.decisions, solved.demand_slots)
+        # Logged when the shaves change; the running slot is cut to start now, so its own start is left out.
+        first = solved.demand_slots[0].start.isoformat()
+        key = [row[0:2] for row in shaves if row[0] != first]
+        if shaves and key != self._shaves_logged:
+            self._shaves_logged = key
+            self.site._log_target(  # noqa: SLF001 - the site's own debug log
+                None,
+                "battery_shave",
+                demand=round(solved.demand.plan.demand, 2),
+                baseline_demand=round(solved.demand.baseline.demand, 2),
+                slots=shaves,
+            )
+        elif not shaves:
+            self._shaves_logged = None
 
     # ---- what is shown
 
@@ -1205,6 +1390,8 @@ class BatteryPlanShadow:
                 "inputs": None if self.defensive_inputs is None else self.defensive_inputs.as_dict(),
                 "plan": self.defensive_view,
             },
+            # The site's mode planned with the demand charge priced in (shadow, never in force; `demand_plan.py`).
+            "demand": {"status": self.demand_status, "plan": self.demand_view},
             "quarters": [bucket.view() for bucket in quarters],
             # Per day, side by side: what the battery really did, each mode's plan on the same measured load and
             # sun, and self-consumption; and the days kept summed.

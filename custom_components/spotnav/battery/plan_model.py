@@ -25,6 +25,10 @@ ACTION_HOLD: Final = "hold"
 ACTION_DISCHARGE_HOUSE: Final = "discharge_house"
 #: Discharge at full power and sell what the house does not use. Only when `allow_export_discharge` is set.
 ACTION_EXPORT_DISCHARGE: Final = "export_discharge"
+#: Discharge just enough to bring the grid down to the slot's soft ceiling under a demand charge (`soft_cap_kw`), and
+#: no more: the rest of the stored energy is kept for later. Only in a slot with a priced soft ceiling; no executor
+#: runs it yet (the demand variant is a shadow, `plan_shadow.VARIANT_DEMAND`).
+ACTION_SHAVE: Final = "shave"
 
 ACTIONS: Final = (
     ACTION_SELF_CONSUME,
@@ -32,6 +36,7 @@ ACTIONS: Final = (
     ACTION_DISCHARGE_HOUSE,
     ACTION_GRID_CHARGE,
     ACTION_EXPORT_DISCHARGE,
+    ACTION_SHAVE,
 )
 
 #: A battery's wear per kWh through it, each way (charged, and again discharged; AC side), in the area's minor unit:
@@ -223,6 +228,10 @@ class PlanSlot:
     battery plan never moves it), `solar_kw` the mean production. `buy` is the import price with every fee SpotNav
     adds, `sell` what an exported kWh earns. `import_cap_kw` (the fuse less its margin, or the import target) and
     `export_cap_kw` bound the grid; `None` is no bound.
+
+    `soft_cap_kw` and `peak_price` are the hour's soft ceiling under a demand charge (`planning/demand_cost.py`): an
+    import above `soft_cap_kw` costs `peak_price` (minor per kW above it, for each hour it lasts) on top of the energy.
+    `None` (the default) or a price of 0 changes nothing.
     """
 
     start: datetime
@@ -234,6 +243,8 @@ class PlanSlot:
     car_kw: float = 0.0
     import_cap_kw: float | None = None
     export_cap_kw: float | None = None
+    soft_cap_kw: float | None = None
+    peak_price: float = 0.0
 
     @property
     def hours(self) -> float:
@@ -254,10 +265,17 @@ class PlanSlot:
                 raise PlanInputError("invalid_slot", f"{name} at {self.start.isoformat()} is not a number")
         if self.house_kw < 0 or self.solar_kw < 0 or self.car_kw < 0:
             raise PlanInputError("invalid_slot", f"a negative load or production at {self.start.isoformat()}")
-        for name in ("import_cap_kw", "export_cap_kw"):
+        for name in ("import_cap_kw", "export_cap_kw", "soft_cap_kw"):
             cap = getattr(self, name)
             if cap is not None and (not _finite(cap) or cap < 0):
                 raise PlanInputError("invalid_slot", f"{name} at {self.start.isoformat()} must be zero or more")
+        if not _finite(self.peak_price) or self.peak_price < 0:
+            raise PlanInputError("invalid_slot", f"peak_price at {self.start.isoformat()} must be zero or more")
+
+    @property
+    def priced_ceiling(self) -> bool:
+        """Whether an import above the slot's soft ceiling costs anything."""
+        return self.soft_cap_kw is not None and self.peak_price > 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +344,8 @@ class SlotDecision:
     cost: float
     over_cap: bool = False
     curtailed_kwh: float = 0.0
+    #: What the import above the slot's soft ceiling would add to the demand charge (minor units; 0 without one).
+    demand: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -341,6 +361,8 @@ class SlotDecision:
             out["over_cap"] = True
         if self.curtailed_kwh > 0:
             out["curtailed_kwh"] = round(self.curtailed_kwh, 3)
+        if self.demand > 0:
+            out["demand"] = round(self.demand, 2)
         return out
 
 
@@ -350,7 +372,8 @@ class PlanRun:
 
     `cost` is money only (imports less exports); `wear` is the cycle cost the plan weighed but nobody pays, and
     `hurdle` the spread gate's margin on what the battery sold (weighed, never paid); `end_soc_pct` is where the
-    battery ends.
+    battery ends. `demand` is what the imports above the slots' soft ceilings add to the demand charge (money, but
+    reported apart from `cost`; 0 without a priced ceiling).
     """
 
     decisions: tuple[SlotDecision, ...]
@@ -358,6 +381,7 @@ class PlanRun:
     wear: float
     end_soc_pct: float
     hurdle: float = 0.0
+    demand: float = 0.0
 
     def end_kwh(self, battery: BatteryParams) -> float:
         return battery.usable_kwh * self.end_soc_pct / 100
@@ -402,6 +426,9 @@ class BatteryPlan:
         }
         if self.plan.hurdle > 0:
             out["export_hurdle"] = round(self.plan.hurdle, 2)
+        if self.plan.demand > 0 or self.baseline.demand > 0:
+            out["demand"] = round(self.plan.demand, 2)
+            out["baseline_demand"] = round(self.baseline.demand, 2)
         if self.keep_gain is not None:
             out["kept"] = self.kept
             out["keep_gain"] = round(self.keep_gain, 2)
