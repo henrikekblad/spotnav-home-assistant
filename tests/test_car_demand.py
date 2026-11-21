@@ -96,3 +96,31 @@ def test_a_raise_that_cannot_help_is_the_ceiling_lifted_whole() -> None:
     assert shadow.raise_kw == pytest.approx(CAR_KW) and shadow.plans_made == 2
     real = calculate_plan(request(requested_kwh=80.0))
     assert shadow.result.delivered_kwh == pytest.approx(real.delivered_kwh)
+
+
+def test_an_hour_without_room_for_the_minimum_holds_the_caps_instead_of_setting_them_aside() -> None:
+    # The cheap evening has no room for the charger's minimum (paused); 2 kW room elsewhere.
+    held = CarCeiling(
+        ceilings={start: HourCeiling(1.5 if start in EVENING else 3.0, 16.0) for start in ALL},
+        house_kw={start: 1.0 for start in ALL},
+        others_kw={},
+        tz=TZ,
+    )
+    shadow = plan_under_ceiling(request(), held, 1.38)
+    assert shadow is not None and shadow.fits and shadow.raise_kw == 0.0
+    # The search stayed small enough to run: the caps hold, nothing is charged in a paused hour.
+    assert not shadow.result.per_hour_caps_dropped
+    car = car_kw_by_hour(shadow.result, TZ)
+    assert all(car.get(start, 0.0) == 0.0 for start in EVENING)
+    assert all(kw <= 2.0 + 1e-9 for kw in car.values()) and shadow.demand_cost == 0.0
+
+
+def test_a_plan_whose_caps_were_set_aside_never_ends_the_raise_search() -> None:
+    from dataclasses import replace
+
+    def dropped(req):
+        return replace(calculate_plan(replace(req, power_cap_kw_by_hour=None)), per_hour_caps_dropped=True)
+
+    shadow = plan_under_ceiling(request(), inputs(1.0, ALL), 1.38, dropped)
+    # Every pass "delivers" without the caps, yet none is a plan under the ceiling.
+    assert shadow is not None and not shadow.fits and shadow.plans_made == 2
