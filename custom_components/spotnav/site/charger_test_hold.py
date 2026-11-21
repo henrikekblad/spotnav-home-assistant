@@ -473,11 +473,14 @@ class ChargerTestHold:
         confirmed by its switch reading on (one that reads on already is left as it is); one not confirmed is tried
         again (`RESTORE_RETRY_S`, later `RESTORE_SLOW_RETRY_S`), told in Repairs from `ISSUE_AFTER_TRIES`, and stays
         in the store meanwhile. Never raises."""
-        task, self._park_task = self._park_task, None
-        if task is not None and not task.done():
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
+        if not self.active:
+            # A release: the taking out still on its way is ended first. A retry while a new test holds the chargers
+            # leaves that test's taking out alone (it sets back only what that test does not hold).
+            task, self._park_task = self._park_task, None
+            if task is not None and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
         async with self._restore_lock:
             failed = False
             for entity_id, row in list(self._parked.items()):
