@@ -11,7 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { HOUSE_CARD_ELEMENT, SpotnavHouseCard } from "../src/house-card";
 import { registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
-import { batteryLine, batteryNeed, batteryOutsideClearable, outcomeVerdict } from "../src/settings-popover";
+import { batteryLine, batteryNeed, batteryOutsideClearable, outcomeVerdict, preheatLine } from "../src/settings-popover";
 import { decodeBatteryControl, decodeSiteList, decodeSiteView } from "../src/site-model";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -50,6 +50,42 @@ describe("decoding the site's answers", () => {
     const withFound = (value: unknown) => ({ ...enable, status: { ...(enable["status"] as object), enable_entities: value } });
     expect(decodeBatteryControl(withFound({ ...found, surprise: 1 })).ok).toBe(false);
     expect(decodeBatteryControl(withFound({ ...found, entities: [{ entity_id: "number.x" }] })).ok).toBe(false);
+  });
+
+  it("reads the preheating line, refuses an unknown key in it, and reads a Home Assistant before it as none", () => {
+    const live = read("battery_control", "live.json");
+    const withPreheat = (value: unknown) => ({ ...live, status: { ...(live["status"] as object), preheat: value } });
+    const decoded = decodeBatteryControl(withPreheat(PREHEAT));
+    expect(decoded.ok && decoded.value.status?.preheat).toEqual(PREHEAT);
+    expect(decodeBatteryControl(withPreheat({ ...PREHEAT, surprise: 1 })).ok).toBe(false);
+    const before = { ...live, status: { ...(live["status"] as Record<string, unknown>) } };
+    delete (before.status as Record<string, unknown>)["preheat"];
+    const old = decodeBatteryControl(before);
+    expect(old.ok && old.value.status?.preheat).toBeNull();
+  });
+});
+
+const PREHEAT = { code: "off", cell_c: 2.4, entity_id: "switch.sigen_plant_ess_preheating_enable", device_id: "0f4c2b7e9a1d4c3e8b6a5f2d1c0e9b8a" };
+
+describe("the preheating line", () => {
+  it("says the cells are cold and where to turn preheating on, or that the switch must be enabled first", () => {
+    expect(preheatLine("sv", PREHEAT)).toBe(
+      "Batteriets celler är kalla (2,4 °C) och förvärmningen är avstängd, så batteriet tar emot mindre laddning under de billiga timmarna. Slå på ”ESS Preheating Enable” på batteriets enhet i Home Assistant.",
+    );
+    expect(preheatLine("en", { ...PREHEAT, code: "disabled" }, "Plant ESS Preheating")).toBe(
+      "The battery's cells are cold (2.4 °C). Its preheating switch “Plant ESS Preheating” is disabled in Home Assistant, so SpotNav cannot see whether it is on. Enable it on the battery's device.",
+    );
+    expect(preheatLine("sv", { ...PREHEAT, code: "unavailable" })).toBeNull();
+    expect(preheatLine("sv", null)).toBeNull();
+  });
+
+  it("has both lines in every language, with the temperature and the switch's name", () => {
+    for (const language of Object.keys(TRANSLATIONS) as (keyof typeof TRANSLATIONS)[]) {
+      for (const key of ["battery.preheat.off", "battery.preheat.disabled"] as const) {
+        expect(TRANSLATIONS[language][key]).toContain("{temp} °C");
+        expect(TRANSLATIONS[language][key]).toContain("{name}");
+      }
+    }
   });
 });
 
@@ -107,11 +143,15 @@ describe("the popover from the house card", () => {
     battery?: string;
     view?: Record<string, unknown>;
     entity?: Record<string, unknown>;
+    preheat?: Record<string, unknown>;
   }
 
   function fakeHass(options: Options = {}) {
     const messages: Record<string, unknown>[] = [];
     let battery = read("battery_control", options.battery ?? "needs_ack.json");
+    if (options.preheat !== undefined) {
+      battery = { ...battery, status: { ...(battery["status"] as object), preheat: options.preheat } };
+    }
     const hass = {
       language: "sv",
       locale: { language: "sv" },
@@ -278,6 +318,21 @@ describe("the popover from the house card", () => {
       { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { battery_control_enabled: false } },
     ]);
     expect(root.querySelector("[data-row='battery_control_enabled']")!.textContent).toContain("Av");
+  });
+
+  it("shows a cold battery's preheating line with the device's page for an administrator, and none without it", async () => {
+    const { root } = await mount({ preheat: PREHEAT });
+    const popover = await open(root);
+    const note = popover.querySelector<HTMLElement>("[data-section='battery'] [data-note='preheat_off']")!;
+    expect(note.getAttribute("role")).toBe("status");
+    expect(note.textContent).toContain("Batteriets celler är kalla (2,4 °C)");
+    const pushed: string[] = [];
+    window.addEventListener("location-changed", () => pushed.push(window.location.pathname), { once: true });
+    note.querySelector<HTMLButtonElement>("button[data-action='open-preheat-device']")!.click();
+    expect(pushed).toEqual(["/config/devices/device/0f4c2b7e9a1d4c3e8b6a5f2d1c0e9b8a"]);
+    document.body.innerHTML = "";
+    const plain = await open((await mount()).root);
+    expect(plain.querySelector("[data-note^='preheat_']")).toBeNull();
   });
 
   it("puts what is left in numbered steps: the disabled controls as one step with the device's page, then the takeover", async () => {

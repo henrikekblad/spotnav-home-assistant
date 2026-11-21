@@ -931,6 +931,42 @@ async def test_a_plant_in_ai_mode_is_only_watched_without_the_acknowledgement(
     assert "ai_takeover_ack" in status["needs"] and status["line"] == "watching:ai_mode"
 
 
+def _preheat_switch(hass: HomeAssistant, state: str, cells: str) -> str:
+    """The `sigen` integration's "ESS Preheating Enable" switch on the plant's device, and the cells at `cells` °C."""
+    registry = er.async_get(hass)
+    battery = registry.async_get(SIGEN["battery"])
+    assert battery is not None
+    entry = registry.async_get_or_create(
+        "switch", "sigen", "ENTRY_sigen_plant_plant_ess_preheating_enable", device_id=battery.device_id,
+        config_entry=hass.config_entries.async_get_entry("ENTRY"), suggested_object_id="sigen_plant_ess_preheating_enable",
+    )
+    hass.states.async_set(entry.entity_id, state)
+    hass.states.async_set("sensor.sigen_plant_ess_average_cell_temperature", cells, {"unit_of_measurement": "°C"})
+    return entry.entity_id
+
+
+async def test_a_cold_battery_with_preheating_off_gets_one_line_while_under_control_and_nothing_is_written(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    switch = _preheat_switch(hass, "off", "2.1")
+    control = await _started(hass, site, controller, plan_source=_hold)
+    _passed(control)
+    now = await _looks(control, dt_util.now(), 2)
+    assert control.status()["preheat"] is None, "half an hour first"
+    now = await _looks(control, now + timedelta(minutes=31), 2)
+    line = control.status()["preheat"]
+    assert line is not None and line["code"] == "off" and line["entity_id"] == switch and line["cell_c"] == 2.1
+    assert line["device_id"] is not None
+    assert [event["kind"] for event in control.log if event["kind"].startswith("preheat")] == ["preheat_shown"]
+    assert all(call[2].get("entity_id") != switch for call in plant.calls), "the heater is never written"
+    # Turned on by the person: the line clears itself.
+    hass.states.async_set(switch, "on")
+    await _looks(control, now, 1)
+    assert control.status()["preheat"] is None
+    assert control.snapshot()["preheat"]["counts"] == {"shown_off": 1}
+
+
 async def test_with_the_acknowledgement_ai_mode_is_taken_over_and_turning_off_leaves_the_reminder(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

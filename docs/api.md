@@ -926,6 +926,12 @@ as `get_site_settings_view`'s `battery.found`). Without one the status is still 
 the switch off), so a client hides its battery card on `false`, and keeps the place where a battery is added. A Home
 Assistant before the key leaves it out: read it as `true`.
 
+`status.preheat` (additive under version 1) is the battery section's line about a cold battery's own heater, `null`
+when none shows: `{"code": "off" | "disabled", "cell_c": 2.4, "entity_id": "switch.…_ess_preheating_enable",
+"device_id": "…"}`. `off`: SpotNav runs the battery, its cells are below 5 °C and its preheating switch is off;
+`disabled`: the same with the switch disabled in Home Assistant, so it cannot be read. `device_id` (or `null`) is
+the device that holds the switch. A client that does not find the key, or a code it does not know, shows no line.
+
 **`get_site_settings_view`** answers the settings' site block as an administrator reads it, with one difference
 the webhook's dashboard also has: `site.active_control.writable` is `false`. `import_target` (additive under
 version 1) is `{"available", "reason"}`: `available` is `false`, with `reason` `needs_total_grid_power`, on a site

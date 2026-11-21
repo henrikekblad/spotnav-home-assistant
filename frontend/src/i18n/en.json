@@ -1753,6 +1753,8 @@
   "battery.cap.zeroLearning": "No charging from the grid while the house's peaks are being learned ({left}).",
   "house.learning.cappedWhile": "Grid charging at most {kw} kW while the house's peaks are being learned ({left}).",
   "battery.note.aiModeBack": "Turn AI mode on again in the Sigenergy app if you want it back.",
+  "battery.preheat.off": "The battery's cells are cold ({temp} °C) and its preheating is off, so it takes less charge in the cheap hours. Turn on “{name}” on the battery's device in Home Assistant.",
+  "battery.preheat.disabled": "The battery's cells are cold ({temp} °C). Its preheating switch “{name}” is disabled in Home Assistant, so SpotNav cannot see whether it is on. Enable it on the battery's device.",
   "battery.failed": "The battery control could not be read.",
   "battery.error.generic": "That did not work. Try again.",
   "battery.error.notAdmin": "Only an administrator can change this.",

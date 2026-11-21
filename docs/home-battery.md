@@ -50,6 +50,7 @@ card's gear or the charging card's **Settings** (administrators only). The secti
 * the check's progress while it runs, and its result per step (hold, charge from the grid, cover the house, hand back:
   passed, failed or not judged yet) with what SpotNav may then do;
 * the reminder to turn AI mode on again after a takeover ended;
+* a line when the battery's cells are cold and its own preheating is off (see **Cold battery** below);
 * **Mode**: **Self-consumption**, **Balanced** (the default) or **Max profit**
   ([the three modes](battery-plan.md#the-three-modes)). **Max profit** lets control sell from the battery to the
   grid whenever that pays, **Balanced** only surplus and only when it is highly profitable, **Self-consumption**
@@ -495,6 +496,14 @@ Sigenergy app if you want it back* ("SpotNav tar över styrningen; när du stän
 egenförbrukning — slå på AI-läget i Sigenergy-appen igen om du vill tillbaka"). Without that, a plant in AI mode is
 only watched. In the battery section the checklist line **Read and accept** opens that text with **I understand**. When you turn control off after such a takeover, the card reminds you once to turn AI mode on again
 ("slå på AI-läget i Sigenergy-appen igen"); the reminder goes when the plant reads AI mode again.
+
+**Cold battery** (Sigenergy). A battery in a carport or an unheated room can sit at a few degrees in winter, and a
+cold battery takes much less charge (its cells must not be charged near 0 °C), so it misses the cheap hours. While
+SpotNav runs the battery, its cells read below 5 °C for half an hour and the integration's **ESS Preheating Enable**
+switch is off, the battery section says so, with a button to the battery's device to turn it on; the line goes once
+the switch is on, the cells reach 7 °C or control stops. When the switch is disabled in Home Assistant (as it is by
+default), the line asks you to enable it first so SpotNav can read it. A plant whose switch reads unavailable (the
+protocol names only the Sigen PV M1-HYA/HYB for preheating) gets no line. SpotNav never switches the heater itself.
 
 **Turning off** hands the battery back at once: control mode to Maximum Self Consumption, Remote EMS off, the
 limits to what SpotNav found (a limit that was never set comes back as the battery's rating), the export limit to

@@ -1753,6 +1753,8 @@
   "battery.cap.zeroLearning": "Ei latausta verkosta, kun talon huippuja opetellaan ({left}).",
   "house.learning.cappedWhile": "Lataus verkosta enintään {kw} kW, kun talon huippuja opetellaan ({left}).",
   "battery.note.aiModeBack": "Kytke AI-tila uudelleen päälle Sigenergy-sovelluksessa, jos haluat sen takaisin.",
+  "battery.preheat.off": "Akun kennot ovat kylmiä ({temp} °C) ja esilämmitys on pois päältä, joten akku ottaa halvoilla tunneilla vähemmän latausta. Kytke ”{name}” päälle akun laitteessa Home Assistantissa.",
+  "battery.preheat.disabled": "Akun kennot ovat kylmiä ({temp} °C). Esilämmityksen kytkin ”{name}” on poistettu käytöstä Home Assistantissa, joten SpotNav ei näe, onko se päällä. Ota se käyttöön akun laitteessa.",
   "battery.failed": "Akun ohjausta ei voitu lukea.",
   "battery.error.generic": "Se ei onnistunut. Yritä uudelleen.",
   "battery.error.notAdmin": "Vain ylläpitäjä voi muuttaa tätä.",

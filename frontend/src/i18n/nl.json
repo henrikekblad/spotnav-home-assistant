@@ -1753,6 +1753,8 @@
   "battery.cap.zeroLearning": "Niet laden uit het net terwijl de pieken van het huis worden geleerd ({left}).",
   "house.learning.cappedWhile": "Laden uit het net hoogstens {kw} kW terwijl de pieken van het huis worden geleerd ({left}).",
   "battery.note.aiModeBack": "Zet de AI-modus weer aan in de Sigenergy-app als je die terug wilt.",
+  "battery.preheat.off": "De cellen van de batterij zijn koud ({temp} °C) en het voorverwarmen staat uit, dus de batterij neemt in de goedkope uren minder lading op. Zet ‘{name}’ aan op het apparaat van de batterij in Home Assistant.",
+  "battery.preheat.disabled": "De cellen van de batterij zijn koud ({temp} °C). De schakelaar voor voorverwarmen ‘{name}’ is uitgeschakeld in Home Assistant, dus SpotNav ziet niet of die aan staat. Schakel hem in op het apparaat van de batterij.",
   "battery.failed": "De batterijsturing kon niet worden gelezen.",
   "battery.error.generic": "Dat lukte niet. Probeer het opnieuw.",
   "battery.error.notAdmin": "Alleen een beheerder kan dit wijzigen.",

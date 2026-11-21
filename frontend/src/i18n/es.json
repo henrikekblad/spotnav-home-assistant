@@ -1753,6 +1753,8 @@
   "battery.cap.zeroLearning": "Sin carga desde la red mientras se aprenden los picos de la casa ({left}).",
   "house.learning.cappedWhile": "Carga de la red como máximo a {kw} kW mientras se aprenden los picos de la casa ({left}).",
   "battery.note.aiModeBack": "Vuelve a activar el modo IA en la app de Sigenergy si quieres recuperarlo.",
+  "battery.preheat.off": "Las celdas de la batería están frías ({temp} °C) y el precalentamiento está apagado, así que la batería admite menos carga en las horas baratas. Activa «{name}» en el dispositivo de la batería en Home Assistant.",
+  "battery.preheat.disabled": "Las celdas de la batería están frías ({temp} °C). El interruptor de precalentamiento «{name}» está deshabilitado en Home Assistant, así que SpotNav no ve si está encendido. Habilítalo en el dispositivo de la batería.",
   "battery.failed": "No se pudo leer el control de la batería.",
   "battery.error.generic": "No funcionó. Inténtalo de nuevo.",
   "battery.error.notAdmin": "Solo un administrador puede cambiar esto.",
