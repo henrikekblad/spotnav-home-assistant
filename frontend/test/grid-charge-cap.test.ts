@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { LANGUAGES } from "../src/i18n";
-import { gridChargeCapLine, importLimitHint, perPhaseLine } from "../src/settings-popover";
+import { gridChargeCapLine, importLimitHint, importLimitPhaseStep, perPhaseLine } from "../src/settings-popover";
 import { decodeBatteryControl, type BatteryStatus } from "../src/site-model";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "battery_control");
@@ -183,6 +183,102 @@ describe("the grid charge cap block", () => {
     const extra = fixture("checking.json");
     extra["status"].grid_charge_cap.import_limit = { value_kw: 1, max_kw: 1, suggested_kw: 1, holds: false, why: null, more: 1 };
     expect(decodeBatteryControl(extra).ok).toBe(false);
+  });
+
+  describe("the plant's import limit held per phase", () => {
+    const on = (more: Record<string, unknown> = {}) => ({
+      options: { ...fixture("checking.json")["status"].options, battery_control_enabled: true, ...more },
+    });
+    const limit = (phase: Record<string, unknown>, more: Record<string, unknown> = {}) => ({
+      import_limit: {
+        value_kw: 13.8, max_kw: 4.47, suggested_kw: 4.4, holds: false, why: null,
+        per_phase: { max_kw: 13.16, holds: false, why: null, entity_id: null, ...phase }, ...more,
+      },
+    });
+    const step = (language: "sv" | "en", cap: Record<string, unknown>, more = on(), allowed = ["grid_charge"]) =>
+      importLimitPhaseStep(language, status(cap, allowed, more));
+
+    it("says that it holds, with a third of the limit on each phase", () => {
+      const held = { cap_kw: null, rule: "import_limit", learned: null, ...limit({ holds: true }, { value_kw: 12.4, holds: true }) };
+      expect(gridChargeCapLine("sv", status(held))).toBe(
+        "Sigenergy håller varje fas under 4,1 kW (anläggningens importgräns, 12,4 kW, delad på tre faser): laddning från"
+          + " nätet tar det som huset lämnar.",
+      );
+      expect(gridChargeCapLine("en", status(held))).toBe(
+        "Sigenergy holds each phase under 4.1 kW (the plant's import limit, 12.4 kW, shared over three phases): grid"
+          + " charging uses what the house leaves.",
+      );
+      expect(step("sv", held)).toBeNull();
+    });
+
+    it("names the one step missing, in the order the rule checks them", () => {
+      expect(step("sv", limit({ why: "not_said_to_act" }))).toEqual({
+        code: "not_said_to_act",
+        entityId: null,
+        text: "Sigenergy kan hålla varje fas under anläggningens egen importgräns, så laddning från nätet behöver inte"
+          + " längre hållas tillbaka för att skydda säkringen om Home Assistant stannar. Slå på ”Importgränsen verkar”"
+          + " för att lita på den.",
+      });
+      const sensor = step("en", limit({ why: "grid_sensor_offline", entity_id: "sensor.sigen_plant_grid_sensor_status" }));
+      expect(sensor?.entityId).toBe("sensor.sigen_plant_grid_sensor_status");
+      expect(sensor?.text).toContain("Enable its status entity in the Sigenergy integration if it is disabled");
+      expect(step("en", limit({ why: "output_type_unread" }))?.text).toContain("cannot read the plant's Output Type");
+      expect(step("en", limit({ why: "phase_control_off" }))?.text).toContain("Independent phase power control is off");
+      expect(step("sv", limit({}))?.text).toBe(
+        "Anläggningens importgräns står på 13,8 kW. Sänk den till högst 13,1 kW i Sigenergy-appen: då håller"
+          + " anläggningen varje fas under huvudsäkringen och laddning från nätet hålls inte längre tillbaka.",
+      );
+      expect(step("en", limit({}, { value_kw: null }))?.text).toBe(
+        "Set the plant's import limit to at most 13.1 kW in the Sigenergy app: then the plant holds each phase under the"
+          + " main fuse and grid charging is no longer held back.",
+      );
+    });
+
+    it("shows nothing that cannot be acted on here, nor while control is off, nor beside a limit that guards", () => {
+      for (const why of ["not_supported", "not_field_tested", "output_type_not_supported", "foreign_pv", "dc_charger",
+                         "plant_not_three_phase", "sources_unknown", "a_code_from_later"]) {
+        expect(step("sv", limit({ why })), why).toBeNull();
+      }
+      expect(step("sv", limit({ max_kw: null }))).toBeNull();
+      expect(step("sv", limit({ why: "not_said_to_act" }), on({ battery_control_enabled: false }))).toBeNull();
+      expect(step("sv", limit({ why: "not_said_to_act" }), on(), ["hold"])).toBeNull();
+      expect(step("sv", limit({ why: "phase_control_off" }, { holds: true }))).toBeNull();
+      expect(step("sv", { import_limit: null })).toBeNull();
+      // A brand without the per-phase hold keeps the total rule's advice; one with it does not get it.
+      const acts = on({ battery_control_import_limit_acts: true });
+      expect(importLimitHint("sv", status(limit({ why: "phase_control_off" }), ["grid_charge"], acts))).toBeNull();
+      expect(importLimitHint("sv", status(limit({ why: "not_field_tested" }), ["grid_charge"], acts))).toMatch(/4,4/);
+    });
+
+    it("reads a Home Assistant without the block or its entity, and ignores keys it does not know", () => {
+      const older = fixture("checking.json");
+      delete older["status"].grid_charge_cap.import_limit.per_phase;
+      const decoded = decodeBatteryControl(older);
+      expect(decoded.ok && decoded.value.status?.grid_charge_cap.import_limit?.per_phase).toBeNull();
+      const noEntity = fixture("checking.json");
+      delete noEntity["status"].grid_charge_cap.import_limit.per_phase.entity_id;
+      const read = decodeBatteryControl(noEntity);
+      expect(read.ok && read.value.status?.grid_charge_cap.import_limit?.per_phase?.entity_id).toBeNull();
+    });
+
+    it("has every line in every language", () => {
+      for (const language of LANGUAGES) {
+        const lines = [
+          gridChargeCapLine(language, status({ cap_kw: null, rule: "import_limit", ...limit({ holds: true }, { holds: true }) })),
+          ...["not_said_to_act", "output_type_unread", "phase_control_off", "grid_sensor_offline"].map(
+            (why) => importLimitPhaseStep(language, status(limit({ why }), ["grid_charge"], on()))?.text ?? null,
+          ),
+          importLimitPhaseStep(language, status(limit({}), ["grid_charge"], on()))?.text ?? null,
+          importLimitPhaseStep(language, status(limit({}, { value_kw: null }), ["grid_charge"], on()))?.text ?? null,
+        ];
+        for (const line of lines) {
+          expect(line, language).not.toBeNull();
+          expect(line, language).not.toContain("{");
+        }
+        expect(lines[0], language).toMatch(/4[.,]6.*13[.,]8/);
+        expect(lines[5], language).toMatch(/13[.,]8.*13[.,]1/);
+      }
+    });
   });
 
   it("has the line in every language", () => {
