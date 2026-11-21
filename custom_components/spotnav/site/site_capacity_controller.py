@@ -1000,7 +1000,7 @@ class SiteCapacityController:
         await self.zones_control.async_start()
         await self.water_heater_control.async_start()
         await self.hardware_test.async_load()
-        # An OCPP charger's station ceiling a hardware test left at 0 A when Home Assistant stopped: set back.
+        # An OCPP charger a hardware test left out of service when Home Assistant stopped: set back to operative.
         await self.charger_test_hold.async_load()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(

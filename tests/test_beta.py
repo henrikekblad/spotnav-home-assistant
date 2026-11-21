@@ -550,22 +550,32 @@ async def test_a_charge_begun_during_the_test_is_stopped(hass: HomeAssistant) ->
 
 
 @pytest.mark.parametrize("end", ["done", "stop", "unload", "deadline"])
-async def test_an_ocpp_charger_s_ceiling_is_0_a_during_the_battery_part_and_set_back_by_every_path(
+async def test_an_ocpp_charger_is_out_of_service_during_the_battery_part_and_set_back_by_every_path(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, end: str
 ) -> None:
-    ceiling = "number.halo_charger_maximum_current"
-    hass.states.async_set(ceiling, "16", {"min": 0, "max": 32})
-    written: list[float] = []
+    from homeassistant.helpers import entity_registry as er
 
-    async def set_value(call: Any) -> None:
-        written.append(float(call.data["value"]))
-        hass.states.async_set(ceiling, str(float(call.data["value"])), {"min": 0, "max": 32})
+    from custom_components.spotnav.site import charger_test_hold
 
-    hass.services.async_register("number", "set_value", set_value)
-    monkeypatch.setattr("custom_components.spotnav.site.charger_test_hold.ocpp_confirms", lambda _hass: True)
+    monkeypatch.setattr(charger_test_hold, "CONFIRM_S", 0.0)
+    switch = "switch.halo_charger_availability"
+    er.async_get(hass).async_get_or_create(
+        "switch", "ocpp", "switch.ocpp.halo_charger.availability", suggested_object_id="halo_charger_availability"
+    )
+    hass.states.async_set(switch, "on")
+    sent: list[str] = []
+
+    def handler(to: str):
+        async def handle(call: Any) -> None:
+            sent.append(to)
+            hass.states.async_set(switch, to)
+
+        return handle
+
+    hass.services.async_register("switch", "turn_off", handler("off"))
+    hass.services.async_register("switch", "turn_on", handler("on"))
     ocpp = _FakeCharger()
-    ocpp.ocpp_target = object()
-    ocpp.ocpp_controls = SimpleNamespace(station_maximum_entity=ceiling)
+    ocpp.ocpp_target = SimpleNamespace(charge_point_id="halo_charger", connector_id=1)
     if end == "deadline":
         monkeypatch.setattr(hardware_test, "MAX_TEST", timedelta(seconds=0))
     slow = end != "done"
@@ -579,9 +589,9 @@ async def test_an_ocpp_charger_s_ceiling_is_0_a_during_the_battery_part_and_set_
     else:
         await runner.async_shutdown()
     await hass.async_block_till_done()
-    assert written[0] == 0.0 and written[-1] == 16.0, written
-    assert hass.states.get(ceiling).state == "16.0"
-    assert runner.site.charger_test_hold.ceilings_kept == []
+    assert sent and sent[0] == "off" and sent[-1] == "on", sent
+    assert hass.states.get(switch).state == "on"
+    assert runner.site.charger_test_hold.unavailable_kept == []
 
 
 async def test_a_battery_part_that_does_not_start_lets_the_chargers_go_at_once(hass: HomeAssistant) -> None:

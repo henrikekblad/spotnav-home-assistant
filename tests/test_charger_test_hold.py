@@ -18,6 +18,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from homeassistant.helpers import entity_registry as er
+
 from custom_components.spotnav.execution.charger_profiles import PATH_SWITCH, PROFILES, profile_for
 from custom_components.spotnav.site import charger_test_hold
 from custom_components.spotnav.site.charger_test_hold import MAX_STOPS, ChargerTestHold, stop_kept_without_ha
@@ -161,123 +163,121 @@ async def test_a_failing_hold_probe_holds_nothing(hass: HomeAssistant) -> None:
     await controller.async_shutdown()
 
 
-# --- an OCPP charger's station ceiling ----------------------------------------------------------------------------------
+# --- an OCPP charger taken out of service -----------------------------------------------------------------------------
 
-CEILING = "number.halo_charger_maximum_current"
+SWITCH = "switch.halo_charger_availability"
 
 
 class _Ocpp(_Charger):
-    """An OCPP charger with the integration's station "Maximum Current" number."""
+    """An OCPP charger of charge point `halo_charger`."""
 
     def __init__(self, *, on: bool = False) -> None:
-        super().__init__(None, PATH_SWITCH, on=on, ocpp=True)
-        self.ocpp_controls = SimpleNamespace(station_maximum_entity=CEILING)
+        super().__init__(None, PATH_SWITCH, on=on, ocpp=False)
+        self.ocpp_target = SimpleNamespace(charge_point_id="halo_charger", connector_id=1)
 
 
-_OCPP_CONFIRMS = charger_test_hold.ocpp_confirms
+def _availability(hass: HomeAssistant, state: str = "on", *, reports: bool = True, raises: bool = False) -> list[str]:
+    """The `ocpp` integration's station availability switch, registered as it registers it, and `switch.turn_on/off`
+    as the charge point answers: it reports itself (un)available (`reports`), or not; the call may fail."""
+    er.async_get(hass).async_get_or_create(
+        "switch", "ocpp", "switch.ocpp.halo_charger.availability", suggested_object_id="halo_charger_availability"
+    )
+    hass.states.async_set(SWITCH, state)
+    sent: list[str] = []
+
+    def handler(name: str, to: str):
+        async def handle(call: Any) -> None:
+            sent.append(name)
+            if raises:
+                raise HomeAssistantError("not connected")
+            if reports:
+                hass.states.async_set(SWITCH, to)
+
+        return handle
+
+    hass.services.async_register("switch", "turn_off", handler("off", "off"))
+    hass.services.async_register("switch", "turn_on", handler("on", "on"))
+    return sent
 
 
 @pytest.fixture(autouse=True)
-def _ocpp_0_13(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(charger_test_hold, "ocpp_confirms", lambda _hass: True)
+def _quick(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(charger_test_hold, "CONFIRM_S", 0.0)
 
 
-def _ceiling(hass: HomeAssistant, value: str = "16", *, accepts: bool = True) -> list[float]:
-    """The number, and `number.set_value` as the `ocpp` integration answers it: the value taken, or an error raised
-    when the charge point does not answer `Accepted`."""
-    hass.states.async_set(CEILING, value, {"min": 0, "max": 32})
-    written: list[float] = []
-
-    async def set_value(call: Any) -> None:
-        written.append(float(call.data["value"]))
-        if not accepts:
-            raise HomeAssistantError("ChargePointMaxProfile: Rejected")
-        hass.states.async_set(CEILING, str(float(call.data["value"])), {"min": 0, "max": 32})
-
-    hass.services.async_register("number", "set_value", set_value)
-    return written
+async def test_the_station_availability_switch_is_found_by_the_charge_point_s_id(hass: HomeAssistant) -> None:
+    _availability(hass)
+    assert charger_test_hold.station_availability_entity(hass, _Ocpp()) == SWITCH
+    assert charger_test_hold.station_availability_entity(hass, _Charger()) is None
+    other = _Ocpp()
+    other.ocpp_target = SimpleNamespace(charge_point_id="another", connector_id=1)
+    assert charger_test_hold.station_availability_entity(hass, other) is None
 
 
-async def test_an_ocpp_charger_counts_nothing_only_once_its_ceiling_at_0_a_was_accepted_and_is_set_back(
+async def test_an_ocpp_charger_out_of_service_counts_nothing_and_is_set_back(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
-    written = _ceiling(hass)
+    sent = _availability(hass)
     ocpp = _Ocpp()
     hold = _hold(hass, {"ocpp": ocpp})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
     await hass.async_block_till_done()
-    assert written == [0.0] and hold.counts_nothing("ocpp") is True
-    # Kept before the 0 A went out, so a restart in the middle finds it.
-    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["ceilings"]["ocpp"] == {
-        "entity_id": CEILING, "previous": 16.0}
-    # The person moves the slider during the test: no longer 0 A, counted again.
-    hass.states.async_set(CEILING, "10", {"min": 0, "max": 32})
-    assert hold.counts_nothing("ocpp") is False
-    hass.states.async_set(CEILING, "0.0", {"min": 0, "max": 32})
+    assert sent == ["off"] and hold.counts_nothing("ocpp") is True
+    # Kept before the command went out, so a restart in the middle finds it.
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {"ocpp": {"entity_id": SWITCH}}
+    ocpp.charging = True
+    assert hold.counts_nothing("ocpp") is False, "charging after all: counted"
+    ocpp.charging = False
     hold.release()
     assert hold.counts_nothing("ocpp") is False
-    await hold.async_restore_ceilings()
-    assert written == [0.0, 16.0] and hass.states.get(CEILING).state == "16.0"
-    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["ceilings"] == {}
+    await hold.async_restore_availability()
+    assert sent == ["off", "on"] and hass.states.get(SWITCH).state == "on"
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {}
 
 
-async def test_an_ocpp_ceiling_the_charge_point_refuses_leaves_the_charger_counted(hass: HomeAssistant) -> None:
-    written = _ceiling(hass, accepts=False)
+async def test_an_ocpp_charger_that_does_not_report_itself_unavailable_stays_counted(hass: HomeAssistant) -> None:
+    sent = _availability(hass, reports=False)
     hold = _hold(hass, {"ocpp": _Ocpp()})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
     await hass.async_block_till_done()
-    assert written == [0.0] and hold.counts_nothing("ocpp") is False
+    assert sent == ["off"] and hold.counts_nothing("ocpp") is False
     hold.release()
     await hold.async_close()
 
 
-async def test_a_ceiling_left_at_0_a_by_a_restart_is_set_back_at_the_next_start_retried_until_taken(
+async def test_an_ocpp_charger_already_out_of_service_or_without_the_switch_is_left_alone(hass: HomeAssistant) -> None:
+    sent = _availability(hass, state="off")
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    assert sent == [] and hold.counts_nothing("ocpp") is False and hold.unavailable_kept == []
+    hold.release()
+    other = _Ocpp()
+    other.ocpp_target = SimpleNamespace(charge_point_id="no_switch", connector_id=1)
+    hold = _hold(hass, {"other": other})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    assert sent == [] and hold.counts_nothing("other") is False
+    hold.release()
+
+
+async def test_an_ocpp_charger_left_out_of_service_by_a_restart_is_set_back_at_the_next_start(
     hass: HomeAssistant, hass_storage: dict[str, Any], freezer: Any
 ) -> None:
     hass_storage[charger_test_hold.store_key("site_1")] = {
         "version": 1, "key": charger_test_hold.store_key("site_1"),
-        "data": {"ceilings": {"ocpp": {"entity_id": CEILING, "previous": 13.0}}},
+        "data": {"unavailable": {"ocpp": {"entity_id": SWITCH}}},
     }
-    written = _ceiling(hass, "0")
-    hass.states.async_set(CEILING, "unavailable")  # the integration not loaded yet
+    sent = _availability(hass, state="off")
+    hass.states.async_set(SWITCH, "unavailable")  # the charge point not connected yet
     hold = _hold(hass, {"ocpp": _Ocpp()})
     await hold.async_load()
     await hass.async_block_till_done()
-    assert written == [] and hold.ceilings_kept == ["ocpp"]
-    hass.states.async_set(CEILING, "0", {"min": 0, "max": 32})
+    assert sent == [] and hold.unavailable_kept == ["ocpp"]
+    hass.states.async_set(SWITCH, "off")
     freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
-    assert written == [13.0] and hold.ceilings_kept == []
-    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["ceilings"] == {}
+    assert sent == ["on"] and hold.unavailable_kept == []
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {}
     await hold.async_close()
-
-
-async def test_a_ceiling_that_read_no_value_is_set_back_to_its_maximum(hass: HomeAssistant) -> None:
-    written = _ceiling(hass, "unknown")
-    hold = _hold(hass, {"ocpp": _Ocpp()})
-    hold._ceilings["ocpp"] = {"entity_id": CEILING, "previous": None}  # noqa: SLF001
-    hass.states.async_set(CEILING, "0", {"min": 0, "max": 32})
-    await hold.async_restore_ceilings()
-    assert written == [32.0]
-
-
-async def test_an_ocpp_integration_whose_write_confirms_nothing_writes_nothing(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(charger_test_hold, "ocpp_confirms", lambda _hass: False)
-    written = _ceiling(hass)
-    hold = _hold(hass, {"ocpp": _Ocpp()})
-    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
-    assert written == [] and hold.counts_nothing("ocpp") is False and hold.ceilings_kept == []
-    hold.release()
-
-
-def test_only_an_ocpp_integration_from_0_13_confirms_its_station_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    import homeassistant.loader as loader
-
-    for version, confirms in (("0.13.0", True), ("0.14.2", True), ("0.12.9", False), (None, False), ("dev", False)):
-        monkeypatch.setattr(loader, "async_get_loaded_integration", lambda _hass, _domain, v=version: SimpleNamespace(
-            version=v))
-        assert _OCPP_CONFIRMS(None) is confirms, version

@@ -1932,7 +1932,7 @@ class BatteryControl:
 
         `held_off` (only while a person's hardware test runs, `_async_verify`): a charger the test's hold keeps
         stopped counts 0 A where it cannot draw with Home Assistant gone (`ChargerTestHold.counts_nothing`: the hold
-        on, and either an OCPP charger's station ceiling at 0 A accepted by the charge point, or the charger read
+        on, and either an OCPP charger out of service by its own report and not charging, or the charger read
         stopped with its stop a stored setting that holds every later session off). Every other charger keeps its
         current, an Easee and one on buttons among them: their stop ends the session only, and the next plug-in may
         charge with nobody there to stop it."""
