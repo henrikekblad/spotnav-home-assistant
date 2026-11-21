@@ -597,10 +597,14 @@ def import_limit_phase_max_kw(
     takes nothing from such a phase. The chargers' currents (`cars_a`) must still read, as for every rule here,
     but they and the house's peaks do not lower `L`; a limit at `3 (fuse - margin)` is allowed whatever they are.
 
-    **A step** is not met at once: the plant's loop takes about 5 to 10 s to move its charge off a phase after a
-    load starts (seen in the same tests: the loaded phase above `L / 3` for one 5 s reading, by up to 0.64 kW, and
-    once another phase 0.42 kW above it for one reading while the charge moved over, then 0.1 to 0.2 kW above for
-    up to 20 s), the same order as the time today's live clamp per phase takes to act on a running Home Assistant.
+    The case where the house and the cars draw more on a phase than `L / 3` plus what the plant can put out there
+    rests on inference, not yet on a measurement: the plant charges nothing on a phase it cannot hold.
+
+    **Settling** after a charge start or a load step is not at once: up to about 0.65 kW above `L / 3` on a phase
+    for one or two 5 s readings, then up to about 0.15 kW for up to a minute (seen in the same tests: at a charge
+    start 2.47 and 2.43 kW on L3 against 2.0, then 0.14 to 0.16 kW on L1 for 15 s and about 0.07 kW on L2 for 35 s;
+    the loaded phase 0.11 kW above now and then). The plant's loop takes about 5 to 10 s to move its charge off a
+    phase, the same order as the time today's live clamp per phase takes to act on a running Home Assistant.
 
     **The margin** the shell passes is the site's own safety margin as the person set it for load balancing
     (`core.electric.stored_safety_margin_a`, 1 A by default for a new site; 0 A on the owner's, where 13.8 kW, the

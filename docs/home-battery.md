@@ -404,6 +404,9 @@ so that phase carries what the house and the cars put on it, as it would without
 and the cars alone take past the fuse is the load balancer's matter, and the fuse's while Home Assistant is down, as
 on any site.
 
+The limit only guards loads behind the plant's grid sensor. A charger (or any other load) wired upstream of that
+sensor, between it and the main fuse, is not seen by the plant, so the plant does not hold it under the limit.
+
 **The site's safety margin sets the most the limit may read:**
 
     max import limit = 3 x (main fuse - safety margin) x phase voltage
