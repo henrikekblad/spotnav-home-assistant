@@ -44,7 +44,13 @@ from custom_components.spotnav.runtime import charger_data, domain_data
 from custom_components.spotnav.vehicles.camera_rule import QUERY_TIMEOUT_S
 from custom_components.spotnav.vehicles.camera_media import _LENT
 from custom_components.spotnav.vehicles.camera_settings import CameraSettings, Frame
-from custom_components.spotnav.vehicles.identification import ASK_AFTER_S, METHOD_ASSUMED, METHOD_CAMERA, METHOD_PLUG_SENSOR
+from custom_components.spotnav.vehicles.identification import (
+    ASK_AFTER_S,
+    METHOD_ASSUMED,
+    METHOD_CAMERA,
+    METHOD_PLUG_SENSOR,
+    REEVALUATE_S,
+)
 
 from .test_vehicle_identification import World
 from .world import non_admin, ws_call
@@ -622,6 +628,22 @@ async def test_a_position_alone_never_overrides_a_sure_camera(garage: Garage) ->
     await world.later(5)
     assert world.settings.target.vehicle_id == world.cars["Kia"], "a plug sensor going on at this plug-in still corrects"
     assert world.identifier.method == METHOD_PLUG_SENSOR
+
+
+async def test_a_camera_car_identified_at_another_charger_hands_over(garage: Garage) -> None:
+    """Unlike a position, a car identified at another connected SpotNav charger cannot be here: it corrects even a
+    sure camera."""
+    await garage.start()
+    garage.car_parks(BLUE)
+    await garage.world.plug_in()
+    await garage.settle()
+    world = garage.world
+    assert world.settings.target.vehicle_id == world.cars["Tesla"] and world.identifier.method == METHOD_CAMERA
+    tesla = world.cars["Tesla"]
+    world.identifier._elsewhere = lambda car: car == tesla
+    await world.later(REEVALUATE_S + 5)
+    assert world.settings.target.vehicle_id == world.cars["Kia"]
+    assert world.identifier.method == "location"
 
 
 async def test_after_a_persons_answer_the_cars_reports_change_nothing(garage: Garage) -> None:
