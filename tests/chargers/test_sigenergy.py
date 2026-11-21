@@ -330,8 +330,9 @@ async def test_the_power_follows_the_sites_voltage(hass: HomeAssistant) -> None:
     assert await adapter.async_set_current(16, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
 
     assert calls[-1].data["value"] == pytest.approx(16 * math.sqrt(3) * 230 / 1000, abs=0.001)
+    # The range starts at the first whole ampere at or above the floor of 3.77 A.
     assert power_range(adapter.current) == {
-        "min_a": 6,
+        "min_a": 4,
         "max_a": 30,
         "source": "current_limit",
         "kw_per_a": round(kw_per_amp(230), 4),
@@ -340,10 +341,12 @@ async def test_the_power_follows_the_sites_voltage(hass: HomeAssistant) -> None:
 
 
 async def test_the_card_is_given_the_range_in_amperes_and_kw_per_ampere(hass: HomeAssistant) -> None:
+    """The range starts at the first whole ampere at or above the floor (2.17 A at 400 V): 3 A, 2.08 kW, not 6 A."""
     _ids, found = _found(hass)
     adapter = adapter_for(hass, found)
 
-    assert power_range(adapter.current) == {"min_a": 6, "max_a": 17, "source": "current_limit", "kw_per_a": 0.6928}
+    assert power_range(adapter.current) == {"min_a": 3, "max_a": 17, "source": "current_limit", "kw_per_a": 0.6928}
+    assert power_range(adapter.current)["min_a"] * KW_PER_A_400 >= EVDC_MIN_POWER_KW
     # Without its rating sensor the rating last read stands, never the number's own maximum (100 kW).
     hass.states.async_remove(RATED)
     assert power_range(adapter.current)["max_a"] == 17

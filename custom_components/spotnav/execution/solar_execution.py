@@ -1776,10 +1776,10 @@ class SolarExecutionCoordinator:
                 if self._solar is None:
                     return replace(verdict, action="hold")
                 return replace(self._solar.charge_ended(self._now(), "charger_stopped"), action="hold")
-            started = await self._executor.async_solar_start(self._amps(verdict.requested_a))
+            started = await self._executor.async_solar_start(self._amps(verdict.requested_a, running=False))
             if started:
                 # The start wrote its own current: the sun's next write is a change from it.
-                self._written_a = self._amps(verdict.requested_a)
+                self._written_a = self._amps(verdict.requested_a, running=False)
                 self._written_at = self._now()
             else:
                 _LOGGER.info(
@@ -1802,10 +1802,13 @@ class SolarExecutionCoordinator:
         # hold: nothing to do.
         return verdict
 
-    def _amps(self, amps: float) -> int | float:
+    def _amps(self, amps: float, *, running: bool = True) -> int | float:
         """A current the sun asks for, as it is written: whole amps, or the charger's floor where that is not a whole
-        ampere (a DC charger's, `util.amps_at_floor`), never truncated below it into a pause."""
-        return amps_at_floor(amps, self._controller.min_current_a)
+        ampere (a DC charger's, `util.amps_at_floor`), never truncated below it into a pause. A write to a running
+        charge reckons with its running floor (`ChargingController.running_min_current_a`), a start (`running=False`)
+        with the start floor."""
+        floor = self._controller.running_min_current_a if running else self._controller.min_current_a
+        return amps_at_floor(amps, floor)
 
     def _min_current_a(self) -> float:
         solar = self._solar

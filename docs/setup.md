@@ -228,7 +228,9 @@ How it differs from an AC charger:
   The lowest step is the charger's own lowest power, 1.5 kW, not an AC charger's 6 A (4.2 kW): 2.17 A
   per phase at 400 V. Solar starts, holds and stops at it, so a winter surplus of about 1.5 kW is
   enough, and load balancing holds the charge there before it pauses it. Above it the steps are whole
-  amperes, 0.69 kW each.
+  amperes, 0.69 kW each. The charging power you set in the card starts at the first whole ampere
+  above that floor, 3 A (2.1 kW at 400 V), and the card names the power in kW, also where load
+  balancing, the import target or the sun holds the charge.
 - **Load balancing.** The charger draws through the inverter, from the battery, the sun or the grid,
   so the fuse sees only what the inverter imports. Load balancing reads the site's grid meter as
   always, and reads the charger's own output power as its draw, spread evenly over the three phases.
@@ -275,6 +277,21 @@ can be answered:
 3. How fast does it follow a new limit, up and down?
 4. What does the grid meter show while the car charges from the house battery?
 5. What does the running state show after Stop with the car still plugged in, and after it is unplugged?
+
+**A lower minimum while it charges (to confirm).** Sigenergy's own surplus mode has been seen keeping
+a DC charge going at about 0.7 kW, so the charger may hold a lower power once it charges than it needs
+to start. SpotNav can lower a running charge to 1.0 kW before the sun stops it or load balancing
+pauses it, but this stays off until a tester has confirmed it; starts still need 1.5 kW. To check it:
+
+1. Start a charge from the card and wait until the output power has settled at the set power.
+2. In Home Assistant, set **Max Charging Power Limit** to **1.0** kW by hand.
+3. Watch for five minutes: does the limit stay at 1.0 kW, or does the charger or the integration
+   change it? Does the output power follow to about 1.0 kW? Does the running state stay
+   **Charging**, and does the car keep charging, or does the charge stop or pause?
+4. Note the limit's lowest value in its settings (the number's minimum), and the grid meter's
+   reading while it holds 1.0 kW.
+5. Set the limit back to 1.5 kW, or press Stop, then send the report with **Send debug info**
+   (gear, **Settings**, **Support**) and say what you saw.
 
 ### Sigenergy AC charger
 

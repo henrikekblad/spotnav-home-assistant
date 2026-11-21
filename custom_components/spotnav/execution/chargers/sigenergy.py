@@ -21,6 +21,16 @@ current that need not be a whole ampere: above it the steps stay whole amperes (
 switching, the car's onboard phases and a per-phase cut do not exist for a DC charger: the power is spread over three
 phases whatever car is plugged in (`planning/phases.py`).
 
+**A lower minimum once it charges** (`EVDC_RUN_MIN_KW`, behind `EVDC_RUN_MIN_CONFIRMED`, off until a tester has
+confirmed it). Sigenergy's own surplus mode keeps a DC charge going at about 0.7 kW, so the charger may hold a limit
+below the 1.5 kW it may need to start. With the fact on, a charge that is already running (the adapter's charging
+state) may be lowered to the running minimum (`PowerCurrent.run_min_a`, 1.45 A at 400 V for 1.0 kW, never below the
+number's own `min`) before the sun stops it or load balancing pauses it. A start still needs the start minimum
+(`min_a`) and, capped by the site, `EVDC_START_MARGIN_A` more: a start reckons with `min_a` whatever the charging
+state reads (`ChargingController.min_current_a`), and only the writes to a running charge (the regulator's, the sun's)
+reckon with the running one (`ChargingController.running_min_current_a`). With the fact off every floor is `min_a`,
+exactly as before.
+
 **Three phases only.** `sqrt(3) x V x I` is the power of a three-phase draw. On one phase the same limit would draw
 three times the current the plan counts, so a charger wired as one phase is never written (`PowerCurrent.async_set`
 refuses it, and the site's wiring step does not take one phase for a DC charger).
@@ -83,6 +93,14 @@ _LOGGER = logging.getLogger(__name__)
 #: CONFIRMED by the tester: it is load-bearing (the sun starts and load balancing holds a charge at it), but what the
 #: charger really holds, and what the grid draws at it, has not been measured on site.
 EVDC_MIN_POWER_KW: Final = 1.5
+#: The lowest power a charge that is already running is lowered to, in kW (`PowerCurrent.run_min_a`), where the
+#: charger holds a limit below the one it needs to start: Sigenergy's own surplus mode was seen holding a DC charge at
+#: about 0.7 kW. Never below the power-limit number's own `min`, never above `EVDC_MIN_POWER_KW`.
+EVDC_RUN_MIN_KW: Final = 1.0
+#: The recipe's fact that the DC charger keeps charging when SpotNav lowers its limit to `EVDC_RUN_MIN_KW` during a
+#: charge (the tester's checklist in `docs/setup.md`, Sigenergy DC charger). Unrecorded, so off: until a tester has
+#: confirmed it, the running minimum is the start minimum and nothing below `EVDC_MIN_POWER_KW` is ever written.
+EVDC_RUN_MIN_CONFIRMED: Final = False
 #: What a start capped by the site's allowance must leave above the floor, in amperes per phase: a start at exactly the
 #: allowance would overshoot it if the real grid draw at a 1.5 kW limit is a little higher than the limit (the
 #: inverter's losses, not yet measured). Only for a floor below 6 A (`ChargingController._start_command_locked`).
@@ -361,9 +379,10 @@ class PowerTiming:
 class PowerCurrent(CurrentPath):
     """`number.set_value` on a power limit (kW or W), given a current per phase. See the module docstring.
 
-    Refuses, in this order: below its floor (`min_a`), a charger not wired as three phases, a number that is gone or has
-    no power unit, no ceiling known (`ceiling_kw`), below `EVDC_MIN_POWER_KW` (also once rounded down to the number's
-    step or held to its `max`), a value it already carries, a raise within
+    Refuses, in this order: below its floor (`floor_a`: `min_a`, or the running minimum while it charges), a charger not
+    wired as three phases, a number that is gone or has no power unit, no ceiling known (`ceiling_kw`), below the
+    floor's power (`floor_kw`: `EVDC_MIN_POWER_KW`, or `run_min_kw` while it charges; also once rounded down to the
+    number's step or held to its `max`), below the number's own `min`, a value it already carries, a raise within
     `EVDC_SETTLE_S` of the last write (the regulator's and the sun's only), and the policy's interval not yet elapsed.
 
     The number's state lags a write (the integration reads the register back on its next poll), so for
@@ -405,6 +424,13 @@ class PowerCurrent(CurrentPath):
         #: How many must-lowers the write interval refused, so the charge was stopped instead (the controller counts).
         self.interval_stops = 0
         self._single_phase_logged = False
+        #: Whether the charger is charging now (the adapter's `charging_state`, `bind_charging`): only then may a limit
+        #: below the start minimum be written (`floor_a`). Nothing bound: never.
+        self._charging: Callable[[], bool] = lambda: False
+
+    def bind_charging(self, charging: Callable[[], bool]) -> None:
+        """Read whether the charger is charging from `charging` (the adapter binds its own `charging_state`)."""
+        self._charging = charging
 
     # -- the conversion
 
@@ -415,6 +441,38 @@ class PowerCurrent(CurrentPath):
         """The charger's floor as a current per phase: `EVDC_MIN_POWER_KW` at `kw_per_a`, rounded up to the hundredth
         of an ampere so the power it is written as is never below the lowest power (2.17 A, 1.503 kW, at 400 V)."""
         return math.ceil(EVDC_MIN_POWER_KW / self.kw_per_a() * 100.0 - 1e-6) / 100.0
+
+    def run_min_kw(self) -> float | None:
+        """The running minimum (kW): `EVDC_RUN_MIN_KW`, never below the power-limit number's own `min` and never
+        above `EVDC_MIN_POWER_KW`; `None` while the recipe's fact (`EVDC_RUN_MIN_CONFIRMED`) is not recorded."""
+        if not EVDC_RUN_MIN_CONFIRMED:
+            return None
+        kw = EVDC_RUN_MIN_KW
+        state = self.hass.states.get(self.entity_id)
+        factor = _native_factor(state)
+        minimum = _finite(state.attributes.get("min")) if state is not None else None
+        if factor and minimum is not None:
+            kw = max(kw, minimum / factor)
+        return min(kw, EVDC_MIN_POWER_KW)
+
+    def run_min_a(self) -> float:
+        """The lowest current a charge that is already running is written (`run_min_kw` per `kw_per_a`, rounded up to
+        the hundredth like `min_a`): 1.45 A at 400 V for 1.0 kW. The start minimum (`min_a`) while the fact is off."""
+        kw = self.run_min_kw()
+        floor = self.min_a()
+        if kw is None:
+            return floor
+        return min(floor, math.ceil(kw / self.kw_per_a() * 100.0 - 1e-6) / 100.0)
+
+    def floor_a(self) -> float:
+        """The lowest current written now: the running minimum while the charger charges, else the start minimum."""
+        return self.run_min_a() if self._charging() else self.min_a()
+
+    def floor_kw(self) -> float:
+        """The lowest power written now (`floor_a`'s power): `run_min_kw` while the charger charges and the fact is
+        recorded, else `EVDC_MIN_POWER_KW`."""
+        kw = self.run_min_kw()
+        return kw if kw is not None and self._charging() else EVDC_MIN_POWER_KW
 
     def sensor_rated_kw(self) -> float | None:
         """The rated-power sensor's reading (kW) when it is a plausible rating, else `None`."""
@@ -476,13 +534,16 @@ class PowerCurrent(CurrentPath):
         """The current per phase a power limit is: rounded down to a whole ampere, after allowing for the limit's own
         step (a write is rounded down to it, so 6 A written as 4.15 kW reads back as 6 A, not 5), or the floor
         (`min_a`) for a limit between the floor and the next whole ampere (the floor written as 1.50 kW reads back
-        as 2.17 A, not 2)."""
+        as 2.17 A, not 2). Below the start floor, with the running minimum recorded, the floor is `run_min_a` (1.0 kW
+        reads back as 1.45 A, not 1); at or above it the start floor stays the floor, so 1.50 kW still reads back as
+        2.17 A and a must-lower to 2 A is never taken as already done. Without the fact `run_min_a` is `min_a`."""
         maximum = self.max_a()
         ceiling = self.ceiling_kw()
         if maximum is not None and ceiling is not None and kw >= ceiling - 1e-6:
             return maximum
         amps = (kw + self._slack_kw(self.hass.states.get(self.entity_id))) / self.kw_per_a()
-        return amps_at_floor(amps, self.min_a())
+        floor = self.min_a()
+        return amps_at_floor(amps, floor if amps >= floor else self.run_min_a())
 
     def limit_kw(self) -> float | None:
         """The limit the number's state shows (kW)."""
@@ -534,7 +595,9 @@ class PowerCurrent(CurrentPath):
         self.interval_stops += 1
 
     async def async_set(self, amps: float, *, reason: str, verify: bool = False) -> str:
-        if amps < self.min_a() - 1e-9:
+        # The floor now: the start minimum, or the running minimum while the charger charges (`floor_a`).
+        floor_kw = self.floor_kw()
+        if amps < self.floor_a() - 1e-9:
             return ASSIGN_BELOW_MINIMUM
         if not self._three_phase():
             # sqrt(3) x V x I on one phase is three times the current the plan counts: never written.
@@ -556,7 +619,7 @@ class PowerCurrent(CurrentPath):
         kw = self.kw_for(amps)
         if kw is None:
             return ASSIGN_TARGET_UNAVAILABLE
-        if kw < EVDC_MIN_POWER_KW:
+        if kw < floor_kw:
             return ASSIGN_BELOW_MINIMUM
         native = kw * factor
         step = _finite(state.attributes.get("step"))
@@ -569,7 +632,7 @@ class PowerCurrent(CurrentPath):
             return ASSIGN_BELOW_MINIMUM
         if maximum is not None and native > maximum:
             native = maximum
-        if native / factor < EVDC_MIN_POWER_KW - 1e-9:
+        if native / factor < floor_kw - 1e-9:
             # Rounded down to the number's step, or held to its `max`, it would be below the lowest power: never
             # written.
             return ASSIGN_BELOW_MINIMUM
@@ -624,6 +687,10 @@ class PowerCurrent(CurrentPath):
             "max_a": self.max_a(),
             "min_power_kw": EVDC_MIN_POWER_KW,
             "min_a": self.min_a(),
+            "run_min_confirmed": EVDC_RUN_MIN_CONFIRMED,
+            "run_min_kw": self.run_min_kw(),
+            "run_min_a": self.run_min_a(),
+            "charging": self._charging(),
             "settle_s": EVDC_SETTLE_S,
             "interval_stops": self.interval_stops,
             "output_kw": None if self.timing is None else PowerTiming._rounded(self.timing.output_kw()),

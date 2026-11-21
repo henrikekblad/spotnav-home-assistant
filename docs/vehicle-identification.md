@@ -272,11 +272,16 @@ out.
 
 - The camera **decides on its own** only when all of this holds:
   - the model is sure ("high");
-  - it is daytime: the picture now has colour, and that colour is closest to the reference colour of the car the
-    model named (a model that names the red car for a picture of a white one does not decide);
   - every car left has a reference picture (a car without one may be the one standing there);
-  - the car it names has a **clearly different colour** from every other car left, judged from the daylight
-    reference pictures.
+  - no other car's own plug sensor went on at this plug-in (a sensor that did not change across the plug-in, such
+    as one that has said "off" for hours, counts neither for nor against a car);
+  - in daylight (the picture now has colour): that colour is closest to the reference colour of the car the model
+    named (a model that names the red car for a picture of a white one does not decide), and the car it names has
+    a **clearly different colour** from every other car left, judged from the daylight reference pictures. When
+    the named car has no daylight reference picture there is no colour to check: that holds nothing back, unless
+    the picture now has the colour of another car;
+  - at night (the picture now has no colour): the car it names has a **night reference picture**, so the model
+    had that car's own infrared picture to recognise it by.
 
   The last rule is the one people meet most. A model compares shapes, but two cars of one colour (two dark blue
   cars, a dark blue and a dark grey one) look much alike in a small, cropped camera picture, and a model can be
@@ -287,20 +292,24 @@ out.
   dark blue car is then far from a reference picture of the empty spot, however much paving the frame holds, and
   a car parked a little further on, or in other light, stays near itself. Black and white, or red and silver, are
   clearly different; dark blue and dark grey are not. A white or grey car on grey ground can show almost no colour
-  at all, and then it counts as similar too. The picture now is compared with each car's reference pictures the
-  same way, and the camera decides only when the car it names is nearest. Reference pictures taken with an
+  at all, and then it is judged as at night. The picture now is compared with each car's reference pictures the
+  same way: when another car is nearer and the car it names is clearly unlike the picture now, the camera does
+  not decide; when the car it names is near too, the colours cannot tell the cars apart. Reference pictures taken with an
   earlier release have their colour taken anew from the stored picture when SpotNav starts: there is no need to
   take them again.
-- At night it never decides on its own: an infrared picture is grey, or evenly tinted purple or pink by a camera
-  without an infrared filter.
+- At night an infrared picture is grey, or evenly tinted purple or pink by a camera without an infrared filter:
+  colour tells no car apart, so the camera decides on its own only for a car with a night reference picture. Take
+  one in the dark for each car that charges at night.
 - In every other case the camera **only puts its car first** on the question's buttons, and the question is asked
   as usual, after three minutes.
 - **None of these cars** never makes a guest by itself: with two or more cars it puts **Guest car** first, and when the model is sure it
   counts as the cars with a reference picture ruled out, so a charger with one car asks.
-- **A car's own report outranks the camera.** If, after the camera decided, a car's plug sensor or position
-  settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as decided by the plug
-  sensor or the position). If the camera's car reports that it is not plugged in or away and nothing else
-  settles it, SpotNav asks.
+- **A car's own plug sensor outranks the camera.** If, after the camera decided, a car's plug sensor changes at
+  this plug-in and settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as
+  decided by the plug sensor). If the camera's car's plug sensor goes to not plugged in and nothing else settles
+  it, SpotNav asks. A car identified at another SpotNav charger that is connected cannot be here: that corrects the
+  camera too. A position (home or away) alone never overrides the camera's sure answer: trackers are sometimes
+  wrong, and a plug sensor that has not changed since before the plug-in says nothing either way.
 - **Your answer always wins.** The camera is asked only while nobody has answered and nothing has decided, and
   an answer that comes later is not used.
 - The camera is asked **once per plug-in**, and once more only after an error. A model that takes longer than
@@ -334,13 +343,17 @@ restarts. For each plug-in:
   and the verdict;
 - the camera, when it was asked: its answer and how sure the model was, whether the answer was used, how long the
   query took (`latency_s`), the AI Task entity and its model, an error (`timeout`, `no_snapshot`, `no_reference`,
-  `ai_task_error`), and `camera_reason`, why it did or did not decide on its own: `decided`, `similar_colour` (with
+  `ai_task_error`), and `camera_reason`, why it did or did not decide on its own: `decided` (by day, the colours
+  agree), `decided_night` (at night, the named car has a night reference picture), `decided_without_colour` (by
+  day, the named car has no daylight reference picture to compare colours with), `similar_colour` (with
   `colour_distance`, how different the nearest other car's reference picture is where the two differ; 0.25 or more
   is clearly different, 0 is pictures the colours cannot tell apart; also when another car is as near the picture
-  now), `night`, `missing_reference`, `confidence_low`, `answer_none` (no car), `none_of_these` (a car that is
-  none of the cars, `other`),
-  `colour_mismatch` (another car is nearer the picture now than the named car), or `late` (it answered after a
-  person or the cars had decided);
+  now, and, when the named car's colour is not known, the other car's distance from the picture now), `night` (at
+  night, the named car has no night reference picture), `missing_reference`, `confidence_low`, `answer_none` (no
+  car), `none_of_these` (a car that is none of the cars, `other`), `other_plugged_in` (another car's own plug
+  sensor went on at this plug-in), `colour_mismatch` (another car is nearer the picture now and the named car is
+  clearly unlike it, with `colour_distance` the named car's distance from the picture now), or `late` (it answered
+  after a person or the cars had decided);
 - `skipped` with a reason when nothing was identified: `off`, `only_candidate` (no car can charge here), or
   `recent_choice` with `chosen_at` (the car was chosen shortly before the plug-in). A charger with one car looks at
   its car's reports at every plug-in, and ends `only_candidate` when nothing ruled it out;

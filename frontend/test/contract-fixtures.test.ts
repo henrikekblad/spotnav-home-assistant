@@ -857,7 +857,7 @@ describe("the backend's v7 current_range", () => {
       name === "charger_states_its_maximum.json"
         ? { min_a: 6, max_a: 16, source: "current_limit" }
         : name === "dc_charger_power.json"
-          ? { min_a: 6, max_a: 17, source: "current_limit", kw_per_a: 0.6928 }
+          ? { min_a: 3, max_a: 17, source: "current_limit", kw_per_a: 0.6928 }
           : { min_a: 6, max_a: 32, source: "default" },
     );
   });

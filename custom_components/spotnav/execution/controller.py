@@ -562,17 +562,23 @@ async def power_start_retry_sleep(seconds: float) -> None:
 
 
 def power_range(current: Any) -> dict[str, Any] | None:
-    """`current_range` for a charger given a power (`sigenergy.PowerCurrent`), else `None`."""
+    """`current_range` for a charger given a power (`sigenergy.PowerCurrent`), else `None`.
+
+    Its bottom is the first whole ampere at or above the charger's lowest power (`PowerCurrent.min_a`: 2.17 A at
+    400 V, so 3 A, 2.08 kW), not the 6 A pilot floor of an AC charger: the charging current a person sets is whole
+    amperes in every transport, and every current at or above that one is a current the charger is written at. The
+    top is never below the bottom."""
     from .chargers.sigenergy import PowerCurrent  # noqa: PLC0415 - kept beside its only use
 
     if not isinstance(current, PowerCurrent):
         return None
+    min_a = max(ABSOLUTE_MIN_AMPS, min(CURRENT_RANGE_MIN_A, math.ceil(current.min_a() - 1e-9)))
     maximum = current.max_a()
     if maximum is None:
         max_a, source = CURRENT_RANGE_DEFAULT_MAX_A, CURRENT_RANGE_SOURCE_DEFAULT
     else:
-        max_a, source = max(CURRENT_RANGE_MIN_A, min(int(ABSOLUTE_MAX_AMPS), maximum)), CURRENT_RANGE_SOURCE_CURRENT_LIMIT
-    return {**current_range_dict(max_a, source), "kw_per_a": round(current.kw_per_a(), 4)}
+        max_a, source = max(min_a, min(int(ABSOLUTE_MAX_AMPS), maximum)), CURRENT_RANGE_SOURCE_CURRENT_LIMIT
+    return {**current_range_dict(max_a, source), "min_a": min_a, "kw_per_a": round(current.kw_per_a(), 4)}
 
 
 def current_range_dict(max_a: int, source: str) -> dict[str, Any]:
@@ -3630,8 +3636,14 @@ class ChargingController:
         allowance = self._start_allowance_a()
         if allowance is None:
             return amps
-        floor = self.min_current_a
+        # Not a start: a running charge's floor (`running_min_current_a`) is the least it is written at.
+        floor = self.running_min_current_a
         return min(amps, max(amps_at_floor(floor, floor), amps_at_floor(allowance, floor)))
+
+    @property
+    def start_needs_a(self) -> float:
+        """The least allowance a capped start of this charger goes out at (`_start_needs_a` of its start floor)."""
+        return self._start_needs_a(self.min_current_a)
 
     @staticmethod
     def _start_needs_a(floor: float) -> float:
@@ -4247,7 +4259,7 @@ class ChargingController:
         rate limit, a paused charger that would be lifted by a current, a flash-stored setting.
         """
         amps = min(amps, cap_a)
-        if amps < self.min_current_a - 1e-9:
+        if amps < self.running_min_current_a - 1e-9:
             return ASSIGN_BELOW_MINIMUM
         async with self._lock:
             if self._shut_down:
@@ -4346,9 +4358,10 @@ class ChargingController:
         """
         if self._shut_down:
             return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
-        if amps < self.min_current_a - 1e-9:
+        if amps < self.running_min_current_a - 1e-9:
             # Below the floor no valid pilot current exists, for OCPP as for any charger: the only
-            # way to give the car less is to stop it (OCPP sends nothing for such a value).
+            # way to give the car less is to stop it (OCPP sends nothing for such a value). A DC charger's floor
+            # while it charges may be its running minimum (`running_min_current_a`).
             return await self._regulated_stop("pause")
         # Never under the operation lock: a must-lower write waits for no Start or Stop on its way (a slow cloud
         # command). What it must not do is lift a pause, so the state is read again, with no wait in between,
@@ -5413,6 +5426,22 @@ class ChargingController:
         400 V, `execution/chargers/sigenergy.py`). Never read from a test double without an adapter floor: 6 A."""
         floor = getattr(self.adapter, "min_current_a", None)
         return floor if isinstance(floor, (int, float)) and not isinstance(floor, bool) else DEFAULT_MIN_CURRENT_A
+
+    @property
+    def running_min_current_a(self) -> float:
+        """The floor for a write to a charge that is already running (the regulator's, the sun's): `min_current_a`,
+        except for a DC charger while its status reads charging (`adapter.observed_charging`) with its running minimum recorded (`adapter.run_min_current_a`,
+        `sigenergy.EVDC_RUN_MIN_CONFIRMED`), which may be lower. Never above `min_current_a`; a start always reckons
+        with `min_current_a`."""
+        floor = self.min_current_a
+        # Only a reading that says charging (`charging_observation`): an unreadable status keeps the start floor.
+        observed = getattr(self.adapter, "observed_charging", None)
+        if not callable(observed) or observed() is not True:
+            return floor
+        run = getattr(self.adapter, "run_min_current_a", None)
+        if isinstance(run, (int, float)) and not isinstance(run, bool) and 0.0 < run < floor:
+            return float(run)
+        return floor
 
     @property
     def is_switch_only(self) -> bool:

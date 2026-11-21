@@ -778,15 +778,20 @@ def refuse_amps_above_charger_range(hass: HomeAssistant, entry_id: str, decoded:
     """Refuse `amps` above what this charger can be asked for, with the existing code.
 
     Enforced for every transport, not only the card's `current_range`; the contract's 80 A bound is
-    judged first. A charger with no stated ceiling gets the everyday default.
+    judged first. A charger with no stated ceiling gets the everyday default. A charger given a power (a DC charger,
+    whose range carries `kw_per_a`) also refuses `amps` below its range's bottom, the first whole ampere at or above
+    its lowest power: below it nothing would be written to the charger.
     """
     if decoded.amps is None:
         return
     charger = controller_for(hass, entry_id)
     if charger is None:
         return
-    if decoded.amps > charger.current_range()["max_a"]:
+    current_range = charger.current_range()
+    if decoded.amps > current_range["max_a"]:
         raise AutoSettingsError("invalid_amps", "amps is above the charger's own maximum current")
+    if "kw_per_a" in current_range and decoded.amps < current_range["min_a"]:
+        raise AutoSettingsError("invalid_amps", "amps is below the charger's lowest power")
 
 
 def _refuse_camera_choice(stored: CameraSettings | None, sent: CameraSettings | None) -> None:

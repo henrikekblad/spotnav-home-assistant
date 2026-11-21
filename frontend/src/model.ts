@@ -941,6 +941,7 @@ export function buildModel(input: BuildInput): CardModel {
     priceUnit: input.priceUnit ?? DEFAULT_PRICE_UNIT,
     countries: market?.countries ?? [],
     ...(input.entityWords === undefined ? {} : { entityWords: input.entityWords }),
+    ...(dashboard.current_range?.kw_per_a === undefined ? {} : { kwPerA: dashboard.current_range.kw_per_a }),
   };
   const rows = dashboard.prices.intervals;
   const chartAxis = input.chartAxis ?? DEFAULT_CHART_AXIS;
