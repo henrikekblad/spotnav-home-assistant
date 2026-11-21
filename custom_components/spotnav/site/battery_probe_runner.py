@@ -10,7 +10,6 @@ diagnostics, the status and the resume read.
 
 from __future__ import annotations
 
-import math
 from typing import Any, cast
 
 from homeassistant.util import dt as dt_util
@@ -95,7 +94,9 @@ class BatteryProbeRunner:
             return False  # there is headroom for the minimum: the ordinary path restarts the car
         if not self._site._battery_covers_car(fresh, phases, min_current_a):
             return False
-        probe_a = float(math.ceil(min_current_a))
+        # The charger's minimum as it is written: whole amps, a DC charger's floor as it is (2.17 A at 400 V).
+        probe_setpoint = self._site._minimum_setpoint(charger_entry_id)
+        probe_a = float(probe_setpoint)
         currents = fresh.measured_phase_current_a
         if any(currents.get(phase) is None for phase in PHASES) or any(
             currents[phase] + probe_a > PROBE_MAX_FUSE_FACTOR * float(main_fuse_a)
@@ -109,7 +110,7 @@ class BatteryProbeRunner:
         # The status before the start goes out: one that turns to charging while the start is on its way
         # is the car starting, not a status left over from before.
         charging_before = self._charger_reports_charging(charger_controller)
-        started = await charger_controller.async_battery_probe_start(int(probe_a))
+        started = await charger_controller.async_battery_probe_start(probe_setpoint)
         if not started:
             probe.refused(now, "start_refused")
             self._site._record_probe_event(
