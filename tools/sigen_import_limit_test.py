@@ -78,6 +78,11 @@ PHASE_TOLERANCE_KW = 0.1
 SETTLE_S = 15.0
 #: A step needs this long with the load on to be judged (s).
 MIN_LOAD_S = 45.0
+#: A phase's house load must be at least this far under a third of the limit before the test starts (kW): a phase
+#: already near it would be held without the load, and the load step would show nothing.
+BASELINE_ROOM_KW = 0.5
+#: The highest `--abort-phase-kw` allowed: 20 A at 230 V, the smallest fuse this test is meant for.
+ABORT_PHASE_MAX_KW = 4.6
 #: How long a write may take to read back (s).
 READBACK_S = 30.0
 
@@ -420,6 +425,12 @@ def check(run: Run, *, force_spotnav: bool) -> dict[str, Any]:
     }
     if limit is None or charge is None:
         problems.append("the import or charge limit cannot be snapshotted, so it could not be restored")
+    near = run.limit_kw / 3.0 - BASELINE_ROOM_KW
+    for phase in "abc":
+        grid, plant = number(row[f"grid_{phase}"]), number(row[f"plant_{phase}"])
+        if grid is not None and plant is not None and grid + plant >= near:
+            problems.append(f"phase {phase.upper()} already draws {grid + plant:.2f} kW in the house, within"
+                            f" {BASELINE_ROOM_KW} kW of a third of the limit: switch large loads off first")
     soc = number(row.get("soc"))
     if soc is not None and soc >= 95.0:
         problems.append(f"the battery is at {soc:.0f} %: too full to take a grid charge for the test")
@@ -673,6 +684,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if not (0.5 <= args.limit_kw <= 9.0) or not (0.5 <= args.charge_kw <= 8.0) or args.low_charge_kw < 0:
         parser.error("keep the test far from the fuse: --limit-kw 0.5-9, --charge-kw 0.5-8")
+    if args.charge_kw >= args.limit_kw or args.low_charge_kw >= args.limit_kw:
+        parser.error("--charge-kw and --low-charge-kw must be under --limit-kw")
+    if not (0.0 < args.abort_phase_kw <= ABORT_PHASE_MAX_KW):
+        parser.error(f"--abort-phase-kw must be above 0 and at most {ABORT_PHASE_MAX_KW} kW (20 A)")
     token = args.token_file.expanduser().read_text(encoding="utf-8").strip()
     entities = default_entities(args.plant)
     for item in args.entity:

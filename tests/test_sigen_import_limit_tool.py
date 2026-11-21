@@ -99,6 +99,8 @@ def test_a_plant_as_found_on_the_owner_s_site_may_be_tested_and_is_snapshotted()
         ({"total_target": "2.0"}, None, "not 0"),
         ({"import_limit": "unavailable"}, None, "grid_import_limitation reads"),
         ({"soc": "97"}, None, "too full"),
+        # 1.4 kW on the grid and 0.2 kW from the plant on B: 1.6 kW of house, within 0.5 kW of 2 kW.
+        ({"grid_b": "1.4", "plant_b": "0.2"}, None, "phase B already draws"),
         ({}, {"battery_control_enabled": True, "battery_control_shadow_only": False}, "SpotNav's battery control"),
     ],
 )
@@ -196,6 +198,19 @@ def test_every_stop_signal_is_ignored_while_the_restore_runs(quick: None) -> Non
     assert set(seen) >= {signal_module.SIGINT, signal_module.SIGTERM}
     assert all(handler is signal_module.SIG_IGN for handler in seen.values())
     assert signal_module.getsignal(signal_module.SIGINT) is not signal_module.SIG_IGN
+
+
+@pytest.mark.parametrize(
+    "args",
+    [["--abort-phase-kw", "4.7"], ["--abort-phase-kw", "0"], ["--charge-kw", "6"], ["--limit-kw", "3", "--charge-kw", "4"],
+     ["--low-charge-kw", "6.5"]],
+)
+def test_settings_that_could_load_a_phase_toward_the_fuse_are_refused(args: list[str], tmp_path: Path) -> None:
+    token = tmp_path / "token"
+    token.write_text("secret", encoding="utf-8")
+    with pytest.raises(SystemExit) as stop:
+        tool.main(["--url", "http://localhost:1", "--token-file", str(token), *args])
+    assert stop.value.code == 2
 
 
 def test_a_dry_run_writes_nothing() -> None:
