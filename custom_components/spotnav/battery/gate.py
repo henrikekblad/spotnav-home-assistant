@@ -577,19 +577,32 @@ def import_limit_phase_max_kw(
     Assistant down, for a plant that holds **each phase** at a third of it (`commands.ImportLimitPhases`); `None` when
     the fuse or the chargers cannot be read, or when no value guards.
 
-    Such a plant holds a phase at `L / 3` as long as it can take that phase's excess off its own charge on it and put
-    out on it: a phase carries
+    Such a plant holds a phase at `L / 3` by moving its own charge: when a phase's house and cars draw more than
+    `L / 3` it stops charging on that phase and, where it can, puts out on it, while it charges on the others (seen
+    in Remote EMS, Command Charging (Grid First), with independent phase power control on: on 2026-11-18, 40040 at
+    6 kW, a 2.4 kW load on L1 left L1 at 2.00 kW with the plant putting out 0.33 kW there; on 2026-11-21, 40040 at 6
+    and at 8 kW, a 3.3 kW load on L2 left L2 at 2.0 and 2.65 kW with the plant putting out 1.3 and 0.65 kW there and
+    charging on L1 and L3, also with the total under the limit). So the battery's charge never raises a phase above
 
-        max(L / 3, h_i + cars - out)
+        max(L / 3, h_i + cars)
 
-    with `out` the most the plant puts out on one phase (`phase_output_max_kw`; unknown: nothing, the plant only
-    stops charging on that phase). That stays at or under the fuse less the margin when
+    the house and the cars on that phase alone: on a phase they keep under `L / 3` the charge fills it up to
+    `L / 3` and no further, and on a phase where they draw more the plant charges nothing there, so that phase
+    carries what the house and the cars put on it, less whatever the plant puts out, exactly as without a battery.
+    The limit guards the fuse when
 
-        L / 3  <=  fuse - margin      and      p_max + cars - out  <=  fuse - margin
+        L / 3  <=  fuse - margin
 
-    with `p_max` the largest phase's house peak (`house_peaks_a`) and the chargers' last currents (`cars_a`) on that
-    phase. The second does not depend on `L`: where the house and the cars alone can pass the fuse on a phase beyond
-    what the plant can put out there, no limit guards and the HA-down cap stays.
+    and that is the whole rule. A phase that the house and the cars alone take past the fuse is the load
+    balancer's matter while Home Assistant runs and the fuse's when it does not, as on a site without a battery:
+    with Home Assistant down the chargers stay at their last currents whatever the battery does, and the battery
+    takes nothing from such a phase. The chargers' currents (`cars_a`) must still read, as for every rule here,
+    but they and the house's peaks do not lower `L`; a limit at `3 (fuse - margin)` is allowed whatever they are.
+
+    **A step** is not met at once: the plant's loop takes about 5 to 10 s to move its charge off a phase after a
+    load starts (seen in the same tests: the loaded phase above `L / 3` for one 5 s reading, by up to 0.64 kW, and
+    once another phase 0.42 kW above it for one reading while the charge moved over, then 0.1 to 0.2 kW above for
+    up to 20 s), the same order as the time today's live clamp per phase takes to act on a running Home Assistant.
 
     **The margin** the shell passes is the site's own safety margin as the person set it for load balancing
     (`core.electric.stored_safety_margin_a`, 1 A by default for a new site; 0 A on the owner's, where 13.8 kW, the
@@ -609,12 +622,7 @@ def import_limit_phase_max_kw(
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
     room_a = main_fuse_a - margin_a
-    out_a = (
-        max(phase_output_max_kw, 0.0) * 1000.0 / volts  # type: ignore[arg-type]
-        if _usable(phase_output_max_kw) else 0.0
-    )
-    worst_a = max(house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)) + max(cars_a, 0.0) - out_a
-    if room_a <= 0 or worst_a > room_a:
+    if room_a <= 0:
         return None
     return 3.0 * room_a * volts / 1000.0
 
