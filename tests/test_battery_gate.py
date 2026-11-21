@@ -325,7 +325,7 @@ def _phase_held_a(limit_kw: float, house_a: float, cars_a: float, out_a: float =
 
 def test_a_limit_held_per_phase_guards_up_to_three_times_the_fuse_less_the_margin() -> None:
     volts = 400.0 / 3 ** 0.5
-    rule = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None}
+    rule = {"margin_a": 2.0, "cars_a": 0.0}
     most = import_limit_phase_max_kw(20.0, 400.0, **rule)
     # The owner's 20 A fuse: 3 x 18 A x 231 V = 12.47 kW; the 13.8 kW found on the plant is the fuse itself.
     assert most == pytest.approx(3 * 18.0 * volts / 1000) and round(most, 2) == 12.47
@@ -336,7 +336,7 @@ def test_a_limit_held_per_phase_guards_up_to_three_times_the_fuse_less_the_margi
     for house_a in ((4000 / volts, 0.0, 0.0), (0.0, 4000 / volts, 0.0), (2.0, 4000 / volts, 5.0)):
         assert max(_phase_held_a(most, h, 0.0) for h in house_a) <= 18.0 + 1e-9
     # The total-only rule leaves a third of that on the same fuse (4.47 kW).
-    assert import_limit_max_kw(20.0, 400.0, **rule) < most / 2
+    assert import_limit_max_kw(20.0, 400.0, house_peak_kw=None, **rule) < most / 2
 
 
 def test_a_limit_held_per_phase_is_not_lowered_by_the_house_or_the_cars() -> None:
@@ -345,13 +345,13 @@ def test_a_limit_held_per_phase_is_not_lowered_by_the_house_or_the_cars() -> Non
     # The cautious house (4 kW on one phase, 17.3 A) and a car's last 6 A: 23.3 A on that phase. The battery's charge
     # adds nothing there (the plant charges on the other phases), so the phase carries what it would without a
     # battery; the limit still guards up to three times the fuse less the margin.
-    assert import_limit_phase_max_kw(20.0, 400.0, margin_a=2.0, cars_a=6.0, house_peak_kw=None) == pytest.approx(most)
+    assert import_limit_phase_max_kw(20.0, 400.0, margin_a=2.0, cars_a=6.0) == pytest.approx(most)
     assert import_limit_phase_holds(12.4, 20.0, 400.0, margin_a=2.0, cars_a=6.0) is True
     assert _phase_held_a(most, 4000 / volts, 6.0) == pytest.approx(4000 / volts + 6.0), "the house and the car alone"
-    # Learned peaks above the fuse less the margin on a phase do not lower it either.
+    # Learned peaks above the fuse less the margin on a phase do not bring the cap back either.
     for peaks in ({"L1": 10.0, "L2": 18.5, "L3": 3.0}, {"L1": 10.0, "L2": 17.5, "L3": 3.0}):
-        assert import_limit_phase_max_kw(20.0, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=None,
-                                         house_phase_peaks_a=peaks) == pytest.approx(most)
+        assert grid_charge_cap_kw(20.0, 400.0, margin_a=2.0, cars_a=6.0, house_peak_kw=None, plant_phases=3,
+                                  house_phase_peaks_a=peaks, import_limit_kw=12.4, import_limit_per_phase=True) is None
     # Never more than the house and the cars alone on a phase, never more than the fuse on one they leave room on.
     for house_a in (0.0, 5.0, 10.0, 17.9, 18.0, 25.0):
         for cars_a in (0.0, 6.0, 16.0):
@@ -363,19 +363,20 @@ def test_the_owners_site_holds_with_the_limit_at_the_fuse_and_the_halo_at_16_a()
     # 20 A fuse, the site's margin 0 A, learned peaks 15.7 / 18.0 / 18.4 A, the HALO allowed 16 A: 34.4 A on L3 from
     # the house and the car alone, which the battery adds nothing to.
     peaks = {"L1": 15.7, "L2": 18.0, "L3": 18.4}
-    rule = {"margin_a": 0.0, "cars_a": 16.0, "house_peak_kw": None, "house_phase_peaks_a": peaks}
+    rule = {"margin_a": 0.0, "cars_a": 16.0}
+    cap = {"margin_a": 2.0, "cars_a": 16.0, "house_peak_kw": None, "house_phase_peaks_a": peaks, "plant_phases": 3,
+           "import_limit_per_phase": True, "phase_margin_a": 0.0}
     most = import_limit_phase_max_kw(20.0, 400.0, **rule)
     assert most == pytest.approx(3 * 20.0 * volts / 1000) and round(most, 2) == 13.86
     assert import_limit_phase_holds(13.8, 20.0, 400.0, **rule) is True
-    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, import_limit_kw=13.8, import_limit_per_phase=True,
-                              phase_margin_a=0.0, **{**rule, "margin_a": 2.0}) is None
+    assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=13.8, **cap) is None
     # Condition (1) still refuses a limit above three times the fuse less the margin.
     assert import_limit_phase_holds(14.0, 20.0, 400.0, **rule) is False
-    assert grid_charge_cap_kw(20.0, 400.0, plant_phases=3, import_limit_kw=14.0, import_limit_per_phase=True,
-                              phase_margin_a=0.0, **{**rule, "margin_a": 2.0}) == 0.0
+    assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=14.0, **cap) == 0.0
     assert import_limit_phase_holds(13.8, 20.0, 400.0, **{**rule, "margin_a": 1.0}) is False
     # The chargers' currents must still read.
     assert import_limit_phase_max_kw(20.0, 400.0, **{**rule, "cars_a": float("nan")}) is None
+    assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=13.8, **{**cap, "cars_a": float("nan")}) == 0.0
 
 
 @pytest.mark.parametrize("limit", [None, float("nan"), float("inf"), -1.0, 4294967.295, True])
@@ -384,9 +385,9 @@ def test_a_limit_held_per_phase_that_reads_nothing_or_no_limit_guards_nothing(li
 
 
 def test_a_limit_held_per_phase_guards_nothing_with_the_fuse_or_the_chargers_unknown() -> None:
-    assert import_limit_phase_max_kw(None, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=None) is None
-    assert import_limit_phase_max_kw(20.0, 400.0, margin_a=2.0, cars_a=float("nan"), house_peak_kw=None) is None
-    assert import_limit_phase_max_kw(2.0, 400.0, margin_a=2.0, cars_a=0.0, house_peak_kw=None) is None
+    assert import_limit_phase_max_kw(None, 400.0, margin_a=2.0, cars_a=0.0) is None
+    assert import_limit_phase_max_kw(20.0, 400.0, margin_a=2.0, cars_a=float("nan")) is None
+    assert import_limit_phase_max_kw(2.0, 400.0, margin_a=2.0, cars_a=0.0) is None
 
 
 def test_the_cap_is_lifted_by_a_limit_held_per_phase_only_where_the_shell_found_every_condition() -> None:

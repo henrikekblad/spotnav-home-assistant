@@ -1256,9 +1256,9 @@ def _field_tested(monkeypatch: pytest.MonkeyPatch, **changes: Any) -> None:
     )
 
 
-def test_the_shipped_recipe_records_the_owner_s_test_of_the_limit_held_per_phase_and_no_per_phase_output() -> None:
+def test_the_shipped_recipe_records_the_owner_s_test_of_the_limit_held_per_phase() -> None:
     phases = commands_module.SIGENERGY_CONTROL.import_limit_phases
-    assert phases is not None and phases.field_tested is True and phases.phase_output_max_kw is None
+    assert phases is not None and phases.field_tested is True
     assert phases.sensor_online == "online" and phases.output_type == "l1_l2_l3_n"
 
 

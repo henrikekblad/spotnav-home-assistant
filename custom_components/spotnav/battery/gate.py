@@ -570,8 +570,6 @@ def import_limit_holds(
 
 def import_limit_phase_max_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
-    house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
-    phase_output_max_kw: float | None = None,
 ) -> float | None:
     """The largest value of the plant's own grid import limit (kW) that keeps every phase under the fuse with Home
     Assistant down, for a plant that holds **each phase** at a third of it (`commands.ImportLimitPhases`); `None` when
@@ -629,16 +627,12 @@ def import_limit_phase_max_kw(
 
 def import_limit_phase_holds(
     import_limit_kw: float | None, main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float = 0.0,
-    cars_a: float = 0.0, house_peak_kw: float | None = None, house_phase_peaks_a: Mapping[str, float] | None = None,
-    phase_output_max_kw: float | None = None,
+    cars_a: float = 0.0,
 ) -> bool:
     """Whether the plant's own grid import limit, held per phase, reads a value that keeps every phase under the fuse
     (`import_limit_phase_max_kw`). A limit that reads nothing, below 0 or not a number guards nothing; one that reads
     the register's "no limit" (about 4.3 GW) is far above any fuse."""
-    most = import_limit_phase_max_kw(
-        main_fuse_a, volts_between_phases, margin_a=margin_a, cars_a=cars_a, house_peak_kw=house_peak_kw,
-        house_phase_peaks_a=house_phase_peaks_a, phase_output_max_kw=phase_output_max_kw,
-    )
+    most = import_limit_phase_max_kw(main_fuse_a, volts_between_phases, margin_a=margin_a, cars_a=cars_a)
     return (
         most is not None and _usable(import_limit_kw) and 0.0 <= import_limit_kw <= most + 1e-6  # type: ignore[operator]
     )
@@ -713,8 +707,7 @@ def grid_charge_cap_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
     import_limit_acts: bool = False, house_phase_peaks_a: Mapping[str, float] | None = None,
-    import_limit_per_phase: bool = False, phase_output_max_kw: float | None = None,
-    phase_margin_a: float | None = None,
+    import_limit_per_phase: bool = False, phase_margin_a: float | None = None,
 ) -> float | None:
     """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
     stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
@@ -737,7 +730,6 @@ def grid_charge_cap_kw(
     if import_limit_per_phase and import_limit_phase_holds(
         import_limit_kw, main_fuse_a, volts_between_phases,
         margin_a=margin_a if phase_margin_a is None else phase_margin_a, cars_a=cars_a,
-        house_peak_kw=house_peak_kw, house_phase_peaks_a=house_phase_peaks_a, phase_output_max_kw=phase_output_max_kw,
     ):
         return None
     if import_limit_acts and import_limit_holds(
