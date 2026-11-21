@@ -950,16 +950,19 @@ def test_the_exact_peaks_stand_alone_only_after_two_weeks_of_exact_days_spread_o
                 if 8 <= hour < 8 + SPREAD_HOURS:
                     mark.house_a, mark.minutes, mark.total_all, mark.total_counted = (5.0, 3.0, 9.0), 20, 17.0, 17.0
                 if start <= hour < start + exact_hours:
-                    mark.exact_a, mark.exact_minutes = (4.0, 4.0, 4.0), 40
+                    mark.exact_a, mark.exact_minutes, mark.total_exact = (4.0, 4.0, 4.0), 40, 12.0
                 if mark.counted:
                     peaks.hours[T0 // 3600 + day * 24 + hour] = mark
         return peaks
 
     now = T0 + (READY_DAYS + 1) * 86400
-    # Exact minutes in twelve clock hours of each day: the band is no longer needed.
+    # Exact minutes in twelve clock hours of each day: the band is no longer needed as a peak, and its minutes, no
+    # longer seen, count as hidden (17 A in all, 5 A over the 12 A seen exactly; re-review 2026-11-21).
     learned = kept(SPREAD_HOURS).learned(now)
     assert learned.exact_days == READY_DAYS and learned.basis == "exact"
-    assert learned.phase_peaks() == pytest.approx({"L1": 4.0 + MARGIN_A, "L2": 4.0 + MARGIN_A, "L3": 4.0 + MARGIN_A})
+    assert learned.phase_peaks() == pytest.approx(
+        {"L1": 4.0 + 5.0 + MARGIN_A, "L2": 4.0 + 5.0 + MARGIN_A, "L3": 4.0 + 5.0 + MARGIN_A}
+    )
     # Three exact hours a day (120 minutes, in one stretch): no exact day, and the band's 9 A still counts.
     learned = kept(3).learned(now)
     assert learned.ready and learned.exact_days == 0 and learned.basis == "mixed"
