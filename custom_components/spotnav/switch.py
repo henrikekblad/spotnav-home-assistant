@@ -10,7 +10,7 @@ from datetime import timedelta
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -18,7 +18,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONF_ENTRY_TYPE, CONF_HEAT, DOMAIN, ENTRY_TYPE_SITE
 from .entity import AutoSurface, SpotNavAutoEntity, SpotNavSiteEntity
-from .heat.config import AWAY_MAX_DAYS, F_AWAY_UNTIL, F_MODE, MODE_AWAY, MODE_HOME, read_config
+from .heat.config import AWAY_MAX_DAYS, F_AWAY_UNTIL, F_MODE, MODE_AWAY, MODE_HOME, PATH_NONE, read_config
 from .execution.controller import ChargingController
 from .planning.auto_settings import AutoSettings
 from .runtime import ChargerConfigEntry
@@ -35,11 +35,52 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ChargerConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
-        async_add_entities([SiteHeatAwaySwitch(hass, entry, entry.runtime_data.controller)])
+        _add_away_switch_with_heat(hass, entry, async_add_entities)
         return
     controller = entry.runtime_data.controller
     auto = AutoSurface.resolve(hass, entry.entry_id)
     async_add_entities([AutoDepartureSwitch(entry, controller, auto)])
+
+
+def has_heat_to_steer(raw: object) -> bool:
+    """Whether a site's heat settings name a heat pump, a zone or a water heater: the Away switch has something to act on."""
+    config = read_config(raw)
+    pump = config.control_path != PATH_NONE or config.control_entity is not None
+    return pump or bool(config.zones) or config.water_heater is not None
+
+
+def _add_away_switch_with_heat(
+    hass: HomeAssistant, entry: ChargerConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
+    """Add the site's Away switch now when heat is set up, else at the heat settings write that first sets it up.
+
+    The heat settings are written without a reload (`api/heat.write_heat`), so the platform listens for that write
+    until the switch is added."""
+
+    def _add() -> None:
+        async_add_entities([SiteHeatAwaySwitch(hass, entry, entry.runtime_data.controller)])
+
+    if has_heat_to_steer(entry.data.get(CONF_HEAT)):
+        _add()
+        return
+    unsubscribe: Callable[[], None] | None = None
+
+    @callback
+    def _on_heat_changed() -> None:
+        nonlocal unsubscribe
+        if unsubscribe is None or not has_heat_to_steer(entry.data.get(CONF_HEAT)):
+            return
+        unsubscribe()
+        unsubscribe = None
+        _add()
+
+    unsubscribe = async_dispatcher_connect(hass, heat_changed_signal(entry.entry_id), _on_heat_changed)
+
+    def _unload() -> None:
+        if unsubscribe is not None:
+            unsubscribe()
+
+    entry.async_on_unload(_unload)
 
 
 class AutoSettingSwitch(SpotNavAutoEntity, SwitchEntity):
