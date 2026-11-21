@@ -256,6 +256,36 @@ def test_the_cars_ceiling_leaves_its_own_plan_out_and_counts_the_others(patched,
     assert patched(_site(())).car_inputs("car", NOW) is None
 
 
+def test_the_cars_ceiling_is_made_again_only_when_the_site_or_the_other_cars_move(patched, monkeypatch) -> None:
+    own = (local(11, 16, 9), local(11, 16, 10), 11.0)
+    others = [(local(11, 16, 10), local(11, 16, 11), 4.0)]
+
+    def windows(_hass, _site, exclude=None):
+        return list(others) if exclude == "car" else [own, *others]
+
+    site = _site((DemandComponent(top_n=1, window=GBG_WINDOW, price_winter=135.0, price_summer=0.0),))
+    ceiling = patched(site)
+    monkeypatch.setattr("custom_components.spotnav.battery.plan_runtime.site_car_windows", windows)
+    made: list[Any] = []
+    real = SiteDemandCeiling._make
+
+    def counted(self, *args):
+        made.append(args)
+        return real(self, *args)
+
+    monkeypatch.setattr(SiteDemandCeiling, "_make", counted)
+    first = ceiling.car_inputs("car", NOW)
+    # The site's ceiling and the car's without its own plan.
+    assert len(made) == 2
+    # Every plan of the car asks again: nothing is made again on the event loop.
+    assert ceiling.car_inputs("car", NOW + timedelta(minutes=5)) == first
+    assert len(made) == 2
+    # The other car's plan moves: the site's ceiling and the car's are made again.
+    others[0] = (local(11, 16, 12), local(11, 16, 13), 4.0)
+    moved = ceiling.car_inputs("car", NOW + timedelta(minutes=6))
+    assert len(made) == 4 and moved != first
+
+
 def test_past_charges_run_from_the_plug_in_to_the_departure(monkeypatch) -> None:
     from datetime import time
 

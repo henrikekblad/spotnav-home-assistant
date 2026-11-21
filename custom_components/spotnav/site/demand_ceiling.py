@@ -25,7 +25,8 @@ day the debug log says what the plans as made would cost against it.
 
 * **The car's ceiling** (`car_inputs`): the same ceiling made without the asking charger's own installed plan (its
   plan is what is being made), with the house's forecast as the car's plan counts on it and the other cars' plans per
-  hour, for the car's plan under the ceiling in shadow (`planning/car_demand.py`).
+  hour, for the car's plan under the ceiling in shadow (`planning/car_demand.py`). Made again only when the site's
+  ceiling or the other cars' plans moved (one per charger kept): it runs on the event loop, beside every plan.
 
 Nothing here decides anything a charger, battery or heat pump is told.
 """
@@ -211,6 +212,8 @@ class SiteDemandCeiling:
     last_cost: list[DayCost] = field(default_factory=list)
     #: The cars' predicted charges, made once per hour start (`_predicted_charges`).
     _charges: tuple[datetime, tuple[Charge, ...]] | None = None
+    #: Per charger, the ceiling made without its own installed plan and what it was made from (`_car_inputs`).
+    _without: dict[str, tuple[Any, CeilingState]] = field(default_factory=dict)
 
     def refresh(self, now: datetime) -> CeilingState | None:
         """Work the ceiling out again when its inputs moved (see the module). Never raises."""
@@ -301,9 +304,16 @@ class SiteDemandCeiling:
         tz = site.demand.tracker.tz
         others = _car_windows(site, exclude=charger_entry_id)
         if len(others) != len(_car_windows(site)):
-            # The car's own installed plan is in the predicted peaks: made again without it.
-            components = site_demand_components(site.hass, site.entry_id)
-            state = self._make(components, others, state.charges, now)
+            # The car's own installed plan is in the predicted peaks: made again without it, once per site ceiling and
+            # other cars' plans.
+            key = (self._key, tuple(others))
+            kept = self._without.get(charger_entry_id)
+            if kept is not None and kept[0] == key:
+                state = kept[1]
+            else:
+                components = site_demand_components(site.hass, site.entry_id)
+                state = self._make(components, others, state.charges, now)
+                self._without[charger_entry_id] = (key, state)
         return CarCeiling(
             ceilings={start: ceiling for start, ceiling in state.hours.items() if ceiling.price > 0},
             house_kw=site.house_forecast.plan_kw_by_hour(now),
