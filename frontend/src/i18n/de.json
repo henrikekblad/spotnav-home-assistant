@@ -1754,7 +1754,7 @@
   "battery.cap.phase.limitTooHigh": "Das Importlimit der Anlage steht auf {value} kW. Senke es in der Sigenergy-App auf höchstens {max} kW: Dann hält die Anlage jede Phase unter der Hauptsicherung und das Laden aus dem Netz wird nicht mehr gebremst.",
   "battery.cap.phase.limitUnset": "Stelle das Importlimit der Anlage in der Sigenergy-App auf höchstens {max} kW: Dann hält die Anlage jede Phase unter der Hauptsicherung und das Laden aus dem Netz wird nicht mehr gebremst.",
   "battery.cap.phase.actsLabel": "Importgrenze wirkt",
-  "battery.cap.phase.actsHelp": "Nur einschalten, wenn das Importlimit der Anlage in der Sigenergy-App nach deiner Hauptsicherung eingestellt ist: höchstens 3 × (Sicherung − Sicherheitsabstand) × Spannung. SpotNav liest das Limit und die Einstellungen der Anlage vor jedem Laden aus dem Netz und kehrt zur Obergrenze zurück, sobald eines davon nicht stimmt.",
+  "battery.cap.phase.actsHelp": "Nur einschalten, wenn das Importlimit der Anlage in der Sigenergy-App nach deiner Hauptsicherung eingestellt ist: höchstens 3 × (Sicherung − Sicherheitsreserve) × Spannung. SpotNav liest das Limit und die Einstellungen der Anlage vor jedem Laden aus dem Netz und kehrt zur Obergrenze zurück, sobald eines davon nicht stimmt.",
   "battery.cap.phase.turnOn": "Einschalten…",
   "battery.cap.phase.open": "In Home Assistant öffnen",
   "battery.perPhase.caps": "Netzladung pro Phase, höchstens: L1 {l1} kW · L2 {l2} kW · L3 {l3} kW",
