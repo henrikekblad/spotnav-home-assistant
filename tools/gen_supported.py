@@ -97,6 +97,8 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     "for Wallbox.",
     ("charger", "sigen"): "Driven carefully until tested on real hardware: see [Sigenergy DC charger]"
     "(setup.md#sigenergy-dc-charger).",
+    ("charger", "sigen_ac"): "Not yet tested on real hardware: see [Sigenergy AC charger]"
+    "(setup.md#sigenergy-ac-charger).",
     ("charger", "smartevse"): "Use firmware 3.10.1 or newer: on 3.9.3 to 3.10.0 some cars do not resume after a pause.",
     ("charger", "zaptec"): "Firmware 2.3 and newer ends a session after 20 restarts plus one per hour of the session, "
     "which solar on a cloudy day can reach. With APM or in stand-alone mode the charger ignores current writes "
