@@ -101,6 +101,10 @@ Since 3.0 a site section also carries `day_records` (additive, no new version): 
 `export_day` service writes them (`day_record.py`, schema 1, newest first, without the chargers' plug-ins, which are
 under `chargers` already): the forecast log's rows and reviews of each day, its prices, the battery plan's quarter
 hours and review, the house's hours, the settings and the shadow logs of the switched load and the export limit.
+
+Since 3.0 a site's `diagnostics` also carry `flexible_loads` (additive, no new version): every load the plan can move
+(each member charger's car, the home battery, the heat pump, each floor-heating zone, the water heater) in one shape,
+its goal, handles, hard rules, give and choices (`site/flexible_loads.py`, `planning/flexible_load.py`).
 """
 
 from __future__ import annotations
