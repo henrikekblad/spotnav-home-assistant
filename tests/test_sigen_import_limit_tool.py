@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 from typing import Any
@@ -108,7 +109,7 @@ def test_the_test_does_not_start_where_something_else_controls_or_could_act(
     assert any(problem in text for text in found["problems"]), found["problems"]
 
 
-def test_the_restore_puts_back_every_written_value_in_the_hand_back_order() -> None:
+def test_the_restore_puts_back_every_written_value_in_the_hand_back_order(quick: None) -> None:
     ha = FakeHA(_plant())
     run = _run(ha)
     snapshot = tool.check(run, force_spotnav=False)["snapshot"]
@@ -124,6 +125,77 @@ def test_the_restore_puts_back_every_written_value_in_the_hand_back_order() -> N
         f"{ENTITIES['charge_limit']}=20.6", f"{ENTITIES['import_limit']}=13.8",
     ]
     assert ha.values[ENTITIES["import_limit"]] == "13.8" and ha.values[ENTITIES["remote_ems"]] == "off"
+
+
+@pytest.fixture
+def quick(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tool, "READBACK_S", 0.05)
+    monkeypatch.setattr(tool, "RESTORE_RETRY_S", 0.0)
+    monkeypatch.setattr(tool, "RESTORE_DEADLINE_S", 2.0)
+
+
+class StuckMode(FakeHA):
+    """The control mode select takes no write (the integration logs an error)."""
+
+    def call(self, domain: str, service: str, data: dict[str, Any]) -> None:
+        if domain == "select":
+            self.writes.append(f"{data['entity_id']}=refused")
+            return
+        super().call(domain, service, data)
+
+
+def test_a_mode_that_will_not_take_is_given_up_after_three_tries_and_remote_ems_still_goes_off(quick: None) -> None:
+    ha = StuckMode(_plant(**{"remote_ems": "on", "control_mode": "Command Charging (Grid First)"}))
+    run = _run(ha)
+    snapshot = {"import_limit": 13.8, "charge_limit": 20.6, "remote_ems": "off", "control_mode": "Maximum Self Consumption",
+                "work_mode": "ai_mode"}
+    assert tool.restore(run, snapshot, force=True) is True
+    assert [w for w in ha.writes if w.endswith("=refused")] == [f"{ENTITIES['control_mode']}=refused"] * 3
+    assert ha.values[ENTITIES["remote_ems"]] == "off" and ha.values[ENTITIES["import_limit"]] == "13.8"
+
+
+def test_the_mode_is_skipped_only_where_remote_ems_reads_off_and_an_unread_one_is_tried_again(quick: None) -> None:
+    ha = FakeHA(_plant(remote_ems="unavailable"))
+    run = _run(ha)
+    snapshot = {"import_limit": 13.8, "charge_limit": 20.6, "remote_ems": "off", "control_mode": "Maximum Self Consumption",
+                "work_mode": "ai_mode"}
+    assert tool.restore(run, snapshot, force=True) is False, "nothing written while Remote EMS cannot be read"
+    assert ha.writes == []
+    ha.values[ENTITIES["remote_ems"]] = "off"
+    assert tool.restore(run, snapshot, force=True) is True
+    assert not any(w.startswith(ENTITIES["control_mode"]) for w in ha.writes)
+
+
+def test_the_snapshot_is_kept_on_disk_and_restores_on_its_own(tmp_path: Path, quick: None) -> None:
+    path = tool.snapshot_path(tmp_path / "run.csv")
+    assert path.name == "run.snapshot.json"
+    snapshot = {"import_limit": 13.8, "charge_limit": 20.6, "remote_ems": "off", "control_mode": "Maximum Self Consumption",
+                "work_mode": "ai_mode"}
+    tool.save_snapshot(path, snapshot, dict(ENTITIES))
+    ha = FakeHA(_plant(import_limit="6.0", charge_limit="4.0", remote_ems="on",
+                       control_mode="Command Charging (Grid First)"))
+    kept = json.loads(path.read_text(encoding="utf-8"))
+    assert tool.restore(_run(ha), kept["snapshot"], force=True) is True
+    assert ha.values[ENTITIES["control_mode"]] == "unavailable" and ha.values[ENTITIES["import_limit"]] == "13.8"
+    assert ha.values[ENTITIES["charge_limit"]] == "20.6"
+
+
+def test_every_stop_signal_is_ignored_while_the_restore_runs(quick: None) -> None:
+    import signal as signal_module
+    seen: dict[int, Any] = {}
+
+    class Watching(FakeHA):
+        def call(self, domain: str, service: str, data: dict[str, Any]) -> None:
+            seen.update({sig: signal_module.getsignal(sig) for sig in tool.STOP_SIGNALS})
+            super().call(domain, service, data)
+
+    ha = Watching(_plant(remote_ems="on", control_mode="Command Charging (Grid First)"))
+    snapshot = {"import_limit": 13.8, "charge_limit": 20.6, "remote_ems": "off", "control_mode": "Maximum Self Consumption",
+                "work_mode": "ai_mode"}
+    assert tool.restore(_run(ha), snapshot, force=True) is True
+    assert set(seen) >= {signal_module.SIGINT, signal_module.SIGTERM}
+    assert all(handler is signal_module.SIG_IGN for handler in seen.values())
+    assert signal_module.getsignal(signal_module.SIGINT) is not signal_module.SIG_IGN
 
 
 def test_a_dry_run_writes_nothing() -> None:

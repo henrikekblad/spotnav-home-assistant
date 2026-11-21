@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import json
 import math
 import queue
@@ -77,6 +78,8 @@ PHASE_TOLERANCE_KW = 0.1
 SETTLE_S = 15.0
 #: A step needs this long with the load on to be judged (s).
 MIN_LOAD_S = 45.0
+#: How long a write may take to read back (s).
+READBACK_S = 30.0
 
 
 def default_entities(plant: str) -> dict[str, str]:
@@ -312,7 +315,7 @@ class Run:
 
     # --- writing -------------------------------------------------------------------------------------------------
 
-    def set(self, role: str, value: Any, *, wait_s: float = 30.0) -> None:
+    def set(self, role: str, value: Any, *, wait_s: float | None = None) -> None:
         entity = self.entities[role]
         domain = entity.split(".", 1)[0]
         if domain == "number":
@@ -325,7 +328,9 @@ class Run:
             raise RuntimeError(f"cannot write {entity}")
         if role == "charge_limit":
             self.charge_kw = float(value)
+        wait_s = READBACK_S if wait_s is None else wait_s
         end = time.time() + wait_s
+        row = None
         while time.time() < end:
             row = self.read().get(entity)
             if domain == "number":
@@ -336,7 +341,7 @@ class Run:
             elif text(row) == value:
                 print(f"  {entity} = {value}")
                 return
-            time.sleep(1.0)
+            time.sleep(min(1.0, wait_s / 10))
         raise RuntimeError(f"{entity} did not read back {value} within {wait_s:.0f} s (reads {text(row)})")
 
     def wait_available(self, role: str, wait_s: float) -> bool:
@@ -421,22 +426,53 @@ def check(run: Run, *, force_spotnav: bool) -> dict[str, Any]:
     return {"problems": problems, "snapshot": snapshot}
 
 
-def restore(run: Run, snapshot: dict[str, Any]) -> bool:
-    """Put back every value the test writes, in the hand-back order; retried for up to five minutes."""
-    if not run.ha.writes:
+#: Signals that stop the test (and restore); all of them are ignored while the restore runs.
+STOP_SIGNALS = tuple(getattr(signal, name) for name in ("SIGINT", "SIGTERM", "SIGHUP") if hasattr(signal, name))
+#: Failed writes of the control mode before the restore moves on to turning Remote EMS off.
+MODE_RESTORE_TRIES = 3
+#: How long the restore keeps trying, and its pause between tries (s).
+RESTORE_DEADLINE_S = 300.0
+RESTORE_RETRY_S = 5.0
+
+
+def snapshot_path(csv_path: Path) -> Path:
+    return csv_path.with_name(csv_path.stem + ".snapshot.json")
+
+
+def save_snapshot(path: Path, snapshot: dict[str, Any], entities: dict[str, str]) -> None:
+    """Kept on disk before the first write, so `--restore-from` can put the plant back after a crash."""
+    path.write_text(json.dumps({"snapshot": snapshot, "entities": entities}, indent=1), encoding="utf-8")
+
+
+def restore(run: Run, snapshot: dict[str, Any], *, force: bool = False) -> bool:
+    """Put back every value the test writes, in the hand-back order; retried for up to five minutes. The control mode
+    is skipped only where Remote EMS reads exactly `off` (anything unread is tried again), and given up after
+    `MODE_RESTORE_TRIES` failed writes so that Remote EMS still goes off. Stop signals are ignored meanwhile."""
+    if not run.ha.writes and not force:
         return True
     run.guarding = False
-    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    previous = {sig: signal.signal(sig, signal.SIG_IGN) for sig in STOP_SIGNALS}
     print("\n=== Restoring ===")
     try:
-        end = time.time() + 300.0
+        end = time.time() + RESTORE_DEADLINE_S
         pending = list(RESTORED)
+        mode_fails = 0
         while pending and time.time() < end:
             role = pending[0]
             try:
                 if role == "control_mode":
-                    if text(run.read().get(run.entities["remote_ems"])) == "on":
-                        run.set("control_mode", snapshot["control_mode"])
+                    remote = text(run.read().get(run.entities["remote_ems"]))
+                    if remote == "on":
+                        try:
+                            run.set("control_mode", snapshot["control_mode"])
+                        except RuntimeError:
+                            mode_fails += 1
+                            if mode_fails < MODE_RESTORE_TRIES:
+                                raise
+                            print(f"  the control mode would not take after {mode_fails} tries: turning Remote EMS"
+                                  " off instead (it lands in Maximum Self Consumption)")
+                    elif remote != "off":
+                        raise RuntimeError(f"Remote EMS reads '{remote or 'nothing'}'")
                 elif role == "remote_ems":
                     run.set("remote_ems", snapshot["remote_ems"] or "off")
                 else:
@@ -444,7 +480,7 @@ def restore(run: Run, snapshot: dict[str, Any]) -> bool:
                 pending.pop(0)
             except RuntimeError as err:
                 print(f"  restore of {role} failed ({err}); trying again (is the sigen integration enabled?)")
-                time.sleep(5.0)
+                time.sleep(RESTORE_RETRY_S)
         if pending:
             print("\n!!! RESTORE NOT DONE. Set by hand (Home Assistant or the mySigen app):")
             for role in pending:
@@ -454,7 +490,8 @@ def restore(run: Run, snapshot: dict[str, Any]) -> bool:
               " Maximum Self Consumption, so set that mode again in the mySigen app (AI mode on the owner's plant).")
         return True
     finally:
-        signal.signal(signal.SIGINT, previous)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 # --- judging ---------------------------------------------------------------------------------------------------------
@@ -628,6 +665,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--csv", type=Path, help="where to log (default: sigen_import_limit_<time>.csv here)")
     parser.add_argument("--dry-run", action="store_true", help="read, check and log only; write nothing")
     parser.add_argument("--skip-stopped", action="store_true", help="leave out the writes-stopped step")
+    parser.add_argument("--restore-from", type=Path, metavar="FILE",
+                        help="only put back the values kept in a snapshot file (<csv>.snapshot.json) and exit")
     parser.add_argument("--ignore-spotnav", action="store_true",
                         help="run although SpotNav's battery control reads as writing (only if you know it is not)")
     args = parser.parse_args(argv)
@@ -642,6 +681,11 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"--entity {item}: unknown role or empty id")
         entities[role] = entity
     ha = HomeAssistant(args.url, token, dry_run=args.dry_run)
+    if args.restore_from is not None:
+        kept = json.loads(args.restore_from.read_text(encoding="utf-8"))
+        out = io.StringIO()
+        run = Run(ha, kept["entities"], args.limit_kw, args.interval, args.abort_phase_kw, [], csv.writer(out), out)
+        return 0 if restore(run, kept["snapshot"], force=True) else 1
     path = args.csv or Path(f"sigen_import_limit_{datetime.now():%Y%m%d_%H%M%S}.csv")
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
@@ -653,7 +697,9 @@ def main(argv: list[str] | None = None) -> int:
         ])
         run = Run(ha, entities, args.limit_kw, args.interval, args.abort_phase_kw, args.extra, writer, handle)
         threading.Thread(target=_stdin, args=(run.lines,), daemon=True).start()
-        signal.signal(signal.SIGTERM, _terminate)
+        for sig in STOP_SIGNALS:
+            if sig != signal.SIGINT:
+                signal.signal(sig, _terminate)
         print(f"Logging to {path}. Type q and Enter at any prompt to stop and restore.")
         found = check(run, force_spotnav=args.ignore_spotnav)
         snapshot = found["snapshot"]
@@ -667,6 +713,9 @@ def main(argv: list[str] | None = None) -> int:
             if not args.dry_run:
                 return 2
         restored = True
+        if not args.dry_run:
+            save_snapshot(snapshot_path(path), snapshot, entities)
+            print(f"Snapshot kept in {snapshot_path(path)} (put it back with --restore-from that file).")
         try:
             if args.dry_run:
                 print(f"\nDry run: would write the import limit {args.limit_kw} kW, the charge limit 0 and then"
