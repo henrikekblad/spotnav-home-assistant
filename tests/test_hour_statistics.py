@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
+from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.planning.demand_charge import (
     component_month,
