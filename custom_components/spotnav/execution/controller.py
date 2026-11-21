@@ -562,17 +562,23 @@ async def power_start_retry_sleep(seconds: float) -> None:
 
 
 def power_range(current: Any) -> dict[str, Any] | None:
-    """`current_range` for a charger given a power (`sigenergy.PowerCurrent`), else `None`."""
+    """`current_range` for a charger given a power (`sigenergy.PowerCurrent`), else `None`.
+
+    Its bottom is the first whole ampere at or above the charger's lowest power (`PowerCurrent.min_a`: 2.17 A at
+    400 V, so 3 A, 2.08 kW), not the 6 A pilot floor of an AC charger: the charging current a person sets is whole
+    amperes in every transport, and every current at or above that one is a current the charger is written at. The
+    top is never below the bottom."""
     from .chargers.sigenergy import PowerCurrent  # noqa: PLC0415 - kept beside its only use
 
     if not isinstance(current, PowerCurrent):
         return None
+    min_a = max(ABSOLUTE_MIN_AMPS, min(CURRENT_RANGE_MIN_A, math.ceil(current.min_a() - 1e-9)))
     maximum = current.max_a()
     if maximum is None:
         max_a, source = CURRENT_RANGE_DEFAULT_MAX_A, CURRENT_RANGE_SOURCE_DEFAULT
     else:
-        max_a, source = max(CURRENT_RANGE_MIN_A, min(int(ABSOLUTE_MAX_AMPS), maximum)), CURRENT_RANGE_SOURCE_CURRENT_LIMIT
-    return {**current_range_dict(max_a, source), "kw_per_a": round(current.kw_per_a(), 4)}
+        max_a, source = max(min_a, min(int(ABSOLUTE_MAX_AMPS), maximum)), CURRENT_RANGE_SOURCE_CURRENT_LIMIT
+    return {**current_range_dict(max_a, source), "min_a": min_a, "kw_per_a": round(current.kw_per_a(), 4)}
 
 
 def current_range_dict(max_a: int, source: str) -> dict[str, Any]:

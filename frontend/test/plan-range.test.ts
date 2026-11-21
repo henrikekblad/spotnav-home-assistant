@@ -46,7 +46,7 @@ describe("the range from the dashboard", () => {
   });
 
   it("carries the kW per ampere of a charger given a power (a DC charger)", () => {
-    expect(currentRangeFor(decoded("dc_charger_power"))).toEqual({ minA: 6, maxA: 17, kwPerA: 0.6928 });
+    expect(currentRangeFor(decoded("dc_charger_power"))).toEqual({ minA: 3, maxA: 17, kwPerA: 0.6928 });
   });
 
   it.each([

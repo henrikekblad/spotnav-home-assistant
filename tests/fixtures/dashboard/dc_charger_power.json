@@ -105,7 +105,7 @@
   "current_range": {
     "kw_per_a": 0.6928,
     "max_a": 17,
-    "min_a": 6,
+    "min_a": 3,
     "source": "current_limit"
   },
   "detected_phases": null,
