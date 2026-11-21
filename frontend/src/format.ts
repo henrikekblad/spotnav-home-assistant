@@ -21,6 +21,11 @@ export interface FormatContext {
   countries?: readonly string[];
   /** Home Assistant's own words for an entity the backend names (`entity-words.ts`); raw values without it. */
   entityWords?: EntityWords;
+  /**
+   * A charger given a power (a DC charger, `current_range.kw_per_a`): the kW one ampere per phase is written as, so a
+   * current a status line names is shown as that power. Absent for any other charger: amperes.
+   */
+  kwPerA?: number;
 }
 
 /**
