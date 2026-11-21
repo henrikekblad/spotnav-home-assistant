@@ -60,6 +60,11 @@ Any administrator can run it, beta tester or not.
 It takes at most ten minutes and costs at most a few kronor of grid energy. Only you start it: at most once a day
 per site, and once more after a SpotNav update or a new plant firmware.
 
+While the battery part runs, SpotNav holds every charger on the site stopped: no plan, sun or Start starts one, and
+a charge a charger begins by itself is stopped. Do not start a car charge during the test. A test with a battery
+part does not start while a car charges; stop the charge first. The chargers are let go as soon as the battery part
+is over, and a plan whose window is open starts again.
+
 It needs the battery's (or the heating's) control switched on and its checklist done. A part that is not ready is
 skipped. The result is then **partial**, or **skipped** when nothing ran, and such a test does not use up the day.
 
