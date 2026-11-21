@@ -13,6 +13,11 @@ import target; this module only measures and never decides anything a charger is
   beside it as `max(0, grid_w - car_w)` (what the house would have imported without the cars), for a later floor.
   A home battery's discharge (`discharge_w`, W, positive while it discharges) is integrated beside it over its own
   measured time, for an import target under `battery_first` (`site/import_target.py`); it never enters a peak.
+* **Quarter hours**: beside the hour, the running quarter hour's import is integrated the same way (`RunningHour.
+  quarter_*`); each quarter that ends with no more than `QUARTER_GAP_MAX_S` without a reading gives its import over
+  its whole 15 minutes, and the hour keeps the highest (`HourMean.quarter_kw`, a quarter-hour part's value of the
+  hour, `planning/demand_charge.period_kw`). The import target holds a quarter-hour tariff's running quarter
+  (`site/import_target.py`).
 * **An hour's mean** is its energy over the time it was measured. An hour with more than `GAP_MAX_S` of gaps is
   `incomplete`: kept and shown, but it never raises a peak. An hour never measured at all is not kept.
 * **Restart mid-hour**: the running hour is kept (`RUNNING_SAVE_DELAY_S`, at most once a minute); after a restart
@@ -63,7 +68,7 @@ from .. import time_zones
 from ..const import DOMAIN
 from ..debug_day import DayStore
 from ..planning.auto_settings import DemandComponent, PowerLevel
-from ..planning.demand_charge import component_month, free_level_hours, hour_start, HourMean, month_of
+from ..planning.demand_charge import component_month, free_level_hours, hour_start, HourMean, month_of, period_kw
 from ..planning.demand_cost import level_count, LevelCount, year_before
 from .power_history import months_before, power_month, PowerArchive
 
@@ -71,6 +76,9 @@ _LOGGER = logging.getLogger(__name__)
 
 #: An hour with more time than this without a usable reading is incomplete: it never raises a peak.
 GAP_MAX_S: Final = 600.0
+#: A quarter hour with more time than this without a usable reading has no value of its own (`HourMean.quarter_kw`).
+QUARTER_GAP_MAX_S: Final = 150.0
+QUARTER_S: Final = 900.0
 #: The longest a reading is held between two observations; beyond it the time is a gap (Home Assistant stopped).
 HOLD_MAX_S: Final = 120.0
 #: The site observes at most this often (it recomputes on every meter report, and every 30 s at least).
@@ -138,6 +146,31 @@ class RunningHour:
     #: The outdoor temperature's readings this hour (°C): their sum and how many (`HourMean.outdoor_c` is the mean).
     outdoor_sum: float = 0.0
     outdoor_n: int = 0
+    #: The running quarter hour (its start, import and measured time so far) and the hour's highest complete quarter
+    #: so far (kW over its whole 15 minutes, `None` before one).
+    quarter_start: datetime | None = None
+    quarter_wh: float = 0.0
+    quarter_covered_s: float = 0.0
+    quarter_peak_kw: float | None = None
+
+    def quarter_of(self, moment: datetime) -> datetime:
+        """The start of the quarter hour of this hour `moment` falls in."""
+        offset = max(0.0, (moment - self.start).total_seconds())
+        return self.start + timedelta(seconds=QUARTER_S * min(3, int(offset // QUARTER_S)))
+
+    def close_quarter(self) -> None:
+        """File the running quarter: its import over the whole quarter where it was measured well enough."""
+        if self.quarter_start is not None and QUARTER_S - self.quarter_covered_s <= QUARTER_GAP_MAX_S:
+            kw = self.quarter_wh / QUARTER_S * 3.6
+            self.quarter_peak_kw = kw if self.quarter_peak_kw is None else max(self.quarter_peak_kw, kw)
+        self.quarter_start, self.quarter_wh, self.quarter_covered_s = None, 0.0, 0.0
+
+    @property
+    def quarter_gap_s(self) -> float:
+        """Time of the running quarter so far without a usable reading."""
+        if self.last_at is None or self.quarter_start is None:
+            return 0.0
+        return max(0.0, (self.last_at - self.quarter_start).total_seconds() - self.quarter_covered_s)
 
     @property
     def gap_s(self) -> float:
@@ -166,6 +199,10 @@ class RunningHour:
             "paused": self.paused,
             "outdoor_sum": round(self.outdoor_sum, 3),
             "outdoor_n": self.outdoor_n,
+            "quarter_start": None if self.quarter_start is None else self.quarter_start.isoformat(),
+            "quarter_wh": round(self.quarter_wh, 3),
+            "quarter_covered_s": round(self.quarter_covered_s, 3),
+            "quarter_peak_kw": None if self.quarter_peak_kw is None else round(self.quarter_peak_kw, 4),
         }
 
     @classmethod
@@ -192,6 +229,19 @@ class RunningHour:
         outdoor_sum, outdoor_n = raw.get("outdoor_sum", 0.0), raw.get("outdoor_n", 0)
         if not is_number(outdoor_sum) or isinstance(outdoor_n, bool) or not isinstance(outdoor_n, int) or outdoor_n < 0:
             outdoor_sum, outdoor_n = 0.0, 0
+        # Kept since quarter hours: a record without them (or with a bad one) starts its quarter afresh.
+        quarter_start = aware_utc(raw.get("quarter_start"))
+        quarter = [raw.get(key, 0.0) for key in ("quarter_wh", "quarter_covered_s")]
+        if (
+            quarter_start is None
+            or not all(is_number(value) and value >= 0 for value in quarter)
+            or quarter[1] > QUARTER_S
+            or not start <= quarter_start < start + timedelta(hours=1)
+        ):
+            quarter_start, quarter = None, [0.0, 0.0]
+        peak = raw.get("quarter_peak_kw")
+        if not (is_number(peak) and peak >= 0):
+            peak = None
         return cls(
             start=start,
             import_wh=float(numbers[0]),
@@ -207,6 +257,10 @@ class RunningHour:
             paused=raw.get("paused") is True,
             outdoor_sum=float(outdoor_sum),
             outdoor_n=outdoor_n,
+            quarter_start=quarter_start,
+            quarter_wh=float(quarter[0]),
+            quarter_covered_s=float(quarter[1]),
+            quarter_peak_kw=None if peak is None else float(peak),
         )
 
 
@@ -373,7 +427,9 @@ class HourTracker:
 
     @staticmethod
     def _integrate(running: RunningHour, start: datetime, end: datetime, held_until: datetime) -> None:
-        """Add the time from `start` to `end` at the held reading; the part after `held_until` is a gap."""
+        """Add the time from `start` to `end` at the held reading; the part after `held_until` is a gap. The running
+        quarter hour takes its share, a quarter that ends on the way filed (`RunningHour.close_quarter`)."""
+        HourTracker._integrate_quarters(running, start, end, held_until)
         if running.last_grid_w is None:
             return
         seconds = (min(end, held_until) - start).total_seconds()
@@ -393,8 +449,27 @@ class HourTracker:
             running.discharge_wh += max(0.0, running.last_discharge_w) * seconds / HOUR_S
             running.discharge_covered_s += seconds
 
+    @staticmethod
+    def _integrate_quarters(running: RunningHour, start: datetime, end: datetime, held_until: datetime) -> None:
+        moment = start
+        while moment < end:
+            quarter = running.quarter_of(moment)
+            if running.quarter_start != quarter:
+                running.close_quarter()
+                running.quarter_start = quarter
+            quarter_end = min(end, quarter + timedelta(seconds=QUARTER_S))
+            if running.last_grid_w is not None:
+                seconds = (min(quarter_end, held_until) - moment).total_seconds()
+                if seconds > 0:
+                    running.quarter_wh += max(0.0, running.last_grid_w) * seconds / HOUR_S
+                    running.quarter_covered_s += seconds
+            if quarter_end >= quarter + timedelta(seconds=QUARTER_S):
+                running.close_quarter()
+            moment = quarter_end
+
     def _complete(self, running: RunningHour) -> bool:
         """File a completed hour under its month; an hour never measured is not kept."""
+        running.close_quarter()
         if running.covered_s <= 0:
             return False
         house = (
@@ -417,6 +492,7 @@ class HourTracker:
             floor_kw=running.import_wh / HOUR_S * 3.6,
             outdoor_c=round(running.outdoor_sum / running.outdoor_n, 2) if running.outdoor_n > 0 else None,
             ex_battery_kw=None if ex_battery is None else round(ex_battery, 4),
+            quarter_kw=None if running.quarter_peak_kw is None else round(running.quarter_peak_kw, 4),
         )
         month = month_of(hour.start, self.tz)
         changed = self._roll_to(month)
@@ -465,6 +541,8 @@ class HourTracker:
             "complete": [hour.start.isoformat() for hour in (*self.previous, *self.hours) if hour.complete],
             "outdoor_c": outdoor_by_start((*self.previous, *self.hours)),
             "ex_battery_kw": ex_battery_by_start((*self.previous, *self.hours)),
+            # Only where an hour has one: a month without quarter hours is written as before them.
+            **({"quarter_kw": quarters} if (quarters := quarter_by_start((*self.previous, *self.hours))) else {}),
         }
 
     def restore(self, month_data: Any, running_data: Any) -> bool:
@@ -482,17 +560,24 @@ class HourTracker:
                 complete = _complete_starts(month_data.get("complete"))
                 outdoor = _outdoor_from(month_data.get("outdoor_c"))
                 ex_battery = _ex_battery_from(month_data.get("ex_battery_kw"))
+                quarters = _quarter_from(month_data.get("quarter_kw"))
                 migrate = _has_ninth(month_data.get("hours")) or _has_ninth(month_data.get("previous"))
                 self.month = month
-                self.hours = _with_ex_battery(
-                    _with_outdoor(_with_complete(_rows(month_data.get("hours")), complete), outdoor), ex_battery
+                self.hours = _with_quarter(
+                    _with_ex_battery(
+                        _with_outdoor(_with_complete(_rows(month_data.get("hours")), complete), outdoor), ex_battery
+                    ),
+                    quarters,
                 )
                 previous = _month_from(month_data.get("previous_month"))
                 if previous is not None:
                     self.previous_month = previous
-                    self.previous = _with_ex_battery(
-                        _with_outdoor(_with_complete(_rows(month_data.get("previous")), complete), outdoor),
-                        ex_battery,
+                    self.previous = _with_quarter(
+                        _with_ex_battery(
+                            _with_outdoor(_with_complete(_rows(month_data.get("previous")), complete), outdoor),
+                            ex_battery,
+                        ),
+                        quarters,
                     )
         running = RunningHour.from_dict(running_data)
         if running is not None:
@@ -502,7 +587,7 @@ class HourTracker:
 
 #: The month document's keys this release writes (`HourTracker.month_dict`).
 _MONTH_DOCUMENT_KEYS: Final = frozenset(
-    {"tz", "month", "hours", "previous_month", "previous", "complete", "outdoor_c", "ex_battery_kw"}
+    {"tz", "month", "hours", "previous_month", "previous", "complete", "outdoor_c", "ex_battery_kw", "quarter_kw"}
 )
 
 
@@ -571,6 +656,32 @@ def _with_ex_battery(hours: list[HourMean], ex_battery: dict[datetime, float]) -
         replace(hour, ex_battery_kw=ex_battery[hour.start])
         if hour.start in ex_battery and not hour.imported
         else hour
+        for hour in hours
+    ]
+
+
+def quarter_by_start(hours: Sequence[HourMean]) -> dict[str, float]:
+    """The hours' highest quarter hours by start (ISO), those with one only: kept beside the rows."""
+    return {hour.start.isoformat(): hour.quarter_kw for hour in hours if hour.quarter_kw is not None}
+
+
+def _quarter_from(raw: Any) -> dict[datetime, float]:
+    if not isinstance(raw, dict):
+        return {}
+    kept: dict[datetime, float] = {}
+    for key, value in raw.items():
+        start = aware_utc(key)
+        if start is not None and is_number(value) and value >= 0:
+            kept[start] = float(value)
+    return kept
+
+
+def _with_quarter(hours: list[HourMean], quarters: dict[datetime, float]) -> list[HourMean]:
+    """`hours`, each with its highest quarter hour where one is kept for its start (never an imported one)."""
+    if not quarters:
+        return hours
+    return [
+        replace(hour, quarter_kw=quarters[hour.start]) if hour.start in quarters and not hour.imported else hour
         for hour in hours
     ]
 
@@ -847,9 +958,12 @@ class SiteDemand:
         (`planning/demand_cost.level_count`), each at its floor."""
         tz = self.tracker.tz
         hours = [*self.tracker.previous, *self.tracker.hours]
-        counted = level_count(hours, power_level.level_kw, lambda start: power_level.counts(start, tz), now, tz)
+        counted = level_count(
+            hours, power_level.level_kw, lambda start: power_level.counts(start, tz), now, tz,
+            quarter=power_level.quarter,
+        )
         floors = {hour.start: hour for hour in free_level_hours(hours)}
-        return {start: (floors[start].kw, power_level.level_kw) for start in counted.exceeded}
+        return {start: (period_kw(power_level, floors[start]), power_level.level_kw) for start in counted.exceeded}
 
     def level_count(self, power_level: PowerLevel, now: datetime | None = None) -> LevelCount:
         """`power_level`'s exceedances in the rolling 12 months up to `now`: the tracker's own hours against the level
@@ -864,6 +978,7 @@ class SiteDemand:
             lambda start: power_level.counts(start, tz),
             moment,
             tz,
+            quarter=power_level.quarter,
         )
         kept = [
             start
