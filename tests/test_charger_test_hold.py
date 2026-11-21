@@ -33,7 +33,12 @@ class _Charger:
 
     def __init__(self, platform: str | None = "chargeamps", kind: str = PATH_SWITCH, *, on: bool = False,
                  ocpp: bool = False) -> None:
-        self.adapter = SimpleNamespace(platform=platform, path=SimpleNamespace(kind=kind))
+        self.adapter = SimpleNamespace(platform=platform, path=SimpleNamespace(kind=kind),
+                                       enabled_state=lambda: self.enabled)
+        #: The stop option read back (`False`), the start one (`True`), or neither (a schedule, an eco mode).
+        self.enabled: bool | None = on
+        self.charger_conflicts: list[Any] = []
+        self.amps: float | None = 0.0
         self.ocpp_target = object() if ocpp else None
         self.charging = on
         self.charge_control_on = on
@@ -48,6 +53,12 @@ class _Charger:
 
     async def async_rearm(self) -> None:
         self.rearms += 1
+
+    def measured_current_a(self) -> float | None:
+        return self.amps
+
+    def measured_power_w(self) -> float | None:
+        return None
 
 
 def _hold(hass: HomeAssistant, chargers: dict[str, _Charger]) -> ChargerTestHold:
@@ -93,6 +104,38 @@ async def test_a_held_charger_counts_nothing_only_while_held_and_read_stopped(ha
     assert hold.counts_nothing("kept") is False and hold.active is False
 
 
+async def test_a_kept_stop_counts_nothing_only_with_its_stop_option_read_back_no_own_mode_and_nothing_drawing(
+    hass: HomeAssistant,
+) -> None:
+    """The safety review (2026-11-21): a GARO in Schedule, a Charge Amps on its schedule or a zappi in Eco reads
+    neither the start nor the stop option, and may begin a charge by itself; a zappi charging in Eco reads neither
+    charging nor on (no status sensor) and must still block the test."""
+    kept = _Charger()
+    hold = _hold(hass, {"kept": kept})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    assert hold.counts_nothing("kept") is True
+    kept.enabled = None
+    assert hold.counts_nothing("kept") is False, "neither option: a schedule or an eco mode"
+    kept.enabled = False
+    kept.charger_conflicts = [object()]
+    assert hold.counts_nothing("kept") is False, "one of its own modes on"
+    kept.charger_conflicts = []
+    kept.amps = 7.0
+    assert hold.counts_nothing("kept") is False, "drawing"
+    hold.release()
+    # Drawing with the control off and no status: still on for the test's start.
+    assert hold.charging_now() == ["kept"]
+    kept.amps = None
+    assert hold.charging_now() == []
+    watts = _Charger()
+    watts.measured_power_w = lambda: 1400.0  # type: ignore[method-assign]
+    assert _hold(hass, {"w": watts}).charging_now() == ["w"]
+    site = _hold(hass, {"s": _Charger()})
+    site._site.charger_measured_current = lambda _id: {  # noqa: SLF001
+        "L1": SimpleNamespace(value=6.5, problem=None), "L2": None, "L3": None}
+    assert site.charging_now() == ["s"]
+
+
 async def test_the_hold_ends_by_itself_at_its_deadline(hass: HomeAssistant) -> None:
     hold = _hold(hass, {"kept": _Charger()})
     hold.begin(dt_util.utcnow() - timedelta(seconds=1))
@@ -106,6 +149,9 @@ async def test_a_charge_begun_under_the_hold_is_stopped_a_bounded_number_of_time
     hold = _hold(hass, {"on": on, "off": _Charger()})
     assert hold.charging_now() == ["on"]
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    assert on.stops == 0, "nothing is written at the start"
+    hold.observe()
     await hass.async_block_till_done()
     assert on.stops == 1
     hold.observe()

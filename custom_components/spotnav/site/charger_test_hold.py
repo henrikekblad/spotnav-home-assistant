@@ -9,8 +9,8 @@ hold keeps every charger of the site stopped, and the cap may then count a charg
 
 **What the hold does** (`ChargerTestHold`, one per site, memory only):
 
-* A test whose battery part would run does not start while a charger is on (`charging_now`: charging, or its charge
-  control on): `blocked` `car_charging` (`hardware_test.py`).
+* A test whose battery part would run does not start while a charger is on (`charging_now`: charging, its charge
+  control on, or drawing by a measurement): `blocked` `car_charging` (`hardware_test.py`).
 * From the test's start until it ends (`begin` .. `release`), and never past `until` (the test's deadline and a
   minute: a hold that nothing released ends by itself, so no charger is ever left stuck), every start of every
   charger on the site is refused where it is sent (`ChargingController._start_command_locked`, through the probe
@@ -31,8 +31,11 @@ hold keeps every charger of the site stopped, and the cap may then count a charg
 a charger may count as drawing nothing only where it cannot begin a charge with Home Assistant gone. All of:
 
 * the hold is on, and either an OCPP charger is out of service by its own report and not charging (below), or
-* the charger reads stopped now: its charge control readable and off, its status not charging, and no Start of
-  ours on its way (`ChargingController.control_confirmed_off`, `start_pending`);
+* the charger reads stopped now: its charge control readable and off with its stop option itself read back
+  (`enabled_state` false: a GARO in Schedule, a Charge Amps on its schedule or a zappi in Eco reads neither, and may
+  begin a charge by itself), none of its own modes on (`charger_conflicts`), its status not charging, nothing
+  drawing by a measurement (`_drawing`), and no Start of ours on its way (`ChargingController.control_confirmed_off`,
+  `start_pending`);
 * its stop is a setting the charger keeps by itself and that holds every later session off as well
   (`PlatformProfile.stop_kept_without_ha`, on the profile's own start/stop path, not an OCPP charger). With Home
   Assistant gone nobody writes it back, so the charger stays stopped whatever the car does.
@@ -97,6 +100,9 @@ CALL_S: Final = 30.0
 CONFIRM_S: Final = 30.0
 RESTORE_RETRY_S: Final = 60.0
 RESTORE_TRIES: Final = 30
+#: A measurement from which a charger counts as drawing (A on a phase, W).
+DRAWING_A: Final = 1.0
+DRAWING_W: Final = 230.0
 STORE_VERSION: Final = 1
 #: The `ocpp` integration's station availability switch: its unique id's last part (the per-connector one is
 #: `connnector_availability`, the integration's own spelling, and is not used: the whole charge point is taken out).
@@ -207,16 +213,37 @@ class ChargerTestHold:
     def _on(controller: Any) -> bool:
         return bool(controller.charging or controller.charge_control_on)
 
+    def _drawing(self, charger_entry_id: str, controller: Any) -> bool:
+        """Whether a measurement says the charger draws now (`DRAWING_A` on a phase, or `DRAWING_W`): its own measured
+        current, its power sensor, or the site's measured current for it, whichever it has. A profile without a
+        status sensor says it charges only for its start option (a zappi charging in Eco reads neither charging nor
+        on), so this is what shows such a charge. Never raises; nothing read is not drawing."""
+        values: list[float] = []
+        with contextlib.suppress(Exception):
+            amps = controller.measured_current_a()
+            if amps is not None:
+                values.append(float(amps))
+        with contextlib.suppress(Exception):
+            watts = controller.measured_power_w()
+            if watts is not None and float(watts) >= DRAWING_W:
+                return True
+        with contextlib.suppress(Exception):
+            measured = self._site.charger_measured_current(charger_entry_id)
+            for value in () if measured is None else (measured.get(phase) for phase in ("L1", "L2", "L3")):
+                if value is not None and value.value is not None and value.problem is None:
+                    values.append(float(value.value))
+        return any(value >= DRAWING_A for value in values)
+
     def charging_now(self) -> list[str]:
-        """The site's chargers that are on now: charging, or their charge control on (a Start in effect). A charger
-        that cannot be read is not on by this (it stays counted in the cap)."""
+        """The site's chargers that are on now: charging, their charge control on (a Start in effect), or drawing by a
+        measurement (`_drawing`). A charger that cannot be read is not on by this (it stays counted in the cap)."""
         found: list[str] = []
         for charger_entry_id in self._charger_ids():
             controller = self._controller(charger_entry_id)
             if controller is None:
                 continue
             try:
-                if self._on(controller):
+                if self._on(controller) or self._drawing(charger_entry_id, controller):
                     found.append(charger_entry_id)
             except Exception:  # noqa: BLE001 - not known: not taken as on, and counted in the cap
                 _LOGGER.debug("charging_now: ignored failure", exc_info=True)
@@ -241,7 +268,15 @@ class ChargerTestHold:
             except Exception:  # noqa: BLE001 - not known: counted
                 return False
         try:
-            stopped = controller.control_confirmed_off and not controller.start_pending
+            # The stop option itself read back (a mode the charger keeps, not a schedule or an eco mode of its own that
+            # may begin a charge), none of its own modes on, no Start of ours on its way, and nothing drawing.
+            stopped = (
+                controller.control_confirmed_off
+                and controller.adapter.enabled_state() is False
+                and not controller.charger_conflicts
+                and not controller.start_pending
+                and not self._drawing(charger_entry_id, controller)
+            )
         except Exception:  # noqa: BLE001 - not known: counted
             _LOGGER.debug("counts_nothing: ignored failure (not known: counted)", exc_info=True)
             return False
@@ -255,8 +290,9 @@ class ChargerTestHold:
         self._refused = set()
         self._stops = {}
         self._out = set()
+        # No stop is written here: the test does not start while a charger is on (`charging_now`); the test's polls
+        # stop one that begins later (`observe`).
         _LOGGER.info("SpotNav site %s: the chargers are held stopped for the hardware test", self._site.entry_id)
-        self.observe()
         if self._store is not None and any(
             station_availability_entity(self._site.hass, self._controller(charger_entry_id))
             for charger_entry_id in self._charger_ids()
