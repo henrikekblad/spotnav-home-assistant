@@ -27,6 +27,15 @@ def auto_enable_custom_integrations(recorder_db_url: str, enable_custom_integrat
     yield
 
 
+def _read_at(freezer: Any, minutes: int) -> None:
+    """The clock moved to the read, half a second off the ten-second grid the site's timers are due on.
+
+    The frozen loop clock is an epoch-sized number, too large for the event loop's clock resolution to count: a
+    timer due on the very second it stands still is never run, and the loop spins on it, starving the recorder's
+    read in its thread of the interpreter for as long as the read takes."""
+    freezer.move_to(START + timedelta(minutes=minutes, seconds=0.5))
+
+
 def _without_flag(mark: HourMark) -> dict[str, Any]:
     return {key: value for key, value in mark.as_dict().items() if key not in ("h", "l")}
 
@@ -43,7 +52,7 @@ async def test_the_recorder_s_history_is_read_back_off_the_event_loop_into_the_h
     await _steady_from(played, 15, 25)
     await async_wait_recording_done(hass)
     now = T0 + 25 * 60
-    freezer.move_to(START + timedelta(minutes=25))
+    _read_at(freezer, 25)
 
     threads: list[int] = []
     read = history.get_significant_states
@@ -102,7 +111,7 @@ async def test_an_hour_sampled_live_keeps_its_own_mark(recorder_mock, hass: Home
     await _steady(played, 8)
     await async_wait_recording_done(hass)
     now = T0 + 8 * 60
-    freezer.move_to(START + timedelta(minutes=8))
+    _read_at(freezer, 8)
     peaks: PhasePeaks = played.controller.phase_peaks.peaks
     hour = int(T0 // 3600)
     peaks.hours[hour] = HourMark(house_a=(1.0, 1.0, 1.0), minutes=3, total_all=3.0, total_counted=3.0)
@@ -117,7 +126,7 @@ async def test_a_run_stops_at_its_row_limit_and_keeps_what_it_has(
     played = await _world(hass, freezer)
     await _steady(played, 8)
     await async_wait_recording_done(hass)
-    freezer.move_to(START + timedelta(minutes=8))
+    _read_at(freezer, 8)
     monkeypatch.setattr(phase_backfill, "MAX_ROWS", 10)
     peaks: PhasePeaks = played.controller.phase_peaks.peaks
     summary = await Backfill(hass, peaks, lambda: None).async_once(played.controller, T0 + 8 * 60)
@@ -141,7 +150,7 @@ async def test_a_sensor_the_recorder_does_not_keep_counts_nothing_and_is_named(
     await _steady(played, 8)
     await async_wait_recording_done(hass)
     played.controller.config = {**config, "derived_entities": renamed}
-    freezer.move_to(START + timedelta(minutes=8))
+    _read_at(freezer, 8)
     peaks: PhasePeaks = played.controller.phase_peaks.peaks
     peaks.hours.clear()
     with caplog.at_level("INFO", logger=phase_backfill.__name__):
@@ -158,7 +167,7 @@ async def test_a_read_that_fails_keeps_the_hours_replayed_and_the_next_run_comes
     played = await _world(hass, freezer)
     await _steady(played, 8)
     await async_wait_recording_done(hass)
-    freezer.move_to(START + timedelta(minutes=8))
+    _read_at(freezer, 8)
     reads: list[int] = []
     read = history.get_significant_states
 
@@ -210,7 +219,7 @@ async def test_a_read_cut_short_leaves_none_of_its_hours_as_read(
     await _steady(played, 12)
     await async_wait_recording_done(hass)
     now = T0 + 12 * 60
-    freezer.move_to(START + timedelta(minutes=12))
+    _read_at(freezer, 12)
     peaks: PhasePeaks = played.controller.phase_peaks.peaks
     backfill = Backfill(hass, peaks, lambda: None)
     replayed = backfill._async_replay
