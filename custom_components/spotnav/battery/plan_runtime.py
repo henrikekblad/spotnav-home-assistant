@@ -325,15 +325,20 @@ def site_car_windows(
         if charger_entry_id == exclude:
             continue
         charger = controller_for(hass, charger_entry_id)
-        plan = None if charger is None else getattr(charger, "plan", None)
-        if plan is None:
-            continue
-        kw = plan.power_kw if plan.power_kw else power_kw(plan.amps, plan.phases, volts)
-        try:
-            windows.extend((start, end, float(kw)) for start, end in plan.windows)
-        except (TypeError, ValueError):
-            continue
+        windows.extend(plan_windows(None if charger is None else getattr(charger, "plan", None), volts))
     return windows
+
+
+def plan_windows(plan: Any, volts: float | None) -> list[tuple[datetime, datetime, float]]:
+    """A charger's installed plan as `(start, end, kW)` windows: its power, else its current on its phases; none
+    without a plan or with one that cannot be read."""
+    if plan is None:
+        return []
+    kw = plan.power_kw if plan.power_kw else power_kw(plan.amps, plan.phases, volts)
+    try:
+        return [(start, end, float(kw)) for start, end in plan.windows]
+    except (TypeError, ValueError):
+        return []
 
 
 def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> float | None:
