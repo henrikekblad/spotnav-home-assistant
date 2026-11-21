@@ -640,7 +640,9 @@ four keys, and a full `settings` replacement from a client that does not know th
 **A charger given a power.** The dashboard's `current_range` (`{min_a, max_a, source}`, whole amperes) carries an
 additive `kw_per_a` for a charger SpotNav gives a power rather than a current (Sigenergy's DC charger): the kW one
 ampere per phase is written as, `sqrt(3)` times the voltage between phases (0.6928 at 400 V). `max_a` is then the
-charger's rating as a current per phase. The key is absent for every other charger, and sent to the webhook only when
+charger's rating as a current per phase, and `min_a` the first whole ampere at or above the charger's lowest power
+(1.5 kW: 3 A at 400 V, 4 A at 230 V), not 6; a settings write with `amps` below it is refused (`invalid_amps`). The
+key is absent for every other charger, and sent to the webhook only when
 the request asks for it (`"reads": ["power_charger"]`); a client without it shows the current in amperes, which stays
 what `settings.amps` stores. The summary's `current_path` is then `power`.
 
