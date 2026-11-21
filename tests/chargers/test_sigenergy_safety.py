@@ -740,3 +740,21 @@ async def test_the_suns_floor_is_written_to_the_dc_charger_not_rounded_into_a_re
     assert [call.data["entity_id"] for call in presses] == [START]
     controller.adapter.cancel_pending_reads()
     await _unload(hass, charger)
+
+
+def test_a_dc_chargers_regulated_current_is_never_rounded_above_the_licence() -> None:
+    """At 230 V the floor is 3.77 A: a yield step of 2 A from it licenses 5.77 A, which is written as 5 A, not 6."""
+    from custom_components.spotnav.site.site_capacity_controller import regulated_setpoint
+
+    floor = 3.77
+    for licence in (5.77, 4.5, 3.99, 6.5, 12.9):
+        written = regulated_setpoint(licence, floor)
+        assert floor <= written <= licence
+    assert regulated_setpoint(5.77, floor) == 5
+    assert regulated_setpoint(3.77, floor) == 3.77
+    assert regulated_setpoint(2.17, 2.17) == 2.17
+    assert regulated_setpoint(3.0, 2.17) == 3
+    assert regulated_setpoint(3.7, 2.17) == 3
+    # An AC charger as before: the nearest ampere.
+    assert regulated_setpoint(6.6, 6.0) == 7
+    assert regulated_setpoint(6.4, 6.0) == 6

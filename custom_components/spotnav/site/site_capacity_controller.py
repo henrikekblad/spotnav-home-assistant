@@ -632,6 +632,17 @@ class RegulationStart:
 RegulatedStepKind = Literal["held", "must_lower", "write", "stopped"]
 
 
+def regulated_setpoint(current_a: float, floor_a: float) -> int | float:
+    """The damped current as the regulator writes it. An AC charger's (floor 6 A): rounded to the nearest ampere, as
+    ever. A charger whose floor is below 6 A (a DC charger, `execution/chargers/sigenergy.py`): rounded down, never
+    above the damped current (a yield step from a fractional floor, 3.77 + 2 = 5.77 A at 230 V, would otherwise be
+    written as 6 A, past the stepper's licence), and its floor as it is, never rounded down to a whole ampere into a
+    pause."""
+    if floor_a < DEFAULT_MIN_CURRENT_A:
+        return amps_at_floor(current_a + 1e-9, floor_a)
+    return amps_at_floor(current_a, floor_a, rounding=round)
+
+
 @dataclass(frozen=True, slots=True)
 class RegulatedStep:
     """What a regulated step does (`SiteCapacityController._decide_regulated_step`), carried out by
@@ -3234,8 +3245,7 @@ class SiteCapacityController:
             return RegulatedStep(
                 "held", decision, yield_verdict=yield_verdict, detail=f"damping_{damping.reason}"
             )
-        # Whole amps, but a DC charger's floor as it is (`amps_at_floor`): rounded down to 2 A it would be a pause.
-        setpoint = amps_at_floor(damping.current_a, self._charger_floor_a(charger_entry_id), rounding=round)
+        setpoint = regulated_setpoint(damping.current_a, self._charger_floor_a(charger_entry_id))
         if setpoint != damping.current_a:
             _LOGGER.debug(
                 "SpotNav site %s active control: charger %s proposal %sA is "
