@@ -5632,6 +5632,22 @@ class SiteCapacityController:
             return None
         return self._worked_out_import_target(set_kw, self.demand.now())[0].kw
 
+    def target_quarter(self, now: datetime) -> bool:
+        """Whether the import target holds the running quarter hour instead of the hour (`import_target.hour_budget`):
+        a demand-charge part, or the power level, that counts the running hour bills quarter hours."""
+        from ..planning.demand_charge import counted_day, hour_start  # noqa: PLC0415 - kept beside its only use
+        from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
+
+        tz = self.demand.tracker.tz
+        current = hour_start(now, tz)
+        if any(
+            component.quarter and counted_day(component, current, tz) is not None
+            for component in site_demand_components(self.hass, self.entry_id)
+        ):
+            return True
+        level = self._power_level()
+        return level is not None and level.quarter and level.counts(current, tz)
+
     def _worked_out_import_target(
         self, set_kw: float, now: datetime, known_key: Any = None
     ) -> tuple[Any, Any]:

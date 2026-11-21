@@ -21,6 +21,11 @@ smaller of that and what the fuse allows.
 * **Import so far** is the tracker's energy over the time it measured, scaled up to the time the hour has run
   (`last_at - start`): a short gap counts at the hour's own mean, never as nothing. Under `battery_first` a home
   battery's discharge counts as import too (`extra_wh`, scaled the same way over its own measured time).
+* **A quarter-hour tariff** (`hour_budget(quarter=True)`: a demand-charge part or the power level that counts the
+  running hour bills quarter hours, `planning/auto_settings.py:DemandComponent.period_min`): the period held is the
+  running quarter hour (the tracker's `RunningHour.quarter_*`) instead of the hour, its budget the level x 15 min, its
+  gap limit `QUARTER_GAP_MAX_S`, and the hour-end lock a quarter of the hour's (`raise_lock_s`). Where the quarter
+  cannot be measured well enough (a gap above its limit: readings too far apart) the hour is held as before.
 * **Not applied** (`hour_budget` gives a reason, no budget) while the hour cannot be known well enough to hold a
   charger for it: no running hour, no live reading now, more than `GAP_MAX_S` without a reading this hour, or the
   house's load now unknown. Nothing is then held for the target; the fuse rules are untouched either way.
@@ -60,7 +65,7 @@ from typing import Any, Final
 
 from ..const import CONF_IMPORT_TARGET_KW, REGULATOR_DWELL_S
 from ..core.electric import PHASE_V
-from .demand_tracker import GAP_MAX_S, HOUR_S, RunningHour
+from .demand_tracker import GAP_MAX_S, HOUR_S, QUARTER_GAP_MAX_S, QUARTER_S, RunningHour
 
 #: The least time left of the hour the budget is spread over: the division explodes in the last seconds.
 MIN_REMAINING_S: Final = 60.0
@@ -81,11 +86,11 @@ SLOW_TINY_WH: Final = 10.0
 PAUSE_SLOW_CHARGER: Final = "slow_charger"
 
 
-def raise_lock_s(write_interval_s: float) -> float:
-    """How long before the hour's end the target raises a charger it held no further (`RAISE_LOCK_S`): for a charger
-    whose current may be written only every `write_interval_s`, a whole interval and a dwell, so a raise is always
-    followed in the same hour by the lowering that may take it back."""
-    return max(RAISE_LOCK_S, max(0.0, write_interval_s) + REGULATOR_DWELL_S)
+def raise_lock_s(write_interval_s: float, period_s: float = HOUR_S) -> float:
+    """How long before the period's end the target raises a charger it held no further (`RAISE_LOCK_S`, scaled to a
+    `period_s` other than the hour): for a charger whose current may be written only every `write_interval_s`, a whole
+    interval and a dwell, so a raise is always followed in the same period by the lowering that may take it back."""
+    return max(RAISE_LOCK_S * period_s / HOUR_S, max(0.0, write_interval_s) + REGULATOR_DWELL_S)
 #: How much more (kWh) a plan must still need than the held power delivers by its departure to count as at risk, and
 #: how much it must then have to spare to count as safe again.
 RISK_ENTER_KWH: Final = 0.5
@@ -189,6 +194,9 @@ class HourBudget:
     house_over: bool
     #: What the hour is held under (kW): the level less its margin (`held_level_kw`).
     hold_kw: float = 0.0
+    #: The period held (s): the hour, or the quarter hour under a quarter-hour tariff (`hour_start`/`hour_end` are then
+    #: the quarter's).
+    period_s: float = HOUR_S
 
 
 def hour_budget(
@@ -200,16 +208,22 @@ def hour_budget(
     ceiling_w: float,
     extra_wh: float = 0.0,
     extra_covered_s: float | None = None,
+    quarter: bool = False,
 ) -> tuple[HourBudget | None, str | None]:
     """The running hour's budget at `now`, or `(None, reason)` while it is not applied (see the module).
 
     `extra_wh` is energy counted as import beside the grid's (a discharging battery under `battery_first`), measured
     over `extra_covered_s` (`None`: no such energy is counted). `target_kw` is the level (the target as set, or the
-    month's free level that lifts it); the hour is held under it less its margin (`held_level_kw`), taken here once."""
+    month's free level that lifts it); the hour is held under it less its margin (`held_level_kw`), taken here once.
+    With `quarter` the running quarter hour is held where it can be measured (see the module)."""
     if running is None or not running.start <= now < running.start + timedelta(hours=1):
         return None, NOT_APPLIED_NO_HOUR
     if running.last_at is None or running.last_grid_w is None:
         return None, NOT_APPLIED_NO_READING
+    if quarter:
+        found = _quarter_budget(target_kw, running, now, house_w, ceiling_w, extra_wh, extra_covered_s)
+        if found is not None:
+            return found
     measured_span_s = max(running.covered_s, (running.last_at - running.start).total_seconds())
     if running.covered_s <= 0 and measured_span_s > 0:
         return None, NOT_APPLIED_NO_READING
@@ -288,17 +302,73 @@ class TargetShare:
     reason: str | None = None
 
 
+def _quarter_budget(
+    target_kw: float,
+    running: RunningHour,
+    now: datetime,
+    house_w: float | None,
+    ceiling_w: float,
+    extra_wh: float,
+    extra_covered_s: float | None,
+) -> tuple[HourBudget | None, str | None] | None:
+    """The running quarter hour's budget, `None` where the quarter cannot be measured well enough (the hour is then
+    held). A battery's discharge (`extra_wh`) is counted at the hour's own rate over the quarter's time so far."""
+    start = running.quarter_of(now)
+    if running.quarter_start == start:
+        quarter_wh, covered_s = running.quarter_wh, running.quarter_covered_s
+    else:
+        # The quarter has just begun and nothing of it is integrated yet.
+        quarter_wh, covered_s = 0.0, 0.0
+    measured_span_s = max(covered_s, (running.last_at - start).total_seconds()) if running.last_at else 0.0
+    if measured_span_s - covered_s > QUARTER_GAP_MAX_S or (covered_s <= 0 and measured_span_s > QUARTER_GAP_MAX_S):
+        return None
+    if house_w is None or not math.isfinite(house_w):
+        return None, NOT_APPLIED_HOUSE_UNKNOWN
+    so_far_wh = 0.0 if measured_span_s <= 0 or covered_s <= 0 else quarter_wh * measured_span_s / covered_s
+    if extra_covered_s is not None and extra_covered_s > 0 and measured_span_s > 0:
+        so_far_wh += extra_wh / extra_covered_s * measured_span_s
+    end = start + timedelta(seconds=QUARTER_S)
+    remaining_s = max(MIN_REMAINING_S, (end - now).total_seconds())
+    hold_kw = held_level_kw(target_kw)
+    target_wh = hold_kw * 1000.0 * QUARTER_S / HOUR_S
+    rate_w = (target_wh - so_far_wh) * HOUR_S / remaining_s
+    allowed_w = min(max(0.0, rate_w - house_w), max(0.0, ceiling_w))
+    house_over = so_far_wh + max(0.0, house_w) * remaining_s / HOUR_S > target_kw * 1000.0 * QUARTER_S / HOUR_S
+    return (
+        HourBudget(
+            target_kw=target_kw,
+            hour_start=start,
+            hour_end=end,
+            so_far_kwh=so_far_wh / 1000.0,
+            hour_kw=0.0 if measured_span_s <= 0 else so_far_wh / measured_span_s * 3.6,
+            remaining_s=remaining_s,
+            house_w=house_w,
+            rate_w=rate_w,
+            allowed_w=allowed_w,
+            house_over=house_over,
+            hold_kw=hold_kw,
+            period_s=QUARTER_S,
+        ),
+        None,
+    )
+
+
 def hour_end_lock_a(
-    member: TargetMember, *, held_cap_a: float | None, held_last_pass: bool, remaining_s: float
+    member: TargetMember,
+    *,
+    held_cap_a: float | None,
+    held_last_pass: bool,
+    remaining_s: float,
+    period_s: float = HOUR_S,
 ) -> float | None:
     """Where the hour's end keeps a charger the target held this hour (`held_cap_a`: the highest it held it to), or
     `None` while it may be raised (see the module). Within `raise_lock_s` of the hour's end: a charger held in the last
     pass is kept at its held cap; a slow one (`write_interval_s` above `RAISE_LOCK_S`) whenever it was held this
     hour, also when the budget freed it just before, and where it is set if that is lower (a raise would hold into
     the next hour), never below its minimum (a current set below it by hand is no reason to pause it)."""
-    if held_cap_a is None or remaining_s >= raise_lock_s(member.write_interval_s):
+    if held_cap_a is None or remaining_s >= raise_lock_s(member.write_interval_s, period_s):
         return None
-    slow = member.write_interval_s > RAISE_LOCK_S
+    slow = member.write_interval_s > RAISE_LOCK_S * period_s / HOUR_S
     if not (slow or held_last_pass):
         return None
     if slow and member.set_a is not None and member.set_a > 0:

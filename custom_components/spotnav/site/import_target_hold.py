@@ -213,6 +213,7 @@ class ImportTargetHold:
                 held_cap_a=None if held_cap is None else held_cap[1],
                 held_last_pass=member.charger_entry_id in previously_held,
                 remaining_s=budget.remaining_s,
+                period_s=budget.period_s,
             )
             if lock is not None:
                 self._site._target_raise_lock[member.charger_entry_id] = lock
@@ -342,6 +343,7 @@ class ImportTargetHold:
             ceiling_w=self._site._import_ceiling_w(),
             extra_wh=0.0 if running is None else running.discharge_wh,
             extra_covered_s=(None if running is None else running.discharge_covered_s) if battery_counts else None,
+            quarter=self._site.target_quarter(now),
         )
 
     def _target_member(
