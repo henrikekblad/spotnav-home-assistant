@@ -386,6 +386,12 @@ class CurrentPath(ABC):
         whole ampere."""
         return DEFAULT_MIN_CURRENT_A
 
+    def run_min_a(self) -> float:
+        """The lowest current a charge that is already running is written, per phase: `min_a`, except for a path
+        whose charger holds a lower one once it charges (`sigenergy.PowerCurrent.run_min_a`, behind its recipe's
+        fact)."""
+        return self.min_a()
+
     def setpoint_a(self) -> int | None:
         """What the charger is set to, as far as it can be known."""
         return self.last_written_a

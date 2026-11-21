@@ -4131,17 +4131,26 @@ class SiteCapacityController:
     def _charger_floor_a(self, charger_entry_id: str) -> float:
         """The charger's own floor (`ChargingController.min_current_a`) where it is below the 6 A of an AC charger (a
         DC charger given a power, `execution/chargers/sigenergy.py`), else 6 A. Never above 6 A: a charger's floor
-        only ever lowers what the site reckons as a charger's minimum."""
+        only ever lowers what the site reckons as a charger's minimum.
+
+        While the charger charges this is its running floor (`ChargingController.running_min_current_a`): for a DC
+        charger whose running minimum is recorded (`sigenergy.EVDC_RUN_MIN_CONFIRMED`) the lower power it holds once
+        charging, so load balancing lowers a running charge to it before it pauses, and the sun before it stops. A
+        charger that does not charge reckons with its start floor, so a resume or a start still needs that."""
         charger = controller_for(self.hass, charger_entry_id)
-        floor = getattr(charger, "min_current_a", None) if charger is not None else None
+        floor = None
+        if charger is not None:
+            floor = getattr(charger, "running_min_current_a", None)
+            if not isinstance(floor, (int, float)) or isinstance(floor, bool):
+                floor = getattr(charger, "min_current_a", None)
         if isinstance(floor, (int, float)) and not isinstance(floor, bool) and 0.0 < floor < DEFAULT_MIN_CURRENT_A:
             return float(floor)
         return DEFAULT_MIN_CURRENT_A
 
     def charger_min_current_a(self, charger_entry_id: str) -> float:
         """The charger's minimum current: the wiring's, else its own floor (`_charger_floor_a`: 6 A, a DC charger's
-        lowest power as a current per phase). Below it the regulator pauses, the sun stops and the import target's
-        hold pauses rather than lowers."""
+        lowest power as a current per phase, or while it charges its running minimum where that is recorded). Below it
+        the regulator pauses, the sun stops and the import target's hold pauses rather than lowers."""
         wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         configured = wiring.get("min_current_a")
         if configured is None:

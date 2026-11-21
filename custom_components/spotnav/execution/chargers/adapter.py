@@ -220,12 +220,22 @@ class ChargerAdapter:
         self.pre_current: PreSpotnavCurrent | None = None
         #: Awaited once the reading is recorded, to save it (the controller's store).
         self.pre_current_recorded: Callable[[], Awaitable[None]] | None = None
+        # A path whose floor depends on whether the charger charges (`sigenergy.PowerCurrent`) reads it from here.
+        bind_charging = getattr(current, "bind_charging", None)
+        if callable(bind_charging):
+            bind_charging(self.charging_state)
 
     @property
     def min_current_a(self) -> float:
         """The charger's floor, the lowest current it is written (`CurrentPath.min_a`): 6 A for an AC charger, the
         lowest power as a current per phase for a charger given a power (`sigenergy.PowerCurrent`)."""
         return self.current.min_a()
+
+    @property
+    def run_min_current_a(self) -> float:
+        """The lowest current a charge that is already running is written (`CurrentPath.run_min_a`): the floor, except
+        for a DC charger whose running minimum is recorded (`sigenergy.EVDC_RUN_MIN_CONFIRMED`)."""
+        return self.current.run_min_a()
 
     @property
     def min_start_current_a(self) -> float:
