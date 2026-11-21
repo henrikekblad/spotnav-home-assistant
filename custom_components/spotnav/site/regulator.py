@@ -272,7 +272,7 @@ def _decide_phase(
             # Less EV import can only move the total toward zero on the P axis, so
             # no confirmation run is needed; capped below the current draw.
             ceiling = max(0.0, current + safe_uncredited_headroom_a)
-            proposed = round_down_to_step(min(requested_current_a, ceiling))
+            proposed = round_down_to_step(min(requested_current_a, ceiling), floor=min_current_a)
             return _legalize_or_pause(
                 proposed, min_current_a, "reducing_current_due_to_active_import_overload"
             )
@@ -302,7 +302,7 @@ def _decide_phase(
         # Room another writer was given and has not drawn yet is not given again.
         increase_headroom = max(0.0, increase_headroom - increase_reserved_a)
         cap = current + increase_headroom
-        proposed = round_down_to_step(min(requested_current_a, cap))
+        proposed = round_down_to_step(min(requested_current_a, cap), floor=min_current_a)
         return _legalize_or_pause(proposed, min_current_a, "increase_within_safe_uncredited_margin")
 
     # Decrease, not overloaded: the risky direction.
@@ -778,7 +778,7 @@ def magnitude_overload_lowering(
     if not ceilings:
         return held
     limiting_phase = min(ceilings, key=lambda phase: ceilings[phase])
-    proposed = round_down_to_step(ceilings[limiting_phase])
+    proposed = round_down_to_step(ceilings[limiting_phase], floor=None if request.switch_only else request.min_current_a)
     if request.switch_only or 0.0 < proposed < request.min_current_a:
         # A pause, but kept under this reason: only its own apply path writes it (it needs no signed power). A
         # charger that can only be switched cannot be lowered: any lowering the overload calls for is its pause.
@@ -849,7 +849,7 @@ def magnitude_decision(
     if drawn < SWITCHED_DRAWING_FROM_A or requested <= drawn:
         return lowering
     limiting_phase = min(caps, key=lambda phase: caps[phase])
-    proposed = round_down_to_step(min(requested, caps[limiting_phase]))
+    proposed = round_down_to_step(min(requested, caps[limiting_phase]), floor=request.min_current_a)
     if proposed <= drawn or proposed < request.min_current_a:
         return lowering
     return RegulatorDecision(proposed, MAGNITUDE_RAISE_REASON, limiting_phase, basis)

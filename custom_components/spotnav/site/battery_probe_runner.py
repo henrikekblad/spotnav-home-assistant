@@ -60,7 +60,7 @@ class BatteryProbeRunner:
         wiring: dict[str, Any] = (self._site.config.get(CONF_PHASE_WIRING) or {}).get(
             charger_entry_id
         ) or {}
-        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+        min_current_a = self._site._min_current_a(charger_entry_id)
         phases = tuple(decision.basis.keys())
         main_fuse_a = self._site.config.get(CONF_MAIN_FUSE_A)
         requested = charger_controller.requested_current_a
