@@ -8,6 +8,7 @@ at its deadline, and the plans whose start it refused are armed again at its rel
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -460,3 +461,27 @@ def test_the_unload_waits_longer_than_one_call() -> None:
     from custom_components.spotnav import hardware_test
 
     assert hardware_test.RESTORE_AT_UNLOAD_S > charger_test_hold.CALL_S
+
+
+async def test_a_retry_of_an_earlier_test_s_setting_back_leaves_a_new_test_s_taking_out_alone(
+    hass: HomeAssistant,
+) -> None:
+    _availability(hass)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    started = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def slow() -> None:
+        started.set()
+        await finish.wait()
+
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    hold._park_task = hass.async_create_task(slow())  # noqa: SLF001 - a new test's taking out on its way
+    await started.wait()
+    await hold.async_restore_availability()  # a retry, while the hold is on
+    assert hold._park_task is not None and not hold._park_task.done()  # noqa: SLF001
+    finish.set()
+    await hass.async_block_till_done()
+    hold.release()
+    await hold.async_close()
