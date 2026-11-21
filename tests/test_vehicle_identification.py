@@ -35,6 +35,7 @@ from custom_components.spotnav.vehicles.identification import (
     METHOD_MANUAL,
     METHOD_ONLY_CANDIDATE,
     METHOD_PLUG_SENSOR,
+    NEGATIVE_ELSEWHERE,
     ordered,
     UNPLUG_DEBOUNCE_S,
 )
@@ -120,7 +121,10 @@ def test_a_state_whose_change_was_not_seen_happen_is_no_change() -> None:
 
 
 def test_a_car_identified_at_another_charger_is_not_here() -> None:
-    assert judge(Candidate("b", elsewhere=True), T0, T0).negative == METHOD_LOCATION
+    """A fact of its own, not a position: its own marker, and a car left by it is decided as by position."""
+    assert judge(Candidate("b", elsewhere=True), T0, T0).negative == NEGATIVE_ELSEWHERE
+    a, b = Evidence("a", None, None), Evidence("b", None, NEGATIVE_ELSEWHERE)
+    assert decide([a, b]) == ("a", METHOD_LOCATION, False)
 
 
 def test_one_strong_car_is_chosen_two_are_a_conflict_and_elimination_names_its_reason() -> None:

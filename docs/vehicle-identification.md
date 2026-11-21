@@ -304,10 +304,12 @@ out.
   as usual, after three minutes.
 - **None of these cars** never makes a guest by itself: with two or more cars it puts **Guest car** first, and when the model is sure it
   counts as the cars with a reference picture ruled out, so a charger with one car asks.
-- **A car's own report outranks the camera.** If, after the camera decided, a car's plug sensor or position
-  settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as decided by the plug
-  sensor or the position). If the camera's car reports that it is not plugged in or away and nothing else
-  settles it, SpotNav asks.
+- **A car's own plug sensor outranks the camera.** If, after the camera decided, a car's plug sensor changes at
+  this plug-in and settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as
+  decided by the plug sensor). If the camera's car's plug sensor goes to not plugged in and nothing else settles
+  it, SpotNav asks. A car identified at another SpotNav charger that is connected cannot be here: that corrects the
+  camera too. A position (home or away) alone never overrides the camera's sure answer: trackers are sometimes
+  wrong, and a plug sensor that has not changed since before the plug-in says nothing either way.
 - **Your answer always wins.** The camera is asked only while nobody has answered and nothing has decided, and
   an answer that comes later is not used.
 - The camera is asked **once per plug-in**, and once more only after an error. A model that takes longer than

@@ -26,8 +26,8 @@ is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S`, once the 
 `LISTEN_FOR_S` after the plug-in, switching on decisive evidence unless a person answered. At most one
 automatic decision per plug-in, but for a correction: a car decided by position (the others away) or by the camera is
 corrected until `LISTEN_FOR_S` by a car's own report (`_correct`): another car's own plug sensor going on switches to
-it (for the camera, any decisive evidence), recorded as a correction, and the decided car reporting itself unplugged
-or away with no other car decided brings the question back. A person's answer ends this.
+it, recorded as a correction, and the decided car reporting itself unplugged (or, after a position, away) with no
+other car decided brings the question back. A position never overrides the camera's sure answer. A person's answer ends this.
 
 **The camera** (optional, `camera_rule.py`, `camera_identification.py`): while nothing has decided and two or
 more cars are left (one at a one-car charger), the charger's camera is asked once (one retry after an error) before
@@ -148,6 +148,12 @@ METHOD_MANUAL: Final = "manual"
 METHOD_ANSWERED: Final = "answered"
 METHOD_PLUG_SENSOR: Final = "plug_sensor"
 METHOD_LOCATION: Final = "location"
+#: A strong negative of its own (`Evidence.negative`): the car is identified at another SpotNav charger that is
+#: connected. A hard fact, unlike a position: it corrects even a sure camera (`_correct`). A car decided because the
+#: others are elsewhere is recorded as decided by `METHOD_LOCATION`.
+NEGATIVE_ELSEWHERE: Final = "elsewhere"
+#: The negatives that are facts of this plug-in, never a position that may be wrong.
+_HARD_NEGATIVES: Final = frozenset({METHOD_PLUG_SENSOR, NEGATIVE_ELSEWHERE})
 METHOD_ONLY_CANDIDATE: Final = "only_candidate"
 #: Nobody answered and nothing decided it: the car that was already chosen is assumed.
 METHOD_ASSUMED: Final = "assumed"
@@ -227,7 +233,8 @@ class Candidate:
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
-    """One car's evidence: `positive` (`strong`, `weak` or `None`) and the method of a strong negative."""
+    """One car's evidence: `positive` (`strong`, `weak` or `None`) and the method of a strong negative
+    (`METHOD_PLUG_SENSOR`, `METHOD_LOCATION`, or `NEGATIVE_ELSEWHERE`)."""
 
     vehicle_id: str
     positive: str | None
@@ -248,7 +255,7 @@ def _fresh(candidate: Candidate, t0: datetime) -> bool:
 def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
     """One car's evidence at `now` for a plug-in at `t0`."""
     positive: str | None = None
-    negative: str | None = METHOD_LOCATION if candidate.elsewhere else None
+    negative: str | None = NEGATIVE_ELSEWHERE if candidate.elsewhere else None
     plug = candidate.plug
     reading = plug_reading(plug, charging_state=candidate.plug_charging_state)
     changed = candidate.plug_changed
@@ -281,7 +288,8 @@ def decide(evidence: Sequence[Evidence]) -> tuple[str | None, str | None, bool]:
         return None, None, True
     if len(remaining) == 1 and len(evidence) > 1:
         excluded = {item.negative for item in evidence if item.negative is not None}
-        return remaining[0].vehicle_id, METHOD_LOCATION if METHOD_LOCATION in excluded else METHOD_PLUG_SENSOR, False
+        method = METHOD_PLUG_SENSOR if excluded == {METHOD_PLUG_SENSOR} else METHOD_LOCATION
+        return remaining[0].vehicle_id, method, False
     return None, None, False
 
 
@@ -1089,17 +1097,30 @@ class VehicleIdentifier:
         """After the camera or the position decided (`_CORRECTED`): a car's own decisive report corrects it (the same
         plug-in's switch, recorded by that report; after a position only another car's own plug sensor, since the
         cars' positions already had their say), and the decided car reporting itself unplugged or away with no other
-        car decided brings the question back. A person's answer ends this: it outranks both."""
+        car decided brings the question back. A person's answer ends this: it outranks both.
+
+        The camera decides only when sure (high confidence, `camera_rule`), and a position alone never overrides a
+        sure camera: after the camera only a plug sensor that changed at this plug-in, or a car identified at another
+        connected SpotNav charger (a fact: it cannot be here), corrects it or brings the question back (a position
+        can be wrong: a field case had the car home and its tracker away). Those two correct a position's decision
+        too."""
         evidence = self._evidence(session, dt_util.utcnow())
         car, method, conflict = decide(evidence)
         decided = self._planned_vehicle()
+        after_camera = self._method == METHOD_CAMERA
         if car is not None and method is not None:
             if car == decided:
                 return
-            if self._method == METHOD_CAMERA or method == METHOD_PLUG_SENSOR:
+            excluded = {item.negative for item in evidence if item.negative is not None}
+            if method == METHOD_PLUG_SENSOR or (excluded and excluded <= _HARD_NEGATIVES):
                 self._settle(car, method, "recognised")
                 return
-        if any(item.vehicle_id == decided and item.negative is not None for item in evidence) or conflict:
+        if conflict or any(
+            item.vehicle_id == decided
+            and item.negative is not None
+            and (not after_camera or item.negative in _HARD_NEGATIVES)
+            for item in evidence
+        ):
             session.state = STATE_WAITING
             session.order = ordered(evidence, self._current_vehicle())
             self._ask()
