@@ -204,3 +204,115 @@ async def test_a_measuring_site_shows_it_in_its_diagnostics_and_the_house_answer
     assert shown["state"] == "shadow" and shown["reason"] is None
     assert len(shown["hours"]) == 48 and {price for _start, _kw, price in shown["hours"]} == {23.0, 8.0}
     assert house_answer(hass, site)["demand_ceiling"]["hours"] == shown["hours"]
+
+
+# ------------------------------------------------------------------ the cars' days and the car's ceiling
+
+
+def test_the_cars_predicted_charges_beyond_the_forecast_are_in_the_state(patched, monkeypatch) -> None:
+    from custom_components.spotnav.planning.car_days import Charge
+
+    # A car charging 18:00-20:00 on two Monday evenings before: 20 kWh, as much as two hours at 11 kW take.
+    history = [
+        Charge(local(11, day, 18), local(11, day, 20), 20.0, 11.0) for day in (2, 9)
+    ]
+    monkeypatch.setattr("custom_components.spotnav.site.demand_ceiling.past_charges", lambda _site, _now: history)
+    site = _site((GBG_TID,))
+    state = patched(site).refresh(NOW)
+    assert state is not None
+    # Tonight's charge is the installed plans' business once planned; the next two Mondays (23 and 30 November) lie
+    # beyond the 48-hour forecast: 10 kW in 18-20 on top of the house's median working-day 18:00 (4 kW).
+    plugged = [charge["plugged_at"] for charge in state.as_dict()["car_charges"]]
+    assert plugged == [local(11, 16, 18).isoformat(), local(11, 23, 18).isoformat(), local(11, 30, 18).isoformat()]
+    predicted = state.parts[0].predicted
+    assert predicted[local(11, 23, 12).astimezone(STOCKHOLM).date()] == pytest.approx(10.0 + 4.0)
+    # T rises to the third highest of 14, 14, 5, 4 …: 5 kW.
+    assert state.parts[0].threshold_kw == pytest.approx(5.0)
+
+
+def test_the_cars_ceiling_leaves_its_own_plan_out_and_counts_the_others(patched, monkeypatch) -> None:
+    own = (local(11, 16, 9), local(11, 16, 10), 11.0)
+    other = (local(11, 16, 10), local(11, 16, 11), 4.0)
+
+    def windows(_hass, _site, exclude=None):
+        return [other] if exclude == "car" else [own, other]
+
+    # The month's single highest day counts.
+    single = DemandComponent(top_n=1, window=GBG_WINDOW, price_winter=135.0, price_summer=0.0)
+    site = _site((single,))
+    ceiling = patched(site)
+    monkeypatch.setattr("custom_components.spotnav.battery.plan_runtime.site_car_windows", windows)
+    with_own = ceiling.refresh(NOW)
+    inputs = ceiling.car_inputs("car", NOW)
+    assert inputs is not None and inputs.tz == TZ
+    # The site's state counts the car's own 11 kW at 09:00 (13 kW today, the month's highest); the car's ceiling
+    # does not: the other car's 4 kW at 10:00 on the house's 2 kW (6 kW) is.
+    assert with_own.parts[0].threshold_kw == pytest.approx(13.0)
+    assert inputs.ceilings[local(11, 16, 9)].kw == pytest.approx(6.0)
+    assert inputs.others_kw[local(11, 16, 10)] == pytest.approx(4.0) and inputs.others_kw[local(11, 16, 9)] == 0.0
+    # The house as the car's plan counts on it (the forecast with the heat relay's change).
+    assert inputs.house_kw[local(11, 16, 9)] == 5.0
+    # No priced part: none.
+    assert patched(_site(())).car_inputs("car", NOW) is None
+
+
+def test_the_cars_ceiling_is_made_again_only_when_the_site_or_the_other_cars_move(patched, monkeypatch) -> None:
+    own = (local(11, 16, 9), local(11, 16, 10), 11.0)
+    others = [(local(11, 16, 10), local(11, 16, 11), 4.0)]
+
+    def windows(_hass, _site, exclude=None):
+        return list(others) if exclude == "car" else [own, *others]
+
+    site = _site((DemandComponent(top_n=1, window=GBG_WINDOW, price_winter=135.0, price_summer=0.0),))
+    ceiling = patched(site)
+    monkeypatch.setattr("custom_components.spotnav.battery.plan_runtime.site_car_windows", windows)
+    made: list[Any] = []
+    real = SiteDemandCeiling._make
+
+    def counted(self, *args):
+        made.append(args)
+        return real(self, *args)
+
+    monkeypatch.setattr(SiteDemandCeiling, "_make", counted)
+    first = ceiling.car_inputs("car", NOW)
+    # The site's ceiling and the car's without its own plan.
+    assert len(made) == 2
+    # Every plan of the car asks again: nothing is made again on the event loop.
+    assert ceiling.car_inputs("car", NOW + timedelta(minutes=5)) == first
+    assert len(made) == 2
+    # The other car's plan moves: the site's ceiling and the car's are made again.
+    others[0] = (local(11, 16, 12), local(11, 16, 13), 4.0)
+    moved = ceiling.car_inputs("car", NOW + timedelta(minutes=6))
+    assert len(made) == 4 and moved != first
+
+
+def test_past_charges_run_from_the_plug_in_to_the_departure(monkeypatch) -> None:
+    from datetime import time
+
+    from custom_components.spotnav.site.demand_ceiling import past_charges, session_max_kw
+
+    piece = SimpleNamespace(start=local(11, 9, 1), end=local(11, 9, 1) + timedelta(minutes=15), kwh=2.5)
+    session = SimpleNamespace(
+        start=local(11, 9, 1),
+        end=local(11, 9, 3),
+        plugged_in_at=local(11, 8, 22),
+        energy_kwh=20.0,
+        intervals=(piece,),
+    )
+    old = SimpleNamespace(start=local(9, 1, 1), end=local(9, 1, 3), plugged_in_at=None, energy_kwh=20.0, intervals=())
+    store = SimpleNamespace(closed_raw=lambda charger: (old, session) if charger == "car" else ())
+    monkeypatch.setattr(
+        "custom_components.spotnav.runtime.domain_data", lambda _hass: SimpleNamespace(session_store=store)
+    )
+    monkeypatch.setattr(
+        "custom_components.spotnav.runtime.preview_for",
+        lambda _hass, _id: SimpleNamespace(daily_departure=lambda: time(7)),
+    )
+    site = SimpleNamespace(
+        hass=None, config={"charger_entry_ids": ["car"]}, demand=SimpleNamespace(tracker=SimpleNamespace(tz=TZ))
+    )
+    (charge,) = past_charges(site, NOW)
+    assert (charge.plugged_at, charge.leaves_at) == (local(11, 8, 22), local(11, 9, 7))
+    assert charge.max_kw == pytest.approx(10.0) and charge.energy_kwh == 20.0
+    # Without intervals: the mean over the charge.
+    assert session_max_kw(old) == pytest.approx(10.0)

@@ -16,7 +16,7 @@ import asyncio
 import logging
 from collections.abc import Coroutine
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Callable, Final, Literal
 
 from homeassistant.core import callback, HomeAssistant
@@ -115,6 +115,7 @@ from .plan_watch import (
     WindowFacts,
 )
 from .phases import effective_phases
+from .car_demand import CarCeiling, plan_under_ceiling, shadow_facts
 from .planner import (
     calculate_plan,
     ending_at_need,
@@ -154,6 +155,12 @@ def _calendar_used(found: CalendarDeparture, applied: str | None) -> dict[str, A
 
 #: A guest car with no departure is charged within this long of the calculation (`vehicles/guest.py`).
 GUEST_WITHIN: Final = timedelta(hours=12)
+
+#: The car's plan under the demand ceiling (shadow, `_plan_demand_shadow`) is made again at most this often while the
+#: plan in force keeps its periods (its ceiling moves with the house forecast's in-day updates)...
+DEMAND_SHADOW_MIN_AGE: Final = timedelta(minutes=10)
+#: ...and kept at most this long while neither the plan in force nor its ceiling moved.
+DEMAND_SHADOW_MAX_AGE: Final = timedelta(hours=1)
 
 #: Owner id prefix for the refresh-manager subscription; never stored.
 OWNER_PREFIX: Final = "auto:"
@@ -765,6 +772,12 @@ class AutoPlannerController:
         # The last unexpected preview failure, as (error, request without its clock): a repeat of it is
         # logged at DEBUG, so a failure that every site update hits does not flood the log.
         self._last_failure: tuple[str, str, PlanRequest] | None = None
+        # The plan under the site's soft demand ceiling, in shadow (`car_demand.py`): its facts for the diagnostics,
+        # and what was last written to the site's change log (written again only when it changes).
+        self._demand_shadow: dict[str, Any] | None = None
+        self._demand_logged: tuple[Any, ...] | None = None
+        # When the shadow was last made, from which plan in force and which ceiling (`_plan_demand_shadow`).
+        self._demand_made: tuple[datetime, tuple[Any, ...], tuple[Any, ...]] | None = None
 
         self._listeners: list[Callable[[AutoSnapshot], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
@@ -1685,7 +1698,65 @@ class AutoPlannerController:
             failed = replace(snapshot, last_error_code="proposal_not_saved")
             self._publish(failed, force=True)
             return failed
+        if not preview:
+            await self._plan_demand_shadow(plan_request, result)
         return snapshot
+
+    async def _plan_demand_shadow(self, request: PlanRequest, result: PlanResult) -> None:
+        """Plan the car once more under the site's soft demand ceiling, in shadow (`car_demand.py`, plan
+        v3_power_tariff step 6): kept for the diagnostics and written to the site's change log when it changes. The
+        plan in force is not touched; nothing here raises.
+
+        Its up to `2 + car_demand.RAISE_STEPS` planner runs are made again only when the plan in force or its ceiling
+        moved, and while only the ceiling moved at most once per `DEMAND_SHADOW_MIN_AGE`; unchanged, it is kept up to
+        `DEMAND_SHADOW_MAX_AGE`."""
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        ceiling = None if site is None else getattr(site, "demand_ceiling", None)
+        if ceiling is None:
+            self._demand_shadow = self._demand_made = None
+            return
+        plan_key = (result.periods, result.delivered_kwh, request.departure, request.departure_date)
+        made = self._demand_made
+        if made is not None and made[1] == plan_key and request.now - made[0] < DEMAND_SHADOW_MIN_AGE:
+            return
+        inputs = ceiling.car_inputs(self._entry_id, request.now)
+        if inputs is None:
+            self._demand_shadow = self._demand_made = None
+            return
+        inputs_key = _ceiling_key(inputs)
+        if made is not None and made[1:] == (plan_key, inputs_key) and request.now - made[0] < DEMAND_SHADOW_MAX_AGE:
+            return
+        self._demand_made = (request.now, plan_key, inputs_key)
+        try:
+            shadow = await self._hass.async_add_executor_job(
+                plan_under_ceiling, request, inputs, site.plan_minimum_kw(self._entry_id)
+            )
+            facts = None if shadow is None else shadow_facts(shadow, result, inputs)
+        except Exception:  # noqa: BLE001 - a shadow plan never disturbs the plan in force
+            _LOGGER.debug("SpotNav car plan under the demand ceiling failed", exc_info=True)
+            self._demand_shadow = {"reason": "failed"}
+            return
+        if facts is None:
+            self._demand_shadow = None
+            return
+        self._demand_shadow = {**facts, "made_at": request.now.isoformat()}
+        key = (
+            tuple(map(tuple, facts["periods"])),
+            facts["raise_kw"],
+            facts["demand_cost"],
+            facts["in_force"]["demand_cost"],
+        )
+        if key != self._demand_logged:
+            self._demand_logged = key
+            site._log_target(self._entry_id, "demand_car", **facts)  # noqa: SLF001 - the site's own debug log
+
+    def daily_departure(self) -> time | None:
+        """The daily departure set for this charger's car (area-local wall time), `None` without one or with a
+        dated one."""
+        settings = self._store.settings(self._entry_id)
+        if not settings.departure_enabled or settings.departure_date is not None:
+            return None
+        return settings.departure
 
     async def _plan_in_executor(self, request: PlanRequest) -> PlanResult:
         """`calculate_plan` in the executor: a search with per-hour caps can take a noticeable part of a second."""
@@ -2029,6 +2100,8 @@ class AutoPlannerController:
                     "soc_percent": anchor.soc_percent, "at": anchor.at.isoformat(), "kwh": round(anchor.kwh, 3),
                 },
             },
+            # The plan under the site's soft demand ceiling, in shadow (`car_demand.py`).
+            "demand_shadow": self._demand_shadow,
         }
 
     def _learned_energy_for(self, facts: LiveVehicleFacts | None, *, drop: bool = False) -> LearnedEnergy:
@@ -3736,4 +3809,14 @@ def _structural(before: EnergyBaseline, after: EnergyBaseline) -> bool:
         getattr(before, name) != getattr(after, name)
         for name in before.__dataclass_fields__
         if name not in keep
+    )
+
+
+def _ceiling_key(inputs: CarCeiling) -> tuple[Any, ...]:
+    """What the car's plan under the demand ceiling is made from, comparable (kW to the watt)."""
+    return (
+        tuple(sorted((start, round(c.kw, 3), round(c.price, 3)) for start, c in inputs.ceilings.items())),
+        tuple(sorted((start, round(kw, 3)) for start, kw in inputs.house_kw.items())),
+        tuple(sorted((start, round(kw, 3)) for start, kw in inputs.others_kw.items())),
+        inputs.tz,
     )
