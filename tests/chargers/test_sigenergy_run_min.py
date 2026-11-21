@@ -281,3 +281,17 @@ async def test_the_sun_starts_at_the_start_floor_and_lowers_a_running_charge_to_
     controller.adapter.cancel_pending_reads()
     await hass.config_entries.async_unload("home")
     await _unload(hass, charger)
+
+
+async def test_with_the_fact_on_the_start_floor_still_reads_back_as_itself(hass: HomeAssistant, confirmed: None) -> None:
+    """1.50 kW reads back as 2.17 A, not 2 A: a must-lower to 2 A is then a change, never "nothing to lower"."""
+    _ids, found = _found(hass)
+    adapter = adapter_for(hass, found)
+
+    _set_limit(hass, 1.503)
+    assert adapter.current.read_back_a() == 2.17
+    _set_limit(hass, 1.0)
+    assert adapter.current.read_back_a() == RUN_MIN_A
+    _set_limit(hass, 1.385)
+    assert adapter.current.read_back_a() == 2
+    adapter.cancel_pending_reads()

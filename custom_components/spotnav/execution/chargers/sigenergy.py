@@ -534,14 +534,16 @@ class PowerCurrent(CurrentPath):
         """The current per phase a power limit is: rounded down to a whole ampere, after allowing for the limit's own
         step (a write is rounded down to it, so 6 A written as 4.15 kW reads back as 6 A, not 5), or the floor
         (`min_a`) for a limit between the floor and the next whole ampere (the floor written as 1.50 kW reads back
-        as 2.17 A, not 2). With the running minimum recorded, its floor is `run_min_a` (1.0 kW reads back as 1.45 A,
-        not 1); without it `run_min_a` is `min_a`."""
+        as 2.17 A, not 2). Below the start floor, with the running minimum recorded, the floor is `run_min_a` (1.0 kW
+        reads back as 1.45 A, not 1); at or above it the start floor stays the floor, so 1.50 kW still reads back as
+        2.17 A and a must-lower to 2 A is never taken as already done. Without the fact `run_min_a` is `min_a`."""
         maximum = self.max_a()
         ceiling = self.ceiling_kw()
         if maximum is not None and ceiling is not None and kw >= ceiling - 1e-6:
             return maximum
         amps = (kw + self._slack_kw(self.hass.states.get(self.entity_id))) / self.kw_per_a()
-        return amps_at_floor(amps, self.run_min_a())
+        floor = self.min_a()
+        return amps_at_floor(amps, floor if amps >= floor else self.run_min_a())
 
     def limit_kw(self) -> float | None:
         """The limit the number's state shows (kW)."""
