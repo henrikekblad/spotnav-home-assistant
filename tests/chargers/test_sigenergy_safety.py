@@ -561,3 +561,182 @@ async def test_a_must_lower_inside_the_write_interval_stops_and_is_counted(
     assert not [record for record in caplog.records if record.levelno >= logging.WARNING and "stopping the charge" in record.message]
     controller.adapter.cancel_pending_reads()
     await _unload(hass, charger)
+
+
+# -- the DC charger's own floor --------------------------------------------------------------------------
+#
+# A beta site: a Sigen DC charger on a winter surplus of 1.37-1.57 kW stayed off under the sun (`off_no_surplus`,
+# 2.02 A available against a 6 A start) while Sigenergy's own surplus mode charged the same car at about 1.8 kW.
+# The charger's floor is its lowest power (`EVDC_MIN_POWER_KW`) as a current per phase, not the AC pilot's 6 A.
+
+
+async def test_the_dc_chargers_floor_is_its_least_power_on_the_site(hass: HomeAssistant, frozen: Any) -> None:
+    from custom_components.spotnav.runtime import site_controller_for
+
+    controller, _presses, charger = await _evdc_controller(hass, limit_kw=1.0)
+    assert await hass.config_entries.async_setup("home")
+    await hass.async_block_till_done()
+    site = site_controller_for(hass, "home")
+    assert site is not None
+
+    assert controller.min_current_a == 2.17
+    assert site.charger_min_current_a(charger.entry_id) == 2.17
+    assert site._minimum_setpoint(charger.entry_id) == 2.17  # noqa: SLF001
+    # A charger the site has no controller for is reckoned as an AC charger: 6 A.
+    assert site.charger_min_current_a("no-such-charger") == 6.0
+    assert site._minimum_setpoint("no-such-charger") == 6  # noqa: SLF001
+    controller.adapter.cancel_pending_reads()
+    await hass.config_entries.async_unload("home")
+    await _unload(hass, charger)
+
+
+async def test_load_balancing_holds_a_dc_charger_at_its_floor_and_pauses_below_it(
+    hass: HomeAssistant, frozen: Any
+) -> None:
+    controller, presses, charger = await _evdc_controller(hass, limit_kw=1.0)
+    calls = _mock_writes(hass)
+    assert await controller.async_start(amps=16, manual=True) is True
+    hass.states.async_set(STATE, "charging", {"device_class": "enum"})
+    await hass.async_block_till_done()
+    frozen.tick(sigenergy.EVDC_SETTLE_S + 1)
+
+    held = await controller.async_apply_regulated_current(2.17, must_lower=True)
+
+    assert held.written
+    assert calls[-1].data["value"] == pytest.approx(1.503, abs=0.001)
+    assert [call.data["entity_id"] for call in presses] == [START]
+    frozen.tick(sigenergy.EVDC_SETTLE_S + 1)
+
+    paused = await controller.async_apply_regulated_current(2, must_lower=True)
+
+    assert not paused.written
+    assert [call.data["entity_id"] for call in presses] == [START, STOP]
+    assert all(call.data["value"] >= sigenergy.EVDC_MIN_POWER_KW for call in calls)
+    controller.adapter.cancel_pending_reads()
+    await _unload(hass, charger)
+
+
+async def test_a_start_within_a_small_allowance_starts_at_the_floor(hass: HomeAssistant, frozen: Any) -> None:
+    """The site allows 2.5 A: the start goes out at the floor (1.50 kW), not held back below a 6 A floor, and never
+    above the allowance; at 2 A it is held back."""
+    controller, presses, charger = await _evdc_controller(hass, limit_kw=1.0)
+    calls = _mock_writes(hass)
+    controller.set_start_cap(lambda: 2.5)
+
+    assert await controller.async_start(amps=16, manual=True) is True
+
+    assert calls[-1].data["value"] == pytest.approx(1.503, abs=0.001)
+    assert [call.data["entity_id"] for call in presses] == [START]
+    await controller.async_stop()
+    controller.set_start_cap(lambda: 2.0)
+    frozen.tick(60)
+
+    assert await controller.async_start(amps=16, manual=True) is False
+    assert controller.start_held_by_balancing
+    controller.adapter.cancel_pending_reads()
+    await _unload(hass, charger)
+
+
+def test_the_regulator_keeps_a_dc_charger_at_its_floor_instead_of_rounding_it_into_a_pause() -> None:
+    from custom_components.spotnav.site.regulator import _decide_phase
+    from custom_components.spotnav.site.site_capacity import PhaseValue, round_down_to_step
+
+    def lowered(ceiling_a: float, min_current_a: float) -> float | None:
+        # An import overload while the car draws 4 A: the ceiling is what the fuse leaves it.
+        proposed, reason = _decide_phase(
+            safe_uncredited_headroom_a=ceiling_a - 4.0,
+            signed_active_power_w=5000.0,
+            signed_active_power_age_s=1.0,
+            signed_active_power_reason=None,
+            voltage_v=230.0,
+            requested_current_a=16.0,
+            measured_current=PhaseValue(4.0, 1.0, None),
+            confirmed_dir="net_import",
+            max_age_s=120.0,
+            zero_margin_w=50.0,
+            help_margin_factor=0.5,
+            min_current_a=min_current_a,
+        )
+        assert reason in ("reducing_current_due_to_active_import_overload", "paused_safe_current_below_charger_minimum")
+        return proposed
+
+    assert lowered(2.6, 2.17) == 2.17
+    assert lowered(3.4, 2.17) == 3.0
+    assert lowered(2.1, 2.17) == 0.0
+    # An AC charger as before: below 6 A a pause.
+    assert lowered(5.9, 6.0) == 0.0
+    assert round_down_to_step(6.9, floor=6.0) == 6.0
+    assert round_down_to_step(2.16, floor=2.17) == 2.0
+
+
+def _sun(now: float, *, export_w: float, car_a: float = 0.0):
+    from custom_components.spotnav.site.solar_surplus import SolarObservation
+
+    phases = ("L1", "L2", "L3")
+    volts = 400.0 / math.sqrt(3)
+    return SolarObservation(
+        now=now,
+        signed_grid_w={phase: -export_w / 3 for phase in phases},
+        voltage_v={phase: volts for phase in phases},
+        car_delivered_a={phase: car_a for phase in phases},
+        battery_w=None,
+        car_phases=phases,
+    )
+
+
+async def test_the_sun_starts_a_dc_charger_at_its_floor_and_holds_it_there(hass: HomeAssistant, frozen: Any) -> None:
+    """The field case: 1.6 kW of surplus starts the DC charger at its floor (2.17 A, 1.50 kW), where it stays while
+    the surplus carries it; 1.4 kW does not start it; an AC charger still needs 6 A."""
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.execution.solar_execution import SolarExecutionCoordinator
+    from custom_components.spotnav.runtime import site_controller_for
+    from custom_components.spotnav.site.solar_surplus import SolarController
+
+    controller, _presses, charger = await _evdc_controller(hass, limit_kw=1.0)
+    assert await hass.config_entries.async_setup("home")
+    await hass.async_block_till_done()
+    site = site_controller_for(hass, "home")
+    assert site is not None
+    coordinator = SimpleNamespace(
+        _charger_entry_id=charger.entry_id, _controller=controller, _solar_ceiling_a=lambda: 16.0
+    )
+    config = SolarExecutionCoordinator._solar_config(coordinator, site)  # noqa: SLF001
+    assert (config.start_a, config.min_current_a) == (2.17, 2.17)
+    assert config.stop_a == pytest.approx(1.17)
+    # The sun's request goes to the charger as it is: the floor, else whole amps.
+    assert SolarExecutionCoordinator._amps(coordinator, 2.17) == 2.17  # noqa: SLF001
+    assert SolarExecutionCoordinator._amps(coordinator, 3.0) == 3
+    config = replace(config, start_delay_s=0.0, min_off_s=0.0, verify_s=0.0)
+
+    solar = SolarController(config)
+    started = solar.observe(_sun(0.0, export_w=1600.0))
+    assert (started.action, started.requested_a) == ("start", 2.17)
+    # The car draws its 1.50 kW: the surplus is unchanged, the charge stays at the floor.
+    for tick in range(1, 30):
+        held = solar.observe(_sun(float(tick * 10), export_w=1600.0 - 1503.0, car_a=2.17))
+        assert held.state == "on" and held.action == "hold", held
+
+    assert SolarController(config).observe(_sun(0.0, export_w=1400.0)).action == "hold"
+    ac = SolarController(replace(config, min_current_a=6.0, start_a=None, stop_a=None))
+    assert ac.observe(_sun(0.0, export_w=1600.0)).action == "hold"
+    controller.adapter.cancel_pending_reads()
+    await hass.config_entries.async_unload("home")
+    await _unload(hass, charger)
+
+
+async def test_the_suns_floor_is_written_to_the_dc_charger_not_rounded_into_a_refusal(
+    hass: HomeAssistant, frozen: Any
+) -> None:
+    """The sun's start at 2.17 A through the controller writes 1.50 kW and presses Start; whole amps above it."""
+    controller, presses, charger = await _evdc_controller(hass, limit_kw=1.0)
+    calls = _mock_writes(hass)
+
+    assert await controller.async_start(amps=2.17, cause="solar") is True
+
+    assert calls[-1].data["value"] == pytest.approx(1.503, abs=0.001)
+    assert controller.requested_current_a == 2.17
+    assert [call.data["entity_id"] for call in presses] == [START]
+    controller.adapter.cancel_pending_reads()
+    await _unload(hass, charger)
