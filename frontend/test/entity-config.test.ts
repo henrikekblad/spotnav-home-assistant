@@ -59,11 +59,26 @@ describe("the control block", () => {
     });
     expect(decodeEntityAnswer(withControl({ ...control(), extra: 1 }))).toEqual({ ok: false, failure: "malformed" });
     expect(
-      decodeEntityAnswer(withControl({ ...control(), current: { ...(control()["current"] as object), kind: "magic" } })),
-    ).toEqual({ ok: false, failure: "malformed" });
-    expect(
       decodeEntityAnswer(withControl({ ...control(), policy: { ...(control()["policy"] as object), min_interval_s: "90" } })),
     ).toEqual({ ok: false, failure: "malformed" });
+  });
+
+  it("takes a current path in kW (Sigenergy's DC charger) and words one a newer backend added, never refusing it", () => {
+    const answer = raw("get_direct");
+    const withKind = (kind: string) => ({
+      ...answer,
+      config: {
+        ...(answer["config"] as Record<string, unknown>),
+        control: { ...control(), current: { ...(control()["current"] as object), kind } },
+      },
+    });
+    const kindOf = (kind: string) => {
+      const result = decodeEntityAnswer(withKind(kind));
+      return result.ok ? result.value.config?.control?.current.kind : "refused";
+    };
+    expect(kindOf("power")).toBe("power");
+    expect(kindOf("magic")).toBe("other");
+    expect(kindOf("")).toBe("refused");
   });
 });
 
