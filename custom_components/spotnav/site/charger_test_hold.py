@@ -30,17 +30,35 @@ hold keeps every charger of the site stopped, and the cap may then count a charg
 **Counted at 0 A** (`counts_nothing`): the cap is reckoned for Home Assistant stopping while the battery charges, so
 a charger may count as drawing nothing only where it cannot begin a charge with Home Assistant gone. All of:
 
-* the hold is on;
+* the hold is on, and either an OCPP charger's station ceiling at 0 A was accepted and reads 0 A now (below), or
 * the charger reads stopped now: its charge control readable and off, its status not charging, and no Start of
   ours on its way (`ChargingController.control_confirmed_off`, `start_pending`);
 * its stop is a setting the charger keeps by itself and that holds every later session off as well
   (`PlatformProfile.stop_kept_without_ha`, on the profile's own start/stop path, not an OCPP charger). With Home
   Assistant gone nobody writes it back, so the charger stays stopped whatever the car does.
 
+**An OCPP charger: its station ceiling at 0 A** (owner 2026-11-21). An OCPP stop ends the transaction only, and a
+free-charging charge point (or one that authorizes offline) starts the next one at the plug-in with nobody there to
+stop it. So while the hold is on, each OCPP charger of the site with the `ocpp` integration's station "Maximum
+Current" number (`OcppCurrentControls.station_maximum_entity`; the integration's 0.13 sends it as the
+`ChargePointMaxProfile` on connector 0, at its highest stack level, and raises unless the charge point answers
+`Accepted`) is set to 0 A (`_async_lower_ceilings`), and counted at 0 A only once that write was accepted and the
+number reads 0 now (`counts_nothing`); a write refused, failed or not there leaves it counted at its current.
+Why it holds when Home Assistant stops: a charging profile is the charge point's own state, applied by it to every
+transaction whether the central system is connected or not (an offline or free-charging one included), until the
+central system replaces or clears it; OCPP 1.6 asks a charge point to keep its profiles across its own reboot as
+well, and the integration itself relies on the charger keeping it across Home Assistant's restarts. What is left:
+a charge point that drops its profiles at its own reboot, rebooting in the minutes of the test while Home Assistant
+is down too, or one that takes a 0 A limit as its minimum current; neither is seen on a real charger yet.
+The number's value before is kept in this hold's store (`store_key`) **before** the 0 A is sent, and written back at
+every release (`async_restore_ceilings`, from `hardware_test.py`: done, failed, deadline, stop, an error, the unload),
+retried every `RESTORE_RETRY_S` until it is taken; after a restart in the middle of a test (Home Assistant died with
+the ceiling at 0 A) the store still holds it, and it is written back at the site's next start (`async_load`). A
+number that read no value before is set back to its own maximum. The integration's own slider is this same number:
+while the test runs it reads 0 A, and afterwards the person's value.
+
 Every other control kind keeps its current counted, because there the stop ends or pauses the running session
-only and the charger can begin a charge again by itself without Home Assistant: OCPP (a remote stop ends the
-transaction; a free-charging charge point, or one that authorizes offline, starts the next one at the plug-in),
-Easee (its pause service; a charger without authorization charges at the plug-in), start/stop buttons (a session
+only and the charger can begin a charge again by itself without Home Assistant: Easee (its pause service; a charger without authorization charges at the plug-in), start/stop buttons (a session
 command; the next plug-in starts a new session), pause switches and the 0 A pause (the session's own state), go-e's
 force state (back to neutral at the unplug). A charger that begins charging during the test is counted again at
 once, at the next look, whatever kind it is (it no longer reads stopped).
@@ -48,14 +66,19 @@ once, at the next look, whatever kind it is (it no longer reads stopped).
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+import contextlib
 from datetime import datetime
 import logging
 from typing import TYPE_CHECKING, Any, Final
 
+from homeassistant.core import callback
+from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from ..const import CONF_CHARGER_ENTRY_IDS
+from ..const import CONF_CHARGER_ENTRY_IDS, DOMAIN
 
 if TYPE_CHECKING:
     from .site_capacity_controller import SiteCapacityController
@@ -65,6 +88,38 @@ _LOGGER = logging.getLogger(__name__)
 #: The least time between two stops of one charger under the hold (s), and the most stops of one charger in a test.
 STOP_GAP_S: Final = 30.0
 MAX_STOPS: Final = 3
+#: How long a write of an OCPP charger's station ceiling may take (s), and how long until a restore not taken is
+#: tried again (s).
+CEILING_CALL_S: Final = 30.0
+RESTORE_RETRY_S: Final = 60.0
+#: What a station ceiling that read no value before is set back to, when its number states no maximum (A).
+CEILING_FALLBACK_A: Final = 32.0
+STORE_VERSION: Final = 1
+
+
+def store_key(entry_id: str) -> str:
+    return f"{DOMAIN}.charger_test_hold.{entry_id}"
+
+
+def _amps(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number == number and number not in (float("inf"), float("-inf")) else None
+
+
+def station_ceiling_entity(controller: Any) -> str | None:
+    """The `ocpp` integration's station "Maximum Current" number of an OCPP charger, `None` for any other charger or
+    when it is not there. Never raises."""
+    try:
+        if getattr(controller, "ocpp_target", None) is None:
+            return None
+        controls = controller.ocpp_controls
+        return None if controls is None else controls.station_maximum_entity or None
+    except Exception:  # noqa: BLE001 - not found: the charger stays counted
+        _LOGGER.debug("station_ceiling_entity: ignored failure", exc_info=True)
+        return None
 
 
 def stop_kept_without_ha(controller: Any) -> bool:
@@ -98,6 +153,18 @@ class ChargerTestHold:
         self._refused: set[str] = set()
         #: Per charger, the stops sent under this hold and when the last one was.
         self._stops: dict[str, tuple[int, datetime]] = {}
+        #: Per OCPP charger: its station ceiling's number and value before (kept in the store until written back),
+        #: and the chargers whose 0 A was accepted under this hold.
+        self._ceilings: dict[str, dict[str, Any]] = {}
+        self._lowered: set[str] = set()
+        self._lower_task: asyncio.Task[None] | None = None
+        self._restore_lock = asyncio.Lock()
+        self._retry_cancel: Callable[[], None] | None = None
+        self._closed = False
+        hass = getattr(site, "hass", None)
+        self._store: Store[dict[str, Any]] | None = (
+            None if hass is None else Store(hass, STORE_VERSION, store_key(site.entry_id))
+        )
 
     # ---- state
 
@@ -152,14 +219,20 @@ class ChargerTestHold:
         return found
 
     def counts_nothing(self, charger_entry_id: str) -> bool:
-        """Whether the HA-down grid charge cap may count this charger at 0 A now (see the module): the hold on, the
-        charger read stopped with no Start of ours on its way, and its stop one it keeps without Home Assistant.
-        `False` whenever any of it cannot be read."""
+        """Whether the HA-down grid charge cap may count this charger at 0 A now (see the module): the hold on, and
+        either an OCPP charger whose station ceiling at 0 A was accepted and reads 0 A now, or a charger read stopped
+        with no Start of ours on its way whose stop it keeps without Home Assistant. `False` whenever any of it cannot
+        be read."""
         if not self.holds(charger_entry_id):
             return False
         controller = self._controller(charger_entry_id)
         if controller is None:
             return False
+        if charger_entry_id in self._lowered:
+            # An OCPP charger whose station ceiling at 0 A was accepted, and that reads 0 A now (see the module).
+            entity_id = (self._ceilings.get(charger_entry_id) or {}).get("entity_id")
+            state = None if entity_id is None else self._site.hass.states.get(entity_id)
+            return state is not None and _amps(state.state) == 0.0
         try:
             stopped = controller.control_confirmed_off and not controller.start_pending
         except Exception:  # noqa: BLE001 - not known: counted
@@ -174,8 +247,13 @@ class ChargerTestHold:
         self._until = until
         self._refused = set()
         self._stops = {}
+        self._lowered = set()
         _LOGGER.info("SpotNav site %s: the chargers are held stopped for the hardware test", self._site.entry_id)
         self.observe()
+        if self._store is not None and any(
+            station_ceiling_entity(self._controller(charger_entry_id)) for charger_entry_id in self._charger_ids()
+        ):
+            self._lower_task = self._site.hass.async_create_task(self._async_lower_ceilings())
 
     def release(self) -> list[str]:
         """End the hold at once; the chargers whose start it refused (for `async_rearm_refused`). Never raises."""
@@ -183,6 +261,7 @@ class ChargerTestHold:
         self._until = None
         refused, self._refused = sorted(self._refused), set()
         self._stops = {}
+        self._lowered = set()
         if was_on:
             _LOGGER.info("SpotNav site %s: the hardware test's hold of the chargers ended", self._site.entry_id)
         return refused
@@ -202,6 +281,140 @@ class ChargerTestHold:
                     "SpotNav site %s: the plan of charger %s could not be armed again after the hardware test",
                     self._site.entry_id, charger_entry_id, exc_info=True,
                 )
+
+    # ---- an OCPP charger's station ceiling
+
+    async def async_load(self) -> None:
+        """The ceilings a test left at 0 A when Home Assistant stopped in its middle: written back from now on, in
+        the background, until each is taken. Never raises."""
+        if self._store is None:
+            return
+        try:
+            raw = await self._store.async_load()
+        except Exception:  # noqa: BLE001 - an unreadable store holds nothing to write back
+            _LOGGER.warning("SpotNav site %s: the hardware test's kept ceilings could not be read", self._site.entry_id)
+            return
+        kept = (raw or {}).get("ceilings") if isinstance(raw, dict) else None
+        if not isinstance(kept, dict):
+            return
+        for charger_entry_id, row in kept.items():
+            if isinstance(row, dict) and isinstance(row.get("entity_id"), str):
+                self._ceilings[str(charger_entry_id)] = {"entity_id": row["entity_id"], "previous": _amps(row.get("previous"))}
+        if self._ceilings:
+            _LOGGER.warning(
+                "SpotNav site %s: a hardware test was cut short with an OCPP charger's maximum current at 0 A; "
+                "it is set back now", self._site.entry_id,
+            )
+            self._site.hass.async_create_task(self.async_restore_ceilings())
+
+    async def _async_save(self) -> None:
+        if self._store is not None:
+            await self._store.async_save({"ceilings": {key: dict(row) for key, row in self._ceilings.items()}})
+
+    async def _async_set(self, entity_id: str, amps: float) -> None:
+        async with asyncio.timeout(CEILING_CALL_S):
+            await self._site.hass.services.async_call(
+                "number", "set_value", {"entity_id": entity_id, "value": amps}, blocking=True
+            )
+
+    async def _async_lower_ceilings(self) -> None:
+        """Each OCPP charger's station ceiling to 0 A (see the module): its value before kept first, then the write;
+        counted at 0 A only once the write was taken. Never raises."""
+        for charger_entry_id in self._charger_ids():
+            if not self.active or self._closed:
+                return
+            entity_id = station_ceiling_entity(self._controller(charger_entry_id))
+            state = None if entity_id is None else self._site.hass.states.get(entity_id)
+            if entity_id is None or state is None or state.state in ("unavailable", "unknown"):
+                continue
+            if charger_entry_id not in self._ceilings:
+                self._ceilings[charger_entry_id] = {"entity_id": entity_id, "previous": _amps(state.state)}
+            try:
+                # Kept before the 0 A goes out: Home Assistant stopping right after it must still find what to set back.
+                await self._async_save()
+                await self._async_set(entity_id, 0.0)
+            except Exception as err:  # noqa: BLE001 - not taken: the charger stays counted, and is set back anyway
+                _LOGGER.warning(
+                    "SpotNav site %s: the maximum current of OCPP charger %s could not be set to 0 A for the hardware "
+                    "test (%s); it stays counted at its current", self._site.entry_id, charger_entry_id, err,
+                )
+                continue
+            now = self._site.hass.states.get(entity_id)
+            if self.active and now is not None and _amps(now.state) == 0.0:
+                self._lowered.add(charger_entry_id)
+                _LOGGER.info(
+                    "SpotNav site %s: OCPP charger %s holds 0 A for the hardware test", self._site.entry_id,
+                    charger_entry_id,
+                )
+
+    async def async_restore_ceilings(self) -> None:
+        """Every station ceiling this hold (or one cut short by a restart) set to 0 A, back to its value before; one
+        not taken is tried again every `RESTORE_RETRY_S` and stays in the store meanwhile. Never raises."""
+        task, self._lower_task = self._lower_task, None
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        async with self._restore_lock:
+            failed = False
+            for charger_entry_id, row in list(self._ceilings.items()):
+                entity_id = row["entity_id"]
+                state = self._site.hass.states.get(entity_id)
+                value = row.get("previous")
+                if value is None:
+                    value = _amps(None if state is None else state.attributes.get("max")) or CEILING_FALLBACK_A
+                if self.active and charger_entry_id in self._lowered:
+                    continue  # a new hold holds it again
+                try:
+                    if state is None or state.state == "unavailable":
+                        raise RuntimeError("the number is not there yet")
+                    await self._async_set(entity_id, float(value))
+                except Exception as err:  # noqa: BLE001 - tried again; kept in the store meanwhile
+                    failed = True
+                    _LOGGER.warning(
+                        "SpotNav site %s: the maximum current of OCPP charger %s could not be set back to %s A after "
+                        "the hardware test (%s); tried again in %s s", self._site.entry_id, charger_entry_id, value,
+                        err, int(RESTORE_RETRY_S),
+                    )
+                    continue
+                self._ceilings.pop(charger_entry_id, None)
+                _LOGGER.info(
+                    "SpotNav site %s: the maximum current of OCPP charger %s is back at %s A", self._site.entry_id,
+                    charger_entry_id, value,
+                )
+            try:
+                await self._async_save()
+            except Exception:  # noqa: BLE001 - the next write saves it
+                _LOGGER.debug("Saving the hardware test's ceilings failed", exc_info=True)
+            if failed and not self._closed and self._retry_cancel is None:
+                self._retry_cancel = async_call_later(self._site.hass, RESTORE_RETRY_S, self._retry)
+
+    @callback
+    def _retry(self, _now: datetime) -> None:
+        self._retry_cancel = None
+        if not self._closed:
+            self._site.hass.async_create_task(self.async_restore_ceilings())
+
+    @property
+    def ceilings_kept(self) -> list[str]:
+        """The OCPP chargers whose station ceiling is still to be set back."""
+        return sorted(self._ceilings)
+
+    async def async_close(self) -> None:
+        """The site unloads: no more retries; what is still to be set back stays in the store for the next start."""
+        self._closed = True
+        cancel, self._retry_cancel = self._retry_cancel, None
+        if cancel is not None:
+            cancel()
+        task, self._lower_task = self._lower_task, None
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+
+    @staticmethod
+    async def async_remove_stored(hass: Any, entry_id: str) -> None:
+        await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
 
     def observe(self) -> None:
         """Stop a charge that began under the hold (see the module), bounded per charger. Never raises."""
@@ -254,5 +467,7 @@ class ChargerTestHold:
             "active": until is not None,
             "until": None if until is None else until.isoformat(),
             "refused": sorted(self._refused),
+            "ocpp_at_zero": sorted(self._lowered),
+            "ceilings_to_restore": self.ceilings_kept,
             "stops": {charger_entry_id: count for charger_entry_id, (count, _last) in self._stops.items()},
         }

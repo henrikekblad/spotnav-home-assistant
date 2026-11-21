@@ -1931,10 +1931,11 @@ class BatteryControl:
         chargers cannot be read. `without`: a charger left out (`import_limit_guards`).
 
         `held_off` (only while a person's hardware test runs, `_async_verify`): a charger the test's hold keeps
-        stopped counts 0 A where it cannot begin a charge with Home Assistant gone (`ChargerTestHold.counts_nothing`:
-        the hold on, the charger read stopped, and its stop a stored setting that holds every later session off).
-        Every other charger keeps its current, an OCPP charger, an Easee and one on buttons among them: their stop
-        ends the session only, and the next plug-in may charge with nobody there to stop it."""
+        stopped counts 0 A where it cannot draw with Home Assistant gone (`ChargerTestHold.counts_nothing`: the hold
+        on, and either an OCPP charger's station ceiling at 0 A accepted by the charge point, or the charger read
+        stopped with its stop a stored setting that holds every later session off). Every other charger keeps its
+        current, an Easee and one on buttons among them: their stop ends the session only, and the next plug-in may
+        charge with nobody there to stop it."""
         from ..execution.controller import ASSUMED_CURRENT_A  # noqa: PLC0415 - the charger side imports the site
 
         hold = getattr(self.site, "charger_test_hold", None) if held_off and self._hw_run else None

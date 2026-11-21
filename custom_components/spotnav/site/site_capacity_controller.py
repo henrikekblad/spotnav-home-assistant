@@ -1000,6 +1000,8 @@ class SiteCapacityController:
         await self.zones_control.async_start()
         await self.water_heater_control.async_start()
         await self.hardware_test.async_load()
+        # An OCPP charger's station ceiling a hardware test left at 0 A when Home Assistant stopped: set back.
+        await self.charger_test_hold.async_load()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -1085,6 +1087,7 @@ class SiteCapacityController:
             ("solar shadow", self.solar_shadow.async_shutdown),
             ("heat shadow", self.heat_shadow.async_shutdown),
             ("grid sign", self._async_save_grid_sign),
+            ("charger test hold", self.charger_test_hold.async_close),
         )
         for name, close in parts:
             try:

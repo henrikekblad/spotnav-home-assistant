@@ -13,7 +13,9 @@ from types import SimpleNamespace
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.execution.charger_profiles import PATH_SWITCH, PROFILES, profile_for
 from custom_components.spotnav.site import charger_test_hold
@@ -156,3 +158,96 @@ async def test_a_failing_hold_probe_holds_nothing(hass: HomeAssistant) -> None:
     await plug.set(True)
     assert await controller.async_start(cause="solar") is True and len(starts) == 1
     await controller.async_shutdown()
+
+
+# --- an OCPP charger's station ceiling ----------------------------------------------------------------------------------
+
+CEILING = "number.halo_charger_maximum_current"
+
+
+class _Ocpp(_Charger):
+    """An OCPP charger with the integration's station "Maximum Current" number."""
+
+    def __init__(self, *, on: bool = False) -> None:
+        super().__init__(None, PATH_SWITCH, on=on, ocpp=True)
+        self.ocpp_controls = SimpleNamespace(station_maximum_entity=CEILING)
+
+
+def _ceiling(hass: HomeAssistant, value: str = "16", *, accepts: bool = True) -> list[float]:
+    """The number, and `number.set_value` as the `ocpp` integration answers it: the value taken, or an error raised
+    when the charge point does not answer `Accepted`."""
+    hass.states.async_set(CEILING, value, {"min": 0, "max": 32})
+    written: list[float] = []
+
+    async def set_value(call: Any) -> None:
+        written.append(float(call.data["value"]))
+        if not accepts:
+            raise HomeAssistantError("ChargePointMaxProfile: Rejected")
+        hass.states.async_set(CEILING, str(float(call.data["value"])), {"min": 0, "max": 32})
+
+    hass.services.async_register("number", "set_value", set_value)
+    return written
+
+
+async def test_an_ocpp_charger_counts_nothing_only_once_its_ceiling_at_0_a_was_accepted_and_is_set_back(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    written = _ceiling(hass)
+    ocpp = _Ocpp()
+    hold = _hold(hass, {"ocpp": ocpp})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    assert written == [0.0] and hold.counts_nothing("ocpp") is True
+    # Kept before the 0 A went out, so a restart in the middle finds it.
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["ceilings"]["ocpp"] == {
+        "entity_id": CEILING, "previous": 16.0}
+    # The person moves the slider during the test: no longer 0 A, counted again.
+    hass.states.async_set(CEILING, "10", {"min": 0, "max": 32})
+    assert hold.counts_nothing("ocpp") is False
+    hass.states.async_set(CEILING, "0.0", {"min": 0, "max": 32})
+    hold.release()
+    assert hold.counts_nothing("ocpp") is False
+    await hold.async_restore_ceilings()
+    assert written == [0.0, 16.0] and hass.states.get(CEILING).state == "16.0"
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["ceilings"] == {}
+
+
+async def test_an_ocpp_ceiling_the_charge_point_refuses_leaves_the_charger_counted(hass: HomeAssistant) -> None:
+    written = _ceiling(hass, accepts=False)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    assert written == [0.0] and hold.counts_nothing("ocpp") is False
+    hold.release()
+    await hold.async_close()
+
+
+async def test_a_ceiling_left_at_0_a_by_a_restart_is_set_back_at_the_next_start_retried_until_taken(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: Any
+) -> None:
+    hass_storage[charger_test_hold.store_key("site_1")] = {
+        "version": 1, "key": charger_test_hold.store_key("site_1"),
+        "data": {"ceilings": {"ocpp": {"entity_id": CEILING, "previous": 13.0}}},
+    }
+    written = _ceiling(hass, "0")
+    hass.states.async_set(CEILING, "unavailable")  # the integration not loaded yet
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    await hold.async_load()
+    await hass.async_block_till_done()
+    assert written == [] and hold.ceilings_kept == ["ocpp"]
+    hass.states.async_set(CEILING, "0", {"min": 0, "max": 32})
+    freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert written == [13.0] and hold.ceilings_kept == []
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["ceilings"] == {}
+    await hold.async_close()
+
+
+async def test_a_ceiling_that_read_no_value_is_set_back_to_its_maximum(hass: HomeAssistant) -> None:
+    written = _ceiling(hass, "unknown")
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold._ceilings["ocpp"] = {"entity_id": CEILING, "previous": None}  # noqa: SLF001
+    hass.states.async_set(CEILING, "0", {"min": 0, "max": 32})
+    await hold.async_restore_ceilings()
+    assert written == [32.0]
