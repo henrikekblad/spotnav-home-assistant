@@ -89,7 +89,7 @@ from ..const import (
     DOMAIN,
     SOLAR_PRIORITY_CAR_FIRST,
 )
-from ..core.electric import phase_volts
+from ..core.electric import phase_volts, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.energy_statistics import async_energy_prefs, energy_statistic_ids
 from ..site.measurement_problem import UNHEALTHY_STATES
@@ -1673,6 +1673,8 @@ class BatteryControl:
             plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
             import_limit_per_phase=per_phase, phase_output_max_kw=None if spec is None else spec.phase_output_max_kw,
+            # The per-phase rule only: the site's own safety margin as the person set it (`gate`'s note on it).
+            phase_margin_a=self._site_margin_a(),
         )
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
@@ -1737,6 +1739,11 @@ class BatteryControl:
                 if entry is not None and entry.data.get(CONF_CURRENT_CONTROL) == CURRENT_CONTROL_POWER:
                     return "dc_charger"
         return None
+
+    def _site_margin_a(self) -> float:
+        """The site's own safety margin (A per phase) as stored now, for the per-phase import-limit rule only."""
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        return stored_safety_margin_a(entry.data if entry is not None else self.site.config)
 
     def _import_limit_phase_refusal(self) -> str | None:
         """Why the plant's own import limit cannot be taken as held **per phase** now (`commands.ImportLimitPhases`),
@@ -1837,11 +1844,12 @@ class BatteryControl:
             return block
         phase_refusal = self._import_limit_phase_refusal()
         output_kw = spec.phase_output_max_kw
+        phase_rule = {**rule, "margin_a": self._site_margin_a()}
         phase_most = gate.import_limit_phase_max_kw(
-            fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **rule
+            fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **phase_rule
         )
         phase_holds = phase_refusal is None and gate.import_limit_phase_holds(
-            value, fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **rule
+            value, fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **phase_rule
         )
         # `holds`: the plant's limit guards the fuse now by either rule (the cap is lifted); `per_phase` says which.
         block["holds"] = block["holds"] or phase_holds

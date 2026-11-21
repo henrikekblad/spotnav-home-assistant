@@ -586,7 +586,21 @@ def import_limit_phase_max_kw(
 
     with `p_max` the largest phase's house peak (`house_peaks_a`) and the chargers' last currents (`cars_a`) on that
     phase. The second does not depend on `L`: where the house and the cars alone can pass the fuse on a phase beyond
-    what the plant can put out there, no limit guards and the HA-down cap stays."""
+    what the plant can put out there, no limit guards and the HA-down cap stays.
+
+    **The margin** the shell passes is the site's own safety margin as the person set it for load balancing
+    (`core.electric.stored_safety_margin_a`, 1 A by default for a new site; 0 A on the owner's, where 13.8 kW, the
+    fuse itself, is allowed on 20 A), not the executor's `HEADROOM_MARGIN_A`: the plant holds the phase at `L / 3` in
+    **kW**, so a voltage dip turns the same power into more current (4.6 kW is 20 A at 230 V, 20.9 A at 220 V), and
+    the plant's own loop overshoots for a reading or two after a step. Both are small and short against what a fuse
+    carries: a gG or diazed fuse carries 1.13 to 1.25 times its rating for long periods (IEC 60269: the conventional
+    non-fusing current, 1.25 times for an hour for gG from 16 A; a breaker 1.13 times), which is why the person's own
+    margin is trusted here.
+
+    **Residual risk accepted** (owner decision 2026-11-21): with Home Assistant down nothing re-checks the readings,
+    so a second fault in that time leaves the charge standing without this guard: the grid sensor dropping (the
+    limit has nothing to measure), 40040 raised or 40030 turned off in the app. That is the exposure Sigenergy's own
+    AI mode runs with every day; while Home Assistant runs, each look re-reads all of them and falls back to the cap."""
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return None
     assert main_fuse_a is not None
@@ -689,6 +703,7 @@ def grid_charge_cap_kw(
     house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
     import_limit_acts: bool = False, house_phase_peaks_a: Mapping[str, float] | None = None,
     import_limit_per_phase: bool = False, phase_output_max_kw: float | None = None,
+    phase_margin_a: float | None = None,
 ) -> float | None:
     """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
     stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
@@ -706,9 +721,11 @@ def grid_charge_cap_kw(
     plant's limit is a total, so that is less than the fuse as three-phase power), or while the plant holds that
     limit **per phase** (`import_limit_per_phase`: the shell found the recipe's `commands.ImportLimitPhases` recorded
     as field-tested and every reading it needs as it must be, now) and it reads at most what keeps every phase under
-    the fuse that way (`import_limit_phase_holds`). With the fuse unknown no grid charge may run (0)."""
+    the fuse that way (`import_limit_phase_holds`), with `phase_margin_a` (the site's own safety margin, see
+    `import_limit_phase_max_kw`; `None`: `margin_a`). With the fuse unknown no grid charge may run (0)."""
     if import_limit_per_phase and import_limit_phase_holds(
-        import_limit_kw, main_fuse_a, volts_between_phases, margin_a=margin_a, cars_a=cars_a,
+        import_limit_kw, main_fuse_a, volts_between_phases,
+        margin_a=margin_a if phase_margin_a is None else phase_margin_a, cars_a=cars_a,
         house_peak_kw=house_peak_kw, house_phase_peaks_a=house_phase_peaks_a, phase_output_max_kw=phase_output_max_kw,
     ):
         return None

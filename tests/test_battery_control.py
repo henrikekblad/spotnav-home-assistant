@@ -1093,7 +1093,8 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     # The limit's entity is disabled (the integration's default): nothing read, the suggestion still made.
     block = control.status()["grid_charge_cap"]["import_limit"]
     # Held per phase (`commands.ImportLimitPhases`): never while the owner's on-site test is not recorded.
-    unrecorded = {"max_kw": 12.47, "holds": False, "why": "not_field_tested"}
+    # The per-phase rule counts the site's own safety margin (1 A by default): 3 x 19 A x 231 V.
+    unrecorded = {"max_kw": 13.16, "holds": False, "why": "not_field_tested"}
     assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": "sources_unknown",
                      "per_phase": unrecorded}
     await _looks(control, dt_util.now(), 1)
@@ -1291,6 +1292,29 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
         assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW, "today's rule: no charge"
     if case == "car":
         assert cap["import_limit"]["per_phase"]["max_kw"] is None, "the house and the car alone pass the fuse"
+
+
+@pytest.mark.parametrize(("margin", "limit", "held"), [(0.0, "13.8", True), (1.0, "13.8", False), (1.0, "13.1", True),
+                                                       (None, "13.8", False)])
+async def test_a_limit_held_per_phase_counts_the_site_s_own_safety_margin(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], margin: float | None,
+    limit: str, held: bool,
+) -> None:
+    """The owner's 20 A fuse with his margin of 0 A allows 13.8 kW (the fuse itself, 3 x 20 A x 231 V = 13.86 kW); a
+    site with the default 1 A, 13.16 kW. The total rule and the executor keep their own margin."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _field_tested(monkeypatch)
+    _per_phase_plant(hass)
+    _import_limit(hass, limit)
+    data = {k: v for k, v in site.data.items() if k != "safety_margin_a"}
+    hass.config_entries.async_update_entry(site, data=data if margin is None else {**data, "safety_margin_a": margin})
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, import_limit_acts=True)
+    await control._async_read_sources(dt_util.now())
+    cap = control.status()["grid_charge_cap"]
+    assert cap["import_limit"]["per_phase"]["holds"] is held, cap
+    assert (cap["cap_kw"] is None) is held
+    assert cap["import_limit"]["max_kw"] == 4.47, "the total rule keeps the executor's 2 A"
 
 
 async def test_a_limit_held_per_phase_is_read_again_at_every_look_and_a_running_charge_falls_back_to_the_cap(

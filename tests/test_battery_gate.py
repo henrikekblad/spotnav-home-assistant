@@ -383,6 +383,11 @@ def test_the_cap_is_lifted_by_a_limit_held_per_phase_only_where_the_shell_found_
     assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=13.8, import_limit_per_phase=True, **rule) == capped
     assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=4.4, import_limit_per_phase=True,
                               import_limit_acts=True, **rule) is None
+    # The per-phase rule's own margin (the site's): 0 A lets the fuse itself guard, the total rule keeps `margin_a`.
+    assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=13.8, import_limit_per_phase=True, phase_margin_a=0.0,
+                              **rule) is None
+    assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=13.8, import_limit_per_phase=True, phase_margin_a=1.0,
+                              **rule) == capped
     # A car's last current that the plant cannot cover on its phase: the cap again.
     car = {**rule, "cars_a": 6.0}
     assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=12.4, import_limit_per_phase=True, **car) == 0.0
