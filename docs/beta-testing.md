@@ -63,7 +63,7 @@ per site, and once more after a SpotNav update or a new plant firmware.
 While the battery part runs, SpotNav holds every charger on the site stopped: no plan, sun or Start starts one, and
 a charge a charger begins by itself is stopped. An OCPP charger is set unavailable meanwhile (the `ocpp` integration's
 **Availability** switch) and set back to available afterwards, also at the next start should Home Assistant stop in
-the middle. Do not start a car charge during the test. A test with a battery
+the middle. Do not start a car charge during the test: one started anyway is stopped, and you have to start it again afterwards. A test with a battery
 part does not start while a car charges; stop the charge first. The chargers are let go as soon as the battery part
 is over, and a plan whose window is open starts again.
 
