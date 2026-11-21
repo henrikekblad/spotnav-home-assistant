@@ -1154,6 +1154,33 @@ async def test_the_import_limit_rule_is_refused_where_the_plant_does_not_see_eve
     assert control.import_limit_guards() is (case == "dc_charger")
 
 
+async def test_a_charger_the_hardware_test_holds_counts_nothing_only_in_the_test_s_caps(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=40.0)
+    control = await _started(hass, site, controller, plan_source=lambda _now: None)
+    charger = (controller.config.get("charger_entry_ids") or [])[0]
+    monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, entry_id: 16.0)
+    counted: list[str] = []
+    monkeypatch.setattr(
+        type(controller.charger_test_hold), "counts_nothing", lambda self, entry_id: counted.append(entry_id) or True
+    )
+    now = dt_util.now()
+    assert control._cars_allowed_a(held_off=True) == 16.0, "only while a hardware test runs"
+    control._hw_run = True
+    assert control._cars_allowed_a() == 16.0, "normal control never asks the hold"
+    assert counted == []
+    assert control._cars_allowed_a(held_off=True) == 0.0 and counted == [charger]
+    held = control._phase_caps_kw(now, held_off=True)
+    assert all(a >= b for a, b in zip(held, control._phase_caps_kw(now), strict=True))
+    assert sum(held) > sum(control._phase_caps_kw(now)), "16 A more room on each phase"
+    # Where the hold says the charger may not count nothing, it keeps its current.
+    monkeypatch.setattr(type(controller.charger_test_hold), "counts_nothing", lambda self, entry_id: False)
+    assert control._cars_allowed_a(held_off=True) == 16.0
+    assert control._phase_caps_kw(now, held_off=True) == control._phase_caps_kw(now)
+    control._hw_run = False
+
+
 async def test_the_import_limit_guards_a_charger_only_while_it_holds_now_counting_the_other_chargers(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
