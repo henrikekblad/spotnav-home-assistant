@@ -430,7 +430,7 @@ describe("the popover from the house card", () => {
     expect(form.textContent).toContain("batteriet fortsätter ladda med den effekt det fick sist");
     expect(form.querySelectorAll("li")).toHaveLength(3);
     expect(form.textContent).toContain(
-      "Jag förstår och accepterar att en säkring kan lösa ut om Home Assistant stannar under en nätladdning av husbatteriet.",
+      "Jag förstår och accepterar att en säkring kan lösa ut om Home Assistant stannar eller tappar kontakten med batteriet eller elmätaren under en nätladdning av husbatteriet.",
     );
     const box = form.querySelector<HTMLInputElement>("input[type='checkbox'][data-field='accept_ha_down']")!;
     expect(box.checked).toBe(false);
@@ -449,7 +449,7 @@ describe("the popover from the house card", () => {
     popover = await open(accepted.root);
     expect(popover.querySelector("[data-row='battery_control_accept_ha_down']")!.textContent).toBe("Om Home Assistant stannarGodkänt");
     expect(popover.querySelector("[data-help='battery_control_accept_ha_down']")!.textContent).toBe(
-      "Godkänt att en säkring kan lösa ut om Home Assistant stannar under en nätladdning av husbatteriet. Bara en administratör kan ändra det.",
+      "Godkänt att en säkring kan lösa ut om Home Assistant stannar eller tappar kontakten med batteriet eller elmätaren under en nätladdning av husbatteriet. Bara en administratör kan ändra det.",
     );
   });
 

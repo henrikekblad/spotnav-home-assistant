@@ -1191,7 +1191,7 @@
         },
         "battery_control_accept_ha_down": {
           "name": "Home Assistant nede accepteret",
-          "description": "Personen accepterer, at en sikring kan springe, hvis Home Assistant stopper under en netopladning af husbatteriet; opladningen begrænses da til, hvad sikringen tåler med et tomt hus."
+          "description": "Personen accepterer, at en sikring kan springe, hvis Home Assistant stopper eller mister forbindelsen til batteriet eller elmåleren under en netopladning af husbatteriet; opladningen begrænses da til, hvad sikringen tåler med et tomt hus."
         }
       }
     }

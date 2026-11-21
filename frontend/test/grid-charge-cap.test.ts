@@ -311,7 +311,7 @@ describe("the Home Assistant down acceptance", () => {
     const view = haDownView("sv", status({ ha_down: { ...offered, offered: false } }, ["grid_charge"], accepted), false);
     expect(view).toEqual({
       kind: "line",
-      text: "Godkänt att en säkring kan lösa ut om Home Assistant stannar under en nätladdning av husbatteriet. Bara en administratör kan ändra det.",
+      text: "Godkänt att en säkring kan lösa ut om Home Assistant stannar eller tappar kontakten med batteriet eller elmätaren under en nätladdning av husbatteriet. Bara en administratör kan ändra det.",
     });
     expect(haDownView("sv", status({}, ["grid_charge"], accepted), true)?.kind).toBe("row");
     expect(gridChargeCapLine("sv", status({ rule: "accepted", cap_kw: 13.16 }, ["grid_charge"], accepted))).toBe(

@@ -1191,7 +1191,7 @@
         },
         "battery_control_accept_ha_down": {
           "name": "Arrêt de Home Assistant accepté",
-          "description": "La personne accepte qu'un fusible puisse sauter si Home Assistant s'arrête pendant une charge réseau de la batterie domestique ; la charge est alors limitée à ce que le fusible permet avec une maison vide."
+          "description": "La personne accepte qu'un fusible puisse sauter si Home Assistant s'arrête ou perd le contact avec la batterie ou le compteur électrique pendant une charge réseau de la batterie domestique ; la charge est alors limitée à ce que le fusible permet avec une maison vide."
         }
       }
     }

@@ -1191,7 +1191,7 @@
         },
         "battery_control_accept_ha_down": {
           "name": "Uitval van Home Assistant geaccepteerd",
-          "description": "De persoon accepteert dat een zekering kan springen als Home Assistant stopt tijdens het laden van de thuisbatterij vanaf het net; het laden wordt dan begrensd op wat de zekering toelaat met een leeg huis."
+          "description": "De persoon accepteert dat een zekering kan springen als Home Assistant stopt of het contact met de batterij of de elektriciteitsmeter verliest tijdens het laden van de thuisbatterij vanaf het net; het laden wordt dan begrensd op wat de zekering toelaat met een leeg huis."
         }
       }
     }
