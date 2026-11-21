@@ -270,7 +270,7 @@ async def test_an_ocpp_charger_out_of_service_counts_nothing_and_is_set_back(
     await hass.async_block_till_done()
     assert sent == ["off"] and hold.counts_nothing("ocpp") is True
     # Kept before the command went out, so a restart in the middle finds it.
-    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {"ocpp": {"entity_id": SWITCH}}
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {SWITCH: {"chargers": ["ocpp"]}}
     ocpp.charging = True
     assert hold.counts_nothing("ocpp") is False, "charging after all: counted"
     ocpp.charging = False
@@ -312,14 +312,14 @@ async def test_an_ocpp_charger_left_out_of_service_by_a_restart_is_set_back_at_t
 ) -> None:
     hass_storage[charger_test_hold.store_key("site_1")] = {
         "version": 1, "key": charger_test_hold.store_key("site_1"),
-        "data": {"unavailable": {"ocpp": {"entity_id": SWITCH}}},
+        "data": {"unavailable": {SWITCH: {"chargers": ["ocpp"]}}},
     }
     sent = _availability(hass, state="off")
     hass.states.async_set(SWITCH, "unavailable")  # the charge point not connected yet
     hold = _hold(hass, {"ocpp": _Ocpp()})
     await hold.async_load()
     await hass.async_block_till_done()
-    assert sent == [] and hold.unavailable_kept == ["ocpp"]
+    assert sent == [] and hold.unavailable_kept == [SWITCH]
     hass.states.async_set(SWITCH, "off")
     freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
     async_fire_time_changed(hass)
@@ -327,3 +327,23 @@ async def test_an_ocpp_charger_left_out_of_service_by_a_restart_is_set_back_at_t
     assert sent == ["on"] and hold.unavailable_kept == []
     assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {}
     await hold.async_close()
+
+
+async def test_two_connectors_of_one_charge_point_share_its_switch_taken_out_and_set_back_once(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The safety review (2026-11-21): one value kept per charger, two chargers on one station entity, and the
+    restore wrote the first one's value back, then the second one's (the test's own)."""
+    sent = _availability(hass)
+    first, second = _Ocpp(), _Ocpp()
+    second.ocpp_target = SimpleNamespace(charge_point_id="halo_charger", connector_id=2)
+    hold = _hold(hass, {"first": first, "second": second})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    assert sent == ["off"]
+    assert hold.counts_nothing("first") is True and hold.counts_nothing("second") is True
+    assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {
+        SWITCH: {"chargers": ["first", "second"]}}
+    hold.release()
+    await hold.async_restore_availability()
+    assert sent == ["off", "on"] and hass.states.get(SWITCH).state == "on" and hold.unavailable_kept == []

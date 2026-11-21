@@ -162,9 +162,11 @@ class ChargerTestHold:
         self._refused: set[str] = set()
         #: Per charger, the stops sent under this hold and when the last one was.
         self._stops: dict[str, tuple[int, datetime]] = {}
-        #: Per OCPP charger taken out of service: its availability switch (kept in the store until set back), and the
-        #: chargers whose switch read off under this hold.
+        #: The availability switches taken out of service, by entity id (one charge point's switch is shared by every
+        #: connector's charger, so it is kept, and set back, once), kept in the store until set back; each charger's
+        #: switch; and the chargers whose switch read off under this hold.
         self._parked: dict[str, dict[str, Any]] = {}
+        self._switch_of: dict[str, str] = {}
         self._out: set[str] = set()
         self._park_task: asyncio.Task[None] | None = None
         self._restore_lock = asyncio.Lock()
@@ -261,7 +263,7 @@ class ChargerTestHold:
             return False
         if charger_entry_id in self._out:
             # An OCPP charger taken out of service: its switch reads off now and it is not charging (see the module).
-            entity_id = (self._parked.get(charger_entry_id) or {}).get("entity_id")
+            entity_id = self._switch_of.get(charger_entry_id)
             state = None if entity_id is None else self._site.hass.states.get(entity_id)
             try:
                 return state is not None and state.state == "off" and not controller.charging
@@ -306,6 +308,9 @@ class ChargerTestHold:
         refused, self._refused = sorted(self._refused), set()
         self._stops = {}
         self._out = set()
+        self._switch_of = {
+            charger: entity for charger, entity in self._switch_of.items() if entity in self._parked
+        }
         if was_on:
             _LOGGER.info("SpotNav site %s: the hardware test's hold of the chargers ended", self._site.entry_id)
         return refused
@@ -341,9 +346,11 @@ class ChargerTestHold:
         kept = (raw or {}).get("unavailable") if isinstance(raw, dict) else None
         if not isinstance(kept, dict):
             return
-        for charger_entry_id, row in kept.items():
-            if isinstance(row, dict) and isinstance(row.get("entity_id"), str):
-                self._parked[str(charger_entry_id)] = {"entity_id": row["entity_id"]}
+        for entity_id, row in kept.items():
+            if isinstance(entity_id, str) and entity_id.startswith("switch.") and isinstance(row, dict):
+                chargers = row.get("chargers")
+                self._parked[entity_id] = {"chargers": [str(item) for item in chargers] if isinstance(chargers, list)
+                                           else []}
         if self._parked:
             _LOGGER.warning(
                 "SpotNav site %s: a hardware test was cut short with an OCPP charger out of service; it is set back "
@@ -382,10 +389,21 @@ class ChargerTestHold:
                 return
             entity_id = station_availability_entity(hass, self._controller(charger_entry_id))
             state = None if entity_id is None else hass.states.get(entity_id)
+            if entity_id is not None and entity_id in self._parked:
+                # Another connector of the same charge point: taken out with it, and set back once.
+                if charger_entry_id not in self._parked[entity_id]["chargers"]:
+                    self._parked[entity_id]["chargers"].append(charger_entry_id)
+                self._switch_of[charger_entry_id] = entity_id
+                if any(self._switch_of.get(other) == entity_id for other in self._out):
+                    self._out.add(charger_entry_id)
+                with contextlib.suppress(Exception):
+                    await self._async_save()
+                continue
             if entity_id is None or state is None or state.state != "on":
                 # Not there, not reachable, or already out of service by someone else's word: left as it is.
                 continue
-            self._parked[charger_entry_id] = {"entity_id": entity_id}
+            self._parked[entity_id] = {"chargers": [charger_entry_id]}
+            self._switch_of[charger_entry_id] = entity_id
             try:
                 # Kept before the command goes out: Home Assistant stopping right after it must still set it back.
                 await self._async_save()
@@ -419,10 +437,10 @@ class ChargerTestHold:
                 await task
         async with self._restore_lock:
             failed = False
-            for charger_entry_id, row in list(self._parked.items()):
-                if self.active and charger_entry_id in self._out:
+            for entity_id, row in list(self._parked.items()):
+                charger_entry_id = ", ".join(row.get("chargers") or []) or entity_id
+                if self.active and any(item in self._out for item in row.get("chargers") or []):
                     continue  # a new hold holds it again
-                entity_id = row["entity_id"]
                 state = self._site.hass.states.get(entity_id)
                 try:
                     if state is None or state.state == "unavailable":
@@ -436,7 +454,7 @@ class ChargerTestHold:
                         "(%s)", self._site.entry_id, charger_entry_id, err,
                     )
                     continue
-                self._parked.pop(charger_entry_id, None)
+                self._parked.pop(entity_id, None)
                 _LOGGER.info("SpotNav site %s: OCPP charger %s is operative again", self._site.entry_id, charger_entry_id)
             try:
                 await self._async_save()
@@ -463,7 +481,7 @@ class ChargerTestHold:
 
     @property
     def unavailable_kept(self) -> list[str]:
-        """The OCPP chargers still to be set back to operative."""
+        """The availability switches still to be set back to operative."""
         return sorted(self._parked)
 
     async def async_close(self) -> None:
