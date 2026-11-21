@@ -74,6 +74,7 @@ from .car_plug_fallback import CarPlugFallback, plan_vehicle, SOURCE_CAR_PLUG
 from .charger_entities import charger_conflicts, charger_is_disabled, FixableConflict
 from .power_energy import integrated_energy_unique_id, read_power_w
 from .chargers.adapter import build_adapter, ChargerAdapter, PRE_SPOTNAV_CURRENT_STORE_KEY, PreSpotnavCurrent
+from .chargers.sigenergy import EVDC_START_MARGIN_A
 from .charger_profiles import PATH_BUTTONS_TOGGLE
 from .chargers.base import (
     ASSIGN_ASSIGNED,
@@ -3604,6 +3605,15 @@ class ChargingController:
         floor = self.min_current_a
         return min(amps, max(amps_at_floor(floor, floor), amps_at_floor(allowance, floor)))
 
+    @staticmethod
+    def _start_needs_a(floor: float) -> float:
+        """The least allowance a capped start goes out at: the floor, and for a floor below 6 A (a DC charger's, given a
+        power whose grid draw at the lowest limit is not yet measured) `EVDC_START_MARGIN_A` more, so a start at the
+        floor never takes the whole allowance."""
+        if floor < DEFAULT_MIN_CURRENT_A:
+            return floor + EVDC_START_MARGIN_A
+        return floor
+
     def _tell_site(self, amps: float, reason: str) -> None:
         """Tell the site a current that went to the charger outside its regulator. Never raises."""
         record = self._site_record
@@ -3977,7 +3987,7 @@ class ChargingController:
                     # record, so the regulator resumes the charge when headroom returns).
                     allowance = self._start_allowance_a() if capped else None
                     floor = self.min_current_a
-                    if allowance is not None and allowance < floor - 1e-9:
+                    if allowance is not None and allowance < self._start_needs_a(floor) - 1e-9:
                         too_low = allowance
                     else:
                         if allowance is not None:
@@ -4010,7 +4020,7 @@ class ChargingController:
                     self._reserve_start(None)
                 raise
             if too_low is not None:
-                await self._hold_start_for_room(manual, cause, too_low, self.min_current_a)
+                await self._hold_start_for_room(manual, cause, too_low, self._start_needs_a(self.min_current_a))
                 return False
         elif self.current_control == CURRENT_CONTROL_POWER and self._writes_current_at_start and not self._control_on:
             # No current named: the limit the charger carries must still be within what it may draw.

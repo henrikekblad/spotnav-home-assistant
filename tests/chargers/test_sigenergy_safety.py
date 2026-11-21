@@ -617,18 +617,20 @@ async def test_load_balancing_holds_a_dc_charger_at_its_floor_and_pauses_below_i
 
 
 async def test_a_start_within_a_small_allowance_starts_at_the_floor(hass: HomeAssistant, frozen: Any) -> None:
-    """The site allows 2.5 A: the start goes out at the floor (1.50 kW), not held back below a 6 A floor, and never
-    above the allowance; at 2 A it is held back."""
+    """The site allows 2.7 A: the start goes out at the floor (1.50 kW), not held back below a 6 A floor, and never
+    above the allowance. A start needs half an ampere above the floor (`EVDC_START_MARGIN_A`): at 2.6 A it is held
+    back, so a start never takes the whole allowance."""
     controller, presses, charger = await _evdc_controller(hass, limit_kw=1.0)
     calls = _mock_writes(hass)
-    controller.set_start_cap(lambda: 2.5)
+    assert sigenergy.EVDC_START_MARGIN_A == 0.5
+    controller.set_start_cap(lambda: 2.7)
 
     assert await controller.async_start(amps=16, manual=True) is True
 
     assert calls[-1].data["value"] == pytest.approx(1.503, abs=0.001)
     assert [call.data["entity_id"] for call in presses] == [START]
     await controller.async_stop()
-    controller.set_start_cap(lambda: 2.0)
+    controller.set_start_cap(lambda: 2.6)
     frozen.tick(60)
 
     assert await controller.async_start(amps=16, manual=True) is False

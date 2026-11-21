@@ -79,8 +79,14 @@ from .registry import ChargerContext, register_current
 _LOGGER = logging.getLogger(__name__)
 
 #: The lowest power the charger is taken to hold, in kW (Sigenergy's own surplus mode charges down to about it): a
-#: limit below it is never written, and it is the charger's floor as a current per phase (`PowerCurrent.min_a`).
+#: limit below it is never written, and it is the charger's floor as a current per phase (`PowerCurrent.min_a`). TO BE
+#: CONFIRMED by the tester: it is load-bearing (the sun starts and load balancing holds a charge at it), but what the
+#: charger really holds, and what the grid draws at it, has not been measured on site.
 EVDC_MIN_POWER_KW: Final = 1.5
+#: What a start capped by the site's allowance must leave above the floor, in amperes per phase: a start at exactly the
+#: allowance would overshoot it if the real grid draw at a 1.5 kW limit is a little higher than the limit (the
+#: inverter's losses, not yet measured). Only for a floor below 6 A (`ChargingController._start_command_locked`).
+EVDC_START_MARGIN_A: Final = 0.5
 #: How long after a limit write a raise waits, so the charger has followed the last write before it is given more.
 #: A lowering only waits for the policy's 10 s. TO BE CONFIRMED with how fast the charger follows a new limit.
 EVDC_SETTLE_S: Final = 30.0
