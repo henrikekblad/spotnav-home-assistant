@@ -11,9 +11,11 @@ and re-reads the cars' plug and tracker entities with `homeassistant.update_enti
 ask deadline, at most once a minute per car (the refresh limiter `vehicle_refresh.py` keeps).
 
 * strong +: the car's own plug sensor went on from five minutes before the plug-in;
-* weak +: it is on but went on earlier, or the tracker says home;
+* weak +: it is on but went on earlier, or the tracker says home (a weak + only orders the question's buttons: it
+  never decides, excludes, or holds the camera back);
 * strong -: the car's plug sensor went to "not plugged" around or after the plug-in (one that only says it again
-  says nothing: a cloud cache is re-written on every poll), a position away from home reported after the plug-in
+  says nothing: a cloud cache is re-written on every poll, and one that has said "off" since before the plug-in
+  neither excludes nor supports the car), a position away from home reported after the plug-in
   or at most two minutes before it and not the echo of any of SpotNav's own re-reads at this plug-in (an older one
   may be the drive home; a slow cloud's echo stays an echo after a later re-read), or the car identified at another
   SpotNav charger that is connected (a car just decided there counts at once).
@@ -29,8 +31,10 @@ or away with no other car decided brings the question back. A person's answer en
 
 **The camera** (optional, `camera_rule.py`, `camera_identification.py`): while nothing has decided and two or
 more cars are left (one at a one-car charger), the charger's camera is asked once (one retry after an error) before
-the question. Its answer decides alone only at high confidence between cars that differ in colour, each with a
-reference picture; otherwise it puts the car it names first among the question's buttons. Its answer "none of these
+the question. Its answer decides alone only at high confidence, each car left with a reference picture and no other
+car's own plug sensor just gone on: by day between cars that differ in colour, at night for a car with a night
+reference picture (`camera_rule.camera_reason`); otherwise it puts the car it names first among the question's
+buttons. Its answer "none of these
 cars" (`camera_rule.ANSWER_OTHER`) never decides a guest: it puts "Guest car" first, and at high confidence it
 counts as the cars with a reference picture ruled out (so a one-car charger asks). A query that takes longer than
 `camera_rule.QUERY_TIMEOUT_S` is ignored. **Always ask** asks at the plug-in, the buttons ordered by evidence, and
@@ -1201,15 +1205,22 @@ class VehicleIdentifier:
                 self._save()
             self._evaluate()
             return
+        # What else the camera's answer is weighed against: which cars have a night picture to be recognised by
+        # in the dark, and which cars' own plug sensors went on at this plug-in (a reading that did not change
+        # across the plug-in is neither for nor against a car).
+        weigh = {
+            "night": self._camera.night_references(remaining),
+            "plugged": {item.vehicle_id for item in evidence if item.negative is None and item.positive == STRONG},
+        }
         if session.single:
             # A one-car charger's car is the only candidate: the camera naming it decides nothing new.
             if history is not None:
-                history.update(camera_reason=camera_reason(answer, confidence, remaining, references, now)[0])
+                history.update(camera_reason=camera_reason(answer, confidence, remaining, references, now, **weigh)[0])
                 self._save()
             return
-        verdict = camera_verdict(answer, confidence, remaining, references, now)
+        verdict = camera_verdict(answer, confidence, remaining, references, now, **weigh)
         if history is not None:
-            reason, distance = camera_reason(answer, confidence, remaining, references, now)
+            reason, distance = camera_reason(answer, confidence, remaining, references, now, **weigh)
             history.update(camera_reason=reason, colour_distance=distance, used=verdict.prefers is not None)
             self._save()
         if verdict.prefers is None:

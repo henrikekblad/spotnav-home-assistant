@@ -47,7 +47,7 @@ from .camera_pictures import (
     SIGNATURE_VERSION,
     thumbnail_jpeg,
 )
-from .camera_rule import answer_structure, instructions_for, labels_for, parse_answer, Signature
+from .camera_rule import answer_structure, instructions_for, labels_for, parse_answer, PICTURE_NIGHT, Signature
 from .camera_settings import CameraSettings, normalised, same_frame
 
 _LOGGER = logging.getLogger(__name__)
@@ -256,6 +256,11 @@ class CameraIdentification:
             ]
             for car in vehicles
         }
+
+    def night_references(self, vehicles: Sequence[str]) -> set[str]:
+        """The cars among `vehicles` with a usable night reference picture: at night, the ones the camera may
+        decide for (`camera_rule.camera_reason`)."""
+        return {car for car in vehicles if any(item.kind == PICTURE_NIGHT for item in self.usable(car))}
 
     def ready_for(self, vehicles: Sequence[str]) -> bool:
         """Whether a query among `vehicles` can say anything: a camera is chosen and one of them has a reference."""
