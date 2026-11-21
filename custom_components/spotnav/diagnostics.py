@@ -39,6 +39,7 @@ from .runtime import (
     price_data,
     site_controller_for,
 )
+from .site.flexible_loads import flexible_loads
 from .site.import_target import stored_import_target_kw
 from .site.regulator import RegulatorDecision
 from .site.site_capacity import ChargerAllocation, site_activity, SiteCapacityResult
@@ -407,6 +408,11 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
             "too_slow_for_load_balancing": sorted(controller.slow_meters),
             "load_balancing_held": sorted(controller.load_balancing_slow_meters),
         },
+        # Every load the plan can move in one shape (`site/flexible_loads.py`): per load its goal, handles, hard
+        # rules, give and choices. Descriptions only: nothing plans from them yet.
+        "flexible_loads": None
+        if controller is None
+        else _part_snapshot(lambda: [load.as_dict() for load in flexible_loads(controller)]),
     }
 
 
