@@ -41,6 +41,16 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   stays. Recorded for Sigenergy after the owner's on-site test of 2026-11-21. The residual risk is accepted (owner
   decision 2026-11-21): a second fault while Home Assistant is down (the grid sensor dropping, 40040 raised or 40030
   turned off in the app) goes unchecked until Home Assistant reads again, as it does under Sigenergy's own AI mode.
+* `battery_control_accept_ha_down` (default off; administrators only, like every option): the person accepts that if
+  Home Assistant stops during a grid charge of the home battery and the house draws a lot, a phase may pass the main
+  fuse and the fuse may open (owner decision 2026-11-21, for brands without the per-phase hold above). With it the
+  HA-down cap above is not reckoned with the house at its peak: a grid charge is capped at what the fuse allows with
+  an **empty** house, each phase's fuse less the site's own safety margin (`ha_down_accepted_cap_kw`,
+  `grid_charge_phase_caps_kw`), so a command can never ask for more than an empty house could take. The live clamp
+  per phase while Home Assistant runs (`executor._phase_room_kw`, `HEADROOM_MARGIN_A`, every look), the write caps,
+  the read-back, the hand-back and the chargers' load balancing are unchanged. It changes nothing where the plant's
+  own import limit guards the fuse (either rule above: no cap of this kind) or a recipe's own dead-man does
+  (`silence_guards`): those come first, and the card does not offer it there.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -96,12 +106,14 @@ CONF_ALLOW_SELL: Final = "battery_control_allow_sell"
 #: The site's battery mode (the plan's `plan_runtime.MODE_KEY`).
 CONF_MODE: Final = "battery_mode"
 CONF_IMPORT_LIMIT_ACTS: Final = "battery_control_import_limit_acts"
+CONF_ACCEPT_HA_DOWN: Final = "battery_control_accept_ha_down"
 #: Every option and its default.
 DEFAULTS: Final[Mapping[str, bool]] = {
     CONF_ENABLED: False,
     CONF_SHADOW_ONLY: True,
     CONF_AI_TAKEOVER_ACK: False,
     CONF_IMPORT_LIMIT_ACTS: False,
+    CONF_ACCEPT_HA_DOWN: False,
 }
 #: The keys a write may set: the booleans above and the mode.
 WRITABLE: Final = (*DEFAULTS, CONF_MODE)
@@ -182,6 +194,7 @@ class Options:
     ai_takeover_ack: bool = False
     mode: str = DEFAULT_MODE
     import_limit_acts: bool = False
+    accept_ha_down: bool = False
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any], *, shadow_default: bool = True) -> Options:
@@ -193,6 +206,7 @@ class Options:
             ai_takeover_ack=_flag(config.get(CONF_AI_TAKEOVER_ACK), False),
             mode=_mode(config),
             import_limit_acts=_flag(config.get(CONF_IMPORT_LIMIT_ACTS), False),
+            accept_ha_down=_flag(config.get(CONF_ACCEPT_HA_DOWN), False),
         )
 
     @property
@@ -211,7 +225,8 @@ class Options:
         """The payload's options."""
         return {
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
-            CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_MODE: self.mode,
+            CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_ACCEPT_HA_DOWN: self.accept_ha_down,
+            CONF_MODE: self.mode,
         }
 
 
@@ -655,7 +670,7 @@ def silence_guards(silence_fallback_s: float | None) -> bool:
 def grid_charge_phase_caps_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, house_phase_peaks_a: Mapping[str, float] | None = None,
-    silence_fallback_s: float | None = None,
+    silence_fallback_s: float | None = None, accept_ha_down: bool = False, site_margin_a: float | None = None,
 ) -> tuple[float, float, float]:
     """The most a grid charge may be commanded at on L1, L2 and L3 (kW) where the plant takes a target per phase,
     so that no phase passes the fuse even if Home Assistant stops while it runs (the targets stay, as each charger's
@@ -682,13 +697,22 @@ def grid_charge_phase_caps_kw(
     that (IEC 60898: a breaker holds 1.13 times its rating for an hour and may take an hour to open at 1.45 times;
     a gG fuse 1.25 and 1.6 times). A large load starting on a full phase in that very minute can still open it: the
     cost is a tripped fuse, not a danger, and it is the price of using the phase's live room. A recipe whose
-    fallback takes longer, or is not stated by the maker, keeps the cap above."""
+    fallback takes longer, or is not stated by the maker, keeps the cap above.
+
+    **The person accepted the HA-down risk** (`accept_ha_down`, the site's `battery_control_accept_ha_down`; after a
+    recipe's own dead-man, which needs nothing): each phase's cap is what the fuse allows with an empty house, the
+    fuse less the site's own safety margin (`site_margin_a`; `None`: `margin_a`), and the live clamp per phase is
+    again what bounds the charge while Home Assistant runs. With it down, the house's load rides on top of the last
+    targets and may open the fuse: what the person accepted."""
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return (0.0, 0.0, 0.0)
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
     if silence_guards(silence_fallback_s):
         most = max(main_fuse_a - margin_a, 0.0) * volts / 1000.0
+        return (most, most, most)
+    if accept_ha_down:
+        most = max(main_fuse_a - (margin_a if site_margin_a is None else site_margin_a), 0.0) * volts / 1000.0
         return (most, most, most)
     house = house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a)
     room = [max(main_fuse_a - margin_a - max(cars_a, 0.0) - peak, 0.0) * volts / 1000.0 for peak in house]
@@ -711,7 +735,7 @@ def grid_charge_cap_kw(
     main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
     house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
     import_limit_acts: bool = False, house_phase_peaks_a: Mapping[str, float] | None = None,
-    import_limit_per_phase: bool = False, phase_margin_a: float | None = None,
+    import_limit_per_phase: bool = False, phase_margin_a: float | None = None, accept_ha_down: bool = False,
 ) -> float | None:
     """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
     stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
@@ -730,7 +754,12 @@ def grid_charge_cap_kw(
     limit **per phase** (`import_limit_per_phase`: the shell found the recipe's `commands.ImportLimitPhases` recorded
     as field-tested and every reading it needs as it must be, now) and it reads at most what keeps every phase under
     the fuse that way (`import_limit_phase_holds`), with `phase_margin_a` (the site's own safety margin, see
-    `import_limit_phase_max_kw`; `None`: `margin_a`). With the fuse unknown no grid charge may run (0)."""
+    `import_limit_phase_max_kw`; `None`: `margin_a`). With the fuse unknown no grid charge may run (0).
+
+    `accept_ha_down` (the site's `battery_control_accept_ha_down`, only where neither import-limit rule holds: those
+    come first): the cap is what the fuse allows with an empty house (`ha_down_accepted_cap_kw`, with `phase_margin_a`
+    as the site's own safety margin), not the house at its peak and the chargers' last currents with nobody
+    watching."""
     if import_limit_per_phase and import_limit_phase_holds(
         import_limit_kw, main_fuse_a, volts_between_phases,
         margin_a=margin_a if phase_margin_a is None else phase_margin_a, cars_a=cars_a,
@@ -743,12 +772,30 @@ def grid_charge_cap_kw(
         return None
     if not _fuse_known(main_fuse_a, volts_between_phases, cars_a):
         return 0.0
+    if accept_ha_down:
+        return ha_down_accepted_cap_kw(
+            main_fuse_a, volts_between_phases, margin_a=margin_a if phase_margin_a is None else phase_margin_a,
+            plant_phases=plant_phases,
+        )
     assert main_fuse_a is not None
     volts = phase_volts(volts_between_phases)
     house_a = max(house_peaks_a(volts_between_phases, house_peak_kw, house_phase_peaks_a))
     room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - house_a
     phases = min(max(int(plant_phases), 1), 3)
     return max(room_a, 0.0) * phases * volts / 1000.0
+
+
+def ha_down_accepted_cap_kw(
+    main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, plant_phases: int,
+) -> float:
+    """The grid charge cap once the person accepted the HA-down risk (`battery_control_accept_ha_down`): what the
+    fuse allows with an empty house, the fuse less the site's own safety margin (`margin_a`) on each of the phases
+    the plant spreads its charge over (`plant_phases`, as `grid_charge_cap_kw`; 1 where the brand does not say, so
+    the whole charge may be on one phase). 0 with the fuse unknown."""
+    if main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0:
+        return 0.0
+    phases = min(max(int(plant_phases), 1), 3)
+    return max(main_fuse_a - max(margin_a, 0.0), 0.0) * phases * phase_volts(volts_between_phases) / 1000.0
 
 
 def export_discharge_cap_kw(
