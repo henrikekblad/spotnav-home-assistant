@@ -169,15 +169,19 @@ class Capability:
     site_cap_kw: float | None = None
 
 
-def deliverable_kw(command: Command, capability: Capability, soc_pct: float | None) -> tuple[float | None, str | None]:
-    """What the battery can deliver for the command (kW), or why that cannot be judged."""
+def deliverable_kw(
+    command: Command, capability: Capability, soc_pct: float | None, *, full_soc_pct: float = CHARGE_TAPER_SOC_PCT
+) -> tuple[float | None, str | None]:
+    """What the battery can deliver for the command (kW), or why that cannot be judged. `full_soc_pct`: from this
+    state of charge on a charge is not judged (`CHARGE_TAPER_SOC_PCT`; the hardware test's short charge passes its
+    own, `verify.TEST_CHARGE_SOC_MAX_PCT`)."""
     if command.kind in ("hold", "curtail"):
         return 0.0, None
     if soc_pct is None:
         return None, "soc_unknown"
     if command.kind == "charge":
         rated = capability.rated_charge_kw
-        if soc_pct >= min(capability.soc_max_pct, CHARGE_TAPER_SOC_PCT):
+        if soc_pct >= min(capability.soc_max_pct, full_soc_pct):
             return None, "soc_near_full"
     else:
         rated = capability.rated_discharge_kw

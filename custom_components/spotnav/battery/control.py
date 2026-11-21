@@ -138,7 +138,15 @@ from .plan_model import (
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
-from .verify import MAX_REPORTS, TEST_CHARGE_KW, Sample, Timing, Verification, phase_charge_step
+from .verify import (
+    MAX_REPORTS,
+    TEST_CHARGE_KW,
+    TEST_CHARGE_SOC_MAX_PCT,
+    Sample,
+    Timing,
+    Verification,
+    phase_charge_step,
+)
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -1402,6 +1410,7 @@ class BatteryControl:
             self.verification = Verification(
                 executor, now, firmware=self.facts.firmware, modes=gate.BATTERY_MODES,
                 tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
+                charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT,
             )
             self._hw_run = True
             self._verify_key = None

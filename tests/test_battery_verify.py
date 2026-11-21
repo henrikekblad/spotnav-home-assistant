@@ -10,7 +10,14 @@ from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL, SOLARE
 from custom_components.spotnav.battery.executor import Executor
 from custom_components.spotnav.battery.gate import mode_verdict
 from custom_components.spotnav.battery.monitor import Capability
-from custom_components.spotnav.battery.verify import MAX_REPORTS, Sample, Timing, Verification, keep_report
+from custom_components.spotnav.battery.verify import (
+    MAX_REPORTS,
+    TEST_CHARGE_SOC_MAX_PCT,
+    Sample,
+    Timing,
+    Verification,
+    keep_report,
+)
 from tests.battery_control_fakes import SIGENERGY_STATES, SOLAREDGE_STATES, T0, TICK, FakeBattery, inputs
 
 
@@ -23,6 +30,7 @@ def _verify(
     verification = Verification(
         executor, now, firmware="V100R001C21SPC117", modes=modes,
         timing=Timing.quick() if quick else None, stop_on_fail=quick,
+        **({"charge_soc_max_pct": TEST_CHARGE_SOC_MAX_PCT} if quick else {}),
     )
     failed: tuple[str, ...] = ()
     timed_out: tuple[str, ...] = ()
@@ -179,3 +187,30 @@ def test_the_hardware_test_stops_at_the_first_mode_that_does_not_pass_and_hands_
     # Handed back: nothing SpotNav wrote is left (a limit never set keeps "never set").
     assert {key: value for key, value in battery.states.items() if key != "charge_limit"} == {
         key: value for key, value in SIGENERGY_STATES.items() if key != "charge_limit"}
+
+
+class _NearlyFull(FakeBattery):
+    """A battery at a high charge level that takes `taken` of a grid charge's rate."""
+
+    taken: float = 1.0
+
+    def power_kw(self, action: str | None, rate_kw: float) -> float:
+        power = super().power_kw(action, rate_kw)
+        return power * self.taken if action == "grid_charge" else power
+
+
+def test_the_hardware_test_s_charge_step_is_tried_up_to_98_percent_and_a_short_one_near_full_is_not_judged() -> None:
+    def charge(soc: float, taken: float, *, quick: bool) -> str | None:
+        battery = _NearlyFull(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), soc_pct=soc)
+        battery.taken = taken
+        return _outcomes(_verify(Executor(SIGENERGY_CONTROL), battery, modes=("charge",), quick=quick))["charge"]
+
+    # The routine and normal control keep 90 %.
+    assert charge(95.0, 1.0, quick=False) == "not_judgeable:soc_near_full"
+    # The hardware test tries it up to 98 %: taken in full, obeyed; taken short near full, nothing to judge.
+    assert charge(95.0, 1.0, quick=True) == "obeyed"
+    assert charge(95.0, 0.3, quick=True) == "not_judgeable:battery_full"
+    assert charge(95.0, 0.0, quick=True) == "not_judgeable:battery_full"
+    assert charge(98.0, 1.0, quick=True) == "not_judgeable:soc_near_full"
+    # Below the taper a charge taken short is still a failure.
+    assert charge(60.0, 0.0, quick=True) == "ignored"
