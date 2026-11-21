@@ -5,6 +5,7 @@ write goes to a fake climate service in the test; nothing reaches a device."""
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -13,6 +14,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 
 from custom_components.spotnav.const import CONF_HEAT
 from custom_components.spotnav.heat.shadow_rule import BandHour
+from custom_components.spotnav.heat import zones_control as zones_module
 from custom_components.spotnav.heat.zones_control import ZonesControl
 from custom_components.spotnav.runtime import site_controller_for
 
@@ -309,3 +311,39 @@ async def test_the_zones_state_is_kept_in_the_heat_control_s_store(hass: HomeAss
     await zones.async_look(now)
     data = zones.control._data()  # noqa: SLF001 - what the store keeps
     assert data["zones"]["zones"][FLOOR]["written_c"] == 21.0 and data["zones"]["zones"][FLOOR]["home_c"] == 22.0
+
+
+async def test_the_zones_are_set_back_at_the_stop_at_the_same_time(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """A slow thermostat does not hold up the others: each zone's set-back starts at once and keeps its own bound."""
+    living = "climate.vardagsrum"
+    zones_config = [{"entity_id": FLOOR, "offset_c": 0.0, "control": True}, {"entity_id": living, "offset_c": 0.0, "control": True}]
+    _entry, zones, floor, now = await _running(hass, freezer, {0: "lower", 1: "lower"}, zones=zones_config)
+    other = Thermostat(hass, living)
+    by_id = {FLOOR: floor, living: other}
+
+    async def route(call: ServiceCall) -> None:
+        await by_id[call.data["entity_id"]]._set(call)  # noqa: SLF001
+
+    hass.services.async_remove("climate", "set_temperature")
+    hass.services.async_register("climate", "set_temperature", route)
+    await zones.async_look(now)
+    await zones.async_look(now + MIN)
+    assert floor.setpoint == 21.0 and other.setpoint == 21.0
+
+    # Each call waits until both have started: one after the other, the first would time out and stay held.
+    started: list[str] = []
+    both = asyncio.Event()
+
+    async def gated(call: ServiceCall) -> None:
+        started.append(call.data["entity_id"])
+        if len(started) == 2:
+            both.set()
+        await both.wait()
+        await route(call)
+
+    monkeypatch.setattr(zones_module, "CALL_TIMEOUT_S", 0.5)
+    hass.services.async_remove("climate", "set_temperature")
+    hass.services.async_register("climate", "set_temperature", gated)
+    await zones.async_shutdown()
+    assert sorted(started) == sorted(by_id)
+    assert floor.setpoint == 22.0 and other.setpoint == 22.0 and not zones.holds_any()

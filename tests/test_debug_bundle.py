@@ -8,6 +8,7 @@ import logging
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.debug_bundle import (
+    _related_integrations,
     async_build_debug_bundle,
     redact_bundle,
     REDACTED,
@@ -484,3 +485,16 @@ def test_the_bundle_is_detached_from_live_containers_before_the_executor_redacts
     assert redact_bundle(copy, scrubber) == redact_bundle(
         {"rows": [{"a": 1}], "set": {"x"}, "tuple": (1, "token"), "text": "plain"}, scrubber
     )
+
+
+async def test_a_charger_stored_by_profile_key_is_noted_by_its_integration(hass: HomeAssistant) -> None:
+    """Sigenergy's AC charger is stored as the profile key `sigen_ac`; the integration it runs on is `sigen`."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.spotnav.const import CONF_CHARGER_PLATFORM, DOMAIN
+
+    ac = MockConfigEntry(domain=DOMAIN, data={CONF_CHARGER_PLATFORM: "sigen_ac"})
+    other = MockConfigEntry(domain=DOMAIN, data={CONF_CHARGER_PLATFORM: "easee"})
+    related = await _related_integrations(hass, [ac, other], (), ())
+    charger_domains = {item["domain"] for item in related if "charger" in item["roles"]}
+    assert charger_domains == {"sigen", "easee"}
