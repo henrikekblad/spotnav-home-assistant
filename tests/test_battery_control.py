@@ -1419,6 +1419,9 @@ async def test_the_ha_down_acceptance_is_offered_only_where_the_ha_down_cap_bind
     cap = control.status()["grid_charge_cap"]
     assert cap["rule"] == "accepted" and cap["cap_kw"] == 13.16 and cap["ha_down"]["offered"] is True
     assert cap["cap_conservative_kw"] < gate.MIN_RATE_KW, "the HA-down rule's own figure, the acceptance left out"
+    # The debug bundle's battery part carries the option and the offer.
+    snapshot = control.snapshot()["status"]
+    assert snapshot["options"][gate.CONF_ACCEPT_HA_DOWN] is True and snapshot["grid_charge_cap"]["ha_down"]["offered"]
     # Battery control off: no offer (nothing to change).
     _options(hass, site, enabled=False)
     assert control.status()["grid_charge_cap"]["ha_down"]["offered"] is False

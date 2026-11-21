@@ -440,6 +440,24 @@ Sigenergy app …"). Once everything holds it says so instead of the cap: "Sigen
 it sets a low limit, runs the load steps above with markers and puts every value back afterwards. `--dry-run`
 writes nothing.
 
+### Accepting the risk if Home Assistant stops (other brands)
+
+Without the plant's own per-phase hold above, the cap reckons with Home Assistant stopping mid-charge: the battery
+keeps charging at the power it was last given, and the house may be at its peak meanwhile. On a 16–20 A fuse that
+often leaves almost no grid charge. An administrator can accept that risk instead: in the card's battery settings,
+"If Home Assistant stops" is shown only where it would make a real difference (battery control on, a plant that can
+charge from the grid, the cap clearly below what the fuse allows with an empty house). Tick "I understand and
+accept …" in its editor.
+
+With it on, the cap is what the fuse allows with an **empty** house: each phase's fuse less the site's safety margin,
+so a command never asks for more than an empty house could take. Everything that works while Home Assistant runs is
+unchanged: the phases are read every 10 seconds and the charge is lowered (or handed back) when the house draws
+more, the write caps, the read-back, the hand-back and the chargers' load balancing. What you accept: if Home
+Assistant stops during a grid charge of the home battery and the house draws a lot before it is back, a phase may
+go over the main fuse and the fuse may trip. It changes nothing where the plant's own import limit already guards
+the fuse. Only an administrator can turn it on or off; the debug bundle shows it as
+`battery_control_accept_ha_down`.
+
 ### Grid charging per phase
 
 A house that loads one phase leaves the balanced charge nothing: the cap takes the worst phase as the house on every
