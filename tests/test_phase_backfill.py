@@ -389,6 +389,22 @@ def test_read_back_hours_survive_the_store_and_say_how_many_days_rest_on_them() 
     assert "h" not in peaks.hours[hour - 24].as_dict() and peaks.hours[hour - 72].as_dict()["h"] is True
 
 
+def test_a_read_back_day_that_counted_no_minute_is_not_said_to_be_dropped() -> None:
+    """The owner's site (2026-11-21): nine days read back, every minute lost to readings the history could not judge,
+    told as nine days' history dropped. A day with nothing counted has nothing to drop."""
+    now = T0 + 12 * 86400
+    midnight = int(now // 86400) * 24
+    peaks = PhasePeaks()
+    for day in range(1, 10):
+        for offset in range(12):
+            peaks.hours[midnight - 24 * day + 6 + offset] = HourMark(backfilled=True, lost=50)
+    # And one day whose history counted, but lost most of its minutes: that one is dropped.
+    for offset in range(12):
+        peaks.hours[midnight - 24 * 11 + 6 + offset] = _mark(6.0, 10, backfilled=True, lost=40)
+    learned = peaks.learned(now)
+    assert learned.history_days_dropped == 1 and learned.history_hours == 12 and learned.days == 0
+
+
 # --- the run ------------------------------------------------------------------------------------------------------------
 
 

@@ -485,7 +485,8 @@ class Learned:
     exact_days: int = 0
     exact_minutes: int = 0
     #: The hours read back from the recorder's history, how many of `days` count only with them, and the days whose
-    #: history does not count (`HISTORY_LOST_SHARE`).
+    #: history counted minutes but does not count (`HISTORY_LOST_SHARE`, `EVENING_COUNTED_HOURS`); a day whose history
+    #: counted nothing at all is in none of them.
     history_hours: int = 0
     history_days: int = 0
     history_days_dropped: int = 0
@@ -700,11 +701,13 @@ class PhasePeaks:
                 first, last = ends.get(day, (hour, hour))
                 ends[day] = (min(first, hour), max(last, hour))
         # A day's history counts only where few of its minutes were lost to readings that stood still, and where
-        # the day's evening is among the minutes counted.
+        # the day's evening is among the minutes counted. A day whose history counted no minute at all has nothing
+        # to drop (it is no day either way), and is not said to be dropped.
         dropped = {
             day for day, (counted, _hours, lost) in past.items()
-            if (counted + lost and lost / (counted + lost) > HISTORY_LOST_SHARE)
-            or (counted and evenings.get(day, 0) < EVENING_COUNTED_HOURS)
+            if counted and (
+                lost / (counted + lost) > HISTORY_LOST_SHARE or evenings.get(day, 0) < EVENING_COUNTED_HOURS
+            )
         }
         day_count = live_count = spread_count = spread_live = exact_count = exact_live_count = 0
         first_hour: int | None = None
