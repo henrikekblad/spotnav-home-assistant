@@ -65,7 +65,13 @@
         "max_kw": 6.93,
         "suggested_kw": 6.9,
         "holds": false,
-        "why": null
+        "why": null,
+        "per_phase": {
+          "max_kw": 13.16,
+          "holds": false,
+          "why": "not_field_tested",
+          "entity_id": null
+        }
       }
     },
     "per_phase": {
