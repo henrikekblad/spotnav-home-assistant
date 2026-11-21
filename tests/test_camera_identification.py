@@ -490,6 +490,45 @@ async def test_at_night_the_camera_only_orders_the_buttons_however_sure(garage: 
     assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia", "Guest car"]
 
 
+async def night_picture_of(garage: Garage, name: str) -> None:
+    """The car's night reference picture: an infrared picture, grey."""
+    garage.camera.picture = picture((150, 150, 150), ground=(120, 120, 120))
+    taken = await garage.ws("take_reference_picture", vehicle_id=garage.world.cars[name], kind="night")
+    assert taken["ok"] is True, taken
+    garage.camera.picture = picture(EMPTY)
+
+
+async def test_at_night_a_sure_answer_decides_for_the_car_with_a_night_picture(garage: Garage) -> None:
+    """The owner's evenings (18 and 21 Nov): the EV6, with its night reference, named at high confidence; its own
+    plug sensor reads unknown, the other car's says off and has not changed for hours. Decided, not asked."""
+    await garage.start()
+    await night_picture_of(garage, "Tesla")
+    garage.world.car_says("Kia", "plug", "unknown")
+    garage.model.answer = "car_2"
+    garage.camera.picture = picture((150, 150, 150), ground=(120, 120, 120))
+    await garage.world.plug_in()
+    await garage.settle()
+    assert garage.world.identifier.method == METHOD_CAMERA
+    assert garage.world.settings.target.vehicle_id == garage.world.cars["Tesla"]
+    camera = garage.world.identifier.diagnostics()["history"][-1]["camera"]
+    assert camera["camera_reason"] == "decided_night" and camera["used"] is True
+    await garage.world.later(ASK_AFTER_S + 5)
+    assert garage.world.sent() == [], "no question"
+
+
+async def test_at_night_an_unsure_answer_still_asks(garage: Garage) -> None:
+    await garage.start()
+    await night_picture_of(garage, "Tesla")
+    garage.model.answer = "car_2"
+    garage.model.confidence = "medium"
+    garage.camera.picture = picture((150, 150, 150), ground=(120, 120, 120))
+    await garage.world.plug_in()
+    await garage.settle()
+    assert garage.world.identifier.method == METHOD_ASSUMED
+    await garage.world.later(ASK_AFTER_S + 5)
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia", "Guest car"]
+
+
 async def test_a_redrawn_frame_keeps_every_reference_and_crops_it_anew(garage: Garage) -> None:
     await garage.start()
     camera = charger_data(garage.hass, garage.entry_id).camera
