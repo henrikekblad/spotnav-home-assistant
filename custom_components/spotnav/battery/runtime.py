@@ -168,6 +168,20 @@ def read_role_reads(hass: HomeAssistant, config: dict[str, Any], control: BrandC
 def read_plant_entity(hass: HomeAssistant, config: dict[str, Any], match: Match | None) -> str | None:
     """The state of the battery integration's entity `match` names (`facts.find_entity`), `None` when there is none
     or it reads nothing."""
+    found = _plant_entity(hass, config, match)
+    if found is None or found.disabled or found.state in (None, "", "unavailable", "unknown"):
+        return None
+    return found.state
+
+
+def plant_entity_id(hass: HomeAssistant, config: dict[str, Any], match: Match | None) -> str | None:
+    """The entity id of the battery integration's entity `match` names, disabled or not (for a line that sends the
+    person to it); `None` when there is none."""
+    found = _plant_entity(hass, config, match)
+    return None if found is None else found.entity_id
+
+
+def _plant_entity(hass: HomeAssistant, config: dict[str, Any], match: Match | None) -> EntityFact | None:
     if match is None:
         return None
     registry = er.async_get(hass)
@@ -177,10 +191,7 @@ def read_plant_entity(hass: HomeAssistant, config: dict[str, Any], match: Match 
         return None
     entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
     entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform]
-    found = find_entity(match, entities, _entity_fact(battery_entry, hass))
-    if found is None or found.disabled or found.state in (None, "", "unavailable", "unknown"):
-        return None
-    return found.state
+    return find_entity(match, entities, _entity_fact(battery_entry, hass))
 
 
 def _export_anchor(hass: HomeAssistant, config: dict[str, Any]) -> er.RegistryEntry | None:
