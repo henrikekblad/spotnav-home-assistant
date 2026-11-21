@@ -595,8 +595,11 @@ class ImportLimitPhases:
     output_type: str
     #: The owner's on-site test passed (see the class). Off until it has.
     field_tested: bool = False
-    #: The most the plant was seen to put out on one phase while it held that phase's import (kW). `None`: unknown,
-    #: counted as nothing (the plant only stops charging on that phase).
+    #: The most the plant puts out on one phase while it holds that phase's import (kW). `None`: unknown, counted as
+    #: nothing (the plant only stops charging on that phase). It must stay `None`: it is never recorded from the
+    #: on-site test (`tools/sigen_import_limit_test.py` reports the output it saw, which is what that load needed,
+    #: not the most the plant can put out), and a value too high would let a house and a car pass the fuse on a phase.
+    #: Only a maker's figure for the per-phase maximum, checked on a plant, could set it.
     phase_output_max_kw: float | None = None
 
 
@@ -1097,6 +1100,7 @@ SIGENERGY_IMPORT_LIMIT_PHASES: Final = ImportLimitPhases(
     sensor_online="online",
     # V2.9: independent phase power control is "valid only when the output type is L1/L2/L3/N".
     output_type="l1_l2_l3_n",
+    # `phase_output_max_kw` stays None (see `ImportLimitPhases`): never recorded from the on-site test.
     # Flips to True once the owner's on-site test (`tools/sigen_import_limit_test.py`) has passed.
     field_tested=False,
 )
