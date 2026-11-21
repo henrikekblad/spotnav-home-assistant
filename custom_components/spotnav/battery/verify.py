@@ -84,6 +84,14 @@ readings, the hold's first variant that has not failed only, and the first mode 
 other than `obeyed` or `not_judgeable:*`) skips the rest but normal, the hand-back's check. Its report is the
 test's own: it never counts towards the routine's per firmware (`gate.merge_report`).
 
+Its charge step is tried up to `TEST_CHARGE_SOC_MAX_PCT` (98 %) of charge (`Verification.charge_soc_max_pct`), not
+only up to `CHARGE_TAPER_SOC_PCT` (90 %) as everywhere else: a battery that sits near full most days would otherwise
+never show the step. This is about judging, not safety: the step is about 1 kW for minutes, under the same HA-down
+caps and the executor's live fuse rules at any charge level, and a full battery only takes less. So from
+`CHARGE_TAPER_SOC_PCT` on, a charge step the plant takes less of than commanded (`ignored` or `partial` by its
+readings) is `not_judgeable:battery_full`, never a failure; one it takes in full is `obeyed`. Normal control, the
+monitor and the routine keep 90 %.
+
 Pure: no Home Assistant import; times are aware datetimes from the caller.
 """
 
@@ -117,6 +125,9 @@ SETTLE_S: Final = 300.0
 READINGS: Final = 3
 #: The charge power tried (kW), at most the battery's own rating.
 TEST_CHARGE_KW: Final = 2.0
+#: The state of charge up to which the hardware test's charge step is tried (%), where everything else stops judging
+#: a charge at `CHARGE_TAPER_SOC_PCT` (see the module, "The hardware test").
+TEST_CHARGE_SOC_MAX_PCT: Final = 98.0
 #: A mode whose writes are not taken within this long is aborted (s).
 COMMAND_TIMEOUT_S: Final = 300.0
 #: Reports kept, one per firmware string (the control imports it for its own, one per firmware key).
@@ -263,10 +274,13 @@ class Verification:
     def __init__(
         self, executor: Executor, now: datetime, *, firmware: str | None, charge_kw: float = TEST_CHARGE_KW,
         modes: tuple[str, ...] | None = None, tried: tuple[Mapping[str, Any], ...] = (),
-        timing: Timing | None = None, stop_on_fail: bool = False,
+        timing: Timing | None = None, stop_on_fail: bool = False, charge_soc_max_pct: float = CHARGE_TAPER_SOC_PCT,
     ) -> None:
         self.executor = executor
         self.timing = timing or Timing()
+        #: Up to which state of charge the mode `charge` is tried (`TEST_CHARGE_SOC_MAX_PCT` for the hardware test; see
+        #: the module). From `CHARGE_TAPER_SOC_PCT` on, a step taken short is `not_judgeable:battery_full`.
+        self.charge_soc_max_pct = charge_soc_max_pct
         #: The hardware test's: a mode that does not pass ends the run (normal still hands back and is judged).
         self.stop_on_fail = stop_on_fail
         self.firmware = firmware or "unknown"
@@ -379,7 +393,9 @@ class Verification:
             return
         self.phased_before = before
         house = _house_kw(sample)
-        unfit = "phase_reading_stale" if house is None else _probe_unfit(sample, before=True)
+        unfit = "phase_reading_stale" if house is None else _probe_unfit(
+            sample, before=True, soc_max_pct=self.charge_soc_max_pct
+        )
         if unfit is not None:
             self.not_judgeable(now, unfit)
             return
@@ -576,7 +592,8 @@ class Verification:
                 capability.rated_charge_kw, capability.rated_discharge_kw, capability.soc_min_pct,
                 capability.soc_max_pct, sample.house_deficit_kw,
             )
-            expected, why = deliverable_kw(command, cap, sample.soc_pct)
+            full = self.charge_soc_max_pct if kind == "charge" else CHARGE_TAPER_SOC_PCT
+            expected, why = deliverable_kw(command, cap, sample.soc_pct, full_soc_pct=full)
         if why is not None:
             result.outcome = f"not_judgeable:{why}"
             self._enter(now, "hand_back")
@@ -592,6 +609,9 @@ class Verification:
             return
         verdicts = {row["verdict"] for row in result.readings}
         result.outcome = "obeyed" if verdicts == {"ok"} else "ignored" if verdicts == {"no_effect"} else "partial"
+        if kind == "charge" and result.outcome != "obeyed" and _near_full(sample):
+            # A battery near full takes less than a charge asks: nothing to judge (see the module).
+            result.outcome = "not_judgeable:battery_full"
         self._variant_failed(now, result)
         self._enter(now, "hand_back")
 
@@ -607,7 +627,9 @@ class Verification:
         index = self.probe_index
         plant, grid, before = sample.plant_phase_kw, sample.grid_phase_kw, self.probe_house
         house = _house_kw(sample)
-        unfit = _probe_unfit(sample, before=False)
+        # The mode `charge` tried per phase (not `per_phase`, whose steps are discharges).
+        charging = result.mode == "charge"
+        unfit = _probe_unfit(sample, before=False, soc_max_pct=self.charge_soc_max_pct if charging else None)
         if plant is None or grid is None or house is None or (before is None and index >= 0):
             unfit = "phase_reading_stale"
         elif index >= 0 and self._probe_not_raised(commanded):
@@ -672,6 +694,9 @@ class Verification:
             "readings": list(result.readings),
         })
         result.readings = []
+        if charging and asked > 0 and outcome in ("ignored", "partial") and _near_full(sample):
+            # A battery near full takes less than a charge asks: nothing to judge (see the module).
+            result.phases[-1]["outcome"] = outcome = "not_judgeable:battery_full"
         if outcome == "obeyed" and index < len(self.steps) - 1:
             # The next phase, from the house as it reads under this one's probe (just judged right).
             self.probe_index, self.probe_house = index + 1, house
@@ -807,13 +832,21 @@ def _passes(result: ModeResult) -> bool:
     return outcome == "obeyed" or outcome.startswith("not_judgeable:")
 
 
-def _probe_unfit(sample: Sample, *, before: bool) -> str | None:
+def _near_full(sample: Sample) -> bool:
+    """Whether the battery is where a charge tapers (`CHARGE_TAPER_SOC_PCT`): it may take less than asked."""
+    return sample.soc_pct is not None and sample.soc_pct >= CHARGE_TAPER_SOC_PCT
+
+
+def _probe_unfit(sample: Sample, *, before: bool, soc_max_pct: float | None = None) -> str | None:
     """Why the per-phase probe could not be judged soundly at this moment, `None` when it can (see the module).
-    `before`: the plant is still in its own mode, where a sun surplus shows as export or as the battery charging."""
+    `before`: the plant is still in its own mode, where a sun surplus shows as export or as the battery charging.
+    `soc_max_pct`: up to which state of charge a charge step is tried (`Verification.charge_soc_max_pct`; by default
+    `CHARGE_TAPER_SOC_PCT`)."""
     if sample.curtailing:
         return "export_curtailed"
     soc = sample.soc_pct
-    if soc is None or soc >= CHARGE_TAPER_SOC_PCT or soc <= sample.soc_min_pct + DISCHARGE_MARGIN_PCT:
+    full = CHARGE_TAPER_SOC_PCT if soc_max_pct is None else soc_max_pct
+    if soc is None or soc >= full or soc <= sample.soc_min_pct + DISCHARGE_MARGIN_PCT:
         return "soc_near_end"
     if before and (
         (sample.grid_kw is not None and sample.grid_kw < -FLOOR_KW)

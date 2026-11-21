@@ -5,6 +5,8 @@ DOMAIN = "spotnav"
 #: The Repairs issue of an electricity price whose area has no price source and whose prices have stopped (translation
 #: key under `issues`, and the issue id's prefix before the price entry's id; `price_device.py`).
 PRICE_SOURCE_MISSING_ISSUE = "price_source_missing"
+#: A hardware test left an OCPP charger out of service and could not set it back (`site/charger_test_hold.py`).
+HARDWARE_TEST_OUT_OF_SERVICE_ISSUE = "hardware_test_out_of_service"
 #: The id prefix of the Repairs notice an earlier version raised for a home battery another system drives (retired:
 #: `battery/runtime.py` and the setup sync delete a left-over one).
 BATTERY_OUTSIDE_CONTROL_ISSUE = "battery_outside_control"

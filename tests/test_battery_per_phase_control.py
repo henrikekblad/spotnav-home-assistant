@@ -407,6 +407,9 @@ async def test_a_moment_that_could_make_a_sound_plant_look_wrong_is_never_a_deci
     for soc, floor in ((92.0, 0.0), (4.0, 0.0), (23.0, 20.0), (None, 0.0)):
         assert _probe_unfit(Sample(-1.0, 5.0, soc, grid_kw=0.0, soc_min_pct=floor), before=False) == "soc_near_end"
     assert _probe_unfit(Sample(-1.0, 5.0, 50.0, grid_kw=0.0, curtailing=True), before=True) == "export_curtailed"
+    # The hardware test's charge step is tried up to 98 % (judging only, not safety).
+    assert _probe_unfit(Sample(-1.0, 5.0, 95.0, grid_kw=0.0), before=False, soc_max_pct=98.0) is None
+    assert _probe_unfit(Sample(-1.0, 5.0, 98.0, grid_kw=0.0), before=False, soc_max_pct=98.0) == "soc_near_end"
     # Through the shell: the step is left for a later run, nothing is written, and no fail is recorded.
     site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
     monkeypatch.setattr(BatteryControl, "_curtailing", lambda self: True)
@@ -562,6 +565,30 @@ async def test_once_per_phase_passed_the_charge_runs_without_the_discharge_first
     assert [(phase["phase"], phase["target_kw"]) for phase in row["phases"]] == [("L1", 0.923)]
     assert _charge_targets(plant) == [(TARGETS[0], -0.92), (TARGETS[0], 0.0)]
     assert stopped and all(amps <= 20.0 - 2.0 + 1e-9 for look in stopped for amps in look)
+
+
+@pytest.mark.parametrize(("taken", "outcome"), [(1.0, "obeyed"), (0.3, "not_judgeable:battery_full")])
+async def test_the_hardware_test_charges_per_phase_near_full_and_a_short_take_is_not_a_failure(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], taken: float, outcome: str
+) -> None:
+    from dataclasses import replace
+
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    follow = world.plant_kw
+
+    def plant_kw() -> tuple[float, float, float]:
+        # A battery at 95 % takes only part of a charge (a negative target); a discharge it gives in full.
+        return tuple(value * taken if value < 0 else value for value in follow())  # type: ignore[return-value]
+
+    world.plant_kw = plant_kw  # type: ignore[method-assign]
+    outside = BatteryControl._with_outside
+    monkeypatch.setattr(BatteryControl, "_with_outside", lambda self, facts: replace(outside(self, facts), soc_pct=95.0))
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    _passed(control, charge="not_judgeable:grid_charge_cap", per_phase="obeyed")
+    report = await _hardware_test(control, hass, site)
+    assert report["modes"]["charge"]["outcome"] == outcome
+    assert world.targets() == (0.0, 0.0, 0.0)
 
 
 async def test_without_room_on_any_phase_the_charge_step_says_so_and_writes_nothing(

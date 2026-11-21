@@ -815,6 +815,10 @@ class ChargingController:
         # Where a current written outside the site's regulator is told to the site (`set_start_cap`), so its
         # damper and step guard measure the next decision against what is really on the charger.
         self._site_record: Callable[[float, str], None] | None = None
+        # The site's hold of its chargers during a person's hardware test (`set_test_hold`): while it holds, no start
+        # of any kind goes out, and the site is told of each one refused.
+        self._test_hold: Callable[[], bool] | None = None
+        self._test_hold_refused: Callable[[], None] | None = None
         self._last_connected: bool | None = None
         # The charge clock (`charging_seconds`): seconds counted while charging, and since when it runs.
         self._charge_clock_s = 0.0
@@ -3594,6 +3598,30 @@ class ChargingController:
         self._start_reserve = reserve if cap is not None else None
         self._site_record = record if cap is not None else None
 
+    def set_test_hold(self, holds: Callable[[], bool] | None, *, refused: Callable[[], None] | None = None) -> None:
+        """Set (or clear) the site's hold of its chargers during a person's hardware test (`site/charger_test_hold.py`):
+        while `holds` answers true, no start of this charger goes out (`_held_for_test`), and `refused` is told."""
+        self._test_hold = holds
+        self._test_hold_refused = refused if holds is not None else None
+
+    def _held_for_test(self) -> bool:
+        """Whether the site's hardware test holds this charger stopped now. A probe that fails holds nothing: the
+        charger then stays counted at its current in the home battery's cap, which is the side that is safe."""
+        holds = self._test_hold
+        if holds is None:
+            return False
+        try:
+            held = bool(holds())
+        except Exception:  # noqa: BLE001 - see the docstring
+            _LOGGER.debug("SpotNav charger %s: the hardware test's hold could not be read", self.entry_id, exc_info=True)
+            return False
+        if held and self._test_hold_refused is not None:
+            try:
+                self._test_hold_refused()
+            except Exception:  # noqa: BLE001 - only what is armed again at the release
+                _LOGGER.debug("Telling the site about a refused start failed", exc_info=True)
+        return held
+
     def _site_capped_amps(self, amps: float) -> float:
         """`amps`, but never more than the site allows this charger now (`set_start_cap`), and never
         below the charger's minimum on that account: a write that is not a start cannot be refused (the
@@ -3931,6 +3959,12 @@ class ChargingController:
           runs when the setting is turned off is left as it is (no extra interruption).
         """
         self._start_held_back = False
+        if self._held_for_test():
+            # A person's hardware test holds every charger of the site stopped (`site/charger_test_hold.py`): nothing
+            # goes out, as a start whose control is unavailable. Its plan is armed again when the hold ends.
+            _LOGGER.debug("SpotNav charger %s: not started, a hardware test of the site runs", self.entry_id)
+            self._notify()
+            return False
         if manual or cause != "solar" or not self.phase_switching_option:
             await self._restore_three_phases_locked()
         # Whatever balancing paused before is over (this start is a charge of its own), and a person's start overrules
@@ -5325,6 +5359,12 @@ class ChargingController:
     def charge_control_on(self) -> bool:
         """Whether a Start is in effect (`_control_on`): charging, or the charge control enabled."""
         return self._control_on
+
+    @property
+    def control_confirmed_off(self) -> bool:
+        """Whether the charger reads stopped now: its charge control readable and off, and no status says it charges
+        (`_control_observation` false). Unreadable is not stopped."""
+        return self._control_observation is False and not self.charging
 
     @property
     def _control_observation(self) -> bool | None:

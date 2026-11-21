@@ -190,6 +190,8 @@ export function blockedText(language: Language, test: TestState): string | null 
         : translate(language, "test.blocked.onceADay", { time: dateText(language, test.nextAt, true) });
     case "nothing_to_test":
       return translate(language, "test.blocked.nothing");
+    case "car_charging":
+      return translate(language, "test.blocked.carCharging");
     default:
       return translate(language, "test.blocked.later");
   }

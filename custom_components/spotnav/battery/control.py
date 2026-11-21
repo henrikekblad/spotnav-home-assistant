@@ -138,7 +138,15 @@ from .plan_model import (
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
-from .verify import MAX_REPORTS, TEST_CHARGE_KW, Sample, Timing, Verification, phase_charge_step
+from .verify import (
+    MAX_REPORTS,
+    TEST_CHARGE_KW,
+    TEST_CHARGE_SOC_MAX_PCT,
+    Sample,
+    Timing,
+    Verification,
+    phase_charge_step,
+)
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -1038,14 +1046,16 @@ class BatteryControl:
             return None
         return None if watts is None else (watts[0] / 1000.0, watts[1] / 1000.0, watts[2] / 1000.0)
 
-    def _phase_caps_kw(self, now: datetime) -> Phases:
+    def _phase_caps_kw(self, now: datetime, *, held_off: bool = False) -> Phases:
         """The HA-down cap of a grid charge on each phase (`gate.grid_charge_phase_caps_kw`) on the site's readings
-        now, by the same house peaks, chargers and margin as the balanced cap."""
+        now, by the same house peaks, chargers and margin as the balanced cap. `held_off`: a person's hardware test
+        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`)."""
         control = control_for(self.facts.brand)
         spec = None if control is None else control.phase_control
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a() + self._heat_standing_a(), house_peak_kw=self._house_peak_kw(now),
+            cars_a=self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
+            house_peak_kw=self._house_peak_kw(now),
             house_phase_peaks_a=self._phase_peaks(now) or None,
             # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
             silence_fallback_s=None if spec is None else spec.silence_fallback_s,
@@ -1278,14 +1288,15 @@ class BatteryControl:
         probe = verification.probe()
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
-            cap = self._grid_charge_cap_kw(now, self.options())
+            cap = self._grid_charge_cap_kw(now, self.options(), held_off=self._hw_run)
             if cap is not None and cap < gate.MIN_RATE_KW:
                 if self._phase_charge_possible():
                     # An unbalanced house leaves the balanced charge no room: a charge on the phase with the most
                     # room instead, within that phase's own HA-down cap (`verify.phase_charge_step`), after a
                     # discharge on it has shown its sign and mapping unless `per_phase` has on this firmware.
                     step = phase_charge_step(
-                        self._phase_caps_kw(now), stored_voltage_between_phases_v(self.site.config)
+                        self._phase_caps_kw(now, held_off=self._hw_run),
+                        stored_voltage_between_phases_v(self.site.config),
                     )
                     verification.charge_per_phase(
                         now, sample, step, mapped=gate.per_phase(self.report()) == "verified"
@@ -1303,7 +1314,7 @@ class BatteryControl:
         charging = probe is not None and any(value > 0 for value in probe)
         inputs = replace(
             inputs, action=action, rate_kw=rate, slot_end=None,
-            phase_caps_kw=self._phase_caps_kw(now) if charging else None, phase_probe_kw=probe,
+            phase_caps_kw=self._phase_caps_kw(now, held_off=self._hw_run) if charging else None, phase_probe_kw=probe,
             reads=self._reads(executor.control),
         )
         result = await self._async_step(executor, inputs, allowed=True)
@@ -1399,6 +1410,7 @@ class BatteryControl:
             self.verification = Verification(
                 executor, now, firmware=self.facts.firmware, modes=gate.BATTERY_MODES,
                 tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
+                charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT,
             )
             self._hw_run = True
             self._verify_key = None
@@ -1654,11 +1666,13 @@ class BatteryControl:
         return float(fuse_a) if isinstance(fuse_a, (int, float)) and not isinstance(fuse_a, bool) else None
 
     def _grid_charge_cap_kw(
-        self, now: datetime, options: gate.Options, *, peaks: Mapping[str, float] | None | bool = True
+        self, now: datetime, options: gate.Options, *, peaks: Mapping[str, float] | None | bool = True,
+        held_off: bool = False,
     ) -> float | None:
         """The HA-down grid charge cap (`gate.grid_charge_cap_kw`) on the site's readings now. `peaks`: the house's
         per-phase peaks to reckon with instead of the ones in use now (`_phase_peaks`), `None` for the conservative
-        rule; for the status, which says what the cap would be either way."""
+        rule; for the status, which says what the cap would be either way. `held_off`: a person's hardware test
+        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`)."""
         if peaks is True:
             peaks = self._phase_peaks(now)
         control = control_for(self.facts.brand)
@@ -1666,8 +1680,8 @@ class BatteryControl:
         import_limit_kw = self._import_limit_kw(control) if guards else None
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a() + self._heat_standing_a(), house_peak_kw=self._house_peak_kw(now),
-            plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
+            cars_a=self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
+            house_peak_kw=self._house_peak_kw(now), plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
         )
 
@@ -1911,16 +1925,26 @@ class BatteryControl:
         volts = phase_volts(volts_between_phases)
         return [max(-float(value), 0.0) / volts for value in signed]  # type: ignore[arg-type]
 
-    def _cars_allowed_a(self, *, without: str | None = None) -> float:
+    def _cars_allowed_a(self, *, without: str | None = None, held_off: bool = False) -> float:
         """What the site's chargers may draw per phase if nothing writes them again (A, summed): each one's last
         current (`charger_allowed_a`), `ASSUMED_CURRENT_A` when it is not known; infinite (no grid charge) when the
-        chargers cannot be read. `without`: a charger left out (`import_limit_guards`)."""
+        chargers cannot be read. `without`: a charger left out (`import_limit_guards`).
+
+        `held_off` (only while a person's hardware test runs, `_async_verify`): a charger the test's hold keeps
+        stopped counts 0 A where it cannot draw with Home Assistant gone (`ChargerTestHold.counts_nothing`: the hold
+        on, and either an OCPP charger out of service by its own report and not charging, or the charger read
+        stopped with its stop a stored setting that holds every later session off). Every other charger keeps its
+        current, an Easee and one on buttons among them: their stop ends the session only, and the next plug-in may
+        charge with nobody there to stop it."""
         from ..execution.controller import ASSUMED_CURRENT_A  # noqa: PLC0415 - the charger side imports the site
 
+        hold = getattr(self.site, "charger_test_hold", None) if held_off and self._hw_run else None
         try:
             total = 0.0
             for charger_entry_id in self.site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
                 if charger_entry_id == without:
+                    continue
+                if hold is not None and hold.counts_nothing(charger_entry_id):
                     continue
                 amps = self.site.charger_allowed_a(charger_entry_id)
                 total += float(ASSUMED_CURRENT_A) if amps is None else max(amps, 0.0)

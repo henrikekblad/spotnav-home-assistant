@@ -228,6 +228,16 @@ class PlatformProfile:
     #: `docs/supported.md` uses (the entity and what it needs), or `""` where it cannot. Matches the platforms that
     #: register a `PhaseSwitch` (`execution/chargers/registry.py`).
     phase_switching: str = ""
+    #: SpotNav's Stop writes a setting the charger keeps by itself and that holds every later session off as well:
+    #: neither the car, a new plug-in nor the charger's own logic begins a charge until something writes it back, so
+    #: a charger stopped this way stays stopped when Home Assistant stops. Read by the hardware test's hold
+    #: (`site/charger_test_hold.py`), which counts such a charger, held stopped and read as stopped, at 0 A in the
+    #: home battery's HA-down grid charge cap. Stated only where the stop is the charger's stored mode (Charge Amps'
+    #: Off and GARO's Always off by their notes, myenergi's Stopped charge mode). Not for a stop that ends or pauses the
+    #: session only (OCPP's remote stop, Easee's pause, start/stop buttons, a pause switch, 0 A): the next plug-in,
+    #: or the car itself, can begin a charge there with nobody to stop it, and go-e returns its force state to
+    #: neutral at the unplug.
+    stop_kept_without_ha: bool = False
 
     #: A charger given a power, not a current (`CURRENT_CONTROL_POWER`): the number that takes it, in kW or W.
     #: SpotNav's current per phase is written as the power three phases carry at the site's voltage
@@ -512,6 +522,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         vehicle_idle_values=("suspendedev",),
         current_sensor_keys=("l1_current", "l2_current", "l3_current"),
         own_modes=(_rule("switch", ("schedule",), ("off",), "schedule"),),
+        # Stop writes a stored mode (the note): it holds every later session off.
+        stop_kept_without_ha=True,
         note="The enable switch writes the connector's stored mode: Stop sets Off and replaces the "
         "schedule, and Start does nothing while the mode is Schedule. Stop may not end a running "
         "session on a unit with OCPP enabled.",
@@ -614,6 +626,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         vehicle_idle_values=("charging_paused", "charging_finished"),
         own_modes=(_rule("select", ("sensor", "mode"), ("always_on", "always_off"), "schedule"),),
+        # Stop writes a stored mode (the note): it holds every later session off.
+        stop_kept_without_ha=True,
         note="Writing the current replaces the user's reduced-current schedule with one all-day interval "
         "and needs the Charge Limiter switch on, so it is written at a session start only. Start "
         "replaces the Schedule mode with Always on and Stop leaves Always off.",
@@ -709,6 +723,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         # The power of every CT named Internal Load added up (pymyenergi's `ct_groups`): what the zappi charges, all
         # phases of a three-phase one. CT1 alone would be one phase of those.
         energy_power_keys=("power-ct_internal_load",),
+        # Stop selects the zappi's Stopped charge mode, which it keeps until another mode is chosen.
+        stop_kept_without_ha=True,
         note="No current control: switched on and off whole, at the current SpotNav learns it draws.",
     ),
     PlatformProfile(

@@ -124,6 +124,7 @@ from .measurement_problem import measurement_problem, MeasurementProblem, UNHEAL
 from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
+from .charger_test_hold import ChargerTestHold
 from ..heat.control import HeatControl
 from ..heat.water_heater_control import WaterHeaterControl
 from ..heat.zones_control import ZonesControl
@@ -944,6 +945,8 @@ class SiteCapacityController:
         # A person's hardware test of the battery and the heat path (`hardware_test.py`), through their own engines;
         # never on a timer. Shut down first, before the battery and the heat control.
         self.hardware_test = HardwareTest(hass, self)
+        # The test's hold of the site's chargers (`site/charger_test_hold.py`): no start while it runs.
+        self.charger_test_hold = ChargerTestHold(self)
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -1009,6 +1012,8 @@ class SiteCapacityController:
         await self.zones_control.async_start()
         await self.water_heater_control.async_start()
         await self.hardware_test.async_load()
+        # An OCPP charger a hardware test left out of service when Home Assistant stopped: set back to operative.
+        await self.charger_test_hold.async_load()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -1094,6 +1099,7 @@ class SiteCapacityController:
             ("solar shadow", self.solar_shadow.async_shutdown),
             ("heat shadow", self.heat_shadow.async_shutdown),
             ("grid sign", self._async_save_grid_sign),
+            ("charger test hold", self.charger_test_hold.async_close),
         )
         for name, close in parts:
             try:
@@ -1265,6 +1271,15 @@ class SiteCapacityController:
                 self._start_cap_cancels.append(
                     lambda controller=charger_controller: controller.set_start_cap(None)
                 )
+                set_test_hold = getattr(charger_controller, "set_test_hold", None)
+                if set_test_hold is not None:
+                    set_test_hold(
+                        lambda charger_entry_id=charger_entry_id: self.charger_test_hold.holds(charger_entry_id),
+                        refused=lambda charger_entry_id=charger_entry_id: self.charger_test_hold.note_refused(
+                            charger_entry_id
+                        ),
+                    )
+                    self._start_cap_cancels.append(lambda set_test_hold=set_test_hold: set_test_hold(None))
 
     @callback
     def _on_charger_controller_changed(self) -> None:
@@ -4410,6 +4425,8 @@ class SiteCapacityController:
             or not _plugged_in_for_resume(charger_controller.adapter)
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or charger_controller.car_ended_holds_charge
+            # A hardware test holds the site's chargers stopped (`site/charger_test_hold.py`).
+            or self.charger_test_hold.active
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
@@ -4547,7 +4564,10 @@ class SiteCapacityController:
         previous_setpoint: float | None,
     ) -> bool:
         """Start a battery probe of a charge load balancing paused (`BatteryProbeRunner.async_maybe_start`,
-        `site/battery_probe_runner.py`); `True` when a probe was started (the pass is then this probe's)."""
+        `site/battery_probe_runner.py`); `True` when a probe was started (the pass is then this probe's). None while a
+        hardware test holds the site's chargers stopped (`site/charger_test_hold.py`)."""
+        if self.charger_test_hold.active:
+            return False
         return await self._battery_probe_runner.async_maybe_start(
             charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
         )
