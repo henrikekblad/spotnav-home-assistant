@@ -667,11 +667,39 @@ class BatteryControl:
     # ---- the gate
 
     def options(self) -> gate.Options:
-        """The site's options, from its entry as stored now (a settings write needs no reload)."""
+        """The site's options, from its entry as stored now (a settings write needs no reload). The acceptance of
+        the HA-down risk counts only for the setup it was given for (`gate.ha_down_setup_state`)."""
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
-        return gate.Options.from_config(
-            entry.data if entry is not None else self.site.config, shadow_default=self.shadow_default()
-        )
+        data = entry.data if entry is not None else self.site.config
+        options = gate.Options.from_config(data, shadow_default=self.shadow_default())
+        if options.accept_ha_down and self._ha_down_setup_state(data) != "same":
+            options = replace(options, accept_ha_down=False)
+        return options
+
+    def _ha_down_setup_state(self, data: Mapping[str, Any]) -> str:
+        return gate.ha_down_setup_state(data.get(gate.CONF_ACCEPT_HA_DOWN_SETUP), self._main_fuse_a(), self.facts.brand)
+
+    def _ha_down_setup_look(self) -> None:
+        """At each look: an acceptance of the HA-down risk given before the brand was read is completed with it; one
+        whose setup changed (another main fuse, another brand) is cleared, and logged."""
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        if entry is None or entry.data.get(gate.CONF_ACCEPT_HA_DOWN) is not True:
+            return
+        stored = entry.data.get(gate.CONF_ACCEPT_HA_DOWN_SETUP)
+        state = self._ha_down_setup_state(entry.data)
+        if state == "unknown" and self.facts.brand is not None and isinstance(stored, Mapping):
+            data = {**entry.data, gate.CONF_ACCEPT_HA_DOWN_SETUP: gate.ha_down_setup(
+                self._main_fuse_a(), self.facts.brand)}
+            self.hass.config_entries.async_update_entry(entry, data=data)
+        elif state == "changed":
+            data = {key: value for key, value in entry.data.items() if key != gate.CONF_ACCEPT_HA_DOWN_SETUP}
+            data[gate.CONF_ACCEPT_HA_DOWN] = False
+            self.hass.config_entries.async_update_entry(entry, data=data)
+            _LOGGER.warning(
+                "SpotNav battery control: the acceptance of the Home Assistant down risk was cleared: the main fuse "
+                "or the battery changed since it was given"
+            )
+            self._log([{"at": dt_util.now().isoformat(), "kind": "ha_down_cleared", "reason": "setup_changed"}])
 
     def shadow_default(self) -> bool:
         """Shadow only's default here (`gate.shadow_default`): the plant's recipe as last read (none read yet: on),
@@ -817,6 +845,7 @@ class BatteryControl:
         self._look_id += 1
         # The facts first: the brand read decides shadow only's default (`shadow_default`).
         self.facts = self._read_facts()
+        self._ha_down_setup_look()
         options = self.options()
         await self._async_read_sources(now)
         self._transitions(options, now)
@@ -1486,7 +1515,11 @@ class BatteryControl:
         # Under the lock: a look in progress finishes with the options it read before this write changes them.
         async with self._lock:
             before = self.options()
-            self.hass.config_entries.async_update_entry(entry, data={**entry.data, **changes})
+            stamped = dict(changes)
+            if changes.get(gate.CONF_ACCEPT_HA_DOWN) is True:
+                # Given for this setup: another main fuse or another brand clears it (`_ha_down_setup_look`).
+                stamped[gate.CONF_ACCEPT_HA_DOWN_SETUP] = gate.ha_down_setup(self._main_fuse_a(), self.facts.brand)
+            self.hass.config_entries.async_update_entry(entry, data={**entry.data, **stamped})
             after = self.options()
             _LOGGER.info("SpotNav battery control: options %s", after.as_dict())
             if before.mode != after.mode:

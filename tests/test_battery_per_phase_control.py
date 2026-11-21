@@ -21,6 +21,7 @@ from tests.test_battery_control import (
     HOUSE_KW,
     MODE,
     SWITCH,
+    _accept_ha_down,
     _import_limit,
     _looks,
     _on,
@@ -773,7 +774,7 @@ async def test_a_charge_shown_only_per_phase_keeps_running_per_phase_once_the_ha
     key = control.firmware_key()
     control.reports[key]["modes"]["charge"]["via"] = "per_phase"
     assert gate.charge_by_phases(control.report())
-    _options(hass, site, accept_ha_down=True)
+    _accept_ha_down(hass, site)
     now = await _looks(control, dt_util.now(), 8)
     cap, caps = control._charge_limits(now, control.options())
     assert caps is not None and cap == pytest.approx(sum(caps))

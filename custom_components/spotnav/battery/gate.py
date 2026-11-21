@@ -50,7 +50,9 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   per phase while Home Assistant runs (`executor._phase_room_kw`, `HEADROOM_MARGIN_A`, every look), the write caps,
   the read-back, the hand-back and the chargers' load balancing are unchanged. It changes nothing where the plant's
   own import limit guards the fuse (either rule above: no cap of this kind) or a recipe's own dead-man does
-  (`silence_guards`): those come first, and the card does not offer it there.
+  (`silence_guards`): those come first, and the card does not offer it there. It is given for one setup, the
+  site's main fuse and the plant's brand (`CONF_ACCEPT_HA_DOWN_SETUP`, `ha_down_setup_state`): once either changes it
+  counts as off and is cleared.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -107,6 +109,8 @@ CONF_ALLOW_SELL: Final = "battery_control_allow_sell"
 CONF_MODE: Final = "battery_mode"
 CONF_IMPORT_LIMIT_ACTS: Final = "battery_control_import_limit_acts"
 CONF_ACCEPT_HA_DOWN: Final = "battery_control_accept_ha_down"
+#: The setup the acceptance was given for (`ha_down_setup`): stored beside it, never written by a request.
+CONF_ACCEPT_HA_DOWN_SETUP: Final = "battery_control_accept_ha_down_setup"
 #: Every option and its default.
 DEFAULTS: Final[Mapping[str, bool]] = {
     CONF_ENABLED: False,
@@ -783,6 +787,22 @@ def grid_charge_cap_kw(
     room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - house_a
     phases = min(max(int(plant_phases), 1), 3)
     return max(room_a, 0.0) * phases * volts / 1000.0
+
+
+def ha_down_setup(main_fuse_a: float | None, brand: str | None) -> dict[str, Any]:
+    """The setup an acceptance of the HA-down risk is given for, as stored beside it."""
+    return {"main_fuse_a": main_fuse_a, "brand": brand}
+
+
+def ha_down_setup_state(stored: Any, main_fuse_a: float | None, brand: str | None) -> Literal["same", "changed", "unknown"]:
+    """Whether the setup now is the one the acceptance was given for: `same`, `changed` (another main fuse, another
+    brand read, or no setup stored: the acceptance is cleared) or `unknown` (the brand not read yet, or not read when
+    it was given: the acceptance counts as off meanwhile, and is kept)."""
+    if not isinstance(stored, Mapping) or stored.get("main_fuse_a") != main_fuse_a:
+        return "changed"
+    if brand is None or stored.get("brand") is None:
+        return "unknown"
+    return "same" if stored.get("brand") == brand else "changed"
 
 
 def ha_down_accepted_cap_kw(

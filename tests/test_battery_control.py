@@ -22,6 +22,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.spotnav.battery import commands as commands_module, control as control_module, gate
 from custom_components.spotnav.battery.control import BatteryControl, ControlNotReachable, TrialRefused, store_key
+from custom_components.spotnav.battery.verify import TEST_CHARGE_KW
+from custom_components.spotnav.const import CONF_MAIN_FUSE_A
 from custom_components.spotnav.runtime import site_controller_for
 from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
 from tests.world import setup_charger_and_site
@@ -169,6 +171,14 @@ async def _site(
 def _options(hass: HomeAssistant, site: MockConfigEntry, **flags: bool) -> None:
     hass.config_entries.async_update_entry(
         site, data={**site.data, **{f"battery_control_{key}": value for key, value in flags.items()}}
+    )
+
+
+def _accept_ha_down(hass: HomeAssistant, site: MockConfigEntry, accept: bool = True) -> None:
+    """The site's acceptance of the HA-down risk, given for its setup now (the main fuse, the owner's Sigenergy)."""
+    setup = gate.ha_down_setup(site.data.get(CONF_MAIN_FUSE_A), "sigenergy")
+    hass.config_entries.async_update_entry(
+        site, data={**site.data, gate.CONF_ACCEPT_HA_DOWN: accept, gate.CONF_ACCEPT_HA_DOWN_SETUP: setup}
     )
 
 
@@ -1382,7 +1392,7 @@ async def test_the_accepted_ha_down_risk_lifts_the_cap_to_the_empty_house_fuse_a
     charge, as where the plant's own import limit lifts the cap."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=25.0)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
-    _options(hass, site, accept_ha_down=accept)
+    _accept_ha_down(hass, site, accept)
     now = await _looks(control, dt_util.now(), 16)
     assert hass.states.get(CHARGE).state[:len(written)] == written
     assert any(row["kind"] == "restricted" for row in control.log) is not accept
@@ -1415,7 +1425,7 @@ async def test_the_ha_down_acceptance_is_offered_only_where_the_ha_down_cap_bind
     assert cap["ha_down"]["offered"] is True and cap["ha_down"]["held_kw"] < gate.MIN_RATE_KW
     assert cap["ha_down"]["empty_house_kw"] == 13.16
     # Accepted: the cap is the empty house's fuse, and the offer stays so it can be turned off.
-    _options(hass, site, accept_ha_down=True)
+    _accept_ha_down(hass, site)
     cap = control.status()["grid_charge_cap"]
     assert cap["rule"] == "accepted" and cap["cap_kw"] == 13.16 and cap["ha_down"]["offered"] is True
     assert cap["cap_conservative_kw"] < gate.MIN_RATE_KW, "the HA-down rule's own figure, the acceptance left out"
@@ -1442,7 +1452,7 @@ async def test_the_ha_down_acceptance_lifts_nothing_for_a_charge_spotnav_cannot_
     lower it, so the HA-down cap stays whatever the site accepted, and nothing is offered."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
-    _options(hass, site, accept_ha_down=True)
+    _accept_ha_down(hass, site)
     now = dt_util.now()
     assert round(control._grid_charge_cap_kw(now, control.options()), 2) == 13.16
     unlowerable = replace(commands_module.SIGENERGY_CONTROL, **{flag: True})
@@ -1455,6 +1465,51 @@ async def test_the_ha_down_acceptance_lifts_nothing_for_a_charge_spotnav_cannot_
     cap = control.status()["grid_charge_cap"]
     assert cap["cap_kw"] < gate.MIN_RATE_KW and cap["ha_down"]["offered"] is False
     assert cap["rule"] == "conservative", "not said to be accepted where it lifts nothing"
+
+
+async def test_an_accepted_test_action_charges_at_the_test_power_unless_one_is_given(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = await _started(hass, site, controller)
+    await control.async_update_options({gate.CONF_ACCEPT_HA_DOWN: True})
+    assert control.options().accept_ha_down
+    answer = await control.async_trial("grid_charge", None, 5, force=True)
+    assert answer["trial"]["rate_kw"] == TEST_CHARGE_KW
+    await control.async_trial("stop", None, 1, force=True)
+    answer = await control.async_trial("grid_charge", 4.0, 5, force=True)
+    assert answer["trial"]["rate_kw"] == 4.0, "a power given is used, within the accepted cap"
+
+
+@pytest.mark.parametrize("change", ["fuse", "brand"])
+async def test_the_ha_down_acceptance_is_cleared_once_the_main_fuse_or_the_battery_changes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], change: str
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = await _started(hass, site, controller)
+    await control.async_update_options({gate.CONF_ACCEPT_HA_DOWN: True})
+    assert site.data[gate.CONF_ACCEPT_HA_DOWN_SETUP] == {"main_fuse_a": 20.0, "brand": "sigenergy"}
+    now = await _looks(control, dt_util.now(), 2)
+    assert control.options().accept_ha_down, "the same setup: kept"
+    if change == "fuse":
+        controller.config[CONF_MAIN_FUSE_A] = 25.0
+    else:
+        hass.config_entries.async_update_entry(site, data={
+            **site.data, gate.CONF_ACCEPT_HA_DOWN_SETUP: {"main_fuse_a": 20.0, "brand": "victron"}})
+    assert control.options().accept_ha_down is False, "counts as off at once"
+    await _looks(control, now, 1)
+    assert site.data[gate.CONF_ACCEPT_HA_DOWN] is False and gate.CONF_ACCEPT_HA_DOWN_SETUP not in site.data
+    assert any(row["kind"] == "ha_down_cleared" for row in control.log)
+
+
+def test_the_acceptance_holds_only_for_the_setup_it_was_given_for() -> None:
+    given = gate.ha_down_setup(20.0, "sigenergy")
+    assert gate.ha_down_setup_state(given, 20.0, "sigenergy") == "same"
+    assert gate.ha_down_setup_state(given, 25.0, "sigenergy") == "changed"
+    assert gate.ha_down_setup_state(given, 20.0, "victron") == "changed"
+    assert gate.ha_down_setup_state(given, 20.0, None) == "unknown"
+    assert gate.ha_down_setup_state(gate.ha_down_setup(20.0, None), 20.0, "sigenergy") == "unknown"
+    assert gate.ha_down_setup_state(None, 20.0, "sigenergy") == "changed", "none stored: never accepted for this one"
 
 
 async def test_the_ha_down_acceptance_is_not_offered_where_the_house_leaves_the_charge_its_room(

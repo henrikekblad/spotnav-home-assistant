@@ -459,7 +459,8 @@ Assistant stops, or loses contact with the battery or the grid meter, during a g
 the house draws a lot before that is over, a phase may go over the main fuse and the fuse may trip. A battery whose
 charge SpotNav cannot lower within seconds (Tesla, through its cloud) keeps the cap whatever is accepted. It changes nothing where the plant's own import limit already guards
 the fuse. Only an administrator can turn it on or off; the debug bundle shows it as
-`battery_control_accept_ha_down`.
+`battery_control_accept_ha_down`. It is given for the site's main fuse and battery as they are: change either and
+it is turned off again, to be given anew. The owner's test action still charges at 2 kW unless a power is given.
 
 ### Grid charging per phase
 
