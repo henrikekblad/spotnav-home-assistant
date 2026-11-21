@@ -485,3 +485,29 @@ async def test_a_retry_of_an_earlier_test_s_setting_back_leaves_a_new_test_s_tak
     await hass.async_block_till_done()
     hold.release()
     await hold.async_close()
+
+
+async def test_a_retry_during_a_new_test_s_taking_out_leaves_that_switch_to_the_new_test(hass: HomeAssistant) -> None:
+    """The re-review (2026-11-21): a retry firing while a new test's switch still read on (its command on its way)
+    took it for a person's and dropped it: never set back."""
+    sent = _availability(hass)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    gate = asyncio.Event()
+
+    async def slow_off(call: Any) -> None:
+        sent.append("off")
+        await gate.wait()
+        hass.states.async_set(SWITCH, "off")
+
+    hass.services.async_register("switch", "turn_off", slow_off)
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert sent == ["off"] and hass.states.get(SWITCH).state == "on"
+    await hold.async_restore_availability()  # the earlier test's retry
+    assert hold.unavailable_kept == [SWITCH], "still the new test's"
+    gate.set()
+    await hass.async_block_till_done()
+    hold.release()
+    await hold.async_restore_availability()
+    assert hass.states.get(SWITCH).state == "on" and hold.unavailable_kept == []

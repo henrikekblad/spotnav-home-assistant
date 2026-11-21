@@ -202,6 +202,9 @@ class ChargerTestHold:
         self._parked: dict[str, dict[str, Any]] = {}
         self._switch_of: dict[str, str] = {}
         self._out: set[str] = set()
+        #: The switches the hold on now has taken (or is taking) out of service: a retry of an earlier test's setting
+        #: back leaves them to this hold's own release.
+        self._taken: set[str] = set()
         self._park_task: asyncio.Task[None] | None = None
         self._restore_lock = asyncio.Lock()
         self._retry_cancel: Callable[[], None] | None = None
@@ -349,6 +352,7 @@ class ChargerTestHold:
         refused, self._refused = sorted(self._refused), set()
         self._stops = {}
         self._out = set()
+        self._taken = set()
         self._switch_of = {
             charger: entity for charger, entity in self._switch_of.items() if entity in self._parked
         }
@@ -445,6 +449,7 @@ class ChargerTestHold:
                 continue
             self._parked[entity_id] = {"chargers": [charger_entry_id]}
             self._switch_of[charger_entry_id] = entity_id
+            self._taken.add(entity_id)
             try:
                 # Kept before the command goes out: Home Assistant stopping right after it must still set it back.
                 await self._async_save()
@@ -487,8 +492,10 @@ class ChargerTestHold:
             failed = False
             for entity_id, row in list(self._parked.items()):
                 charger_entry_id = ", ".join(row.get("chargers") or []) or entity_id
-                if self.active and any(item in self._out for item in row.get("chargers") or []):
-                    continue  # a new hold holds it again
+                if self.active and (
+                    entity_id in self._taken or any(item in self._out for item in row.get("chargers") or [])
+                ):
+                    continue  # the hold on now has it: set back at its own release
                 state = self._site.hass.states.get(entity_id)
                 if state is not None and state.state == "on":
                     # On already: a person (or the charge point) set it back meanwhile. Nothing is written over it.
