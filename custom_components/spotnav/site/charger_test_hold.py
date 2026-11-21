@@ -42,7 +42,8 @@ free-charging charge point (or one that authorizes offline) starts the next one 
 stop it. So while the hold is on, each OCPP charger of the site with the `ocpp` integration's station "Maximum
 Current" number (`OcppCurrentControls.station_maximum_entity`; the integration's 0.13 sends it as the
 `ChargePointMaxProfile` on connector 0, at its highest stack level, and raises unless the charge point answers
-`Accepted`) is set to 0 A (`_async_lower_ceilings`), and counted at 0 A only once that write was accepted and the
+`Accepted`; an older integration moved the number whatever the answer, so with one older than 0.13.0 nothing is
+written, `ocpp_confirms`) is set to 0 A (`_async_lower_ceilings`), and counted at 0 A only once that write was accepted and the
 number reads 0 now (`counts_nothing`); a write refused, failed or not there leaves it counted at its current.
 Why it holds when Home Assistant stops: a charging profile is the charge point's own state, applied by it to every
 transaction whether the central system is connected or not (an offline or free-charging one included), until the
@@ -107,6 +108,24 @@ def _amps(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if number == number and number not in (float("inf"), float("-inf")) else None
+
+
+#: The `ocpp` integration from which its station "Maximum Current" raises when the charge point does not accept the
+#: limit (0.13.0); an older one moved the number whatever the answer, so its write confirms nothing.
+OCPP_CONFIRMING_VERSION: Final = (0, 13, 0)
+
+
+def ocpp_confirms(hass: Any) -> bool:
+    """Whether the loaded `ocpp` integration's station number raises on a limit the charge point refused (its version
+    at least `OCPP_CONFIRMING_VERSION`). `False` when that cannot be read."""
+    from homeassistant.loader import async_get_loaded_integration  # noqa: PLC0415 - kept beside its only use
+
+    try:
+        version = str(async_get_loaded_integration(hass, "ocpp").version or "")
+        parts = tuple(int(part) for part in version.split(".")[:3])
+    except Exception:  # noqa: BLE001 - not known: nothing is confirmed
+        return False
+    return len(parts) == 3 and parts >= OCPP_CONFIRMING_VERSION
 
 
 def station_ceiling_entity(controller: Any) -> str | None:
@@ -319,7 +338,15 @@ class ChargerTestHold:
 
     async def _async_lower_ceilings(self) -> None:
         """Each OCPP charger's station ceiling to 0 A (see the module): its value before kept first, then the write;
-        counted at 0 A only once the write was taken. Never raises."""
+        counted at 0 A only once the write was taken. Nothing where the `ocpp` integration's write confirms nothing
+        (`ocpp_confirms`): those chargers stay counted. Never raises."""
+        if not ocpp_confirms(self._site.hass):
+            _LOGGER.info(
+                "SpotNav site %s: the ocpp integration is older than 0.13.0, whose maximum current says whether the "
+                "charge point took it; its chargers stay counted at their current during the hardware test",
+                self._site.entry_id,
+            )
+            return
         for charger_entry_id in self._charger_ids():
             if not self.active or self._closed:
                 return

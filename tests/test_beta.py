@@ -562,6 +562,7 @@ async def test_an_ocpp_charger_s_ceiling_is_0_a_during_the_battery_part_and_set_
         hass.states.async_set(ceiling, str(float(call.data["value"])), {"min": 0, "max": 32})
 
     hass.services.async_register("number", "set_value", set_value)
+    monkeypatch.setattr("custom_components.spotnav.site.charger_test_hold.ocpp_confirms", lambda _hass: True)
     ocpp = _FakeCharger()
     ocpp.ocpp_target = object()
     ocpp.ocpp_controls = SimpleNamespace(station_maximum_entity=ceiling)
