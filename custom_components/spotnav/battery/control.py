@@ -1741,7 +1741,9 @@ class BatteryControl:
     def _import_limit_phase_refusal(self) -> str | None:
         """Why the plant's own import limit cannot be taken as held **per phase** now (`commands.ImportLimitPhases`),
         as a stable code; `None` when it can. Fails closed: anything unread refuses. `not_supported` (the recipe states
-        no such hold), `not_field_tested` (the owner's on-site test is not recorded in the recipe), every reason of the
+        no such hold), `not_field_tested` (the owner's on-site test is not recorded in the recipe), `not_said_to_act`
+        (the site's own `battery_control_import_limit_acts` is off: the recipe's fact is one plant's test, so each site
+        still says that its plant's limit acts, as for the total rule; no setting of its own), every reason of the
         total rule (`_import_limit_refusal`: a plant not three-phase, another inverter's sun, the sources unread, a
         charger run through the plant), `output_type_unread` (the plant's Output Type does not read three-phase: the
         hold needs all three phases, and the brand's default is not taken for it), `phase_control_off` (the switch
@@ -1753,6 +1755,8 @@ class BatteryControl:
             return "not_supported"
         if not spec.field_tested:
             return "not_field_tested"
+        if not self.options().import_limit_acts:
+            return "not_said_to_act"
         refusal = self._import_limit_refusal()
         if refusal is not None:
             return refusal

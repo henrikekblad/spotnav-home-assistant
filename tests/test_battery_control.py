@@ -1237,6 +1237,7 @@ def test_the_shipped_recipe_does_not_count_on_the_limit_held_per_phase_until_the
     [
         ("held", None),
         ("unrecorded", "not_field_tested"),
+        ("not_said", "not_said_to_act"),
         ("switch_off", "phase_control_off"),
         ("switch_unread", "phase_control_off"),
         ("sensor_offline", "grid_sensor_offline"),
@@ -1255,7 +1256,7 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], case: str, why: str | None
 ) -> None:
     """The owner's 20 A fuse, where the cap leaves no grid charge at all: a limit held per phase at most 3 x (20 - 2)
-    A x 231 V (12.47 kW) lifts it, with the person's own option off (the recipe's recorded fact replaces it)."""
+    A x 231 V (12.47 kW) lifts it, with the recipe's fact recorded and the site's own word that its limit acts."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
     if case != "unrecorded":
         _field_tested(monkeypatch)
@@ -1278,7 +1279,7 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
         hass.config_entries.async_update_entry(charger, data={**charger.data, "current_control": "power"})
     elif case == "car":
         monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
-    assert control.options().import_limit_acts is False
+    _options(hass, site, import_limit_acts=case != "not_said")
     assert control._import_limit_phase_refusal() == why
     cap = control.status()["grid_charge_cap"]
     held = case == "held"
@@ -1299,6 +1300,7 @@ async def test_a_limit_held_per_phase_is_read_again_at_every_look_and_a_running_
     _per_phase_plant(hass)
     _import_limit(hass, "15.0")  # under 3 x 23 A x 231 V = 15.93 kW
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, import_limit_acts=True)
     now = await _looks(control, dt_util.now(), 16)
     # Only the live clamp on the measured headroom, as under the total rule.
     assert hass.states.get(CHARGE).state[:4] == "13.2"
