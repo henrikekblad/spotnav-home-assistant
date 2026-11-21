@@ -59,59 +59,17 @@ seen on no phase: the factor and the hidden load compare every minute's whole lo
 seen per phase, by the band *or* exactly (`total_counted`, `total_exact`). Against the band's minutes alone, a site
 whose plant states its per-phase power would take the very minutes it saw exactly for hidden: on one such site 6943
 of 6947 minutes were exact, the band's four night minutes read about 2 A in all, and the evening's 58 A read as
-hidden and was put on every phase, so no grid charge could run for two weeks. And the band's peaks are scaled only
-from `BAND_MIN_MINUTES` of its minutes in the window; from fewer (a few minutes where the plant's reading lagged)
-there is nothing to scale from, and its peaks count as read. A peak below nought (the band's few minutes reading an
-export) counts as nought and never feeds the factor. Why the cap stays safe: each phase's peak is never below its
-exact peak, nor below the band's own reading (both with `MARGIN_A`); the band's minutes are scaled wherever they are
-enough to carry the learning (`MIN_READY_DAYS` needs days of at least `DAY_MINUTES` counted minutes, so a site the
-plant's per-phase power does not cover always has them); and the only load left out of the hidden one is load a
-phase was seen carrying exactly. A mark kept before `total_exact` was kept has none: its exact minutes then count as
-hidden, as before (the larger cap comes as new hours are kept).
-
-**A cap that grows with the days kept** (`PhasePeaks.learned`, `extra_margin_a`). Until `MIN_READY_DAYS` days count,
-nothing learned is used: the conservative rule stays. From there until the learning is done the learned peaks count
-with a further margin on top of `MARGIN_A`, `EXTRA_MARGIN_A` at `MIN_READY_DAYS` and falling in a straight line to
-nothing at `READY_DAYS`. The learned peaks then replace the conservative rule (the cap may be larger than that rule
-gave: that is the point), so the numbers have to hold by themselves:
-
-* What few days miss is a peak not yet seen. The cap does not take each phase's own peak: it takes the **largest
-  phase's** peak as the house on every phase (`gate.grid_charge_cap_kw`), so a load that moves to another phase, or a
-  heavy load on a phase that was quiet so far, is covered up to the largest phase's. What is left to miss is the
-  largest phase's own peak growing. On the one house measured so far (11 days of November, heat pump, cooking, 20 A)
-  that figure after one day was up to 5.1 A below the 11 days' largest, after two days at most 1.2 A, after three at
-  most 1.1 A, after a week 0.3 A.
-* `MIN_READY_DAYS` = 7: a whole week, so every weekday's habits (the weekend's cooking, the washing day) are in
-  it once. One house's eleven days are no ground for fewer, and a week costs little: a site whose sensors have been
-  in Home Assistant for a while has more than seven days at once from the recorder's history (ten by default).
-* `EXTRA_MARGIN_A` = 4 A (0.9 kW on the phase, with `MARGIN_A` 6 A in all at seven days): over ten times what a
-  week missed there. It is not sized for a large appliance never run in those days on top of the largest phase's
-  peak at its worst minute; nor is `MARGIN_A` after two weeks. What covers that is that the peak kept is the
-  window's largest minute on the largest phase with every other load of that minute in it, that the cap never takes
-  the house below the forecast's high figure for the hour (`gate.grid_charge_cap_kw`: a day colder than the days
-  learned), and that a main fuse carries an overload of that size for the minutes such a coincidence lasts.
-* **Seven days must be seven days.** `DAY_MINUTES` in one stretch (the battery idle every night at three) would make
-  a "day" of two night hours, and seven of them a week that never saw an evening. A day therefore counts, toward
-  `MIN_READY_DAYS` and toward `READY_DAYS` alike, only **spread over the day**: its counted minutes in at least
-  `SPREAD_HOURS` (12) clock hours, half the day, or at least `SPREAD_MINUTES` (600) of them in at least
-  `SPREAD_MINUTES_HOURS` (8) clock hours; and no more days count than the time from the first to
-  the last counted hour holds (whole days, one day's slack: seven days in a row reach from the first's noon to the
-  seventh's). The further margin falls by the same days, and the learning is done at `READY_DAYS` of them: fourteen
-  days of night hours never end it (`days`, by `DAY_MINUTES` alone, is kept for the diagnostics).
-* **Days read back from the recorder are weaker evidence** (`site/phase_backfill.py`): the history cannot say whether
-  a reading that stood still was alive, so those minutes are left out, and what is left out is not random (a
-  battery holding the meter at nought hides whole evenings). Each hour read back keeps how many of its minutes
-  were lost so (`HourMark.lost`). A day whose history lost more than `HISTORY_LOST_SHARE` (30 %) of the minutes that
-  could have counted (counted plus lost) does not count as a day at all: with a third of a day unseen, its peak
-  may well be in the part not seen (its peaks are still kept: they can only raise what is learned). Nor does a
-  day's history count without its **evening**: counted minutes in at least `EVENING_COUNTED_HOURS` (3) of the clock
-  hours `EVENING_HOURS` (16 to 22, the site's own time), where a house's peaks are and where a battery covering
-  the house leaves the history least. And the learning is never done on the history alone: it needs
-  `READY_LIVE_DAYS` (3) days sampled live among its days, each one short of that a day short of the end. A day that
-  counts only with its history weighs `HISTORY_DAY_WEIGHT` (half) of a day sampled live, both in the further margin
-  (ten days of history alone keep the whole 4 A; each live day then takes off twice what a history day does) and in
-  the end of the learning (`READY_DAYS` reached with the history's days at half).
-* The bias factor and the hidden load apply as above at every stage.
+hidden and was put on every phase, so no grid charge could run for two weeks. The hidden load is then added, whole,
+to each phase's largest peak, the band's or the exact one, at every stage (also once the exact minutes alone carry
+the learning): a load no phase was seen carrying may sit on any phase; where the band's peak scaled by the factor
+gives more, that counts. Only the factor (the band's peaks scaled by how much more the house drew in every minute
+than in the minutes the band counted) needs `BAND_MIN_MINUTES` of the
+band's minutes in the window; from fewer there is nothing to scale from, and the band's peaks count as read. A peak
+below nought (the band's few minutes reading an export) counts as nought and never feeds the factor. Why the cap
+stays safe: each phase's peak is never below its exact peak or the band's own reading, plus all the load seen on no
+phase, plus `MARGIN_A`; and the only load not counted as hidden is load a phase was seen carrying. A mark kept before
+`total_exact` was kept has none: its exact minutes then count as hidden (the conservative side; the larger cap comes
+as hours with it are kept and the window's largest totals are among them).
 
 The sun: on a hybrid inverter the sun's power reaches the meter through the plant, so without the plant's per-phase
 power it hides house load in the meter's reading while it shines. It only ever lowers what is seen, and the largest
@@ -756,24 +714,25 @@ class PhasePeaks:
         weighted = min(float(spread), spread_live + HISTORY_DAY_WEIGHT * (spread_count - spread_live))
         # And never done on the history alone: each live day short of `READY_LIVE_DAYS` is a day short of the end.
         weighted = min(weighted, float(READY_DAYS - max(READY_LIVE_DAYS - spread_live, 0)))
-        # What the battery hid (see the module, "The band's estimate"): measured against every minute seen per phase,
-        # the band's and the exact ones, so a load the plant's per-phase power showed is not taken as hidden; scaled
-        # by the factor, and never less than the whole hidden load on that one phase. Only from enough of the band's
-        # minutes (`BAND_MIN_MINUTES`); with fewer, its peaks count as read, unscaled. A peak below nought is nought.
+        # What the battery hid (see the module, "The band's estimate"): the load of the minutes seen on no phase, over
+        # the largest seen per phase, by the band or exactly; always added, whole, to each phase's largest peak (the
+        # band's or the exact one, also once the exact minutes alone carry the learning). The band's peaks are scaled
+        # by the factor only from enough of its minutes (`BAND_MIN_MINUTES`); with fewer they count as read. A peak
+        # below nought is nought.
         seen = _max(total_counted, total_exact)
+        hidden = 0.0 if total_all is None or seen is None else max(total_all - seen, 0.0)
         factor = 1.0
-        hidden = 0.0
-        scaled = minutes >= BAND_MIN_MINUTES and total_all is not None and seen is not None
-        if scaled:
-            assert total_all is not None and seen is not None
+        if minutes >= BAND_MIN_MINUTES and total_all is not None and seen is not None:
             factor = max(1.0, total_all / max(seen, 1.0))
-            hidden = max(total_all - seen, 0.0)
-        band_peaks = None if raw is None or exact_day_count >= READY_DAYS else tuple(
-            max(max(value, 0.0) * factor, max(value, 0.0) + hidden) for value in raw
-        )
+        band = None if raw is None or exact_day_count >= READY_DAYS else tuple(max(value, 0.0) for value in raw)
         exact_peaks = None if exact is None else tuple(max(value, 0.0) for value in exact)
-        largest = _max_triple(band_peaks, exact_peaks)  # type: ignore[arg-type]
-        peaks = None if largest is None else tuple(value + MARGIN_A for value in largest)
+        largest = _max_triple(band, exact_peaks)  # type: ignore[arg-type]
+        # Per phase the larger of: its largest peak seen (the band's or the exact one) plus the whole hidden load, and
+        # the band's peak scaled by the factor (the hidden load spread as the load the band saw).
+        peaks = None if largest is None else tuple(
+            max(value + hidden, 0.0 if band is None else band[index] * factor) + MARGIN_A
+            for index, value in enumerate(largest)
+        )
         ready = peaks is not None and weighted >= READY_DAYS
         extra: float | None = None
         if ready:

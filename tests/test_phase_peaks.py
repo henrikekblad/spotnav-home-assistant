@@ -526,14 +526,14 @@ def test_the_band_s_few_minutes_still_count_as_read() -> None:
     peaks = PhasePeaks()
     now = _spread_days(peaks, MIN_READY_DAYS, reading=_reading(site=(4.0, 4.0, 4.0), battery_w=-3000.0,
                                                                 plant=(0.0, 0.0, 0.0)))
-    # Fewer than `BAND_MIN_MINUTES` by the band, with a peak the exact minutes never saw: kept, unscaled, although
-    # minutes seen by neither (the battery busy, the plant's reading missing) carried more in all.
+    # Fewer than `BAND_MIN_MINUTES` by the band, with a peak the exact minutes never saw: kept, unscaled; the minutes
+    # seen by neither (the battery busy, the plant's reading missing) carried 13 A more in all, added on every phase.
     _close(peaks, _feed(peaks, now + 3600, 10, _reading(site=(4.0, 9.0, 4.0), battery_w=0.0)))
     _close(peaks, _feed(peaks, now + 2 * 3600, 5, _reading(site=(1.0, 1.0, 1.0), battery_w=-27.0 * VOLTS)))
     learned = peaks.learned(now + 3 * 3600)
     assert learned.minutes - learned.exact_minutes < BAND_MIN_MINUTES
     assert learned.factor == 1.0
-    assert learned.peaks_a == pytest.approx((4.0 + MARGIN_A, 9.0 + MARGIN_A, 4.0 + MARGIN_A))
+    assert learned.peaks_a == pytest.approx((4.0 + 13.0 + MARGIN_A, 9.0 + 13.0 + MARGIN_A, 4.0 + 13.0 + MARGIN_A))
 
 
 def test_load_seen_exactly_is_not_hidden_from_the_band_but_load_seen_by_neither_is() -> None:
@@ -549,8 +549,8 @@ def test_load_seen_exactly_is_not_hidden_from_the_band_but_load_seen_by_neither_
     _close(peaks, _feed(peaks, now + 21 * 3600, 5, _reading(site=(1.0, 1.0, 1.0), battery_w=-27.0 * VOLTS)))
     learned = peaks.learned(now + 22 * 3600)
     assert learned.factor == pytest.approx(30.0 / 24.0)
-    # The band's (5, 3, 8) A each plus the 6 A hidden, the larger than the exact 8 A.
-    assert learned.peaks_a == pytest.approx((5.0 + 6.0 + MARGIN_A, 3.0 + 6.0 + MARGIN_A, 8.0 + 6.0 + MARGIN_A))
+    # Each phase's largest seen (the exact 8 A) plus the 6 A hidden.
+    assert learned.peaks_a == pytest.approx((8.0 + 6.0 + MARGIN_A,) * 3)
 
 
 def test_a_mark_kept_before_the_exact_total_counts_its_exact_minutes_as_hidden() -> None:
@@ -571,6 +571,36 @@ def test_a_mark_kept_before_the_exact_total_counts_its_exact_minutes_as_hidden()
     assert learned.factor == pytest.approx(24.0 / 16.0), "the conservative side, as before"
 
 
+def test_the_load_seen_on_no_phase_is_never_dropped_however_few_the_band_s_minutes() -> None:
+    """The safety review (2026-11-21): ten days of exact minutes at 8 A a phase, twelve hours a day, and evenings of
+    54 A in all seen on no phase. With 110 or 130 of the band's minutes alike, each phase keeps the 30 A seen on no
+    phase on top of its 8 A; gating the hidden load on the band's minutes had dropped it below 120."""
+    for band_minutes in (110, 130):
+        peaks = PhasePeaks()
+        exact = _reading(site=(8.0, 8.0, 8.0), battery_w=-1000.0, plant=(0.0, 0.0, 0.0))
+        hidden = _reading(site=(1.0, 1.0, 1.0), battery_w=-51.0 * VOLTS)
+        for day in range(10):
+            for hour in range(12):
+                # Exact minutes only (no quiet band minute closing each hour).
+                _feed(peaks, T0 + day * 86400 + (6 + hour) * 3600, 15, exact)
+            _feed(peaks, _feed(peaks, T0 + day * 86400 + 19 * 3600, 5, hidden), 2, exact)
+        now = T0 + 10 * 86400
+        assert peaks.learned(now).minutes == peaks.learned(now).exact_minutes
+        # The band's minutes at night, the battery idle, 2 A a phase: as many as asked.
+        night = _reading(site=(2.0, 2.0, 2.0), battery_w=0.0)
+        start = now + 2 * 3600
+        while True:
+            learned = peaks.learned(start + 3600)
+            have = learned.minutes - learned.exact_minutes
+            if have >= band_minutes:
+                break
+            _close(peaks, _feed(peaks, start, band_minutes - have, night))
+            start += 3600
+        assert abs(have - band_minutes) <= 2 and (have < BAND_MIN_MINUTES) == (band_minutes < BAND_MIN_MINUTES)
+        assert learned.peaks_a is not None
+        assert min(learned.peaks_a) >= 8.0 + (54.0 - 24.0) + MARGIN_A - 1e-6, band_minutes
+
+
 def test_band_and_exact_minutes_together_take_the_larger_per_phase_until_the_exact_ones_suffice() -> None:
     peaks = PhasePeaks()
     # A week by the band (16 A summed), then a 24 A evening the band misses: factor 1.5 on the band's peaks.
@@ -583,13 +613,17 @@ def test_band_and_exact_minutes_together_take_the_larger_per_phase_until_the_exa
     assert learned.ready and learned.basis == "mixed"
     assert learned.factor == pytest.approx(24.0 / 16.0)
     assert learned.phase_peaks() == pytest.approx({
-        "L1": 5.0 + 8.0 + MARGIN_A, "L2": 12.0 + MARGIN_A, "L3": 8.0 + 8.0 + MARGIN_A,
+        # The 8 A seen on no phase may sit on L2 too: on top of its exact 12 A (safety review 2026-11-21).
+        "L1": 5.0 + 8.0 + MARGIN_A, "L2": 12.0 + 8.0 + MARGIN_A, "L3": 8.0 + 8.0 + MARGIN_A,
     })
     # Two weeks of exact minutes: the band's (scaled) peaks no longer count.
     now = _days(peaks, READY_DAYS - 7, reading=exact, start=now)
     learned = peaks.learned(now)
     assert learned.basis == "exact" and learned.exact_days == READY_DAYS
-    assert learned.phase_peaks() == pytest.approx({"L1": 2.0 + MARGIN_A, "L2": 12.0 + MARGIN_A, "L3": 2.0 + MARGIN_A})
+    # The band no longer counts; the load seen on no phase still does, on every phase.
+    assert learned.phase_peaks() == pytest.approx(
+        {"L1": 2.0 + 8.0 + MARGIN_A, "L2": 12.0 + 8.0 + MARGIN_A, "L3": 2.0 + 8.0 + MARGIN_A}
+    )
 
 
 def test_a_minute_with_one_sample_by_the_band_is_counted_by_the_band() -> None:
