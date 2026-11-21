@@ -206,6 +206,18 @@ async def test_between_similar_cars_the_reason_is_the_colour_with_its_distance(g
     assert 0 <= camera["colour_distance"] < 0.25
 
 
+async def test_a_colour_mismatch_keeps_the_named_cars_measured_distance(garage: Garage) -> None:
+    """A field report showed `colour_mismatch` with no distance, which could not tell a measured mismatch from an
+    unknown colour: the named car's distance from the picture now is kept."""
+    await garage.start()
+    garage.model.answer = "car_1"
+    garage.car_parks(BLUE)
+    await garage.world.plug_in()
+    await garage.settle()
+    camera = camera_entry(garage)
+    assert camera["camera_reason"] == "colour_mismatch" and camera["colour_distance"] >= 0.25
+
+
 async def test_a_less_sure_answer_says_why(garage: Garage) -> None:
     await garage.start()
     garage.model.confidence = "medium"

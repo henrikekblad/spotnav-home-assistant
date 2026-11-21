@@ -3,12 +3,15 @@
 The camera is one source of evidence for vehicle identification (`identification.py`). It is asked only while
 the cars' own reports have not decided, and its answer:
 
-* **decides alone** only when it is high confidence, the picture now has colour (never at night: an infrared
-  picture is grey or evenly tinted) nearest the named car's reference colour, every candidate left has a
-  reference picture, and the car
-  it names is visibly different in colour from every other candidate (`distinct_cars`, from the colour
-  signature stored with each reference picture when it was taken; a picture without colour, an infrared night
-  picture, says nothing about colour);
+* **decides alone** only when it is high confidence, every candidate left has a reference picture, no other
+  candidate's own plug sensor went on at this plug-in, and
+  * in daylight (the picture now has colour), the picture now is nearest the named car's reference colour and the
+    car it names is visibly different in colour from every other candidate (`distinct_cars`, from the colour
+    signature stored with each reference picture when it was taken; a picture without colour, an infrared night
+    picture, says nothing about colour); a named car without a coloured reference picture has no colour to check,
+    which is no veto, unless the picture now looks like another car's colour;
+  * at night (an infrared picture is grey or evenly tinted: no colour), the named car has a night reference
+    picture: the model then had that car's own night picture to recognise it by;
 
 Colour is compared between two pictures of one camera and one frame (`colour_distance`): where they differ is
 where the cars differ (the ground, plants, posts and a time stamp stay and cancel out), and there their average
@@ -31,7 +34,7 @@ asked as without a camera).
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from functools import lru_cache
 from dataclasses import dataclass
 from typing import Any, Final
@@ -187,12 +190,21 @@ def distinct_cars(first: Sequence[Signature], second: Sequence[Signature]) -> bo
 
 #: Why the camera's answer did or did not decide alone (`camera_reason`), for the diagnostics.
 REASON_DECIDED: Final = "decided"
+#: Decided at night: no colour now, the named car has a night reference picture, nothing contradicts it.
+REASON_DECIDED_NIGHT: Final = "decided_night"
+#: Decided in daylight without a colour check: the named car has no coloured reference picture to compare with.
+REASON_DECIDED_WITHOUT_COLOUR: Final = "decided_without_colour"
+#: The reasons the camera decides alone for.
+REASONS_DECIDING: Final = (REASON_DECIDED, REASON_DECIDED_NIGHT, REASON_DECIDED_WITHOUT_COLOUR)
 REASON_ANSWER_NONE: Final = "answer_none"
 REASON_CONFIDENCE_LOW: Final = "confidence_low"
+#: At night, the named car has no night reference picture.
 REASON_NIGHT: Final = "night"
 REASON_COLOUR_MISMATCH: Final = "colour_mismatch"
 REASON_MISSING_REFERENCE: Final = "missing_reference"
 REASON_SIMILAR_COLOUR: Final = "similar_colour"
+#: Another candidate's own plug sensor went on at this plug-in: the cars' own word against the camera's.
+REASON_OTHER_PLUGGED_IN: Final = "other_plugged_in"
 #: The camera saw a car that is none of the cars (`ANSWER_OTHER`, applied by `identification.py`).
 REASON_NONE_OF_THESE: Final = "none_of_these"
 
@@ -203,34 +215,60 @@ def camera_reason(
     candidates: Sequence[str],
     references: Mapping[str, Sequence[Signature]],
     now: Signature,
+    *,
+    night: Collection[str] = (),
+    plugged: Collection[str] = (),
 ) -> tuple[str, float | None]:
     """Why the camera's `answer` (a candidate, or `None` for none) at `confidence` does or does not decide alone among
     the `candidates` the cars' own evidence left, given each car's reference pictures' signatures (a car missing
-    from `references`, or with an empty list, has no reference picture) and `now`, the colour of the picture now
-    (`None` at night: an infrared picture has none). With `similar_colour`, the colour distance from the named car
-    to the nearest other car (`None` when one of them has no coloured picture); else `None`.
+    from `references`, or with an empty list, has no reference picture; a night picture's signature is `None`),
+    `now`, the colour of the picture now (`None` at night: an infrared picture has none), `night`, the cars with a
+    night reference picture, and `plugged`, the cars whose own plug sensor went on at this plug-in (a reading that
+    did not change across the plug-in is not one: it says nothing either way). With the reason, a colour distance
+    (`None` when none was measured): for `colour_mismatch` the named car's distance from the picture now, for
+    `similar_colour` the distance from the named car's reference pictures to the nearest other car's (from
+    the picture now when the named car's colour is not known).
 
     In order: `answer_none` (no car, or one that is no candidate: it counts for nothing), `confidence_low` (not
-    "high"), `night`, `colour_mismatch` (another car is nearer the colour now than the named car: a model that
-    names the red car for a white crop does not decide), `missing_reference` (a car the camera cannot recognise
-    may be the one standing there), `similar_colour` (another car is not clearly different in colour, or is as
-    near the colour now), else `decided`.
+    "high"), `other_plugged_in` (another car's own plug sensor says it was just plugged in), then
+
+    * at night (no colour now): `night` when the named car has no night reference picture to be recognised by,
+      `missing_reference` (a car the camera cannot recognise may be the one standing there), else `decided_night`;
+    * in daylight, when the named car has no coloured reference picture (its colour now is not known): no veto,
+      but `similar_colour` when the picture now is near another car's colour, `missing_reference`, else
+      `decided_without_colour`;
+    * in daylight otherwise: `colour_mismatch` (the picture now is clearly unlike the named car's colour,
+      `COLOUR_DISTINCT` or more, and another car is nearer: a model that names the red car for a white crop does
+      not decide), `missing_reference`, `similar_colour` (another car is not clearly different in colour, or is
+      as near the colour now), else `decided`.
     """
     if answer is None or answer not in candidates:
         return REASON_ANSWER_NONE, None
     if confidence != CONFIDENCE_HIGH:
         return REASON_CONFIDENCE_LOW, None
+    others = [other for other in candidates if other != answer]
+    if any(other in plugged for other in others):
+        return REASON_OTHER_PLUGGED_IN, None
+    missing = any(not references.get(car) for car in candidates)
     if now is None:
-        return REASON_NIGHT, None
+        if answer not in night:
+            return REASON_NIGHT, None
+        return (REASON_MISSING_REFERENCE, None) if missing else (REASON_DECIDED_NIGHT, None)
     distances = _distances_now(now, candidates, references)
     mine = distances.get(answer)
-    if mine is None or any(distance < mine for distance in distances.values()):
-        return REASON_COLOUR_MISMATCH, None
-    if any(not references.get(car) for car in candidates):
+    if mine is None:
+        # The named car's colour now is not known: that is no mismatch. Only a picture that looks like another
+        # car's colour holds the answer back.
+        near = [distances[other] for other in others if other in distances and distances[other] < COLOUR_DISTINCT]
+        if near:
+            return REASON_SIMILAR_COLOUR, min(near)
+        return (REASON_MISSING_REFERENCE, None) if missing else (REASON_DECIDED_WITHOUT_COLOUR, None)
+    if mine >= COLOUR_DISTINCT and any(distance < mine for distance in distances.values()):
+        return REASON_COLOUR_MISMATCH, mine
+    if missing:
         return REASON_MISSING_REFERENCE, None
-    others = [other for other in candidates if other != answer]
-    # Another car as near the colour now (both the same as the picture now) is a car of similar colour.
-    tied = any(distances.get(other) == mine for other in others)
+    # Another car as near the colour now (or nearer, with the named car near it too) is a car of similar colour.
+    tied = any(other in distances and distances[other] <= mine for other in others)
     if not tied and all(distinct_cars(references[answer], references[other]) for other in others):
         return REASON_DECIDED, None
     ours = [signature for signature in references[answer] if signature is not None]
@@ -250,13 +288,16 @@ def camera_verdict(
     candidates: Sequence[str],
     references: Mapping[str, Sequence[Signature]],
     now: Signature,
+    *,
+    night: Collection[str] = (),
+    plugged: Collection[str] = (),
 ) -> CameraVerdict:
-    """What the camera's `answer` counts for (`camera_reason` says why): it decides alone only for `decided`, names
-    no car for `answer_none`, and otherwise only puts its car first."""
-    reason, _ = camera_reason(answer, confidence, candidates, references, now)
+    """What the camera's `answer` counts for (`camera_reason` says why): it decides alone only for a deciding reason
+    (`REASONS_DECIDING`), names no car for `answer_none`, and otherwise only puts its car first."""
+    reason, _ = camera_reason(answer, confidence, candidates, references, now, night=night, plugged=plugged)
     if reason == REASON_ANSWER_NONE:
         return CameraVerdict()
-    if reason == REASON_DECIDED:
+    if reason in REASONS_DECIDING:
         return CameraVerdict(decides=answer, prefers=answer)
     return CameraVerdict(prefers=answer)
 
