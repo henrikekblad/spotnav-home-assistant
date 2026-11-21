@@ -818,7 +818,7 @@
   "beta.ended": "The beta period has ended – nothing is sent any more",
   "beta.error.failed": "The setting could not be saved.",
   "test.heading": "Hardware test",
-  "test.intro": "Tests the battery and the heating the way SpotNav controls them, then hands everything back. At most ten minutes. Do not start charging a car during the test: SpotNav holds the chargers stopped until the battery part is done.",
+  "test.intro": "Tests the battery and the heating the way SpotNav controls them, then hands everything back. At most ten minutes. Do not start charging a car during the test: SpotNav holds the chargers stopped until the battery part is done. A charge started during the test is stopped: start it again afterwards.",
   "test.run": "Run hardware test",
   "test.stop": "Stop the test",
   "test.send": "Send",

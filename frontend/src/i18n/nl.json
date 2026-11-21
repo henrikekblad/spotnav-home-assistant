@@ -818,7 +818,7 @@
   "beta.ended": "De bètaperiode is voorbij – er wordt niets meer verzonden",
   "beta.error.failed": "De instelling kon niet worden opgeslagen.",
   "test.heading": "Hardwaretest",
-  "test.intro": "Test de batterij en de verwarming zoals SpotNav ze stuurt en geeft daarna alles terug. Hooguit tien minuten. Start tijdens de test geen laadsessie van een auto: SpotNav houdt de laadpalen gestopt tot het batterijdeel klaar is.",
+  "test.intro": "Test de batterij en de verwarming zoals SpotNav ze stuurt en geeft daarna alles terug. Hooguit tien minuten. Start tijdens de test geen laadsessie van een auto: SpotNav houdt de laadpalen gestopt tot het batterijdeel klaar is. Een laadsessie die tijdens de test start, wordt gestopt: start hem daarna opnieuw.",
   "test.run": "Hardwaretest uitvoeren",
   "test.stop": "Test stoppen",
   "test.send": "Verzenden",

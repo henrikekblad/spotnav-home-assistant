@@ -164,7 +164,7 @@ async def test_a_charge_begun_under_the_hold_is_stopped_a_bounded_number_of_time
         await hass.async_block_till_done()
     assert on.stops == MAX_STOPS
     assert hold.counts_nothing("on") is False, "a charger that charges is counted"
-    hold.release()
+    assert hold.release() == ["on"], "a charger stopped during the test has its plan armed again"
     freezer.tick(charger_test_hold.STOP_GAP_S + 1)
     hold.observe()
     await hass.async_block_till_done()

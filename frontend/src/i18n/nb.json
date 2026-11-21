@@ -818,7 +818,7 @@
   "beta.ended": "Betaperioden er over – ingenting sendes lenger",
   "beta.error.failed": "Innstillingen kunne ikke lagres.",
   "test.heading": "Maskinvaretest",
-  "test.intro": "Tester batteriet og varmen slik SpotNav styrer dem, og gir så alt tilbake. Høyst ti minutter. Ikke start lading av en bil under testen: SpotNav holder laderne stoppet til batteridelen er ferdig.",
+  "test.intro": "Tester batteriet og varmen slik SpotNav styrer dem, og gir så alt tilbake. Høyst ti minutter. Ikke start lading av en bil under testen: SpotNav holder laderne stoppet til batteridelen er ferdig. En lading som startes under testen stoppes: start den igjen etterpå.",
   "test.run": "Kjør maskinvaretest",
   "test.stop": "Avbryt testen",
   "test.send": "Send",

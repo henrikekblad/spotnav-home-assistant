@@ -20,7 +20,9 @@ hold keeps every charger of the site stopped, and the cap may then count a charg
 * A charge the charger begins by itself (a free-charging OCPP charger at plug-in, a person in the charger's own
   app) is stopped (`observe`, at each of the test's polls), as the person hold stops one under a person's Stop
   (`execution/person_hold.py`): at most one stop per `STOP_GAP_S` and `MAX_STOPS` in all per charger; one that
-  begins again after that is left alone, and stays counted at its current in the cap.
+  begins again after that is left alone, and stays counted at its current in the cap. A charger stopped so has its
+  plan armed again at the release, as one whose start was refused; a charge a person started has to be started
+  again (the card says so).
 * At the end of the battery part, by any path (done, failed, deadline, the person's stop, an error, the unload:
   `hardware_test.py` releases it when the battery part is over, in the run's `finally`, after a stop and at the
   shutdown), the hold ends and each charger whose start it refused
@@ -625,6 +627,8 @@ class ChargerTestHold:
             if last is not None and (now - last).total_seconds() < STOP_GAP_S:
                 continue
             self._stops[charger_entry_id] = (count + 1, now)
+            # Its plan is armed again at the release, as for a start the hold refused.
+            self._refused.add(charger_entry_id)
             if count + 1 == MAX_STOPS:
                 _LOGGER.warning(
                     "SpotNav site %s: charger %s began charging during the hardware test; the last stop is sent, "

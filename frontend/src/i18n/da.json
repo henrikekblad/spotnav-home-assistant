@@ -818,7 +818,7 @@
   "beta.ended": "Betaperioden er slut – intet sendes længere",
   "beta.error.failed": "Indstillingen kunne ikke gemmes.",
   "test.heading": "Hardwaretest",
-  "test.intro": "Tester batteriet og varmen, som SpotNav styrer dem, og giver derefter alt tilbage. Højst ti minutter. Start ikke opladning af en bil under testen: SpotNav holder laderne stoppet, til batteridelen er færdig.",
+  "test.intro": "Tester batteriet og varmen, som SpotNav styrer dem, og giver derefter alt tilbage. Højst ti minutter. Start ikke opladning af en bil under testen: SpotNav holder laderne stoppet, til batteridelen er færdig. En opladning, der startes under testen, stoppes: start den igen bagefter.",
   "test.run": "Kør hardwaretest",
   "test.stop": "Afbryd testen",
   "test.send": "Send",

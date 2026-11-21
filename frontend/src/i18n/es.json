@@ -818,7 +818,7 @@
   "beta.ended": "El periodo beta ha terminado – ya no se envía nada",
   "beta.error.failed": "No se pudo guardar el ajuste.",
   "test.heading": "Prueba de hardware",
-  "test.intro": "Prueba la batería y la calefacción tal como SpotNav las controla y después lo devuelve todo. Diez minutos como mucho. No inicies la carga de un coche durante la prueba: SpotNav mantiene los cargadores parados hasta que termine la parte de la batería.",
+  "test.intro": "Prueba la batería y la calefacción tal como SpotNav las controla y después lo devuelve todo. Diez minutos como mucho. No inicies la carga de un coche durante la prueba: SpotNav mantiene los cargadores parados hasta que termine la parte de la batería. Una carga iniciada durante la prueba se detiene: vuelve a iniciarla después.",
   "test.run": "Ejecutar prueba de hardware",
   "test.stop": "Detener la prueba",
   "test.send": "Enviar",
