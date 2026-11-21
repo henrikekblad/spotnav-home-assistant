@@ -1096,7 +1096,7 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     block = control.status()["grid_charge_cap"]["import_limit"]
     # Held per phase (`commands.ImportLimitPhases`): never while the owner's on-site test is not recorded.
     # The per-phase rule counts the site's own safety margin (1 A by default): 3 x 19 A x 231 V.
-    unrecorded = {"max_kw": 13.16, "holds": False, "why": "not_field_tested"}
+    unrecorded = {"max_kw": 13.16, "holds": False, "why": "not_field_tested", "entity_id": None}
     assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": "sources_unknown",
                      "per_phase": unrecorded}
     await _looks(control, dt_util.now(), 1)
@@ -1120,7 +1120,7 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
     cap = control.status()["grid_charge_cap"]
     assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False, "why": None,
-                                   "per_phase": {"max_kw": None, "holds": False, "why": "not_field_tested"}}
+                                   "per_phase": {"max_kw": None, "holds": False, "why": "not_field_tested", "entity_id": None}}
     assert cap["rule"] == "conservative"
     # Not shown to act on site: read and suggested, never in force.
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
@@ -1320,6 +1320,12 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
         assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW, "today's rule: no charge"
     if case == "car":
         assert cap["import_limit"]["per_phase"]["max_kw"] is None, "the house and the car alone pass the fuse"
+    # The entity the person can fix, named for the refusals that have one (read or not, disabled or not).
+    named = {"switch_off": "switch.sigen_plant_independent_phase_power_control",
+             "switch_unread": "switch.sigen_plant_independent_phase_power_control",
+             "sensor_offline": "sensor.sigen_plant_grid_sensor_status",
+             "sensor_unread": "sensor.sigen_plant_grid_sensor_status", "output_unread": "sensor.sigen_inverter_output_type"}
+    assert cap["import_limit"]["per_phase"]["entity_id"] == named.get(case)
 
 
 @pytest.mark.parametrize(("margin", "limit", "held"), [(0.0, "13.8", True), (1.0, "13.8", False), (1.0, "13.1", True),

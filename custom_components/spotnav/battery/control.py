@@ -137,7 +137,7 @@ from .plan_model import (
     wear_minor_per_kwh,
 )
 from .plan_shadow import slot_at
-from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
+from .runtime import TICK_S, plant_entity_id, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
 from .verify import (
     MAX_REPORTS,
     TEST_CHARGE_KW,
@@ -1827,8 +1827,9 @@ class BatteryControl:
         down to 0.1 kW: what the person may set; SpotNav never writes it), `holds` (shown to act and at most
         `max_kw`: the rule in force) and `why` (why the site's sources refuse the rule whatever the limit reads,
         `_import_limit_refusal`). For a brand whose limit can be held per phase (`commands.ImportLimitPhases`) also
-        `per_phase`: `max_kw` (`gate.import_limit_phase_max_kw`, `None` where no value guards), `holds` and `why`
-        (`_import_limit_phase_refusal`); `holds` above is then true when either rule is in force. `None` for a brand
+        `per_phase`: `max_kw` (`gate.import_limit_phase_max_kw`, `None` where no value guards), `holds`, `why`
+        (`_import_limit_phase_refusal`) and `entity_id` (the plant's entity a refusal names: the Output Type, the
+        phase switch or the grid sensor status, disabled or not; `None` for any other); `holds` above is then true when either rule is in force. `None` for a brand
         without such a limit."""
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
@@ -1867,8 +1868,12 @@ class BatteryControl:
         )
         # `holds`: the plant's limit guards the fuse now by either rule (the cap is lifted); `per_phase` says which.
         block["holds"] = block["holds"] or phase_holds
+        # The plant's entity the person can fix for a refusal that names one (enable it, or turn the switch on).
+        match = {"output_type_unread": control.output_type, "phase_control_off": spec.switch,
+                 "grid_sensor_offline": spec.grid_sensor}.get(phase_refusal or "")
         block["per_phase"] = {
             "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds, "why": phase_refusal,
+            "entity_id": None if match is None else plant_entity_id(self.hass, self.site.config, match),
         }
         return block
 

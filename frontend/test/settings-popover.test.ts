@@ -144,6 +144,8 @@ describe("the popover from the house card", () => {
     view?: Record<string, unknown>;
     entity?: Record<string, unknown>;
     preheat?: Record<string, unknown>;
+    /** Merged into the battery status. */
+    status?: Record<string, unknown>;
   }
 
   function fakeHass(options: Options = {}) {
@@ -151,6 +153,9 @@ describe("the popover from the house card", () => {
     let battery = read("battery_control", options.battery ?? "needs_ack.json");
     if (options.preheat !== undefined) {
       battery = { ...battery, status: { ...(battery["status"] as object), preheat: options.preheat } };
+    }
+    if (options.status !== undefined) {
+      battery = { ...battery, status: { ...(battery["status"] as object), ...options.status } };
     }
     const hass = {
       language: "sv",
@@ -350,6 +355,52 @@ describe("the popover from the house card", () => {
     steps[0]!.querySelector<HTMLButtonElement>("button[data-action='open-battery-device']")!.click();
     expect(pushed).toEqual(["/config/devices/device/0f4c2b7e9a1d4c3e8b6a5f2d1c0e9b8a"]);
     expect(steps[1]!.querySelector("button[data-edit='battery_control_ai_takeover_ack']")).not.toBeNull();
+  });
+
+  it("says the one step the plant's per-phase import limit still needs, with its button for an administrator", async () => {
+    const checking = read("battery_control", "checking.json")["status"] as Record<string, any>;
+    const withPhase = (phase: Record<string, unknown>, more: Record<string, unknown> = {}): Record<string, unknown> => ({
+      allowed_actions: ["grid_charge"],
+      options: { ...checking["options"], battery_control_enabled: true },
+      grid_charge_cap: {
+        ...checking["grid_charge_cap"],
+        import_limit: { ...checking["grid_charge_cap"]["import_limit"], per_phase: { max_kw: 13.16, holds: false, entity_id: null, ...phase } },
+      },
+      ...more,
+    });
+    // Not said to act: the button opens the site's own word and writes it.
+    const said = await mount({ battery: "checking.json", status: withPhase({ why: "not_said_to_act" }) });
+    let popover = await open(said.root);
+    let note = popover.querySelector<HTMLElement>("[data-note='import_limit_phase']")!;
+    expect(note.dataset["code"]).toBe("not_said_to_act");
+    expect(note.textContent).toContain("Slå på ”Importgränsen verkar” för att lita på den.");
+    // The total rule's advice (far under the fuse) is not given beside it.
+    expect(popover.querySelector("[data-import-limit]")).toBeNull();
+    note.querySelector<HTMLButtonElement>("button[data-action='import-limit-acts']")!.click();
+    const form = said.root.querySelector<HTMLFormElement>("form[data-value-editor]")!;
+    expect(form.textContent).toContain("högst 3 × (säkring − säkerhetsmarginal) × spänning");
+    form.querySelector<HTMLInputElement>("input[value='on']")!.click();
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(said.messages.filter((message) => message["changes"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { battery_control_import_limit_acts: true } },
+    ]);
+    said.element.remove();
+    // The phase switch off: Home Assistant's own dialog for the entity.
+    const entityId = "switch.sigen_plant_independent_phase_power_control";
+    const off = await mount({ battery: "checking.json", status: withPhase({ why: "phase_control_off", entity_id: entityId }) });
+    popover = await open(off.root);
+    note = popover.querySelector<HTMLElement>("[data-note='import_limit_phase']")!;
+    expect(note.textContent).toContain("Oberoende effektstyrning per fas (Independent phase power control) är av");
+    const opened: unknown[] = [];
+    off.element.addEventListener("hass-more-info", (event) => opened.push((event as CustomEvent).detail));
+    note.querySelector<HTMLButtonElement>("button[data-action='open-import-limit-entity']")!.click();
+    expect(opened).toEqual([{ entityId }]);
+    off.element.remove();
+    // A code nobody here can act on: nothing.
+    const tested = await mount({ battery: "checking.json", status: withPhase({ why: "not_field_tested" }) });
+    popover = await open(tested.root);
+    expect(popover.querySelector("[data-note='import_limit_phase']")).toBeNull();
   });
 
   it("offers the battery mode with a help line each, says what it does while control is off, and writes the choice", async () => {

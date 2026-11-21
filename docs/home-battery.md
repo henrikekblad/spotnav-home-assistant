@@ -361,7 +361,77 @@ well under the fuse's 13.8 kW. The battery section says what the limit reads and
 ("Anläggningens importgräns står på 13,8 kW. Den begränsar summan över de tre faserna, inte varje fas, och skyddar
 säkringen först vid högst 4,4 kW"). **SpotNav never writes the limit**: you set it, in the integration or the
 Sigenergy app. While it reads more, or a car charges at a current that leaves it no room, the cap above is in force
-as if there were no limit. The same rule is used for any brand whose import limit is a total.
+as if there were no limit. The same rule is used for any brand whose import limit is a total. A Sigenergy plant
+that holds the limit per phase gets the far better rule of the next section instead.
+
+### Grid charging on a small main fuse (Sigenergy)
+
+**Why the cap leaves nothing on 16–20 A.** The cap above is sized for the worst case: Home Assistant stops while a
+grid charge runs, the command stays, and the house reaches its peak on one phase. On a 20 A fuse the house's peak on
+one phase (4 kW until learned, often 15–18 A once learned) plus the 2 A margin leaves little or nothing, and the
+balanced charge takes the same on all three phases. So a small fuse gets no grid charging at all, or a trickle, even
+in hours when the house is nearly idle. The total-only rule in the section before does not help either: it asks for
+a limit far under the fuse (4.4 kW on 20 A).
+
+**What replaces it.** A Sigenergy plant with *Independent phase power control* on holds each phase's grid import at
+a third of its own import limit (`Grid Import Limitation`) by itself, on its own grid sensor, whatever Home
+Assistant does. When a load comes on one phase, the plant lowers its charge on that phase (and puts out there if it
+must) within seconds and keeps charging on the other two. Sigenergy's AI mode charges from the grid this way every
+day. Where SpotNav can rely on that hold it drops the cap: the grid charge runs at the plan's power and the plant
+takes what the house leaves. While Home Assistant runs, the live per-phase headroom still keeps the chargers first.
+
+**The test it rests on.** On 2026-11-21 a SigenStor EC 12.0 TP (Remote EMS, control mode *Command Charging (Grid
+First)*, the mode SpotNav's grid charge uses, `Independent phase power control` on) held every phase at a third of
+its limit within 15 seconds with a single-phase load on: at full charge, with the charge lowered so that the total
+stayed **under** the limit (the case that tells a per-phase hold from a total-only one), and after ten minutes with
+nothing writing to the plant. That result is recorded in SpotNav's Sigenergy recipe; another brand never gets the
+rule.
+
+**Checked at every start and every look.** The cap is dropped only while all of these read so, and comes back at
+once when one does not:
+
+* the plant is three-phase, with no other inverter's sun in the Energy dashboard and no Sigenergy DC charger run
+  through the plant (as for the total rule);
+* you have said the limit acts on your plant (`battery_control_import_limit_acts`, below);
+* the plant's `Output Type` reads L1/L2/L3/N (the only type the phase control acts with);
+* `Independent phase power control` reads on;
+* the plant's `Grid Sensor Status` reads connected (the limit regulates on that sensor);
+* the limit reads at most what keeps every phase under the fuse less the site's safety margin, and the house's peak
+  on its worst phase plus the chargers' last currents stays under that too (the plant's output per phase is not
+  counted on).
+
+**The site's safety margin sets the most the limit may read:**
+
+    max import limit = 3 x (main fuse - safety margin) x phase voltage
+
+For 20 A at 230 V that is 13.8 kW with a margin of 0 A and 13.1 kW with 1 A (the default for a new site). The margin
+is the one you set for load balancing; it covers a voltage dip (the plant holds kW, so a lower voltage means a
+little more current) and the plant's own overshoot for a reading or two after a step, both short against what a
+fuse carries.
+
+**The risk that is left.** With Home Assistant down nothing re-checks these readings, so a second fault in that
+time leaves the charge without this guard: the grid sensor dropping, the limit raised or the phase control turned
+off in the app. That is the same exposure Sigenergy's own AI mode runs with every day, and it is accepted here.
+
+**Turning it on, step by step:**
+
+1. In the Sigenergy integration, enable `Grid Import Limitation`, `Grid Sensor Status`, `Output Type` and
+   `Independent phase power control` if they are disabled (they are by default). SpotNav reads them; it never
+   writes any of them.
+2. Turn `Independent phase power control` on, and check that `Output Type` reads L1/L2/L3/N.
+3. In the Sigenergy app, set the plant's grid import limit to at most 3 x (fuse - safety margin) x voltage, for
+   example 13.1 kW on 20 A with a 1 A margin.
+4. In the card's battery settings, turn on "The import limit acts".
+
+The battery section says what is still missing, one step at a time, with a button to the entity or the setting
+("Independent phase power control is off or cannot be read. Turn it on …", "Lower it to at most 13.1 kW in the
+Sigenergy app …"). Once everything holds it says so instead of the cap: "Sigenergy holds each phase under 4.4 kW
+(the plant's import limit, 13.1 kW, shared over three phases): grid charging uses what the house leaves."
+
+**Another plant.** Owners of another Sigenergy model or firmware who want to see the hold for themselves can run
+`tools/sigen_import_limit_test.py` (Python's standard library only, about 45 minutes, someone at the main panel):
+it sets a low limit, runs the load steps above with markers and puts every value back afterwards. `--dry-run`
+writes nothing.
 
 ### Grid charging per phase
 

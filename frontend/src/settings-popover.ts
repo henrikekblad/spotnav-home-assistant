@@ -87,6 +87,7 @@ import {
   reportOutcomes,
   type BatteryPreheat,
   type BatteryStatus,
+  type ImportLimit,
   type PlanCosts,
   type SitePriceSettings,
   type SiteView,
@@ -279,8 +280,16 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
     if (cap.rule !== "import_limit") {
       return null;
     }
-    // The plant's limit is a total over the phases: said with its value, and why that is less than the fuse.
     const value = cap.import_limit?.value_kw ?? null;
+    if (cap.import_limit?.per_phase?.holds === true && value !== null) {
+      // Held per phase by the plant itself: a third of its limit on each phase, whatever the house does (rounded up,
+      // so "under" stays true).
+      return translate(language, "battery.cap.importLimitPhase", {
+        phase: formatNumber(language, Math.ceil((value / 3) * 10 - 1e-9) / 10, 1),
+        kw: formatNumber(language, value, 1),
+      });
+    }
+    // The plant's limit is a total over the phases: said with its value, and why that is less than the fuse.
     return value === null
       ? translate(language, "battery.cap.importLimit")
       : translate(language, "battery.cap.importLimitTotal", { kw: formatNumber(language, value, 1) });
@@ -321,7 +330,7 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
 export function importLimitHint(language: Language, status: BatteryStatus): string | null {
   const limit = status.grid_charge_cap.import_limit;
   if (
-    limit === null || limit.holds || limit.suggested_kw === null || limit.why !== null
+    limit === null || limit.holds || limit.suggested_kw === null || limit.why !== null || phaseRuleApplies(limit)
     || !status.options.battery_control_import_limit_acts || !status.allowed_actions.includes("grid_charge")
   ) {
     return null;
@@ -330,6 +339,68 @@ export function importLimitHint(language: Language, status: BatteryStatus): stri
   return limit.value_kw === null
     ? translate(language, "battery.cap.importLimitUnset", { max })
     : translate(language, "battery.cap.importLimitTooHigh", { value: formatNumber(language, limit.value_kw, 1), max });
+}
+
+/** Refusals of the per-phase rule nobody on the site can act on: the line says nothing for them, and for codes this
+ * card does not know. */
+const PHASE_RULE_NOT_HERE = new Set(["not_supported", "not_field_tested", "output_type_not_supported"]);
+
+/** What a person can do for each refusal of the per-phase rule that they can act on. */
+const PHASE_RULE_STEPS: Record<string, TranslationKey> = {
+  not_said_to_act: "battery.cap.phase.notSaidToAct",
+  output_type_unread: "battery.cap.phase.outputTypeUnread",
+  phase_control_off: "battery.cap.phase.phaseControlOff",
+  grid_sensor_offline: "battery.cap.phase.gridSensorOffline",
+};
+
+/** Whether the plant's per-phase hold could guard the fuse on this plant (the recipe has it, field-tested, the
+ * Output Type it acts with), so the total rule's advice to set the limit far under the fuse is not given. */
+function phaseRuleApplies(limit: ImportLimit): boolean {
+  const phase = limit.per_phase;
+  return phase !== null && !PHASE_RULE_NOT_HERE.has(phase.why ?? "");
+}
+
+/** The per-phase import-limit rule's one actionable step (`grid_charge_cap.import_limit.per_phase`): what is missing
+ * for the plant's own per-phase hold to guard the fuse, so grid charging is no longer capped. `null` while battery
+ * control is off, grid charging is not allowed, the plant's limit already guards, or nothing here can be done
+ * (`PHASE_RULE_NOT_HERE`, the total rule's own refusals, an unknown code, no value that guards). `code` is the
+ * refusal (`limit` for a value to lower or set), `entityId` the plant's entity to open. SpotNav never writes any of
+ * it but the site's own word (`battery_control_import_limit_acts`). */
+export function importLimitPhaseStep(
+  language: Language,
+  status: BatteryStatus,
+  name?: (entityId: string) => string,
+): { code: string; text: string; entityId: string | null } | null {
+  const limit = status.grid_charge_cap.import_limit;
+  const phase = limit?.per_phase ?? null;
+  if (
+    limit === null || phase === null || limit.holds || phase.holds || !status.options.battery_control_enabled
+    || !status.allowed_actions.includes("grid_charge")
+  ) {
+    return null;
+  }
+  if (phase.why !== null) {
+    const key = PHASE_RULE_STEPS[phase.why];
+    if (key === undefined) {
+      return null;
+    }
+    const entityId = phase.entity_id;
+    const entity = entityId === null ? "" : (name?.(entityId) ?? entityId);
+    return { code: phase.why, text: translate(language, key, { name: entity }), entityId };
+  }
+  if (phase.max_kw === null) {
+    return null;
+  }
+  // Rounded down, so the value shown never lets a phase past the fuse.
+  const most = Math.floor(phase.max_kw * 10 + 1e-9) / 10;
+  if (most < 0.1) {
+    return null;
+  }
+  const max = formatNumber(language, most, 1);
+  const text = limit.value_kw === null
+    ? translate(language, "battery.cap.phase.limitUnset", { max })
+    : translate(language, "battery.cap.phase.limitTooHigh", { value: formatNumber(language, limit.value_kw, 1), max });
+  return { code: "limit", text, entityId: null };
 }
 
 /** The name a preheating switch goes by when Home Assistant has none to give (a disabled entity has no state). */
@@ -740,6 +811,50 @@ export class SiteSections {
     return note;
   }
 
+  /** The per-phase import-limit rule's one step (`importLimitPhaseStep`), with its button for an administrator:
+   * turn on the site's word that the limit acts, or open the plant's entity in Home Assistant. */
+  private importLimitPhaseNotice(status: BatteryStatus, admin: boolean): HTMLElement | null {
+    const language = this.language;
+    const states = this.input.hass()?.states;
+    const name = (entityId: string): string => {
+      const friendly = states?.[entityId]?.attributes["friendly_name"];
+      return typeof friendly === "string" && friendly !== "" ? friendly : entityId;
+    };
+    const step = importLimitPhaseStep(language, status, name);
+    if (step === null) {
+      return null;
+    }
+    const doc = this.input.doc;
+    const note = element(doc, "p", C.settingsNotice, step.text);
+    note.dataset["note"] = "import_limit_phase";
+    note.dataset["code"] = step.code;
+    note.setAttribute("role", "status");
+    if (!admin) {
+      return note;
+    }
+    if (step.code === "not_said_to_act") {
+      const label = translate(language, "battery.cap.phase.actsLabel");
+      const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.cap.phase.turnOn")) as HTMLButtonElement;
+      button.type = "button";
+      button.dataset["action"] = "import-limit-acts";
+      button.addEventListener("click", () =>
+        this.onOff(label, "battery_control_import_limit_acts", status.options.battery_control_import_limit_acts, translate(language, "battery.cap.phase.actsHelp")),
+      );
+      note.append(" ", button);
+    } else if (step.entityId !== null) {
+      const entityId = step.entityId;
+      const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.cap.phase.open")) as HTMLButtonElement;
+      button.type = "button";
+      button.dataset["action"] = "open-import-limit-entity";
+      // Home Assistant's own dialog for the entity: its settings let a disabled one be enabled.
+      button.addEventListener("click", () =>
+        button.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true })),
+      );
+      note.append(" ", button);
+    }
+    return note;
+  }
+
   batteryNode(): HTMLElement | null {
     if (!this.batteryFound) {
       return null;
@@ -865,6 +980,10 @@ export class SiteSections {
       const hint = element(doc, "p", C.settingRowHelp, limitHint);
       hint.dataset["importLimit"] = "true";
       section.append(hint);
+    }
+    const phaseStep = this.importLimitPhaseNotice(status, admin);
+    if (phaseStep !== null) {
+      section.append(phaseStep);
     }
     const phaseLine = perPhaseLine(language, status);
     if (phaseLine !== null) {

@@ -141,6 +141,20 @@ export interface ImportLimit {
   /** Why the site's sources refuse the rule whatever the limit reads (another inverter's sun, a single-phase
    * plant, a charger run through the plant); `null` when they do not. */
   why: string | null;
+  /** The same limit held **per phase** by the plant itself (a field-tested recipe, Sigenergy): `null` for a brand
+   * without, and from a Home Assistant that does not send it yet. */
+  per_phase: ImportLimitPhase | null;
+}
+
+/** The plant's import limit as a per-phase hold (`battery/control.py` `_import_limit_status`): `max_kw` is the most it
+ * may read to keep every phase under the fuse (`null`: no value can), `holds` whether that rule is in force, `why`
+ * the stable code that refuses it (unknown codes are allowed: the card shows nothing for them) and `entity_id` the
+ * plant's entity that code points at. */
+export interface ImportLimitPhase {
+  max_kw: number | null;
+  holds: boolean;
+  why: string | null;
+  entity_id: string | null;
 }
 
 export interface PerPhase {
@@ -290,7 +304,14 @@ const GRID_CHARGE_CAP = O({
     }),
   ),
   import_limit: N(
-    O({ value_kw: N("number"), max_kw: N("number"), suggested_kw: N("number"), holds: "boolean", why: N("string") }),
+    O({
+      value_kw: N("number"),
+      max_kw: N("number"),
+      suggested_kw: N("number"),
+      holds: "boolean",
+      why: N("string"),
+      per_phase: N(O({ max_kw: N("number"), holds: "boolean", why: N("string"), entity_id: N("string") })),
+    }),
   ),
 });
 
@@ -396,7 +417,9 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 }
 
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
- * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.battery_found` (`true`) and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
+ * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.battery_found` (`true`),
+ * `status.grid_charge_cap.import_limit`, its `per_phase` (also absent for a brand without) and that block's
+ * `entity_id`. Anything else is left for the strict decoder. */
 function withLaterBlocks(raw: unknown): unknown {
   const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
   if (typeof status !== "object" || status === null || Array.isArray(status)) {
@@ -409,12 +432,29 @@ function withLaterBlocks(raw: unknown): unknown {
     ...(raw as Record<string, unknown>),
     status: {
       ...block,
-      ...(plainCap ? { grid_charge_cap: { import_limit: null, ...(cap as Record<string, unknown>) } } : {}),
+      ...(plainCap ? { grid_charge_cap: withImportLimit(cap as Record<string, unknown>) } : {}),
       per_phase: block["per_phase"] ?? null,
       plan_costs: block["plan_costs"] ?? null,
       preheat: block["preheat"] ?? null,
       battery_found: block["battery_found"] ?? true,
     },
+  };
+}
+
+function isPlain(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `grid_charge_cap` with `import_limit`, its `per_phase` and that block's `entity_id` read as `null` when absent. */
+function withImportLimit(cap: Record<string, unknown>): Record<string, unknown> {
+  const limit = cap["import_limit"];
+  if (!isPlain(limit)) {
+    return { ...cap, import_limit: limit ?? null };
+  }
+  const phase = limit["per_phase"];
+  return {
+    ...cap,
+    import_limit: { ...limit, per_phase: isPlain(phase) ? { entity_id: null, ...phase } : (phase ?? null) },
   };
 }
 
