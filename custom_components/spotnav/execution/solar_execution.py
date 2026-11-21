@@ -109,7 +109,6 @@ from ..const import (
     CONF_GRID_POWER_SOURCE,
     CONF_PHASE_WIRING,
     CONF_SOLAR_PRIORITY,
-    DEFAULT_MIN_CURRENT_A,
     DEFAULT_SOLAR_PRIORITY,
     DOMAIN,
     ENTRY_TYPE_SITE,
@@ -123,6 +122,7 @@ from ..planning.auto_settings import AutoSettingsStore, DRIVER_TARGET_SOC, STRAT
 from ..runtime import charger_data, controller_for, preview_for, site_controller_for
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.measurement_source import grid_power_source_from_dict, source_from_dict
+from ..util import amps_at_floor
 from ..site.site_capacity import PhaseName, PHASES, charger_order_key, classify_current
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import solar_capability
@@ -432,7 +432,7 @@ def _observation_caps(
         result,
         cap_delivered,
         fuse_limit_a=_fuse_limit_a(site),
-        min_current_a=float(_wiring(site, charger_entry_id).get("min_current_a", DEFAULT_MIN_CURRENT_A)),
+        min_current_a=site.charger_min_current_a(charger_entry_id),
         measurement_unusable=result.state in UNHEALTHY_STATES,
     )
     if not phase_unknown:
@@ -885,7 +885,7 @@ class SolarExecutionCoordinator:
         self._stop_owed = False
         # The sun's own current write (`_write_own_current`): the amps last in effect on the charger by the sun's
         # start or write, and when the last write was tried (this coordinator's clock).
-        self._written_a: int | None = None
+        self._written_a: int | float | None = None
         self._written_at: float | None = None
         # The charger's plug-in this coordinator last saw (`ChargingController.plug_in_generation`): a new one gives
         # the solar controller the whole phase-switch budget again.
@@ -1516,9 +1516,6 @@ class SolarExecutionCoordinator:
 
     def _solar_config(self, site: SiteCapacityController) -> SolarConfig:
         priority = site.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
-        wiring: dict[str, Any] = (site.config.get(CONF_PHASE_WIRING) or {}).get(
-            self._charger_entry_id
-        ) or {}
         if self._controller.is_switch_only:
             # A charger whose current cannot be set draws its whole switched current or nothing: it starts only on a
             # surplus that covers all of it, and stops once the surplus (its own draw added back) stays below that for
@@ -1527,7 +1524,9 @@ class SolarExecutionCoordinator:
             return SolarConfig(
                 priority=priority, min_current_a=switched, max_current_a=switched, start_a=switched, stop_a=switched
             )
-        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+        # The charger's minimum: 6 A, or a DC charger's lowest power as a current per phase (2.17 A at 400 V), which
+        # the sun starts, holds and stops at (`SiteCapacityController.charger_min_current_a`).
+        min_current_a = site.charger_min_current_a(self._charger_entry_id)
         config_kwargs: dict[str, Any] = {"priority": priority, "min_current_a": min_current_a}
         # A charge starts at the charger's own start minimum (a profile may set it above 6 A); once running it may still
         # go down to `min_current_a`.
@@ -1777,10 +1776,10 @@ class SolarExecutionCoordinator:
                 if self._solar is None:
                     return replace(verdict, action="hold")
                 return replace(self._solar.charge_ended(self._now(), "charger_stopped"), action="hold")
-            started = await self._executor.async_solar_start(int(verdict.requested_a))
+            started = await self._executor.async_solar_start(self._amps(verdict.requested_a))
             if started:
                 # The start wrote its own current: the sun's next write is a change from it.
-                self._written_a = int(verdict.requested_a)
+                self._written_a = self._amps(verdict.requested_a)
                 self._written_at = self._now()
             else:
                 _LOGGER.info(
@@ -1797,18 +1796,23 @@ class SolarExecutionCoordinator:
                 self._stop_owed = True
         elif verdict.action == "set_current":
             assert verdict.requested_a is not None
-            await self._executor.async_solar_set_current(int(verdict.requested_a))
+            await self._executor.async_solar_set_current(self._amps(verdict.requested_a))
         elif verdict.switch_phases is not None:
             await self._switch_phases(verdict.switch_phases)
         # hold: nothing to do.
         return verdict
+
+    def _amps(self, amps: float) -> int | float:
+        """A current the sun asks for, as it is written: whole amps, or the charger's floor where that is not a whole
+        ampere (a DC charger's, `util.amps_at_floor`), never truncated below it into a pause."""
+        return amps_at_floor(amps, self._controller.min_current_a)
 
     def _min_current_a(self) -> float:
         solar = self._solar
         site = self._site
         if solar is not None:
             return solar.config.min_current_a
-        return DEFAULT_MIN_CURRENT_A if site is None else self._solar_config(site).min_current_a
+        return self._controller.min_current_a if site is None else self._solar_config(site).min_current_a
 
     async def _set_start_phases(self, verdict: SolarVerdict) -> bool:
         """The phases a solar start is made on, set right before it (never while idle "just in case") and only when
@@ -1831,7 +1835,7 @@ class SolarExecutionCoordinator:
         switched = await self._executor.async_solar_set_phases(phases, min_current_a=min_current_a)
         if switched and phases == 3:
             # The minimum went out before the switch: the sun's next write is a change from it.
-            self._written_a = int(min_current_a)
+            self._written_a = self._amps(min_current_a)
         _LOGGER.info(
             "%s charger %s: switch to %s phase(s) %s",
             SOLAR_SURPLUS_LOG_TOKEN,
@@ -1863,14 +1867,14 @@ class SolarExecutionCoordinator:
         cap_a = self._store.settings(self._charger_entry_id).amps
         if cap_a is None:
             return
-        target = min(int(solar.last_requested_a), cap_a)
+        target = min(self._amps(solar.last_requested_a), cap_a)
         if target == self._written_a:
             return
         now = self._now()
         if self._written_at is not None and now - self._written_at < SOLAR_WRITE_INTERVAL_S:
             return
         self._written_at = now
-        outcome = await self._executor.async_solar_write_current(int(solar.last_requested_a), cap_a=cap_a)
+        outcome = await self._executor.async_solar_write_current(self._amps(solar.last_requested_a), cap_a=cap_a)
         if outcome in IN_EFFECT_OUTCOMES:
             self._written_a = target
         _LOGGER.debug(

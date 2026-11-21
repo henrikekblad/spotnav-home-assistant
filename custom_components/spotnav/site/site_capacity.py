@@ -788,11 +788,17 @@ def derived_phase_current(derived_input: DerivedPhaseInput) -> DerivedCurrent:
     )
 
 
-def round_down_to_step(value: float, step: float = 1.0) -> float:
-    """Round down to a multiple of `step`, never up into headroom not available."""
+def round_down_to_step(value: float, step: float = 1.0, *, floor: float | None = None) -> float:
+    """Round down to a multiple of `step`, never up into headroom not available. With `floor` (the charger's minimum
+    current), a value at or above the floor that would round below it is the floor itself: a DC charger's floor need
+    not be a whole ampere (2.17 A at 400 V), and rounded down to 2 A it would be a pause. Never above `value`; for a
+    floor that is a multiple of `step` (6 A) it changes nothing."""
     if step <= 0:
         raise ValueError("step must be positive")
-    return math.floor(value / step) * step
+    stepped = math.floor(value / step) * step
+    if floor is not None and stepped < floor - 1e-9 <= value:
+        return float(floor)
+    return stepped
 
 
 def _credited_current_per_phase(
@@ -1119,7 +1125,7 @@ def allocate_chargers(
 
         available = min(remaining[phase] for phase in phases_used)
         capped = min(available, request.requested_current_a)
-        floored = max(round_down_to_step(capped), 0.0)
+        floored = max(round_down_to_step(capped, floor=request.min_current_a), 0.0)
         limiting = _limiting_phase(remaining, phases_used)
 
         if request.requested_current_a <= 0.0 and floored < request.min_current_a:

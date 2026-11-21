@@ -16,12 +16,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Final
+from typing import Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from ..const import CONF_PHASE_WIRING, CONF_SOLAR_FORECAST_ENTRIES, DEFAULT_MIN_CURRENT_A
+from ..const import CONF_SOLAR_FORECAST_ENTRIES, DEFAULT_MIN_CURRENT_A
 from ..planning.auto_settings import AutoSettings
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.phases import effective_phases
@@ -123,10 +123,6 @@ def hybrid_needs_replan(
     return current.state == "last_call" and previous.state != "last_call"  # noqa: E501
 
 
-def _phase_wiring(site: Any, charger_entry_id: str) -> dict[str, Any]:
-    return (site.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
-
-
 @dataclass(frozen=True, slots=True)
 class HybridPlanOutcome:
     """One cycle's hybrid planning outcome, for `auto_controller._compute` to act on."""
@@ -140,8 +136,9 @@ class HybridPlanOutcome:
 def charge_power_limits(hass: HomeAssistant, charger_entry_id: str, settings: AutoSettings) -> tuple[float, float]:
     """The charger's planned power (kW) and the least power a charge can start at (W), as hybrid reckons the sun.
 
-    The start power is the site's minimum current for the charger, raised to the charger's own start minimum (a
-    profile may set it above 6 A); without a site, the default minimum.
+    The start power is the site's minimum current for the charger (a DC charger's is its lowest power), raised to the
+    charger's own start minimum (a profile may set it above 6 A, a DC charger's is its floor); without a site, the
+    default minimum, raised the same way.
     """
     site = site_controller_for_charger(hass, charger_entry_id)
     amps = settings.amps if settings.amps is not None else 0
@@ -149,8 +146,8 @@ def charge_power_limits(hass: HomeAssistant, charger_entry_id: str, settings: Au
     voltage_ll = voltage_between_phases_v(hass, charger_entry_id)
     max_charge_kw = power_kw(amps, phases, voltage_ll)
     if site is not None:
-        wiring = _phase_wiring(site, charger_entry_id)
-        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+        # 6 A, or a DC charger's lowest power as a current per phase (`SiteCapacityController.charger_min_current_a`).
+        min_current_a = site.charger_min_current_a(charger_entry_id)
     else:
         # No site: hybrid still runs (no readable forecast makes it plain cheapest) but needs some
         # `solar_start_w` to build a valid `HybridConfig`.

@@ -202,8 +202,7 @@ class ChargerAdapter:
         #: says when a car is plugged in (`execution/car_plug_fallback.py`); `None`: nothing stands in.
         self.connection_fallback: Callable[[], bool | None] | None = None
         self._phase_switch = phase_switch
-        #: The lowest current a charge is started at: the profile's, never below the 6 A floor.
-        self.min_start_current_a = max(DEFAULT_MIN_CURRENT_A, min_start_current_a or 0.0)
+        self._profile_min_start_a = min_start_current_a or 0.0
         self.current_entity_ids = current_entity_ids
         #: A charger given a power (`CURRENT_CONTROL_POWER`): its output power as the current per phase it is, the
         #: same on all three (`sigenergy.py`), read where it has no current sensors of its own; `None` for any other.
@@ -221,6 +220,17 @@ class ChargerAdapter:
         self.pre_current: PreSpotnavCurrent | None = None
         #: Awaited once the reading is recorded, to save it (the controller's store).
         self.pre_current_recorded: Callable[[], Awaitable[None]] | None = None
+
+    @property
+    def min_current_a(self) -> float:
+        """The charger's floor, the lowest current it is written (`CurrentPath.min_a`): 6 A for an AC charger, the
+        lowest power as a current per phase for a charger given a power (`sigenergy.PowerCurrent`)."""
+        return self.current.min_a()
+
+    @property
+    def min_start_current_a(self) -> float:
+        """The lowest current a charge is started at: the profile's, never below the charger's floor."""
+        return max(self.min_current_a, self._profile_min_start_a)
 
     # -- what a restart must not forget
 
