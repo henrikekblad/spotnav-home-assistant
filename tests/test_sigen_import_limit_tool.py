@@ -291,3 +291,65 @@ def test_the_guard_restores_when_a_phase_stays_over_the_abort_level() -> None:
     run.sample()
     with pytest.raises(tool.Stop, match="over 4.0 kW"):
         run.sample()
+
+
+def test_a_load_that_never_took_its_phase_over_a_third_of_the_limit_is_not_judged_in_any_step() -> None:
+    run = _run(FakeHA(_plant()))
+    # 0.3 kW on A with a 1.5 kW charge: 0.6 + 0.5 kW, far under 2 kW; nothing needed holding.
+    window = _window(run, "binding", ((0.4, 0.4, 0.4), (-0.5, -0.5, -0.5)), ((0.7, 0.4, 0.4), (-0.5, -0.5, -0.5)), 1.5)
+    assert tool.judge(run, window)["verdict"] == tool.NOT_PUSHED
+
+
+def _stopped(run: Any, *, polled: bool, meter_during: tuple[float, float, float]) -> Any:
+    """The writes-stopped window: the earlier binding step measured a 2.4 kW load on A."""
+    run.results.append({"step": "binding", "phase": "A", "load_kw": 2.4, "verdict": "PASS"})
+    plant = (0.5, 0.5, 0.5) if polled else (None, None, None)
+    for i in range(6):
+        run.samples.append(tool.Sample(90.0 + 5 * i, "stopped", "", plant, plant, {}, (1.6, 1.6, 1.6)))
+    for i in range(13):
+        run.samples.append(tool.Sample(120.0 + 5 * i, "stopped", "", plant, plant, {}, meter_during))
+    return tool.Window("stopped", 120.0, 180.0, stopped=True, charge_kw=4.0)
+
+
+def test_the_stopped_step_passes_only_on_an_independent_meter_with_the_plant_really_unread() -> None:
+    run = _run(FakeHA(_plant()))
+    run.meter = ("sensor.p1_l1", "sensor.p1_l2", "sensor.p1_l3")
+    result = tool.judge(run, _stopped(run, polled=False, meter_during=(2.0, 2.0, 2.0)))
+    assert result["verdict"] == "PASS" and result["polls_stopped"] is True and result["judged_on"] == "meter"
+    assert result["unheld_phase_kw"] == pytest.approx(4.0)
+
+
+def test_the_stopped_step_fails_on_the_meter_when_the_phase_is_not_held() -> None:
+    run = _run(FakeHA(_plant()))
+    run.meter = ("sensor.p1_l1", "sensor.p1_l2", "sensor.p1_l3")
+    assert tool.judge(run, _stopped(run, polled=False, meter_during=(3.9, 1.0, 1.0)))["verdict"] == "FAIL"
+
+
+def test_the_stopped_step_is_not_judged_while_sigen_is_still_read_or_without_a_meter() -> None:
+    run = _run(FakeHA(_plant()))
+    run.meter = ("sensor.p1_l1", "sensor.p1_l2", "sensor.p1_l3")
+    result = tool.judge(run, _stopped(run, polled=True, meter_during=(2.0, 2.0, 2.0)))
+    assert result["verdict"].startswith("not judged (the sigen integration kept being read")
+    run = _run(FakeHA(_plant()))
+    result = tool.judge(run, _stopped(run, polled=False, meter_during=(2.0, 2.0, 2.0)))
+    assert result["verdict"].startswith("not judged (no independent meter")
+
+
+def test_a_person_s_yes_is_only_a_labelled_fallback(capsys: pytest.CaptureFixture[str]) -> None:
+    run = _run(FakeHA(_plant()))
+    results = [
+        {"step": "binding", "verdict": "PASS"}, {"step": "under", "verdict": "PASS"},
+        {"step": "stopped", "verdict": "not judged (no independent meter: --meter)", "verdict_from_person": "y"},
+    ]
+    tool.summary(run, results, True)
+    out = capsys.readouterr().out
+    assert "FALLBACK only" in out and "RESULT: PASS with HA running only" in out
+    assert "RESULT: PASS. " not in out
+
+
+def test_the_meter_reads_power_or_current_and_is_given_per_phase() -> None:
+    assert tool.parse_meter("a=sensor.x,b=sensor.y,c=sensor.z") == ("sensor.x", "sensor.y", "sensor.z")
+    assert tool.parse_meter("a=sensor.x,b=sensor.y") is None
+    assert tool.meter_kw({"state": "10", "attributes": {"unit_of_measurement": "A"}}) == pytest.approx(2.3)
+    assert tool.meter_kw({"state": "1500", "attributes": {"unit_of_measurement": "W"}}) == pytest.approx(1.5)
+    assert tool.meter_kw({"state": "unavailable", "attributes": {"unit_of_measurement": "A"}}) is None

@@ -23,15 +23,17 @@ Steps (each waits for Enter; typing `q` and Enter at any prompt stops and restor
    under the limit while the loaded phase alone goes over limit / 3. A plant that holds each phase pulls that phase
    down by itself; a plant that only limits the total leaves it over. Only the first lets SpotNav drop its HA-down
    cap (`battery/gate.py`).
-4. Writes stopped: the charge back at `--charge-kw`; the script writes nothing until the restore. The person disables
-   SpotNav's entries and then the `sigen` integration (Settings > Devices & services > the entry's menu > Disable),
-   waits two minutes, runs the load again with markers, and re-enables both. While `sigen` is disabled Home
-   Assistant reads nothing of the plant: the CSV then has empty plant columns, and the step is judged by the mySigen
-   app's live view (per-phase grid power, if the app shows it) or a clamp meter on the phase at the main panel, and
-   by the app's history afterwards. Keeping `sigen` running and only disabling SpotNav tests "writes stopped"
-   without "polls stopped"; the step then judges itself from the CSV. After re-enabling, the script records whether
-   Remote EMS and its mode were kept.
-5. Restore, then the pass/fail summary: every phase at or under limit / 3 + 0.1 kW within 15 s of the load going on.
+4. Writes and polls stopped: the charge back at `--charge-kw`; the script writes nothing until the restore. The
+   person disables SpotNav's entries and then the `sigen` integration (Settings > Devices & services > the entry's
+   menu > Disable); the script waits ten minutes, the same load runs again with markers, and both are re-enabled.
+   While `sigen` is disabled Home Assistant reads nothing of the plant, so the step is judged only on an independent
+   per-phase meter at the grid connection (`--meter a=...,b=...,c=...`, any entity not from `sigen`: a HAN/P1
+   reader, a Shelly 3EM, a Tibber Pulse). A full PASS needs both: the plant really unread in the window and the
+   meter. With `sigen` still read the step is the binding step again and is not judged; without a meter the
+   person's y/n from the mySigen app or a clamp meter is kept, labelled as a fallback that cannot record the fact.
+   After re-enabling, the script records whether Remote EMS and its mode were kept.
+5. Restore, then the pass/fail summary: every phase at or under limit / 3 + 0.1 kW within 15 s of the load going on,
+   judged only where the load took its phase over a third of the limit.
 
 Before running it (the script checks what it can and refuses where it must):
 
@@ -83,6 +85,8 @@ MIN_LOAD_S = 45.0
 BASELINE_ROOM_KW = 0.5
 #: The highest `--abort-phase-kw` allowed: 20 A at 230 V, the smallest fuse this test is meant for.
 ABORT_PHASE_MAX_KW = 4.6
+#: How long the plant runs with nothing written and nothing polled before the stopped step's load (s).
+STOPPED_WAIT_S = 600.0
 #: How long a write may take to read back (s).
 READBACK_S = 30.0
 
@@ -172,6 +176,21 @@ def number(row: dict[str, Any] | None) -> float | None:
     return value / 1000.0 if row.get("attributes", {}).get("unit_of_measurement") == "W" else value
 
 
+#: The voltage a meter's current is taken at, to compare it with power (V).
+METER_VOLTS = 230.0
+
+
+def meter_kw(row: dict[str, Any] | None) -> float | None:
+    """An independent meter's reading as kW: power in W or kW as it is, a current in A at `METER_VOLTS`."""
+    if row is not None and row.get("attributes", {}).get("unit_of_measurement") == "A":
+        try:
+            amps = float(row["state"])
+        except (TypeError, ValueError):
+            return None
+        return amps * METER_VOLTS / 1000.0 if math.isfinite(amps) else None
+    return number(row)
+
+
 def text(row: dict[str, Any] | None) -> str:
     return "" if row is None else str(row.get("state", ""))
 
@@ -184,6 +203,8 @@ class Sample:
     grid: tuple[float | None, float | None, float | None]
     plant: tuple[float | None, float | None, float | None]
     values: dict[str, str]
+    #: An independent meter's import on each phase (kW, `--meter`), where one is given.
+    meter: tuple[float | None, float | None, float | None] = (None, None, None)
 
     def house(self) -> tuple[float | None, ...]:
         """Each phase's house load: the grid's import on it plus the plant's output on it (+ output)."""
@@ -223,6 +244,8 @@ class Run:
     over: int = 0
     notes: list[str] = field(default_factory=list)
     results: list[dict[str, Any]] = field(default_factory=list)
+    #: An independent per-phase meter's entities (A, B, C), not from the plant's integration (`--meter`).
+    meter: tuple[str, str, str] | None = None
 
     # --- reading -------------------------------------------------------------------------------------------------
 
@@ -249,6 +272,9 @@ class Run:
                 **{entity: text(states.get(entity)) for entity in self.extra},
             },
         )
+        if self.meter is not None:
+            sample.meter = (meter_kw(states.get(self.meter[0])), meter_kw(states.get(self.meter[1])),
+                            meter_kw(states.get(self.meter[2])))
         self.samples.append(sample)
         self._write(sample)
         self._print(sample)
@@ -261,7 +287,7 @@ class Run:
         self.writer.writerow([
             datetime.fromtimestamp(sample.t).isoformat(timespec="seconds"), sample.step, sample.marker,
             *map(fmt, sample.grid), fmt(sample.grid_total()), *map(fmt, sample.plant), *map(fmt, house),
-            *sample.values.values(),
+            *sample.values.values(), *map(fmt, sample.meter),
         ])
         self.out.flush()
 
@@ -278,7 +304,7 @@ class Run:
     def _guard(self, sample: Sample) -> None:
         """Abort and restore when a phase stays over `abort_phase_kw` for two samples while the test's command stands
         (also in the writes-stopped step: the restore then ends that step, which is the safe side)."""
-        high = any(v is not None and v > self.abort_phase_kw for v in sample.grid)
+        high = any(v is not None and v > self.abort_phase_kw for v in (*sample.grid, *sample.meter))
         self.over = self.over + 1 if high else 0
         if self.guarding and self.over >= 2:
             raise Stop(f"a phase imported over {self.abort_phase_kw} kW twice in a row: switch the load off")
@@ -508,9 +534,66 @@ def restore(run: Run, snapshot: dict[str, Any], *, force: bool = False) -> bool:
 # --- judging ---------------------------------------------------------------------------------------------------------
 
 
+def _held_from(samples: list[tuple[float, tuple[float | None, ...]]], cap: float) -> float | None:
+    """The first time from which every later reading has every phase at or under `cap`."""
+    for index, (t, _phases) in enumerate(samples):
+        if all(None not in phases and max(phases) <= cap for _t, phases in samples[index:]):  # type: ignore[type-var]
+            return t
+    return None
+
+
+def _verdict(window: Window, end: float, held_from: float | None) -> str:
+    if end - window.on < MIN_LOAD_S:
+        return f"not judged (the load was on for less than {MIN_LOAD_S:.0f} s)"
+    return "PASS" if held_from is not None and held_from - window.on <= SETTLE_S else "FAIL"
+
+
+NOT_PUSHED = "not judged (the load did not take its phase over a third of the limit: use a larger one)"
+
+
+def judge_stopped(run: Run, window: Window) -> dict[str, Any]:
+    """The writes-stopped step. A full verdict only where the plant's integration was really not read during the
+    window (its polls stopped, not only SpotNav's writes) and an independent meter (`--meter`) shows each phase; the
+    load must take its phase over a third of the limit by the earlier steps' measure of it (the same load)."""
+    end = window.off if window.off is not None else run.samples[-1].t
+    during = [s for s in run.samples if window.on <= s.t <= end]
+    out: dict[str, Any] = {"step": window.step, "duration_s": round(end - window.on)}
+    polled = any(v is not None for s in during for v in (*s.grid, *s.plant))
+    out["polls_stopped"] = bool(during) and not polled
+    if run.meter is None:
+        out["verdict"] = "not judged (no independent meter: --meter)"
+        return out
+    if polled:
+        out["verdict"] = "not judged (the sigen integration kept being read: this is the binding step again)"
+        return out
+    before = [s for s in run.samples if window.on - 30.0 <= s.t < window.on and None not in s.meter]
+    steady = [s for s in during if s.t >= window.on + SETTLE_S and None not in s.meter]
+    earlier = [r for r in run.results if "phase" in r and "load_kw" in r]
+    if not before or not steady or not earlier:
+        out["verdict"] = "not judged (the meter could not be read, or no earlier step measured the load)"
+        return out
+    cap = run.limit_kw / 3.0 + PHASE_TOLERANCE_KW
+    phase = "ABC".index(earlier[-1]["phase"])
+    load_kw = max(r["load_kw"] for r in earlier)
+    base = sum(s.meter[phase] for s in before) / len(before)  # type: ignore[misc]
+    held_from = _held_from([(s.t, s.meter) for s in during], cap)
+    out.update({
+        "phase": "ABC"[phase], "load_kw": load_kw, "cap_kw": round(cap, 2), "judged_on": "meter",
+        "worst_phase_kw": round(max(max(s.meter) for s in steady), 2),  # type: ignore[type-var]
+        "unheld_phase_kw": round(base + load_kw, 2),
+        "settled_s": None if held_from is None else round(held_from - window.on),
+    })
+    out["verdict"] = NOT_PUSHED if base + load_kw <= cap else _verdict(window, end, held_from)
+    return out
+
+
 def judge(run: Run, window: Window) -> dict[str, Any]:
     """The phase the load landed on (the largest jump in a phase's house load) and whether every phase was held at
-    limit / 3 + tolerance from at most `SETTLE_S` after the load went on until it went off."""
+    limit / 3 + tolerance from at most `SETTLE_S` after the load went on until it went off. Judged only where the
+    load took its phase over a third of the limit (its house load plus an even share of the charge): a phase that
+    never needed holding shows nothing."""
+    if window.stopped:
+        return judge_stopped(run, window)
     before = [s for s in run.samples if window.on - 20.0 <= s.t < window.on and None not in s.house()]
     end = window.off if window.off is not None else run.samples[-1].t
     during = [s for s in run.samples if window.on <= s.t <= end]
@@ -524,12 +607,7 @@ def judge(run: Run, window: Window) -> dict[str, Any]:
     jumps = [load[i] - base[i] for i in range(3)]
     phase = max(range(3), key=lambda i: jumps[i])
     cap = run.limit_kw / 3.0 + PHASE_TOLERANCE_KW
-    held_from = None
-    for index, sample in enumerate(during):
-        rest = during[index:]
-        if all(None not in s.grid and max(s.grid) <= cap for s in rest):  # type: ignore[type-var]
-            held_from = sample.t
-            break
+    held_from = _held_from([(s.t, s.grid) for s in during], cap)
     worst = max(max(v for v in s.grid if v is not None) for s in steady)
     totals = [s.grid_total() for s in steady if s.grid_total() is not None]
     out.update({
@@ -540,21 +618,16 @@ def judge(run: Run, window: Window) -> dict[str, Any]:
         "plant_on_phase_max_out_kw": round(max(s.plant[phase] for s in steady if s.plant[phase] is not None), 2),
         "settled_s": None if held_from is None else round(held_from - window.on),
     })
-    if end - window.on < MIN_LOAD_S:
-        out["verdict"] = f"not judged (the load was on for less than {MIN_LOAD_S:.0f} s)"
-    elif held_from is not None and held_from - window.on <= SETTLE_S:
-        out["verdict"] = "PASS"
-    else:
-        out["verdict"] = "FAIL"
-    if window.step == "under" and out["verdict"] in ("PASS", "FAIL"):
-        # Decisive only where a plant that limits just the total would leave the loaded phase over a third of the
-        # limit (its house load plus an even share of the charge) while the total stays under the limit.
-        unheld_phase = load[phase] + window.charge_kw / 3.0
-        unheld_total = sum(load) + window.charge_kw
-        out.update({"unheld_phase_kw": round(unheld_phase, 2), "unheld_total_kw": round(unheld_total, 2)})
-        if unheld_phase <= cap:
-            out["verdict"] = "not judged (the load did not take its phase over a third of the limit: use a larger one)"
-        elif unheld_total >= run.limit_kw - 0.3:
+    out["verdict"] = _verdict(window, end, held_from)
+    unheld_phase = load[phase] + window.charge_kw / 3.0
+    unheld_total = sum(load) + window.charge_kw
+    out.update({"unheld_phase_kw": round(unheld_phase, 2), "unheld_total_kw": round(unheld_total, 2)})
+    if out["verdict"] in ("PASS", "FAIL") and unheld_phase <= cap:
+        out["verdict"] = NOT_PUSHED
+    if window.step.startswith("under") and out["verdict"] in ("PASS", "FAIL"):
+        # Decisive only while the total stays under the limit: a plant that limits just the total would then leave
+        # the loaded phase over a third of it.
+        if unheld_total >= run.limit_kw - 0.3:
             out["verdict"] = "not judged (the total reached the limit: lower --low-charge-kw or use a smaller load)"
         elif out["verdict"] == "FAIL":
             out["verdict"] = "FAIL: the plant limits only the total, not each phase"
@@ -570,19 +643,22 @@ def summary(run: Run, results: list[dict[str, Any]], restored: bool) -> None:
     for note in run.notes:
         print(f"Note: {note}")
     full = verdict.get("binding") == "PASS"
-    per_phase = verdict.get("under") == "PASS"
+    per_phase = all(v == "PASS" for k, v in verdict.items() if k.startswith("under")) and "under" in verdict
     stopped = verdict.get("stopped")
     person = next((r.get("verdict_from_person") for r in results if r["step"] == "stopped"), None)
-    if stopped is not None and stopped.startswith("not judged") and person in ("y", "n"):
-        stopped = "PASS" if person == "y" else "FAIL"
-        print(f"Writes-stopped step judged by the person from the app or meter: {person}")
     print(f"Load at full charge held at limit/3 within {SETTLE_S:.0f} s: {verdict.get('binding', 'not run')}")
     print(f"Load under the limit held per phase (decisive): {verdict.get('under', 'not run')}")
-    print(f"Writes stopped: {stopped or 'not run'}")
+    if "under2" in verdict:
+        print(f"The same on a second phase: {verdict['under2']}")
+    print(f"Writes and polls stopped, on an independent meter: {stopped or 'not run'}")
+    if stopped is not None and stopped != "PASS" and person in ("y", "n"):
+        print(f"FALLBACK only: the person read the app or a meter and answered '{person}'. That is not enough to"
+              " record the fact.")
     if full and per_phase and stopped == "PASS":
         print("RESULT: PASS. The plant holds each phase at limit/3 by itself. SpotNav's recipe fact may be recorded.")
     elif full and per_phase:
-        print("RESULT: PASS with HA running; record the writes-stopped step from the app or meter before the fact.")
+        print("RESULT: PASS with HA running only. The writes-and-polls-stopped step needs an independent meter"
+              " (--meter) and the sigen integration disabled before the fact may be recorded.")
     else:
         print("RESULT: NOT PASSED. SpotNav keeps its HA-down cap (the fact stays unrecorded).")
 
@@ -634,8 +710,10 @@ def steps(run: Run, args: argparse.Namespace) -> None:
     run.settle(30.0)
     # From here nothing is written until the restore (the over-current guard may still end the step by restoring).
     run.wait("Writes stop now. Disable SpotNav's entries, then the sigen integration (Settings > Devices & services"
-             " > the entry's menu > Disable), or keep sigen running to test writes-stopped only. Wait two minutes,"
-             " then press Enter.", least_s=120.0)
+             " > the entry's menu > Disable), so that nothing writes or polls the plant. Press Enter once both are"
+             " disabled.")
+    print(f"    Waiting {STOPPED_WAIT_S:.0f} s with nothing written or polled (q and Enter stops and restores).")
+    run.settle(STOPPED_WAIT_S)
     result = load_step(run, "stopped", stopped=True)
     run.wait("Re-enable the sigen integration (and SpotNav), then press Enter.")
     if not run.wait_available("battery", 120.0):
@@ -646,12 +724,21 @@ def steps(run: Run, args: argparse.Namespace) -> None:
         f" '{text(after.get(run.entities['control_mode']))}', import limit"
         f" {text(after.get(run.entities['import_limit']))} kW"
     )
-    if result["verdict"].startswith("not judged"):
+    if result["verdict"] != "PASS":
         answer = run.wait(
             f"Did the loaded phase stay at or under {args.limit_kw / 3 + PHASE_TOLERANCE_KW:.1f} kW within"
-            f" {SETTLE_S:.0f} s in the mySigen app or on the meter? Type y or n and press Enter."
+            f" {SETTLE_S:.0f} s in the mySigen app or on a meter? Type y or n and press Enter (kept as a fallback"
+            " only)."
         )
         result["verdict_from_person"] = answer
+
+
+def parse_meter(value: str) -> tuple[str, str, str] | None:
+    """`a=sensor.x,b=sensor.y,c=sensor.z` as the entities for A, B and C; `None` when it is not that."""
+    parts = dict(item.split("=", 1) for item in value.split(",") if "=" in item)
+    if set(parts) != {"a", "b", "c"} or not all(parts.values()):
+        return None
+    return (parts["a"].strip(), parts["b"].strip(), parts["c"].strip())
 
 
 def _terminate(_signum: int, _frame: Any) -> None:
@@ -676,6 +763,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--csv", type=Path, help="where to log (default: sigen_import_limit_<time>.csv here)")
     parser.add_argument("--dry-run", action="store_true", help="read, check and log only; write nothing")
     parser.add_argument("--skip-stopped", action="store_true", help="leave out the writes-stopped step")
+    parser.add_argument("--meter", metavar="a=ID,b=ID,c=ID",
+                        help="an independent per-phase meter at the grid connection (W, kW or A), not from the plant's"
+                             " integration: what the writes-stopped step is judged on")
     parser.add_argument("--restore-from", type=Path, metavar="FILE",
                         help="only put back the values kept in a snapshot file (<csv>.snapshot.json) and exit")
     parser.add_argument("--ignore-spotnav", action="store_true",
@@ -695,6 +785,11 @@ def main(argv: list[str] | None = None) -> int:
         if role not in entities or not entity:
             parser.error(f"--entity {item}: unknown role or empty id")
         entities[role] = entity
+    meter = None if args.meter is None else parse_meter(args.meter)
+    if args.meter is not None and meter is None:
+        parser.error("--meter takes a=ENTITY,b=ENTITY,c=ENTITY")
+    if meter is not None and set(meter) & set(entities.values()):
+        parser.error("--meter must not be one of the plant's own entities")
     ha = HomeAssistant(args.url, token, dry_run=args.dry_run)
     if args.restore_from is not None:
         kept = json.loads(args.restore_from.read_text(encoding="utf-8"))
@@ -708,9 +803,10 @@ def main(argv: list[str] | None = None) -> int:
             "time", "step", "marker", "grid_a_kw", "grid_b_kw", "grid_c_kw", "grid_total_kw",
             "plant_a_kw", "plant_b_kw", "plant_c_kw", "house_a_kw", "house_b_kw", "house_c_kw",
             "battery_kw", "soc_pct", "import_limit_kw", "charge_limit_kw", "remote_ems", "control_mode",
-            "work_mode", "grid_sensor", "phase_control", *args.extra,
+            "work_mode", "grid_sensor", "phase_control", *args.extra, "meter_a_kw", "meter_b_kw", "meter_c_kw",
         ])
         run = Run(ha, entities, args.limit_kw, args.interval, args.abort_phase_kw, args.extra, writer, handle)
+        run.meter = meter
         threading.Thread(target=_stdin, args=(run.lines,), daemon=True).start()
         for sig in STOP_SIGNALS:
             if sig != signal.SIGINT:
