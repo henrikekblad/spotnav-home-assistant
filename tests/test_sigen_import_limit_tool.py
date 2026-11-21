@@ -300,50 +300,59 @@ def test_a_load_that_never_took_its_phase_over_a_third_of_the_limit_is_not_judge
     assert tool.judge(run, window)["verdict"] == tool.NOT_PUSHED
 
 
-def _stopped(run: Any, *, polled: bool, meter_during: tuple[float, float, float]) -> Any:
-    """The writes-stopped window: the earlier binding step measured a 2.4 kW load on A."""
-    run.results.append({"step": "binding", "phase": "A", "load_kw": 2.4, "verdict": "PASS"})
-    plant = (0.5, 0.5, 0.5) if polled else (None, None, None)
-    for i in range(6):
-        run.samples.append(tool.Sample(90.0 + 5 * i, "stopped", "", plant, plant, {}, (1.6, 1.6, 1.6)))
+def _stopped(run: Any, *, grid_during: tuple[float, float, float], meter_during=None, writes: int = 0) -> Any:
+    """The writes-stopped window, `sigen` still read: 2.4 kW on A under a 4 kW charge and a 6 kW limit."""
+    for i in range(4):
+        run.samples.append(tool.Sample(100.0 + 5 * i, "stopped", "", (1.65, 1.65, 1.65), (-1.45, -1.45, -1.45), {},
+                                       (1.65, 1.65, 1.65)))
+    plant = (0.33, -1.82, -1.96) if max(grid_during) <= 2.1 else (-1.0, -1.45, -1.45)
     for i in range(13):
-        run.samples.append(tool.Sample(120.0 + 5 * i, "stopped", "", plant, plant, {}, meter_during))
-    return tool.Window("stopped", 120.0, 180.0, stopped=True, charge_kw=4.0)
+        run.samples.append(tool.Sample(120.0 + 5 * i, "stopped", "", grid_during, plant, {},
+                                       meter_during or grid_during))
+    return tool.Window("stopped", 120.0, 180.0, stopped=True, charge_kw=4.0, writes=writes)
 
 
-def test_the_stopped_step_passes_only_on_an_independent_meter_with_the_plant_really_unread() -> None:
+def test_the_stopped_step_is_judged_on_the_plant_s_grid_sensor_like_the_others() -> None:
+    run = _run(FakeHA(_plant()))
+    result = tool.judge(run, _stopped(run, grid_during=(2.0, 2.0, 2.0)))
+    assert result["verdict"] == "PASS" and result["phase"] == "A" and result["writes_in_window"] == 0
+    run = _run(FakeHA(_plant()))
+    assert tool.judge(run, _stopped(run, grid_during=(2.6, 1.7, 1.7)))["verdict"] == "FAIL"
+
+
+def test_the_stopped_step_is_not_judged_when_anything_was_written_in_its_window() -> None:
+    run = _run(FakeHA(_plant()))
+    result = tool.judge(run, _stopped(run, grid_during=(2.0, 2.0, 2.0), writes=1))
+    assert result["verdict"].startswith("not judged (something was written")
+
+
+def test_an_independent_meter_when_given_must_agree() -> None:
     run = _run(FakeHA(_plant()))
     run.meter = ("sensor.p1_l1", "sensor.p1_l2", "sensor.p1_l3")
-    result = tool.judge(run, _stopped(run, polled=False, meter_during=(2.0, 2.0, 2.0)))
-    assert result["verdict"] == "PASS" and result["polls_stopped"] is True and result["judged_on"] == "meter"
-    assert result["unheld_phase_kw"] == pytest.approx(4.0)
-
-
-def test_the_stopped_step_fails_on_the_meter_when_the_phase_is_not_held() -> None:
+    assert tool.judge(run, _stopped(run, grid_during=(2.0, 2.0, 2.0)))["verdict"] == "PASS"
     run = _run(FakeHA(_plant()))
     run.meter = ("sensor.p1_l1", "sensor.p1_l2", "sensor.p1_l3")
-    assert tool.judge(run, _stopped(run, polled=False, meter_during=(3.9, 1.0, 1.0)))["verdict"] == "FAIL"
+    result = tool.judge(run, _stopped(run, grid_during=(2.0, 2.0, 2.0), meter_during=(3.0, 1.5, 1.5)))
+    assert result["verdict"].startswith("FAIL: the independent meter does not agree")
 
 
-def test_the_stopped_step_is_not_judged_while_sigen_is_still_read_or_without_a_meter() -> None:
+def test_the_stopped_step_counts_toward_recording_the_fact(capsys: pytest.CaptureFixture[str]) -> None:
     run = _run(FakeHA(_plant()))
-    run.meter = ("sensor.p1_l1", "sensor.p1_l2", "sensor.p1_l3")
-    result = tool.judge(run, _stopped(run, polled=True, meter_during=(2.0, 2.0, 2.0)))
-    assert result["verdict"].startswith("not judged (the sigen integration kept being read")
-    run = _run(FakeHA(_plant()))
-    result = tool.judge(run, _stopped(run, polled=False, meter_during=(2.0, 2.0, 2.0)))
-    assert result["verdict"].startswith("not judged (no independent meter")
+    tool.summary(run, [{"step": "binding", "verdict": "PASS"}, {"step": "under", "verdict": "PASS"},
+                       {"step": "stopped", "verdict": "PASS"}], True)
+    assert "RESULT: PASS. " in capsys.readouterr().out
 
 
 def test_a_person_s_yes_is_only_a_labelled_fallback(capsys: pytest.CaptureFixture[str]) -> None:
     run = _run(FakeHA(_plant()))
     results = [
         {"step": "binding", "verdict": "PASS"}, {"step": "under", "verdict": "PASS"},
-        {"step": "stopped", "verdict": "not judged (no independent meter: --meter)", "verdict_from_person": "y"},
+        {"step": "stopped", "verdict": "not judged (the plant could not be read: use the app or a meter)",
+         "verdict_from_person": "y"},
     ]
     tool.summary(run, results, True)
     out = capsys.readouterr().out
-    assert "FALLBACK only" in out and "RESULT: PASS with HA running only" in out
+    assert "FALLBACK only" in out and "RESULT: PASS while writing only" in out
     assert "RESULT: PASS. " not in out
 
 
