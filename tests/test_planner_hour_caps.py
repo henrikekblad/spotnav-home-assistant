@@ -403,3 +403,15 @@ def test_the_deadline_bounds_the_energy_search() -> None:
     energies = [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0]
     found = _choose_by_energy(slots, energies, 1.5, 2, FiscalChoice(), START + timedelta(minutes=75))
     assert found is not None and max(found) <= 4
+
+
+def test_a_paused_hour_is_never_charged_in_and_keeps_the_search_small() -> None:
+    from custom_components.spotnav.planning.planner import PAUSED_CAP_KW
+
+    caps = evening_peak_caps(2.0)
+    for start in hours_of(12, 17, 20):
+        caps[start] = PAUSED_CAP_KW
+    found = calculate_plan(request(power_cap_kw_by_hour=caps))
+    assert found.has_plan and not found.per_hour_caps_dropped
+    assert not chosen_local_hours(found) & {17, 18, 19}
+    assert found.delivered_kwh == pytest.approx(7.0, abs=0.5)
