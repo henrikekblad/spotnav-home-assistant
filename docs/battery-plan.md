@@ -64,6 +64,13 @@ once you enable them. Growatt's SPH and SPA give *Load First Battery Minimum SOC
 which the inverter applies only while its *Battery SOC Protection On Grid* is on. FoxESS gives *Min SoC (On Grid)*.
 The round trip is assumed to be 90 %. Both are said to be assumed in the card's details.
 
+**A cold battery takes less charge.** Where the integration reads the cells' temperature (Sigenergy), the plan counts on
+only part of the charge power while they are cold: all of it from 10 °C, half from 5 °C, a fifth from 0 °C and none
+below. That is an estimate from common LFP cells, not the battery's own figure: its BMS decides what it really takes.
+Where the battery has its own heater (Sigenergy's *ESS Preheating*), SpotNav also works out the preheating it would
+ask for before each planned charge and shows it in the diagnostics (`battery.plan.preheat`); it does not write it
+yet.
+
 The plan is made again when the prices change (the next day's at 13:00), every hour with the forecast, when the cars' plans
 or the battery's facts change and when the charge level is more than 10 points off the plan. The action of the slot that
 is running changes only if the new plan is clearly better, so the plan does not flip back and forth. The plan reaches as far

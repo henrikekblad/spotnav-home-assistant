@@ -11,7 +11,17 @@ from typing import Any
 import pytest
 
 from custom_components.spotnav.battery.facts import EntityFact, battery_facts
-from custom_components.spotnav.battery.preheat import SHOW_AFTER, PreheatWatch
+from zoneinfo import ZoneInfo
+
+from custom_components.spotnav.battery.plan_shadow import PlannedSlot
+from custom_components.spotnav.battery.preheat import (
+    SHOW_AFTER,
+    PreheatWatch,
+    charge_derate,
+    charge_runs,
+    request_key,
+    shadow_request,
+)
 
 SIGEN = json.loads((Path(__file__).parent / "fixtures" / "battery" / "brands.json").read_text(encoding="utf-8"))["sigenergy"]
 CELLS = "sensor.sigen_plant_ess_average_cell_temperature"
@@ -151,3 +161,64 @@ def test_control_turned_off_clears_the_line_at_once() -> None:
     facts = _facts("3.0")
     _changes, now = _run(watch, facts, minutes=31)
     assert watch.look(now, facts, False) == ("cleared", "off")
+
+
+# --- the charge derate and the preheating SpotNav would ask for ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("cell", "share"),
+    [(None, 1.0), (20.0, 1.0), (10.0, 1.0), (9.9, 0.5), (5.0, 0.5), (4.9, 0.2), (0.0, 0.2), (-0.1, 0.0), (-15.0, 0.0)],
+)
+def test_the_charge_derate_by_cell_temperature(cell: float | None, share: float) -> None:
+    assert charge_derate(cell) == share
+
+
+def _plan(*rows: tuple[int, str, float]) -> list[PlannedSlot]:
+    """Quarter hours from T0: (index, action, battery kW)."""
+    quarter = timedelta(minutes=15)
+    return [PlannedSlot(T0 + quarter * i, T0 + quarter * (i + 1), action, kw, 50.0) for i, action, kw in rows]
+
+
+def test_the_charge_runs_join_touching_slots_take_the_highest_kw_and_skip_what_has_ended() -> None:
+    plan = _plan((0, "grid_charge", 2.0), (1, "grid_charge", 2.6), (2, "self_consumption", -1.0),
+                 (3, "self_consumption", 0.8), (5, "grid_charge", 1.0), (6, "hold", 0.05))
+    runs = charge_runs(plan, T0 + timedelta(minutes=10), limit=30)
+    assert [(run.start, run.end, run.power_kw) for run in runs] == [
+        (T0, T0 + timedelta(minutes=30), 2.6),
+        (T0 + timedelta(minutes=45), T0 + timedelta(minutes=60), 0.8),
+        (T0 + timedelta(minutes=75), T0 + timedelta(minutes=90), 1.0),
+    ]
+    assert len(charge_runs(plan, T0, limit=2)) == 2
+    assert charge_runs(plan, T0 + timedelta(hours=2), limit=30) == []
+
+
+def test_a_cold_battery_with_a_planned_charge_gets_the_heater_on_manual_with_advance_and_one_slot_per_run() -> None:
+    facts = _facts("3.0", _heater("off", slots=2))
+    plan = _plan((4, "grid_charge", 2.5), (5, "grid_charge", 2.5), (8, "self_consumption", 1.2))
+    request = shadow_request(plan, facts, T0, ZoneInfo("Europe/Stockholm"), slots=30)
+    assert request is not None and request["written"] is False and request["field_tested"] is False
+    assert request["cell_c"] == 3.0 and request["derate"] == 0.2 and request["switch"] == "off"
+    first = request["slots"][0]
+    start = int((T0 + timedelta(hours=1)).timestamp())
+    # Stockholm is UTC+1 in November: the local wall clock written as if it were UTC is an hour later.
+    assert first["epoch_utc"] == [start, start + 1800] and first["epoch_local"] == [start + 3600, start + 5400]
+    writes = {write["register"]: write for write in request["writes"]}
+    assert writes[50000]["value"] == "on" and writes[50000]["entity_id"] == ENABLE
+    assert writes[50001]["value"] == "Manual" and writes[50002]["value"] == "on"
+    assert writes[50003]["value"] == start + 3600 and writes[50005]["value"] == start + 5400
+    assert writes[50007]["value"] == 2.5
+    assert writes[50009]["entity_id"] == "number.sigen_plant_ess_preheating_tou_2_start_time"
+    assert writes[50013]["value"] == 1.2
+    # The schedule's entities are disabled by default: named as missing, so a write could not run anyway.
+    assert {"mode", "advance", "slot_1_start", "slot_2_power"} <= set(request["missing"])
+    assert request_key(request) == ((first["start"], first["end"], 2.5), (request["slots"][1]["start"], request["slots"][1]["end"], 1.2))
+
+
+def test_no_preheating_for_warm_cells_no_planned_charge_or_no_heater() -> None:
+    plan = _plan((4, "grid_charge", 2.5))
+    assert shadow_request(plan, _facts("10.0"), T0) is None
+    assert shadow_request(plan, _facts(None), T0) is None
+    assert shadow_request(_plan((4, "hold", 0.0)), _facts("1.0"), T0) is None
+    assert shadow_request(plan, _facts("1.0", []), T0) is None
+    assert request_key(None) is None

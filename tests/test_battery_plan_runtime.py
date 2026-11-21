@@ -980,3 +980,75 @@ async def test_the_hard_cap_per_hour_follows_the_power_level_in_its_hours(
     assert len(caps) == plan_runtime.HOUR_CAPS_H
     assert all(kw == pytest.approx(held_level_kw(6.0)) for kw in caps.values())
     assert min(caps) == hour_start(now, controller.demand.tracker.tz)
+
+
+# --- a cold battery ------------------------------------------------------------------------------------------------
+
+
+def _heater_rows(state: str = "off") -> tuple[dict[str, Any], ...]:
+    """The `sigen` integration's preheating switch (enabled) and its schedule entities (disabled, as by default)."""
+    def row(entity_id: str, key: str, value: str | None, disabled: bool) -> dict[str, Any]:
+        return {"entity_id": entity_id, "unique_id": f"ENTRY_sigen_plant_{key}", "device": "battery", "state": value,
+                "unit": None, "device_class": None, "disabled": disabled}
+
+    rows = [row("switch.sigen_plant_ess_preheating_enable", "plant_ess_preheating_enable", state, False),
+            row("select.sigen_plant_ess_preheating_mode", "plant_ess_preheating_mode", None, True),
+            row("switch.sigen_plant_ess_preheating_advance_enable", "plant_ess_preheating_advance_enable", None, True)]
+    for n in (1, 2):
+        for field in ("start_time", "end_time", "target_power"):
+            key = f"plant_ess_preheating_tou_{n}_{field}"
+            rows.append(row(f"number.sigen_{key}", key, None, True))
+    return tuple(rows)
+
+
+async def test_a_cold_battery_is_planned_on_less_charge_power_and_the_preheating_it_would_ask_for_is_only_logged(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _service_calls(hass)
+    # Nearly empty before a dear evening: the cheap hours charge it.
+    _entry, controller = await _site(hass, extra=_heater_rows(), **{
+        "sensor.sigen_plant_ess_average_cell_temperature": "2.0", "sensor.sigen_plant_battery_state_of_charge": "12",
+    })
+    now = dt_util.now()
+    _give_prices(monkeypatch, _prices(now))
+    _house_forecast(controller, now)
+    logged: list[tuple[str, dict]] = []
+    monkeypatch.setattr(controller, "_log_target", lambda charger, action, budget=None, **fields: logged.append((action, fields)))
+    controller.battery_shadow.tick(now)
+    await hass.async_block_till_done()
+    shadow = controller.battery_shadow.plan
+    plan = shadow.snapshot()
+    battery = plan["inputs"]["battery"]
+    # 2 °C: a fifth of the plant's 13.2 kW is counted on, from the grid and the sun alike.
+    assert battery["cell_temperature_c"] == 2.0 and battery["charge_derate"] == 0.2
+    assert battery["max_charge_kw"] == pytest.approx(13.2 * 0.2)
+    charging = [slot for slot in shadow.plan if slot.battery_kw >= 0.1]
+    assert charging
+    assert max(slot.battery_kw for slot in charging) <= 13.2 * 0.2 + 1e-6
+    preheat = plan["preheat"]
+    assert preheat is not None and preheat["written"] is False and preheat["field_tested"] is False
+    first = preheat["slots"][0]
+    assert first["start"] == min(slot.start for slot in charging).isoformat()
+    assert [write["register"] for write in preheat["writes"][:6]] == [50000, 50001, 50002, 50003, 50005, 50007]
+    assert preheat["writes"][1]["value"] == "Manual" and preheat["writes"][5]["value"] == first["power_kw"]
+    assert "mode" in preheat["missing"], "the schedule's entities are disabled by default"
+    [(action, fields)] = [item for item in logged if item[0] == "battery_preheat"]
+    assert fields["would_write"] is True and fields["written"] is False and fields["slots"][0][0] == first["start"]
+    # The same slots planned again are not logged again; nothing is written to any device.
+    await shadow.async_plan(now, TRIGGER_INPUTS)
+    assert len([item for item in logged if item[0] == "battery_preheat"]) == 1
+    assert [call for call in calls if call.data.get("domain") not in ("system_log", "logger")] == []
+
+
+async def test_a_warm_battery_is_planned_on_its_whole_charge_power_with_no_preheating(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _entry, controller = await _site(hass, extra=_heater_rows())
+    now = dt_util.now()
+    _give_prices(monkeypatch, _prices(now))
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now)
+    await hass.async_block_till_done()
+    plan = controller.battery_shadow.plan.snapshot()
+    assert plan["inputs"]["battery"]["charge_derate"] == 1.0 and plan["inputs"]["battery"]["max_charge_kw"] == 13.2
+    assert plan["preheat"] is None

@@ -91,8 +91,8 @@ And one reading kept by the day (read 2026-11-16):
   temperature (°C), whose day the nightly review keeps (`hindsight.cell_temperature`). Sigenergy
   `plant_ess_average_cell_temperature` (plant register 30286 "[ESS] Average cell temperature", firmware V2.8 and later;
   on the owner's plant enabled and named "Husbatteri celltemperatur"), else the inverter's
-  `inverter_ess_average_cell_temperature`. Read live too (`facts.BatteryFacts.cell_temperature_c`) for the battery's
-  preheating line (`preheat.py`).
+  `inverter_ess_average_cell_temperature`. Read live too (`facts.BatteryFacts.cell_temperature_c`): the battery's
+  preheating (`preheat.py`) and the plan's charge derate read it.
 
 And the battery's own heater (`preheat`, read 2026-11-21, `plans/v3_sigen_preheat.md`): Sigenergy's ESS preheating
 (holding registers 50000-50183, protocol V2.9 section 5.2.3, "only Sigen PV M1-HYA/HYB"): the switch
@@ -100,7 +100,8 @@ And the battery's own heater (`preheat`, read 2026-11-21, `plans/v3_sigen_prehea
 `plant_ess_preheating_advance_enable` (50002, manual mode only), 30 time slots of start, end (epoch seconds) and
 target power (kW) as numbers `plant_ess_preheating_tou_<n>_{start_time,end_time,target_power}`, and the number
 `plant_ess_preheating_reserved_soc` (50183). All disabled by default in the integration. Read only: SpotNav tells the
-person when the switch is off on a cold battery (`preheat.py`) and never writes it.
+person when the switch is off on a cold battery and works out, in shadow, what it would write ahead of a planned
+charge (`preheat.py`); it never writes it.
 
 A battery whose integration states its size in amp-hours and its limits as currents (Victron, GoodWe) gets kWh and
 kW from the battery voltage the same integration reads (`voltage`): energy = Ah x V, power = A x V. That is an
