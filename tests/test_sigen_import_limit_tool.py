@@ -1,0 +1,206 @@
+"""The on-site test of a Sigenergy plant's own import limit (`tools/sigen_import_limit_test.py`): what it refuses to
+start on, that it puts back every value it wrote in the hand-back order, that a dry run writes nothing, and how it
+judges a load step (which phase took the load, held per phase or only in total)."""
+
+from __future__ import annotations
+
+import csv
+import importlib.util
+import io
+from pathlib import Path
+import sys
+from typing import Any
+
+import pytest
+
+TOOLS = Path(__file__).parent.parent / "tools"
+
+
+def _tool() -> Any:
+    spec = importlib.util.spec_from_file_location("sigen_import_limit_test", TOOLS / "sigen_import_limit_test.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # its dataclasses look their module up
+    spec.loader.exec_module(module)
+    return module
+
+
+tool = _tool()
+ENTITIES = tool.default_entities("sigen_plant")
+
+
+class FakeHA:
+    """Home Assistant's states as a dict; a service call sets the entity's state as the integration would."""
+
+    def __init__(self, states: dict[str, str], *, spotnav: dict[str, Any] | None = None, dry_run: bool = False):
+        self.values = dict(states)
+        self.writes: list[str] = []
+        self.dry_run = dry_run
+        self.spotnav = spotnav or {"battery_control_enabled": True, "battery_control_shadow_only": True}
+
+    def states(self) -> dict[str, dict[str, Any]]:
+        return {entity: {"entity_id": entity, "state": value, "attributes": {}} for entity, value in self.values.items()}
+
+    def get(self, path: str) -> Any:
+        if path.startswith("/api/config/config_entries"):
+            return [{"entry_id": "site", "title": "My Home", "state": "loaded"}]
+        return {"data": {"config": self.spotnav}}
+
+    def call(self, domain: str, service: str, data: dict[str, Any]) -> None:
+        if self.dry_run:
+            raise RuntimeError("dry run")
+        entity = data["entity_id"]
+        self.writes.append(f"{entity}={data.get('value', data.get('option', service))}")
+        if domain == "number":
+            self.values[entity] = str(data["value"])
+        elif domain == "switch":
+            self.values[entity] = "on" if service == "turn_on" else "off"
+            if entity == ENTITIES["remote_ems"]:
+                self.values[ENTITIES["control_mode"]] = "Command Charging (Grid First)" if service == "turn_on" \
+                    else "unavailable"
+        else:
+            self.values[entity] = data["option"]
+
+
+def _plant(**changes: str) -> dict[str, str]:
+    states = {
+        ENTITIES["import_limit"]: "13.8", ENTITIES["charge_limit"]: "20.6", ENTITIES["discharge_limit"]: "23.04",
+        ENTITIES["remote_ems"]: "off", ENTITIES["control_mode"]: "unavailable", ENTITIES["phase_control"]: "on",
+        ENTITIES["work_mode"]: "ai_mode", ENTITIES["battery"]: "-0.8", ENTITIES["soc"]: "40",
+        ENTITIES["total_target"]: "0.0",
+    }
+    for phase in "abc":
+        states[ENTITIES[f"grid_{phase}"]] = "0.3"
+        states[ENTITIES[f"plant_{phase}"]] = "0.1"
+        states[ENTITIES[f"target_{phase}"]] = "0.0"
+    states.update({ENTITIES[role]: value for role, value in changes.items()})
+    return states
+
+
+def _run(ha: FakeHA, limit_kw: float = 6.0) -> Any:
+    out = io.StringIO()
+    return tool.Run(ha, dict(ENTITIES), limit_kw, 0.01, 4.0, [], csv.writer(out), out)
+
+
+def test_a_plant_as_found_on_the_owner_s_site_may_be_tested_and_is_snapshotted() -> None:
+    found = tool.check(_run(FakeHA(_plant())), force_spotnav=False)
+    assert found["problems"] == []
+    assert (found["snapshot"]["import_limit"], found["snapshot"]["charge_limit"]) == (13.8, 20.6)
+    assert found["snapshot"]["remote_ems"] == "off" and found["snapshot"]["control_mode"] == "Maximum Self Consumption"
+
+
+@pytest.mark.parametrize(
+    ("changes", "spotnav", "problem"),
+    [
+        ({"remote_ems": "on"}, None, "Remote EMS is already on"),
+        ({"phase_control": "off"}, None, "independent phase power control"),
+        ({"target_b": "-1.0"}, None, "not 0"),
+        ({"total_target": "2.0"}, None, "not 0"),
+        ({"import_limit": "unavailable"}, None, "grid_import_limitation reads"),
+        ({"soc": "97"}, None, "too full"),
+        ({}, {"battery_control_enabled": True, "battery_control_shadow_only": False}, "SpotNav's battery control"),
+    ],
+)
+def test_the_test_does_not_start_where_something_else_controls_or_could_act(
+    changes: dict[str, str], spotnav: dict[str, Any] | None, problem: str
+) -> None:
+    found = tool.check(_run(FakeHA(_plant(**changes), spotnav=spotnav)), force_spotnav=False)
+    assert any(problem in text for text in found["problems"]), found["problems"]
+
+
+def test_the_restore_puts_back_every_written_value_in_the_hand_back_order() -> None:
+    ha = FakeHA(_plant())
+    run = _run(ha)
+    snapshot = tool.check(run, force_spotnav=False)["snapshot"]
+    run.set("import_limit", 6.0)
+    run.set("charge_limit", 0.0)
+    run.set("remote_ems", "on")
+    run.set("control_mode", "Command Charging (Grid First)")
+    run.set("charge_limit", 4.0)
+    before = len(ha.writes)
+    assert tool.restore(run, snapshot) is True
+    assert ha.writes[before:] == [
+        f"{ENTITIES['control_mode']}=Maximum Self Consumption", f"{ENTITIES['remote_ems']}=turn_off",
+        f"{ENTITIES['charge_limit']}=20.6", f"{ENTITIES['import_limit']}=13.8",
+    ]
+    assert ha.values[ENTITIES["import_limit"]] == "13.8" and ha.values[ENTITIES["remote_ems"]] == "off"
+
+
+def test_a_dry_run_writes_nothing() -> None:
+    ha = tool.HomeAssistant("http://localhost:1", "token", dry_run=True)
+    with pytest.raises(RuntimeError, match="dry run"):
+        ha.call("number", "set_value", {"entity_id": ENTITIES["import_limit"], "value": 6.0})
+    assert ha.writes == []
+
+
+def _sample(t: float, step: str, grid: tuple[float, float, float], plant: tuple[float, float, float]) -> Any:
+    return tool.Sample(t, step, "", grid, plant, {})
+
+
+def _window(run: Any, step: str, before: tuple, during: tuple, charge_kw: float) -> Any:
+    """Five samples before the load (every 5 s), twelve with it (60 s)."""
+    for i in range(4):
+        run.samples.append(_sample(100.0 + 5 * i, step, *before))
+    for i in range(13):
+        run.samples.append(_sample(120.0 + 5 * i, step, *during))
+    return tool.Window(step, 120.0, 180.0, charge_kw=charge_kw)
+
+
+def test_a_load_held_at_a_third_of_the_limit_passes_and_its_phase_is_found_from_the_house_jump() -> None:
+    run = _run(FakeHA(_plant()))
+    # 2026-11-18 20:57: 2.4 kW on L1 under a 6 kW limit; the plant put out 0.33 kW on L1 and charged on L2 and L3.
+    window = _window(run, "binding", ((1.65, 1.65, 1.65), (-1.45, -1.45, -1.45)),
+                     ((2.0, 2.0, 2.0), (0.33, -1.82, -1.96)), 4.0)
+    result = tool.judge(run, window)
+    assert result["verdict"] == "PASS" and result["phase"] == "A" and result["load_kw"] == pytest.approx(2.13, abs=0.01)
+
+
+def test_a_phase_over_a_third_of_the_limit_fails() -> None:
+    run = _run(FakeHA(_plant()))
+    window = _window(run, "binding", ((1.65, 1.65, 1.65), (-1.45, -1.45, -1.45)),
+                     ((2.6, 1.7, 1.7), (-1.0, -1.45, -1.45)), 4.0)
+    assert tool.judge(run, window)["verdict"] == "FAIL"
+
+
+@pytest.mark.parametrize(
+    ("during", "verdict"),
+    [
+        # Even charge of 1 kW, 2.4 kW on L2: L2 at 3.0 kW with 4.6 kW in all: the plant limits only the total.
+        (((0.6, 3.0, 0.6), (-0.33, -0.33, -0.33)), "FAIL: the plant limits only the total, not each phase"),
+        # The plant puts out on L2 and holds it at 2 kW while the total is under the limit: held per phase.
+        (((0.6, 2.0, 0.6), (-0.33, 0.67, -0.33)), "PASS"),
+        # A load too small to take L2 over 2 kW even with an even charge: nothing shown.
+        (((0.6, 1.2, 0.6), (-0.33, -0.33, -0.33)), "not judged (the load did not take its phase"),
+    ],
+)
+def test_the_under_limit_step_tells_a_per_phase_limit_from_a_total_one(during: tuple, verdict: str) -> None:
+    run = _run(FakeHA(_plant()))
+    window = _window(run, "under", ((0.6, 0.6, 0.6), (-0.33, -0.33, -0.33)), during, 1.0)
+    assert tool.judge(run, window)["verdict"].startswith(verdict)
+
+
+def test_the_under_limit_step_is_not_judged_where_the_total_reaches_the_limit() -> None:
+    run = _run(FakeHA(_plant()))
+    # A 4.5 kW load: the total would pass 6 kW, so the total limit alone explains the hold.
+    window = _window(run, "under", ((0.6, 0.6, 0.6), (-0.33, -0.33, -0.33)),
+                     ((2.0, 2.0, 2.0), (-1.0, 3.1, -1.0)), 1.0)
+    assert tool.judge(run, window)["verdict"].startswith("not judged (the total reached the limit")
+
+
+def test_a_step_the_plant_could_not_be_read_in_is_left_to_the_person() -> None:
+    run = _run(FakeHA(_plant()))
+    for i in range(20):
+        run.samples.append(tool.Sample(100.0 + 5 * i, "stopped", "", (None, None, None), (None, None, None), {}))
+    result = tool.judge(run, tool.Window("stopped", 120.0, 180.0))
+    assert result["verdict"].startswith("not judged")
+
+
+def test_the_guard_restores_when_a_phase_stays_over_the_abort_level() -> None:
+    ha = FakeHA(_plant())
+    run = _run(ha)
+    run.guarding = True
+    run.sample()
+    ha.values[ENTITIES["grid_b"]] = "4.5"
+    run.sample()
+    with pytest.raises(tool.Stop, match="over 4.0 kW"):
+        run.sample()
