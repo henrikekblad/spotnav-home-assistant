@@ -151,7 +151,7 @@ def test_a_high_confidence_answer_between_cars_of_different_colours_decides() ->
     assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, RED) == CameraVerdict(decides="ev6", prefers="ev6")
 
 
-def test_at_night_the_camera_never_decides_alone() -> None:
+def test_at_night_the_camera_never_decides_alone_for_a_car_without_a_night_picture() -> None:
     references = {"ev6": [RED], "tesla": [WHITE]}
     assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, None) == CameraVerdict(prefers="ev6")
 
@@ -189,7 +189,9 @@ def test_the_reason_says_why_the_camera_decided_alone_or_did_not() -> None:
     assert camera_reason("ev6", "medium", ["ev6", "tesla"], references, RED) == ("confidence_low", None)
     assert camera_reason("ev6", None, ["ev6", "tesla"], references, RED) == ("confidence_low", None)
     assert camera_reason("ev6", "high", ["ev6", "tesla"], references, None) == ("night", None)
-    assert camera_reason("ev6", "high", ["ev6", "tesla"], references, WHITE) == ("colour_mismatch", None)
+    assert camera_reason("ev6", "high", ["ev6", "tesla"], references, WHITE) == ("colour_mismatch", 1.15), (
+        "the named car's measured distance from the picture now"
+    )
     assert camera_reason("ev6", "high", ["ev6", "tesla", "zoe"], references, RED) == ("missing_reference", None)
     greyish_blue = scene((0.1, 0.12, 0.32))
     reason, distance = camera_reason("ioniq", "high", ["ioniq", "ev6", "kangoo"], {**references, "ev6": [greyish_blue]}, DARK_GREY)
@@ -223,6 +225,78 @@ def test_a_sure_answer_decides_only_when_the_colour_now_is_nearest_the_named_car
     assert camera_verdict("ev6", "high", ["ev6", "tesla"], references, scene((0.85, 0.85, 0.82))) == CameraVerdict(prefers="ev6")
     assert nearest_car(scene((0.6, 0.15, 0.1)), ["ev6", "tesla"], references) == "ev6"
     assert nearest_car(scene((0.5, 0.5, 0.5)), ["ev6"], {"ev6": [None]}) is None
+
+
+# The owner's charger (field report, 18-21 Nov): an EV6 with a day and a night reference picture, and a second car
+# kept for comparison with a day picture only. The model named the EV6 at high confidence every time.
+EV6_DAY = scene((0.1, 0.15, 0.35))
+TESTBIL_DAY = scene(None)
+OWNER = {"ev6": [EV6_DAY, None], "testbil": [TESTBIL_DAY]}
+OWNER_CARS = ["ev6", "testbil"]
+OWNER_NIGHT = {"ev6"}
+
+
+def test_at_night_a_sure_answer_decides_for_the_car_with_a_night_picture() -> None:
+    """21 Nov 19:32 and 18 Nov 17:39: dark, the EV6 named at high confidence; it has the night reference."""
+    assert camera_reason("ev6", "high", OWNER_CARS, OWNER, None, night=OWNER_NIGHT) == ("decided_night", None)
+    assert camera_verdict("ev6", "high", OWNER_CARS, OWNER, None, night=OWNER_NIGHT) == CameraVerdict(
+        decides="ev6", prefers="ev6"
+    )
+
+
+def test_at_night_the_camera_still_only_orders_when_unsure_unknown_or_contradicted() -> None:
+    assert camera_reason("ev6", "medium", OWNER_CARS, OWNER, None, night=OWNER_NIGHT)[0] == "confidence_low"
+    assert camera_reason("ev6", "low", OWNER_CARS, OWNER, None, night=OWNER_NIGHT)[0] == "confidence_low"
+    assert camera_reason("testbil", "high", OWNER_CARS, OWNER, None, night=OWNER_NIGHT) == ("night", None), (
+        "the named car has no night picture to be recognised by"
+    )
+    assert camera_reason("ev6", "high", OWNER_CARS, OWNER, None, night=OWNER_NIGHT, plugged={"testbil"}) == (
+        "other_plugged_in",
+        None,
+    ), "another car's own plug sensor went on at this plug-in"
+    assert camera_reason("ev6", "high", [*OWNER_CARS, "zoe"], {**OWNER, "zoe": []}, None, night=OWNER_NIGHT) == (
+        "missing_reference",
+        None,
+    )
+    assert camera_reason("ev6", "high", OWNER_CARS, OWNER, None, night=OWNER_NIGHT, plugged={"ev6"})[0] == (
+        "decided_night"
+    ), "the named car's own plug sensor is no contradiction"
+
+
+def test_daylight_without_the_named_cars_colour_is_no_mismatch() -> None:
+    """20 Nov 11:38: `colour_mismatch` with no distance. A named car whose colour cannot be compared (no coloured
+    reference picture with this frame) has no colour to mismatch: the sure answer decides, unless the picture now
+    looks like another car's colour."""
+    unknown = {"ev6": [None, None], "testbil": [TESTBIL_DAY]}
+    now = EV6_DAY
+    assert camera_reason("ev6", "high", OWNER_CARS, unknown, now, night=OWNER_NIGHT) == ("decided_without_colour", None)
+    assert camera_verdict("ev6", "high", OWNER_CARS, unknown, now, night=OWNER_NIGHT).decides == "ev6"
+    reason, distance = camera_reason("ev6", "high", OWNER_CARS, unknown, TESTBIL_DAY, night=OWNER_NIGHT)
+    assert reason == "similar_colour" and distance == 0, "the picture now is the other car's colour"
+    assert camera_reason("ev6", "medium", OWNER_CARS, unknown, now)[0] == "confidence_low"
+    assert camera_reason("ev6", "high", OWNER_CARS, unknown, now, plugged={"testbil"})[0] == "other_plugged_in"
+
+
+def test_a_measured_large_colour_distance_still_vetoes_and_is_recorded() -> None:
+    reason, distance = camera_reason("ev6", "high", OWNER_CARS, OWNER, TESTBIL_DAY, night=OWNER_NIGHT)
+    assert reason == "colour_mismatch" and distance is not None and distance >= COLOUR_DISTINCT
+    assert camera_verdict("ev6", "high", OWNER_CARS, OWNER, TESTBIL_DAY, night=OWNER_NIGHT) == CameraVerdict(prefers="ev6")
+
+
+def test_a_small_colour_distance_with_another_car_nearer_is_a_similar_colour_not_a_mismatch() -> None:
+    """Cars clearly different in colour, and a picture now near the named car's colour but nearer the other's: the
+    colour does not veto the answer, nor does it tell the cars apart."""
+    references = {"ev6": [EV6_DAY], "ioniq": [scene((0.1, 0.15, 0.65))]}
+    assert distinct_cars(references["ev6"], references["ioniq"])
+    between = scene((0.1, 0.15, 0.55))
+    assert colour_distance(between, EV6_DAY) < COLOUR_DISTINCT
+    reason, _ = camera_reason("ev6", "high", ["ev6", "ioniq"], references, between)
+    assert reason == "similar_colour"
+
+
+def test_in_daylight_with_colour_the_owners_cars_decide_as_before() -> None:
+    """19 Nov midday: decided by the camera."""
+    assert camera_reason("ev6", "high", OWNER_CARS, OWNER, EV6_DAY, night=OWNER_NIGHT) == ("decided", None)
 
 
 # --------------------------------------------------------------------------------- when it is asked
