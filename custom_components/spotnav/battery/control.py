@@ -1085,7 +1085,8 @@ class BatteryControl:
         """The HA-down cap a grid charge runs under now (kW, `None`: the plant's own import limit guards the fuse)
         and, when it runs per phase, each phase's cap (the first is then their sum). Per phase only on a control
         that runs the targets (`phased`, by default the executor's as synced now), verified and with everything
-        there, and only when the phases allow at least `PER_PHASE_GAIN_KW` more than the balanced cap."""
+        there, and only when the phases allow at least `PER_PHASE_GAIN_KW` more than the balanced cap (always, once the
+        site accepted the HA-down risk: both are then the empty house's fuse)."""
         cap = self._grid_charge_cap_kw(now, options, no_cars=no_cars)
         if phased is None:
             phased = self._sync_phases()
@@ -1093,6 +1094,11 @@ class BatteryControl:
             return cap, None
         caps = self._phase_caps_kw(now, accept=options.accept_ha_down, no_cars=no_cars)
         total = sum(caps)
+        if options.accept_ha_down and _accept_applies(control_for(self.facts.brand)):
+            # Accepted: the phases' caps and the balanced one are both the empty house's fuse, so there is no gain to
+            # weigh; the charge per phase keeps running where it is verified (and where `charge` was shown only per
+            # phase, it is the one grid charge there is).
+            return total, caps
         if total < cap + PER_PHASE_GAIN_KW:
             return cap, None
         return total, caps
