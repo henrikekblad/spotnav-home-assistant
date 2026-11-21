@@ -267,12 +267,53 @@ async def test_below_the_floor_or_the_least_power_nothing_is_written(hass: HomeA
     _ids, found = _found(hass)
     calls = _mock_writes(hass)
     adapter = adapter_for(hass, found)
-    assert await adapter.async_set_current(5, reason=WRITE_SESSION_START) == ASSIGN_BELOW_MINIMUM
-    # On an IT network (230 V between phases) 6 A is still 2.4 kW, above the least power it holds.
-    assert 6 * kw_per_amp(230) > EVDC_MIN_POWER_KW
+    # The floor is the least power as a current per phase, rounded up to the hundredth: 1.5 kW / 0.6928 = 2.17 A.
+    assert adapter.current.min_a() == 2.17
+    assert adapter.min_current_a == adapter.min_start_current_a == 2.17
+    assert await adapter.async_set_current(2, reason=WRITE_SESSION_START) == ASSIGN_BELOW_MINIMUM
+    assert await adapter.async_set_current(2.16, reason=WRITE_SESSION_START) == ASSIGN_BELOW_MINIMUM
     _set_limit(hass, 12)
     assert await adapter.async_set_current(17, reason=WRITE_SESSION_START) == ASSIGN_UNCHANGED
     assert calls == []
+
+
+async def test_the_floor_is_written_at_the_least_power_never_below_it(hass: HomeAssistant) -> None:
+    """The DC charger's floor (2.17 A at 400 V) writes 1.50 kW, not the 4.2 kW of an AC charger's 6 A, and no write
+    comes out below `EVDC_MIN_POWER_KW`, also once rounded down to the number's step; it reads back as the floor."""
+    _ids, found = _found(hass)
+    calls = _mock_writes(hass)
+    adapter = adapter_for(hass, found)
+    _set_limit(hass, 12)
+
+    assert await adapter.async_set_current(2.17, reason=WRITE_SESSION_START) == ASSIGN_ASSIGNED
+
+    assert calls[-1].data["value"] == pytest.approx(1.503, abs=0.001)
+    assert calls[-1].data["value"] >= EVDC_MIN_POWER_KW
+    assert adapter.current.setpoint_a() == 2.17
+    assert adapter.current.read_back_a() == 2.17
+    # Above the floor the steps are whole amperes again: 2.9 kW reads back as 4 A.
+    _set_limit(hass, round(4 * KW_PER_A_400, 3))
+    assert adapter.current.read_back_a() == 4
+    # A step so coarse that the floor would be written below the least power (1.5 kW to 1 kW): nothing is written.
+    hass.states.async_set(LIMIT, "12", {**POWER_LIMIT_ATTRS, "step": 1})
+    written = len(calls)
+    assert await adapter.async_set_current(2.17, reason=WRITE_SESSION_START) == ASSIGN_BELOW_MINIMUM
+    assert len(calls) == written
+    assert all(call.data["value"] >= EVDC_MIN_POWER_KW for call in calls)
+
+
+async def test_on_an_it_network_the_floor_follows_the_voltage(hass: HomeAssistant) -> None:
+    """At 230 V between phases one ampere is 0.40 kW: the floor is 3.77 A, still 1.5 kW."""
+    _ids, found = _found(hass)
+    MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="evdc",
+        data={CONF_ENTRY_TYPE: ENTRY_TYPE_CHARGER, CONF_CHARGE_CONTROL: START, CONF_VOLTAGE_BETWEEN_PHASES_V: 230},
+    ).add_to_hass(hass)
+    adapter = adapter_for(hass, found)
+    floor = adapter.current.min_a()
+    assert floor == 3.77
+    assert floor * kw_per_amp(230) >= EVDC_MIN_POWER_KW > (floor - 0.01) * kw_per_amp(230)
 
 
 async def test_the_power_follows_the_sites_voltage(hass: HomeAssistant) -> None:

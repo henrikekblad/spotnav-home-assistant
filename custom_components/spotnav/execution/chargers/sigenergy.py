@@ -11,10 +11,15 @@ current per phase is turned into the power three phases carry at the site's volt
 to the limit. The plan's power is therefore the same number the limit gets. The charger's whole rating is one
 current (`max_a`, rounded down), and a request at that current writes the full rating, not the rounded-down power.
 
-**What is left out for a DC charger.** The 6 A floor stays SpotNav's lowest step (4.2 kW at 400 V), above the lowest
-power the charger is assumed to hold (`EVDC_MIN_POWER_KW`, to be confirmed), so the floor never asks for less than
-it can hold. Phase switching, the car's onboard phases and a per-phase cut do not exist for a DC charger: the power
-is spread over three phases whatever car is plugged in (`planning/phases.py`).
+**The lowest step is the charger's, not the 6 A pilot floor.** An AC charger's 6 A floor (4.2 kW at 400 V) is the
+car's pilot minimum, which a DC charger does not have: its lowest step is the lowest power it holds
+(`EVDC_MIN_POWER_KW`) as a current per phase (`PowerCurrent.min_a`, 1.5 kW / 0.6928 kW per ampere = 2.17 A at 400 V,
+rounded up to the hundredth so the power written is never below it). That current is the charger's floor wherever
+SpotNav reckons one: the sun's start, hold and stop, load balancing's lowest step before it pauses, the import
+target's hold (`ChargingController.min_current_a`, `SiteCapacityController.charger_min_current_a`). It is the one
+current that need not be a whole ampere: above it the steps stay whole amperes (`util.amps_at_floor`). Phase
+switching, the car's onboard phases and a per-phase cut do not exist for a DC charger: the power is spread over three
+phases whatever car is plugged in (`planning/phases.py`).
 
 **Three phases only.** `sqrt(3) x V x I` is the power of a three-phase draw. On one phase the same limit would draw
 three times the current the plan counts, so a charger wired as one phase is never written (`PowerCurrent.async_set`
@@ -46,7 +51,8 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from ...const import CURRENT_CONTROL_POWER, DEFAULT_MIN_CURRENT_A, DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+from ...const import CURRENT_CONTROL_POWER, DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+from ...util import amps_at_floor
 from ..charger_profiles import profile_for, WritePolicy
 from .base import (
     _entity_ready,
@@ -72,8 +78,8 @@ from .registry import ChargerContext, register_current
 
 _LOGGER = logging.getLogger(__name__)
 
-#: The lowest power the charger is taken to hold, in kW. TO BE CONFIRMED by the tester: a limit below it is never
-#: written. SpotNav's 6 A floor (4.2 kW at 400 V) is above it, so today it only guards.
+#: The lowest power the charger is taken to hold, in kW (Sigenergy's own surplus mode charges down to about it): a
+#: limit below it is never written, and it is the charger's floor as a current per phase (`PowerCurrent.min_a`).
 EVDC_MIN_POWER_KW: Final = 1.5
 #: How long after a limit write a raise waits, so the charger has followed the last write before it is given more.
 #: A lowering only waits for the policy's 10 s. TO BE CONFIRMED with how fast the charger follows a new limit.
@@ -349,8 +355,9 @@ class PowerTiming:
 class PowerCurrent(CurrentPath):
     """`number.set_value` on a power limit (kW or W), given a current per phase. See the module docstring.
 
-    Refuses, in this order: below the 6 A floor, a charger not wired as three phases, a number that is gone or has no
-    power unit, no ceiling known (`ceiling_kw`), below `EVDC_MIN_POWER_KW`, a value it already carries, a raise within
+    Refuses, in this order: below its floor (`min_a`), a charger not wired as three phases, a number that is gone or has
+    no power unit, no ceiling known (`ceiling_kw`), below `EVDC_MIN_POWER_KW` (also once rounded down to the number's
+    step), a value it already carries, a raise within
     `EVDC_SETTLE_S` of the last write (the regulator's and the sun's only), and the policy's interval not yet elapsed.
 
     The number's state lags a write (the integration reads the register back on its next poll), so for
@@ -398,6 +405,11 @@ class PowerCurrent(CurrentPath):
     def kw_per_a(self) -> float:
         return kw_per_amp(self._voltage_v())
 
+    def min_a(self) -> float:
+        """The charger's floor as a current per phase: `EVDC_MIN_POWER_KW` at `kw_per_a`, rounded up to the hundredth
+        of an ampere so the power it is written as is never below the lowest power (2.17 A, 1.503 kW, at 400 V)."""
+        return math.ceil(EVDC_MIN_POWER_KW / self.kw_per_a() * 100.0 - 1e-6) / 100.0
+
     def sensor_rated_kw(self) -> float | None:
         """The rated-power sensor's reading (kW) when it is a plausible rating, else `None`."""
         rated_id = self._rated_entity_id()
@@ -434,7 +446,7 @@ class PowerCurrent(CurrentPath):
             return None
         return int(math.floor(ceiling / self.kw_per_a() + 1e-6))
 
-    def kw_for(self, amps: int) -> float | None:
+    def kw_for(self, amps: float) -> float | None:
         """The power `amps` per phase is written as: the ceiling at its current or above, else the three-phase power;
         `None` when there is no ceiling."""
         ceiling = self.ceiling_kw()
@@ -454,14 +466,17 @@ class PowerCurrent(CurrentPath):
         step_kw = step / factor if step is not None and step > 0 and factor else 0.0
         return min(max(READ_BACK_SLACK_KW, step_kw) + 1e-6, 0.9 * self.kw_per_a())
 
-    def _amps_of(self, kw: float) -> int:
-        """The current per phase a power limit is: rounded down, after allowing for the limit's own step (a write is
-        rounded down to it, so 6 A written as 4.15 kW reads back as 6 A, not 5)."""
+    def _amps_of(self, kw: float) -> float:
+        """The current per phase a power limit is: rounded down to a whole ampere, after allowing for the limit's own
+        step (a write is rounded down to it, so 6 A written as 4.15 kW reads back as 6 A, not 5), or the floor
+        (`min_a`) for a limit between the floor and the next whole ampere (the floor written as 1.50 kW reads back
+        as 2.17 A, not 2)."""
         maximum = self.max_a()
         ceiling = self.ceiling_kw()
         if maximum is not None and ceiling is not None and kw >= ceiling - 1e-6:
             return maximum
-        return int(math.floor((kw + self._slack_kw(self.hass.states.get(self.entity_id))) / self.kw_per_a()))
+        amps = (kw + self._slack_kw(self.hass.states.get(self.entity_id))) / self.kw_per_a()
+        return amps_at_floor(amps, self.min_a())
 
     def limit_kw(self) -> float | None:
         """The limit the number's state shows (kW)."""
@@ -491,7 +506,7 @@ class PowerCurrent(CurrentPath):
 
     # -- `CurrentPath`
 
-    def setpoint_a(self) -> int | None:
+    def setpoint_a(self) -> float | None:
         state = self.hass.states.get(self.entity_id)
         factor = _native_factor(state)
         carried = self._carried_native(state)
@@ -499,7 +514,7 @@ class PowerCurrent(CurrentPath):
             return self.last_written_a
         return self._amps_of(carried / factor)
 
-    def read_back_a(self) -> int | None:
+    def read_back_a(self) -> float | None:
         limit = self.limit_kw()
         return None if limit is None else self._amps_of(limit)
 
@@ -512,8 +527,8 @@ class PowerCurrent(CurrentPath):
     def note_interval_stop(self) -> None:
         self.interval_stops += 1
 
-    async def async_set(self, amps: int, *, reason: str, verify: bool = False) -> str:
-        if amps < DEFAULT_MIN_CURRENT_A:
+    async def async_set(self, amps: float, *, reason: str, verify: bool = False) -> str:
+        if amps < self.min_a() - 1e-9:
             return ASSIGN_BELOW_MINIMUM
         if not self._three_phase():
             # sqrt(3) x V x I on one phase is three times the current the plan counts: never written.
@@ -542,6 +557,9 @@ class PowerCurrent(CurrentPath):
         if step is not None and step > 0:
             native = math.floor(native / step + 1e-9) * step
             native = round(native, max(0, -int(math.floor(math.log10(step)))) + 1 if step < 1 else 0)
+        if native / factor < EVDC_MIN_POWER_KW - 1e-9:
+            # Rounded down to the number's step it would be below the lowest power: never written.
+            return ASSIGN_BELOW_MINIMUM
         minimum = _finite(state.attributes.get("min"))
         maximum = _finite(state.attributes.get("max"))
         if minimum is not None and native < minimum:
@@ -598,6 +616,7 @@ class PowerCurrent(CurrentPath):
             "kw_per_a": round(self.kw_per_a(), 4),
             "max_a": self.max_a(),
             "min_power_kw": EVDC_MIN_POWER_KW,
+            "min_a": self.min_a(),
             "settle_s": EVDC_SETTLE_S,
             "interval_stops": self.interval_stops,
             "output_kw": None if self.timing is None else PowerTiming._rounded(self.timing.output_kw()),
