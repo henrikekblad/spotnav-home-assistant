@@ -45,9 +45,11 @@ only, and a free-charging charge point (or one that authorizes offline) starts t
 there to stop it. So while the hold is on, each OCPP charger of the site is set unavailable with the `ocpp`
 integration's station availability switch (`station_availability_entity`: platform `ocpp`, unique id
 `switch.ocpp.<cpid>.availability`; it sends `ChangeAvailability` `Inoperative` on connector 0, the whole charge
-point), and counted at 0 A only once the switch reads off and the charger is not charging (`counts_nothing`). The
-switch reads off only when the charge point itself reports itself `Unavailable`, so it reading off is the charge
-point's own word that it took the change, not the integration's echo of the command. A switch that is not there, does
+point), and counted at 0 A only once the switch reads off, the charger's connector reports itself `Unavailable`
+(`connector_out_of_service`) and the charger neither charges nor draws (`counts_nothing`). The connector's status is
+the charge point's own word that it took the change: the integration counts `Scheduled` (a transaction runs, out of
+service only once it ends) as taken, and on a charge point that reports no station status the switch reads off for a
+connector merely `Preparing`. A switch that is not there, does
 not read on before (a person's own `Inoperative` is never taken over, nor turned on after) or does not come to read
 off within `CONFIRM_S` leaves the charger counted at its current. **No charging profile and no station maximum current
 are ever written** (owner rule: repeated `SetChargingProfile` writes once left a charge point's profile handling
@@ -111,6 +113,29 @@ AVAILABILITY_KEY: Final = "availability"
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.charger_test_hold.{entry_id}"
+
+
+#: The OCPP status of a connector of a charge point out of service (`ChargePointStatus.unavailable`; not Home
+#: Assistant's own lower-case `unavailable`, an entity it cannot read).
+OCPP_UNAVAILABLE: Final = "Unavailable"
+
+
+def connector_out_of_service(hass: Any, controller: Any) -> bool:
+    """Whether the OCPP charger's connector reports itself `Unavailable` (its status sensor): the charge point's own
+    word that it took `Inoperative`. The availability switch alone is no proof: the integration answers `Scheduled`
+    (a transaction runs: out of service only once it ends) as taken, and on a charge point that reports no station
+    status the switch reads off for a connector merely `Preparing`. Never raises."""
+    from ..vehicles.ocpp_identity import STATUS_CONNECTOR_KEY, connector_sensor_entity_id  # noqa: PLC0415
+
+    try:
+        target = getattr(controller, "ocpp_target", None)
+        if target is None:
+            return False
+        state = hass.states.get(connector_sensor_entity_id(hass, target, STATUS_CONNECTOR_KEY))
+        return state is not None and state.state == OCPP_UNAVAILABLE
+    except Exception:  # noqa: BLE001 - not known: not out of service
+        _LOGGER.debug("connector_out_of_service: ignored failure", exc_info=True)
+        return False
 
 
 def station_availability_entity(hass: Any, controller: Any) -> str | None:
@@ -262,11 +287,18 @@ class ChargerTestHold:
         if controller is None:
             return False
         if charger_entry_id in self._out:
-            # An OCPP charger taken out of service: its switch reads off now and it is not charging (see the module).
+            # An OCPP charger taken out of service: its switch reads off, its connector reports itself `Unavailable`,
+            # and it neither charges nor draws now (see the module).
             entity_id = self._switch_of.get(charger_entry_id)
             state = None if entity_id is None else self._site.hass.states.get(entity_id)
             try:
-                return state is not None and state.state == "off" and not controller.charging
+                return (
+                    state is not None
+                    and state.state == "off"
+                    and connector_out_of_service(self._site.hass, controller)
+                    and not controller.charging
+                    and not self._drawing(charger_entry_id, controller)
+                )
             except Exception:  # noqa: BLE001 - not known: counted
                 return False
         try:
@@ -362,9 +394,9 @@ class ChargerTestHold:
         if self._store is not None:
             await self._store.async_save({"unavailable": {key: dict(row) for key, row in self._parked.items()}})
 
-    async def _async_switch(self, entity_id: str, on: bool) -> bool:
-        """Turn the availability switch on or off and wait up to `CONFIRM_S` for it to read so (the charge point's own
-        report); whether it does. A call that fails raises."""
+    async def _async_switch(self, entity_id: str, on: bool, confirmed: Callable[[], bool] | None = None) -> bool:
+        """Turn the availability switch on or off and wait up to `CONFIRM_S` for it to read so and for `confirmed` (the
+        charge point's own report); whether they do. A call that fails raises."""
         hass = self._site.hass
         async with asyncio.timeout(CALL_S):
             await hass.services.async_call("switch", "turn_on" if on else "turn_off", {"entity_id": entity_id},
@@ -374,7 +406,7 @@ class ChargerTestHold:
         deadline = loop.time() + CONFIRM_S
         while True:
             state = hass.states.get(entity_id)
-            if state is not None and state.state == wanted:
+            if state is not None and state.state == wanted and (confirmed is None or confirmed()):
                 return True
             if loop.time() >= deadline:
                 return False
@@ -407,7 +439,10 @@ class ChargerTestHold:
             try:
                 # Kept before the command goes out: Home Assistant stopping right after it must still set it back.
                 await self._async_save()
-                confirmed = await self._async_switch(entity_id, on=False)
+                controller = self._controller(charger_entry_id)
+                confirmed = await self._async_switch(
+                    entity_id, on=False, confirmed=lambda c=controller: connector_out_of_service(hass, c)
+                )
             except Exception as err:  # noqa: BLE001 - not taken: the charger stays counted, and is set back anyway
                 _LOGGER.warning(
                     "SpotNav site %s: OCPP charger %s could not be taken out of service for the hardware test (%s); "

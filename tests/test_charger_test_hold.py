@@ -228,6 +228,13 @@ def _availability(hass: HomeAssistant, state: str = "on", *, reports: bool = Tru
     er.async_get(hass).async_get_or_create(
         "switch", "ocpp", "switch.ocpp.halo_charger.availability", suggested_object_id="halo_charger_availability"
     )
+    for connector in (1, 2):
+        er.async_get(hass).async_get_or_create(
+            "sensor", "ocpp", f"ocpp.halo_charger.conn{connector}.status_connector.sensor",
+            suggested_object_id=f"halo_charger_connector_{connector}_status_connector",
+        )
+        hass.states.async_set(f"sensor.halo_charger_connector_{connector}_status_connector",
+                              "Available" if state == "on" else "Unavailable")
     hass.states.async_set(SWITCH, state)
     sent: list[str] = []
 
@@ -238,6 +245,9 @@ def _availability(hass: HomeAssistant, state: str = "on", *, reports: bool = Tru
                 raise HomeAssistantError("not connected")
             if reports:
                 hass.states.async_set(SWITCH, to)
+                for connector in (1, 2):
+                    hass.states.async_set(f"sensor.halo_charger_connector_{connector}_status_connector",
+                                          "Unavailable" if to == "off" else "Available")
 
         return handle
 
@@ -347,3 +357,41 @@ async def test_two_connectors_of_one_charge_point_share_its_switch_taken_out_and
     hold.release()
     await hold.async_restore_availability()
     assert sent == ["off", "on"] and hass.states.get(SWITCH).state == "on" and hold.unavailable_kept == []
+
+
+async def test_a_switch_that_reads_off_counts_nothing_only_with_the_connector_reporting_unavailable(
+    hass: HomeAssistant,
+) -> None:
+    """The safety review (2026-11-21): the integration counts `Scheduled` (a transaction runs) as taken, and the switch
+    reads off for a connector merely `Preparing` where the charge point reports no station status."""
+    _availability(hass)
+    ocpp = _Ocpp()
+    hold = _hold(hass, {"ocpp": ocpp})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    status = "sensor.halo_charger_connector_1_status_connector"
+    assert hold.counts_nothing("ocpp") is True
+    for reported in ("Charging", "Preparing", "unavailable"):
+        hass.states.async_set(status, reported)
+        assert hold.counts_nothing("ocpp") is False, reported
+    hass.states.async_set(status, "Unavailable")
+    ocpp.amps = 6.0
+    assert hold.counts_nothing("ocpp") is False, "drawing"
+    hold.release()
+    await hold.async_close()
+
+
+async def test_a_charge_point_that_answers_scheduled_is_not_taken_as_out_of_service(hass: HomeAssistant) -> None:
+    _availability(hass)
+
+    async def scheduled(call: Any) -> None:
+        hass.states.async_set(SWITCH, "off")  # the switch moves; the connector still charges
+
+    hass.services.async_register("switch", "turn_off", scheduled)
+    hass.states.async_set("sensor.halo_charger_connector_1_status_connector", "Charging")
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    assert hold.counts_nothing("ocpp") is False
+    hold.release()
+    await hold.async_close()
