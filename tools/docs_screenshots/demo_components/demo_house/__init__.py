@@ -9,7 +9,7 @@ temperatures, two switches, and two screenshot-only services:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
