@@ -82,6 +82,11 @@ PHASE_TOLERANCE_KW = 0.15
 SETTLE_S = 15.0
 #: A step needs this long with the load on to be judged (s).
 MIN_LOAD_S = 45.0
+#: The load must be seen this long after `SETTLE_S` for a step to be judged (s).
+MIN_STEADY_S = 20.0
+#: A reading counts as "the load still there" while the loaded phase's house load is up by at least this share of
+#: its largest rise in the window.
+LOAD_PRESENT_SHARE = 0.5
 #: A phase's house load must be at least this far under a third of the limit before the test starts (kW): a phase
 #: already near it would be held without the load, and the load step would show nothing.
 BASELINE_ROOM_KW = 0.5
@@ -553,19 +558,19 @@ def _held_from(samples: list[tuple[float, tuple[float | None, ...]]], cap: float
 
 
 def _verdict(window: Window, end: float, held_from: float | None) -> str:
-    if end - window.on < MIN_LOAD_S:
-        return f"not judged (the load was on for less than {MIN_LOAD_S:.0f} s)"
+    """`end`: the last reading with the load still there (not the person's Enter: a kettle switches itself off)."""
+    if end - window.on < SETTLE_S + MIN_STEADY_S:
+        return f"not judged (the load was seen for less than {SETTLE_S + MIN_STEADY_S:.0f} s)"
     return "PASS" if held_from is not None and held_from - window.on <= SETTLE_S else "FAIL"
 
 
 NOT_PUSHED = "not judged (the load did not take its phase over a third of the limit: use a larger one)"
 
 
-def judge_meter(run: Run, window: Window, phase: int, load_kw: float) -> dict[str, Any]:
+def judge_meter(run: Run, window: Window, phase: int, load_kw: float, end: float) -> dict[str, Any]:
     """The same window on the independent meter (`--meter`): every phase at or under limit / 3 + tolerance within
     `SETTLE_S`, judged only where the load (`load_kw` on `phase`, as the plant's sensor measured it) took that phase
-    over a third of the limit by the meter's own reading before it."""
-    end = window.off if window.off is not None else run.samples[-1].t
+    over a third of the limit by the meter's own reading before it. `end`: where the load was last seen."""
     during = [s for s in run.samples if window.on <= s.t <= end]
     before = [s for s in run.samples if window.on - 20.0 <= s.t < window.on and None not in s.meter]
     steady = [s for s in during if s.t >= window.on + SETTLE_S and None not in s.meter]
@@ -582,22 +587,33 @@ def judge_meter(run: Run, window: Window, phase: int, load_kw: float) -> dict[st
 
 
 def judge(run: Run, window: Window) -> dict[str, Any]:
-    """The phase the load landed on (the largest jump in a phase's house load) and whether every phase was held at
-    limit / 3 + tolerance from at most `SETTLE_S` after the load went on until it went off. Judged only where the
-    load took its phase over a third of the limit (its house load plus an even share of the charge): a phase that
-    never needed holding shows nothing."""
+    """The phase the load landed on (the largest rise in a phase's house load) and whether every phase was held at
+    limit / 3 + tolerance from at most `SETTLE_S` after the load went on for as long as it was there. The window ends
+    at the last reading with the load still there (its phase's house load up by `LOAD_PRESENT_SHARE` of its largest
+    rise), not at the person's Enter: a kettle switches itself off. Judged only where the load took its phase over a
+    third of the limit (its house load plus an even share of the charge): a phase that never needed holding shows
+    nothing."""
     before = [s for s in run.samples if window.on - 20.0 <= s.t < window.on and None not in s.house()]
-    end = window.off if window.off is not None else run.samples[-1].t
-    during = [s for s in run.samples if window.on <= s.t <= end]
-    steady = [s for s in during if s.t >= window.on + SETTLE_S and None not in s.house()]
-    out: dict[str, Any] = {"step": window.step, "duration_s": round(end - window.on)}
-    if not before or not steady:
+    off = window.off if window.off is not None else run.samples[-1].t
+    marked = [s for s in run.samples if window.on <= s.t <= off]
+    readable = [s for s in marked if None not in s.house()]
+    out: dict[str, Any] = {"step": window.step, "duration_s": round(off - window.on)}
+    if not before or not readable:
         out["verdict"] = "not judged (the plant could not be read: use the app or a meter)"
         return out
     base = [sum(s.house()[i] for s in before) / len(before) for i in range(3)]  # type: ignore[misc]
+    rise = [max(s.house()[i] - base[i] for s in readable) for i in range(3)]  # type: ignore[operator]
+    phase = max(range(3), key=lambda i: rise[i])
+    present = [s for s in readable if s.house()[phase] - base[phase] >= LOAD_PRESENT_SHARE * rise[phase]]  # type: ignore[operator]
+    end = present[-1].t if present and rise[phase] > 0 else window.on
+    during = [s for s in marked if s.t <= end]
+    steady = [s for s in present if s.t >= window.on + SETTLE_S]
+    out["load_seen_s"] = round(end - window.on)
+    if not steady:
+        out["verdict"] = _verdict(window, end, None)
+        return out
     load = [sum(s.house()[i] for s in steady) / len(steady) for i in range(3)]  # type: ignore[misc]
     jumps = [load[i] - base[i] for i in range(3)]
-    phase = max(range(3), key=lambda i: jumps[i])
     cap = run.limit_kw / 3.0 + PHASE_TOLERANCE_KW
     held_from = _held_from([(s.t, s.grid) for s in during], cap)
     worst = max(max(v for v in s.grid if v is not None) for s in steady)
@@ -630,7 +646,7 @@ def judge(run: Run, window: Window) -> dict[str, Any]:
         if window.writes:
             out["verdict"] = "not judged (something was written during the writes-stopped window)"
         elif run.meter is not None:
-            meter = judge_meter(run, window, phase, jumps[phase])
+            meter = judge_meter(run, window, phase, jumps[phase], end)
             out["meter"] = meter
             if out["verdict"] == "PASS" and meter["verdict"] != "PASS":
                 out["verdict"] = f"FAIL: the independent meter does not agree ({meter['verdict']})"
@@ -762,6 +778,40 @@ def sensor_loss_step(run: Run, args: argparse.Namespace) -> None:
     run.results.append({"step": "sensor_loss", "verdict": "instructions only: read from the app and the CSV"})
 
 
+def replay(path: Path) -> Run:
+    """A logged CSV judged again (`--judge`): every load window by its markers, at the limit and charge it ran at.
+    The writes-stopped step's own write count is not in the CSV; its limit and charge columns show what stood."""
+    out = io.StringIO()
+    run = Run(None, {}, 0.0, 0.0, ABORT_PHASE_MAX_KW, [], csv.writer(out), out)  # type: ignore[arg-type]
+    value = lambda text_: None if text_ in ("", None) else float(text_)  # noqa: E731
+    open_at: dict[str, tuple[float, float, float]] = {}
+    windows: list[tuple[Window, float]] = []
+    with path.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            t = datetime.fromisoformat(row["time"]).timestamp()
+            sample = Sample(
+                t, row["step"], row["marker"],
+                (value(row["grid_a_kw"]), value(row["grid_b_kw"]), value(row["grid_c_kw"])),
+                (value(row["plant_a_kw"]), value(row["plant_b_kw"]), value(row["plant_c_kw"])),
+                {"charge_limit_kw": row.get("charge_limit_kw", ""), "import_limit_kw": row.get("import_limit_kw", "")},
+                (value(row.get("meter_a_kw")), value(row.get("meter_b_kw")), value(row.get("meter_c_kw"))),
+            )
+            run.samples.append(sample)
+            if row["marker"] == "load on":
+                open_at[row["step"]] = (t, float(row["import_limit_kw"]), float(row["charge_limit_kw"]))
+            elif row["marker"] == "load off" and row["step"] in open_at:
+                on, limit, charge = open_at.pop(row["step"])
+                windows.append((Window(row["step"], on, t, stopped=row["step"] == "stopped", charge_kw=charge), limit))
+    if any(None not in s.meter for s in run.samples):
+        run.meter = ("meter_a", "meter_b", "meter_c")
+    for window, limit in windows:
+        run.limit_kw = limit
+        result = judge(run, window)
+        result["limit_kw"] = limit
+        run.results.append(result)
+    return run
+
+
 def parse_meter(value: str) -> tuple[str, str, str] | None:
     """`a=sensor.x,b=sensor.y,c=sensor.z` as the entities for A, B and C; `None` when it is not that."""
     parts = dict(item.split("=", 1) for item in value.split(",") if "=" in item)
@@ -776,8 +826,8 @@ def _terminate(_signum: int, _frame: Any) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--url", required=True, help="Home Assistant's base URL, e.g. http://192.168.1.10:8123")
-    parser.add_argument("--token-file", required=True, type=Path, help="file holding a long-lived access token")
+    parser.add_argument("--url", help="Home Assistant's base URL, e.g. http://192.168.1.10:8123")
+    parser.add_argument("--token-file", type=Path, help="file holding a long-lived access token")
     parser.add_argument("--plant", default="sigen_plant", help="the plant device's entity prefix (sigen_plant)")
     parser.add_argument("--entity", action="append", default=[], metavar="ROLE=ENTITY_ID",
                         help="override one entity id (roles: see default_entities in the script)")
@@ -799,11 +849,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--meter", metavar="a=ID,b=ID,c=ID",
                         help="an independent per-phase meter at the grid connection (W, kW or A), not from the plant's"
                              " integration (optional): the writes-stopped step then must agree on it too")
+    parser.add_argument("--judge", type=Path, metavar="CSV",
+                        help="judge a logged CSV again and print the verdicts; reads nothing from Home Assistant")
     parser.add_argument("--restore-from", type=Path, metavar="FILE",
                         help="only put back the values kept in a snapshot file (<csv>.snapshot.json) and exit")
     parser.add_argument("--ignore-spotnav", action="store_true",
                         help="run although SpotNav's battery control reads as writing (only if you know it is not)")
     args = parser.parse_args(argv)
+    if args.judge is not None:
+        run = replay(args.judge)
+        for result in run.results:
+            print(json.dumps(result))
+        return 0
+    if args.url is None or args.token_file is None:
+        parser.error("--url and --token-file are needed (all but --judge)")
 
     if not (0.5 <= args.limit_kw <= 9.0) or not (0.5 <= args.charge_kw <= 8.0) or args.low_charge_kw < 0:
         parser.error("keep the test far from the fuse: --limit-kw 0.5-9, --charge-kw 0.5-8")

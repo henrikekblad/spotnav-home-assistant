@@ -8,6 +8,7 @@ import csv
 import importlib.util
 import io
 import json
+from datetime import datetime
 from pathlib import Path
 import sys
 from typing import Any
@@ -409,3 +410,41 @@ def test_the_sensor_loss_step_only_asks_and_writes_nothing_of_its_own(monkeypatc
     assert any(r["step"] == "sensor_loss" for r in run2.results)
     # Only the charge back at 4 kW the stopped step writes anyway.
     assert ha2.writes == [*without, f"{ENTITIES['charge_limit']}=4.0"]
+
+
+def _kettle_rows() -> list[tuple[float, str, tuple, tuple]]:
+    """The 2026-11-21 under-limit step at 8 kW (from the owner's CSV): 2.9 kW on B, the plant puts out 0.67 kW on B
+    and holds it at about 2.66 kW while the total stays near 6.2 kW; the kettle switches itself off 15 s before the
+    person's Enter."""
+    rows = [(t, "", (0.92, 0.60, 1.44), (-0.43, -0.43, -0.43)) for t in (100.0, 105.0, 110.0, 115.0)]
+    rows.append((120.0, "load on", (1.11, 3.31, 1.62), (-0.43, -0.43, -0.43)))
+    rows.append((125.0, "", (1.38, 2.87, 1.90), (-0.87, 0.42, -0.87)))
+    for i in range(7):
+        rows.append((130.0 + 5 * i, "", (1.51, 2.66 + 0.07 * (i % 2), 2.02), (-1.01, 0.67, -1.01)))
+    rows += [(t, "", (0.92, 0.60, 1.44), (-0.43, -0.43, -0.43)) for t in (165.0, 170.0, 175.0)]
+    rows.append((180.0, "load off", (0.92, 0.60, 1.44), (-0.43, -0.43, -0.43)))
+    return rows
+
+
+def test_a_load_that_switches_itself_off_before_the_enter_is_judged_over_the_readings_it_was_there() -> None:
+    run = _run(FakeHA(_plant()), limit_kw=8.0)
+    for t, marker, grid, plant in _kettle_rows():
+        run.samples.append(tool.Sample(t, "under", marker, grid, plant, {}))
+    result = tool.judge(run, tool.Window("under", 120.0, 180.0, charge_kw=1.0))
+    assert result["verdict"] == "PASS" and result["phase"] == "B" and result["load_seen_s"] == 40
+    assert result["load_kw"] == pytest.approx(3.17, abs=0.05)
+
+
+def test_a_logged_csv_is_judged_again_window_by_window(tmp_path: Path) -> None:
+    path = tmp_path / "run.csv"
+    fields = ["time", "step", "marker", "grid_a_kw", "grid_b_kw", "grid_c_kw", "plant_a_kw", "plant_b_kw", "plant_c_kw",
+              "import_limit_kw", "charge_limit_kw"]
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(fields)
+        for t, marker, grid, plant in _kettle_rows():
+            writer.writerow([datetime.fromtimestamp(1_790_000_000 + t).isoformat(timespec="seconds"), "under", marker,
+                             *grid, *plant, "8.0", "1.0"])
+    run = tool.replay(path)
+    assert [(r["step"], r["verdict"], r["limit_kw"]) for r in run.results] == [("under", "PASS", 8.0)]
+    assert tool.main(["--judge", str(path)]) == 0
