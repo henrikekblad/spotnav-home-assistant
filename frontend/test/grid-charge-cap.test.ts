@@ -299,7 +299,7 @@ describe("the Home Assistant down acceptance", () => {
   it("is offered to an administrator only, only where the HA-down cap binds", () => {
     expect(haDownView("sv", status({ ha_down: offered }, ["grid_charge"], options()), true)).toEqual({
       kind: "row",
-      help: "Nätladdningen av husbatteriet hålls till högst 0,4 kW, så att huvudsäkringen klarar sig även om Home Assistant stannar mitt i. Godkänner du risken får den gå upp till vad säkringen klarar med ett tomt hus.",
+      help: "Nätladdningen av husbatteriet hålls till högst 0,4 kW, så att huvudsäkringen klarar sig även om Home Assistant stannar mitt i laddningen. Godkänner du risken får den gå upp till vad säkringen klarar med ett tomt hus.",
     });
     expect(haDownView("sv", status({ ha_down: offered }, ["grid_charge"], options()), false)).toBeNull();
     expect(haDownView("sv", status({ ha_down: { ...offered, offered: false } }, ["grid_charge"], options()), true)).toBeNull();
