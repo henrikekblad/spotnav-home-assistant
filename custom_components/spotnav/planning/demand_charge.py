@@ -10,6 +10,10 @@ keeps every hour's mean of the month; this module turns them into what each comp
   as the meter's month is: a night that starts on the last of a month and ends on the first of the next counts its
   morning hours in the next month (under the day it started on).
 * An hour with a gap (`HourMean.incomplete`) never raises a peak: its mean is not known well enough to bill on.
+* **A quarter-hour part** (`DemandComponent.period_min` 15) counts each hour at its highest complete quarter hour
+  (`HourMean.quarter_kw`, the quarter's import over its whole 15 minutes: never above what the meter billed) in place
+  of the hour's mean (`period_kw`): the day's and the month's highest quarter hour are their highest hour's. An hour
+  without one (kept before quarters were, or read from Home Assistant's statistics) counts at its mean, a lower bound.
 * `bar_kw` is the mean of the `top_n` highest day peaks (of fewer while fewer days have one, as the operators bill
   the month so far); `None` while no hour counted.
 * `free_kw` is the hourly mean the running hour may reach without raising the bar: today's own peak while today is
@@ -23,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
-from typing import Final
+from typing import Any, Final
 
 from .. import time_zones
 from .auto_settings import DemandComponent
@@ -64,6 +68,10 @@ class HourMean:
     #: battery positive while it charges), the house's whole load less the sun (`site/demand_tracker.py`); `None`
     #: without a battery reading for most of the hour. The gross house load's source only; it never enters a peak.
     ex_battery_kw: float | None = None
+    #: The hour's highest quarter hour (kW): the import over each quarter's whole 15 minutes, among the quarters with no
+    #: more than `site/demand_tracker.QUARTER_GAP_MAX_S` without a reading; `None` without one. A quarter-hour part's
+    #: value of the hour (`period_kw`).
+    quarter_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +115,14 @@ def is_winter(month: int) -> bool:
     return month in WINTER_MONTHS
 
 
+def period_kw(component: Any, hour: HourMean) -> float:
+    """The hour's value for `component` (a `DemandComponent` or a `PowerLevel`): its mean, or for a quarter-hour one
+    its highest quarter hour where it has one."""
+    if getattr(component, "period_min", 60) == 15 and hour.quarter_kw is not None:
+        return hour.quarter_kw
+    return hour.kw
+
+
 def counted_day(component: DemandComponent, start: datetime, tz: str) -> date | None:
     """The day an hour starting at `start` is counted under for `component`, or `None` when it does not count."""
     if component.window is None:
@@ -123,9 +139,10 @@ def day_peaks(component: DemandComponent, hours: Iterable[HourMean], tz: str) ->
         day = counted_day(component, hour.start, tz)
         if day is None:
             continue
+        kw = period_kw(component, hour)
         best = peaks.get(day)
-        if best is None or hour.kw > best.kw:
-            peaks[day] = DayPeak(day=day, start=hour.start, kw=hour.kw)
+        if best is None or kw > best.kw:
+            peaks[day] = DayPeak(day=day, start=hour.start, kw=kw)
     return peaks
 
 
@@ -196,7 +213,8 @@ def free_levels_by_hour(
                 day = counted_day(component, counted.start, tz)
                 if day is None:
                     continue
+                kw = period_kw(component, counted)
                 best = peaks[index].get(day)
-                if best is None or counted.kw > best.kw:
-                    peaks[index][day] = DayPeak(day=day, start=counted.start, kw=counted.kw)
+                if best is None or kw > best.kw:
+                    peaks[index][day] = DayPeak(day=day, start=counted.start, kw=kw)
     return levels

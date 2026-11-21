@@ -12,9 +12,10 @@ the nightly review. Pure: no Home Assistant, the clock is passed in.
 * **Shaves** (`shave_rows`): the variant's slots that shave, as rows for the site's change log.
 * **The review's demand cost** (`DemandBasis`, `day_demand_cost`): per priced part, the month's measured day peaks
   before the reviewed day; a run's cost for the day is the change in the month's charge its own day peak causes
-  against them: `λ · (sum of the top N day peaks with the run's day − without it)`, λ = price / N. A run that keeps
-  under the month's N-th highest day costs nothing; a part without a price this month costs nothing. Every run (the
-  battery's own way, the plan in force, each mode, the variants, self-consumption) is measured against the same
+  against them: `λ · (sum of the top N day peaks with the run's day − without it)`, λ = price / N, billed with the
+  part's minimum and step (`DemandComponent.billed`); a quarter-hour part's day peak is its highest quarter. A run
+  that keeps under the month's N-th highest day costs nothing; a part without a price this month costs nothing.
+  Every run (the battery's own way, the plan in force, each mode, the variants, self-consumption) is measured against the same
   measured month: the change it alone would have caused.
 """
 
@@ -172,19 +173,28 @@ def day_demand_cost(basis: DemandBasis, grid_by_quarter: Iterable[tuple[datetime
     """What a run's quarter hours (start, grid kW: + import) add to the month's demand charge (minor units; see the
     module). Each hour is the mean of its quarters measured; a counted day's peak its highest counted hour."""
     by_hour: dict[datetime, list[float]] = {}
-    for start, kw in grid_by_quarter:
+    quarters = list(grid_by_quarter)
+    for start, kw in quarters:
         by_hour.setdefault(hour_start(start, basis.tz), []).append(kw)
     means = {start: sum(values) / len(values) for start, values in by_hour.items()}
     total = 0.0
     for component, marginal, before in basis.parts:
         peaks: dict[date, float] = {}
-        for start, kw in means.items():
-            counted = counted_day(component, start, basis.tz)
+        # A quarter-hour part's value is each quarter's own (`DemandComponent.period_min`).
+        values = quarters if component.quarter else list(means.items())
+        for start, kw in values:
+            counted = counted_day(component, hour_start(start, basis.tz), basis.tz)
             if counted is not None:
                 peaks[counted] = max(kw, peaks.get(counted, kw))
+        price = marginal * component.top_n
         for counted, kw in peaks.items():
             others = [value for day, value in before.items() if day != counted]
             with_day = _top_sum([*others, max(kw, before.get(counted, kw))], component.top_n)
             without = _top_sum([*others, *([before[counted]] if counted in before else [])], component.top_n)
-            total += marginal * max(0.0, with_day - without)
+            # The bill on the mean of the top N, with its minimum and step (`DemandComponent.billed`).
+            total += max(
+                0.0,
+                component.billed(with_day / component.top_n, price)
+                - component.billed(without / component.top_n, price),
+            )
     return total

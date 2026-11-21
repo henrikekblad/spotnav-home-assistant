@@ -322,6 +322,16 @@ MAX_DEMAND_COMPONENTS: Final = 3
 DEMAND_TOP_N: Final = (1, 3, 5)
 DEMAND_COMPONENT_KEYS: Final = frozenset({"window", "top_n", "price_per_kw"})
 DEMAND_PRICE_KEYS: Final = frozenset({"winter", "summer"})
+#: A component's optional `peak` (`DemandComponent.period_min` and its billing rules), written only when it differs
+#: from the hourly peak billed as measured: a component without it reads exactly as before.
+DEMAND_PEAK: Final = "peak"
+DEMAND_PEAK_KEYS: Final = frozenset({"period_min", "min_kw", "step_kw", "step_factor"})
+#: The periods a peak may be measured over (minutes): the clock hour, or the quarter hour (Austria from 2027/2028).
+PEAK_PERIODS: Final = (60, 15)
+#: The highest minimum or step accepted (kW), as the power level's.
+MAX_PEAK_KW: Final = 1000.0
+#: The highest step factor accepted (the price above the step is at most this many times the price below it).
+MAX_STEP_FACTOR: Final = 10.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,12 +342,50 @@ class DemandComponent:
 
     `price_winter`/`price_summer` are what the grid operator charges per kW of that mean, in the area's major unit
     (winter is November to March). Either may be unknown (`None`): nothing prices with them yet, they are shown.
+
+    The peak's rules, part of the grid company's tariff (data, no setting of their own; the `peak` key):
+    `period_min` is the period a peak is measured over, the clock hour (60) or the quarter hour (15: each hour's
+    highest quarter-hour mean, `demand_charge.HourMean.quarter_kw`); `min_kw` the least billed (an Austrian bill is
+    at least 2 kW); `step_kw` where the price rises to `step_factor` times itself for the part above (Austria: 1.5
+    above 10 kW; `None` for no step). An Austrian part is `top_n` 1 (the month's single highest quarter hour), no
+    window, a quarter-hour period, `min_kw` 2, `step_kw` 10, `step_factor` 1.5.
     """
 
     top_n: int = 1
     window: HighLoadWindow | None = None
     price_winter: float | None = None
     price_summer: float | None = None
+    period_min: int = 60
+    min_kw: float = 0.0
+    step_kw: float | None = None
+    step_factor: float = 1.0
+
+    @property
+    def quarter(self) -> bool:
+        """Whether the peak is a quarter hour's mean."""
+        return self.period_min == 15
+
+    @property
+    def plain_peak(self) -> bool:
+        """The hourly peak billed as measured: no `peak` key is written."""
+        return self.period_min == 60 and self.min_kw == 0 and self.step_kw is None and self.step_factor == 1.0
+
+    def billed(self, peak_kw: float, price: float) -> float:
+        """What a billed peak (the mean of the top N) of `peak_kw` costs at `price` per kW: never below `min_kw`, the
+        part above `step_kw` at `step_factor` times the price."""
+        kw = max(peak_kw, self.min_kw)
+        if self.step_kw is None or kw <= self.step_kw:
+            return price * kw
+        return price * (self.step_kw + self.step_factor * (kw - self.step_kw))
+
+    def price_factor_at(self, peak_kw: float) -> float:
+        """What a kW more of the billed peak costs at `peak_kw`, as a share of the price: 0 below `min_kw` (already
+        billed), `step_factor` at or above `step_kw`, else 1."""
+        if peak_kw < self.min_kw:
+            return 0.0
+        if self.step_kw is not None and peak_kw >= self.step_kw:
+            return self.step_factor
+        return 1.0
 
     def validated(self, what: str = "demand component") -> DemandComponent:
         if isinstance(self.top_n, bool) or self.top_n not in DEMAND_TOP_N:
@@ -354,29 +402,69 @@ class DemandComponent:
             if number < 0:
                 _refuse("invalid_fiscal", f"{what}.price_per_kw.{season} must not be negative")
             prices.append(number)
-        return DemandComponent(top_n=self.top_n, window=window, price_winter=prices[0], price_summer=prices[1])
+        if isinstance(self.period_min, bool) or self.period_min not in PEAK_PERIODS:
+            _refuse("invalid_fiscal", f"{what}.peak.period_min must be one of {list(PEAK_PERIODS)}")
+        min_kw = _finite(self.min_kw, "invalid_fiscal", f"{what}.peak.min_kw")
+        if not 0 <= min_kw <= MAX_PEAK_KW:
+            _refuse("invalid_fiscal", f"{what}.peak.min_kw must be at least 0 and at most {MAX_PEAK_KW:g}")
+        step_kw = None
+        if self.step_kw is not None:
+            step_kw = _finite(self.step_kw, "invalid_fiscal", f"{what}.peak.step_kw")
+            if not 0 < step_kw <= MAX_PEAK_KW:
+                _refuse("invalid_fiscal", f"{what}.peak.step_kw must be above 0 and at most {MAX_PEAK_KW:g}")
+        factor = _finite(self.step_factor, "invalid_fiscal", f"{what}.peak.step_factor")
+        if not 1 <= factor <= MAX_STEP_FACTOR:
+            _refuse("invalid_fiscal", f"{what}.peak.step_factor must be at least 1 and at most {MAX_STEP_FACTOR:g}")
+        return DemandComponent(
+            top_n=self.top_n,
+            window=window,
+            price_winter=prices[0],
+            price_summer=prices[1],
+            period_min=self.period_min,
+            min_kw=min_kw,
+            step_kw=step_kw,
+            step_factor=factor,
+        )
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        found: dict[str, Any] = {
             "window": None if self.window is None else high_load_window_dict(self.window),
             "top_n": self.top_n,
             "price_per_kw": {"winter": self.price_winter, "summer": self.price_summer},
         }
+        if not self.plain_peak:
+            found[DEMAND_PEAK] = {
+                "period_min": self.period_min,
+                "min_kw": self.min_kw,
+                "step_kw": self.step_kw,
+                "step_factor": self.step_factor,
+            }
+        return found
 
     @classmethod
     def from_dict(cls, raw: Any, what: str = "demand component") -> DemandComponent:
         """A stored or sent component, exactly its keys, or `invalid_fiscal`. Never coerced."""
-        if not isinstance(raw, dict) or set(raw) != DEMAND_COMPONENT_KEYS:
-            _refuse("invalid_fiscal", f"{what} must carry exactly {sorted(DEMAND_COMPONENT_KEYS)}")
+        if not isinstance(raw, dict) or set(raw) not in (DEMAND_COMPONENT_KEYS, DEMAND_COMPONENT_KEYS | {DEMAND_PEAK}):
+            _refuse(
+                "invalid_fiscal",
+                f"{what} must carry exactly {sorted(DEMAND_COMPONENT_KEYS)}, and optionally {DEMAND_PEAK!r}",
+            )
         prices = raw["price_per_kw"]
         if not isinstance(prices, dict) or set(prices) != DEMAND_PRICE_KEYS:
             _refuse("invalid_fiscal", f"{what}.price_per_kw must carry exactly {sorted(DEMAND_PRICE_KEYS)}")
         window = None if raw["window"] is None else high_load_window_from(raw["window"], f"{what}.window")
+        peak = raw.get(DEMAND_PEAK, {"period_min": 60, "min_kw": 0.0, "step_kw": None, "step_factor": 1.0})
+        if not isinstance(peak, dict) or set(peak) != DEMAND_PEAK_KEYS:
+            _refuse("invalid_fiscal", f"{what}.{DEMAND_PEAK} must carry exactly {sorted(DEMAND_PEAK_KEYS)}")
         return cls(
             top_n=raw["top_n"],
             window=window,
             price_winter=prices["winter"],
             price_summer=prices["summer"],
+            period_min=peak["period_min"],
+            min_kw=peak["min_kw"],
+            step_kw=peak["step_kw"],
+            step_factor=peak["step_factor"],
         ).validated(what)
 
 
@@ -394,11 +482,18 @@ class PowerLevel:
     customer chose not to exceed in its hours, which it may exceed `planning/demand_cost.ALLOWED_EXCEEDANCES` times in
     a rolling 12 months (one more moves the customer to another tariff). Its hours are all hours (`window` `None`),
     the hours of `window`, or (`outside`) the hours `window` does not count: the low-price hours outside a
-    demand-charge window. Plans never exceed it, and the import target's hold keeps the hour under it."""
+    demand-charge window. Plans never exceed it, and the import target's hold keeps the hour under it. `period_min`
+    (the optional `period_min` key, written only for 15) is the period it is measured over: the clock hour, or the
+    quarter hour (`DemandComponent.period_min`)."""
 
     level_kw: float
     window: HighLoadWindow | None = None
     outside: bool = False
+    period_min: int = 60
+
+    @property
+    def quarter(self) -> bool:
+        return self.period_min == 15
 
     def validated(self, what: str = POWER_LEVEL) -> PowerLevel:
         level = _finite(self.level_kw, "invalid_fiscal", f"{what}.level_kw")
@@ -411,7 +506,9 @@ class PowerLevel:
             window = high_load_window_from(high_load_window_dict(window), f"{what}.window")
         elif self.outside:
             _refuse("invalid_fiscal", f"{what}.outside needs a window")
-        return PowerLevel(level_kw=level, window=window, outside=self.outside)
+        if isinstance(self.period_min, bool) or self.period_min not in PEAK_PERIODS:
+            _refuse("invalid_fiscal", f"{what}.period_min must be one of {list(PEAK_PERIODS)}")
+        return PowerLevel(level_kw=level, window=window, outside=self.outside, period_min=self.period_min)
 
     def counts(self, start: datetime, tz: str) -> bool:
         """Whether the level holds in the hour starting at `start` on `tz`'s clock (the window with its holidays)."""
@@ -421,19 +518,24 @@ class PowerLevel:
         return inside != self.outside
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        found: dict[str, Any] = {
             "level_kw": self.level_kw,
             "window": None if self.window is None else high_load_window_dict(self.window),
             "outside": self.outside,
         }
+        if self.period_min != 60:
+            found["period_min"] = self.period_min
+        return found
 
     @classmethod
     def from_dict(cls, raw: Any, what: str = POWER_LEVEL) -> PowerLevel:
         """A stored or sent power level, exactly its keys, or `invalid_fiscal`. Never coerced."""
-        if not isinstance(raw, dict) or set(raw) != POWER_LEVEL_KEYS:
-            _refuse("invalid_fiscal", f"{what} must carry exactly {sorted(POWER_LEVEL_KEYS)}")
+        if not isinstance(raw, dict) or set(raw) not in (POWER_LEVEL_KEYS, POWER_LEVEL_KEYS | {"period_min"}):
+            _refuse("invalid_fiscal", f"{what} must carry exactly {sorted(POWER_LEVEL_KEYS)}, and optionally 'period_min'")
         window = None if raw["window"] is None else high_load_window_from(raw["window"], f"{what}.window")
-        return cls(level_kw=raw["level_kw"], window=window, outside=raw["outside"]).validated(what)
+        return cls(
+            level_kw=raw["level_kw"], window=window, outside=raw["outside"], period_min=raw.get("period_min", 60)
+        ).validated(what)
 
 
 def demand_components_from(raw: Any) -> tuple[DemandComponent, ...]:

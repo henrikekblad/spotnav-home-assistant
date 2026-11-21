@@ -36,7 +36,10 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
 
   `components` is the price entry's demand-charge components as a write states them
   (`[{window, top_n, price_per_kw: {winter, summer}}]`, at most three, empty for none; `window` `null` counts all
-  hours, else it is a window of the high-load window's shape). `available` is whether the site can measure them:
+  hours, else it is a window of the high-load window's shape). A part may also carry its grid company's `peak`
+  rules (`{period_min: 60|15, min_kw, step_kw, step_factor}`, `planning/auto_settings.py:DemandComponent`), present
+  only where they differ from an hourly peak billed as measured; a writer that does not edit them sends them back as
+  read. The power level likewise may carry `period_min: 15`. `available` is whether the site can measure them:
   `reason` is `no_site` (the charger is in no site) or `needs_total_grid_power` (a direct site without the meter's
   total grid power), `null` while available. `price_unit` is the area's major unit per kW (`kr/kW`), `null` while
   the area is not listed. `per_component` is aligned with `components` while the site measures (else empty): each

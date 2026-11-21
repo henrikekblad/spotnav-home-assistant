@@ -19,6 +19,10 @@ plans (`plans/v3_power_tariff.md` §1). Nothing reads it yet: a later step makes
   part counts them in any month, raised where the cars' history predicts a charge that day (`planning/car_days.py`:
   the least power the charge must take in the counted hours, on the house's median for that hour of that day type).
   A day with neither is left out (a lower T: the cautious side).
+* **A part's billing rules** (`DemandComponent.period_min`, `min_kw`, `step_kw`, `step_factor`). A quarter-hour
+  part's measured day peaks are its hours' highest quarter hours (`demand_charge.period_kw`); its predicted ones are
+  still the forecast's hourly means (the forecast has no quarter hours: the cautious, lower side). T is never below
+  the minimum billed (nothing under it costs more), and λ at T is the price above the step where T has reached it.
 * **Soft ceiling** (`soft_ceiling`, S_h and λ_h). Per hour: the lowest T among the priced parts that count it, and
   the sum of their λ (stacked parts add). An hour no priced part counts has no ceiling.
 * **Power level** (`level_count`). Göteborg Energi's tidsindelad tariff sells a power level (6, 10, 14 … kW) in its
@@ -264,10 +268,11 @@ def part_cost(
         return PartCost(component, 0.0, None, free_kw, {}, {})
     measured = {day: peak.kw for day, peak in day_peaks(component, floored, tz).items()}
     predicted = predicted_day_peaks(component, house_by_hour, history, now, tz, charges)
+    found = max(threshold(measured, predicted, component.top_n, free_kw), component.min_kw)
     return PartCost(
         component=component,
-        marginal=marginal,
-        threshold_kw=threshold(measured, predicted, component.top_n, free_kw),
+        marginal=marginal * component.price_factor_at(found),
+        threshold_kw=found,
         free_kw=free_kw,
         measured=measured,
         predicted=predicted,
@@ -353,13 +358,18 @@ def level_count(
     now: datetime,
     tz: str,
     allowed: int = ALLOWED_EXCEEDANCES,
+    quarter: bool = False,
 ) -> LevelCount:
     """The complete hours in the rolling 12 months up to `now` that `counts` (the level's hours) and whose floor
-    was above `level_kw`; an hour with a gap, or imported and not shown complete, never counts."""
+    was above `level_kw` (with `quarter`, whose highest quarter hour was, `demand_charge.period_kw`); an hour with a
+    gap, or imported and not shown complete, never counts."""
     since = year_before(now, tz)
     exceeded = sorted(
         hour.start
         for hour in free_level_hours(hours)
-        if not hour.incomplete and since <= hour.start < now and counts(hour.start) and hour.kw > level_kw
+        if not hour.incomplete
+        and since <= hour.start < now
+        and counts(hour.start)
+        and (hour.quarter_kw if quarter and hour.quarter_kw is not None else hour.kw) > level_kw
     )
     return LevelCount(level_kw=level_kw, exceeded=tuple(exceeded), allowed=allowed)

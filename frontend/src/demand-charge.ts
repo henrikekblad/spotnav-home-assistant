@@ -342,6 +342,10 @@ export function componentEditor(
       top_n: DEMAND_TOP_N.find((value) => String(value) === topN.value) ?? 1,
       price_per_kw: prices,
     };
+    // The grid company's peak rules (quarter hour, minimum, step) are not edited here: an edited part keeps them.
+    if (current?.peak !== undefined) {
+      chosen.peak = { ...current.peak };
+    }
     return await save(chosen);
   });
   return editor.form;
@@ -438,7 +442,12 @@ export function levelEditor(
     if (hours !== null && hours.from_hour === hours.to_hour) {
       return translate(language, "gridFee.window.sameHours");
     }
-    return await save({ level_kw: level, window: hours, outside: hours !== null && counted.value === "outside" });
+    const chosen: PowerLevel = { level_kw: level, window: hours, outside: hours !== null && counted.value === "outside" };
+    // A quarter-hour level is the grid company's rule, not edited here: kept.
+    if (current?.period_min !== undefined) {
+      chosen.period_min = current.period_min;
+    }
+    return await save(chosen);
   });
   return editor.form;
 }
