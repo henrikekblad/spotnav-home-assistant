@@ -86,6 +86,18 @@ PLATFORM_STATUS: Final[dict[str, dict[str, str]]] = {
         "fault": ERROR,
         "alarm": ERROR,
     },
+    # Sigenergy's AC charger (`ac_charger_system_state`, IEC 61851): A is no car, B1 a car the charger offers nothing,
+    # B2 a car that takes nothing of what is offered, C1 a car that asks while the charger offers nothing (a Stop of
+    # ours), C2 charging. `initializing` says nothing about a car.
+    "sigen_ac": {
+        "not_connected": DISCONNECTED,
+        "reserving": CONNECTED,
+        "preparing": PAUSED,
+        "ev_ready": PAUSED,
+        "charging": CHARGING,
+        "fault": ERROR,
+        "error": ERROR,
+    },
     "wallbox": {
         "disconnected": DISCONNECTED,
         "ready": CONNECTED,

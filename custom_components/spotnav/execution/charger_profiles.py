@@ -827,6 +827,34 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         "charger only while it charges; before a session it reads 0 %, which is taken as unknown, and a car "
         "integration is preferred where there is one.",
     ),
+    # Sigenergy's AC charger (EVAC, 7, 11 or 22 kW) through the same integration (TypQxQ 2.0.4b2 read; `sigen`):
+    # device "<name>" (default "Sigen AC Charger"), model "AC Charger", reached through the inverter's Modbus with its
+    # own slave address. Stored as `sigen_ac` and told from the DC charger by its own start button (`device_keys`).
+    # Start and Stop write the write-only register 42000 (0 start, 1 stop), so the buttons have no state and the
+    # system state (Modbus v2.9, appendix 7, IEC 61851: A, B1, B2, C1, C2, F, E) says whether it charges; the
+    # integration offers the buttons only while a car is there (a state other than init and A). The output current
+    # (42001, U32, gain 100) takes 6 A up to the lower of the rated current and the input breaker's; the number is
+    # disabled by default and unavailable while either rating is unreadable. No phase current sensors.
+    PlatformProfile(
+        platform="sigen",
+        key="sigen_ac",
+        name="Sigenergy AC charger",
+        start_stop=_buttons(("ac_charger_start",), ("ac_charger_stop",)),
+        current_keys=("ac_charger_output_current",),
+        device_keys=("ac_charger_start", "ac_charger_output_current"),
+        # Modbus through the inverter, which asks for at least a second between requests: never faster than every 10 s.
+        # The number refuses less than 6 A, so a pause presses Stop.
+        policy=WritePolicy(min_interval_s=10.0, zero_pauses=True),
+        energy_keys=("ac_charger_total_energy_consumed",),
+        status_keys=("ac_charger_system_state",),
+        charging_values=("charging",),
+        # B2: the charger offers a current and the car takes none.
+        vehicle_idle_values=("preparing",),
+        disconnected_values=("not_connected",),
+        note="Start and stop buttons and the output current number of the Sigenergy integration; the number is "
+        "disabled by default and SpotNav offers to enable it. Zero amps is refused, so SpotNav stops it instead, and "
+        "at most one current write every 10 s. The charger's system state says whether it charges.",
+    ),
     PlatformProfile(platform="evcc_intg", name="evcc", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="openwb2mqtt", name="openWB", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="andersen_ev", name="Andersen", role=ROLE_UNSUPPORTED, note="Lock only."),

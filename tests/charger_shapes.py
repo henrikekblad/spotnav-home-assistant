@@ -789,6 +789,60 @@ SHAPES: dict[str, Shape] = {
             "current_entities": [],
         },
     ),
+    # Sigenergy's AC charger (EVAC) on the same `sigen` platform (TypQxQ 2.0.4b2): its own device, unique ids
+    # `<config entry>_<device name>_<key>`, the translation key the key. The output current number and the ratings
+    # are disabled by default. Stored as `sigen_ac`, the key of this shape.
+    "sigen_ac": Shape(
+        "sigen",
+        "EVAC1",
+        (
+            _e("button", "sig1_sigen_ac_charger_ac_charger_start", "ac_charger_start", translation_key=True),
+            _e("button", "sig1_sigen_ac_charger_ac_charger_stop", "ac_charger_stop", translation_key=True),
+            _e(
+                "number",
+                "sig1_sigen_ac_charger_ac_charger_output_current",
+                "ac_charger_output_current",
+                "16",
+                {"unit_of_measurement": "A", "min": 6, "max": 32, "step": 1},
+                translation_key=True,
+                disabled=True,
+            ),
+            _e(
+                "sensor",
+                "sig1_sigen_ac_charger_ac_charger_system_state",
+                "ac_charger_system_state",
+                "charging",
+                {"device_class": "enum"},
+                translation_key=True,
+            ),
+            _e(
+                "sensor",
+                "sig1_sigen_ac_charger_ac_charger_total_energy_consumed",
+                "ac_charger_total_energy_consumed",
+                "321.5",
+                ENERGY_KWH,
+                translation_key=True,
+            ),
+            _e("sensor", "sig1_sigen_ac_charger_ac_charger_charging_power", "ac_charger_charging_power", "7.2", POWER_KW, translation_key=True),
+            _e("sensor", "sig1_sigen_ac_charger_ac_charger_rated_current", "ac_charger_rated_current", "32", AMPS, translation_key=True, disabled=True),
+            _e("sensor", "sig1_sigen_ac_charger_ac_charger_rated_power", "ac_charger_rated_power", "7.4", POWER_KW, translation_key=True, disabled=True),
+        ),
+        {
+            "charge_control": "button.sigen_ac_charger_start",
+            "path": {
+                "kind": "buttons",
+                "start_entity_id": "button.sigen_ac_charger_start",
+                "stop_entity_id": "button.sigen_ac_charger_stop",
+            },
+            "current_limit": "number.sigen_ac_charger_output_current",
+            "current_control": "number",
+            "energy_register": "sensor.sigen_ac_charger_total_energy_consumed",
+            "session_energy_register": None,
+            "charging_state": "sensor.sigen_ac_charger_system_state",
+            "current_entities": [],
+            "disabled_useful": ["number.sigen_ac_charger_output_current"],
+        },
+    ),
     "ohme": Shape(
         "ohme",
         "OH1",
