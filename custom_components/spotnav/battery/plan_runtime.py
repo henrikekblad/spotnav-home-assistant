@@ -15,11 +15,12 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **Battery limits** (`limited_params`): the plant's maximum output where its adapter reads one and it is below the
   battery's rating (the owner's Sigenergy: 13.2 kW beside 20.6/23.04 kW), and the battery's own reserve as the floor
   where one can be read; otherwise the assumed floor, said to be (`min_soc_assumed`).
-* **A cold battery** (`derated_params`, `preheat.py`, `plans/v3_sigen_preheat.md`): while the cells read below 10 °C
-  the plan counts on a share of the charge power (`preheat.charge_derate`, a guess), for every slot of the plan made
-  now; a step of it plans again. Where the battery has a heater SpotNav knows, the preheating it would ask for ahead
-  of the plan in force's charges is worked out (`preheat.shadow_request`), shown as `preheat` and logged to the
-  site's change log when its slots change (`battery_preheat`). It is never written.
+* **A cold battery** (`preheat.py`, `plans/v3_sigen_preheat.md`), shadow only: the plan in force is planned on the
+  whole charge power as before. Beside it, while the cells read below 10 °C, its coming charges are held to the share
+  a cold battery takes (`preheat.derate_shadow`, a guess) and the energy it would miss is shown; where the battery has
+  a heater SpotNav knows, the preheating it would ask for ahead of those charges is worked out
+  (`preheat.shadow_request`). Both are shown as `preheat` and logged to the site's change log when they change
+  (`battery_preheat`). Nothing is written.
 * **The house**: the site's own forecast (`site/house_forecast.py`), whose house figure on a battery site is the
   house's whole load (`grid - car - battery` plus the sun's production from the Energy dashboard's statistics), so
   neither the battery nor the sun is counted twice; the plan takes its median without the in-day adjustment
@@ -95,7 +96,7 @@ from .demand_plan import ceilings_minor, demand_basis, demand_house, needed, pea
 from .executor import SILENCE_GRACE_S
 from .adapters import ADAPTERS
 from .facts import BatteryFacts
-from .preheat import charge_derate, request_key, shadow_request
+from .preheat import derate_shadow, request_key, shadow_request
 from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_value_next_day, facit_day
 from .plan import plan_mode, self_consumption
 from .plan_model import (
@@ -255,16 +256,6 @@ def limited_params(
         params = replace(params, min_soc_pct=reserve)
         estimates = tuple(code for code in estimates if code != EST_MIN_SOC)
     return params, reason, estimates
-
-
-def derated_params(params: BatteryParams, facts: BatteryFacts) -> tuple[BatteryParams, float]:
-    """The params with the charge power a cold battery takes (`preheat.charge_derate`, a guess) for every slot of
-    the plan made now, and the share counted on. The plant's BMS decides what it really takes: the plan only stops
-    counting on power it will not get, from the grid and from the sun alike."""
-    derate = charge_derate(facts.cell_temperature_c)
-    if derate >= 1.0:
-        return params, 1.0
-    return replace(params, max_charge_kw=params.max_charge_kw * derate), derate
 
 
 def site_price_source_of(hass: HomeAssistant, site: SiteCapacityController) -> Any:
@@ -657,8 +648,9 @@ class BatteryPlanShadow:
         self.demand_status: str = DEMAND_NOT_NEEDED
         self._shaves_logged: Any = None
         #: The preheating SpotNav would ask for ahead of the plan's charges (`preheat.shadow_request`), never written,
-        #: and its key as last logged.
+        #: and the plan's charges held to a cold battery's power (`preheat.derate_shadow`); and their key as last logged.
         self.preheat: dict[str, Any] | None = None
+        self.cold_derate: dict[str, Any] | None = None
         self._preheat_logged: Any = None
         self.status = STATUS_WAITING
         self.reason: str | None = None
@@ -1164,8 +1156,6 @@ class BatteryPlanShadow:
                 facts.capacity_kwh,
                 facts.rated_charge_kw,
                 facts.rated_discharge_kw,
-                # A cold battery's charge derate: a step of it plans again (`derated_params`).
-                charge_derate(facts.cell_temperature_c),
                 tuple(windows),
                 self._cap(),
                 self._site_mode(),
@@ -1231,7 +1221,6 @@ class BatteryPlanShadow:
         params, reason, estimates = limited_params(*battery_params(facts), facts)
         if params is None or facts.soc_pct is None:
             raise _NoPlan(reason or "no_soc")
-        params, derate = derated_params(params, facts)
         area_id, prices = self._read_prices(now)
         self._prices = prices
         cap = self._cap_kw = self._cap()
@@ -1294,7 +1283,7 @@ class BatteryPlanShadow:
         self.mode = mode
         self.plan = planned_slots(decisions)
         self.soc_at_plan = float(facts.soc_pct)
-        self._keep_preheat(now, facts)
+        self._keep_preheat(now, facts, params.max_charge_kw)
         self.actuals.note_first(self.plan, self.soc_at_plan)
         self.site.house_forecast.log.record_forecast(KIND_BATTERY, soc_by_hour_end(decisions, tz), now)
         self.view = plan_view(result, slots)
@@ -1325,9 +1314,8 @@ class BatteryPlanShadow:
                 "usable_kwh": params.usable_kwh,
                 "max_charge_kw": params.max_charge_kw,
                 "max_discharge_kw": params.max_discharge_kw,
-                # The cells' temperature read at the plan and the share of the charge power counted on for it.
+                # The cells' temperature read at the plan (the plan in force is not derated for it: `preheat`).
                 "cell_temperature_c": facts.cell_temperature_c,
-                "charge_derate": derate,
                 "min_soc_pct": params.min_soc_pct,
                 "round_trip_efficiency": params.round_trip_efficiency,
             },
@@ -1349,9 +1337,14 @@ class BatteryPlanShadow:
         }
         self._save()
 
-    def _keep_preheat(self, now: datetime, facts: BatteryFacts) -> None:
-        """The preheating SpotNav would ask for ahead of the plan in force's charges (shadow, never written), logged
-        to the site's change log when its slots change."""
+    def _keep_preheat(self, now: datetime, facts: BatteryFacts, max_charge_kw: float) -> None:
+        """The plan in force's charges held to a cold battery's power and the preheating SpotNav would ask for ahead of
+        them (shadow, never written), logged to the site's change log when either changes."""
+        try:
+            self.cold_derate = derate_shadow(self.plan, facts.cell_temperature_c, max_charge_kw, now)
+        except Exception:  # noqa: BLE001 - a shadow beside the plan never stops it
+            _LOGGER.debug("SpotNav battery plan: the cold derate shadow failed", exc_info=True)
+            self.cold_derate = None
         try:
             adapter = next((item for item in ADAPTERS if item.brand == facts.brand), None)
             spec = None if adapter is None else adapter.preheat
@@ -1363,8 +1356,9 @@ class BatteryPlanShadow:
         except Exception:  # noqa: BLE001 - a shadow beside the plan never stops it
             _LOGGER.debug("SpotNav battery plan: the preheating shadow failed", exc_info=True)
             self.preheat = None
-        key = request_key(self.preheat)
-        if key == self._preheat_logged:
+        derate = self.cold_derate
+        key = (request_key(self.preheat), None if derate is None else (derate["derate"], tuple(map(tuple, derate["slots"]))))
+        if key == self._preheat_logged or (key == (None, None) and self._preheat_logged is None):
             return
         self._preheat_logged = key
         request = self.preheat
@@ -1372,8 +1366,10 @@ class BatteryPlanShadow:
             None,
             "battery_preheat",
             would_write=request is not None,
-            cell_c=None if request is None else request["cell_c"],
+            cell_c=facts.cell_temperature_c,
             slots=[] if request is None else [[slot["start"], slot["end"], slot["power_kw"]] for slot in request["slots"]],
+            derate=None if derate is None else derate["derate"],
+            short_kwh=None if derate is None else derate["short_kwh"],
             written=False,
         )
 
@@ -1472,7 +1468,7 @@ class BatteryPlanShadow:
             "demand": {"status": self.demand_status, "plan": self.demand_view},
             # The preheating SpotNav would ask for ahead of the plan's charges on a cold battery (`preheat.py`):
             # never written, the recipe is not field tested.
-            "preheat": self.preheat,
+            "preheat": {"request": self.preheat, "derate": self.cold_derate},
             "quarters": [bucket.view() for bucket in quarters],
             # Per day, side by side: what the battery really did, each mode's plan on the same measured load and
             # sun, and self-consumption; and the days kept summed.

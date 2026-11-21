@@ -19,6 +19,7 @@ from custom_components.spotnav.battery.preheat import (
     PreheatWatch,
     charge_derate,
     charge_runs,
+    derate_shadow,
     request_key,
     shadow_request,
 )
@@ -222,3 +223,13 @@ def test_no_preheating_for_warm_cells_no_planned_charge_or_no_heater() -> None:
     assert shadow_request(_plan((4, "hold", 0.0)), _facts("1.0"), T0) is None
     assert shadow_request(plan, _facts("1.0", []), T0) is None
     assert request_key(None) is None
+
+
+def test_the_derate_shadow_holds_each_coming_charge_to_a_cold_batterys_power_and_sums_what_it_would_miss() -> None:
+    plan = _plan((0, "grid_charge", 10.0), (1, "grid_charge", 10.0), (2, "self_consumption", 1.0), (3, "grid_charge", 4.0))
+    shadow = derate_shadow(plan, 3.0, 10.0, T0 + timedelta(minutes=20))
+    assert shadow is not None and shadow["derate"] == 0.2 and shadow["derated_max_kw"] == 2.0
+    # The ended slot and the one under the derated power are left out: (10 - 2) / 4 + (4 - 2) / 4 kWh.
+    assert [row[2:] for row in shadow["slots"]] == [[10.0, 2.0], [4.0, 2.0]]
+    assert shadow["short_kwh"] == 2.5
+    assert derate_shadow(plan, 12.0, 10.0, T0) is None and derate_shadow(plan, None, 10.0, T0) is None

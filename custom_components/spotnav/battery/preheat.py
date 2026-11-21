@@ -11,10 +11,11 @@ field tested (`RECIPE_FIELD_TESTED`), and writing waits for a field test on a co
   (or disabled in Home Assistant, so it cannot be read), for `SHOW_AFTER` in a row: one line in the battery section
   saying so and where to turn it on. It clears itself as soon as any of that stops. A switch that reads unavailable
   (the plant has no such register: the protocol names only Sigen PV M1-HYA/HYB) shows nothing; it is counted.
-* **The charge derate** (`charge_derate`, a guess): the share of the battery's charge power the plan counts on at a
-  cell temperature: 1 from `DERATE_FULL_C`, 0.5 from 5 °C, 0.2 from 0 °C, nothing below. From LFP cell sheets (0-5 °C
-  about 0.1 C, 5-15 °C 0.3-0.5 C, warmer up to 1 C) against a home module rated about 0.5 C. The plant's BMS decides
-  what it really takes; the plan only stops counting on power it will not get.
+* **The charge derate** (`charge_derate`, `derate_shadow`, a guess, shadow only): the share of the battery's charge
+  power a cold battery takes: 1 from `DERATE_FULL_C`, 0.5 from 5 °C, 0.2 from 0 °C, nothing below. From LFP cell
+  sheets (0-5 °C about 0.1 C, 5-15 °C 0.3-0.5 C, warmer up to 1 C) against a home module rated about 0.5 C. The plan
+  in force is not changed by it: beside it, each planned charge is held to the derated power and the energy the
+  plan would then miss is shown, so the guess can be judged against what the plant really takes.
 * **The preheating SpotNav would ask for** (`shadow_request`): while cells are below `DERATE_FULL_C` and the plan
   charges the battery (from the grid or the sun), one time slot per coming run of charging slots (at most the
   recipe's slots), each its start, end and highest planned kW, with the heater on, its mode manual and "advance" on,
@@ -222,6 +223,32 @@ def shadow_request(
         ),
         "field_tested": RECIPE_FIELD_TESTED,
         "written": False,
+    }
+
+
+def derate_shadow(plan: Sequence[_Planned], cell_c: float | None, max_charge_kw: float, now: datetime) -> dict[str, Any] | None:
+    """The plan in force's coming charges held to the power a cold battery takes (`charge_derate`): per slot whose
+    planned kW is above it `[start, end, planned kW, derated kW]`, and the kWh the plan would miss so; `None` while the
+    cells are warm or not read. Shadow only: the plan in force and the executor never see it."""
+    derate = charge_derate(cell_c)
+    if cell_c is None or derate >= 1.0:
+        return None
+    cap = max_charge_kw * derate
+    slots: list[list[Any]] = []
+    short = 0.0
+    for slot in plan:
+        if slot.end <= now or slot.battery_kw < CHARGE_MIN_KW or slot.battery_kw <= cap:
+            continue
+        hours = (slot.end - slot.start).total_seconds() / 3600
+        short += (slot.battery_kw - cap) * hours
+        slots.append([slot.start.isoformat(), slot.end.isoformat(), round(slot.battery_kw, 3), round(cap, 3)])
+    return {
+        "cell_c": round(cell_c, 1),
+        "derate": derate,
+        "max_charge_kw": round(max_charge_kw, 3),
+        "derated_max_kw": round(cap, 3),
+        "slots": slots,
+        "short_kwh": round(short, 3),
     }
 
 
