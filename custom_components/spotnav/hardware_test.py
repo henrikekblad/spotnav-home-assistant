@@ -16,6 +16,12 @@ through the engine that already writes to it, with every rule of that engine, in
 * **Hot water**: a boost only where a self-ending one exists; none does on this branch, so no step is shown (the
   hot-water gate adds its step when it brings one).
 
+**The site's chargers** (`site/charger_test_hold.py`): a test whose battery part would run does not start while a
+charger on the site is on (`blocked` `car_charging`), and from its start until its battery part is over, by whatever
+path, every charger is held stopped: no start of any kind goes out, a charge a charger begins by itself is stopped, and the battery's
+HA-down cap may count a held charger whose stop it keeps without Home Assistant at 0 A. The card asks the person
+not to start a charge meanwhile.
+
 The parts run side by side (separate devices; the battery's modes alone take about nine minutes, most of it the
 executor's own re-arm after each hand-back). Any step that does not pass (a mode ignored or partial, a write not
 taken or not read back) ends the test: that part hands back by its own engine and the other part is ended at once,
@@ -66,6 +72,10 @@ ABSENT: Final = frozenset({"no_battery_control", "not_enabled", "no_relay"})
 _HEAT_FAILURES: Final = ("aborted:no_read_back", "aborted:write_failed", "aborted:not_read_back")
 
 ERROR_NO_TEST: Final = "spotnav_no_test"
+#: A test whose battery part would run waits while a charger on the site is on.
+BLOCKED_CAR_CHARGING: Final = "car_charging"
+#: The chargers' hold ends by itself this long after the test's deadline, should nothing release it.
+HOLD_SLACK: Final = timedelta(minutes=1)
 
 
 def store_key(entry_id: str) -> str:
@@ -195,6 +205,7 @@ class HardwareTest:
         self._task: asyncio.Task[None] | None = None
         self._running: dict[str, Any] | None = None
         self._closed = False
+        self._unloading = False
 
     async def async_load(self) -> None:
         try:
@@ -247,7 +258,8 @@ class HardwareTest:
             return None
 
     def blocked(self, now: datetime, version: str | None) -> tuple[str | None, datetime | None]:
-        """Why a test cannot start now (`running`, `once_a_day`, `nothing_to_test`), and when it may."""
+        """Why a test cannot start now (`running`, `once_a_day`, `nothing_to_test`, `car_charging`), and when it
+        may."""
         if self.running:
             return "running", None
         # Nothing to test comes first: the day's slot is no reason on a site where no test could run at all.
@@ -257,7 +269,14 @@ class HardwareTest:
         blocked, next_at = allowance(self._counted_last(), now, version, self._firmware_key())
         if blocked is not None:
             return blocked, next_at
+        if parts.get("battery", "absent") is None and self._hold().charging_now():
+            # The battery's charge step is reckoned with the site's chargers held stopped: none may run at the start.
+            return BLOCKED_CAR_CHARGING, None
         return None, None
+
+    def _hold(self) -> Any:
+        """The site's hold of its chargers (`site/charger_test_hold.py`)."""
+        return self.site.charger_test_hold
 
     def _counted_last(self) -> dict[str, Any] | None:
         """The last test's start, unless that test (finished) had a part not run: it leaves the day's slot."""
@@ -290,8 +309,29 @@ class HardwareTest:
         self.sent_ref = None
         self._save()
         _LOGGER.info("SpotNav hardware test: started (%s)", ", ".join(f"{k}: {v or 'runs'}" for k, v in parts.items()))
-        self._task = self.hass.async_create_background_task(self._async_run(now), f"{DOMAIN} hardware test")
+        if parts.get("battery", "absent") is None:
+            # Held from now until the run's end, by any path (`_async_run`'s `finally`), and never past the deadline.
+            self._hold().begin(now + MAX_TEST + HOLD_SLACK)
+        try:
+            self._task = self.hass.async_create_background_task(self._async_run(now), f"{DOMAIN} hardware test")
+        except BaseException:
+            self._release_hold()
+            raise
         return None
+
+    def _release_hold(self) -> None:
+        """End the chargers' hold, and arm again the plans of those whose start it refused, in the background (a run
+        being cancelled cannot cut that short). Never raises."""
+        try:
+            hold = self._hold()
+            refused = hold.release()
+        except Exception:  # noqa: BLE001 - the hold ends by itself at its deadline either way
+            _LOGGER.warning("SpotNav hardware test: the chargers' hold could not be ended", exc_info=True)
+            return
+        if refused and not self._closed and not self._unloading:
+            self.hass.async_create_background_task(
+                hold.async_rearm_refused(refused), f"{DOMAIN} hardware test rearm"
+            )
 
     async def async_stop(self, why: str) -> None:
         """End a running test at once (everything it engaged handed back)."""
@@ -301,6 +341,8 @@ class HardwareTest:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await task
+        # The run's own `finally` let the chargers go; a run cancelled before it began never got there.
+        self._release_hold()
         self._finish_stopped(why)
 
     async def _async_run(self, started: datetime) -> None:
@@ -316,14 +358,19 @@ class HardwareTest:
         if parts.get("heat", "absent") is None:
             jobs.append(self._async_heat(deadline))
         try:
-            await asyncio.gather(*jobs)
-        except asyncio.CancelledError:
-            await self._async_hand_back("stopped")
-            raise
-        except Exception:  # noqa: BLE001 - the test ends; whatever it engaged is handed back
-            _LOGGER.warning("SpotNav hardware test: the run failed", exc_info=True)
-            running["error"] = "run_failed"
-            await self._async_hand_back("error")
+            try:
+                await asyncio.gather(*jobs)
+            except asyncio.CancelledError:
+                await self._async_hand_back("stopped")
+                raise
+            except Exception:  # noqa: BLE001 - the test ends; whatever it engaged is handed back
+                _LOGGER.warning("SpotNav hardware test: the run failed", exc_info=True)
+                running["error"] = "run_failed"
+                await self._async_hand_back("error")
+        finally:
+            # Whatever ended the run (done, a failure, the deadline, the person's stop, an error, a cancel): the
+            # chargers are let go, after the battery was handed back.
+            self._release_hold()
         self._finish()
         await self._async_send_if_beta()
 
@@ -338,10 +385,14 @@ class HardwareTest:
         assert self._running is not None
         if why is not None:
             self._running["parts"]["battery"] = why
+            # No charge step to hold the chargers for.
+            self._release_hold()
             return
         self._running["battery_live"] = True
         try:
             while control.hardware_test_progress()["running"]:
+                # A charge a charger began by itself under the hold is stopped (bounded per charger).
+                self._hold().observe()
                 if dt_util.now() >= deadline:
                     self._running["battery_stopped"] = "deadline"
                     await control.async_hardware_test_stop("hardware_test_deadline")
@@ -354,6 +405,8 @@ class HardwareTest:
         finally:
             self._running["battery_live"] = False
             self._running["battery"] = control.hardware_test_progress()["report"]
+            # The battery part is over (handed back by its own engine): the chargers go at once, not after the heat.
+            self._release_hold()
 
     async def _async_heat(self, deadline: datetime) -> None:
         heat = self.site.heat_control
@@ -455,8 +508,12 @@ class HardwareTest:
 
     async def async_shutdown(self) -> None:
         """The site unloads: a running test ends and hands back first (before the battery's own shutdown)."""
+        # The chargers unload too: their plans are not armed again from here.
+        self._unloading = True
         await self.async_stop("unload")
         self._closed = True
+        # Ended with the run; again here in case the run never got to its end.
+        self._release_hold()
 
     # ---- views
 

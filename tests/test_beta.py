@@ -32,6 +32,7 @@ from custom_components.spotnav.beta import (
 from custom_components.spotnav.debug_bundle import async_build_debug_bundle
 from custom_components.spotnav.hardware_test import HardwareTest, allowance, result_of
 from custom_components.spotnav.runtime import domain_data
+from custom_components.spotnav.site.charger_test_hold import ChargerTestHold
 from custom_components.spotnav.support_report import ReportResult
 
 from .world import admin, non_admin, setup_charger_and_site, ws_call
@@ -297,8 +298,31 @@ class _FakeHeat:
         return None if self.test is None else dict(self.test)
 
 
-async def _runner(hass: HomeAssistant, battery: Any, heat: Any) -> HardwareTest:
-    site = SimpleNamespace(entry_id="site_1", battery_control=battery, heat_control=heat)
+class _FakeCharger:
+    """A charger the test's hold reads and stops (`site/charger_test_hold.py`)."""
+
+    def __init__(self, on: bool = False) -> None:
+        self.adapter = SimpleNamespace(platform="chargeamps", path=SimpleNamespace(kind="switch"))
+        self.ocpp_target = None
+        self.charging = self.charge_control_on = on
+        self.control_confirmed_off = not on
+        self.start_pending = self.stop_settling = False
+        self.stops = self.rearms = 0
+
+    async def async_stop(self, **_kwargs: Any) -> None:
+        self.stops += 1
+
+    async def async_rearm(self) -> None:
+        self.rearms += 1
+
+
+async def _runner(
+    hass: HomeAssistant, battery: Any, heat: Any, chargers: dict[str, _FakeCharger] | None = None
+) -> HardwareTest:
+    chargers = chargers or {}
+    site = SimpleNamespace(entry_id="site_1", battery_control=battery, heat_control=heat, hass=hass,
+                           config={"charger_entry_ids": list(chargers)})
+    site.charger_test_hold = ChargerTestHold(site, controller_for=chargers.get)  # type: ignore[arg-type]
     runner = HardwareTest(hass, site)  # type: ignore[arg-type]
     await runner.async_load()
     return runner
@@ -453,6 +477,89 @@ async def test_a_running_test_is_ended_at_the_unload(hass: HomeAssistant) -> Non
     await runner.async_shutdown()
     assert battery.stopped == ["hardware_test_stopped"]
     assert runner.record is not None and runner.record["stopped"] == "unload"
+
+
+async def test_a_charging_car_blocks_a_test_with_a_battery_part(hass: HomeAssistant) -> None:
+    car = _FakeCharger(on=True)
+    runner = await _runner(hass, _FakeBattery(), _FakeHeat(), {"car": car})
+    assert runner.view()["blocked"] == "car_charging"
+    assert await runner.async_start() == "car_charging"
+    assert runner.site.charger_test_hold.active is False
+    # Without a battery part to run, a car charging is no reason.
+    heat_only = await _runner(hass, _FakeBattery(refusal="no_battery_control"), _FakeHeat(), {"car": car})
+    assert heat_only.view()["blocked"] is None
+    car.charging = car.charge_control_on = False
+    assert runner.view()["blocked"] is None
+
+
+async def test_the_chargers_are_held_while_the_battery_part_runs_and_let_go_by_every_path(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def ran(runner: HardwareTest, end: Any) -> list[bool]:
+        car = runner.site.charger_test_hold._controller("car")  # noqa: SLF001
+        seen: list[bool] = []
+        battery = runner.site.battery_control
+        progress = battery.hardware_test_progress
+
+        def watched() -> dict[str, Any]:
+            seen.append(runner.site.charger_test_hold.holds("car"))
+            return progress()
+
+        battery.hardware_test_progress = watched
+        assert await runner.async_start() is None
+        assert runner.site.charger_test_hold.holds("car") is True
+        runner.site.charger_test_hold.note_refused("car")
+        await end(runner)
+        await hass.async_block_till_done()
+        assert runner.site.charger_test_hold.active is False, "let go"
+        assert car.rearms == (0 if end is _unload else 1)
+        return seen
+
+    async def _done(runner: HardwareTest) -> None:
+        await _finished(runner)
+
+    async def _stopped(runner: HardwareTest) -> None:
+        await asyncio.sleep(0)
+        await runner.async_stop("stopped")
+
+    async def _unload(runner: HardwareTest) -> None:
+        await asyncio.sleep(0)
+        await runner.async_shutdown()
+
+    seen = await ran(await _runner(hass, _FakeBattery(), _FakeHeat(), {"car": _FakeCharger()}), _done)
+    assert seen and all(seen), "held at every look of the battery part"
+    failed = _FakeBattery({"hold": "ignored", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored"})
+    await ran(await _runner(hass, failed, _FakeHeat(slow=True), {"car": _FakeCharger()}), _done)
+    await ran(await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True), {"car": _FakeCharger()}), _stopped)
+    await ran(await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True), {"car": _FakeCharger()}), _unload)
+    monkeypatch.setattr(hardware_test, "MAX_TEST", timedelta(seconds=0))
+    await ran(await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True), {"car": _FakeCharger()}), _done)
+
+
+async def test_a_charge_begun_during_the_test_is_stopped(hass: HomeAssistant) -> None:
+    car = _FakeCharger()
+    battery = _FakeBattery(slow=True)
+    runner = await _runner(hass, battery, _FakeHeat(slow=True), {"car": car})
+    assert await runner.async_start() is None
+    car.charging = car.charge_control_on = True
+    for _ in range(5):
+        await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    assert car.stops == 1
+    await runner.async_stop("stopped")
+
+
+async def test_a_battery_part_that_does_not_start_lets_the_chargers_go_at_once(hass: HomeAssistant) -> None:
+    class _Refusing(_FakeBattery):
+        async def async_hardware_test_start(self) -> str | None:
+            return "verifying"
+
+    runner = await _runner(hass, _Refusing(), _FakeHeat(slow=True), {"car": _FakeCharger()})
+    assert await runner.async_start() is None
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert runner.site.charger_test_hold.active is False
+    await runner.async_stop("stopped")
 
 
 # ---- the card's contract: `spotnav/beta`'s answers (`tests/fixtures/beta/`, `SPOTNAV_WRITE_FIXTURES=1` rewrites them)
