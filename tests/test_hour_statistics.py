@@ -606,3 +606,31 @@ def test_the_power_view_draws_the_months_peak_where_it_lifted_the_target() -> No
     assert by_start["2026-11-03T12:00:00+01:00"] == 7.5
     days = {day["date"]: day["month_peak_kw"] for day in view["days"]}
     assert days == {"2026-11-01": None, "2026-11-02": None, "2026-11-03": 7.5}
+
+
+async def test_a_dc_chargers_minimum_power_is_its_own_floor_not_six_amperes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A charger given a power reckons its lowest power (2.17 A per phase, 1.5 kW), not 6 A on three phases (4.1 kW);
+    an AC charger keeps 6 A, and a minimum the wiring states still wins."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav import runtime
+    from custom_components.spotnav.const import CONF_CHARGER_ENTRY_IDS, CONF_PHASE_WIRING
+    from custom_components.spotnav.site.hour_statistics import site_series
+
+    floors = {"evdc": 2.17, "ac": 6.0, "wired": 2.17}
+    monkeypatch.setattr(
+        runtime, "controller_for", lambda _hass, entry_id: SimpleNamespace(min_current_a=floors[entry_id])
+    )
+    found = site_series(
+        hass,
+        {
+            CONF_CHARGER_ENTRY_IDS: ["evdc", "ac", "wired"],
+            CONF_PHASE_WIRING: {"evdc": {"phases": 3}, "ac": {"phases": 3}, "wired": {"phases": 3, "min_current_a": 6}},
+        },
+    )
+    by_id = {charger.charger_entry_id: charger.min_kw for charger in found.chargers}
+    assert by_id["evdc"] == pytest.approx(2.17 * 3 * 230 / 1000)
+    assert by_id["ac"] == pytest.approx(6 * 3 * 230 / 1000)
+    assert by_id["wired"] == pytest.approx(6 * 3 * 230 / 1000)

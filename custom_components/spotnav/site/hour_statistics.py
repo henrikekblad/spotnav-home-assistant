@@ -553,12 +553,16 @@ def site_series(hass: HomeAssistant, site_data: Mapping[str, Any]) -> SiteSeries
     for charger_entry_id in site_data.get(CONF_CHARGER_ENTRY_IDS) or []:
         wiring = wiring_all.get(charger_entry_id) or {} if isinstance(wiring_all, Mapping) else {}
         phases = wiring.get("phases") if wiring.get("phases") in (1, 3) else 3
-        min_a = wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)
-        min_a = float(min_a) if isinstance(min_a, (int, float)) and not isinstance(min_a, bool) else DEFAULT_MIN_CURRENT_A
+        controller = controller_for(hass, charger_entry_id)
+        # The charger's own floor where it is below 6 A: a DC charger's lowest power as a current per phase.
+        floor = getattr(controller, "min_current_a", None)
+        if not isinstance(floor, (int, float)) or isinstance(floor, bool) or not 0.0 < floor < DEFAULT_MIN_CURRENT_A:
+            floor = DEFAULT_MIN_CURRENT_A
+        min_a = wiring.get("min_current_a", floor)
+        min_a = float(min_a) if isinstance(min_a, (int, float)) and not isinstance(min_a, bool) else floor
         min_kw = min_a * phases * PHASE_V / 1000.0
         terms: tuple[Term, ...] = ()
         source: str | None = None
-        controller = controller_for(hass, charger_entry_id)
         register = None if controller is None else getattr(controller, "energy_register_entity_id", None)
         entry = hass.config_entries.async_get_entry(charger_entry_id)
         power = None if entry is None else entry.data.get(CONF_POWER_ENTITY)
