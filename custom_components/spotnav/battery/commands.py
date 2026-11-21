@@ -579,7 +579,7 @@ class ImportLimitPhases:
 
     It holds only where everything here reads so, checked at every start and every look: the switch that makes the
     plant share its power per phase reads `on`, the plant's grid sensor (which the limit regulates on) reads
-    `sensor_online`, and the plant's Output Type reads three-phase (`BrandControl.output_type`, read, never assumed).
+    `sensor_online`, and the plant's Output Type reads `output_type` (`BrandControl.output_type`, read, never assumed).
     `field_tested` is the recorded result of the owner's on-site test (`tools/sigen_import_limit_test.py`): a
     single-phase load held at a third of the limit at full charge, **while the total stayed under the limit** (a
     plant that only shares out a cut once the total binds lets one phase reach `L / 3 + 2 (p + cars) / 3` just below
@@ -591,6 +591,8 @@ class ImportLimitPhases:
     #: The plant's grid sensor status and the state that means it is connected.
     grid_sensor: Match
     sensor_online: str
+    #: The Output Type (lower-cased) the switch acts with: Sigenergy's 40030 is valid only for L1/L2/L3/N.
+    output_type: str
     #: The owner's on-site test passed (see the class). Off until it has.
     field_tested: bool = False
     #: The most the plant was seen to put out on one phase while it held that phase's import (kW). `None`: unknown,
@@ -1093,6 +1095,8 @@ SIGENERGY_IMPORT_LIMIT_PHASES: Final = ImportLimitPhases(
     switch=_SIG_PHASE_SWITCH.match,
     grid_sensor=_key("plant_grid_sensor_status"),
     sensor_online="online",
+    # V2.9: independent phase power control is "valid only when the output type is L1/L2/L3/N".
+    output_type="l1_l2_l3_n",
     # Flips to True once the owner's on-site test (`tools/sigen_import_limit_test.py`) has passed.
     field_tested=False,
 )

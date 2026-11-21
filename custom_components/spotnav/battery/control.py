@@ -1745,8 +1745,9 @@ class BatteryControl:
         (the site's own `battery_control_import_limit_acts` is off: the recipe's fact is one plant's test, so each site
         still says that its plant's limit acts, as for the total rule; no setting of its own), every reason of the
         total rule (`_import_limit_refusal`: a plant not three-phase, another inverter's sun, the sources unread, a
-        charger run through the plant), `output_type_unread` (the plant's Output Type does not read three-phase: the
-        hold needs all three phases, and the brand's default is not taken for it), `phase_control_off` (the switch
+        charger run through the plant), `output_type_unread` (the plant's Output Type reads nothing: the brand's
+        default is not taken for it), `output_type_not_supported` (it reads other than the one the switch acts with,
+        `ImportLimitPhases.output_type`: Sigenergy's L1/L2/L3/N, not L1/L2/L3), `phase_control_off` (the switch
         that shares the plant's power per phase reads anything but on, or nothing) and `grid_sensor_offline` (the
         plant's grid sensor, which the limit regulates on, reads anything but connected, or nothing)."""
         control = control_for(self.facts.brand)
@@ -1761,8 +1762,10 @@ class BatteryControl:
         if refusal is not None:
             return refusal
         output = read_plant_entity(self.hass, self.site.config, control.output_type)
-        if output is None or OUTPUT_TYPE_PHASES.get(str(output).lower()) != 3:
+        if output is None:
             return "output_type_unread"
+        if str(output).lower() != spec.output_type:
+            return "output_type_not_supported"
         if read_plant_entity(self.hass, self.site.config, spec.switch) != "on":
             return "phase_control_off"
         if read_plant_entity(self.hass, self.site.config, spec.grid_sensor) != spec.sensor_online:

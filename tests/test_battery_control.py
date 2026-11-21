@@ -1229,7 +1229,7 @@ def _field_tested(monkeypatch: pytest.MonkeyPatch, **changes: Any) -> None:
 def test_the_shipped_recipe_does_not_count_on_the_limit_held_per_phase_until_the_owner_s_test_passed() -> None:
     phases = commands_module.SIGENERGY_CONTROL.import_limit_phases
     assert phases is not None and phases.field_tested is False and phases.phase_output_max_kw is None
-    assert phases.sensor_online == "online"
+    assert phases.sensor_online == "online" and phases.output_type == "l1_l2_l3_n"
 
 
 @pytest.mark.parametrize(
@@ -1244,6 +1244,7 @@ def test_the_shipped_recipe_does_not_count_on_the_limit_held_per_phase_until_the
         ("sensor_unread", "grid_sensor_offline"),
         ("output_unread", "output_type_unread"),
         ("single_phase", "plant_not_three_phase"),
+        ("no_neutral", "output_type_not_supported"),
         ("foreign_pv", "foreign_pv"),
         ("sources_unread", "sources_unknown"),
         ("dc_charger", "dc_charger"),
@@ -1263,7 +1264,7 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
     _per_phase_plant(hass, **{
         "switch_off": {"switch": "off"}, "switch_unread": {"switch": None}, "sensor_offline": {"grid_sensor": "offline"},
         "sensor_unread": {"grid_sensor": None}, "output_unread": {"output_type": None},
-        "single_phase": {"output_type": "l_n"},
+        "single_phase": {"output_type": "l_n"}, "no_neutral": {"output_type": "l1_l2_l3"},
     }.get(case, {}))
     if case != "unset":
         _import_limit(hass, "13.8" if case == "too_high" else "12.4")
