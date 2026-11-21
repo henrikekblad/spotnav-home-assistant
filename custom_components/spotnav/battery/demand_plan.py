@@ -4,8 +4,11 @@ the nightly review. Pure: no Home Assistant, the clock is passed in.
 
 * **The variant's inputs** (`ceilings_minor`, `demand_house`): the site's soft ceiling per hour
   (`site/demand_ceiling.py`, S_h kW and λ_h in the area's major unit per kW) as the plan's `(kW, minor per kW)`;
-  the house in the counted hours at the error band's high side (`demand_cost.BATTERY_QUANTILE`, p90: the battery
-  must keep energy in hand for the peak), the median elsewhere; while no band is learnt, the median throughout.
+  the house at the error band's high side (`demand_cost.BATTERY_QUANTILE`, p90: the battery must keep energy in hand
+  for the peak) only in the counted hours that may make their day's peak (the band's high side reaches the day's
+  highest median among them), the median elsewhere. Where every hour is counted (an all-hours part) the median
+  throughout: the backtest (plan v3_power_tariff, 2026-11-21) found the high side there holds energy back around the
+  clock and costs more than the peaks it saves. While no band is learnt, the median throughout.
 * **Shaves** (`shave_rows`): the variant's slots that shave, as rows for the site's change log.
 * **The review's demand cost** (`DemandBasis`, `day_demand_cost`): per priced part, the month's measured day peaks
   before the reviewed day; a run's cost for the day is the change in the month's charge its own day peak causes
@@ -22,6 +25,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Final, Protocol
 
+from .. import time_zones
 from ..planning.auto_settings import DemandComponent
 from ..planning.demand_charge import HourMean, counted_day, day_peaks, free_level_hours, hour_start, month_of
 from ..planning.demand_cost import marginal_price
@@ -69,17 +73,31 @@ def peak_so_far(parts: Sequence[Any], now: datetime, tz: str) -> float | None:
 
 
 def demand_house(
-    house_by_hour: Mapping[datetime, float], band: _Band | None, ceilings: Mapping[datetime, Any]
+    house_by_hour: Mapping[datetime, float], band: _Band | None, ceilings: Mapping[datetime, Any], tz: str
 ) -> dict[datetime, float]:
-    """The house the demand variant plans on: the band's high side (p90) in the hours with a soft ceiling, the median
-    elsewhere and while no band is learnt (see the module)."""
+    """The house the demand variant plans on: the band's high side (p90) in the counted hours that may make their
+    day's peak, the median elsewhere, where every hour is counted and while no band is learnt (see the module).
+    `ceilings` is `ceilings_minor`'s (the day a peak counts toward third, else the hour's local day)."""
     house = dict(house_by_hour)
-    if band is None:
+    counted = [start for start in ceilings if start in house]
+    if band is None or not counted:
         return house
-    for start in ceilings:
-        value = house.get(start)
-        if value is not None:
-            house[start] = max(0.0, band.bounds(value, start)[1])
+    last = max(counted)
+    if all(start in ceilings for start in house if start <= last):
+        return house
+    zone = time_zones.require_zone(tz)
+
+    def day_of(start: datetime) -> Any:
+        found = ceilings[start][2]
+        return found if found is not None else start.astimezone(zone).date()
+
+    top: dict[Any, float] = {}
+    for start in counted:
+        top[day_of(start)] = max(house[start], top.get(day_of(start), house[start]))
+    for start in counted:
+        high = band.bounds(house[start], start)[1]
+        if high >= top[day_of(start)] - 1e-9:
+            house[start] = max(0.0, high)
     return house
 
 

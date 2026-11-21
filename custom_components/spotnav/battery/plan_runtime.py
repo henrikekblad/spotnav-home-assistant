@@ -42,7 +42,8 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
   month (the site's soft ceiling, `site/demand_ceiling.py`) or the power level holds some hours lower than the scalar
   cap, the site's mode is planned once more with the import target and the power level as hard caps hour by hour
   (`site_hour_caps`), the soft ceiling's penalty on what raises each day's peak (the running day's from its peak so
-  far, `site_peak_so_far`) and the shave action, the house at its p90 in the counted hours: `demand`, kept per
+  far, `site_peak_so_far`) and the shave action, the house at its p90 in the counted hours that may make the day's
+  peak (none under an all-hours part, `demand_plan.demand_house`): `demand`, kept per
   quarter hour and reviewed each night beside the modes, within the same CPU budget, never in force (no executor
   runs a shave). Its shaves are written to the site's change log when they change
   (`battery_shave`). The night's review adds each run's demand cost where a part is priced (`demand_basis`).
@@ -452,7 +453,7 @@ def _solve_demand(
         return solved
     if budget_clock() - started > MODES_BUDGET_S:
         return solved._replace(skipped=(*solved.skipped, VARIANT_DEMAND))
-    planned_house = demand_house(house, solved.house_band, ceilings or {})
+    planned_house = demand_house(house, solved.house_band, ceilings or {}, tz)
     slots, _more = build_slots(
         now, prices, planned_house, solar_wh, car_windows, cap_kw, tz, hour_caps=hour_caps, ceilings=ceilings
     )

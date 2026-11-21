@@ -5,8 +5,8 @@ and cost.
 * **Caps** (`demand_caps`). In an hour with a priced soft ceiling (`demand_cost.HourCeiling`, S_h) the car counts on
   the ceiling less the house's expected load (the forecast the plan in force counts on, its p75) and the other cars'
   installed plans, never above the hour's cap in force (the import target's per hour, else the flat cap: H_h). Room
-  below the charger's minimum is a paused hour (`PAUSED_KW`: the planner takes no zero). Other hours keep the caps in
-  force.
+  below the charger's minimum is a paused hour (`PAUSED_KW`, the planner's `PAUSED_CAP_KW`: never charged in). Other
+  hours keep the caps in force.
 * **Two passes** (`plan_under_ceiling`). The capped plan; when it misses its departure, the least raise of the ceiling,
   the same over every counted hour, that is ready in time (`RAISE_STEPS` halvings between none and the raise that
   lifts every cap to the car's own power), at the cost of the day peaks it raises. Without a departure nothing is
@@ -26,10 +26,10 @@ from typing import Any, Final
 from .. import time_zones
 from .demand_charge import hour_start
 from .demand_cost import HourCeiling, raise_cost
-from .planner import calculate_plan, PlanRequest, PlanResult, SLOT_HOURS
+from .planner import calculate_plan, PAUSED_CAP_KW, PlanRequest, PlanResult, SLOT_HOURS
 
 #: The cap of an hour whose room is below the charger's minimum: the charge pauses (the planner needs a positive cap).
-PAUSED_KW: Final = 0.05
+PAUSED_KW: Final = PAUSED_CAP_KW
 #: How many times the raise is halved in the second pass.
 RAISE_STEPS: Final = 6
 HOUR: Final = timedelta(hours=1)
@@ -114,7 +114,9 @@ class CarDemandPlan:
 
 
 def _fits(result: PlanResult) -> bool:
-    return result.has_plan and not result.short_of_deadline
+    """Ready by the departure under the caps: a plan whose caps were set aside (`per_hour_caps_dropped`) is no plan
+    under the ceiling, so it never ends the raise search."""
+    return result.has_plan and not result.short_of_deadline and not result.per_hour_caps_dropped
 
 
 def plan_under_ceiling(

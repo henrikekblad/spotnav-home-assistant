@@ -928,7 +928,11 @@ def _slot_energies(
     differs = False
     while cursor < end:
         cap = by_hour.get(_hour_of(cursor, zone), request.power_cap_kw)
-        kwh = energy_per_slot_kwh(request.amps, request.phases, request.voltage_between_phases_v, cap)
+        kwh = (
+            0.0
+            if cap is not None and cap <= PAUSED_CAP_KW
+            else energy_per_slot_kwh(request.amps, request.phases, request.voltage_between_phases_v, cap)
+        )
         energies[cursor] = kwh
         differs = differs or kwh != per_slot
         cursor += step
@@ -1601,6 +1605,11 @@ ENERGY_STEPS_PER_SLOT: Final = 4
 #: the executor by `auto_controller`): the plan is then made without the per-hour caps, as before them.
 ENERGY_SEARCH_LIMIT: Final = 400_000
 
+#: A per-hour cap at or below this (kW) pauses the hour (`PlanRequest.power_cap_kw_by_hour` takes no zero): its slots
+#: deliver nothing and the energy search never charges in them, so they neither count toward the need nor shrink the
+#: search's resolution to nothing (which would set the caps aside as too large a search).
+PAUSED_CAP_KW: Final = 0.05
+
 #: `_choose_by_energy`'s answer when the search would be too large.
 _TOO_LARGE: Final = (-1,)
 
@@ -1628,7 +1637,11 @@ def _choose_by_energy(
     """
     auto = period_cap is AUTO_PERIODS
     target = need_kwh - _COVER_EPSILON_KWH
-    unit = min(energies) / ENERGY_STEPS_PER_SLOT
+    charging = [kwh for kwh in energies if kwh > 0]
+    if not charging:
+        return None
+    # A paused slot (no energy, `PAUSED_CAP_KW`) is never charged in: the resolution is the smallest slot that charges.
+    unit = min(charging) / ENERGY_STEPS_PER_SLOT
     full = max(1, math.ceil(round(need_kwh / unit, _SLOT_DIGITS)))
     shortest = 1 if max(energies) >= target else SHORTEST_BLOCK_SLOTS
     width = shortest + 1 if auto else (_as_int(period_cap) + 1) * 2
@@ -1662,7 +1675,7 @@ def _choose_by_energy(
             if not auto or length == 0 or length >= shortest:
                 # Skipping ends a run; under automatic periods only once it is long enough.
                 keep(energy, runs, 0, cost, path)
-            if not ends_inside_the_window or energy >= target:
+            if not ends_inside_the_window or energy >= target or kwh <= 0:
                 continue
             new_runs = runs + (1 if length == 0 else 0)
             if not auto and new_runs > _as_int(period_cap):
