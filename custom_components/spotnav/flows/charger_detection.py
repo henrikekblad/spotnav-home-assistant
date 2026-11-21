@@ -47,6 +47,7 @@ from ..execution.charger_profiles import (
     PATH_SWITCH,
     PATH_SWITCH_ASSUMED,
     PATH_SWITCH_BUDGET,
+    device_profile,
     profile_for,
     PROFILES,
     register_owner,
@@ -126,16 +127,22 @@ def identifier_domains(device: dr.DeviceEntry) -> list[str]:
 
 
 def _device_platform(hass: HomeAssistant, device: dr.DeviceEntry, entries: list[er.RegistryEntry]) -> str | None:
-    """The integration the device is a charger of: the first of its identifiers' domains that has
-    a profile, else the first entity platform that has one.
+    """The profile the device is a charger of (its `profile_key`): of the first of its identifiers' domains that has
+    a profile, else of the first entity platform that has one, and of that platform's kind of charger the device is
+    (`device_profile`: Sigenergy's AC charger beside its DC one).
     """
     for domain in identifier_domains(device):
         if domain in PROFILES:
-            return domain
+            return _profile_key(domain, entries)
     for entry in entries:
         if entry.platform in PROFILES:
-            return entry.platform
+            return _profile_key(entry.platform, entries)
     return None
+
+
+def _profile_key(platform: str, entries: list[er.RegistryEntry]) -> str:
+    profile = device_profile(platform, entries)
+    return platform if profile is None else profile.profile_key
 
 
 def _unit_is_power(hass: HomeAssistant, entry: er.RegistryEntry) -> bool:

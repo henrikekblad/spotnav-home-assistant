@@ -32,7 +32,7 @@ from ..const import (
     VOLTAGE_BETWEEN_PHASES_IT_V,
 )
 from ..execution.charger_entities import charger_device_id, EntityMatcher, is_current_sensor
-from ..execution.charger_profiles import profile_for
+from ..execution.charger_profiles import device_profile
 from ..planning.first_run import site_for_charger
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from .measurement_source import PhaseMeasurementSource, source_to_dict
@@ -124,7 +124,7 @@ def own_current_sensors(
     registry = er.async_get(hass)
     entries = er.async_entries_for_device(registry, device_id, include_disabled_entities=True)
     for platform in dict.fromkeys(entry.platform for entry in entries):
-        profile = profile_for(platform)
+        profile = device_profile(platform, entries)
         if profile is None:
             continue
         matcher = EntityMatcher(hass, [entry for entry in entries if entry.platform == platform], profile)

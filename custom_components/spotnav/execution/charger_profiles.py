@@ -37,6 +37,7 @@ still usable through the generic flow; it then gets `DEFAULT_POLICY`, the conser
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -244,6 +245,15 @@ class PlatformProfile:
     #: something that is not the car's level (Sigenergy's DC charger reads 0 % before a session), so it is taken as
     #: unknown. `()`: the charger's reading is live whenever it has one.
     soc_live_values: tuple[str, ...] = ()
+    #: What SpotNav stores and looks the profile up by (`CONF_CHARGER_PLATFORM`) when that is not the platform: a
+    #: second kind of charger on a platform that already has one (Sigenergy's AC charger, `sigen_ac`, beside its DC
+    #: charger, `sigen`). Its device is told apart by `device_keys` (`device_profile`). `""`: the platform.
+    key: str = ""
+
+    @property
+    def profile_key(self) -> str:
+        """The name the profile is stored and looked up by: its `key`, else its platform."""
+        return self.key or self.platform
 
     @property
     def can_set_current(self) -> bool:
@@ -817,6 +827,34 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         "charger only while it charges; before a session it reads 0 %, which is taken as unknown, and a car "
         "integration is preferred where there is one.",
     ),
+    # Sigenergy's AC charger (EVAC, 7, 11 or 22 kW) through the same integration (TypQxQ 2.0.4b2 read; `sigen`):
+    # device "<name>" (default "Sigen AC Charger"), model "AC Charger", reached through the inverter's Modbus with its
+    # own slave address. Stored as `sigen_ac` and told from the DC charger by its own start button (`device_keys`).
+    # Start and Stop write the write-only register 42000 (0 start, 1 stop), so the buttons have no state and the
+    # system state (Modbus v2.9, appendix 7, IEC 61851: A, B1, B2, C1, C2, F, E) says whether it charges; the
+    # integration offers the buttons only while a car is there (a state other than init and A). The output current
+    # (42001, U32, gain 100) takes 6 A up to the lower of the rated current and the input breaker's; the number is
+    # disabled by default and unavailable while either rating is unreadable. No phase current sensors.
+    PlatformProfile(
+        platform="sigen",
+        key="sigen_ac",
+        name="Sigenergy AC charger",
+        start_stop=_buttons(("ac_charger_start",), ("ac_charger_stop",)),
+        current_keys=("ac_charger_output_current",),
+        device_keys=("ac_charger_start", "ac_charger_output_current"),
+        # Modbus through the inverter, which asks for at least a second between requests: never faster than every 10 s.
+        # The number refuses less than 6 A, so a pause presses Stop.
+        policy=WritePolicy(min_interval_s=10.0, zero_pauses=True),
+        energy_keys=("ac_charger_total_energy_consumed",),
+        status_keys=("ac_charger_system_state",),
+        charging_values=("charging",),
+        # B2: the charger offers a current and the car takes none.
+        vehicle_idle_values=("preparing",),
+        disconnected_values=("not_connected",),
+        note="Start and stop buttons and the output current number of the Sigenergy integration; the number is "
+        "disabled by default and SpotNav offers to enable it. Zero amps is refused, so SpotNav stops it instead, and "
+        "at most one current write every 10 s. The charger's system state says whether it charges.",
+    ),
     PlatformProfile(platform="evcc_intg", name="evcc", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="openwb2mqtt", name="openWB", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="andersen_ev", name="Andersen", role=ROLE_UNSUPPORTED, note="Lock only."),
@@ -829,15 +867,39 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
     PlatformProfile(platform="smappee", name="Smappee", role=ROLE_EXCLUDED),
 )
 
-PROFILES: Final[dict[str, PlatformProfile]] = {profile.platform: profile for profile in _PROFILES}
+PROFILES: Final[dict[str, PlatformProfile]] = {profile.profile_key: profile for profile in _PROFILES}
 
 def detectable_platforms() -> tuple[str, ...]:
     """Platforms the detected flow offers a device of: everything that is not excluded."""
-    return tuple(p.platform for p in _PROFILES if p.role != ROLE_EXCLUDED)
+    return tuple(dict.fromkeys(p.platform for p in _PROFILES if p.role != ROLE_EXCLUDED))
 
 
 def profile_for(platform: str | None) -> PlatformProfile | None:
+    """The profile stored under `platform` (a `profile_key`); for a bare platform, its first charger's."""
     return PROFILES.get(platform or "")
+
+
+def platform_profiles(platform: str | None) -> tuple[PlatformProfile, ...]:
+    """Every profile of one Home Assistant platform: one, or more where it carries several kinds of charger."""
+    return tuple(profile for profile in _PROFILES if profile.platform == (platform or ""))
+
+
+def device_profile(platform: str | None, entries: Iterable[Any]) -> PlatformProfile | None:
+    """The profile of a device of `platform`, from its registry entries: the one of the platform's other kinds of
+    charger (`PlatformProfile.key`) whose `device_keys` one of its entities carries, else the platform's own."""
+    entries = list(entries)
+    for profile in platform_profiles(platform):
+        if profile.key and any(
+            getattr(entry, "platform", None) == profile.platform
+            and entity_matches_keys(
+                translation_key=getattr(entry, "translation_key", None),
+                unique_id=getattr(entry, "unique_id", None),
+                keys=profile.device_keys,
+            )
+            for entry in entries
+        ):
+            return profile
+    return profile_for(platform)
 
 
 def policy_for(platform: str | None) -> WritePolicy:
