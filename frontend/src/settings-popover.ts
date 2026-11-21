@@ -85,6 +85,7 @@ import {
   decodeSiteList,
   decodeSiteView,
   reportOutcomes,
+  type BatteryPreheat,
   type BatteryStatus,
   type PlanCosts,
   type SitePriceSettings,
@@ -329,6 +330,20 @@ export function importLimitHint(language: Language, status: BatteryStatus): stri
   return limit.value_kw === null
     ? translate(language, "battery.cap.importLimitUnset", { max })
     : translate(language, "battery.cap.importLimitTooHigh", { value: formatNumber(language, limit.value_kw, 1), max });
+}
+
+/** The name a preheating switch goes by when Home Assistant has none to give (a disabled entity has no state). */
+const PREHEAT_SWITCH_NAME = "ESS Preheating Enable";
+
+/** The battery section's preheating line (`status.preheat`), `null` for none or a code this card does not know.
+ * `friendlyName` is the switch's own name in Home Assistant, when it has a state. */
+export function preheatLine(language: Language, block: BatteryPreheat | null, friendlyName?: unknown): string | null {
+  if (block === null || (block.code !== "off" && block.code !== "disabled")) {
+    return null;
+  }
+  const name = typeof friendlyName === "string" && friendlyName !== "" ? friendlyName : PREHEAT_SWITCH_NAME;
+  const temp = block.cell_c === null ? "–" : formatNumber(language, block.cell_c, 1);
+  return translate(language, block.code === "off" ? "battery.preheat.off" : "battery.preheat.disabled", { temp, name });
 }
 
 /** A grid charge per phase: what each phase is charged at while one runs ("Nätladdning per fas: L1 1,01 kW · L2 0
@@ -702,6 +717,29 @@ export class SiteSections {
     return wrap;
   }
 
+  /** A cold battery's preheating off or its switch disabled: one line, with the battery's device for an
+   * administrator; `null` when none shows. */
+  private preheatNotice(status: BatteryStatus, admin: boolean): HTMLElement | null {
+    const block = status.preheat;
+    const line = preheatLine(this.language, block, this.input.hass()?.states?.[block?.entity_id ?? ""]?.attributes["friendly_name"]);
+    if (block === null || line === null) {
+      return null;
+    }
+    const doc = this.input.doc;
+    const note = element(doc, "p", C.settingsNotice, line);
+    note.dataset["note"] = `preheat_${block.code}`;
+    note.setAttribute("role", "status");
+    const deviceId = block.device_id;
+    if (deviceId !== null && admin) {
+      const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(this.language, "battery.device.open")) as HTMLButtonElement;
+      button.type = "button";
+      button.dataset["action"] = "open-preheat-device";
+      button.addEventListener("click", () => navigateTo(doc, `/config/devices/device/${encodeURIComponent(deviceId)}`));
+      note.append(" ", button);
+    }
+    return note;
+  }
+
   batteryNode(): HTMLElement | null {
     if (!this.batteryFound) {
       return null;
@@ -833,6 +871,10 @@ export class SiteSections {
       const phases = element(doc, "p", C.settingRowHelp, phaseLine);
       phases.dataset["perPhase"] = "true";
       section.append(phases);
+    }
+    const preheat = this.preheatNotice(status, admin);
+    if (preheat !== null) {
+      section.append(preheat);
     }
     if (status.notes.some((note) => note.code === "ai_mode_back")) {
       const note = element(doc, "p", C.settingsNotice, translate(language, "battery.note.aiModeBack"));

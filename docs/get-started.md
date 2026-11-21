@@ -25,7 +25,9 @@ On older versions, install it from [HACS](https://hacs.xyz) and restart Home Ass
 
 ## 2. Add a charger
 
-Go to **Settings → Devices & services → Add integration → SpotNav**.
+Add SpotNav with this button, or go to **Settings → Devices & services → Add integration → SpotNav**.
+
+[![Open your Home Assistant instance and start setting up SpotNav.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=spotnav)
 
 1. Choose **A charger**, then **Automatic (recommended)**.
 2. Pick the charger's device from the list.

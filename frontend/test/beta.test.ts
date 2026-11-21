@@ -64,6 +64,7 @@ describe("the words", () => {
     const idle = decodeBetaAnswer(fixture("off_idle.json"))!.test!;
     expect(blockedText("en", idle)).toBeNull();
     expect(blockedText("en", { ...idle, blocked: "nothing_to_test" })).toBe(translate("en", "test.blocked.nothing"));
+    expect(blockedText("en", { ...idle, blocked: "car_charging" })).toBe(translate("en", "test.blocked.carCharging"));
     expect(blockedText("sv", { ...idle, blocked: "once_a_day", nextAt: "2026-11-20T20:15:00+01:00" })).toMatch(/^Nästa test kan köras /);
   });
 

@@ -81,7 +81,6 @@ from .zone_control import (
     decide,
     forecast_delta,
     qualifies,
-    read_back,
     same,
     taken,
 )
@@ -298,24 +297,28 @@ class ZonesControl:
         if not self._started:
             return
         now = dt_util.utcnow()
-        for zone in list(self.zones.values()):
-            if zone.written_c is None or zone.home_c is None:
-                continue
-            state = self.hass.states.get(zone.entity_id)
-            attributes = {} if state is None else state.attributes
-            limits = Limits.of(attributes)
-            read = finite_number(attributes.get("temperature"))
-            if read is None or not zone.ours(read, limits) or state is None or state.state != "heat":
-                # Someone else's value, or not in heat mode: nothing written; kept, and judged at the next start.
-                continue
-            try:
-                await self._async_set(zone.entity_id, zone.home_c)
-                async with asyncio.timeout(SHUTDOWN_WAIT_S):
-                    while not taken(self._setpoint(zone.entity_id), zone.home_c, read, limits):
-                        await asyncio.sleep(0.2)
-                self._handed_back(zone, now)
-            except Exception:  # noqa: BLE001 - kept held: written back at the next start
-                _LOGGER.warning("SpotNav zones: %s could not be set back at the stop", zone.entity_id, exc_info=True)
+        # All zones at once: one slow thermostat must not use up the stop's time for the others.
+        await asyncio.gather(*(self._async_set_back_at_stop(zone, now) for zone in list(self.zones.values())))
+
+    async def _async_set_back_at_stop(self, zone: ZoneState, now: datetime) -> None:
+        """One zone's set-back at the stop, bounded on its own; a failure keeps it held for the next start."""
+        if zone.written_c is None or zone.home_c is None:
+            return
+        state = self.hass.states.get(zone.entity_id)
+        attributes = {} if state is None else state.attributes
+        limits = Limits.of(attributes)
+        read = finite_number(attributes.get("temperature"))
+        if read is None or not zone.ours(read, limits) or state is None or state.state != "heat":
+            # Someone else's value, or not in heat mode: nothing written; kept, and judged at the next start.
+            return
+        try:
+            await self._async_set(zone.entity_id, zone.home_c)
+            async with asyncio.timeout(SHUTDOWN_WAIT_S):
+                while not taken(self._setpoint(zone.entity_id), zone.home_c, read, limits):
+                    await asyncio.sleep(0.2)
+            self._handed_back(zone, now)
+        except Exception:  # noqa: BLE001 - kept held: written back at the next start
+            _LOGGER.warning("SpotNav zones: %s could not be set back at the stop", zone.entity_id, exc_info=True)
 
     # ---- looks
 

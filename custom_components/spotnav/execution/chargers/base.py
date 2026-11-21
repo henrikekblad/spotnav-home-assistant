@@ -24,6 +24,7 @@ from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
+from ...const import DEFAULT_MIN_CURRENT_A
 from ..charger_profiles import entity_matches_keys, WritePolicy
 
 _ADAPTER_LOGGER = logging.getLogger(__name__)
@@ -378,6 +379,12 @@ class CurrentPath(ABC):
         """Write `amps` if the policy allows and return the outcome code. Called with the
         controller's `_assign_lock` held.
         """
+
+    def min_a(self) -> float:
+        """The lowest current this path writes, per phase: the 6 A pilot floor of an AC charger. A path that sets a
+        power instead (`sigenergy.PowerCurrent`) has its own, from the charger's lowest power, and it need not be a
+        whole ampere."""
+        return DEFAULT_MIN_CURRENT_A
 
     def setpoint_a(self) -> int | None:
         """What the charger is set to, as far as it can be known."""

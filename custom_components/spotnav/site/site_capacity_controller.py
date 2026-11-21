@@ -114,6 +114,7 @@ from ..planning.auto_settings import (
     STRATEGY_SOLAR,
 )
 from ..runtime import charger_data, controller_for, domain_data
+from ..util import amps_at_floor
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
 from ..battery.control import BatteryControl
 from ..hardware_test import HardwareTest
@@ -123,6 +124,7 @@ from .measurement_problem import measurement_problem, MeasurementProblem, UNHEAL
 from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
+from .charger_test_hold import ChargerTestHold
 from ..heat.control import HeatControl
 from ..heat.water_heater_control import WaterHeaterControl
 from ..heat.zones_control import ZonesControl
@@ -631,6 +633,17 @@ class RegulationStart:
 RegulatedStepKind = Literal["held", "must_lower", "write", "stopped"]
 
 
+def regulated_setpoint(current_a: float, floor_a: float) -> int | float:
+    """The damped current as the regulator writes it. An AC charger's (floor 6 A): rounded to the nearest ampere, as
+    ever. A charger whose floor is below 6 A (a DC charger, `execution/chargers/sigenergy.py`): rounded down, never
+    above the damped current (a yield step from a fractional floor, 3.77 + 2 = 5.77 A at 230 V, would otherwise be
+    written as 6 A, past the stepper's licence), and its floor as it is, never rounded down to a whole ampere into a
+    pause."""
+    if floor_a < DEFAULT_MIN_CURRENT_A:
+        return amps_at_floor(current_a + 1e-9, floor_a)
+    return amps_at_floor(current_a, floor_a, rounding=round)
+
+
 @dataclass(frozen=True, slots=True)
 class RegulatedStep:
     """What a regulated step does (`SiteCapacityController._decide_regulated_step`), carried out by
@@ -645,7 +658,7 @@ class RegulatedStep:
     restore_written_a: float | None = None
     target_a: float | None = None
     damping: DampingDecision | None = None
-    setpoint: int | None = None
+    setpoint: int | float | None = None
     site_read_at: float | None = None
     phases_read_at: Mapping[PhaseName, float | None] | None = None
 
@@ -932,6 +945,8 @@ class SiteCapacityController:
         # A person's hardware test of the battery and the heat path (`hardware_test.py`), through their own engines;
         # never on a timer. Shut down first, before the battery and the heat control.
         self.hardware_test = HardwareTest(hass, self)
+        # The test's hold of the site's chargers (`site/charger_test_hold.py`): no start while it runs.
+        self.charger_test_hold = ChargerTestHold(self)
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -997,6 +1012,8 @@ class SiteCapacityController:
         await self.zones_control.async_start()
         await self.water_heater_control.async_start()
         await self.hardware_test.async_load()
+        # An OCPP charger a hardware test left out of service when Home Assistant stopped: set back to operative.
+        await self.charger_test_hold.async_load()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -1082,6 +1099,7 @@ class SiteCapacityController:
             ("solar shadow", self.solar_shadow.async_shutdown),
             ("heat shadow", self.heat_shadow.async_shutdown),
             ("grid sign", self._async_save_grid_sign),
+            ("charger test hold", self.charger_test_hold.async_close),
         )
         for name, close in parts:
             try:
@@ -1253,6 +1271,15 @@ class SiteCapacityController:
                 self._start_cap_cancels.append(
                     lambda controller=charger_controller: controller.set_start_cap(None)
                 )
+                set_test_hold = getattr(charger_controller, "set_test_hold", None)
+                if set_test_hold is not None:
+                    set_test_hold(
+                        lambda charger_entry_id=charger_entry_id: self.charger_test_hold.holds(charger_entry_id),
+                        refused=lambda charger_entry_id=charger_entry_id: self.charger_test_hold.note_refused(
+                            charger_entry_id
+                        ),
+                    )
+                    self._start_cap_cancels.append(lambda set_test_hold=set_test_hold: set_test_hold(None))
 
     @callback
     def _on_charger_controller_changed(self) -> None:
@@ -1790,7 +1817,7 @@ class SiteCapacityController:
             and share.action == ACTION_HELD
             and share.cap_a is not None
             and assigned is not None
-            and DEFAULT_MIN_CURRENT_A <= assigned <= share.cap_a + 0.5
+            and self._minimum_setpoint(charger_entry_id) - 1e-9 <= assigned <= share.cap_a + 0.5
         ):
             # The import target, not the fuse, holds it: the hour's budget leaves it no more.
             return assigned, LIMIT_CAUSE_IMPORT_TARGET
@@ -2904,11 +2931,7 @@ class SiteCapacityController:
         # Captured before `consider` advances the damper; also the yield stepper's `assigned_a`
         # (the value last written).
         previous_setpoint = damper.last_written_a
-        min_current_a = float(
-            ((self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}).get(
-                "min_current_a", DEFAULT_MIN_CURRENT_A
-            )
-        )
+        min_current_a = self._min_current_a(charger_entry_id)
         previous_setpoint = self._forget_pause_when_charging(
             damper, charger_controller, previous_setpoint, min_current_a, proposed
         )
@@ -3237,7 +3260,7 @@ class SiteCapacityController:
             return RegulatedStep(
                 "held", decision, yield_verdict=yield_verdict, detail=f"damping_{damping.reason}"
             )
-        setpoint = round(damping.current_a)
+        setpoint = regulated_setpoint(damping.current_a, self._charger_floor_a(charger_entry_id))
         if setpoint != damping.current_a:
             _LOGGER.debug(
                 "SpotNav site %s active control: charger %s proposal %sA is "
@@ -3256,7 +3279,7 @@ class SiteCapacityController:
             decision,
             yield_verdict=yield_verdict,
             damping=damping,
-            setpoint=int(setpoint),
+            setpoint=setpoint,
             site_read_at=site_read_at,
         )
 
@@ -3567,7 +3590,7 @@ class SiteCapacityController:
             previous_setpoint is not None
             and previous_setpoint < min_current_a
             and (charger_controller.charging or charger_controller.start_pending)
-            and not (charger_controller.stop_settling and proposed < DEFAULT_MIN_CURRENT_A)
+            and not (charger_controller.stop_settling and proposed < min_current_a)
         ):
             damper.forget_write(None)
             return None
@@ -3692,7 +3715,7 @@ class SiteCapacityController:
             replace(decision, proposed_current_a=setpoint),
             damper,
             damping,
-            int(setpoint),
+            amps_at_floor(setpoint, self._charger_floor_a(charger_entry_id)),
             previous_setpoint,
             None,
             site_read_at=site_read_at,
@@ -3752,7 +3775,10 @@ class SiteCapacityController:
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="room_not_judged")
             return
         room = min(max(0.0, room - reserved.get(phase, 0.0)) for phase, room in zip(phases, rooms))  # type: ignore[operator]
-        setpoint = math.floor(min(decision.proposed_current_a, again.proposed_current_a, base + room) + 1e-9)
+        setpoint = amps_at_floor(
+            min(decision.proposed_current_a, again.proposed_current_a, base + room) + 1e-9,
+            self._charger_floor_a(charger_entry_id),
+        )
         if setpoint <= base or (previous_setpoint is not None and setpoint <= previous_setpoint):
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_a_raise")
             return
@@ -3775,7 +3801,7 @@ class SiteCapacityController:
                 guarded.proposed_a,
                 guarded.rule,
             )
-            setpoint = math.floor(guarded.proposed_a + 1e-9)
+            setpoint = amps_at_floor(guarded.proposed_a + 1e-9, self._charger_floor_a(charger_entry_id))
             if setpoint <= base or (previous_setpoint is not None and setpoint <= previous_setpoint):
                 self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail=guarded.rule)
                 return
@@ -3798,7 +3824,7 @@ class SiteCapacityController:
             decision,
             damper,
             damping,
-            int(damping.current_a),
+            amps_at_floor(damping.current_a, self._charger_floor_a(charger_entry_id)),
             previous_setpoint,
             None,
             site_read_at=None,
@@ -3853,9 +3879,14 @@ class SiteCapacityController:
             return None
         return self._measurement_lost_failure(charger_entry_id, result)
 
-    def _minimum_setpoint(self, charger_entry_id: str) -> int:
-        """The charger's minimum current in whole amps, never below the floor below which a write is a pause."""
-        return max(math.ceil(self._min_current_a(charger_entry_id) - 1e-9), int(DEFAULT_MIN_CURRENT_A))
+    def _minimum_setpoint(self, charger_entry_id: str) -> int | float:
+        """The charger's minimum current in whole amps, never below the floor below which a write is a pause; a DC
+        charger's floor (`_charger_floor_a`) as it is, not a whole ampere."""
+        minimum = self._min_current_a(charger_entry_id)
+        floor = self._charger_floor_a(charger_entry_id)
+        if floor < DEFAULT_MIN_CURRENT_A:
+            return floor if minimum <= floor + 1e-9 else math.ceil(minimum - 1e-9)
+        return max(math.ceil(minimum - 1e-9), int(DEFAULT_MIN_CURRENT_A))
 
     def _draws_above_minimum(self, charger_entry_id: str, charger_controller: Any) -> bool:
         """Whether this charger is in a charge at a current above its minimum: what the site last gave it, or where
@@ -3959,7 +3990,7 @@ class SiteCapacityController:
         decision: RegulatorDecision,
         damper: RegulatorDamper,
         damping: DampingDecision,
-        setpoint: int,
+        setpoint: float,
         previous_setpoint: float | None,
         yield_verdict: YieldVerdict | None,
         *,
@@ -4097,9 +4128,28 @@ class SiteCapacityController:
             (delivered.get(phase).value or 0.0) >= PROBE_IDLE_BELOW_A for phase in decision.basis
         )
 
-    def _min_current_a(self, charger_entry_id: str) -> float:
+    def _charger_floor_a(self, charger_entry_id: str) -> float:
+        """The charger's own floor (`ChargingController.min_current_a`) where it is below the 6 A of an AC charger (a
+        DC charger given a power, `execution/chargers/sigenergy.py`), else 6 A. Never above 6 A: a charger's floor
+        only ever lowers what the site reckons as a charger's minimum."""
+        charger = controller_for(self.hass, charger_entry_id)
+        floor = getattr(charger, "min_current_a", None) if charger is not None else None
+        if isinstance(floor, (int, float)) and not isinstance(floor, bool) and 0.0 < floor < DEFAULT_MIN_CURRENT_A:
+            return float(floor)
+        return DEFAULT_MIN_CURRENT_A
+
+    def charger_min_current_a(self, charger_entry_id: str) -> float:
+        """The charger's minimum current: the wiring's, else its own floor (`_charger_floor_a`: 6 A, a DC charger's
+        lowest power as a current per phase). Below it the regulator pauses, the sun stops and the import target's
+        hold pauses rather than lowers."""
         wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
-        return float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+        configured = wiring.get("min_current_a")
+        if configured is None:
+            return self._charger_floor_a(charger_entry_id)
+        return float(configured)
+
+    def _min_current_a(self, charger_entry_id: str) -> float:
+        return self.charger_min_current_a(charger_entry_id)
 
     # -- a grid-charging battery that holds the grid at the fuse (`site/battery_probe.py`)
 
@@ -4193,10 +4243,7 @@ class SiteCapacityController:
             or fresh.state != "observing"
         ):
             return False
-        wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
-            charger_entry_id
-        ) or {}
-        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+        min_current_a = self._min_current_a(charger_entry_id)
         phases = tuple(decision.basis.keys())
         if not phases or not within_held_band(fresh.measured_margin_a, phases, self._held_bands_a(fresh)):
             return False
@@ -4352,7 +4399,7 @@ class SiteCapacityController:
         wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
             charger_entry_id
         ) or {}
-        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+        min_current_a = self._min_current_a(charger_entry_id)
         phases = tuple(decision.basis.keys())
         if not phases and decision.reason in DIRECTION_UNKNOWN_REASONS:
             # Nothing was decided on a phase whose direction is not known: the phases the charger draws on.
@@ -4378,6 +4425,8 @@ class SiteCapacityController:
             or not _plugged_in_for_resume(charger_controller.adapter)
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or charger_controller.car_ended_holds_charge
+            # A hardware test holds the site's chargers stopped (`site/charger_test_hold.py`).
+            or self.charger_test_hold.active
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
@@ -4406,7 +4455,10 @@ class SiteCapacityController:
             return False
         if self._resume_backed_off(charger_entry_id, decision, now, previous_setpoint):
             return False
-        amps = int(min(float(requested), min(margins), math.inf if target_cap is None else target_cap))
+        amps = amps_at_floor(
+            min(float(requested), min(margins), math.inf if target_cap is None else target_cap),
+            self._charger_floor_a(charger_entry_id),
+        )
         started = await charger_controller.async_battery_probe_start(amps, capped=True)
         if not started:
             return False
@@ -4512,7 +4564,10 @@ class SiteCapacityController:
         previous_setpoint: float | None,
     ) -> bool:
         """Start a battery probe of a charge load balancing paused (`BatteryProbeRunner.async_maybe_start`,
-        `site/battery_probe_runner.py`); `True` when a probe was started (the pass is then this probe's)."""
+        `site/battery_probe_runner.py`); `True` when a probe was started (the pass is then this probe's). None while a
+        hardware test holds the site's chargers stopped (`site/charger_test_hold.py`)."""
+        if self.charger_test_hold.active:
+            return False
         return await self._battery_probe_runner.async_maybe_start(
             charger_entry_id, charger_controller, decision, fresh, damper, previous_setpoint
         )
@@ -4748,16 +4803,13 @@ class SiteCapacityController:
         """
         stepper = self._yield_steppers.get(charger_entry_id)
         if stepper is None:
-            wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
-                charger_entry_id
-            ) or {}
             main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
             stepper = YieldStepper(
                 YieldConfig(
                     ceiling_a=yield_ceiling_a(float(main_fuse_a)) if main_fuse_a is not None else 0.0,
                     # Above the fuse only on a battery whose yield is verified on this site.
                     unverified_ceiling_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
-                    min_current_a=float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A)),
+                    min_current_a=self._min_current_a(charger_entry_id),
                     real_excess_a=REGULATOR_DEADBAND_A,
                 )
             )
@@ -5208,7 +5260,7 @@ class SiteCapacityController:
             measured = self._read_charger_measured_current(wiring)
             basis: PhaseBasis = "chosen"
             requested = self._charger_requested_current(charger_entry_id)
-            min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+            min_current_a = self._min_current_a(charger_entry_id)
             charger_controller = controller_for(self.hass, charger_entry_id)
             switch_only = self._is_switch_only_charger(charger_controller)
             if switch_only:
@@ -6220,9 +6272,8 @@ class SiteCapacityController:
 
     def plan_minimum_kw(self, charger_entry_id: str) -> float:
         """The least power the charger charges at (kW): its minimum current on the phases it is reckoned on."""
-        wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         phases, _phase = self.reckoned_phases(charger_entry_id)
-        return member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
+        return member_w(phases, self._min_current_a(charger_entry_id)) / 1000.0
 
     def _target_start_cap(self, charger_entry_id: str) -> float | None:
         """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses

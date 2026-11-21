@@ -46,7 +46,7 @@
                  blocking: {mode: "shadow" | "live" | "watch", gate: {as gate}, tank: bool, strict: bool,
                             cuts: [{start, end, reason: "peak" | "day_cap" | "hygiene" | "moved", peak: "HH:MM" | null,
                                    live}]} | null},
-     water_heater: {entity_id, name, on: bool | null, metered, mode: "metered" | "unmetered" | "tank", kw, state, reason,
+     water_heater: {entity_id, name, on: bool | null, metered, meter_waiting, mode: "metered" | "unmetered" | "tank", kw, state, reason,
                     check, last_full, until, windows: [{start, end, reason: "cheap" | "full_heat" | "max_off"}], live,
                     automation: {entity_id, name} | null, paused_until} | null}
 

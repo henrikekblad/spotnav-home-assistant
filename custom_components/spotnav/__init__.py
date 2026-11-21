@@ -32,6 +32,7 @@ from .api.beta import async_setup_beta_api
 from .api.debug import async_setup_debug_api
 from .beta import Beta
 from .hardware_test import HardwareTest
+from .site.charger_test_hold import ChargerTestHold
 from .blueprint_install import async_install_blueprints
 from .api.entity_config import async_setup_entity_config_api
 from .api.camera import async_setup_camera_api
@@ -1033,6 +1034,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await HeatShadow.async_remove_stored(hass, entry.entry_id)
         await HeatControl.async_remove_stored(hass, entry.entry_id)
         await HardwareTest.async_remove_stored(hass, entry.entry_id)
+        await ChargerTestHold.async_remove_stored(hass, entry.entry_id)
         return
     # The charger is given back as SpotNav found it, as far as SpotNav knows: the current it had before SpotNav,
     # and a stop of SpotNav's own undone. Read before the stores below go (it is kept in the controller's).

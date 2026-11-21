@@ -407,6 +407,12 @@ def test_validate_stored_amps_rejects_none_bool_and_fractional() -> None:
     assert _validate_stored_amps(15.7) is None
 
 
+def test_validate_stored_amps_keeps_a_dc_chargers_floor() -> None:
+    """A DC charger's floor (2.17 A at 400 V) is the one current SpotNav writes that is not a whole ampere."""
+    assert _validate_stored_amps(2.17) == 2.17
+    assert _validate_stored_amps(6.5) is None
+
+
 def test_validate_stored_amps_rejects_nan_inf_and_out_of_range() -> None:
     assert _validate_stored_amps(float("nan")) is None
     assert _validate_stored_amps(float("inf")) is None

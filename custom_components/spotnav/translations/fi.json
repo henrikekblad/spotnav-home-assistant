@@ -982,6 +982,10 @@
     "price_source_missing": {
       "title": "Alueella {area} ei ole sähkön hintoja",
       "description": "Kohteella **{price}** ei ole hintoja: alueelle {area} ei ole määritetty lähdettä. Avaa SpotNav-kortin asetukset, Sähkön hinta: siellä kerrotaan, mitä lisätä (Home Assistantin Nord Pool -integraatio, oma ENTSO-E-avaimesi, PVPC-, Octopus Energy- tai Zonneplan-integraatio). Ilmoitus poistuu itsestään, kun hinnat palaavat."
+    },
+    "hardware_test_out_of_service": {
+      "title": "OCPP-laturi on yhä poissa käytöstä laitetestin jälkeen",
+      "description": "SpotNav asetti **{switches}** pois käytöstä laitetestin ajaksi eikä saanut sitä takaisin käyttöön. Kytke tuo Availability-kytkin päälle itse (Asetukset → Laitteet ja palvelut → OCPP). Siihen asti laturi ei lataa. Viesti poistuu, kun kytkin on päällä."
     }
   },
   "exceptions": {

@@ -225,7 +225,10 @@ How it differs from an AC charger:
 - **Power, not current.** SpotNav still plans and balances in amperes per phase, and writes the power
   three phases carry at the site's voltage between phases: one ampere is 0.69 kW at 400 V, so 16 A is
   11.1 kW. The charger's rating is the most it is given, and the card shows the planned power in kW.
-  The lowest step is SpotNav's usual 6 A, 4.2 kW at 400 V.
+  The lowest step is the charger's own lowest power, 1.5 kW, not an AC charger's 6 A (4.2 kW): 2.17 A
+  per phase at 400 V. Solar starts, holds and stops at it, so a winter surplus of about 1.5 kW is
+  enough, and load balancing holds the charge there before it pauses it. Above it the steps are whole
+  amperes, 0.69 kW each.
 - **Load balancing.** The charger draws through the inverter, from the battery, the sun or the grid,
   so the fuse sees only what the inverter imports. Load balancing reads the site's grid meter as
   always, and reads the charger's own output power as its draw, spread evenly over the three phases.
@@ -272,6 +275,38 @@ can be answered:
 3. How fast does it follow a new limit, up and down?
 4. What does the grid meter show while the car charges from the house battery?
 5. What does the running state show after Stop with the car still plugged in, and after it is unplugged?
+
+### Sigenergy AC charger
+
+Sigenergy's AC charger (EVAC, 7, 11 or 22 kW) is added the same way, through the same integration with
+the charger's Modbus address set in its configuration. In **Automatic**, pick the AC charger's own device
+(**Sigen AC Charger** unless you named it otherwise). A plant with both a DC and an AC charger offers
+each as its own charger. SpotNav suggests its **Start Charging** and **Stop Charging** buttons, its
+**Charger Output Current**, its total energy consumed and its system state.
+
+It is an ordinary AC charger given a current in amperes:
+
+- **Enable the current number.** The integration ships **Charger Output Current** disabled; SpotNav
+  offers to enable it. The number is unavailable until the charger has reported its rated current and
+  its input breaker's, and it never takes more than the lower of the two.
+- **6 A or more.** The charger takes 6 A and up, so a pause presses **Stop**.
+- **Buttons without a state.** Start and Stop write a register that cannot be read back, so whether it
+  charges is read from its **System State**. The integration shows the buttons only while a car is
+  plugged in.
+- **Phases.** The 7 kW model is one-phase, the 11 and 22 kW models three-phase: say which when the
+  flow asks.
+- **Write pace.** SpotNav writes the current at most every 10 s.
+
+It has not been tested on real hardware yet. **For the tester**, with the debug report (gear,
+**Settings**, **Support**):
+
+1. Does Start begin a charge, and Stop end it with the car still plugged in? Does a later Start resume it,
+   or must the car be unplugged first?
+2. What does **System State** show before plug-in, plugged in and stopped, charging, after Stop, and
+   when the car is full?
+3. Does a new output current take effect while it charges, and how soon? Is a current written while it
+   is stopped kept for the next Start?
+4. Do the rated current and input breaker sensors read plausible values, and is the number available?
 
 ### Renaming a charger
 

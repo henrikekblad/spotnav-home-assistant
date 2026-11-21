@@ -144,6 +144,7 @@ from .beta import bundle_block
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
 from .hardware_test import latest_record
 from .site.detected_hass import async_detected
+from .execution.charger_profiles import profile_for
 from .execution.other_controllers import CONTROLLERS
 from .planning.hybrid_forecast import async_forecast_capable_domains
 from .runtime import domain_data, entry_kind, site_controller_for
@@ -286,7 +287,10 @@ async def _related_integrations(
             roles.setdefault(domain, set()).add(role)
 
     for entry in entries:
-        note(entry.data.get(CONF_CHARGER_PLATFORM), "charger")
+        # The stored value is a profile key (`sigen_ac` for Sigenergy's AC charger): note its integration's domain.
+        stored = entry.data.get(CONF_CHARGER_PLATFORM)
+        profile = profile_for(stored)
+        note(profile.platform if profile is not None else stored, "charger")
     registry = er.async_get(hass)
     entity_ids = {*extra_entity_ids}
     for entry in entries:

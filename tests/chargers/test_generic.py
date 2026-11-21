@@ -55,6 +55,7 @@ START_STOP_CALLS = {
         ("select", "select_option", {"entity_id": "select.myenergi_charge_mode", "option": "Stopped"}),
     ),
     "lektrico": (("button", "press", {"entity_id": "button.lektrico_charge_start"}), ("button", "press", {"entity_id": "button.lektrico_charge_stop"})),
+    "sigen_ac": (("button", "press", {"entity_id": "button.sigen_ac_charger_start"}), ("button", "press", {"entity_id": "button.sigen_ac_charger_stop"})),
     "openevse": (
         ("select", "select_option", {"entity_id": "select.openevse_override_state", "option": "active"}),
         ("select", "select_option", {"entity_id": "select.openevse_override_state", "option": "disabled"}),

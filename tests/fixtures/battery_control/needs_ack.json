@@ -36,6 +36,7 @@
     "device_id": null,
     "enable_entities": null,
     "notes": [],
+    "preheat": null,
     "trial": null,
     "grid_charge_cap": {
       "cap_kw": null,

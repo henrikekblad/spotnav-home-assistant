@@ -388,7 +388,7 @@ def controlled_answer() -> dict[str, Any]:
     )
     executed = {MIDNIGHT + timedelta(hours=7): 60, MIDNIGHT + timedelta(hours=8): 60, MIDNIGHT + timedelta(hours=17): 20}
     heater = {
-        "entity_id": "switch.varmvattenberedare", "name": "Varmvattenberedare", "on": False, "metered": True,
+        "entity_id": "switch.varmvattenberedare", "name": "Varmvattenberedare", "on": False, "metered": True, "meter_waiting": False,
         "mode": "metered", "kw": 3.0, "state": "running", "reason": "planned_off", "check": "passed",
         "last_full": (MIDNIGHT + timedelta(hours=4)).isoformat(), "until": (MIDNIGHT + timedelta(days=1, hours=1)).isoformat(),
         "windows": [

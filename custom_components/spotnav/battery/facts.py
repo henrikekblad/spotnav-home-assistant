@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from ..core.parse import number_from_state
-from .adapters import Adapter, ControlSpec, FactRole, Match, ReserveSource, SocPack, adapter_for
+from .adapters import Adapter, ControlSpec, FactRole, Match, PreheatSpec, ReserveSource, SocPack, adapter_for
 
 ManagementState = Literal["free", "self_managed", "unknown", "externally_controlled"]
 
@@ -113,6 +113,33 @@ class ControlStatus:
         }
 
 
+#: The preheating switch as found: `on`, `off`, `disabled` (in Home Assistant's entity registry) or `unavailable`.
+PreheatState = Literal["on", "off", "disabled", "unavailable"]
+
+
+@dataclass(frozen=True, slots=True)
+class PreheatFacts:
+    """The battery's own heater as found (`adapters.PreheatSpec`): the switch, its state and device, and the entities
+    a schedule would be written to (by role: `mode`, `advance`, `reserved_soc`, `slot_<n>_<start|end|power>`), found
+    ones only, enabled or not."""
+
+    enable_entity: str
+    state: PreheatState
+    device_id: str | None = None
+    entities: Mapping[str, str] = field(default_factory=dict)
+    #: The roles among `entities` that are disabled in Home Assistant.
+    disabled: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "enable_entity": self.enable_entity,
+            "state": self.state,
+            "device_id": self.device_id,
+            "entities": dict(self.entities),
+            "disabled": list(self.disabled),
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class BatteryFacts:
     battery_entity_id: str | None = None
@@ -140,6 +167,11 @@ class BatteryFacts:
     #: The battery's average cell temperature entity (`adapters.Adapter.cell_temperature`), found and enabled, else
     #: `None`. Its day is read from the recorder's statistics by the nightly review, never live.
     cell_temperature_entity: str | None = None
+    #: That entity's reading now (°C), `None` when it reads none.
+    cell_temperature_c: float | None = None
+    #: The battery's own heater (`adapters.Adapter.preheat`), `None` when the adapter has none or its switch is not
+    #: found.
+    preheat: PreheatFacts | None = None
     management: Management = field(default_factory=lambda: Management("unknown", "no_battery"))
     hold: ControlStatus | None = None
     grid_charge: ControlStatus | None = None
@@ -175,6 +207,8 @@ class BatteryFacts:
             "reserve_soc_pct": self.reserve_soc_pct,
             "firmware": self.firmware,
             "on_grid": self.on_grid,
+            "cell_temperature_c": self.cell_temperature_c,
+            "preheat": None if self.preheat is None else self.preheat.as_dict(),
             "management": {
                 "state": self.management.state,
                 "reason": self.management.reason,
@@ -323,6 +357,47 @@ def _cell_temperature_entity(adapter: Adapter, entities: Sequence[EntityFact], b
         if entity is not None and not entity.disabled and entity.domain == "sensor":
             return entity.entity_id
     return None
+
+
+def _cell_temperature_c(entities: Sequence[EntityFact], entity_id: str | None) -> float | None:
+    """The cells' temperature now (°C) from the entity found, `None` when it reads none or not in °C."""
+    entity = next((item for item in entities if item.entity_id == entity_id), None)
+    if entity is None or not entity.available or entity.unit not in (None, "°C"):
+        return None
+    return number_from_state(entity.state)
+
+
+def _preheat(spec: PreheatSpec | None, entities: Sequence[EntityFact], battery: EntityFact) -> PreheatFacts | None:
+    """The heater's switch and schedule entities, `None` without a spec or a switch found."""
+    if spec is None:
+        return None
+    switch = find_entity(spec.enable, entities, battery)
+    if switch is None:
+        return None
+    if switch.disabled:
+        state: PreheatState = "disabled"
+    elif switch.available and switch.state in ("on", "off"):
+        state = "on" if switch.state == "on" else "off"
+    else:
+        state = "unavailable"
+    roles: dict[str, Match] = {}
+    for name, match in (("mode", spec.mode), ("advance", spec.advance), ("reserved_soc", spec.reserved_soc)):
+        if match is not None:
+            roles[name] = match
+    for number in range(1, spec.slots + 1):
+        for index, name in enumerate(("start", "end", "power")):
+            match = spec.slot(number, index)
+            if match is not None:
+                roles[f"slot_{number}_{name}"] = match
+    found: dict[str, str] = {}
+    disabled: list[str] = []
+    for name, match in roles.items():
+        entity = find_entity(match, entities, battery)
+        if entity is not None:
+            found[name] = entity.entity_id
+            if entity.disabled:
+                disabled.append(name)
+    return PreheatFacts(switch.entity_id, state, switch.device_id, found, tuple(disabled))
 
 
 def _reserve(
@@ -549,6 +624,8 @@ def battery_facts(
         plant_phase_entities=plant_phases,
         plant_phase_sign=adapter.plant_phase_sign,
         cell_temperature_entity=cell_temperature,
+        cell_temperature_c=_cell_temperature_c(entities, cell_temperature),
+        preheat=_preheat(adapter.preheat, entities, battery),
         management=management,
         hold=_control(adapter.hold, entities, battery, rated_discharge_kw),
         grid_charge=_control(adapter.grid_charge, entities, battery, rated_discharge_kw),

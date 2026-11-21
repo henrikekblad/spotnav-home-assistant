@@ -214,7 +214,7 @@ export interface ControlStartStop {
 
 /** How a current is set, if it is. `enabled` is the person's opt-in. */
 export interface ControlCurrent {
-  kind: "none" | "ocpp" | "number" | "service";
+  kind: "none" | "ocpp" | "number" | "service" | "power" | "other";
   entityId: string | null;
   service: string | null;
   enabled: boolean;
@@ -646,6 +646,8 @@ function oneOf<T extends string>(source: Record<string, unknown>, key: string, a
 }
 
 const START_STOP_KINDS = ["switch", "select", "buttons", "easee", "number_pause"] as const;
+/** `power`: a limit in kW (Sigenergy's DC charger). */
+const CURRENT_KINDS = ["none", "ocpp", "number", "service", "power"] as const;
 
 /** A kind this card knows, or `other` for one a newer backend added: it is worded, never rejected. */
 function lenientKind<T extends string>(source: Record<string, unknown>, key: string, allowed: readonly T[]): T | "other" {
@@ -712,7 +714,7 @@ function decodeControl(raw: unknown): EntityControl {
       stopOption: textOrNull(startStop, "stop_option"),
     },
     current: {
-      kind: oneOf(current, "kind", ["none", "ocpp", "number", "service"] as const),
+      kind: lenientKind(current, "kind", CURRENT_KINDS),
       entityId: textOrNull(current, "entity_id"),
       service: textOrNull(current, "service"),
       enabled: flag(current, "enabled"),

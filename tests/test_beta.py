@@ -32,6 +32,7 @@ from custom_components.spotnav.beta import (
 from custom_components.spotnav.debug_bundle import async_build_debug_bundle
 from custom_components.spotnav.hardware_test import HardwareTest, allowance, result_of
 from custom_components.spotnav.runtime import domain_data
+from custom_components.spotnav.site.charger_test_hold import ChargerTestHold
 from custom_components.spotnav.support_report import ReportResult
 
 from .world import admin, non_admin, setup_charger_and_site, ws_call
@@ -297,8 +298,31 @@ class _FakeHeat:
         return None if self.test is None else dict(self.test)
 
 
-async def _runner(hass: HomeAssistant, battery: Any, heat: Any) -> HardwareTest:
-    site = SimpleNamespace(entry_id="site_1", battery_control=battery, heat_control=heat)
+class _FakeCharger:
+    """A charger the test's hold reads and stops (`site/charger_test_hold.py`)."""
+
+    def __init__(self, on: bool = False) -> None:
+        self.adapter = SimpleNamespace(platform="chargeamps", path=SimpleNamespace(kind="switch"))
+        self.ocpp_target = None
+        self.charging = self.charge_control_on = on
+        self.control_confirmed_off = not on
+        self.start_pending = self.stop_settling = False
+        self.stops = self.rearms = 0
+
+    async def async_stop(self, **_kwargs: Any) -> None:
+        self.stops += 1
+
+    async def async_rearm(self) -> None:
+        self.rearms += 1
+
+
+async def _runner(
+    hass: HomeAssistant, battery: Any, heat: Any, chargers: dict[str, _FakeCharger] | None = None
+) -> HardwareTest:
+    chargers = chargers or {}
+    site = SimpleNamespace(entry_id="site_1", battery_control=battery, heat_control=heat, hass=hass,
+                           config={"charger_entry_ids": list(chargers)})
+    site.charger_test_hold = ChargerTestHold(site, controller_for=chargers.get)  # type: ignore[arg-type]
     runner = HardwareTest(hass, site)  # type: ignore[arg-type]
     await runner.async_load()
     return runner
@@ -455,6 +479,134 @@ async def test_a_running_test_is_ended_at_the_unload(hass: HomeAssistant) -> Non
     assert runner.record is not None and runner.record["stopped"] == "unload"
 
 
+async def test_a_charging_car_blocks_a_test_with_a_battery_part(hass: HomeAssistant) -> None:
+    car = _FakeCharger(on=True)
+    runner = await _runner(hass, _FakeBattery(), _FakeHeat(), {"car": car})
+    assert runner.view()["blocked"] == "car_charging"
+    assert await runner.async_start() == "car_charging"
+    assert runner.site.charger_test_hold.active is False
+    # Without a battery part to run, a car charging is no reason.
+    heat_only = await _runner(hass, _FakeBattery(refusal="no_battery_control"), _FakeHeat(), {"car": car})
+    assert heat_only.view()["blocked"] is None
+    car.charging = car.charge_control_on = False
+    assert runner.view()["blocked"] is None
+
+
+async def test_the_chargers_are_held_while_the_battery_part_runs_and_let_go_by_every_path(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def ran(runner: HardwareTest, end: Any) -> list[bool]:
+        car = runner.site.charger_test_hold._controller("car")  # noqa: SLF001
+        seen: list[bool] = []
+        battery = runner.site.battery_control
+        progress = battery.hardware_test_progress
+
+        def watched() -> dict[str, Any]:
+            seen.append(runner.site.charger_test_hold.holds("car"))
+            return progress()
+
+        battery.hardware_test_progress = watched
+        assert await runner.async_start() is None
+        assert runner.site.charger_test_hold.holds("car") is True
+        runner.site.charger_test_hold.note_refused("car")
+        await end(runner)
+        await hass.async_block_till_done()
+        assert runner.site.charger_test_hold.active is False, "let go"
+        assert car.rearms == (0 if end is _unload else 1)
+        return seen
+
+    async def _done(runner: HardwareTest) -> None:
+        await _finished(runner)
+
+    async def _stopped(runner: HardwareTest) -> None:
+        await asyncio.sleep(0)
+        await runner.async_stop("stopped")
+
+    async def _unload(runner: HardwareTest) -> None:
+        await asyncio.sleep(0)
+        await runner.async_shutdown()
+
+    seen = await ran(await _runner(hass, _FakeBattery(), _FakeHeat(), {"car": _FakeCharger()}), _done)
+    assert seen and all(seen), "held at every look of the battery part"
+    failed = _FakeBattery({"hold": "ignored", "charge": "obeyed", "discharge_house": "obeyed", "normal": "restored"})
+    await ran(await _runner(hass, failed, _FakeHeat(slow=True), {"car": _FakeCharger()}), _done)
+    await ran(await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True), {"car": _FakeCharger()}), _stopped)
+    await ran(await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True), {"car": _FakeCharger()}), _unload)
+    monkeypatch.setattr(hardware_test, "MAX_TEST", timedelta(seconds=0))
+    await ran(await _runner(hass, _FakeBattery(slow=True), _FakeHeat(slow=True), {"car": _FakeCharger()}), _done)
+
+
+async def test_a_charge_begun_during_the_test_is_stopped(hass: HomeAssistant) -> None:
+    car = _FakeCharger()
+    battery = _FakeBattery(slow=True)
+    runner = await _runner(hass, battery, _FakeHeat(slow=True), {"car": car})
+    assert await runner.async_start() is None
+    car.charging = car.charge_control_on = True
+    for _ in range(5):
+        await asyncio.sleep(0)
+    await hass.async_block_till_done()
+    assert car.stops == 1
+    await runner.async_stop("stopped")
+
+
+@pytest.mark.parametrize("end", ["done", "stop", "unload", "deadline"])
+async def test_an_ocpp_charger_is_out_of_service_during_the_battery_part_and_set_back_by_every_path(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, end: str
+) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    from custom_components.spotnav.site import charger_test_hold
+
+    monkeypatch.setattr(charger_test_hold, "CONFIRM_S", 0.0)
+    switch = "switch.halo_charger_availability"
+    er.async_get(hass).async_get_or_create(
+        "switch", "ocpp", "switch.ocpp.halo_charger.availability", suggested_object_id="halo_charger_availability"
+    )
+    hass.states.async_set(switch, "on")
+    sent: list[str] = []
+
+    def handler(to: str):
+        async def handle(call: Any) -> None:
+            sent.append(to)
+            hass.states.async_set(switch, to)
+
+        return handle
+
+    hass.services.async_register("switch", "turn_off", handler("off"))
+    hass.services.async_register("switch", "turn_on", handler("on"))
+    ocpp = _FakeCharger()
+    ocpp.ocpp_target = SimpleNamespace(charge_point_id="halo_charger", connector_id=1)
+    if end == "deadline":
+        monkeypatch.setattr(hardware_test, "MAX_TEST", timedelta(seconds=0))
+    slow = end != "done"
+    runner = await _runner(hass, _FakeBattery(slow=slow), _FakeHeat(slow=slow), {"ocpp": ocpp})
+    assert await runner.async_start() is None
+    await hass.async_block_till_done()
+    if end in ("done", "deadline"):
+        await _finished(runner)
+    elif end == "stop":
+        await runner.async_stop("stopped")
+    else:
+        await runner.async_shutdown()
+    await hass.async_block_till_done()
+    assert sent and sent[0] == "off" and sent[-1] == "on", sent
+    assert hass.states.get(switch).state == "on"
+    assert runner.site.charger_test_hold.unavailable_kept == []
+
+
+async def test_a_battery_part_that_does_not_start_lets_the_chargers_go_at_once(hass: HomeAssistant) -> None:
+    class _Refusing(_FakeBattery):
+        async def async_hardware_test_start(self) -> str | None:
+            return "verifying"
+
+    runner = await _runner(hass, _Refusing(), _FakeHeat(slow=True), {"car": _FakeCharger()})
+    assert await runner.async_start() is None
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert runner.site.charger_test_hold.active is False
+    await runner.async_stop("stopped")
+
+
 # ---- the card's contract: `spotnav/beta`'s answers (`tests/fixtures/beta/`, `SPOTNAV_WRITE_FIXTURES=1` rewrites them)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "beta"
@@ -508,3 +660,31 @@ async def test_the_card_s_fixtures(hass: HomeAssistant, freezer, monkeypatch: py
     freezer.move_to("2026-12-04T03:00:00+01:00")
     _write_or_compare("ended.json", _answer(beta, None))
     await beta.async_stop()
+
+
+async def test_on_a_stop_the_chargers_are_let_go_only_after_the_battery_was_handed_back(hass: HomeAssistant) -> None:
+    """The re-review (2026-11-21): on a cancel the battery part's own `finally` let the chargers go before the run
+    handed the battery back."""
+    order: list[str] = []
+    battery = _FakeBattery(slow=True)
+    stop = battery.async_hardware_test_stop
+
+    async def stopped(reason: str) -> None:
+        order.append(f"battery:{reason}")
+        await stop(reason)
+
+    battery.async_hardware_test_stop = stopped  # type: ignore[method-assign]
+    runner = await _runner(hass, battery, _FakeHeat(slow=True), {"car": _FakeCharger()})
+    hold = runner.site.charger_test_hold
+    release = hold.release
+
+    def released() -> list[str]:
+        order.append("chargers")
+        return release()
+
+    hold.release = released  # type: ignore[method-assign]
+    assert await runner.async_start() is None
+    await asyncio.sleep(0)
+    await runner.async_stop("stopped")
+    assert order and order[0].startswith("battery:"), order
+    assert "chargers" in order and hold.active is False

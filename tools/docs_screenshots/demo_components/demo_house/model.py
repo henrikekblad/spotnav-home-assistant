@@ -84,8 +84,13 @@ class Model:
             soc += b * STEP_S / 3600 / CAPACITY_KWH * 100
             grid = house + heat + b - sun
             self.t.append(at)
-            self.sun.append(sun); self.house.append(house); self.heat.append(heat)
-            self.batt.append(b); self.grid.append(grid); self.soc.append(soc); self.t_out.append(t_out)
+            self.sun.append(sun)
+            self.house.append(house)
+            self.heat.append(heat)
+            self.batt.append(b)
+            self.grid.append(grid)
+            self.soc.append(soc)
+            self.t_out.append(t_out)
             living = 21.0 + 0.35 * math.sin(2 * math.pi * (hour - 9) / 24) + 0.12 * _noise(i + 21) - 0.03 * max(0, 3 - t_out)
             self.rooms.append((living, living - 1.1 + 0.1 * _noise(i + 4), living - 0.4 + 0.1 * _noise(i + 8)))
         hour_k = STEP_S / 3600

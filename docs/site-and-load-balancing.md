@@ -115,7 +115,8 @@ For every phase the site works out what is left for chargers:
 
 where *other load* is the site's measured total minus the chargers' own measured current on
 that phase. Each charger gets a proposed current from the headroom on its phases, in one pass,
-between the charger's minimum (6 A by default) and its own limits.
+between the charger's minimum (6 A by default; a Sigenergy DC charger's is its lowest power, 1.5 kW,
+2.17 A at 400 V) and its own limits.
 
 Measurements older than the *maximum measurement age* (default 120 s) are not trusted. On a site that
 derives its current from power, a phase's active power that has not changed for longer than that

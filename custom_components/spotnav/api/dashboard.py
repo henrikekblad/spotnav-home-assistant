@@ -288,8 +288,8 @@ class CapturedLive:
 
     charging: bool
     schedule_active: bool
-    requested_current_a: int | None
-    setpoint_current_a: int | None
+    requested_current_a: int | float | None
+    setpoint_current_a: int | float | None
     measured_current_a: float | None
     #: The charger's own scheduler or load balancer holds the charge (Easee's waiting statuses).
     held_by_charger: bool = False
@@ -2087,8 +2087,9 @@ def serialize_live(capture: CapturedDashboard) -> dict[str, Any]:
     return {
         "charging": live.charging,
         "schedule_active": live.schedule_active,
-        "requested_current_a": _count(live.requested_current_a),
-        "setpoint_current_a": _count(live.setpoint_current_a),
+        # Whole amps, or a DC charger's floor, which need not be a whole ampere (2.17 A at 400 V).
+        "requested_current_a": finite_number(live.requested_current_a),
+        "setpoint_current_a": finite_number(live.setpoint_current_a),
         "measured_current_a": finite_number(live.measured_current_a),
     }
 

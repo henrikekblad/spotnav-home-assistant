@@ -58,6 +58,7 @@ from ..const import (
     MODE_OCPP,
 )
 from ..repairs import CoreFailureRepairs
+from ..util import amps_at_floor
 from ..vehicles.ocpp_identity import (
     connector_sensor_entity_id,
     CURRENT_IMPORT_KEY,
@@ -73,6 +74,7 @@ from .car_plug_fallback import CarPlugFallback, plan_vehicle, SOURCE_CAR_PLUG
 from .charger_entities import charger_conflicts, charger_is_disabled, FixableConflict
 from .power_energy import integrated_energy_unique_id, read_power_w
 from .chargers.adapter import build_adapter, ChargerAdapter, PRE_SPOTNAV_CURRENT_STORE_KEY, PreSpotnavCurrent
+from .chargers.sigenergy import EVDC_START_MARGIN_A
 from .charger_profiles import PATH_BUTTONS_TOGGLE
 from .chargers.base import (
     ASSIGN_ASSIGNED,
@@ -625,12 +627,16 @@ def _charger_maximum_from_state(state: State | None) -> int | None:
     return amps
 
 
-def _validate_stored_amps(value: Any) -> int | None:
-    """A value read back from storage as validated whole amps, or `None`."""
+def _validate_stored_amps(value: Any) -> int | float | None:
+    """A value read back from storage as validated amps, or `None`: whole amps, or a DC charger's floor below the
+    6 A of an AC charger, which need not be a whole ampere (`ChargingController.min_current_a`), kept to the
+    hundredth. Any other fractional value is not one SpotNav writes, and is refused."""
     value = _safe_float(value)
-    if value is None or value != int(value):
+    if value is None:
         return None
-    amps = int(value)
+    if value != int(value) and not value < DEFAULT_MIN_CURRENT_A:
+        return None
+    amps: int | float = int(value) if value == int(value) else round(value, 2)
     if not ABSOLUTE_MIN_AMPS <= amps <= ABSOLUTE_MAX_AMPS:
         return None
     return amps
@@ -809,6 +815,10 @@ class ChargingController:
         # Where a current written outside the site's regulator is told to the site (`set_start_cap`), so its
         # damper and step guard measure the next decision against what is really on the charger.
         self._site_record: Callable[[float, str], None] | None = None
+        # The site's hold of its chargers during a person's hardware test (`set_test_hold`): while it holds, no start
+        # of any kind goes out, and the site is told of each one refused.
+        self._test_hold: Callable[[], bool] | None = None
+        self._test_hold_refused: Callable[[], None] | None = None
         self._last_connected: bool | None = None
         # The charge clock (`charging_seconds`): seconds counted while charging, and since when it runs.
         self._charge_clock_s = 0.0
@@ -3588,7 +3598,31 @@ class ChargingController:
         self._start_reserve = reserve if cap is not None else None
         self._site_record = record if cap is not None else None
 
-    def _site_capped_amps(self, amps: int) -> int:
+    def set_test_hold(self, holds: Callable[[], bool] | None, *, refused: Callable[[], None] | None = None) -> None:
+        """Set (or clear) the site's hold of its chargers during a person's hardware test (`site/charger_test_hold.py`):
+        while `holds` answers true, no start of this charger goes out (`_held_for_test`), and `refused` is told."""
+        self._test_hold = holds
+        self._test_hold_refused = refused if holds is not None else None
+
+    def _held_for_test(self) -> bool:
+        """Whether the site's hardware test holds this charger stopped now. A probe that fails holds nothing: the
+        charger then stays counted at its current in the home battery's cap, which is the side that is safe."""
+        holds = self._test_hold
+        if holds is None:
+            return False
+        try:
+            held = bool(holds())
+        except Exception:  # noqa: BLE001 - see the docstring
+            _LOGGER.debug("SpotNav charger %s: the hardware test's hold could not be read", self.entry_id, exc_info=True)
+            return False
+        if held and self._test_hold_refused is not None:
+            try:
+                self._test_hold_refused()
+            except Exception:  # noqa: BLE001 - only what is armed again at the release
+                _LOGGER.debug("Telling the site about a refused start failed", exc_info=True)
+        return held
+
+    def _site_capped_amps(self, amps: float) -> float:
         """`amps`, but never more than the site allows this charger now (`set_start_cap`), and never
         below the charger's minimum on that account: a write that is not a start cannot be refused (the
         charger may already run on a cleared limit), and the site's regulator lowers or pauses from there,
@@ -3596,7 +3630,17 @@ class ChargingController:
         allowance = self._start_allowance_a()
         if allowance is None:
             return amps
-        return min(amps, max(int(DEFAULT_MIN_CURRENT_A), int(allowance)))
+        floor = self.min_current_a
+        return min(amps, max(amps_at_floor(floor, floor), amps_at_floor(allowance, floor)))
+
+    @staticmethod
+    def _start_needs_a(floor: float) -> float:
+        """The least allowance a capped start goes out at: the floor, and for a floor below 6 A (a DC charger's, given a
+        power whose grid draw at the lowest limit is not yet measured) `EVDC_START_MARGIN_A` more, so a start at the
+        floor never takes the whole allowance."""
+        if floor < DEFAULT_MIN_CURRENT_A:
+            return floor + EVDC_START_MARGIN_A
+        return floor
 
     def _tell_site(self, amps: float, reason: str) -> None:
         """Tell the site a current that went to the charger outside its regulator. Never raises."""
@@ -3915,6 +3959,12 @@ class ChargingController:
           runs when the setting is turned off is left as it is (no extra interruption).
         """
         self._start_held_back = False
+        if self._held_for_test():
+            # A person's hardware test holds every charger of the site stopped (`site/charger_test_hold.py`): nothing
+            # goes out, as a start whose control is unavailable. Its plan is armed again when the hold ends.
+            _LOGGER.debug("SpotNav charger %s: not started, a hardware test of the site runs", self.entry_id)
+            self._notify()
+            return False
         if manual or cause != "solar" or not self.phase_switching_option:
             await self._restore_three_phases_locked()
         # Whatever balancing paused before is over (this start is a charge of its own), and a person's start overrules
@@ -3970,11 +4020,12 @@ class ChargingController:
                     # `min(request, allowance)`, and no start at all below the floor (the request stays on
                     # record, so the regulator resumes the charge when headroom returns).
                     allowance = self._start_allowance_a() if capped else None
-                    if allowance is not None and allowance < DEFAULT_MIN_CURRENT_A:
+                    floor = self.min_current_a
+                    if allowance is not None and allowance < self._start_needs_a(floor) - 1e-9:
                         too_low = allowance
                     else:
                         if allowance is not None:
-                            explicit_amps = min(explicit_amps, int(allowance))
+                            explicit_amps = min(explicit_amps, amps_at_floor(allowance, floor))
                             # Taken now, before the next await: a start beside this one in the same tick on the
                             # same site reads the allowance less this.
                             self._reserve_start(explicit_amps)
@@ -4003,7 +4054,7 @@ class ChargingController:
                     self._reserve_start(None)
                 raise
             if too_low is not None:
-                await self._hold_start_for_room(manual, cause, too_low, DEFAULT_MIN_CURRENT_A)
+                await self._hold_start_for_room(manual, cause, too_low, self._start_needs_a(self.min_current_a))
                 return False
         elif self.current_control == CURRENT_CONTROL_POWER and self._writes_current_at_start and not self._control_on:
             # No current named: the limit the charger carries must still be within what it may draw.
@@ -4189,13 +4240,14 @@ class ChargingController:
         Never more than `cap_a`, the amps the person set for this charger: the sun only ever lowers a charge from
         what a plain start at those amps already allows, so this write adds no load beyond it, and the fuse stays
         as safe as with a plain start; and, like a start, never more than the site allows now (`_site_capped_amps`),
-        told to the site once written. Never below the 6 A floor (below it the sun stops instead). Under the
+        told to the site once written. Never below the charger's floor (`min_current_a`; below it the sun stops
+        instead). Under the
         operation lock, so it never lands inside a Start, a Stop or a plan replacement, and never while a stop is on
         its way or after shut-down. Through the adapter's own policy for repeated writes (`MODULATION_WRITES`): its
         rate limit, a paused charger that would be lifted by a current, a flash-stored setting.
         """
         amps = min(amps, cap_a)
-        if amps < DEFAULT_MIN_CURRENT_A:
+        if amps < self.min_current_a - 1e-9:
             return ASSIGN_BELOW_MINIMUM
         async with self._lock:
             if self._shut_down:
@@ -4277,8 +4329,8 @@ class ChargingController:
         The write goes through the platform's policy and can be refused; a refusal is then judged against
         the fuse:
 
-        * a proposal below the 6 A floor is a pause: the charge is stopped (OCPP keeps its old
-          behaviour of sending nothing);
+        * a proposal below the charger's floor (`min_current_a`, 6 A on AC) is a pause: the charge is stopped
+          (OCPP keeps its old behaviour of sending nothing);
         * a refusal when `must_lower` (an overload, or a reduction in the protection band) and the
           proposal is below what the charger is set to, or what it is set to is unknown: the charge
           is **stopped**, since nothing slower than a stop can be trusted to protect the fuse;
@@ -4294,7 +4346,7 @@ class ChargingController:
         """
         if self._shut_down:
             return RegulatedWrite(REGULATED_HELD, REGULATED_SHUT_DOWN, False)
-        if amps < DEFAULT_MIN_CURRENT_A:
+        if amps < self.min_current_a - 1e-9:
             # Below the floor no valid pilot current exists, for OCPP as for any charger: the only
             # way to give the car less is to stop it (OCPP sends nothing for such a value).
             return await self._regulated_stop("pause")
@@ -4453,7 +4505,7 @@ class ChargingController:
             # Nothing says balancing wrote here and the charger cannot be read: unproven either way,
             # and writing to a charger we never lowered is not ours to do. Say so, do not claim.
             return CurrentRestore(RESTORE_FAILED, ASSIGN_READ_FAILED, None, target)
-        outcome = await self._async_assign_current_outcome(int(target), verify=True)
+        outcome = await self._async_assign_current_outcome(amps_at_floor(target, self.min_current_a), verify=True)
         if outcome == ASSIGN_ASSIGNED:
             return CurrentRestore(RESTORE_RESTORED, None, actual, target)
         return CurrentRestore(RESTORE_FAILED, outcome, actual, target)
@@ -4486,7 +4538,7 @@ class ChargingController:
         if actual is None and not lowered_by_balancing:
             return CurrentRestore(RESTORE_FAILED, ASSIGN_READ_FAILED, None, target)
         outcome = await self._async_assign_current_outcome(
-            int(target), verify=True, reason=WRITE_RESTORE
+            amps_at_floor(target, self.min_current_a), verify=True, reason=WRITE_RESTORE
         )
         if outcome in IN_EFFECT_OUTCOMES and outcome != ASSIGN_UNCONFIRMED:
             return CurrentRestore(RESTORE_RESTORED, None, actual, target)
@@ -5309,6 +5361,12 @@ class ChargingController:
         return self._control_on
 
     @property
+    def control_confirmed_off(self) -> bool:
+        """Whether the charger reads stopped now: its charge control readable and off, and no status says it charges
+        (`_control_observation` false). Unreadable is not stopped."""
+        return self._control_observation is False and not self.charging
+
+    @property
     def _control_observation(self) -> bool | None:
         """`_control_on` as an observation: `None` while the charge control cannot be read
         (missing, unavailable or unknown) and no status says the charger is charging, so a charge
@@ -5347,6 +5405,14 @@ class ChargingController:
         if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
             return True
         return self.adapter.capabilities.set_current
+
+    @property
+    def min_current_a(self) -> float:
+        """The charger's floor, the lowest current it is written and below which a write is a pause: 6 A for an AC
+        charger, the lowest power as a current per phase for a charger given a power (2.17 A for a DC charger at
+        400 V, `execution/chargers/sigenergy.py`). Never read from a test double without an adapter floor: 6 A."""
+        floor = getattr(self.adapter, "min_current_a", None)
+        return floor if isinstance(floor, (int, float)) and not isinstance(floor, bool) else DEFAULT_MIN_CURRENT_A
 
     @property
     def is_switch_only(self) -> bool:

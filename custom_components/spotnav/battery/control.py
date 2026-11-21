@@ -89,12 +89,13 @@ from ..const import (
     DOMAIN,
     SOLAR_PRIORITY_CAR_FIRST,
 )
-from ..core.electric import phase_volts
+from ..core.electric import phase_volts, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.energy_statistics import async_energy_prefs, energy_statistic_ids
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.phase_peaks import MIN_READY_DAYS, Learned, plant_phase_w
 from . import gate, optin
+from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     OUTPUT_TYPE_PHASES,
@@ -137,7 +138,15 @@ from .plan_model import (
 )
 from .plan_shadow import slot_at
 from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
-from .verify import MAX_REPORTS, TEST_CHARGE_KW, Sample, Timing, Verification, phase_charge_step
+from .verify import (
+    MAX_REPORTS,
+    TEST_CHARGE_KW,
+    TEST_CHARGE_SOC_MAX_PCT,
+    Sample,
+    Timing,
+    Verification,
+    phase_charge_step,
+)
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -372,6 +381,8 @@ class BatteryControl:
         self._enabled_seen = False
         self.took_from_ai = False
         self.notes: list[dict[str, Any]] = []
+        #: The battery section's line about a cold battery's preheating (`preheat.py`), not kept over a restart.
+        self.preheat = PreheatWatch()
         #: Whether control ran (on, verifying or a test action) at the end of the last look (`_note_stopped`).
         self._running = False
         self.trial: Trial | None = None
@@ -797,6 +808,7 @@ class BatteryControl:
         options = self.options()
         await self._async_read_sources(now)
         self._transitions(options, now)
+        self._preheat_look(now, options)
         trial = self.trial
         withdrawn = self._takeover_withdrawn(options)
         if trial is not None and (
@@ -840,6 +852,15 @@ class BatteryControl:
             self._shadow_look(now, options)
         self._note_stopped(now)
         await self._async_save()
+
+    def _preheat_look(self, now: datetime, options: gate.Options) -> None:
+        """The preheating line (`preheat.PreheatWatch`) while SpotNav runs the battery; logged when it shows or
+        clears. Read only: nothing is written to the heater."""
+        controlling = self.state(options) in ("on", "verifying") or self.trial is not None
+        change = self.preheat.look(now, self.facts, controlling)
+        if change is not None:
+            self._log([{"at": now.isoformat(), "kind": f"preheat_{change[0]}", "reason": change[1],
+                        "cell_c": self.facts.cell_temperature_c}])
 
     def _takeover_withdrawn(self, options: gate.Options) -> bool:
         return self.took_from_ai and not options.ai_takeover_ack
@@ -1025,14 +1046,16 @@ class BatteryControl:
             return None
         return None if watts is None else (watts[0] / 1000.0, watts[1] / 1000.0, watts[2] / 1000.0)
 
-    def _phase_caps_kw(self, now: datetime) -> Phases:
+    def _phase_caps_kw(self, now: datetime, *, held_off: bool = False) -> Phases:
         """The HA-down cap of a grid charge on each phase (`gate.grid_charge_phase_caps_kw`) on the site's readings
-        now, by the same house peaks, chargers and margin as the balanced cap."""
+        now, by the same house peaks, chargers and margin as the balanced cap. `held_off`: a person's hardware test
+        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`)."""
         control = control_for(self.facts.brand)
         spec = None if control is None else control.phase_control
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a() + self._heat_standing_a(), house_peak_kw=self._house_peak_kw(now),
+            cars_a=self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
+            house_peak_kw=self._house_peak_kw(now),
             house_phase_peaks_a=self._phase_peaks(now) or None,
             # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
             silence_fallback_s=None if spec is None else spec.silence_fallback_s,
@@ -1265,14 +1288,15 @@ class BatteryControl:
         probe = verification.probe()
         if action == ACTION_GRID_CHARGE and probe is None:
             # The mode `charge` proves the brand's own balanced charge, under the balanced cap.
-            cap = self._grid_charge_cap_kw(now, self.options())
+            cap = self._grid_charge_cap_kw(now, self.options(), held_off=self._hw_run)
             if cap is not None and cap < gate.MIN_RATE_KW:
                 if self._phase_charge_possible():
                     # An unbalanced house leaves the balanced charge no room: a charge on the phase with the most
                     # room instead, within that phase's own HA-down cap (`verify.phase_charge_step`), after a
                     # discharge on it has shown its sign and mapping unless `per_phase` has on this firmware.
                     step = phase_charge_step(
-                        self._phase_caps_kw(now), stored_voltage_between_phases_v(self.site.config)
+                        self._phase_caps_kw(now, held_off=self._hw_run),
+                        stored_voltage_between_phases_v(self.site.config),
                     )
                     verification.charge_per_phase(
                         now, sample, step, mapped=gate.per_phase(self.report()) == "verified"
@@ -1290,7 +1314,7 @@ class BatteryControl:
         charging = probe is not None and any(value > 0 for value in probe)
         inputs = replace(
             inputs, action=action, rate_kw=rate, slot_end=None,
-            phase_caps_kw=self._phase_caps_kw(now) if charging else None, phase_probe_kw=probe,
+            phase_caps_kw=self._phase_caps_kw(now, held_off=self._hw_run) if charging else None, phase_probe_kw=probe,
             reads=self._reads(executor.control),
         )
         result = await self._async_step(executor, inputs, allowed=True)
@@ -1386,6 +1410,7 @@ class BatteryControl:
             self.verification = Verification(
                 executor, now, firmware=self.facts.firmware, modes=gate.BATTERY_MODES,
                 tried=gate.variants_tried(self.report()), timing=Timing.quick(), stop_on_fail=True,
+                charge_soc_max_pct=TEST_CHARGE_SOC_MAX_PCT,
             )
             self._hw_run = True
             self._verify_key = None
@@ -1641,21 +1666,29 @@ class BatteryControl:
         return float(fuse_a) if isinstance(fuse_a, (int, float)) and not isinstance(fuse_a, bool) else None
 
     def _grid_charge_cap_kw(
-        self, now: datetime, options: gate.Options, *, peaks: Mapping[str, float] | None | bool = True
+        self, now: datetime, options: gate.Options, *, peaks: Mapping[str, float] | None | bool = True,
+        held_off: bool = False,
     ) -> float | None:
         """The HA-down grid charge cap (`gate.grid_charge_cap_kw`) on the site's readings now. `peaks`: the house's
         per-phase peaks to reckon with instead of the ones in use now (`_phase_peaks`), `None` for the conservative
-        rule; for the status, which says what the cap would be either way."""
+        rule; for the status, which says what the cap would be either way. `held_off`: a person's hardware test
+        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`)."""
         if peaks is True:
             peaks = self._phase_peaks(now)
         control = control_for(self.facts.brand)
         guards = options.import_limit_acts and self._import_limit_refusal() is None
-        import_limit_kw = self._import_limit_kw(control) if guards else None
+        # Held per phase: every reading the recipe's fact needs, read again now (each start and each look).
+        per_phase = self._import_limit_phase_refusal() is None
+        import_limit_kw = self._import_limit_kw(control) if guards or per_phase else None
+        spec = None if control is None else control.import_limit_phases
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a() + self._heat_standing_a(), house_peak_kw=self._house_peak_kw(now),
-            plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
+            cars_a=self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
+            house_peak_kw=self._house_peak_kw(now), plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
+            import_limit_per_phase=per_phase, phase_output_max_kw=None if spec is None else spec.phase_output_max_kw,
+            # The per-phase rule only: the site's own safety margin as the person set it (`gate`'s note on it).
+            phase_margin_a=self._site_margin_a(),
         )
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
@@ -1721,6 +1754,45 @@ class BatteryControl:
                     return "dc_charger"
         return None
 
+    def _site_margin_a(self) -> float:
+        """The site's own safety margin (A per phase) as stored now, for the per-phase import-limit rule only."""
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        return stored_safety_margin_a(entry.data if entry is not None else self.site.config)
+
+    def _import_limit_phase_refusal(self) -> str | None:
+        """Why the plant's own import limit cannot be taken as held **per phase** now (`commands.ImportLimitPhases`),
+        as a stable code; `None` when it can. Fails closed: anything unread refuses. `not_supported` (the recipe states
+        no such hold), `not_field_tested` (the owner's on-site test is not recorded in the recipe), `not_said_to_act`
+        (the site's own `battery_control_import_limit_acts` is off: the recipe's fact is one plant's test, so each site
+        still says that its plant's limit acts, as for the total rule; no setting of its own), every reason of the
+        total rule (`_import_limit_refusal`: a plant not three-phase, another inverter's sun, the sources unread, a
+        charger run through the plant), `output_type_unread` (the plant's Output Type reads nothing: the brand's
+        default is not taken for it), `output_type_not_supported` (it reads other than the one the switch acts with,
+        `ImportLimitPhases.output_type`: Sigenergy's L1/L2/L3/N, not L1/L2/L3), `phase_control_off` (the switch
+        that shares the plant's power per phase reads anything but on, or nothing) and `grid_sensor_offline` (the
+        plant's grid sensor, which the limit regulates on, reads anything but connected, or nothing)."""
+        control = control_for(self.facts.brand)
+        spec = None if control is None else control.import_limit_phases
+        if control is None or spec is None or control.import_limit is None:
+            return "not_supported"
+        if not spec.field_tested:
+            return "not_field_tested"
+        if not self.options().import_limit_acts:
+            return "not_said_to_act"
+        refusal = self._import_limit_refusal()
+        if refusal is not None:
+            return refusal
+        output = read_plant_entity(self.hass, self.site.config, control.output_type)
+        if output is None:
+            return "output_type_unread"
+        if str(output).lower() != spec.output_type:
+            return "output_type_not_supported"
+        if read_plant_entity(self.hass, self.site.config, spec.switch) != "on":
+            return "phase_control_off"
+        if read_plant_entity(self.hass, self.site.config, spec.grid_sensor) != spec.sensor_online:
+            return "grid_sensor_offline"
+        return None
+
     def import_limit_guards(self, *, without_charger: str | None = None) -> bool:
         """Whether the plant's own import limit guards the fuse **now** (`gate.import_limit_holds`), for a charger
         that runs through the plant (`execution/chargers/sigenergy.py`): the person said it acts, it reads a value,
@@ -1754,7 +1826,10 @@ class BatteryControl:
         fuse with the chargers' last currents as they are now), `suggested_kw` (the same with no car charging, rounded
         down to 0.1 kW: what the person may set; SpotNav never writes it), `holds` (shown to act and at most
         `max_kw`: the rule in force) and `why` (why the site's sources refuse the rule whatever the limit reads,
-        `_import_limit_refusal`). `None` for a brand without such a limit."""
+        `_import_limit_refusal`). For a brand whose limit can be held per phase (`commands.ImportLimitPhases`) also
+        `per_phase`: `max_kw` (`gate.import_limit_phase_max_kw`, `None` where no value guards), `holds` and `why`
+        (`_import_limit_phase_refusal`); `holds` above is then true when either rule is in force. `None` for a brand
+        without such a limit."""
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
             return None
@@ -1770,7 +1845,7 @@ class BatteryControl:
         most = gate.import_limit_max_kw(fuse_a, volts, cars_a=cars_a, **rule)
         free = gate.import_limit_max_kw(fuse_a, volts, cars_a=0.0, **rule)
         suggested = None if free is None else math.floor(free * 10.0 + 1e-9) / 10.0
-        return {
+        block: dict[str, Any] = {
             "value_kw": None if value is None else round(value, 3),
             "max_kw": None if most is None else round(most, 2),
             "suggested_kw": None if suggested is None or suggested < gate.MIN_RATE_KW else suggested,
@@ -1778,6 +1853,24 @@ class BatteryControl:
             and gate.import_limit_holds(value, fuse_a, volts, cars_a=cars_a, **rule),
             "why": refusal,
         }
+        spec = control.import_limit_phases
+        if spec is None:
+            return block
+        phase_refusal = self._import_limit_phase_refusal()
+        output_kw = spec.phase_output_max_kw
+        phase_rule = {**rule, "margin_a": self._site_margin_a()}
+        phase_most = gate.import_limit_phase_max_kw(
+            fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **phase_rule
+        )
+        phase_holds = phase_refusal is None and gate.import_limit_phase_holds(
+            value, fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **phase_rule
+        )
+        # `holds`: the plant's limit guards the fuse now by either rule (the cap is lifted); `per_phase` says which.
+        block["holds"] = block["holds"] or phase_holds
+        block["per_phase"] = {
+            "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds, "why": phase_refusal,
+        }
+        return block
 
     def _learned(self, now: datetime) -> Learned | None:
         """The site's learned per-phase house peaks (`site/phase_peaks.py`), `None` when it keeps none."""
@@ -1898,16 +1991,26 @@ class BatteryControl:
         volts = phase_volts(volts_between_phases)
         return [max(-float(value), 0.0) / volts for value in signed]  # type: ignore[arg-type]
 
-    def _cars_allowed_a(self, *, without: str | None = None) -> float:
+    def _cars_allowed_a(self, *, without: str | None = None, held_off: bool = False) -> float:
         """What the site's chargers may draw per phase if nothing writes them again (A, summed): each one's last
         current (`charger_allowed_a`), `ASSUMED_CURRENT_A` when it is not known; infinite (no grid charge) when the
-        chargers cannot be read. `without`: a charger left out (`import_limit_guards`)."""
+        chargers cannot be read. `without`: a charger left out (`import_limit_guards`).
+
+        `held_off` (only while a person's hardware test runs, `_async_verify`): a charger the test's hold keeps
+        stopped counts 0 A where it cannot draw with Home Assistant gone (`ChargerTestHold.counts_nothing`: the hold
+        on, and either an OCPP charger out of service by its own report and not charging, or the charger read
+        stopped with its stop a stored setting that holds every later session off). Every other charger keeps its
+        current, an Easee and one on buttons among them: their stop ends the session only, and the next plug-in may
+        charge with nobody there to stop it."""
         from ..execution.controller import ASSUMED_CURRENT_A  # noqa: PLC0415 - the charger side imports the site
 
+        hold = getattr(self.site, "charger_test_hold", None) if held_off and self._hw_run else None
         try:
             total = 0.0
             for charger_entry_id in self.site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
                 if charger_entry_id == without:
+                    continue
+                if hold is not None and hold.counts_nothing(charger_entry_id):
                     continue
                 amps = self.site.charger_allowed_a(charger_entry_id)
                 total += float(ASSUMED_CURRENT_A) if amps is None else max(amps, 0.0)
@@ -2536,6 +2639,7 @@ class BatteryControl:
             "device_id": self._settings_device(),
             "enable_entities": self.enable_entities(),
             "notes": [dict(note) for note in self.notes],
+            "preheat": self.preheat.status(self.facts),
             "trial": None if self.trial is None else self.trial.as_dict(),
             "grid_charge_cap": self._cap_status(dt_util.now(), options),
             "per_phase": self._per_phase_block(dt_util.now(), options),
@@ -2585,6 +2689,7 @@ class BatteryControl:
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
             "log": list(self.log),
+            "preheat": self.preheat.as_dict(),
             "write_budget": self._write_budget_block(),
             "phase_backfill": self._backfill_status(),
         }

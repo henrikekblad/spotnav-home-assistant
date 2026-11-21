@@ -140,6 +140,11 @@ class WaterHeaterControl:
         self.want: Want | None = None
         self.metered = False
         self.power_sensor: str | None = None
+        #: The meter that has been seen at `FULL_DRAW_W` or more once, `{entity, sensor}`: a meter on a contactor's coil
+        #: never is, and then the water heater is no more metered than one without a meter.
+        self.meter_seen: dict[str, str] | None = None
+        #: A meter is there but has not been seen drawing the element's power yet.
+        self.meter_waiting = False
         self.daily: list[float] = []
         self._history_at: datetime | None = None
         self._draws: deque[float] = deque(maxlen=DRAW_SAMPLES)
@@ -164,6 +169,7 @@ class WaterHeaterControl:
             "paused_until": _iso(self.paused_until),
             "paused_reason": self.paused_reason,
             "kw": self.kw,
+            "meter_seen": None if self.meter_seen is None else dict(self.meter_seen),
             "rules": self.rules.kept.as_dict(),
         }
 
@@ -176,6 +182,12 @@ class WaterHeaterControl:
         self.paused_until = aware_instant(raw.get("paused_until"))
         self.paused_reason = raw.get("paused_reason") if isinstance(raw.get("paused_reason"), str) else None
         self.kw = finite_number(raw.get("kw"))
+        seen = raw.get("meter_seen")
+        self.meter_seen = (
+            {"entity": seen["entity"], "sensor": seen["sensor"]}
+            if isinstance(seen, dict) and isinstance(seen.get("entity"), str) and isinstance(seen.get("sensor"), str)
+            else None
+        )
         self.rules = Rules(Kept.from_dict(raw.get("rules")))
         if self.held_off:
             # Home Assistant stopped while SpotNav held the switch off: on before anything else.
@@ -317,6 +329,7 @@ class WaterHeaterControl:
             if not await self._async_release(now, "switch_changed"):
                 return
             self.entity, self.pending, self.trial, self._foreign, self._seen_on = None, None, None, None, False
+            self.meter_seen = None
             self.rules = Rules(Kept(last_full=None))
         if switch is None:
             self.state, self.reason, self.want = STATE_OFF, None, None
@@ -325,7 +338,13 @@ class WaterHeaterControl:
 
         read = self._read(switch)
         self.power_sensor, power = self._power(switch)
-        self.metered = self.power_sensor is not None
+        if power is not None and power >= FULL_DRAW_W and self.power_sensor is not None:
+            self.meter_seen = {"entity": switch, "sensor": self.power_sensor}
+        elif self.meter_seen is not None and (self.meter_seen["entity"] != switch or self.meter_seen["sensor"] != self.power_sensor):
+            # Another meter: it has to show the element's draw itself.
+            self.meter_seen = None
+        self.metered = self.power_sensor is not None and self.meter_seen is not None
+        self.meter_waiting = self.power_sensor is not None and not self.metered
         tank_sensor = None if heater is None else heater.tank_sensor
         tank_c = self._tank(tank_sensor)
         if power is not None and power >= FULL_DRAW_W:
@@ -654,6 +673,7 @@ class WaterHeaterControl:
             "name": heater.entity_id if state is None else state.name,
             "on": self._read(heater.entity_id),
             "metered": self.metered,
+            "meter_waiting": self.meter_waiting,
             "mode": self.mode(config),
             "kw": None if self.kw is None else round(self.kw, 2),
             "state": self.state if heater.control else STATE_OFF,
@@ -681,6 +701,7 @@ class WaterHeaterControl:
             "kept": self.stored(),
             "mode": mode,
             "power_sensor": self.power_sensor,
+            "meter_waiting": self.meter_waiting,
             "kw": self.kw,
             "need_kwh": None if mode == MODE_UNMETERED else (None if size.night_kwh is None else round((size.night_kwh or 0) + (size.day_kwh or 0), 3)),
             "daily_kwh": [round(kwh, 3) for kwh in self.daily],

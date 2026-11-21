@@ -252,7 +252,7 @@ async def test_solar_starts_at_the_chargers_start_minimum_and_runs_down_to_the_f
 
     from custom_components.spotnav.execution.solar_execution import SolarExecutionCoordinator
 
-    site = SimpleNamespace(config={})
+    site = SimpleNamespace(config={}, charger_min_current_a=lambda _charger_entry_id: 6.0)
 
     def solar_for(platform: str):
         ids = register_shape(hass, SHAPES[platform], suffix=platform)
