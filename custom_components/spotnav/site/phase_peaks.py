@@ -54,6 +54,21 @@ days count below: spread over the day, the history's at half weight),
 the exact peaks alone (the battery's band no longer needed). Loads that back off by themselves (a heat pump's own
 load monitor shedding its immersion heater) never peak on the meter, so they are left out as they should be.
 
+**The band's estimate, where exact minutes are kept too** (`learned`). What the battery hid is the load of the minutes
+seen on no phase: the factor and the hidden load compare every minute's whole load (`total_all`) with the largest
+seen per phase, by the band *or* exactly (`total_counted`, `total_exact`). Against the band's minutes alone, a site
+whose plant states its per-phase power would take the very minutes it saw exactly for hidden: on one such site 6943
+of 6947 minutes were exact, the band's four night minutes read about 2 A in all, and the evening's 58 A read as
+hidden and was put on every phase, so no grid charge could run for two weeks. And the band's peaks are scaled only
+from `BAND_MIN_MINUTES` of its minutes in the window; from fewer (a few minutes where the plant's reading lagged)
+there is nothing to scale from, and its peaks count as read. A peak below nought (the band's few minutes reading an
+export) counts as nought and never feeds the factor. Why the cap stays safe: each phase's peak is never below its
+exact peak, nor below the band's own reading (both with `MARGIN_A`); the band's minutes are scaled wherever they are
+enough to carry the learning (`MIN_READY_DAYS` needs days of at least `DAY_MINUTES` counted minutes, so a site the
+plant's per-phase power does not cover always has them); and the only load left out of the hidden one is load a
+phase was seen carrying exactly. A mark kept before `total_exact` was kept has none: its exact minutes then count as
+hidden, as before (the larger cap comes as new hours are kept).
+
 **A cap that grows with the days kept** (`PhasePeaks.learned`, `extra_margin_a`). Until `MIN_READY_DAYS` days count,
 nothing learned is used: the conservative rule stays. From there until the learning is done the learned peaks count
 with a further margin on top of `MARGIN_A`, `EXTRA_MARGIN_A` at `MIN_READY_DAYS` and falling in a straight line to
@@ -143,6 +158,9 @@ READY_DAYS: Final = 14
 DAY_MINUTES: Final = 120
 #: Added to each phase's learned peak (A).
 MARGIN_A: Final = 2.0
+#: The band's minutes in the window from which its peaks are scaled for what the battery hid (see the module): fewer
+#: are no ground to scale from, and count as read.
+BAND_MIN_MINUTES: Final = DAY_MINUTES
 #: The counted days from which the learned peaks are used at all, and the further margin (A) they are used with at
 #: that many days, falling in a straight line to nothing at `READY_DAYS` (see the module for the reasoning).
 MIN_READY_DAYS: Final = 7
@@ -366,7 +384,8 @@ class _Minute:
 class HourMark:
     """One clock hour's high-water marks: per phase the largest minute counted by the battery's band (A) and the
     minutes so counted, the same for the exact minutes (`exact_a`, `exact_minutes`), the house's whole load's largest
-    minute among every minute (`total_all`) and among the band's counted ones (`total_counted`), and the heat pump's
+    minute among every minute (`total_all`), among the band's counted ones (`total_counted`) and among the exact ones
+    (`total_exact`), and the heat pump's
     per-phase peak (kW). `backfilled`: read back from the recorder's history (`site/phase_backfill.py`), not sampled
     live; `lost` then says how many of its minutes did not count because a reading's freshness could not be judged
     (`Reading.unjudged`)."""
@@ -380,6 +399,8 @@ class HourMark:
     exact_minutes: int = 0
     backfilled: bool = False
     lost: int = 0
+    #: The house's whole load's largest minute among the exact ones (`None` in a mark kept before it was kept).
+    total_exact: float | None = None
 
     @property
     def counted(self) -> int:
@@ -399,6 +420,7 @@ class HourMark:
             "heat": rounded(self.heat_kw, 3),
             "xa": rounded(self.exact_a),
             "xn": self.exact_minutes,
+            **({} if self.total_exact is None else {"xall": round(self.total_exact, 2)}),
         }
 
     @classmethod
@@ -430,6 +452,7 @@ class HourMark:
             exact_minutes=exact_minutes,
             backfilled=raw.get("h") is True,  # absent in marks kept before the backfill
             lost=lost,
+            total_exact=_finite(raw.get("xall")) if exact_minutes else None,  # absent in marks kept before it
         )
 
 
@@ -593,6 +616,8 @@ class PhasePeaks:
         if house is not None and minute.exact:
             mark.exact_a = _max_triple(mark.exact_a, house)
             mark.exact_minutes += 1
+            if total is not None:
+                mark.total_exact = _max(mark.total_exact, total)
         elif house is not None:
             mark.house_a = _max_triple(mark.house_a, house)
             mark.minutes += 1
@@ -626,6 +651,7 @@ class PhasePeaks:
         heat: Triple | None = None
         total_all: float | None = None
         total_counted: float | None = None
+        total_exact: float | None = None
         #: Per day: the minutes and the clock hours counted live, the same from the history, the history's lost
         #: minutes, the exact minutes and their clock hours either way, and the first and last counted hour (of any
         #: minutes, and of exact ones).
@@ -656,6 +682,7 @@ class PhasePeaks:
                 minutes += mark.minutes
             if exactly:
                 exact = _max_triple(exact, mark.exact_a)
+                total_exact = _max(total_exact, mark.total_exact)
                 exact_minutes += mark.exact_minutes
                 own_exact = (exact_past if mark.backfilled else exact_live).setdefault(day, [0, 0])
                 own_exact[0] += mark.exact_minutes
@@ -726,14 +753,18 @@ class PhasePeaks:
         weighted = min(float(spread), spread_live + HISTORY_DAY_WEIGHT * (spread_count - spread_live))
         # And never done on the history alone: each live day short of `READY_LIVE_DAYS` is a day short of the end.
         weighted = min(weighted, float(READY_DAYS - max(READY_LIVE_DAYS - spread_live, 0)))
+        # What the battery hid (see the module, "The band's estimate"): measured against every minute seen per phase,
+        # the band's and the exact ones, so a load the plant's per-phase power showed is not taken as hidden; scaled
+        # by the factor, and never less than the whole hidden load on that one phase. Only from enough of the band's
+        # minutes (`BAND_MIN_MINUTES`); with fewer, its peaks count as read, unscaled. A peak below nought is nought.
+        seen = _max(total_counted, total_exact)
         factor = 1.0
-        if total_all is not None and total_counted is not None:
-            factor = max(1.0, total_all / max(total_counted, 1.0))
-        # What the battery hid (see the module): scaled by the factor, and never less than the whole hidden load
-        # on that one phase.
         hidden = 0.0
-        if total_all is not None and total_counted is not None:
-            hidden = max(total_all - total_counted, 0.0)
+        scaled = minutes >= BAND_MIN_MINUTES and total_all is not None and seen is not None
+        if scaled:
+            assert total_all is not None and seen is not None
+            factor = max(1.0, total_all / max(seen, 1.0))
+            hidden = max(total_all - seen, 0.0)
         band_peaks = None if raw is None or exact_day_count >= READY_DAYS else tuple(
             max(max(value, 0.0) * factor, max(value, 0.0) + hidden) for value in raw
         )
@@ -793,6 +824,7 @@ class PhasePeaks:
                     mark.exact_a = _max_triple(mark.exact_a, kept.exact_a)
                     mark.total_all = _max(mark.total_all, kept.total_all)
                     mark.total_counted = _max(mark.total_counted, kept.total_counted)
+                    mark.total_exact = _max(mark.total_exact, kept.total_exact)
                     # A peak is kept with its minutes (a mark without them is not read): as many of each kind as
                     # either reading had, within the hour.
                     mark.exact_minutes = max(mark.exact_minutes, kept.exact_minutes)
@@ -1092,7 +1124,7 @@ class SitePhasePeaks:
 
 
 __all__: Sequence[str] = (
-    "BATTERY_BAND_W", "DAY_MINUTES", "EXTRA_MARGIN_A", "HISTORY_DAY_WEIGHT", "HISTORY_LOST_SHARE", "HourMark",
+    "BAND_MIN_MINUTES", "BATTERY_BAND_W", "DAY_MINUTES", "EXTRA_MARGIN_A", "HISTORY_DAY_WEIGHT", "HISTORY_LOST_SHARE", "HourMark",
     "EVENING_COUNTED_HOURS", "EVENING_HOURS", "READY_LIVE_DAYS", "SPREAD_MINUTES_HOURS",
     "Learned", "MARGIN_A", "MIN_READY_DAYS", "PhasePeaks", "SPREAD_HOURS", "SPREAD_MINUTES", "plant_phase_w",
     "READY_DAYS", "Reading", "SitePhasePeaks", "PLANT_MISMATCH_A", "WINDOW_DAYS", "exact_phase_a", "extra_margin_a",
