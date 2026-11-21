@@ -540,3 +540,18 @@ def test_an_older_app_is_not_sent_the_kw_per_ampere() -> None:
         "source": "current_limit",
     }
     assert _for_app(body, {"action": "dashboard", "reads": ["power_charger"]}) == body
+
+
+async def test_a_number_whose_max_is_below_the_least_power_is_never_written(hass: HomeAssistant) -> None:
+    """A power number that goes no higher than 1.2 kW: held to its `max`, any write would be below 1.5 kW, so none is."""
+    _ids, found = _found(hass)
+    calls = _mock_writes(hass)
+    adapter = adapter_for(hass, found)
+    hass.states.async_set(RATED, "12", {"unit_of_measurement": "kW"})
+    hass.states.async_set(LIMIT, "1.0", {**POWER_LIMIT_ATTRS, "max": 1.2})
+    # The rating says 12 kW, so the request itself is above 1.5 kW: only the number's `max` holds it below.
+    assert adapter.current.kw_for(10) == pytest.approx(10 * KW_PER_A_400)
+
+    assert await adapter.async_set_current(2.17, reason=WRITE_SESSION_START) == ASSIGN_BELOW_MINIMUM
+    assert await adapter.async_set_current(10, reason=WRITE_SESSION_START) == ASSIGN_BELOW_MINIMUM
+    assert calls == []

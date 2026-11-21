@@ -363,7 +363,7 @@ class PowerCurrent(CurrentPath):
 
     Refuses, in this order: below its floor (`min_a`), a charger not wired as three phases, a number that is gone or has
     no power unit, no ceiling known (`ceiling_kw`), below `EVDC_MIN_POWER_KW` (also once rounded down to the number's
-    step), a value it already carries, a raise within
+    step or held to its `max`), a value it already carries, a raise within
     `EVDC_SETTLE_S` of the last write (the regulator's and the sun's only), and the policy's interval not yet elapsed.
 
     The number's state lags a write (the integration reads the register back on its next poll), so for
@@ -563,15 +563,16 @@ class PowerCurrent(CurrentPath):
         if step is not None and step > 0:
             native = math.floor(native / step + 1e-9) * step
             native = round(native, max(0, -int(math.floor(math.log10(step)))) + 1 if step < 1 else 0)
-        if native / factor < EVDC_MIN_POWER_KW - 1e-9:
-            # Rounded down to the number's step it would be below the lowest power: never written.
-            return ASSIGN_BELOW_MINIMUM
         minimum = _finite(state.attributes.get("min"))
         maximum = _finite(state.attributes.get("max"))
         if minimum is not None and native < minimum:
             return ASSIGN_BELOW_MINIMUM
         if maximum is not None and native > maximum:
             native = maximum
+        if native / factor < EVDC_MIN_POWER_KW - 1e-9:
+            # Rounded down to the number's step, or held to its `max`, it would be below the lowest power: never
+            # written.
+            return ASSIGN_BELOW_MINIMUM
         present = self._carried_native(state)
         if present is not None and abs(present - native) < max(1e-9, (step or 0.0) / 2):
             return ASSIGN_UNCHANGED
