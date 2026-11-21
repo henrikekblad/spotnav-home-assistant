@@ -470,7 +470,9 @@ def _total_exact(raw: Mapping[str, Any], minutes: int, exact_minutes: int, lost:
         return None
     if "xall" in raw:
         return _finite(raw.get("xall"))
-    if minutes + exact_minutes == 60 and lost == 0:
+    if minutes + exact_minutes == 60 and lost == 0 and raw.get("h") is not True:
+        # Sampled live only: an hour read back from the history may be two readings merged (`merge_history`), whose
+        # counts are each one's largest, so 60 of them proves no single minute was seen.
         return _finite(raw.get("all"))
     return None
 

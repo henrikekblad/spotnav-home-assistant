@@ -995,6 +995,9 @@ def test_a_mark_kept_before_the_exact_total_takes_its_whole_load_as_seen_only_wh
     assert mark(4, 56).total_exact == 46.0, "band and exact together: still every minute seen"  # type: ignore[union-attr]
     assert mark(0, 59).total_exact is None, "a minute that did not count may have carried it"  # type: ignore[union-attr]
     assert mark(0, 58, lost=2).total_exact is None  # type: ignore[union-attr]
+    # Read back from the history: possibly two readings merged, each count its own largest (re-review 2026-11-21).
+    assert HourMark.from_dict({"h": True, "l": 0, "a": None, "n": 0, "all": 46.0, "counted": None,
+                               "xa": [13.7, 16.0, 16.4], "xn": 60}).total_exact is None  # type: ignore[union-attr]
     assert mark(0, 60, xall=30.0).total_exact == 30.0, "kept: as kept"  # type: ignore[union-attr]
     # The owner's shape: whole hours of exact minutes, the evening's 46 A among them, four band minutes at night.
     peaks = PhasePeaks()
