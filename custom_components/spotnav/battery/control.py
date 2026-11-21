@@ -193,6 +193,10 @@ SOURCES_REFRESH_S: Final = 3600.0
 #: A grid charge runs per phase only when the phases' caps allow at least this much more in all than the balanced
 #: cap (kW): a balanced house keeps the brand's own charge.
 PER_PHASE_GAIN_KW: Final = 0.5
+#: The person is offered to accept the HA-down risk (`battery_control_accept_ha_down`) only where that would let a
+#: grid charge run at least this much faster (kW): the HA-down cap with an empty house of cars, against what the fuse
+#: allows with an empty house (and at most the battery's rated charge).
+HA_DOWN_OFFER_GAIN_KW: Final = 1.0
 #: The note shown after control is turned off on a plant taken over from AI mode.
 NOTE_AI_MODE_BACK: Final = "ai_mode_back"
 
@@ -1046,34 +1050,40 @@ class BatteryControl:
             return None
         return None if watts is None else (watts[0] / 1000.0, watts[1] / 1000.0, watts[2] / 1000.0)
 
-    def _phase_caps_kw(self, now: datetime, *, held_off: bool = False) -> Phases:
+    def _phase_caps_kw(
+        self, now: datetime, *, held_off: bool = False, accept: bool | None = None, no_cars: bool = False,
+    ) -> Phases:
         """The HA-down cap of a grid charge on each phase (`gate.grid_charge_phase_caps_kw`) on the site's readings
         now, by the same house peaks, chargers and margin as the balanced cap. `held_off`: a person's hardware test
-        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`)."""
+        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`). `accept`: whether the
+        person accepted the HA-down risk (`battery_control_accept_ha_down`), by default as stored now. `no_cars`:
+        the chargers and SpotNav's own heat counted as drawing nothing, for the status's offer only."""
         control = control_for(self.facts.brand)
         spec = None if control is None else control.phase_control
         return gate.grid_charge_phase_caps_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
+            cars_a=0.0 if no_cars else self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
             house_peak_kw=self._house_peak_kw(now),
             house_phase_peaks_a=self._phase_peaks(now) or None,
             # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
             silence_fallback_s=None if spec is None else spec.silence_fallback_s,
+            accept_ha_down=self.options().accept_ha_down if accept is None else accept,
+            site_margin_a=self._site_margin_a(),
         )
 
     def _charge_limits(
-        self, now: datetime, options: gate.Options, *, phased: bool | None = None
+        self, now: datetime, options: gate.Options, *, phased: bool | None = None, no_cars: bool = False,
     ) -> tuple[float | None, Phases | None]:
         """The HA-down cap a grid charge runs under now (kW, `None`: the plant's own import limit guards the fuse)
         and, when it runs per phase, each phase's cap (the first is then their sum). Per phase only on a control
         that runs the targets (`phased`, by default the executor's as synced now), verified and with everything
         there, and only when the phases allow at least `PER_PHASE_GAIN_KW` more than the balanced cap."""
-        cap = self._grid_charge_cap_kw(now, options)
+        cap = self._grid_charge_cap_kw(now, options, no_cars=no_cars)
         if phased is None:
             phased = self._sync_phases()
         if cap is None or not phased or not self._phased_wanted():
             return cap, None
-        caps = self._phase_caps_kw(now)
+        caps = self._phase_caps_kw(now, accept=options.accept_ha_down, no_cars=no_cars)
         total = sum(caps)
         if total < cap + PER_PHASE_GAIN_KW:
             return cap, None
@@ -1667,12 +1677,14 @@ class BatteryControl:
 
     def _grid_charge_cap_kw(
         self, now: datetime, options: gate.Options, *, peaks: Mapping[str, float] | None | bool = True,
-        held_off: bool = False,
+        held_off: bool = False, no_cars: bool = False,
     ) -> float | None:
         """The HA-down grid charge cap (`gate.grid_charge_cap_kw`) on the site's readings now. `peaks`: the house's
         per-phase peaks to reckon with instead of the ones in use now (`_phase_peaks`), `None` for the conservative
         rule; for the status, which says what the cap would be either way. `held_off`: a person's hardware test
-        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`)."""
+        runs, and the chargers its hold keeps stopped count as it says (`_cars_allowed_a`). `no_cars`: the chargers
+        and SpotNav's own heat counted as drawing nothing, for the status's offer only (`_ha_down_status`). The
+        person's acceptance of the HA-down risk is the options' (`accept_ha_down`)."""
         if peaks is True:
             peaks = self._phase_peaks(now)
         control = control_for(self.facts.brand)
@@ -1682,12 +1694,13 @@ class BatteryControl:
         import_limit_kw = self._import_limit_kw(control) if guards or per_phase else None
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
-            cars_a=self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
+            cars_a=0.0 if no_cars else self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
             house_peak_kw=self._house_peak_kw(now), plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
             import_limit_per_phase=per_phase,
-            # The per-phase rule only: the site's own safety margin as the person set it (`gate`'s note on it).
+            # The per-phase rule and the accepted HA-down risk: the site's own safety margin as the person set it.
             phase_margin_a=self._site_margin_a(),
+            accept_ha_down=options.accept_ha_down,
         )
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
@@ -1893,23 +1906,26 @@ class BatteryControl:
     def _cap_status(self, now: datetime, options: gate.Options) -> dict[str, Any]:
         """The grid charge cap and what it rests on, for the status and the diagnostics. `rule`: `learned` (the
         house's per-phase peaks, the learning done), `learning` (those peaks with the further margin of the days
-        counted so far), `conservative` (too few days: 4 kW on one phase), `import_limit` (no cap of this kind) or
-        `error`. `cap_conservative_kw` and `cap_learned_kw` say what the cap would be by the conservative rule and
-        by the learned peaks without the further margin (`None` where there is no cap of this kind, or no peaks).
-        `import_limit`: the plant's own import limit against the most that guards the fuse
-        (`_import_limit_status`)."""
+        counted so far), `conservative` (too few days: 4 kW on one phase), `import_limit` (no cap of this kind),
+        `accepted` (the person accepted the HA-down risk: the fuse with an empty house, `gate.ha_down_accepted_cap_kw`)
+        or `error`. `cap_conservative_kw` and `cap_learned_kw` say what the HA-down cap would be by the conservative
+        rule and by the learned peaks without the further margin, the acceptance left out (`None` where there is no
+        cap of this kind, or no peaks). `import_limit`: the plant's own import limit against the most that guards the
+        fuse (`_import_limit_status`). `ha_down`: the acceptance's offer (`_ha_down_status`)."""
         learned = self._learned(now)
         without: float | None = None
         done: float | None = None
         import_limit: dict[str, Any] | None = None
+        # What the HA-down rule itself gives, whether or not the person accepted the risk.
+        plain = replace(options, accept_ha_down=False)
         try:
             import_limit = self._import_limit_status(now, options)
             cap: float | None = self._grid_charge_cap_kw(now, options)
             if cap is not None:
-                without = self._grid_charge_cap_kw(now, options, peaks=None)
+                without = self._grid_charge_cap_kw(now, plain, peaks=None)
                 if learned is not None and learned.peaks_a is not None:
                     done = self._grid_charge_cap_kw(
-                        now, options, peaks=dict(zip(gate.PHASE_NAMES, learned.peaks_a, strict=True))
+                        now, plain, peaks=dict(zip(gate.PHASE_NAMES, learned.peaks_a, strict=True))
                     )
             failed = False
         except Exception:  # noqa: BLE001 - the status must never fail on it
@@ -1918,7 +1934,7 @@ class BatteryControl:
         usable = learned is not None and learned.phase_peaks() is not None
         return {
             "cap_kw": None if cap is None else round(cap, 2),
-            "rule": "error" if failed else "import_limit" if cap is None else (
+            "rule": "error" if failed else "import_limit" if cap is None else "accepted" if options.accept_ha_down else (
                 "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
             ),
             "main_fuse_a": self._main_fuse_a(),
@@ -1926,7 +1942,47 @@ class BatteryControl:
             "cap_learned_kw": None if done is None else round(done, 2),
             "learned": None if learned is None else learned.as_dict(),
             "import_limit": import_limit,
+            "ha_down": self._ha_down_status(now, options),
         }
+
+    def _ha_down_status(self, now: datetime, options: gate.Options) -> dict[str, Any]:
+        """Whether accepting the HA-down risk (`battery_control_accept_ha_down`) would change anything here, for the
+        card's administrator-only line: `offered` (battery control is on, the plant's recipe can charge from the
+        grid, neither import-limit rule holds, no recipe's own dead-man stands in, and the HA-down cap with no car or
+        heat counted, per phase where a charge per phase runs, leaves at least `HA_DOWN_OFFER_GAIN_KW` less than the
+        fuse allows with an empty house, at most the battery's rated charge), `held_kw` (that HA-down cap) and
+        `empty_house_kw` (what the fuse allows with an empty house). Read the same whether or not it is accepted, so
+        the line stays while it changes something; never raises (`offered` false)."""
+        block: dict[str, Any] = {"offered": False, "held_kw": None, "empty_house_kw": None}
+        try:
+            control = control_for(self.facts.brand)
+            if control is None or not control.supports(ACTION_GRID_CHARGE):
+                return block
+            spec = control.phase_control
+            if spec is not None and gate.silence_guards(spec.silence_fallback_s):
+                return block
+            plain = replace(options, accept_ha_down=False)
+            executor = self.executor
+            held = self._charge_limits(
+                now, plain, phased=executor is not None and executor.control.phased, no_cars=True
+            )[0]
+            if held is None:
+                return block
+            empty = gate.ha_down_accepted_cap_kw(
+                self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
+                margin_a=self._site_margin_a(), plant_phases=self._plant_phases(control),
+            )
+            if executor is not None and executor.control.phased and self._phased_wanted():
+                # A charge per phase may use each phase's fuse less the margin.
+                empty = max(empty, sum(self._phase_caps_kw(now, accept=True, no_cars=True)))
+            rated = self.facts.max_charge_kw
+            most = empty if rated is None or not math.isfinite(rated) or rated <= 0 else min(empty, rated)
+            block.update(held_kw=round(held, 2), empty_house_kw=round(empty, 2))
+            block["offered"] = options.enabled and most - held >= HA_DOWN_OFFER_GAIN_KW
+        except Exception:  # noqa: BLE001 - the status must never fail on it
+            self._look_failed("ha_down_status")
+            block["offered"] = False
+        return block
 
     def learning_hold(self, now: datetime) -> dict[str, Any] | None:
         """The learning of the house's per-phase peaks while it holds the grid charge back, for the house card's status

@@ -37,6 +37,7 @@
         "ready": false,
         "usable": false
       },
+      "ha_down": {"offered": false, "held_kw": null, "empty_house_kw": null},
       "main_fuse_a": 25.0,
       "rule": "conservative"
     },
@@ -49,6 +50,7 @@
       "battery_control_ai_takeover_ack": false,
       "battery_control_enabled": false,
       "battery_control_import_limit_acts": false,
+      "battery_control_accept_ha_down": false,
       "battery_control_shadow_only": true,
       "battery_mode": "balanced"
     },
