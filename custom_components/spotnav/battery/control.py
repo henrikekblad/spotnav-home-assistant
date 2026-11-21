@@ -349,6 +349,14 @@ class Trial:
                 "until": self.until.isoformat(), "force_test": self.force}
 
 
+
+def _accept_applies(control: BrandControl | None) -> bool:
+    """Whether the person's acceptance of the HA-down risk (`battery_control_accept_ha_down`) may lift the cap on this
+    recipe: never for a slow control or one whose charge SpotNav cannot set (`BrandControl.slow`, `fixed_charge`:
+    Tesla, a cloud in 30-minute blocks), since the live clamp cannot lower its charge within seconds. A hold that may
+    itself charge from the grid there (`hold_charges_without`) stays under the HA-down cap with it."""
+    return control is not None and not (control.slow or control.fixed_charge)
+
 class BatteryControl:
     """One site's battery and export-limit write path (see the module)."""
 
@@ -1067,7 +1075,7 @@ class BatteryControl:
             house_phase_peaks_a=self._phase_peaks(now) or None,
             # A plant that stops following its targets by itself when the writes stop (the recipe's own dead-man).
             silence_fallback_s=None if spec is None else spec.silence_fallback_s,
-            accept_ha_down=self.options().accept_ha_down if accept is None else accept,
+            accept_ha_down=(self.options().accept_ha_down if accept is None else accept) and _accept_applies(control),
             site_margin_a=self._site_margin_a(),
         )
 
@@ -1700,7 +1708,7 @@ class BatteryControl:
             import_limit_per_phase=per_phase,
             # The per-phase rule and the accepted HA-down risk: the site's own safety margin as the person set it.
             phase_margin_a=self._site_margin_a(),
-            accept_ha_down=options.accept_ha_down,
+            accept_ha_down=options.accept_ha_down and _accept_applies(control),
         )
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
@@ -1934,7 +1942,9 @@ class BatteryControl:
         usable = learned is not None and learned.phase_peaks() is not None
         return {
             "cap_kw": None if cap is None else round(cap, 2),
-            "rule": "error" if failed else "import_limit" if cap is None else "accepted" if options.accept_ha_down else (
+            "rule": "error" if failed else "import_limit" if cap is None else "accepted" if (
+                options.accept_ha_down and _accept_applies(control_for(self.facts.brand))
+            ) else (
                 "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
             ),
             "main_fuse_a": self._main_fuse_a(),
@@ -1956,7 +1966,7 @@ class BatteryControl:
         block: dict[str, Any] = {"offered": False, "held_kw": None, "empty_house_kw": None}
         try:
             control = control_for(self.facts.brand)
-            if control is None or not control.supports(ACTION_GRID_CHARGE):
+            if control is None or not control.supports(ACTION_GRID_CHARGE) or not _accept_applies(control):
                 return block
             spec = control.phase_control
             if spec is not None and gate.silence_guards(spec.silence_fallback_s):

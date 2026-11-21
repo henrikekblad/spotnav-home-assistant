@@ -1434,6 +1434,29 @@ async def test_the_ha_down_acceptance_is_offered_only_where_the_ha_down_cap_bind
     assert control._grid_charge_cap_kw(dt_util.now(), control.options()) is None
 
 
+@pytest.mark.parametrize("flag", ["slow", "fixed_charge"])
+async def test_the_ha_down_acceptance_lifts_nothing_for_a_charge_spotnav_cannot_lower_within_seconds(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], flag: str
+) -> None:
+    """A slow control or one whose charge the plant sets (Tesla: a cloud, 30-minute blocks): the live clamp cannot
+    lower it, so the HA-down cap stays whatever the site accepted, and nothing is offered."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, accept_ha_down=True)
+    now = dt_util.now()
+    assert round(control._grid_charge_cap_kw(now, control.options()), 2) == 13.16
+    unlowerable = replace(commands_module.SIGENERGY_CONTROL, **{flag: True})
+    monkeypatch.setattr(
+        commands_module, "CONTROLS",
+        tuple(unlowerable if c is commands_module.SIGENERGY_CONTROL else c for c in commands_module.CONTROLS),
+    )
+    assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW
+    assert control._phase_caps_kw(now) == control._phase_caps_kw(now, accept=False)
+    cap = control.status()["grid_charge_cap"]
+    assert cap["cap_kw"] < gate.MIN_RATE_KW and cap["ha_down"]["offered"] is False
+    assert cap["rule"] == "conservative", "not said to be accepted where it lifts nothing"
+
+
 async def test_the_ha_down_acceptance_is_not_offered_where_the_house_leaves_the_charge_its_room(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
