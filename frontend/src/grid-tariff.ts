@@ -71,11 +71,16 @@ function feeBody(fee: GridTariffFee): GridTariffFeeBody {
 }
 
 function copyComponent(component: DemandComponent): DemandComponent {
-  return {
+  const copy: DemandComponent = {
     window: component.window === null ? null : { ...component.window },
     top_n: component.top_n,
     price_per_kw: { ...component.price_per_kw },
   };
+  // The grid company's peak rules are not edited here: kept as they came.
+  if (component.peak !== undefined) {
+    copy.peak = { ...component.peak };
+  }
+  return copy;
 }
 
 /** The tariff as stored, as a write would state it. */
@@ -100,7 +105,15 @@ export function storedBody(block: GridTariffBlock): GridTariffBody {
 }
 
 function copyLevel(level: PowerLevel): PowerLevel {
-  return { level_kw: level.level_kw, window: level.window === null ? null : { ...level.window }, outside: level.outside };
+  const copy: PowerLevel = {
+    level_kw: level.level_kw,
+    window: level.window === null ? null : { ...level.window },
+    outside: level.outside,
+  };
+  if (level.period_min !== undefined) {
+    copy.period_min = level.period_min;
+  }
+  return copy;
 }
 
 /** The power level set (`null` removes it), the rest as stored. */
@@ -114,7 +127,7 @@ export function sameLevel(a: PowerLevel | null | undefined, b: PowerLevel | null
     return a === b;
   }
   const window = a.window === null || b.window === null ? a.window === b.window : sameWindow(a.window, b.window);
-  return window && a.level_kw === b.level_kw && a.outside === b.outside;
+  return window && a.level_kw === b.level_kw && a.outside === b.outside && a.period_min === b.period_min;
 }
 
 /** The demand-charge components set, the rest as stored. */
@@ -142,7 +155,8 @@ export function sameComponent(a: DemandComponent, b: DemandComponent): boolean {
     window &&
     a.top_n === b.top_n &&
     a.price_per_kw.winter === b.price_per_kw.winter &&
-    a.price_per_kw.summer === b.price_per_kw.summer
+    a.price_per_kw.summer === b.price_per_kw.summer &&
+    JSON.stringify(a.peak ?? null) === JSON.stringify(b.peak ?? null)
   );
 }
 

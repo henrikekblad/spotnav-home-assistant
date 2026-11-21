@@ -83,6 +83,14 @@ describe("the power level in the demand block", () => {
     expect("power_level" in storedBody(decodeGridTariff({ ...PILOT, demand: older }))).toBe(false);
   });
 
+  it("keeps a quarter-hour level's period through a write", () => {
+    const quarter = { ...LEVEL, period_min: 15 };
+    const block = decodeGridTariff({ ...PILOT, demand: { ...DEMAND, power_level: quarter } });
+    expect(storedBody(block).power_level).toEqual(quarter);
+    const decoded = decodeDashboard(dashboardWith({ ...DEMAND, power_level: { ...LEVEL, period_min: 60 } }));
+    expect(decoded.ok && decoded.value.grid_tariff).toBeNull();
+  });
+
   it("words the running hour against the level where it holds the hour below the target", () => {
     expect(hourLine("sv", decodeDemand({ ...DEMAND, effective_target_kw: 5 }))).toBe(
       "Den här timmen: 3,1 av 5,0 kW – effektnivån (effektmål 6,0 kW)",

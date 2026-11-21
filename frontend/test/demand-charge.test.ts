@@ -108,6 +108,23 @@ describe("the demand block", () => {
     const older = decodeGridTariff(withoutDemand);
     expect("demand_components" in storedBody(older)).toBe(false);
   });
+
+  it("keeps a grid company's quarter-hour peak rules through every write, and refuses a malformed one", () => {
+    const peak = { period_min: 15, min_kw: 2, step_kw: 10, step_factor: 1.5 };
+    const austrian = { window: null, top_n: 1, price_per_kw: { winter: 2.46, summer: 2.46 }, peak };
+    const block = decodeGridTariff({ ...PILOT, demand: { ...DEMAND, components: [austrian], per_component: [] } });
+    const [stored] = (block.demand as DemandBlock).components;
+    expect(stored).toEqual(austrian);
+    expect(storedBody(block).demand_components).toEqual([austrian]);
+    // Another part added beside it: the quarter-hour part keeps its rules.
+    const one = { window: null, top_n: 3 as const, price_per_kw: { winter: 49, summer: 49 } };
+    expect(withComponent(block, 1, one).demand_components).toEqual([austrian, one]);
+    for (const bad of [{ ...peak, period_min: 30 }, { ...peak, step_factor: 0.5 }, { ...peak, extra: 1 }]) {
+      const demand = { ...DEMAND, components: [{ ...austrian, peak: bad }], per_component: [] };
+      const decoded = decodeDashboard(dashboard({ ...PILOT, demand }));
+      expect(decoded.ok && decoded.value.grid_tariff, JSON.stringify(bad)).toBeNull();
+    }
+  });
 });
 
 // ------------------------------------------------------------------------------------------------ in the card

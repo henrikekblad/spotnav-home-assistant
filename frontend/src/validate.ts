@@ -422,6 +422,19 @@ export interface DemandComponent {
   window: HighLoadWindow | null;
   top_n: DemandTopN;
   price_per_kw: { winter: number | null; summer: number | null };
+  /**
+   * The grid company's peak rules, present only where they differ from an hourly peak billed as measured: the period
+   * (60 or 15 minutes), the least kW billed, and the kW above which the price is `step_factor` times itself. Not
+   * edited here: kept as it came on every write.
+   */
+  peak?: DemandPeakRule;
+}
+
+export interface DemandPeakRule {
+  period_min: 60 | 15;
+  min_kw: number;
+  step_kw: number | null;
+  step_factor: number;
 }
 
 /**
@@ -432,6 +445,8 @@ export interface PowerLevel {
   level_kw: number;
   window: HighLoadWindow | null;
   outside: boolean;
+  /** Present only for a level measured over the quarter hour (15); kept as it came on every write. */
+  period_min?: 15;
 }
 
 /** What the site counted of the power level: its exceedances in the rolling 12 months and when it holds. */
@@ -2168,25 +2183,45 @@ function nonNegativeOrNull(source: Record<string, unknown>, key: string): number
 /** A demand-charge component as the backend states it (and a write sends it), or malformed. */
 export function decodeDemandComponent(raw: unknown): DemandComponent {
   const item = record(raw);
-  exactKeys(item, ["window", "top_n", "price_per_kw"]);
+  exactKeys(item, "peak" in item ? ["window", "top_n", "price_per_kw", "peak"] : ["window", "top_n", "price_per_kw"]);
   const topN = DEMAND_TOP_N.find((known) => known === item.top_n) ?? bad();
   const prices = record(item.price_per_kw);
   exactKeys(prices, ["winter", "summer"]);
-  return {
+  const component: DemandComponent = {
     window: item.window === null ? null : decodeHighLoadWindow(item.window),
     top_n: topN,
     price_per_kw: { winter: nonNegativeOrNull(prices, "winter"), summer: nonNegativeOrNull(prices, "summer") },
   };
+  if ("peak" in item) {
+    component.peak = decodeDemandPeakRule(item.peak);
+  }
+  return component;
+}
+
+function decodeDemandPeakRule(raw: unknown): DemandPeakRule {
+  const item = record(raw);
+  exactKeys(item, ["period_min", "min_kw", "step_kw", "step_factor"]);
+  const period = item.period_min === 60 || item.period_min === 15 ? item.period_min : bad();
+  const minKw = numberValue(item, "min_kw");
+  const stepKw = nonNegativeOrNull(item, "step_kw");
+  const factor = numberValue(item, "step_factor");
+  return minKw < 0 || factor < 1 ? bad() : { period_min: period, min_kw: minKw, step_kw: stepKw, step_factor: factor };
 }
 
 /** A power level as the backend states it (and a write sends it), or malformed. */
 export function decodePowerLevel(raw: unknown): PowerLevel {
   const item = record(raw);
-  exactKeys(item, ["level_kw", "window", "outside"]);
+  exactKeys(item, "period_min" in item ? ["level_kw", "window", "outside", "period_min"] : ["level_kw", "window", "outside"]);
   const kw = numberValue(item, "level_kw");
   const window = item.window === null ? null : decodeHighLoadWindow(item.window);
   const outside = booleanValue(item, "outside");
-  return kw <= 0 || (outside && window === null) ? bad() : { level_kw: kw, window, outside };
+  if (kw <= 0 || (outside && window === null)) {
+    return bad();
+  }
+  if ("period_min" in item) {
+    return item.period_min === 15 ? { level_kw: kw, window, outside, period_min: 15 } : bad();
+  }
+  return { level_kw: kw, window, outside };
 }
 
 function levelCount(raw: unknown): LevelCount {
