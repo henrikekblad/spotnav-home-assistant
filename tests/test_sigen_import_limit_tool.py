@@ -371,7 +371,7 @@ def _scripted(monkeypatch: pytest.MonkeyPatch, run: Any, phases: dict[str, str])
 
 def _args(**changes: Any) -> Any:
     import argparse
-    values = {"limit_kw": 6.0, "charge_kw": 4.0, "low_charge_kw": 1.0, "second_phase": False,
+    values = {"limit_kw": 6.0, "charge_kw": 4.0, "low_charge_kw": 1.0, "second_phase": False, "sensor_loss": False,
               "skip_stopped": True} | changes
     return argparse.Namespace(**values)
 
@@ -385,3 +385,18 @@ def test_the_under_limit_step_may_be_repeated_on_a_second_phase(
     tool.steps(run, _args(second_phase=True))
     results = {r["step"]: r["verdict"] for r in run.results}
     assert results["under2"].startswith(verdict)
+
+
+def test_the_sensor_loss_step_only_asks_and_writes_nothing_of_its_own(monkeypatch: pytest.MonkeyPatch, quick: None) -> None:
+    ha = FakeHA(_plant())
+    run = _run(ha)
+    _scripted(monkeypatch, run, {})
+    tool.steps(run, _args())
+    without = list(ha.writes)
+    ha2 = FakeHA(_plant())
+    run2 = _run(ha2)
+    _scripted(monkeypatch, run2, {})
+    tool.steps(run2, _args(sensor_loss=True))
+    assert any(r["step"] == "sensor_loss" for r in run2.results)
+    # Only the charge back at 4 kW the stopped step writes anyway.
+    assert ha2.writes == [*without, f"{ENTITIES['charge_limit']}=4.0"]

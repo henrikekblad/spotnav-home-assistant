@@ -32,6 +32,8 @@ Steps (each waits for Enter; typing `q` and Enter at any prompt stops and restor
    meter. With `sigen` still read the step is the binding step again and is not judged; without a meter the
    person's y/n from the mySigen app or a clamp meter is kept, labelled as a fallback that cannot record the fact.
    After re-enabling, the script records whether Remote EMS and its mode were kept.
+   `--sensor-loss` adds, before it, an instructions-only step (nothing more is written): unplug the plant's grid
+   sensor at the low limit and the full charge and watch the mySigen app.
 5. Restore, then the pass/fail summary: every phase at or under limit / 3 + 0.1 kW within 15 s of the load going on,
    judged only where the load took its phase over a third of the limit.
 
@@ -709,11 +711,15 @@ def steps(run: Run, args: argparse.Namespace) -> None:
         second = load_step(run, "under2")
         if "phase" in second and second.get("phase") == first.get("phase"):
             second["verdict"] = "not judged (the load landed on the same phase as the first: use another socket)"
-    if args.skip_stopped:
+    if args.skip_stopped and not args.sensor_loss:
         return
     run.step = "stopped"
     run.set("charge_limit", args.charge_kw)
     run.settle(30.0)
+    if args.sensor_loss:
+        sensor_loss_step(run, args)
+    if args.skip_stopped:
+        return
     # From here nothing is written until the restore (the over-current guard may still end the step by restoring).
     run.wait("Writes stop now. Disable SpotNav's entries, then the sigen integration (Settings > Devices & services"
              " > the entry's menu > Disable), so that nothing writes or polls the plant. Press Enter once both are"
@@ -737,6 +743,21 @@ def steps(run: Run, args: argparse.Namespace) -> None:
             " only)."
         )
         result["verdict_from_person"] = answer
+
+
+def sensor_loss_step(run: Run, args: argparse.Namespace) -> None:
+    """Optional, instructions only (nothing is written): what the plant does when its grid sensor drops while it
+    grid-charges under the low limit. Logged with markers; read in the mySigen app."""
+    run.step = "sensor_loss"
+    run.wait(f"OPTIONAL sensor-loss step (import limit {args.limit_kw} kW, charge {args.charge_kw} kW, nothing more is"
+             " written): with no load on, unplug the plant's grid sensor (or its communication cable). Watch the"
+             " mySigen app: does the battery stop charging from the grid, and does the app raise a fault? Press Enter"
+             " as you unplug it.")
+    run.marker("sensor unplugged")
+    run.wait("Note what the app shows. Plug the grid sensor back in and press Enter.", least_s=60.0)
+    run.marker("sensor back")
+    run.settle(60.0)
+    run.results.append({"step": "sensor_loss", "verdict": "instructions only: read from the app and the CSV"})
 
 
 def parse_meter(value: str) -> tuple[str, str, str] | None:
@@ -770,6 +791,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="read, check and log only; write nothing")
     parser.add_argument("--second-phase", action="store_true",
                         help="repeat the under-limit step with the load on a second phase")
+    parser.add_argument("--sensor-loss", action="store_true",
+                        help="add an instructions-only step: unplug the grid sensor at the low limit and watch the app")
     parser.add_argument("--skip-stopped", action="store_true", help="leave out the writes-stopped step")
     parser.add_argument("--meter", metavar="a=ID,b=ID,c=ID",
                         help="an independent per-phase meter at the grid connection (W, kW or A), not from the plant's"
