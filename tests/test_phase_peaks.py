@@ -976,3 +976,35 @@ def test_the_exact_peaks_stand_alone_only_after_two_weeks_of_exact_days_spread_o
     assert late.learned(now).exact_days == READY_DAYS - 1
     late.hours[T0 // 3600 + 10] = HourMark(exact_a=(4.0, 4.0, 4.0), exact_minutes=60)
     assert late.learned(now).exact_days == READY_DAYS
+
+
+def test_a_mark_kept_before_the_exact_total_takes_its_whole_load_as_seen_only_where_every_minute_counted() -> None:
+    """Marks kept before `total_exact` (the owner's six days, 2026-11-21): an hour all of whose 60 minutes counted has
+    no minute seen on no phase, so its largest total is one seen; any other hour proves nothing and keeps the rule."""
+    def mark(n: int, xn: int, lost: int = 0, **extra: Any) -> HourMark | None:
+        raw = {"a": [1.0, 1.0, 1.0] if n else None, "n": n, "all": 46.0, "counted": 2.0 if n else None,
+               "xa": [13.7, 16.0, 16.4], "xn": xn, **extra}
+        if lost:
+            raw.update(h=True, l=lost)
+        return HourMark.from_dict(raw)
+
+    assert mark(0, 60).total_exact == 46.0  # type: ignore[union-attr]
+    assert mark(4, 56).total_exact == 46.0, "band and exact together: still every minute seen"  # type: ignore[union-attr]
+    assert mark(0, 59).total_exact is None, "a minute that did not count may have carried it"  # type: ignore[union-attr]
+    assert mark(0, 58, lost=2).total_exact is None  # type: ignore[union-attr]
+    assert mark(0, 60, xall=30.0).total_exact == 30.0, "kept: as kept"  # type: ignore[union-attr]
+    # The owner's shape: whole hours of exact minutes, the evening's 46 A among them, four band minutes at night.
+    peaks = PhasePeaks()
+    hour = T0 // 3600
+    stored = {"hours": {str(hour + index): {"a": None, "n": 0, "all": 46.0 if index == 18 else 20.0, "counted": None,
+                                             "xa": [13.7, 16.0, 16.4], "xn": 60} for index in range(24)}}
+    stored["hours"][str(hour + 26)] = {"a": [-10.5, -11.6, -7.9], "n": 4, "all": 2.2, "counted": 2.2,
+                                       "xa": [1.0, 1.0, 1.0], "xn": 50}
+    peaks.load(stored, T0 + 30 * 3600)
+    learned = peaks.learned(T0 + 30 * 3600)
+    assert learned.peaks_a == pytest.approx((13.7 + MARGIN_A, 16.0 + MARGIN_A, 16.4 + MARGIN_A))
+    # Without the proof (59 minutes in the evening's hour) the 46 A count as hidden, as before.
+    stored["hours"][str(hour + 18)]["xn"] = 59
+    old = PhasePeaks()
+    old.load(stored, T0 + 30 * 3600)
+    assert old.learned(T0 + 30 * 3600).peaks_a[0] > 13.7 + MARGIN_A + 20.0  # type: ignore[index]

@@ -68,8 +68,10 @@ band's minutes in the window; from fewer there is nothing to scale from, and the
 below nought (the band's few minutes reading an export) counts as nought and never feeds the factor. Why the cap
 stays safe: each phase's peak is never below its exact peak or the band's own reading, plus all the load seen on no
 phase, plus `MARGIN_A`; and the only load not counted as hidden is load a phase was seen carrying. A mark kept before
-`total_exact` was kept has none: its exact minutes then count as hidden (the conservative side; the larger cap comes
-as hours with it are kept and the window's largest totals are among them).
+`total_exact` was kept has none, unless every one of its hour's 60 minutes counted (none lost): no minute of that
+hour was then seen on no phase, so its largest total is one seen (`_total_exact`); otherwise its exact minutes count
+as hidden (the conservative side; the larger cap comes as hours with it are kept and the window's largest totals are
+among them).
 
 The sun: on a hybrid inverter the sun's power reaches the meter through the plant, so without the plant's per-phase
 power it hides house load in the meter's reading while it shines. It only ever lowers what is seen, and the largest
@@ -410,8 +412,23 @@ class HourMark:
             exact_minutes=exact_minutes,
             backfilled=raw.get("h") is True,  # absent in marks kept before the backfill
             lost=lost,
-            total_exact=_finite(raw.get("xall")) if exact_minutes else None,  # absent in marks kept before it
+            total_exact=_total_exact(raw, minutes, exact_minutes, lost),
         )
+
+
+def _total_exact(raw: Mapping[str, Any], minutes: int, exact_minutes: int, lost: int) -> float | None:
+    """A stored mark's `total_exact`: as kept, or, in a mark kept before it was kept, its `total_all` where that is
+    provably a minute seen on every phase: every one of the hour's 60 minutes counted (by the band or exactly, none
+    lost), so no minute of it was seen on no phase, and the hour's largest total is one of those seen. Short of that
+    the mark proves nothing (a minute that did not count may still have carried the largest total) and it has none:
+    its exact minutes then count as hidden, the conservative rule."""
+    if not exact_minutes:
+        return None
+    if "xall" in raw:
+        return _finite(raw.get("xall"))
+    if minutes + exact_minutes == 60 and lost == 0:
+        return _finite(raw.get("all"))
+    return None
 
 
 def _heat_w(heat_kw: Triple | None) -> Triple | None:
