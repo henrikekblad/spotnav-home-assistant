@@ -5425,11 +5425,13 @@ class ChargingController:
     @property
     def running_min_current_a(self) -> float:
         """The floor for a write to a charge that is already running (the regulator's, the sun's): `min_current_a`,
-        except for a DC charger while it charges with its running minimum recorded (`adapter.run_min_current_a`,
+        except for a DC charger while its status reads charging (`adapter.observed_charging`) with its running minimum recorded (`adapter.run_min_current_a`,
         `sigenergy.EVDC_RUN_MIN_CONFIRMED`), which may be lower. Never above `min_current_a`; a start always reckons
         with `min_current_a`."""
         floor = self.min_current_a
-        if not self.charging:
+        # Only a reading that says charging (`charging_observation`): an unreadable status keeps the start floor.
+        observed = getattr(self.adapter, "observed_charging", None)
+        if not callable(observed) or observed() is not True:
             return floor
         run = getattr(self.adapter, "run_min_current_a", None)
         if isinstance(run, (int, float)) and not isinstance(run, bool) and 0.0 < run < floor:

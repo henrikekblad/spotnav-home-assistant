@@ -220,10 +220,11 @@ class ChargerAdapter:
         self.pre_current: PreSpotnavCurrent | None = None
         #: Awaited once the reading is recorded, to save it (the controller's store).
         self.pre_current_recorded: Callable[[], Awaitable[None]] | None = None
-        # A path whose floor depends on whether the charger charges (`sigenergy.PowerCurrent`) reads it from here.
+        # A path whose floor depends on whether the charger charges (`sigenergy.PowerCurrent`) reads it from here: only
+        # a status that says charging counts (`charging_observation`), so an unreadable one keeps the start floor.
         bind_charging = getattr(current, "bind_charging", None)
         if callable(bind_charging):
-            bind_charging(self.charging_state)
+            bind_charging(self.observed_charging)
 
     @property
     def min_current_a(self) -> float:
@@ -507,6 +508,11 @@ class ChargerAdapter:
         if status is not None:
             return status in self._charging_values
         return self.path.enabled_state() is True
+
+    def observed_charging(self) -> bool:
+        """Whether something readable says the charger is charging (`charging_observation` is `True`): an unreadable
+        status is not charging here, never the charge control in its place."""
+        return self.charging_observation() is True
 
     def charging_observation(self) -> bool | None:
         """Whether the charger is charging, or `None` when nothing readable says it: what the events and

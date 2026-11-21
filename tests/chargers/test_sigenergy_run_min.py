@@ -295,3 +295,30 @@ async def test_with_the_fact_on_the_start_floor_still_reads_back_as_itself(hass:
     _set_limit(hass, 1.385)
     assert adapter.current.read_back_a() == 2
     adapter.cancel_pending_reads()
+
+
+@pytest.mark.parametrize("status", ["unavailable", "unknown"])
+async def test_with_the_fact_on_an_unreadable_status_keeps_the_start_floor(
+    hass: HomeAssistant, frozen: Any, confirmed: None, status: str
+) -> None:
+    """Only a status that reads charging lowers the floor: unavailable or unknown is the start floor, on the path, in
+    the controller and on the site."""
+    from custom_components.spotnav.runtime import site_controller_for
+
+    controller, _presses, charger, calls = await _charging_controller(hass, frozen)
+    assert await hass.config_entries.async_setup("home")
+    await hass.async_block_till_done()
+    site = site_controller_for(hass, "home")
+    assert site is not None
+    assert controller.running_min_current_a == RUN_MIN_A
+    hass.states.async_set(STATE, status)
+
+    assert controller.adapter.current.floor_a() == 2.17
+    assert controller.running_min_current_a == 2.17
+    assert site.charger_min_current_a(charger.entry_id) == 2.17
+    written = len(calls)
+    assert await controller.adapter.async_set_current(RUN_MIN_A, reason=WRITE_REGULATOR) == ASSIGN_BELOW_MINIMUM
+    assert len(calls) == written
+    controller.adapter.cancel_pending_reads()
+    await hass.config_entries.async_unload("home")
+    await _unload(hass, charger)
