@@ -66,8 +66,10 @@ set back to operative at every release (`async_restore_availability`, from `hard
 stop, an error, the unload), confirmed by the switch reading on again, retried every `RESTORE_RETRY_S` (after
 `RESTORE_TRIES` of them every `RESTORE_SLOW_RETRY_S`, until it is on); after a restart in the middle of a test the
 store still holds it, and it is set back at the site's next start (`async_load`). A switch that reads on again by the
-time it is set back (a person turned it on) is left as it is. After `ISSUE_AFTER_TRIES` setting backs not confirmed
-the person is told in Repairs (turn the switch on yourself), gone once it is on. At the removal of the site's entry the
+time it is set back (a person turned it on) is left as it is. A setting back is done once the switch reads on or its
+connectors report a known status other than `Unavailable` (the switch reads on only for `Available`: a car plugged in
+reads `Preparing`); a switch that no longer exists is dropped. After `ISSUE_AFTER_TRIES` setting backs not confirmed
+the person is told in Repairs, only for a switch that reads off (one they can turn on), gone once it is on. At the removal of the site's entry the
 record goes only once every switch reads on.
 
 Every other control kind keeps its current counted, because there the stop ends or pauses the running session
@@ -80,7 +82,7 @@ once, at the next look, whatever kind it is (it no longer reads stopped).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import contextlib
 from datetime import datetime
 import logging
@@ -407,9 +409,11 @@ class ChargerTestHold:
         if self._store is not None:
             await self._store.async_save({"unavailable": {key: dict(row) for key, row in self._parked.items()}})
 
-    async def _async_switch(self, entity_id: str, on: bool, confirmed: Callable[[], bool] | None = None) -> bool:
-        """Turn the availability switch on or off and wait up to `CONFIRM_S` for it to read so and for `confirmed` (the
-        charge point's own report); whether they do. A call that fails raises."""
+    async def _async_switch(
+        self, entity_id: str, on: bool, confirmed: Callable[[], bool] | None = None, *, reads: bool = True
+    ) -> bool:
+        """Turn the availability switch on or off and wait up to `CONFIRM_S` for it to read so (unless not `reads`)
+        and for `confirmed` (the charge point's own report); whether they do. A call that fails raises."""
         hass = self._site.hass
         async with asyncio.timeout(CALL_S):
             await hass.services.async_call("switch", "turn_on" if on else "turn_off", {"entity_id": entity_id},
@@ -419,7 +423,7 @@ class ChargerTestHold:
         deadline = loop.time() + CONFIRM_S
         while True:
             state = hass.states.get(entity_id)
-            if state is not None and state.state == wanted and (confirmed is None or confirmed()):
+            if (not reads or (state is not None and state.state == wanted)) and (confirmed is None or confirmed()):
                 return True
             if loop.time() >= deadline:
                 return False
@@ -490,6 +494,7 @@ class ChargerTestHold:
                     await task
         async with self._restore_lock:
             failed = False
+            actionable: list[str] = []
             for entity_id, row in list(self._parked.items()):
                 charger_entry_id = ", ".join(row.get("chargers") or []) or entity_id
                 if self.active and (
@@ -497,17 +502,31 @@ class ChargerTestHold:
                 ):
                     continue  # the hold on now has it: set back at its own release
                 state = self._site.hass.states.get(entity_id)
-                if state is not None and state.state == "on":
-                    # On already: a person (or the charge point) set it back meanwhile. Nothing is written over it.
+                if state is None and not self._registered(entity_id):
+                    # The switch is gone (the charge point removed from the ocpp integration): nothing to set back.
+                    _LOGGER.info("SpotNav site %s: %s no longer exists; nothing to set back", self._site.entry_id,
+                                 entity_id)
+                    self._parked.pop(entity_id, None)
+                    continue
+                if self._operative(entity_id, row):
+                    # Operative already: a person (or the charge point) set it back meanwhile. Nothing is written.
                     self._parked.pop(entity_id, None)
                     continue
                 try:
                     if state is None or state.state == "unavailable":
                         raise RuntimeError("the charge point is not connected")
-                    if not await self._async_switch(entity_id, on=True):
-                        raise RuntimeError("it did not report itself available")
+                    # Done once its connectors report something other than `Unavailable`: the switch itself reads on only
+                    # for `Available`, so with a car plugged in (`Preparing`) it stays off although operative.
+                    if not await self._async_switch(
+                        entity_id, on=True, confirmed=lambda e=entity_id, r=row: self._operative(e, r), reads=False
+                    ):
+                        raise RuntimeError("it did not report itself operative")
                 except Exception as err:  # noqa: BLE001 - tried again; kept in the store meanwhile
                     failed = True
+                    state = self._site.hass.states.get(entity_id)
+                    if state is not None and state.state == "off":
+                        # Read and off: the person can turn it on (the only case told in Repairs).
+                        actionable.append(entity_id)
                     _LOGGER.warning(
                         "SpotNav site %s: OCPP charger %s could not be set back to operative after the hardware test "
                         "(%s)", self._site.entry_id, charger_entry_id, err,
@@ -523,8 +542,10 @@ class ChargerTestHold:
                 self._tries = 0
             elif not self._closed and self._retry_cancel is None:
                 self._tries += 1
-                if self._tries >= ISSUE_AFTER_TRIES:
-                    self._raise_issue()
+                if self._tries >= ISSUE_AFTER_TRIES and actionable:
+                    self._raise_issue(actionable)
+                elif not actionable:
+                    self._clear_issue()
                 if self._tries == RESTORE_TRIES:
                     _LOGGER.error(
                         "SpotNav site %s: %s still out of service after the hardware test; turn it on yourself (tried "
@@ -540,15 +561,48 @@ class ChargerTestHold:
     def _issue_id(self) -> str:
         return f"{HARDWARE_TEST_OUT_OF_SERVICE_ISSUE}_{self._site.entry_id}"
 
-    def _raise_issue(self) -> None:
-        """Tell the person in Repairs: the switches are theirs to turn on (actionable), until they are on."""
+    def _registered(self, entity_id: str) -> bool:
+        from homeassistant.helpers import entity_registry as er  # noqa: PLC0415 - kept beside its only use
+
+        try:
+            return er.async_get(self._site.hass).async_get(entity_id) is not None
+        except Exception:  # noqa: BLE001 - not known: taken as there (kept, tried again)
+            return True
+
+    def _operative(self, entity_id: str, row: Mapping[str, Any]) -> bool:
+        """Whether a switch kept is operative again: it reads on, or every one of its chargers' connectors reports a
+        status that is known and not `Unavailable` (a car plugged in reads `Preparing`, and the switch off). A
+        connector not read (its charger not loaded yet, its sensor not there) is not known: not operative by this."""
+        from ..vehicles.ocpp_identity import STATUS_CONNECTOR_KEY, connector_sensor_entity_id  # noqa: PLC0415
+
+        hass = self._site.hass
+        state = hass.states.get(entity_id)
+        if state is not None and state.state == "on":
+            return True
+        chargers = list(row.get("chargers") or [])
+        if not chargers:
+            return False
+        for charger_entry_id in chargers:
+            target = getattr(self._controller(charger_entry_id), "ocpp_target", None)
+            if target is None:
+                return False
+            try:
+                status = hass.states.get(connector_sensor_entity_id(hass, target, STATUS_CONNECTOR_KEY))
+            except Exception:  # noqa: BLE001 - not known
+                return False
+            if status is None or status.state in ("unavailable", "unknown", OCPP_UNAVAILABLE):
+                return False
+        return True
+
+    def _raise_issue(self, switches: list[str]) -> None:
+        """Tell the person in Repairs: the switches are theirs to turn on (they read off), until they are on."""
         from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415 - kept beside its only use
 
         with contextlib.suppress(Exception):
             ir.async_create_issue(
                 self._site.hass, DOMAIN, self._issue_id(), is_fixable=False, severity=ir.IssueSeverity.WARNING,
                 translation_key=HARDWARE_TEST_OUT_OF_SERVICE_ISSUE,
-                translation_placeholders={"switches": ", ".join(sorted(self._parked))},
+                translation_placeholders={"switches": ", ".join(sorted(switches))},
             )
 
     def _clear_issue(self) -> None:

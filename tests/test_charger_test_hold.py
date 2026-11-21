@@ -498,6 +498,7 @@ async def test_a_retry_during_a_new_test_s_taking_out_leaves_that_switch_to_the_
         sent.append("off")
         await gate.wait()
         hass.states.async_set(SWITCH, "off")
+        hass.states.async_set("sensor.halo_charger_connector_1_status_connector", "Unavailable")
 
     hass.services.async_register("switch", "turn_off", slow_off)
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
@@ -511,3 +512,48 @@ async def test_a_retry_during_a_new_test_s_taking_out_leaves_that_switch_to_the_
     hold.release()
     await hold.async_restore_availability()
     assert hass.states.get(SWITCH).state == "on" and hold.unavailable_kept == []
+
+
+async def test_a_charge_point_operative_again_with_a_car_plugged_in_is_set_back_though_its_switch_reads_off(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    """The re-review (2026-11-21): the switch reads on only for `Available`; operative with a car plugged in it reads
+    `Preparing` and the switch off, and the setting back had failed for ever, with a Repairs issue nobody can act on."""
+    from homeassistant.helpers import issue_registry as ir
+
+    sent = _availability(hass)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+
+    async def operative_with_a_car(call: Any) -> None:
+        sent.append("on")
+        hass.states.async_set("sensor.halo_charger_connector_1_status_connector", "Preparing")
+
+    hass.services.async_register("switch", "turn_on", operative_with_a_car)
+    hold.release()
+    await hold.async_restore_availability()
+    assert sent == ["off", "on"] and hass.states.get(SWITCH).state == "off" and hold.unavailable_kept == []
+    assert ir.async_get(hass).async_get_issue("spotnav", "hardware_test_out_of_service_site_1") is None
+
+
+async def test_a_switch_that_is_gone_is_dropped_and_one_not_reachable_raises_no_issue(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: Any
+) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    key = charger_test_hold.store_key("site_1")
+    hass_storage[key] = {"version": 1, "key": key, "data": {"unavailable": {
+        "switch.gone_availability": {"chargers": ["gone"]}, SWITCH: {"chargers": ["ocpp"]}}}}
+    _availability(hass, state="off")
+    hass.states.async_set(SWITCH, "unavailable")  # the charge point not connected: nothing the person can do here
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    await hold.async_load()
+    await hass.async_block_till_done()
+    for _ in range(charger_test_hold.ISSUE_AFTER_TRIES + 1):
+        freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+    assert hold.unavailable_kept == [SWITCH], "the gone one dropped, the unreachable one kept"
+    assert ir.async_get(hass).async_get_issue("spotnav", "hardware_test_out_of_service_site_1") is None
+    await hold.async_close()
