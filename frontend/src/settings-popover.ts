@@ -282,9 +282,10 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
     }
     const value = cap.import_limit?.value_kw ?? null;
     if (cap.import_limit?.per_phase?.holds === true && value !== null) {
-      // Held per phase by the plant itself: a third of its limit on each phase, whatever the house does.
+      // Held per phase by the plant itself: a third of its limit on each phase, whatever the house does (rounded up,
+      // so "under" stays true).
       return translate(language, "battery.cap.importLimitPhase", {
-        phase: formatNumber(language, Math.floor((value / 3) * 10 + 1e-9) / 10, 1),
+        phase: formatNumber(language, Math.ceil((value / 3) * 10 - 1e-9) / 10, 1),
         kw: formatNumber(language, value, 1),
       });
     }

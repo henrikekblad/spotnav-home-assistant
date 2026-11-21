@@ -201,11 +201,11 @@ describe("the grid charge cap block", () => {
     it("says that it holds, with a third of the limit on each phase", () => {
       const held = { cap_kw: null, rule: "import_limit", learned: null, ...limit({ holds: true }, { value_kw: 12.4, holds: true }) };
       expect(gridChargeCapLine("sv", status(held))).toBe(
-        "Sigenergy håller varje fas under 4,1 kW (anläggningens importgräns, 12,4 kW, delad på tre faser): laddning från"
+        "Sigenergy håller varje fas under 4,2 kW (anläggningens importgräns, 12,4 kW, delad på tre faser): laddning från"
           + " nätet tar det som huset lämnar.",
       );
       expect(gridChargeCapLine("en", status(held))).toBe(
-        "Sigenergy holds each phase under 4.1 kW (the plant's import limit, 12.4 kW, shared over three phases): grid"
+        "Sigenergy holds each phase under 4.2 kW (the plant's import limit, 12.4 kW, shared over three phases): grid"
           + " charging uses what the house leaves.",
       );
       expect(step("sv", held)).toBeNull();
