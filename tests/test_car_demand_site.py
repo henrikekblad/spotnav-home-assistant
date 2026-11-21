@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
+from custom_components.spotnav.planning import auto_controller
+from custom_components.spotnav.planning.auto_controller import DEMAND_SHADOW_MAX_AGE, DEMAND_SHADOW_MIN_AGE
 from custom_components.spotnav.planning.car_demand import CarCeiling
 from custom_components.spotnav.planning.demand_charge import hour_start
 from custom_components.spotnav.planning.demand_cost import HourCeiling
@@ -52,6 +54,7 @@ async def test_the_plan_in_force_is_unchanged_and_the_shadow_is_kept_and_logged_
     assert preview.plan_watch_facts()["demand_shadow"] is None
 
     monkeypatch.setattr(SiteDemandCeiling, "car_inputs", _ceiling(9.0))
+    freezer.tick(DEMAND_SHADOW_MIN_AGE)
     await preview.async_recalculate()
     after = preview.snapshot()
     assert after.proposal is not None and after.proposal.periods == before.proposal.periods
@@ -66,11 +69,44 @@ async def test_the_plan_in_force_is_unchanged_and_the_shadow_is_kept_and_logged_
     assert len(_logged(controller)) == 1
 
     # 1 kW of room is below the charger's minimum: every hour paused. The pilot's car has no departure, so nothing is
-    # raised and the plan under the ceiling waits; the plan in force is costed above the ceiling.
+    # raised and the plan under the ceiling waits; the plan in force is costed above the ceiling. A ceiling that moves
+    # under the same plan in force is planned again once the last shadow is `DEMAND_SHADOW_MIN_AGE` old.
     monkeypatch.setattr(SiteDemandCeiling, "car_inputs", _ceiling(2.0))
+    await preview.async_recalculate()
+    assert preview.plan_watch_facts()["demand_shadow"]["fits"]
+    freezer.tick(DEMAND_SHADOW_MIN_AGE)
     await preview.async_recalculate()
     assert preview.snapshot().proposal.periods == before.proposal.periods
     facts = preview.plan_watch_facts()["demand_shadow"]
     assert facts["reason"] == "insufficient_price_horizon" and facts["raise_kw"] == 0.0
     assert facts["in_force"]["demand_cost"] > 0
     assert len(_logged(controller)) == 2
+
+
+async def test_the_shadow_is_not_planned_again_while_the_plan_in_force_and_its_ceiling_stay(
+    hass: HomeAssistant, freezer, monkeypatch
+) -> None:
+    await pilot_site(hass, freezer)
+    preview = preview_for(hass, "entry_a")
+    assert preview is not None
+    made: list[Any] = []
+    real = auto_controller.plan_under_ceiling
+
+    def counted(*args: Any) -> Any:
+        made.append(args)
+        return real(*args)
+
+    monkeypatch.setattr(auto_controller, "plan_under_ceiling", counted)
+    monkeypatch.setattr(SiteDemandCeiling, "car_inputs", _ceiling(9.0))
+    freezer.tick(DEMAND_SHADOW_MIN_AGE)
+    await preview.async_recalculate()
+    assert len(made) == 1
+    # The same plan in force on the same ceiling: kept, however often the car is planned.
+    for _ in range(3):
+        freezer.tick(DEMAND_SHADOW_MIN_AGE)
+        await preview.async_recalculate()
+    assert len(made) == 1 and preview.plan_watch_facts()["demand_shadow"]["fits"]
+    # Kept no longer than an hour.
+    freezer.tick(DEMAND_SHADOW_MAX_AGE)
+    await preview.async_recalculate()
+    assert len(made) == 2
