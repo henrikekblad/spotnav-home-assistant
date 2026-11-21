@@ -225,7 +225,10 @@ How it differs from an AC charger:
 - **Power, not current.** SpotNav still plans and balances in amperes per phase, and writes the power
   three phases carry at the site's voltage between phases: one ampere is 0.69 kW at 400 V, so 16 A is
   11.1 kW. The charger's rating is the most it is given, and the card shows the planned power in kW.
-  The lowest step is SpotNav's usual 6 A, 4.2 kW at 400 V.
+  The lowest step is the charger's own lowest power, 1.5 kW, not an AC charger's 6 A (4.2 kW): 2.17 A
+  per phase at 400 V. Solar starts, holds and stops at it, so a winter surplus of about 1.5 kW is
+  enough, and load balancing holds the charge there before it pauses it. Above it the steps are whole
+  amperes, 0.69 kW each.
 - **Load balancing.** The charger draws through the inverter, from the battery, the sun or the grid,
   so the fuse sees only what the inverter imports. Load balancing reads the site's grid meter as
   always, and reads the charger's own output power as its draw, spread evenly over the three phases.
