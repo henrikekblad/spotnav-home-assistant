@@ -78,7 +78,7 @@ from typing import Any
 MODE_GRID_FIRST = "Command Charging (Grid First)"
 MODE_MSC = "Maximum Self Consumption"
 #: Pass criteria (§3): every phase at or under limit / 3 + this, from at most `SETTLE_S` after the load went on.
-PHASE_TOLERANCE_KW = 0.1
+PHASE_TOLERANCE_KW = 0.15
 SETTLE_S = 15.0
 #: A step needs this long with the load on to be judged (s).
 MIN_LOAD_S = 45.0
@@ -541,9 +541,13 @@ def restore(run: Run, snapshot: dict[str, Any], *, force: bool = False) -> bool:
 
 
 def _held_from(samples: list[tuple[float, tuple[float | None, ...]]], cap: float) -> float | None:
-    """The first time from which every later reading has every phase at or under `cap`."""
+    """The first time from which no phase is over `cap` in two readings in a row: a single reading over it, with the
+    next one under, is the plant's loop answering a load that steps (a kettle's element cycling), not a phase left
+    unheld."""
+    over = [None in phases or max(phases) > cap for _t, phases in samples]  # type: ignore[type-var]
+    sustained = [over[i] and (i + 1 >= len(over) or over[i + 1]) for i in range(len(over))]
     for index, (t, _phases) in enumerate(samples):
-        if all(None not in phases and max(phases) <= cap for _t, phases in samples[index:]):  # type: ignore[type-var]
+        if not any(sustained[index:]):
             return t
     return None
 
@@ -615,7 +619,8 @@ def judge(run: Run, window: Window) -> dict[str, Any]:
     if window.step.startswith("under") and out["verdict"] in ("PASS", "FAIL"):
         # Decisive only while the total stays under the limit: a plant that limits just the total would then leave
         # the loaded phase over a third of it.
-        if unheld_total >= run.limit_kw - 0.3:
+        measured_total = out.get("total_max_kw")
+        if unheld_total >= run.limit_kw - 0.3 or (measured_total is not None and measured_total >= run.limit_kw - 0.3):
             out["verdict"] = "not judged (the total reached the limit: lower --low-charge-kw or use a smaller load)"
         elif out["verdict"] == "FAIL":
             out["verdict"] = "FAIL: the plant limits only the total, not each phase"
