@@ -34,6 +34,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
+    HARDWARE_TEST_OUT_OF_SERVICE_ISSUE,
     PRICE_SOURCE_MISSING_ISSUE,
 )
 from .vehicles.duplicate_chargers import duplicate_pairs
@@ -156,6 +157,9 @@ async def async_sync_resolution_repairs(
             continue
         if issue_id.startswith(f"{PRICE_SOURCE_MISSING_ISSUE}_"):
             # An electricity price's own (`price_device.py`): raised and deleted by its device.
+            continue
+        if issue_id.startswith(f"{HARDWARE_TEST_OUT_OF_SERVICE_ISSUE}_"):
+            # A hardware test's own (`site/charger_test_hold.py`): raised and deleted by the site's hold.
             continue
         if issue_id not in wanted:
             ir.async_delete_issue(hass, DOMAIN, issue_id)

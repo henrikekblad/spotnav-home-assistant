@@ -78,8 +78,9 @@ ERROR_NO_TEST: Final = "spotnav_no_test"
 BLOCKED_CAR_CHARGING: Final = "car_charging"
 #: The chargers' hold ends by itself this long after the test's deadline, should nothing release it.
 HOLD_SLACK: Final = timedelta(minutes=1)
-#: How long the unload waits for the OCPP chargers to be set back to operative (s).
-RESTORE_AT_UNLOAD_S: Final = 20.0
+#: How long the unload waits for the OCPP chargers to be set back to operative (s): more than one call's own time
+#: (`charger_test_hold.CALL_S`).
+RESTORE_AT_UNLOAD_S: Final = 35.0
 
 
 def store_key(entry_id: str) -> str:

@@ -982,6 +982,10 @@
     "price_source_missing": {
       "title": "Ingen elpriser for {area}",
       "description": "**{price}** har ingen priser: der er ingen kilde sat op for {area}. Åbn SpotNav-kortets indstillinger, Elpris: der står, hvad der skal tilføjes (Home Assistants Nord Pool-integration, din egen ENTSO-E-nøgle, PVPC-, Octopus Energy- eller Zonneplan-integrationen). Beskeden forsvinder af sig selv, når priserne er tilbage."
+    },
+    "hardware_test_out_of_service": {
+      "title": "En OCPP-lader er stadig utilgængelig efter hardwaretesten",
+      "description": "SpotNav satte **{switches}** som utilgængelig under hardwaretesten og kunne ikke gøre den tilgængelig igen. Slå den Availability-kontakt til selv (Indstillinger → Enheder og tjenester → OCPP). Indtil da lader laderen ikke. Beskeden forsvinder, når den er slået til."
     }
   },
   "exceptions": {

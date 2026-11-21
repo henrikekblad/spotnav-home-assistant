@@ -395,3 +395,68 @@ async def test_a_charge_point_that_answers_scheduled_is_not_taken_as_out_of_serv
     assert hold.counts_nothing("ocpp") is False
     hold.release()
     await hold.async_close()
+
+
+async def test_a_switch_a_person_turned_on_during_the_test_is_left_as_it_is(hass: HomeAssistant) -> None:
+    sent = _availability(hass)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+    hass.states.async_set(SWITCH, "on")  # the person, in the middle of the test
+    hold.release()
+    await hold.async_restore_availability()
+    assert sent == ["off"] and hold.unavailable_kept == []
+
+
+async def test_a_switch_not_set_back_is_told_in_repairs_and_the_message_goes_once_it_is_on(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    from custom_components.spotnav.const import DOMAIN
+
+    sent = _availability(hass)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()
+
+    async def refused(call: Any) -> None:
+        sent.append("on")  # the charge point stays unavailable
+
+    hass.services.async_register("switch", "turn_on", refused)
+    hold.release()
+    issue = ("spotnav", f"hardware_test_out_of_service_{'site_1'}")
+    await hold.async_restore_availability()
+    for _ in range(charger_test_hold.ISSUE_AFTER_TRIES - 1):
+        assert ir.async_get(hass).async_get_issue(*issue) is None
+        freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+    found = ir.async_get(hass).async_get_issue(*issue)
+    assert found is not None and found.translation_placeholders == {"switches": SWITCH} and issue[0] == DOMAIN
+    hass.states.async_set(SWITCH, "on")  # the person turns it on
+    freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(*issue) is None and hold.unavailable_kept == []
+    await hold.async_close()
+
+
+async def test_the_record_goes_at_the_entry_s_removal_only_once_every_switch_is_on(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    key = charger_test_hold.store_key("site_1")
+    record = {"version": 1, "key": key, "data": {"unavailable": {SWITCH: {"chargers": ["ocpp"]}}}}
+    sent = _availability(hass, state="off", reports=False)
+    hass_storage[key] = record
+    await ChargerTestHold.async_remove_stored(hass, "site_1")
+    assert sent == ["on"] and key in hass_storage, "not on: kept"
+    hass.services.async_register("switch", "turn_on", lambda call: hass.states.async_set(SWITCH, "on"))
+    await ChargerTestHold.async_remove_stored(hass, "site_1")
+    assert key not in hass_storage
+
+
+def test_the_unload_waits_longer_than_one_call() -> None:
+    from custom_components.spotnav import hardware_test
+
+    assert hardware_test.RESTORE_AT_UNLOAD_S > charger_test_hold.CALL_S

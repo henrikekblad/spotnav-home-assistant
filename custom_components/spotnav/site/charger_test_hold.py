@@ -61,9 +61,12 @@ unavailable for the minutes of the test, and if Home Assistant dies in the middl
 Assistant is back and sets it operative (the safe direction: no charge rather than an unguarded one).
 That it was taken out of service is kept in this hold's store (`store_key`) **before** the command goes out, and it is
 set back to operative at every release (`async_restore_availability`, from `hardware_test.py`: done, failed, deadline,
-stop, an error, the unload), confirmed by the switch reading on again, retried every `RESTORE_RETRY_S` (at most
-`RESTORE_TRIES` times a start, then left in the store with a warning); after a restart in the middle of a test the
-store still holds it, and it is set back at the site's next start (`async_load`).
+stop, an error, the unload), confirmed by the switch reading on again, retried every `RESTORE_RETRY_S` (after
+`RESTORE_TRIES` of them every `RESTORE_SLOW_RETRY_S`, until it is on); after a restart in the middle of a test the
+store still holds it, and it is set back at the site's next start (`async_load`). A switch that reads on again by the
+time it is set back (a person turned it on) is left as it is. After `ISSUE_AFTER_TRIES` setting backs not confirmed
+the person is told in Repairs (turn the switch on yourself), gone once it is on. At the removal of the site's entry the
+record goes only once every switch reads on.
 
 Every other control kind keeps its current counted, because there the stop ends or pauses the running session
 only and the charger can begin a charge again by itself without Home Assistant: Easee (its pause service; a charger without authorization charges at the plug-in), start/stop buttons (a session
@@ -86,7 +89,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from ..const import CONF_CHARGER_ENTRY_IDS, DOMAIN
+from ..const import CONF_CHARGER_ENTRY_IDS, DOMAIN, HARDWARE_TEST_OUT_OF_SERVICE_ISSUE
 
 if TYPE_CHECKING:
     from .site_capacity_controller import SiteCapacityController
@@ -102,6 +105,10 @@ CALL_S: Final = 30.0
 CONFIRM_S: Final = 30.0
 RESTORE_RETRY_S: Final = 60.0
 RESTORE_TRIES: Final = 30
+#: And then how often, until it is on (s).
+RESTORE_SLOW_RETRY_S: Final = 600.0
+#: After this many setting backs not confirmed in a row the person is told in Repairs (they can turn it on themselves).
+ISSUE_AFTER_TRIES: Final = 3
 #: A measurement from which a charger counts as drawing (A on a phase, W).
 DRAWING_A: Final = 1.0
 DRAWING_W: Final = 230.0
@@ -463,8 +470,9 @@ class ChargerTestHold:
 
     async def async_restore_availability(self) -> None:
         """Every OCPP charger this hold (or one cut short by a restart) took out of service set back to operative,
-        confirmed by its switch reading on; one not confirmed is tried again every `RESTORE_RETRY_S`, at most
-        `RESTORE_TRIES` times a start, and stays in the store meanwhile. Never raises."""
+        confirmed by its switch reading on (one that reads on already is left as it is); one not confirmed is tried
+        again (`RESTORE_RETRY_S`, later `RESTORE_SLOW_RETRY_S`), told in Repairs from `ISSUE_AFTER_TRIES`, and stays
+        in the store meanwhile. Never raises."""
         task, self._park_task = self._park_task, None
         if task is not None and not task.done():
             task.cancel()
@@ -477,6 +485,10 @@ class ChargerTestHold:
                 if self.active and any(item in self._out for item in row.get("chargers") or []):
                     continue  # a new hold holds it again
                 state = self._site.hass.states.get(entity_id)
+                if state is not None and state.state == "on":
+                    # On already: a person (or the charge point) set it back meanwhile. Nothing is written over it.
+                    self._parked.pop(entity_id, None)
+                    continue
                 try:
                     if state is None or state.state == "unavailable":
                         raise RuntimeError("the charge point is not connected")
@@ -499,14 +511,39 @@ class ChargerTestHold:
                 self._tries = 0
             elif not self._closed and self._retry_cancel is None:
                 self._tries += 1
-                if self._tries <= RESTORE_TRIES:
-                    self._retry_cancel = async_call_later(self._site.hass, RESTORE_RETRY_S, self._retry)
-                else:
+                if self._tries >= ISSUE_AFTER_TRIES:
+                    self._raise_issue()
+                if self._tries == RESTORE_TRIES:
                     _LOGGER.error(
-                        "SpotNav site %s: OCPP chargers %s are still out of service after the hardware test; turn their "
-                        "availability on, or restart Home Assistant to try again", self._site.entry_id,
-                        ", ".join(sorted(self._parked)),
+                        "SpotNav site %s: %s still out of service after the hardware test; turn it on yourself (tried "
+                        "again every %s s from now)", self._site.entry_id, ", ".join(sorted(self._parked)),
+                        int(RESTORE_SLOW_RETRY_S),
                     )
+                delay = RESTORE_RETRY_S if self._tries < RESTORE_TRIES else RESTORE_SLOW_RETRY_S
+                self._retry_cancel = async_call_later(self._site.hass, delay, self._retry)
+
+            if not self._parked:
+                self._clear_issue()
+
+    def _issue_id(self) -> str:
+        return f"{HARDWARE_TEST_OUT_OF_SERVICE_ISSUE}_{self._site.entry_id}"
+
+    def _raise_issue(self) -> None:
+        """Tell the person in Repairs: the switches are theirs to turn on (actionable), until they are on."""
+        from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415 - kept beside its only use
+
+        with contextlib.suppress(Exception):
+            ir.async_create_issue(
+                self._site.hass, DOMAIN, self._issue_id(), is_fixable=False, severity=ir.IssueSeverity.WARNING,
+                translation_key=HARDWARE_TEST_OUT_OF_SERVICE_ISSUE,
+                translation_placeholders={"switches": ", ".join(sorted(self._parked))},
+            )
+
+    def _clear_issue(self) -> None:
+        from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415 - kept beside its only use
+
+        with contextlib.suppress(Exception):
+            ir.async_delete_issue(self._site.hass, DOMAIN, self._issue_id())
 
     @callback
     def _retry(self, _now: datetime) -> None:
@@ -533,7 +570,36 @@ class ChargerTestHold:
 
     @staticmethod
     async def async_remove_stored(hass: Any, entry_id: str) -> None:
-        await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+        """The site's entry is removed: each availability switch still kept is set back to on first, once; the record
+        goes only when every one is on (else it stays, with a warning: the person turns it on, or a site set up again
+        with this entry id sets it back). Never raises."""
+        store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(entry_id))
+        try:
+            raw = await store.async_load()
+        except Exception:  # noqa: BLE001 - unreadable: nothing to set back
+            raw = None
+        kept = (raw or {}).get("unavailable") if isinstance(raw, dict) else None
+        left: list[str] = []
+        for entity_id in kept if isinstance(kept, dict) else {}:
+            state = hass.states.get(entity_id)
+            if state is not None and state.state == "on":
+                continue
+            try:
+                async with asyncio.timeout(CALL_S):
+                    await hass.services.async_call("switch", "turn_on", {"entity_id": entity_id}, blocking=True)
+            except Exception:  # noqa: BLE001 - left in the record
+                _LOGGER.debug("Setting %s back at the removal failed", entity_id, exc_info=True)
+            state = hass.states.get(entity_id)
+            if state is None or state.state != "on":
+                left.append(entity_id)
+        if left:
+            _LOGGER.warning(
+                "SpotNav: %s could not be set back to available as its site was removed; turn it on yourself",
+                ", ".join(left),
+            )
+            return
+        with contextlib.suppress(Exception):
+            await store.async_remove()
 
     def observe(self) -> None:
         """Stop a charge that began under the hold (see the module), bounded per charger. Never raises."""
