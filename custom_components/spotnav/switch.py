@@ -157,8 +157,7 @@ class SiteHeatAwaySwitch(SpotNavSiteEntity, SwitchEntity):
         return config.mode == MODE_AWAY and end is not None and end > dt_util.utcnow()
 
     async def async_turn_on(self, **kwargs: object) -> None:
-        if self.is_on:
-            return
+        # Always the open-ended away, also over an Away set by date: on means away until turned off.
         until = dt_util.utcnow() + timedelta(days=AWAY_MAX_DAYS) - timedelta(minutes=1)
         self._write({F_MODE: MODE_AWAY, F_AWAY_UNTIL: until.isoformat()})
 
