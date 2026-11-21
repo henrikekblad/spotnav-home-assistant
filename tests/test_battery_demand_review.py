@@ -188,8 +188,20 @@ def test_the_ceiling_in_minor_units_and_the_house_at_p90_in_counted_hours() -> N
             return value - 0.5, value + 0.7
 
     house = {MIDNIGHT: 1.0, hour: 2.0}
-    assert demand_house(house, Band(), ceilings) == {MIDNIGHT: 1.0, hour: pytest.approx(2.7)}
-    assert demand_house(house, None, ceilings) == house
+    assert demand_house(house, Band(), ceilings, TZ) == {MIDNIGHT: 1.0, hour: pytest.approx(2.7)}
+    assert demand_house(house, None, ceilings, TZ) == house
+    # Only the counted hours that may make their day's peak: the band's high side reaches the day's highest median.
+    evening = {hour + timedelta(hours=offset): (2.0, 4500.0, None) for offset in range(3)}
+    near = {MIDNIGHT: 1.0, hour: 2.0, hour + timedelta(hours=1): 1.5, hour + timedelta(hours=2): 1.0}
+    assert demand_house(near, Band(), evening, TZ) == {
+        MIDNIGHT: 1.0,
+        hour: pytest.approx(2.7),
+        hour + timedelta(hours=1): pytest.approx(2.2),
+        hour + timedelta(hours=2): 1.0,
+    }
+    # Every hour counted (an all-hours part): the median throughout.
+    everywhere = {start: (2.0, 1630.0, None) for start in near}
+    assert demand_house(near, Band(), everywhere, TZ) == near
     assert needed(ceilings, None, 13.8)
     assert not needed({}, {hour: 13.8}, 13.8) and needed({}, {hour: 6.0}, 13.8)
 
