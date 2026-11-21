@@ -463,7 +463,8 @@ class HourMark:
 def _total_exact(raw: Mapping[str, Any], minutes: int, exact_minutes: int, lost: int) -> float | None:
     """A stored mark's `total_exact`: as kept, or, in a mark kept before it was kept, its `total_all` where that is
     provably a minute seen on every phase: every one of the hour's 60 minutes counted (by the band or exactly, none
-    lost), so no minute of it was seen on no phase, and the hour's largest total is one of those seen. Short of that
+    lost) in an hour sampled live, so no minute of it was seen on no phase, and the hour's largest total is one of
+    those seen (an hour read back may be two readings merged, whose counts prove nothing of the kind). Short of that
     the mark proves nothing (a minute that did not count may still have carried the largest total) and it has none:
     its exact minutes then count as hidden, the conservative rule."""
     if not exact_minutes:
