@@ -61,8 +61,12 @@ from tests.test_price_device import add_price
 
 
 @pytest.fixture(autouse=True)
-def _frozen_budget_clock(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The modes budget reads a frozen clock: how long the solve took on this machine never skips a mode."""
+def _frozen_budget_clock(monkeypatch: pytest.MonkeyPatch, _frozen_wall_clock: Any) -> None:
+    """The modes budget reads a frozen clock: how long the solve took on this machine never skips a mode.
+
+    It depends on the wall clock fixture so it is patched after `freeze_time` has started: freezegun swaps every module
+    attribute that is `time.monotonic` for its own clock, from a per-module cache that goes stale once an earlier test
+    has frozen the clock while `budget_clock` was still the real one, and it would overwrite a patch made before."""
     monkeypatch.setattr(plan_runtime, "budget_clock", lambda: 0.0)
 
 
