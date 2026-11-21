@@ -17,7 +17,7 @@ from homeassistant.helpers import entity_registry as er
 
 from ..battery.coexist import coexistence_for
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_GRID_POWER_SOURCE, CONF_MEASUREMENT_MODE, CONF_SOLAR_FORECAST_ENTRIES
-from ..execution.charger_profiles import entity_matches_keys, PROFILES
+from ..execution.charger_profiles import entity_matches_keys, platform_profiles, PROFILES
 from .detected import (
     BatteryOffer,
     ChargerIntegration,
@@ -46,12 +46,14 @@ _LOGGER = logging.getLogger(__name__)
 
 def _has_charger(registry: er.EntityRegistry, entry: ConfigEntry) -> bool:
     """Whether a charger integration's entry has a charger at all: always, unless its profile names the keys only a
-    charger carries (`PlatformProfile.device_keys`): a Sigenergy plant without a DC charger is no charger left out."""
-    profile = PROFILES[entry.domain]
-    if not profile.device_keys:
+    charger carries (`PlatformProfile.device_keys`): a Sigenergy plant without a DC or an AC charger is no charger left
+    out."""
+    profiles = platform_profiles(entry.domain)
+    if any(not profile.device_keys for profile in profiles):
         return True
+    keys = tuple(key for profile in profiles for key in profile.device_keys)
     return any(
-        entity_matches_keys(translation_key=item.translation_key, unique_id=item.unique_id, keys=profile.device_keys)
+        entity_matches_keys(translation_key=item.translation_key, unique_id=item.unique_id, keys=keys)
         for item in er.async_entries_for_config_entry(registry, entry.entry_id)
     )
 

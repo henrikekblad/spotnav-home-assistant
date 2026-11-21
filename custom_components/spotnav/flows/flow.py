@@ -77,6 +77,7 @@ from ..const import (
 )
 from ..execution.charger_profiles import (
     detectable_platforms,
+    device_profile,
     PATH_EASEE,
     profile_for,
     ROLE_CHARGER,
@@ -1487,10 +1488,9 @@ class SpotNavChargingConfigFlow(
             ):
                 continue
             else:
-                profile = profile_for(domains.get(device.config_entry_id))
-                if profile is not None and not is_charger_device(
-                    profile, er.async_entries_for_device(entities, device.id, include_disabled_entities=True)
-                ):
+                device_entries = er.async_entries_for_device(entities, device.id, include_disabled_entities=True)
+                profile = device_profile(domains.get(device.config_entry_id), device_entries)
+                if profile is not None and not is_charger_device(profile, device_entries):
                     # A Sigenergy plant, inverter or battery: the platform's other devices are not chargers.
                     continue
             label = device.name_by_user or device.name or device.id

@@ -37,6 +37,7 @@ still usable through the generic flow; it then gets `DEFAULT_POLICY`, the conser
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -244,6 +245,15 @@ class PlatformProfile:
     #: something that is not the car's level (Sigenergy's DC charger reads 0 % before a session), so it is taken as
     #: unknown. `()`: the charger's reading is live whenever it has one.
     soc_live_values: tuple[str, ...] = ()
+    #: What SpotNav stores and looks the profile up by (`CONF_CHARGER_PLATFORM`) when that is not the platform: a
+    #: second kind of charger on a platform that already has one (Sigenergy's AC charger, `sigen_ac`, beside its DC
+    #: charger, `sigen`). Its device is told apart by `device_keys` (`device_profile`). `""`: the platform.
+    key: str = ""
+
+    @property
+    def profile_key(self) -> str:
+        """The name the profile is stored and looked up by: its `key`, else its platform."""
+        return self.key or self.platform
 
     @property
     def can_set_current(self) -> bool:
@@ -829,15 +839,39 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
     PlatformProfile(platform="smappee", name="Smappee", role=ROLE_EXCLUDED),
 )
 
-PROFILES: Final[dict[str, PlatformProfile]] = {profile.platform: profile for profile in _PROFILES}
+PROFILES: Final[dict[str, PlatformProfile]] = {profile.profile_key: profile for profile in _PROFILES}
 
 def detectable_platforms() -> tuple[str, ...]:
     """Platforms the detected flow offers a device of: everything that is not excluded."""
-    return tuple(p.platform for p in _PROFILES if p.role != ROLE_EXCLUDED)
+    return tuple(dict.fromkeys(p.platform for p in _PROFILES if p.role != ROLE_EXCLUDED))
 
 
 def profile_for(platform: str | None) -> PlatformProfile | None:
+    """The profile stored under `platform` (a `profile_key`); for a bare platform, its first charger's."""
     return PROFILES.get(platform or "")
+
+
+def platform_profiles(platform: str | None) -> tuple[PlatformProfile, ...]:
+    """Every profile of one Home Assistant platform: one, or more where it carries several kinds of charger."""
+    return tuple(profile for profile in _PROFILES if profile.platform == (platform or ""))
+
+
+def device_profile(platform: str | None, entries: Iterable[Any]) -> PlatformProfile | None:
+    """The profile of a device of `platform`, from its registry entries: the one of the platform's other kinds of
+    charger (`PlatformProfile.key`) whose `device_keys` one of its entities carries, else the platform's own."""
+    entries = list(entries)
+    for profile in platform_profiles(platform):
+        if profile.key and any(
+            getattr(entry, "platform", None) == profile.platform
+            and entity_matches_keys(
+                translation_key=getattr(entry, "translation_key", None),
+                unique_id=getattr(entry, "unique_id", None),
+                keys=profile.device_keys,
+            )
+            for entry in entries
+        ):
+            return profile
+    return profile_for(platform)
 
 
 def policy_for(platform: str | None) -> WritePolicy:

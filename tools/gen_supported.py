@@ -378,7 +378,7 @@ def charger_notes(profile: cp.PlatformProfile) -> str:
             "Under an import target see [chargers that take a new current only every few minutes]"
             "(site-and-load-balancing.md#holding-the-chargers-under-the-import-target)."
         )
-    note = HARDWARE_NOTES.get(("charger", profile.platform))
+    note = HARDWARE_NOTES.get(("charger", profile.profile_key))
     if note:
         lines.append(note)
     return " ".join(lines)
@@ -391,7 +391,7 @@ def charger_row(profile: cp.PlatformProfile) -> tuple[str, ...]:
         current_text(profile),
         energy_text(profile),
         charger_notes(profile),
-        verified("charger", profile.platform),
+        verified("charger", profile.profile_key),
     )
 
 

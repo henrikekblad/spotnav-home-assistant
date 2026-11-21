@@ -37,7 +37,7 @@ from homeassistant.util import dt as dt_util
 from ..const import VOLTAGE_BETWEEN_PHASES_IT_V
 from ..core.electric import TN_VOLTS_BETWEEN_PHASES
 from ..execution.charger_entities import EntityMatcher
-from ..execution.charger_profiles import profile_for
+from ..execution.charger_profiles import device_profile
 from ..site.measurement_source import PhaseMeasurementSource
 from ..site.site_capacity import normalized_ampere_unit, PhaseName, PHASES
 
@@ -235,8 +235,9 @@ def _power_controlled_device(hass: HomeAssistant, device_id: str) -> bool:
     `dc_charger_charging_current`) are on the car's battery side, never a phase current: only its output power, read
     over three phases, is offered."""
     registry = er.async_get(hass)
-    for platform in {entry.platform for entry in er.async_entries_for_device(registry, device_id)}:
-        profile = profile_for(platform)
+    entries = er.async_entries_for_device(registry, device_id)
+    for platform in {entry.platform for entry in entries}:
+        profile = device_profile(platform, entries)
         if profile is not None and profile.power_controlled:
             return True
     return False
@@ -254,7 +255,7 @@ def _profile_phase_entity_candidates(
     entries = er.async_entries_for_device(registry, device_id)
     results: list[DiscoveryCandidate] = []
     for platform in dict.fromkeys(entry.platform for entry in entries):
-        profile = profile_for(platform)
+        profile = device_profile(platform, entries)
         if profile is None or len(profile.current_sensor_keys) != len(PHASES):
             continue
         matcher = EntityMatcher(hass, [e for e in entries if e.platform == platform], profile)
@@ -311,7 +312,7 @@ def profile_attribute_source(
     registry = er.async_get(hass)
     entries = er.async_entries_for_device(registry, device_id)
     for platform in dict.fromkeys(entry.platform for entry in entries):
-        profile = profile_for(platform)
+        profile = device_profile(platform, entries)
         if profile is not None and profile.power_controlled and profile.output_power_keys:
             # A DC charger: its output power, read as the same current on all three phases.
             matcher = EntityMatcher(hass, [e for e in entries if e.platform == platform], profile)
