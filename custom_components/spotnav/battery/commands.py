@@ -572,6 +572,38 @@ class PhaseControl:
 
 
 @dataclass(frozen=True, slots=True)
+class ImportLimitPhases:
+    """A plant whose own grid import limit (`BrandControl.import_limit`) holds **each phase** at a third of it, not
+    only the total: what lets a grid charge run without the HA-down cap (`gate.grid_charge_cap_kw`,
+    `gate.import_limit_phase_holds`). Data only.
+
+    It holds only where everything here reads so, checked at every start and every look: the switch that makes the
+    plant share its power per phase reads `on`, the plant's grid sensor (which the limit regulates on) reads
+    `sensor_online`, and the plant's Output Type reads `output_type` (`BrandControl.output_type`, read, never assumed).
+    `field_tested` is the recorded result of the owner's on-site test (`tools/sigen_import_limit_test.py`): a
+    single-phase load held at a third of the limit at full charge, **while the total stayed under the limit** (a
+    plant that only shares out a cut once the total binds lets one phase reach `L / 3 + 2 (p + cars) / 3` just below
+    that point, which is the total-only rule, `gate.import_limit_max_kw`) and with Home Assistant's writes stopped.
+    Until it is recorded the rule never acts."""
+
+    #: The switch that makes the plant share its power per phase (read, never written); it must read `on`.
+    switch: Match
+    #: The plant's grid sensor status and the state that means it is connected.
+    grid_sensor: Match
+    sensor_online: str
+    #: The Output Type (lower-cased) the switch acts with: Sigenergy's 40030 is valid only for L1/L2/L3/N.
+    output_type: str
+    #: The owner's on-site test passed (see the class). Off until it has.
+    field_tested: bool = False
+    #: The most the plant puts out on one phase while it holds that phase's import (kW). `None`: unknown, counted as
+    #: nothing (the plant only stops charging on that phase). It must stay `None`: it is never recorded from the
+    #: on-site test (`tools/sigen_import_limit_test.py` reports the output it saw, which is what that load needed,
+    #: not the most the plant can put out), and a value too high would let a house and a car pass the fuse on a phase.
+    #: Only a maker's figure for the per-phase maximum, checked on a plant, could set it.
+    phase_output_max_kw: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class BrandControl:
     brand: str
     adapter: Adapter
@@ -615,6 +647,9 @@ class BrandControl:
     #: The plant's own grid import limit (kW): while it reads at most the fuse, and the person's on-site test showed
     #: it acts (`battery_control_import_limit_acts`), it bounds a grid charge with Home Assistant down.
     import_limit: Match | None = None
+    #: Where that limit is held per phase (`ImportLimitPhases`): with the owner's test recorded, the HA-down cap is
+    #: lifted while it reads at most what keeps every phase under the fuse (`gate.import_limit_phase_holds`).
+    import_limit_phases: ImportLimitPhases | None = None
     note: str = ""
     #: Ways to hold, tried in order by the verification (`HoldVariant`); the first is in `states` and `peak_first`
     #: until another is chosen (`with_hold`). Empty: the brand has one hold.
@@ -1052,6 +1087,31 @@ SIGENERGY_PHASES: Final = PhaseControl(
     stop_first=("phase_l1_target", "phase_l2_target", "phase_l3_target", "power_target", "control_mode"),
 )
 
+#: Sigenergy's grid import limit held per phase (`plans/v3_sigen_local_fuse_protection.md`): with independent phase
+#: power control on (40030), the owner's plant held each phase at limit / 3 once the limit bound, in AI mode (12 days,
+#: 13.8 kW: 4.60 kW a phase) and in Remote EMS "Command Charging (Grid First)" (2026-11-18, 6 kW: 2.00 kW a phase,
+#: putting out 0.33 kW on the loaded phase). The on-site test of 2026-11-21 (`tools/sigen_import_limit_test.py`;
+#: SigenStor EC 12.0 TP, firmware V100R001C21SPC117, sigen 2.0.3, Remote EMS "Command Charging (Grid First)", 40030
+#: on, Output Type L1/L2/L3/N, grid sensor online) showed the rest: at 6 kW a kettle on B held at 2.0 kW at full
+#: charge and again after ten minutes with nothing written to the plant; at 8 kW the same at full charge, and
+#: **with the total under the limit** (6.0-6.26 kW of 8 kW, a 1 kW charge) B held at 2.58-2.73 kW with 3.3 kW of
+#: house on it, the plant putting out 0.67 kW on B and charging 1.0 kW on A and C: a per-phase hold, not a total
+#: one. Recorded as `field_tested` (owner, 2026-11-21); each site still says its plant's limit acts
+#: (`battery_control_import_limit_acts`) and every reading is checked again at each start and look. The limit
+#: regulates on the
+#: plant's grid sensor (V2.9 Table 5-2-1, "Grid Sensor needed"): its status, 30004, is TypQxQ 2.0.3
+#: `static_sensor.py` key `plant_grid_sensor_status` (states `offline`/`online`, disabled by default).
+SIGENERGY_IMPORT_LIMIT_PHASES: Final = ImportLimitPhases(
+    switch=_SIG_PHASE_SWITCH.match,
+    grid_sensor=_key("plant_grid_sensor_status"),
+    sensor_online="online",
+    # V2.9: independent phase power control is "valid only when the output type is L1/L2/L3/N".
+    output_type="l1_l2_l3_n",
+    # `phase_output_max_kw` stays None (see `ImportLimitPhases`): never recorded from the on-site test.
+    # The owner's on-site test passed on 2026-11-21 (see above).
+    field_tested=True,
+)
+
 SIGENERGY_CONTROL: Final = BrandControl(
     brand="sigenergy",
     # Flips to True once the owner's on-site tests are rerun on the reworked executor (one line, here and below).
@@ -1083,6 +1143,7 @@ SIGENERGY_CONTROL: Final = BrandControl(
     grid_charge_phases=3,
     output_type=_key("inverter_output_type"),
     import_limit=_key("plant_grid_maximum_import_limitation", "number"),
+    import_limit_phases=SIGENERGY_IMPORT_LIMIT_PHASES,
     note="Remote EMS replaces the app's mode only while it is on; SpotNav takes a plant in Maximum Self"
     " Consumption only, so turning it off hands back the mode it found.",
     hold_variants=SIGENERGY_HOLDS,

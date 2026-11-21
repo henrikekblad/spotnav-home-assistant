@@ -333,6 +333,12 @@ def battery_expectations() -> Iterator[Expectation]:
             for full in role.services.values():
                 domain, service = full.split(".", 1)
                 yield Expectation(domain, KIND_SERVICE, service, f"{where}.{role.name}.services")
+        phases = getattr(control, "import_limit_phases", None)
+        if phases is not None:
+            # The readings a limit held per phase needs (the fuse's HA-down cap is lifted on them).
+            yield from of(phases.switch, platforms, f"{where}.import_limit_phases.switch")
+            yield from of(phases.grid_sensor, platforms, f"{where}.import_limit_phases.grid_sensor")
+            yield from _option(platforms, phases.sensor_online, f"{where}.import_limit_phases.sensor_online")
 
 
 def _option(domains: tuple[str, ...], option: str, origin: str) -> Iterator[Expectation]:

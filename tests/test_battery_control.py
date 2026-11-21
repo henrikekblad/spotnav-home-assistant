@@ -20,7 +20,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.spotnav.battery import control as control_module, gate
+from custom_components.spotnav.battery import commands as commands_module, control as control_module, gate
 from custom_components.spotnav.battery.control import BatteryControl, ControlNotReachable, TrialRefused, store_key
 from custom_components.spotnav.runtime import site_controller_for
 from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
@@ -1089,16 +1089,23 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    # The total rule alone here: the per-phase hold as not recorded (it ships recorded for Sigenergy).
+    _field_tested(monkeypatch, field_tested=False)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     # The limit's entity is disabled (the integration's default): nothing read, the suggestion still made.
     block = control.status()["grid_charge_cap"]["import_limit"]
-    assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": "sources_unknown"}
+    # Held per phase (`commands.ImportLimitPhases`): never while the owner's on-site test is not recorded.
+    # The per-phase rule counts the site's own safety margin (1 A by default): 3 x 19 A x 231 V.
+    unrecorded = {"max_kw": 13.16, "holds": False, "why": "not_field_tested"}
+    assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": "sources_unknown",
+                     "per_phase": unrecorded}
     await _looks(control, dt_util.now(), 1)
     # The fuse as three-phase power (13.8 kW), as left after the on-site test: read, and refused as a guard.
     _import_limit(hass, "13.8")
     _options(hass, site, import_limit_acts=True)
     cap = control.status()["grid_charge_cap"]
-    assert cap["import_limit"] == {"value_kw": 13.8, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": None}
+    assert cap["import_limit"] == {"value_kw": 13.8, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": None,
+                                   "per_phase": unrecorded}
     assert cap["rule"] == "conservative" and cap["cap_kw"] < gate.MIN_RATE_KW
     await _looks(control, dt_util.now(), 6)
     assert plant.calls == [], "no grid charge under a limit that lets one phase pass the fuse"
@@ -1112,7 +1119,8 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     # A car that keeps its last 6 A if Home Assistant stops takes 12 A of the total: 4.4 kW no longer guards.
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
     cap = control.status()["grid_charge_cap"]
-    assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False, "why": None}
+    assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False, "why": None,
+                                   "per_phase": {"max_kw": None, "holds": False, "why": "not_field_tested"}}
     assert cap["rule"] == "conservative"
     # Not shown to act on site: read and suggested, never in force.
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
@@ -1206,6 +1214,156 @@ async def test_the_import_limit_guards_a_charger_only_while_it_holds_now_countin
     # Anything that cannot be read: not guarded.
     monkeypatch.setattr(type(controller.phase_peaks), "learned", lambda self, now: 1 / 0)
     assert control.import_limit_guards(without_charger=charger) is False
+
+
+def _sigen_entity(hass: HomeAssistant, domain: str, key: str, object_id: str, state: str | None) -> str:
+    """An entity of the owner's plant by its `sigen` unique-id key, enabled and reading `state` (`None`: disabled,
+    the integration's default for these)."""
+    registry = er.async_get(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id="ENTRY", identifiers={("sigen", "plant")})
+    entry = registry.async_get_or_create(
+        domain, "sigen", f"ENTRY_sigen_plant_{key}", device_id=device.id,
+        config_entry=hass.config_entries.async_get_entry("ENTRY"), suggested_object_id=object_id,
+    )
+    registry.async_update_entity(
+        entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION if state is None else None
+    )
+    if state is None:
+        hass.states.async_remove(entry.entity_id)
+    else:
+        hass.states.async_set(entry.entity_id, state)
+    return entry.entity_id
+
+
+def _per_phase_plant(hass: HomeAssistant, **states: str | None) -> None:
+    """The readings a limit held per phase needs, as on the owner's plant: independent phase power control on, the
+    grid sensor online, the Output Type three-phase with neutral."""
+    readings = {"switch": "on", "grid_sensor": "online", "output_type": "l1_l2_l3_n"} | states
+    _sigen_entity(hass, "switch", "plant_independent_phase_power_control_enable",
+                  "sigen_plant_independent_phase_power_control", readings["switch"])
+    _sigen_entity(hass, "sensor", "plant_grid_sensor_status", "sigen_plant_grid_sensor_status",
+                  readings["grid_sensor"])
+    _sigen_entity(hass, "sensor", "inverter_output_type", "sigen_inverter_output_type", readings["output_type"])
+
+
+def _field_tested(monkeypatch: pytest.MonkeyPatch, **changes: Any) -> None:
+    """The recipe with the owner's on-site test of the per-phase hold recorded (it ships unrecorded)."""
+    phases = replace(commands_module.SIGENERGY_IMPORT_LIMIT_PHASES, **({"field_tested": True} | changes))
+    tested = replace(commands_module.SIGENERGY_CONTROL, import_limit_phases=phases)
+    monkeypatch.setattr(
+        commands_module, "CONTROLS",
+        tuple(tested if c is commands_module.SIGENERGY_CONTROL else c for c in commands_module.CONTROLS),
+    )
+
+
+def test_the_shipped_recipe_records_the_owner_s_test_of_the_limit_held_per_phase_and_no_per_phase_output() -> None:
+    phases = commands_module.SIGENERGY_CONTROL.import_limit_phases
+    assert phases is not None and phases.field_tested is True and phases.phase_output_max_kw is None
+    assert phases.sensor_online == "online" and phases.output_type == "l1_l2_l3_n"
+
+
+@pytest.mark.parametrize(
+    ("case", "why"),
+    [
+        ("held", None),
+        ("unrecorded", "not_field_tested"),
+        ("not_said", "not_said_to_act"),
+        ("switch_off", "phase_control_off"),
+        ("switch_unread", "phase_control_off"),
+        ("sensor_offline", "grid_sensor_offline"),
+        ("sensor_unread", "grid_sensor_offline"),
+        ("output_unread", "output_type_unread"),
+        ("single_phase", "plant_not_three_phase"),
+        ("no_neutral", "output_type_not_supported"),
+        ("foreign_pv", "foreign_pv"),
+        ("sources_unread", "sources_unknown"),
+        ("dc_charger", "dc_charger"),
+        ("too_high", None),
+        ("unset", None),
+        ("car", None),
+    ],
+)
+async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_reads_so(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], case: str, why: str | None
+) -> None:
+    """The owner's 20 A fuse, where the cap leaves no grid charge at all: a limit held per phase at most 3 x (20 - 2)
+    A x 231 V (12.47 kW) lifts it, with the recipe's fact recorded and the site's own word that its limit acts."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _field_tested(monkeypatch, field_tested=case != "unrecorded")
+    _per_phase_plant(hass, **{
+        "switch_off": {"switch": "off"}, "switch_unread": {"switch": None}, "sensor_offline": {"grid_sensor": "offline"},
+        "sensor_unread": {"grid_sensor": None}, "output_unread": {"output_type": None},
+        "single_phase": {"output_type": "l_n"}, "no_neutral": {"output_type": "l1_l2_l3"},
+    }.get(case, {}))
+    if case != "unset":
+        _import_limit(hass, "13.8" if case == "too_high" else "12.4")
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    now = dt_util.now()
+    await control._async_read_sources(now)
+    if case == "foreign_pv":
+        control._sources = (now, control._foreign_sun(("sensor.other_inverter_energy",)))
+    elif case == "sources_unread":
+        control._sources = None
+    elif case == "dc_charger":
+        charger = hass.config_entries.async_get_entry((controller.config.get("charger_entry_ids") or [])[0])
+        hass.config_entries.async_update_entry(charger, data={**charger.data, "current_control": "power"})
+    elif case == "car":
+        monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
+    _options(hass, site, import_limit_acts=case != "not_said")
+    assert control._import_limit_phase_refusal() == why
+    cap = control.status()["grid_charge_cap"]
+    held = case == "held"
+    assert cap["import_limit"]["per_phase"]["holds"] is held and cap["import_limit"]["per_phase"]["why"] == why
+    assert cap["import_limit"]["holds"] is held
+    assert (cap["rule"] == "import_limit") is held and (cap["cap_kw"] is None) is held
+    if not held:
+        assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW, "today's rule: no charge"
+    if case == "car":
+        assert cap["import_limit"]["per_phase"]["max_kw"] is None, "the house and the car alone pass the fuse"
+
+
+@pytest.mark.parametrize(("margin", "limit", "held"), [(0.0, "13.8", True), (1.0, "13.8", False), (1.0, "13.1", True),
+                                                       (None, "13.8", False)])
+async def test_a_limit_held_per_phase_counts_the_site_s_own_safety_margin(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], margin: float | None,
+    limit: str, held: bool,
+) -> None:
+    """The owner's 20 A fuse with his margin of 0 A allows 13.8 kW (the fuse itself, 3 x 20 A x 231 V = 13.86 kW); a
+    site with the default 1 A, 13.16 kW. The total rule and the executor keep their own margin."""
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    _field_tested(monkeypatch)
+    _per_phase_plant(hass)
+    _import_limit(hass, limit)
+    data = {k: v for k, v in site.data.items() if k != "safety_margin_a"}
+    hass.config_entries.async_update_entry(site, data=data if margin is None else {**data, "safety_margin_a": margin})
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, import_limit_acts=True)
+    await control._async_read_sources(dt_util.now())
+    cap = control.status()["grid_charge_cap"]
+    assert cap["import_limit"]["per_phase"]["holds"] is held, cap
+    assert (cap["cap_kw"] is None) is held
+    assert cap["import_limit"]["max_kw"] == 4.47, "the total rule keeps the executor's 2 A"
+
+
+async def test_a_limit_held_per_phase_is_read_again_at_every_look_and_a_running_charge_falls_back_to_the_cap(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=25.0)
+    _field_tested(monkeypatch)
+    _per_phase_plant(hass)
+    _import_limit(hass, "15.0")  # under 3 x 23 A x 231 V = 15.93 kW
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    _options(hass, site, import_limit_acts=True)
+    now = await _looks(control, dt_util.now(), 16)
+    # Only the live clamp on the measured headroom, as under the total rule.
+    assert hass.states.get(CHARGE).state[:4] == "13.2"
+    assert not any(row["kind"] == "restricted" for row in control.log)
+    assert not any(call[2].get("entity_id") == IMPORT_LIMIT for call in plant.calls), "SpotNav never writes it"
+    # Someone turns independent phase power control off in the app: the next looks put the cap back.
+    _per_phase_plant(hass, switch="off")
+    await _looks(control, now, 3)
+    assert hass.states.get(CHARGE).state[:5] == "3.935"
+    assert any(row["kind"] == "restricted" and row["reason"] == "grid_charge_cap" for row in control.log)
 
 
 async def test_a_standing_boost_or_raise_counts_where_the_import_limit_lifts_a_charger(
