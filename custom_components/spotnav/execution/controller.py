@@ -3640,6 +3640,11 @@ class ChargingController:
         floor = self.running_min_current_a
         return min(amps, max(amps_at_floor(floor, floor), amps_at_floor(allowance, floor)))
 
+    @property
+    def start_needs_a(self) -> float:
+        """The least allowance a capped start of this charger goes out at (`_start_needs_a` of its start floor)."""
+        return self._start_needs_a(self.min_current_a)
+
     @staticmethod
     def _start_needs_a(floor: float) -> float:
         """The least allowance a capped start goes out at: the floor, and for a floor below 6 A (a DC charger's, given a

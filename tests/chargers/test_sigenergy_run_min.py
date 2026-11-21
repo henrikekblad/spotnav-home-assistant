@@ -26,7 +26,7 @@ from custom_components.spotnav.execution.chargers.base import (
 )
 
 from ..charger_helpers import adapter_for
-from .test_sigenergy import _found, _mock_writes, _set_limit, LIMIT, POWER_LIMIT_ATTRS, START, STATE, STOP
+from .test_sigenergy import _found, _mock_writes, _set_limit, LIMIT, OUTPUT, POWER_LIMIT_ATTRS, START, STATE, STOP
 from .test_sigenergy_safety import _evdc_controller, _sun, _unload
 
 RUN_MIN_A = 1.45  # 1.0 kW at 0.6928 kW per ampere (400 V), rounded up to the hundredth.
@@ -322,3 +322,68 @@ async def test_with_the_fact_on_an_unreadable_status_keeps_the_start_floor(
     controller.adapter.cancel_pending_reads()
     await hass.config_entries.async_unload("home")
     await _unload(hass, charger)
+
+
+@pytest.mark.parametrize("fact", [False, True])
+async def test_a_dc_charger_starts_while_the_home_battery_fills_the_fuse(
+    hass: HomeAssistant, frozen: Any, monkeypatch: pytest.MonkeyPatch, fact: bool
+) -> None:
+    """Car first with the battery grid-charging: the start allowance is the car's minimum, which for a DC charger
+    is its floor and the start margin (2.67 A at 400 V), so the start goes out at the floor (1.50 kW) instead of
+    being held back for good. Never more than the room: with 2.4 A of room it is still held."""
+    from custom_components.spotnav.runtime import site_controller_for
+
+    monkeypatch.setattr(sigenergy, "EVDC_RUN_MIN_CONFIRMED", fact)
+    controller, presses, charger = await _evdc_controller(hass, limit_kw=1.0)
+    calls = _mock_writes(hass)
+    assert await hass.config_entries.async_setup("home")
+    await hass.async_block_till_done()
+    site = site_controller_for(hass, "home")
+    assert site is not None
+    # Active control on, as on a car-first site where the battery gives way to the car.
+    monkeypatch.setattr(site, "_active_control_allowed", lambda: True)
+    room = site.start_allowance_a(charger.entry_id)
+    assert room is not None and room > 3.0
+    monkeypatch.setattr(site, "_battery_takes_the_fuse", lambda: True)
+
+    assert site.start_allowance_a(charger.entry_id) == pytest.approx(2.17 + sigenergy.EVDC_START_MARGIN_A)
+    assert await controller.async_start(amps=16, manual=True) is True
+    assert calls[-1].data["value"] == pytest.approx(1.503, abs=0.001)
+    assert [call.data["entity_id"] for call in presses] == [START]
+    await controller.async_stop()
+    frozen.tick(60)
+
+    # The charge is stopped: the charger delivers nothing, and the site has 2.4 A of room on every phase.
+    hass.states.async_set(OUTPUT, "0", dict(hass.states.get(OUTPUT).attributes))
+    calculate = site._calculate  # noqa: SLF001
+    monkeypatch.setattr(
+        site,
+        "_calculate",
+        lambda: replace(
+            calculate(), measured_margin_a={phase: 2.4 for phase in calculate().measured_margin_a}
+        ),
+    )
+    assert site.start_allowance_a(charger.entry_id) == pytest.approx(2.4)
+    assert await controller.async_start(amps=16, manual=True) is False
+    assert controller.start_held_by_balancing
+    controller.adapter.cancel_pending_reads()
+    await hass.config_entries.async_unload("home")
+    await _unload(hass, charger)
+
+
+async def test_an_ac_chargers_allowance_while_the_battery_fills_the_fuse_is_its_minimum(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An AC charger (floor 6 A) is given no start margin: `_start_needs_a` is 0 and its minimum stands."""
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+    from custom_components.spotnav.site import site_capacity_controller as module
+
+    site = SimpleNamespace(hass=hass)
+    monkeypatch.setattr(
+        module, "controller_for", lambda _hass, _entry_id: SimpleNamespace(min_current_a=6.0, start_needs_a=6.0)
+    )
+    assert SiteCapacityController._start_needs_a(site, "ac") == 0.0  # noqa: SLF001
+    monkeypatch.setattr(
+        module, "controller_for", lambda _hass, _entry_id: SimpleNamespace(min_current_a=2.17, start_needs_a=2.67)
+    )
+    assert SiteCapacityController._start_needs_a(site, "dc") == 2.67  # noqa: SLF001

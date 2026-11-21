@@ -2360,9 +2360,24 @@ class SiteCapacityController:
         minimum = self._min_current_a(charger_entry_id)
         if allowance >= minimum and self._battery_takes_the_fuse():
             # The battery fills the fuse as the car starts: the car goes in at its minimum, so the battery has a car
-            # it can give way to rather than a full one on top of it, and yield stepping raises it from there.
-            return minimum
+            # it can give way to rather than a full one on top of it, and yield stepping raises it from there. A DC
+            # charger's start needs its floor and `EVDC_START_MARGIN_A` (`ChargingController.start_needs_a`): that much
+            # is offered where the room has it, never more than the room, and the start still writes only the floor
+            # (`util.amps_at_floor`). For an AC charger the need is its minimum: exactly as before.
+            return min(allowance, max(minimum, self._start_needs_a(charger_entry_id)))
         return allowance
+
+    def _start_needs_a(self, charger_entry_id: str) -> float:
+        """The least allowance a start of a charger whose floor is below 6 A (a DC charger) goes out at
+        (`ChargingController.start_needs_a`); 0 for any other charger, so its minimum stands as before."""
+        charger = controller_for(self.hass, charger_entry_id)
+        if charger is None:
+            return 0.0
+        floor = getattr(charger, "min_current_a", None)
+        need = getattr(charger, "start_needs_a", None)
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in (floor, need)):
+            return 0.0
+        return float(need) if floor < DEFAULT_MIN_CURRENT_A else 0.0
 
     def reserve_start(self, charger_entry_id: str, amps: float | None) -> None:
         """A start of `amps` is on its way to this charger (`None`: it did not go out, or is over). Until
