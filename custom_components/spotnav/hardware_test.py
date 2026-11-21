@@ -419,8 +419,9 @@ class HardwareTest:
         finally:
             self._running["battery_live"] = False
             self._running["battery"] = control.hardware_test_progress()["report"]
-            # The battery part is over (handed back by its own engine): the chargers go at once, not after the heat.
-            self._release_hold()
+        # The battery part ended normally (handed back by its own engine): the chargers go at once, not after the heat.
+        # On a cancel or an error the run's own `finally` lets them go, after the battery was handed back.
+        self._release_hold()
 
     async def _async_heat(self, deadline: datetime) -> None:
         heat = self.site.heat_control

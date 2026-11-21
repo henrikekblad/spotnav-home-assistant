@@ -660,3 +660,31 @@ async def test_the_card_s_fixtures(hass: HomeAssistant, freezer, monkeypatch: py
     freezer.move_to("2026-12-04T03:00:00+01:00")
     _write_or_compare("ended.json", _answer(beta, None))
     await beta.async_stop()
+
+
+async def test_on_a_stop_the_chargers_are_let_go_only_after_the_battery_was_handed_back(hass: HomeAssistant) -> None:
+    """The re-review (2026-11-21): on a cancel the battery part's own `finally` let the chargers go before the run
+    handed the battery back."""
+    order: list[str] = []
+    battery = _FakeBattery(slow=True)
+    stop = battery.async_hardware_test_stop
+
+    async def stopped(reason: str) -> None:
+        order.append(f"battery:{reason}")
+        await stop(reason)
+
+    battery.async_hardware_test_stop = stopped  # type: ignore[method-assign]
+    runner = await _runner(hass, battery, _FakeHeat(slow=True), {"car": _FakeCharger()})
+    hold = runner.site.charger_test_hold
+    release = hold.release
+
+    def released() -> list[str]:
+        order.append("chargers")
+        return release()
+
+    hold.release = released  # type: ignore[method-assign]
+    assert await runner.async_start() is None
+    await asyncio.sleep(0)
+    await runner.async_stop("stopped")
+    assert order and order[0].startswith("battery:"), order
+    assert "chargers" in order and hold.active is False
