@@ -705,7 +705,11 @@ OVERVIEW: tuple[Overview, ...] = (
         keys=("sigen",),
         adapter="sigenergy",
         note="Keeps the last command: no dead-man, so SpotNav caps a grid charge for the case that Home Assistant "
-        "stops. Has its own grid import and export limits; SpotNav uses the export limit. Often run by Sigen AI mode.",
+        "stops. With independent phase power control on, the plant holds each phase under a third of its own grid "
+        "import limit (tested on site); set that limit to at most 3 x (fuse - safety margin) x voltage and say it "
+        "acts, and the cap is dropped, so a 16-20 A fuse can charge from the grid too: see [Grid charging on a small "
+        "main fuse](home-battery.md#grid-charging-on-a-small-main-fuse-sigenergy). SpotNav reads the import limit and "
+        "never writes it; it uses the export limit. Often run by Sigen AI mode.",
     ),
     Overview(
         "Huawei (SUN2000, LUNA2000)",
