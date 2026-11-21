@@ -1663,12 +1663,16 @@ class BatteryControl:
             peaks = self._phase_peaks(now)
         control = control_for(self.facts.brand)
         guards = options.import_limit_acts and self._import_limit_refusal() is None
-        import_limit_kw = self._import_limit_kw(control) if guards else None
+        # Held per phase: every reading the recipe's fact needs, read again now (each start and each look).
+        per_phase = self._import_limit_phase_refusal() is None
+        import_limit_kw = self._import_limit_kw(control) if guards or per_phase else None
+        spec = None if control is None else control.import_limit_phases
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=self._cars_allowed_a() + self._heat_standing_a(), house_peak_kw=self._house_peak_kw(now),
             plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
+            import_limit_per_phase=per_phase, phase_output_max_kw=None if spec is None else spec.phase_output_max_kw,
         )
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
@@ -1734,6 +1738,33 @@ class BatteryControl:
                     return "dc_charger"
         return None
 
+    def _import_limit_phase_refusal(self) -> str | None:
+        """Why the plant's own import limit cannot be taken as held **per phase** now (`commands.ImportLimitPhases`),
+        as a stable code; `None` when it can. Fails closed: anything unread refuses. `not_supported` (the recipe states
+        no such hold), `not_field_tested` (the owner's on-site test is not recorded in the recipe), every reason of the
+        total rule (`_import_limit_refusal`: a plant not three-phase, another inverter's sun, the sources unread, a
+        charger run through the plant), `output_type_unread` (the plant's Output Type does not read three-phase: the
+        hold needs all three phases, and the brand's default is not taken for it), `phase_control_off` (the switch
+        that shares the plant's power per phase reads anything but on, or nothing) and `grid_sensor_offline` (the
+        plant's grid sensor, which the limit regulates on, reads anything but connected, or nothing)."""
+        control = control_for(self.facts.brand)
+        spec = None if control is None else control.import_limit_phases
+        if control is None or spec is None or control.import_limit is None:
+            return "not_supported"
+        if not spec.field_tested:
+            return "not_field_tested"
+        refusal = self._import_limit_refusal()
+        if refusal is not None:
+            return refusal
+        output = read_plant_entity(self.hass, self.site.config, control.output_type)
+        if output is None or OUTPUT_TYPE_PHASES.get(str(output).lower()) != 3:
+            return "output_type_unread"
+        if read_plant_entity(self.hass, self.site.config, spec.switch) != "on":
+            return "phase_control_off"
+        if read_plant_entity(self.hass, self.site.config, spec.grid_sensor) != spec.sensor_online:
+            return "grid_sensor_offline"
+        return None
+
     def import_limit_guards(self, *, without_charger: str | None = None) -> bool:
         """Whether the plant's own import limit guards the fuse **now** (`gate.import_limit_holds`), for a charger
         that runs through the plant (`execution/chargers/sigenergy.py`): the person said it acts, it reads a value,
@@ -1767,7 +1798,10 @@ class BatteryControl:
         fuse with the chargers' last currents as they are now), `suggested_kw` (the same with no car charging, rounded
         down to 0.1 kW: what the person may set; SpotNav never writes it), `holds` (shown to act and at most
         `max_kw`: the rule in force) and `why` (why the site's sources refuse the rule whatever the limit reads,
-        `_import_limit_refusal`). `None` for a brand without such a limit."""
+        `_import_limit_refusal`). For a brand whose limit can be held per phase (`commands.ImportLimitPhases`) also
+        `per_phase`: `max_kw` (`gate.import_limit_phase_max_kw`, `None` where no value guards), `holds` and `why`
+        (`_import_limit_phase_refusal`); `holds` above is then true when either rule is in force. `None` for a brand
+        without such a limit."""
         control = control_for(self.facts.brand)
         if control is None or control.import_limit is None:
             return None
@@ -1783,7 +1817,7 @@ class BatteryControl:
         most = gate.import_limit_max_kw(fuse_a, volts, cars_a=cars_a, **rule)
         free = gate.import_limit_max_kw(fuse_a, volts, cars_a=0.0, **rule)
         suggested = None if free is None else math.floor(free * 10.0 + 1e-9) / 10.0
-        return {
+        block: dict[str, Any] = {
             "value_kw": None if value is None else round(value, 3),
             "max_kw": None if most is None else round(most, 2),
             "suggested_kw": None if suggested is None or suggested < gate.MIN_RATE_KW else suggested,
@@ -1791,6 +1825,23 @@ class BatteryControl:
             and gate.import_limit_holds(value, fuse_a, volts, cars_a=cars_a, **rule),
             "why": refusal,
         }
+        spec = control.import_limit_phases
+        if spec is None:
+            return block
+        phase_refusal = self._import_limit_phase_refusal()
+        output_kw = spec.phase_output_max_kw
+        phase_most = gate.import_limit_phase_max_kw(
+            fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **rule
+        )
+        phase_holds = phase_refusal is None and gate.import_limit_phase_holds(
+            value, fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **rule
+        )
+        # `holds`: the plant's limit guards the fuse now by either rule (the cap is lifted); `per_phase` says which.
+        block["holds"] = block["holds"] or phase_holds
+        block["per_phase"] = {
+            "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds, "why": phase_refusal,
+        }
+        return block
 
     def _learned(self, now: datetime) -> Learned | None:
         """The site's learned per-phase house peaks (`site/phase_peaks.py`), `None` when it keeps none."""
