@@ -396,9 +396,16 @@ once when one does not:
 * the plant's `Output Type` reads L1/L2/L3/N (the only type the phase control acts with);
 * `Independent phase power control` reads on;
 * the plant's `Grid Sensor Status` reads connected (the limit regulates on that sensor);
-* the limit reads at most what keeps every phase under the fuse less the site's safety margin, and the house's peak
-  on its worst phase plus the chargers' last currents stays under that too (the plant's output per phase is not
-  counted on).
+* the limit reads at most what keeps every phase under the fuse less the site's safety margin.
+
+The house's peak and the chargers' currents do not lower that. On a phase where they draw more than a third of the
+limit, the plant charges nothing there (it charges on the other phases and puts out on the loaded one where it can),
+so that phase carries what the house and the cars put on it, as it would without a battery. A phase that the house
+and the cars alone take past the fuse is the load balancer's matter, and the fuse's while Home Assistant is down, as
+on any site.
+
+The limit only guards loads behind the plant's grid sensor. A charger (or any other load) wired upstream of that
+sensor, between it and the main fuse, is not seen by the plant, so the plant does not hold it under the limit.
 
 **The site's safety margin sets the most the limit may read:**
 

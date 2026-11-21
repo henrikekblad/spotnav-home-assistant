@@ -1120,7 +1120,7 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
     cap = control.status()["grid_charge_cap"]
     assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False, "why": None,
-                                   "per_phase": {"max_kw": None, "holds": False, "why": "not_field_tested", "entity_id": None}}
+                                   "per_phase": {"max_kw": 13.16, "holds": False, "why": "not_field_tested", "entity_id": None}}
     assert cap["rule"] == "conservative"
     # Not shown to act on site: read and suggested, never in force.
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
@@ -1256,9 +1256,9 @@ def _field_tested(monkeypatch: pytest.MonkeyPatch, **changes: Any) -> None:
     )
 
 
-def test_the_shipped_recipe_records_the_owner_s_test_of_the_limit_held_per_phase_and_no_per_phase_output() -> None:
+def test_the_shipped_recipe_records_the_owner_s_test_of_the_limit_held_per_phase() -> None:
     phases = commands_module.SIGENERGY_CONTROL.import_limit_phases
-    assert phases is not None and phases.field_tested is True and phases.phase_output_max_kw is None
+    assert phases is not None and phases.field_tested is True
     assert phases.sensor_online == "online" and phases.output_type == "l1_l2_l3_n"
 
 
@@ -1312,14 +1312,15 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
     _options(hass, site, import_limit_acts=case != "not_said")
     assert control._import_limit_phase_refusal() == why
     cap = control.status()["grid_charge_cap"]
-    held = case == "held"
+    # A car's last current does not refuse it: the battery adds nothing on the phase the car loads.
+    held = case in ("held", "car")
     assert cap["import_limit"]["per_phase"]["holds"] is held and cap["import_limit"]["per_phase"]["why"] == why
     assert cap["import_limit"]["holds"] is held
     assert (cap["rule"] == "import_limit") is held and (cap["cap_kw"] is None) is held
     if not held:
         assert control._grid_charge_cap_kw(now, control.options()) < gate.MIN_RATE_KW, "today's rule: no charge"
     if case == "car":
-        assert cap["import_limit"]["per_phase"]["max_kw"] is None, "the house and the car alone pass the fuse"
+        assert cap["import_limit"]["per_phase"]["max_kw"] == 13.16, "3 x (20 - 1) A, the car not counted"
     # The entity the person can fix, named for the refusals that have one (read or not, disabled or not).
     named = {"switch_off": "switch.sigen_plant_independent_phase_power_control",
              "switch_unread": "switch.sigen_plant_independent_phase_power_control",

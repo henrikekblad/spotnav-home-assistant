@@ -1680,13 +1680,12 @@ class BatteryControl:
         # Held per phase: every reading the recipe's fact needs, read again now (each start and each look).
         per_phase = self._import_limit_phase_refusal() is None
         import_limit_kw = self._import_limit_kw(control) if guards or per_phase else None
-        spec = None if control is None else control.import_limit_phases
         return gate.grid_charge_cap_kw(
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=self._cars_allowed_a(held_off=held_off) + self._heat_standing_a(),
             house_peak_kw=self._house_peak_kw(now), plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts, house_phase_peaks_a=peaks or None,
-            import_limit_per_phase=per_phase, phase_output_max_kw=None if spec is None else spec.phase_output_max_kw,
+            import_limit_per_phase=per_phase,
             # The per-phase rule only: the site's own safety margin as the person set it (`gate`'s note on it).
             phase_margin_a=self._site_margin_a(),
         )
@@ -1858,13 +1857,10 @@ class BatteryControl:
         if spec is None:
             return block
         phase_refusal = self._import_limit_phase_refusal()
-        output_kw = spec.phase_output_max_kw
-        phase_rule = {**rule, "margin_a": self._site_margin_a()}
-        phase_most = gate.import_limit_phase_max_kw(
-            fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **phase_rule
-        )
+        phase_margin_a = self._site_margin_a()
+        phase_most = gate.import_limit_phase_max_kw(fuse_a, volts, margin_a=phase_margin_a, cars_a=cars_a)
         phase_holds = phase_refusal is None and gate.import_limit_phase_holds(
-            value, fuse_a, volts, cars_a=cars_a, phase_output_max_kw=output_kw, **phase_rule
+            value, fuse_a, volts, margin_a=phase_margin_a, cars_a=cars_a
         )
         # `holds`: the plant's limit guards the fuse now by either rule (the cap is lifted); `per_phase` says which.
         block["holds"] = block["holds"] or phase_holds
