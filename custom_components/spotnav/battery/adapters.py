@@ -91,7 +91,16 @@ And one reading kept by the day (read 2026-11-16):
   temperature (°C), whose day the nightly review keeps (`hindsight.cell_temperature`). Sigenergy
   `plant_ess_average_cell_temperature` (plant register 30286 "[ESS] Average cell temperature", firmware V2.8 and later;
   on the owner's plant enabled and named "Husbatteri celltemperatur"), else the inverter's
-  `inverter_ess_average_cell_temperature`. Read only: nothing plans on it yet.
+  `inverter_ess_average_cell_temperature`. Read live too (`facts.BatteryFacts.cell_temperature_c`) for the battery's
+  preheating line (`preheat.py`).
+
+And the battery's own heater (`preheat`, read 2026-11-21, `plans/v3_sigen_preheat.md`): Sigenergy's ESS preheating
+(holding registers 50000-50183, protocol V2.9 section 5.2.3, "only Sigen PV M1-HYA/HYB"): the switch
+`plant_ess_preheating_enable` (50000), the select `plant_ess_preheating_mode` (50001, Automatic/Manual), the switch
+`plant_ess_preheating_advance_enable` (50002, manual mode only), 30 time slots of start, end (epoch seconds) and
+target power (kW) as numbers `plant_ess_preheating_tou_<n>_{start_time,end_time,target_power}`, and the number
+`plant_ess_preheating_reserved_soc` (50183). All disabled by default in the integration. Read only: SpotNav tells the
+person when the switch is off on a cold battery (`preheat.py`) and never writes it.
 
 A battery whose integration states its size in amp-hours and its limits as currents (Victron, GoodWe) gets kWh and
 kW from the battery voltage the same integration reads (`voltage`): energy = Ah x V, power = A x V. That is an
@@ -191,6 +200,27 @@ class SocPack:
 
 
 @dataclass(frozen=True, slots=True)
+class PreheatSpec:
+    """Where a battery's own heater is switched and scheduled (see the module)."""
+
+    enable: Match
+    mode: Match | None = None
+    advance: Match | None = None
+    reserved_soc: Match | None = None
+    #: The key of a time slot's field, `{n}` its number from 1 (`slot_key`).
+    slot_keys: tuple[str, str, str] | None = None
+    slots: int = 0
+    #: The option of `mode` that hands the schedule to an outside EMS.
+    manual_option: str | None = None
+
+    def slot(self, number: int, field_index: int) -> Match | None:
+        """Slot `number`'s start (0), end (1) or target power (2) number entity."""
+        if self.slot_keys is None or not 1 <= number <= self.slots:
+            return None
+        return _key(self.slot_keys[field_index].format(n=number), "number")
+
+
+@dataclass(frozen=True, slots=True)
 class Adapter:
     brand: str
     label: str
@@ -216,6 +246,8 @@ class Adapter:
     #: A battery that states no level of its own but one per pack (FoxESS H3-Pro, H3-Smart): read only when the
     #: `soc` fact reads none, and combined by `facts.packs_soc`.
     soc_packs: tuple[SocPack, ...] = ()
+    #: The battery's own heater, where the integration has it (see the module).
+    preheat: PreheatSpec | None = None
 
 
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
@@ -253,6 +285,19 @@ SIGENERGY: Final = Adapter(
         _key("plant_phase_a_active_power"), _key("plant_phase_b_active_power"), _key("plant_phase_c_active_power"),
     ),
     cell_temperature=(_key("plant_ess_average_cell_temperature"), _key("inverter_ess_average_cell_temperature")),
+    preheat=PreheatSpec(
+        enable=_key("plant_ess_preheating_enable", "switch"),
+        mode=_key("plant_ess_preheating_mode", "select"),
+        advance=_key("plant_ess_preheating_advance_enable", "switch"),
+        reserved_soc=_key("plant_ess_preheating_reserved_soc", "number"),
+        slot_keys=(
+            "plant_ess_preheating_tou_{n}_start_time",
+            "plant_ess_preheating_tou_{n}_end_time",
+            "plant_ess_preheating_tou_{n}_target_power",
+        ),
+        slots=30,
+        manual_option="Manual",
+    ),
     reserves=(
         ReserveSource(_key("plant_ess_discharge_cut_off_soc")),
         ReserveSource(_key("plant_discharge_cut_off_soc", "number")),

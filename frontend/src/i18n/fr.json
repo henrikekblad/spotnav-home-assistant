@@ -1753,6 +1753,8 @@
   "battery.cap.zeroLearning": "Pas de charge depuis le réseau pendant l'apprentissage des pointes de la maison ({left}).",
   "house.learning.cappedWhile": "Charge sur le réseau au plus à {kw} kW pendant l'apprentissage des pointes de la maison ({left}).",
   "battery.note.aiModeBack": "Réactivez le mode IA dans l’application Sigenergy si vous voulez le retrouver.",
+  "battery.preheat.off": "Les cellules de la batterie sont froides ({temp} °C) et le préchauffage est désactivé : elle prend donc moins de charge pendant les heures bon marché. Activez « {name} » sur l’appareil de la batterie dans Home Assistant.",
+  "battery.preheat.disabled": "Les cellules de la batterie sont froides ({temp} °C). L’interrupteur de préchauffage « {name} » est désactivé dans Home Assistant : SpotNav ne voit donc pas s’il est allumé. Activez-le sur l’appareil de la batterie.",
   "battery.failed": "Le pilotage de la batterie n’a pas pu être lu.",
   "battery.error.generic": "Cela n’a pas marché. Réessayez.",
   "battery.error.notAdmin": "Seul un administrateur peut modifier ceci.",

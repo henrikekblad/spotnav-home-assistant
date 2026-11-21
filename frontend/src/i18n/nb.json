@@ -1753,6 +1753,8 @@
   "battery.cap.zeroLearning": "Ingen lading fra nettet mens husets topper læres inn ({left}).",
   "house.learning.cappedWhile": "Nettlading høyst {kw} kW mens husets topper læres inn ({left}).",
   "battery.note.aiModeBack": "Slå på AI-modus igjen i Sigenergy-appen hvis du vil ha den tilbake.",
+  "battery.preheat.off": "Batteriets celler er kalde ({temp} °C) og forvarmingen er av, så batteriet tar imot mindre lading i de billige timene. Slå på «{name}» på batteriets enhet i Home Assistant.",
+  "battery.preheat.disabled": "Batteriets celler er kalde ({temp} °C). Bryteren for forvarming «{name}» er deaktivert i Home Assistant, så SpotNav ser ikke om den er på. Aktiver den på batteriets enhet.",
   "battery.failed": "Batteristyringen kunne ikke leses.",
   "battery.error.generic": "Det gikk ikke. Prøv igjen.",
   "battery.error.notAdmin": "Bare en administrator kan endre dette.",

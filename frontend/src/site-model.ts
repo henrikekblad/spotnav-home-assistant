@@ -101,6 +101,9 @@ export interface BatteryStatus {
    * with `enable_control_entities`); `null` when none is. */
   enable_entities: { integration: string; entities: { entity_id: string; name: string }[] } | null;
   notes: { code: string; at: string }[];
+  /** A cold battery whose own preheating is off (`off`) or whose switch is disabled in Home Assistant (`disabled`),
+   * while SpotNav runs it; `null` otherwise, and from a Home Assistant that does not send it yet. */
+  preheat: BatteryPreheat | null;
   trial: unknown;
   grid_charge_cap: GridChargeCap;
   /** A grid charge per phase, where the plant takes a target per phase; `null` for a brand without, and from a
@@ -109,6 +112,14 @@ export interface BatteryStatus {
   /** The plan's two fixed figures, read-only; `null` while the site has no price area, and from a Home Assistant that
    * does not send it yet. */
   plan_costs: PlanCosts | null;
+}
+
+/** The battery section's preheating line: the cells' temperature now and the switch to turn on (or enable). */
+export interface BatteryPreheat {
+  code: string;
+  cell_c: number | null;
+  entity_id: string;
+  device_id: string | null;
 }
 
 /** The battery plan's wear per kWh each way and Balanced's selling margin per kWh, in the area's minor unit. */
@@ -305,6 +316,7 @@ const STATUS: Spec = O({
   device_id: N("string"),
   enable_entities: N(O({ integration: "string", entities: A(O({ entity_id: "string", name: "string" })) })),
   notes: A(O({ code: "string", at: "string" })),
+  preheat: N(O({ code: "string", cell_c: N("number"), entity_id: "string", device_id: N("string") })),
   trial: "any",
   grid_charge_cap: GRID_CHARGE_CAP,
   per_phase: N(PER_PHASE),
@@ -384,7 +396,7 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 }
 
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
- * `status.per_phase`, `status.plan_costs`, `status.battery_found` (`true`) and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
+ * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.battery_found` (`true`) and `status.grid_charge_cap.import_limit`. Anything else is left for the strict decoder. */
 function withLaterBlocks(raw: unknown): unknown {
   const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
   if (typeof status !== "object" || status === null || Array.isArray(status)) {
@@ -400,6 +412,7 @@ function withLaterBlocks(raw: unknown): unknown {
       ...(plainCap ? { grid_charge_cap: { import_limit: null, ...(cap as Record<string, unknown>) } } : {}),
       per_phase: block["per_phase"] ?? null,
       plan_costs: block["plan_costs"] ?? null,
+      preheat: block["preheat"] ?? null,
       battery_found: block["battery_found"] ?? true,
     },
   };

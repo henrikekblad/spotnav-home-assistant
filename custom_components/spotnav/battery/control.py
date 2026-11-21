@@ -95,6 +95,7 @@ from ..site.energy_statistics import async_energy_prefs, energy_statistic_ids
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.phase_peaks import MIN_READY_DAYS, Learned, plant_phase_w
 from . import gate, optin
+from .preheat import PreheatWatch
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     OUTPUT_TYPE_PHASES,
@@ -372,6 +373,8 @@ class BatteryControl:
         self._enabled_seen = False
         self.took_from_ai = False
         self.notes: list[dict[str, Any]] = []
+        #: The battery section's line about a cold battery's preheating (`preheat.py`), not kept over a restart.
+        self.preheat = PreheatWatch()
         #: Whether control ran (on, verifying or a test action) at the end of the last look (`_note_stopped`).
         self._running = False
         self.trial: Trial | None = None
@@ -797,6 +800,7 @@ class BatteryControl:
         options = self.options()
         await self._async_read_sources(now)
         self._transitions(options, now)
+        self._preheat_look(now, options)
         trial = self.trial
         withdrawn = self._takeover_withdrawn(options)
         if trial is not None and (
@@ -840,6 +844,15 @@ class BatteryControl:
             self._shadow_look(now, options)
         self._note_stopped(now)
         await self._async_save()
+
+    def _preheat_look(self, now: datetime, options: gate.Options) -> None:
+        """The preheating line (`preheat.PreheatWatch`) while SpotNav runs the battery; logged when it shows or
+        clears. Read only: nothing is written to the heater."""
+        controlling = self.state(options) in ("on", "verifying") or self.trial is not None
+        change = self.preheat.look(now, self.facts, controlling)
+        if change is not None:
+            self._log([{"at": now.isoformat(), "kind": f"preheat_{change[0]}", "reason": change[1],
+                        "cell_c": self.facts.cell_temperature_c}])
 
     def _takeover_withdrawn(self, options: gate.Options) -> bool:
         return self.took_from_ai and not options.ai_takeover_ack
@@ -2536,6 +2549,7 @@ class BatteryControl:
             "device_id": self._settings_device(),
             "enable_entities": self.enable_entities(),
             "notes": [dict(note) for note in self.notes],
+            "preheat": self.preheat.status(self.facts),
             "trial": None if self.trial is None else self.trial.as_dict(),
             "grid_charge_cap": self._cap_status(dt_util.now(), options),
             "per_phase": self._per_phase_block(dt_util.now(), options),
@@ -2585,6 +2599,7 @@ class BatteryControl:
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
             "log": list(self.log),
+            "preheat": self.preheat.as_dict(),
             "write_budget": self._write_budget_block(),
             "phase_backfill": self._backfill_status(),
         }

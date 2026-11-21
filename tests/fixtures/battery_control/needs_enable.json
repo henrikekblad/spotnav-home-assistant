@@ -67,6 +67,7 @@
       ]
     },
     "notes": [],
+    "preheat": null,
     "trial": null,
     "grid_charge_cap": {
       "cap_kw": null,

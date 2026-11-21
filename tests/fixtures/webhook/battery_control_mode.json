@@ -44,6 +44,7 @@
     "line": "off",
     "needs": [],
     "notes": [],
+    "preheat": null,
     "options": {
       "battery_control_ai_takeover_ack": false,
       "battery_control_enabled": false,

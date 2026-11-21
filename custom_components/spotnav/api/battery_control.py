@@ -2,7 +2,8 @@
 
 `{api_version: 1, site_id}` (or `charger_id`, which names the charger's site) answers the site's battery control status (`BatteryControl.status`): its options, the
 state and the one line under the switch as stable codes, the verification report for the plant's firmware, the
-actions it allows, the routine's progress, what the person still has to do (`needs`) and the notes. Any user may read.
+actions it allows, the routine's progress, what the person still has to do (`needs`), the notes and a cold battery's
+preheating line (`preheat`, `battery/preheat.py`). Any user may read.
 
 `{api_version: 1, site_id, changes: {battery_control_*: bool, battery_mode: str}}` writes some options first (administrators only):
 `battery_control_enabled` (the switch), `battery_control_ai_takeover_ack` (the explanation was read: Sigenergy's AI mode taken over, or a plant's own

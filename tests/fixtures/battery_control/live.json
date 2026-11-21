@@ -27,6 +27,7 @@
   "device_id": "0f4c2b7e9a1d4c3e8b6a5f2d1c0e9b8a",
   "enable_entities": null,
   "notes": [],
+  "preheat": null,
   "trial": null,
   "grid_charge_cap": {
    "cap_kw": 0.0,
