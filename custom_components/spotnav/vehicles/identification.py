@@ -26,8 +26,8 @@ is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S`, once the 
 `LISTEN_FOR_S` after the plug-in, switching on decisive evidence unless a person answered. At most one
 automatic decision per plug-in, but for a correction: a car decided by position (the others away) or by the camera is
 corrected until `LISTEN_FOR_S` by a car's own report (`_correct`): another car's own plug sensor going on switches to
-it (for the camera, any decisive evidence), recorded as a correction, and the decided car reporting itself unplugged
-or away with no other car decided brings the question back. A person's answer ends this.
+it, recorded as a correction, and the decided car reporting itself unplugged (or, after a position, away) with no
+other car decided brings the question back. A position never overrides the camera's sure answer. A person's answer ends this.
 
 **The camera** (optional, `camera_rule.py`, `camera_identification.py`): while nothing has decided and two or
 more cars are left (one at a one-car charger), the charger's camera is asked once (one retry after an error) before
@@ -1089,17 +1089,26 @@ class VehicleIdentifier:
         """After the camera or the position decided (`_CORRECTED`): a car's own decisive report corrects it (the same
         plug-in's switch, recorded by that report; after a position only another car's own plug sensor, since the
         cars' positions already had their say), and the decided car reporting itself unplugged or away with no other
-        car decided brings the question back. A person's answer ends this: it outranks both."""
+        car decided brings the question back. A person's answer ends this: it outranks both.
+
+        The camera decides only when sure (high confidence, `camera_rule`), and a position alone never overrides a
+        sure camera: after the camera only a plug sensor that changed at this plug-in corrects it or brings the
+        question back (a position can be wrong: a field case had the car home and its tracker away)."""
         evidence = self._evidence(session, dt_util.utcnow())
         car, method, conflict = decide(evidence)
         decided = self._planned_vehicle()
+        after_camera = self._method == METHOD_CAMERA
         if car is not None and method is not None:
             if car == decided:
                 return
-            if self._method == METHOD_CAMERA or method == METHOD_PLUG_SENSOR:
+            if method == METHOD_PLUG_SENSOR:
                 self._settle(car, method, "recognised")
                 return
-        if any(item.vehicle_id == decided and item.negative is not None for item in evidence) or conflict:
+        against = METHOD_PLUG_SENSOR if after_camera else None
+        if conflict or any(
+            item.vehicle_id == decided and item.negative is not None and against in (None, item.negative)
+            for item in evidence
+        ):
             session.state = STATE_WAITING
             session.order = ordered(evidence, self._current_vehicle())
             self._ask()

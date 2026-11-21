@@ -592,10 +592,36 @@ async def test_the_camera_car_reporting_itself_unplugged_hands_over_to_the_other
     await garage.world.plug_in()
     await garage.settle()
     world = garage.world
-    world.car_says("Tesla", "location", "not_home")
+    world.car_says("Tesla", "plug", "on")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Tesla"], "its own plug agrees"
+    world.car_says("Tesla", "plug", "off")
     await world.later(5)
     assert world.settings.target.vehicle_id == world.cars["Kia"]
-    assert world.identifier.method == "location"
+    assert world.identifier.method == METHOD_PLUG_SENSOR
+
+
+async def test_a_position_alone_never_overrides_a_sure_camera(garage: Garage) -> None:
+    """The owner's 12 Nov evening: the camera sure of the EV6 in the dark, the EV6's tracker wrongly away, the other
+    car's cable sensor an "off" unchanged for hours. The camera's car stays, and no question is asked."""
+    await garage.start()
+    await night_picture_of(garage, "Tesla")
+    world = garage.world
+    world.car_says("Kia", "plug", "unknown")
+    garage.model.answer = "car_2"
+    garage.camera.picture = picture((150, 150, 150), ground=(120, 120, 120))
+    await world.plug_in()
+    await garage.settle()
+    assert world.identifier.method == METHOD_CAMERA
+    world.car_says("Tesla", "location", "not_home")
+    await world.later(5)
+    await world.later(ASK_AFTER_S)
+    assert world.settings.target.vehicle_id == world.cars["Tesla"] and world.identifier.method == METHOD_CAMERA
+    assert world.sent() == [], "no question"
+    world.car_says("Kia", "plug", "on")
+    await world.later(5)
+    assert world.settings.target.vehicle_id == world.cars["Kia"], "a plug sensor going on at this plug-in still corrects"
+    assert world.identifier.method == METHOD_PLUG_SENSOR
 
 
 async def test_after_a_persons_answer_the_cars_reports_change_nothing(garage: Garage) -> None:
