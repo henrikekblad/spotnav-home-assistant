@@ -1188,6 +1188,10 @@
         "battery_control_import_limit_acts": {
           "name": "Tuontiraja toimii",
           "description": "Paikan päällä tehty testi osoitti, että laitteiston tuontiraja toimii Remote EMS -tilassa."
+        },
+        "battery_control_accept_ha_down": {
+          "name": "Home Assistantin katkos hyväksytty",
+          "description": "Henkilö hyväksyy, että sulake voi palaa, jos Home Assistant pysähtyy tai menettää yhteyden akkuun tai sähkömittariin kotiakun verkkolatauksen aikana; lataus rajataan silloin siihen, mitä sulake kestää tyhjässä talossa."
         }
       }
     }

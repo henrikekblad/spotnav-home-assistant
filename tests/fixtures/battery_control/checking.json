@@ -9,6 +9,7 @@
       "battery_control_shadow_only": false,
       "battery_control_ai_takeover_ack": true,
       "battery_control_import_limit_acts": false,
+      "battery_control_accept_ha_down": false,
       "battery_mode": "balanced"
     },
     "state": "verifying",
@@ -33,6 +34,7 @@
     "grid_charge_cap": {
       "cap_kw": 3.2,
       "rule": "learned",
+      "ha_down": {"offered": false, "held_kw": null, "empty_house_kw": null},
       "main_fuse_a": 20,
       "cap_conservative_kw": 0.0,
       "cap_learned_kw": 3.2,

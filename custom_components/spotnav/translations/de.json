@@ -1188,6 +1188,10 @@
         "battery_control_import_limit_acts": {
           "name": "Importgrenze wirkt",
           "description": "Der Test vor Ort hat gezeigt, dass die Importgrenze der Anlage unter Remote EMS wirkt."
+        },
+        "battery_control_accept_ha_down": {
+          "name": "Ausfall von Home Assistant akzeptiert",
+          "description": "Die Person akzeptiert, dass eine Sicherung auslösen kann, wenn Home Assistant während einer Netzladung des Hausakkus stoppt oder die Verbindung zum Akku oder zum Stromzähler verliert; die Ladung wird dann auf das begrenzt, was die Sicherung bei leerem Haus zulässt."
         }
       }
     }

@@ -440,6 +440,28 @@ Sigenergy app …"). Once everything holds it says so instead of the cap: "Sigen
 it sets a low limit, runs the load steps above with markers and puts every value back afterwards. `--dry-run`
 writes nothing.
 
+### Accepting the risk if Home Assistant stops (other brands)
+
+Without the plant's own per-phase hold above, the cap reckons with Home Assistant stopping mid-charge, or losing
+contact with the battery or the grid meter (an integration or Modbus link that drops; a meter reading that stands
+still is handed back after about two minutes): the battery keeps charging at the power it was last given, and the
+house may be at its peak meanwhile. On a 16–20 A fuse that
+often leaves almost no grid charge. An administrator can accept that risk instead: in the card's battery settings,
+"If Home Assistant stops" is shown only where it would make a real difference (battery control on, a plant that can
+charge from the grid, the cap clearly below what the fuse allows with an empty house). Tick "I understand and
+accept …" in its editor.
+
+With it on, the cap is what the fuse allows with an **empty** house: each phase's fuse less the site's safety margin,
+so a command never asks for more than an empty house could take. Everything that works while Home Assistant runs is
+unchanged: the phases are read every 10 seconds and the charge is lowered (or handed back) when the house draws
+more, the write caps, the read-back, the hand-back and the chargers' load balancing. What you accept: if Home
+Assistant stops, or loses contact with the battery or the grid meter, during a grid charge of the home battery and
+the house draws a lot before that is over, a phase may go over the main fuse and the fuse may trip. A battery whose
+charge SpotNav cannot lower within seconds (Tesla, through its cloud) keeps the cap whatever is accepted. It changes nothing where the plant's own import limit already guards
+the fuse. Only an administrator can turn it on or off; the debug bundle shows it as
+`battery_control_accept_ha_down`. It is given for the site's main fuse and battery as they are: change either and
+it is turned off again, to be given anew. The owner's test action still charges at 2 kW unless a power is given.
+
 ### Grid charging per phase
 
 A house that loads one phase leaves the balanced charge nothing: the cap takes the worst phase as the house on every

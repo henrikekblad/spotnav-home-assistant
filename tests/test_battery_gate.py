@@ -10,6 +10,7 @@ import pytest
 from custom_components.spotnav.battery.commands import control_for
 from custom_components.spotnav.core.electric import fuse_kw
 from custom_components.spotnav.battery.gate import (
+    CONF_ACCEPT_HA_DOWN,
     CONF_ENABLED,
     CONF_SHADOW_ONLY,
     HOUSE_PEAK_DEFAULT_KW,
@@ -25,6 +26,7 @@ from custom_components.spotnav.battery.gate import (
     firmware_key,
     grid_charge_cap_kw,
     grid_charge_phase_caps_kw,
+    ha_down_accepted_cap_kw,
     import_limit_holds,
     import_limit_max_kw,
     import_limit_phase_holds,
@@ -40,6 +42,7 @@ from custom_components.spotnav.battery.gate import (
     restricted,
     suitable,
     trial_refusal,
+    valid_change,
 )
 
 NOW = datetime(2026, 11, 16, 19, 0, tzinfo=timezone.utc)
@@ -515,3 +518,61 @@ def test_the_mode_decides_selling_and_a_stored_legacy_sell_option_is_only_the_mi
     for mode in ("balanced", "max_profit"):
         assert "export_discharge" in g.allowed_actions(every, g.Options(mode=mode))
     assert g.CONF_ALLOW_SELL not in g.WRITABLE and g.CONF_MODE in g.WRITABLE
+
+
+def test_the_ha_down_acceptance_is_an_option_off_by_default_written_as_a_boolean() -> None:
+    assert Options().accept_ha_down is False and Options.from_config({}).accept_ha_down is False
+    assert Options.from_config({CONF_ACCEPT_HA_DOWN: True}).accept_ha_down is True
+    assert Options.from_config({CONF_ACCEPT_HA_DOWN: "yes"}).accept_ha_down is False
+    assert Options(accept_ha_down=True).as_dict()[CONF_ACCEPT_HA_DOWN] is True
+    assert valid_change(CONF_ACCEPT_HA_DOWN, True) and not valid_change(CONF_ACCEPT_HA_DOWN, 1)
+
+
+def test_the_accepted_ha_down_risk_caps_a_grid_charge_at_the_fuse_of_an_empty_house() -> None:
+    volts = 400.0 / 3 ** 0.5
+    rule = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None, "plant_phases": 3}
+    off = grid_charge_cap_kw(20.0, 400.0, **rule)
+    assert off is not None and off < MIN_RATE_KW, "off: the HA-down cap as before"
+    assert grid_charge_cap_kw(20.0, 400.0, accept_ha_down=False, **rule) == off
+    # On: each phase's fuse less the site's own margin, the house's peak and the chargers not counted.
+    on = grid_charge_cap_kw(20.0, 400.0, accept_ha_down=True, phase_margin_a=1.0, **rule)
+    assert on == pytest.approx(3 * 19.0 * volts / 1000) and round(on, 2) == 13.16
+    loaded = {**rule, "cars_a": 10.0, "house_peak_kw": 9.0}
+    assert grid_charge_cap_kw(20.0, 400.0, accept_ha_down=True, phase_margin_a=1.0, house_phase_peaks_a=UNBALANCED,
+                              **loaded) == pytest.approx(on)
+    # The site's margin of 0 A: the fuse itself; no site margin given: the caller's margin.
+    assert grid_charge_cap_kw(20.0, 400.0, accept_ha_down=True, phase_margin_a=0.0, **rule) == pytest.approx(
+        3 * 20.0 * volts / 1000)
+    assert grid_charge_cap_kw(20.0, 400.0, accept_ha_down=True, **rule) == pytest.approx(3 * 18.0 * volts / 1000)
+    # A plant whose charge may all be on one phase: one phase's room, never three.
+    one = {**rule, "plant_phases": 1}
+    assert grid_charge_cap_kw(20.0, 400.0, accept_ha_down=True, phase_margin_a=1.0, **one) == pytest.approx(
+        19.0 * volts / 1000)
+    # The fuse or the chargers unknown: no grid charge, accepted or not.
+    assert grid_charge_cap_kw(None, 400.0, accept_ha_down=True, phase_margin_a=1.0, **rule) == 0.0
+    assert grid_charge_cap_kw(20.0, 400.0, accept_ha_down=True, phase_margin_a=1.0,
+                              **{**rule, "cars_a": float("nan")}) == 0.0
+    assert ha_down_accepted_cap_kw(None, 400.0, margin_a=1.0, plant_phases=3) == 0.0
+    assert ha_down_accepted_cap_kw(1.0, 400.0, margin_a=2.0, plant_phases=3) == 0.0
+
+
+def test_the_accepted_ha_down_risk_changes_nothing_where_the_plant_s_import_limit_guards() -> None:
+    rule = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None, "plant_phases": 3}
+    for accept in (False, True):
+        assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=12.4, import_limit_per_phase=True,
+                                  accept_ha_down=accept, phase_margin_a=1.0, **rule) is None
+        assert grid_charge_cap_kw(20.0, 400.0, import_limit_kw=4.4, import_limit_acts=True,
+                                  accept_ha_down=accept, phase_margin_a=1.0, **rule) is None
+
+
+def test_the_accepted_ha_down_risk_gives_each_phase_the_fuse_less_the_site_s_margin_after_a_recipe_s_dead_man() -> None:
+    volts = 400.0 / 3 ** 0.5
+    base = {"margin_a": 2.0, "cars_a": 4.0, "house_peak_kw": None, "house_phase_peaks_a": UNBALANCED}
+    assert grid_charge_phase_caps_kw(20.0, 400.0, accept_ha_down=False, site_margin_a=1.0, **base) == (
+        grid_charge_phase_caps_kw(20.0, 400.0, **base))
+    assert grid_charge_phase_caps_kw(20.0, 400.0, accept_ha_down=True, site_margin_a=1.0, **base) == pytest.approx(
+        (19.0 * volts / 1000,) * 3)
+    # A recipe's own dead-man comes first: its own rule (the caller's margin), the acceptance not needed.
+    assert grid_charge_phase_caps_kw(20.0, 400.0, silence_fallback_s=30, accept_ha_down=True, site_margin_a=0.0,
+                                     **base) == pytest.approx((18.0 * volts / 1000,) * 3)
+    assert grid_charge_phase_caps_kw(None, 400.0, accept_ha_down=True, site_margin_a=1.0, **base) == (0.0, 0.0, 0.0)

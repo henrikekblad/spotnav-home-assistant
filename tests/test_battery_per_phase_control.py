@@ -21,6 +21,7 @@ from tests.test_battery_control import (
     HOUSE_KW,
     MODE,
     SWITCH,
+    _accept_ha_down,
     _import_limit,
     _looks,
     _on,
@@ -761,3 +762,24 @@ async def test_fuse_s4_the_hardware_test_reads_the_house_baseline_after_the_zero
     report = await _hardware_test(control, hass, site)
     assert report["modes"]["charge"]["outcome"] == "obeyed"
     assert baselines and min(baselines) >= ZERO_SETTLE_S
+
+
+async def test_a_charge_shown_only_per_phase_keeps_running_per_phase_once_the_ha_down_risk_is_accepted(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """Accepted, the phases' caps add up to the balanced cap (both the empty house's fuse): the charge per phase must
+    not give way to a balanced charge that was never shown (`charge` passed `via: per_phase`)."""
+    site, controller, plant, world = await _world(hass, monkeypatch, hass_storage)
+    control = await _control(hass, site, controller, _charge)
+    key = control.firmware_key()
+    control.reports[key]["modes"]["charge"]["via"] = "per_phase"
+    assert gate.charge_by_phases(control.report())
+    _accept_ha_down(hass, site)
+    now = await _looks(control, dt_util.now(), 8)
+    cap, caps = control._charge_limits(now, control.options())
+    assert caps is not None and cap == pytest.approx(sum(caps))
+    assert caps == pytest.approx((19.0 * VOLTS / 1000,) * 3), "each phase: the fuse less the site's 1 A"
+    assert "grid_charge" in control.allowed() and control._control_slot(now, control.options())[0] == "grid_charge"
+    assert control.executor.control.phased and any(target < 0 for target in world.targets())
+    assert not any(call[2].get("option") == "Command Charging (Grid First)" for call in plant.calls)
+    assert control.status()["per_phase"]["used"] is True

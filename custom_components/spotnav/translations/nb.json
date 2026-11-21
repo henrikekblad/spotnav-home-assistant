@@ -1188,6 +1188,10 @@
         "battery_control_import_limit_acts": {
           "name": "Importgrensen virker",
           "description": "Testen på stedet viste at anleggets importgrense virker under Remote EMS."
+        },
+        "battery_control_accept_ha_down": {
+          "name": "Home Assistant nede godtatt",
+          "description": "Personen godtar at en sikring kan løse ut hvis Home Assistant stopper eller mister kontakten med batteriet eller strømmåleren under en nettlading av husbatteriet; ladingen begrenses da til det sikringen tåler med et tomt hus."
         }
       }
     }

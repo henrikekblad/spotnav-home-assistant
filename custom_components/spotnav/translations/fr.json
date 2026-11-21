@@ -1188,6 +1188,10 @@
         "battery_control_import_limit_acts": {
           "name": "La limite d'import agit",
           "description": "Le test sur place a montré que la limite d'import de l'installation agit sous Remote EMS."
+        },
+        "battery_control_accept_ha_down": {
+          "name": "Arrêt de Home Assistant accepté",
+          "description": "La personne accepte qu'un fusible puisse sauter si Home Assistant s'arrête ou perd le contact avec la batterie ou le compteur électrique pendant une charge réseau de la batterie domestique ; la charge est alors limitée à ce que le fusible permet avec une maison vide."
         }
       }
     }

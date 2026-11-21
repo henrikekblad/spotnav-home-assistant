@@ -332,3 +332,13 @@ battery_control_settings:
       required: false
       selector:
         boolean:
+    battery_control_accept_ha_down:
+      name: Home Assistant down accepted
+      description: >
+        The person accepts that a fuse may trip if Home Assistant stops, or
+        loses contact with the battery or the grid meter, during a grid charge
+        of the home battery; the charge is then capped at what the fuse allows
+        with an empty house.
+      required: false
+      selector:
+        boolean:

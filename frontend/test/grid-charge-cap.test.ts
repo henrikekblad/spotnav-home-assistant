@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { LANGUAGES } from "../src/i18n";
-import { gridChargeCapLine, importLimitHint, importLimitPhaseStep, perPhaseLine } from "../src/settings-popover";
+import { gridChargeCapLine, haDownView, importLimitHint, importLimitPhaseStep, perPhaseLine } from "../src/settings-popover";
 import { decodeBatteryControl, type BatteryStatus } from "../src/site-model";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "battery_control");
@@ -286,6 +286,67 @@ describe("the grid charge cap block", () => {
       const line = gridChargeCapLine(language, status({}));
       expect(line, language).toMatch(/3[.,]2/);
       expect(line, language).not.toContain("{");
+    }
+  });
+});
+
+describe("the Home Assistant down acceptance", () => {
+  const offered = { offered: true, held_kw: 0.4, empty_house_kw: 13.16 };
+  const options = (more: Record<string, unknown> = {}) => ({
+    options: { ...fixture("checking.json")["status"].options, battery_control_enabled: true, ...more },
+  });
+
+  it("is offered to an administrator only, only where the HA-down cap binds", () => {
+    expect(haDownView("sv", status({ ha_down: offered }, ["grid_charge"], options()), true)).toEqual({
+      kind: "row",
+      help: "Nätladdningen av husbatteriet hålls till högst 0,4 kW, så att huvudsäkringen klarar sig även om Home Assistant stannar mitt i. Godkänner du risken får den gå upp till vad säkringen klarar med ett tomt hus.",
+    });
+    expect(haDownView("sv", status({ ha_down: offered }, ["grid_charge"], options()), false)).toBeNull();
+    expect(haDownView("sv", status({ ha_down: { ...offered, offered: false } }, ["grid_charge"], options()), true)).toBeNull();
+    expect(haDownView("sv", status({ ha_down: null }, ["grid_charge"], options()), true)).toBeNull();
+  });
+
+  it("once accepted, says so to everyone, and the cap line says the empty house's fuse", () => {
+    const accepted = options({ battery_control_accept_ha_down: true });
+    const view = haDownView("sv", status({ ha_down: { ...offered, offered: false } }, ["grid_charge"], accepted), false);
+    expect(view).toEqual({
+      kind: "line",
+      text: "Godkänt att en säkring kan lösa ut om Home Assistant stannar eller tappar kontakten med batteriet eller elmätaren under en nätladdning av husbatteriet. Bara en administratör kan ändra det.",
+    });
+    expect(haDownView("sv", status({}, ["grid_charge"], accepted), true)?.kind).toBe("row");
+    expect(gridChargeCapLine("sv", status({ rule: "accepted", cap_kw: 13.16 }, ["grid_charge"], accepted))).toBe(
+      "Högst 13,2 kW från nätet: vad huvudsäkringen klarar med ett tomt hus (risken om Home Assistant stannar är godkänd).",
+    );
+  });
+
+  it("reads a Home Assistant without the option or the block, and rejects a mistyped one", () => {
+    const old = fixture("checking.json");
+    delete old["status"].options.battery_control_accept_ha_down;
+    delete old["status"].grid_charge_cap.ha_down;
+    const decoded = decodeBatteryControl(old);
+    expect(decoded.ok && decoded.value.status?.options.battery_control_accept_ha_down).toBe(false);
+    expect(decoded.ok && decoded.value.status?.grid_charge_cap.ha_down).toBeNull();
+    const mistyped = fixture("checking.json");
+    mistyped["status"].grid_charge_cap.ha_down = { offered: "yes", held_kw: null, empty_house_kw: null };
+    expect(decodeBatteryControl(mistyped).ok).toBe(false);
+    const extra = fixture("checking.json");
+    extra["status"].grid_charge_cap.ha_down = { offered: true, held_kw: 1, empty_house_kw: 2, more: 1 };
+    expect(decodeBatteryControl(extra).ok).toBe(false);
+  });
+
+  it("has every line in every language, and Swedish never says a bare nätladda", () => {
+    for (const language of LANGUAGES) {
+      const view = haDownView(language, status({ ha_down: offered }, ["grid_charge"], options()), true);
+      expect(view?.kind === "row" && view.help.includes("0")).toBe(true);
+      expect(gridChargeCapLine(language, status({ rule: "accepted", cap_kw: 13.16 }))).not.toBeNull();
+    }
+    const sv = JSON.parse(readFileSync(join(__dirname, "..", "src", "i18n", "sv.json"), "utf8")) as Record<string, string>;
+    for (const [key, text] of Object.entries(sv).filter(([key]) => key.startsWith("battery.haDown."))) {
+      for (const match of text.matchAll(/nätladd\w*/gi)) {
+        const after = text.slice((match.index ?? 0) + match[0].length);
+        // "nätladdningen av husbatteriet", "nätladdar SpotNav husbatteriet": the home battery is named with it.
+        expect(/^ (av |SpotNav )?husbatteriet/.test(after), `${key}: ${match[0]}`).toBe(true);
+      }
     }
   });
 });

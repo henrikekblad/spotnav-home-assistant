@@ -403,6 +403,56 @@ describe("the popover from the house card", () => {
     expect(popover.querySelector("[data-note='import_limit_phase']")).toBeNull();
   });
 
+  it("offers the Home Assistant down acceptance to an administrator only where it would change something, and writes it", async () => {
+    const checking = read("battery_control", "checking.json")["status"] as Record<string, any>;
+    const withHaDown = (haDown: Record<string, unknown> | null, more: Record<string, unknown> = {}): Record<string, unknown> => ({
+      options: { ...checking["options"], battery_control_enabled: true, ...more },
+      grid_charge_cap: { ...checking["grid_charge_cap"], ha_down: haDown },
+    });
+    // Not binding (or a Home Assistant without the block): no line at all.
+    for (const block of [{ offered: false, held_kw: 9.4, empty_house_kw: 13.16 }, null]) {
+      const quiet = await mount({ battery: "checking.json", status: withHaDown(block) });
+      const popover = await open(quiet.root);
+      expect(popover.querySelector("[data-row='battery_control_accept_ha_down']")).toBeNull();
+      expect(popover.querySelector("[data-ha-down]")).toBeNull();
+      quiet.element.remove();
+    }
+    // Binding: the row, its short line, and the editor with the explanation and the checkbox.
+    const offered = await mount({ battery: "checking.json", status: withHaDown({ offered: true, held_kw: 0.4, empty_house_kw: 13.16 }) });
+    let popover = await open(offered.root);
+    const battery = popover.querySelector<HTMLElement>("[data-section='battery']")!;
+    expect(battery.querySelector("[data-row='battery_control_accept_ha_down']")!.textContent).toBe("Om Home Assistant stannarInte godkänt");
+    expect(battery.querySelector("[data-help='battery_control_accept_ha_down']")!.textContent).toContain(
+      "Nätladdningen av husbatteriet hålls till högst 0,4 kW",
+    );
+    battery.querySelector<HTMLButtonElement>("button[data-edit='battery_control_accept_ha_down']")!.click();
+    const form = offered.root.querySelector<HTMLFormElement>("form[data-battery-ha-down]")!;
+    expect(form.textContent).toContain("batteriet fortsätter ladda med den effekt det fick sist");
+    expect(form.querySelectorAll("li")).toHaveLength(3);
+    expect(form.textContent).toContain(
+      "Jag förstår och accepterar att en säkring kan lösa ut om Home Assistant stannar eller tappar kontakten med batteriet eller elmätaren under en nätladdning av husbatteriet.",
+    );
+    const box = form.querySelector<HTMLInputElement>("input[type='checkbox'][data-field='accept_ha_down']")!;
+    expect(box.checked).toBe(false);
+    box.click();
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(offered.messages.filter((message) => message["changes"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", changes: { battery_control_accept_ha_down: true } },
+    ]);
+    offered.element.remove();
+    // Accepted: the row says so and who can turn it off, and stays to turn it off.
+    const accepted = await mount({
+      battery: "checking.json",
+      status: withHaDown({ offered: true, held_kw: 0.4, empty_house_kw: 13.16 }, { battery_control_accept_ha_down: true }),
+    });
+    popover = await open(accepted.root);
+    expect(popover.querySelector("[data-row='battery_control_accept_ha_down']")!.textContent).toBe("Om Home Assistant stannarGodkänt");
+    expect(popover.querySelector("[data-help='battery_control_accept_ha_down']")!.textContent).toBe(
+      "Godkänt att en säkring kan lösa ut om Home Assistant stannar eller tappar kontakten med batteriet eller elmätaren under en nätladdning av husbatteriet. Bara en administratör kan ändra det.",
+    );
+  });
+
   it("offers the battery mode with a help line each, says what it does while control is off, and writes the choice", async () => {
     const { root, messages } = await mount({ battery: "checking.json" });
     const popover = await open(root);
