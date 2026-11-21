@@ -549,6 +549,40 @@ async def test_a_charge_begun_during_the_test_is_stopped(hass: HomeAssistant) ->
     await runner.async_stop("stopped")
 
 
+@pytest.mark.parametrize("end", ["done", "stop", "unload", "deadline"])
+async def test_an_ocpp_charger_s_ceiling_is_0_a_during_the_battery_part_and_set_back_by_every_path(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, end: str
+) -> None:
+    ceiling = "number.halo_charger_maximum_current"
+    hass.states.async_set(ceiling, "16", {"min": 0, "max": 32})
+    written: list[float] = []
+
+    async def set_value(call: Any) -> None:
+        written.append(float(call.data["value"]))
+        hass.states.async_set(ceiling, str(float(call.data["value"])), {"min": 0, "max": 32})
+
+    hass.services.async_register("number", "set_value", set_value)
+    ocpp = _FakeCharger()
+    ocpp.ocpp_target = object()
+    ocpp.ocpp_controls = SimpleNamespace(station_maximum_entity=ceiling)
+    if end == "deadline":
+        monkeypatch.setattr(hardware_test, "MAX_TEST", timedelta(seconds=0))
+    slow = end != "done"
+    runner = await _runner(hass, _FakeBattery(slow=slow), _FakeHeat(slow=slow), {"ocpp": ocpp})
+    assert await runner.async_start() is None
+    await hass.async_block_till_done()
+    if end in ("done", "deadline"):
+        await _finished(runner)
+    elif end == "stop":
+        await runner.async_stop("stopped")
+    else:
+        await runner.async_shutdown()
+    await hass.async_block_till_done()
+    assert written[0] == 0.0 and written[-1] == 16.0, written
+    assert hass.states.get(ceiling).state == "16.0"
+    assert runner.site.charger_test_hold.ceilings_kept == []
+
+
 async def test_a_battery_part_that_does_not_start_lets_the_chargers_go_at_once(hass: HomeAssistant) -> None:
     class _Refusing(_FakeBattery):
         async def async_hardware_test_start(self) -> str | None:

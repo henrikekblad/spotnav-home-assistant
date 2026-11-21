@@ -18,8 +18,9 @@ through the engine that already writes to it, with every rule of that engine, in
 
 **The site's chargers** (`site/charger_test_hold.py`): a test whose battery part would run does not start while a
 charger on the site is on (`blocked` `car_charging`), and from its start until its battery part is over, by whatever
-path, every charger is held stopped: no start of any kind goes out, a charge a charger begins by itself is stopped, and the battery's
-HA-down cap may count a held charger whose stop it keeps without Home Assistant at 0 A. The card asks the person
+path, every charger is held stopped: no start of any kind goes out, a charge a charger begins by itself is stopped, an OCPP charger's
+station ceiling is set to 0 A (and set back at the end, or at the next start after a restart in between), and the
+battery's HA-down cap may count a held charger that cannot draw without Home Assistant at 0 A. The card asks the person
 not to start a charge meanwhile.
 
 The parts run side by side (separate devices; the battery's modes alone take about nine minutes, most of it the
@@ -76,6 +77,8 @@ ERROR_NO_TEST: Final = "spotnav_no_test"
 BLOCKED_CAR_CHARGING: Final = "car_charging"
 #: The chargers' hold ends by itself this long after the test's deadline, should nothing release it.
 HOLD_SLACK: Final = timedelta(minutes=1)
+#: How long the unload waits for the OCPP chargers' station ceilings to be set back (s).
+RESTORE_AT_UNLOAD_S: Final = 20.0
 
 
 def store_key(entry_id: str) -> str:
@@ -328,10 +331,19 @@ class HardwareTest:
         except Exception:  # noqa: BLE001 - the hold ends by itself at its deadline either way
             _LOGGER.warning("SpotNav hardware test: the chargers' hold could not be ended", exc_info=True)
             return
-        if refused and not self._closed and not self._unloading:
-            self.hass.async_create_background_task(
-                hold.async_rearm_refused(refused), f"{DOMAIN} hardware test rearm"
-            )
+        if self._closed or self._unloading:
+            # The unload sets the OCPP ceilings back itself, awaited (`async_shutdown`); nothing is armed again.
+            return
+        self.hass.async_create_background_task(
+            self._async_after_release(hold, refused), f"{DOMAIN} hardware test release"
+        )
+
+    @staticmethod
+    async def _async_after_release(hold: Any, refused: list[str]) -> None:
+        """The OCPP chargers' station ceilings set back first, then the refused plans armed again."""
+        await hold.async_restore_ceilings()
+        if refused:
+            await hold.async_rearm_refused(refused)
 
     async def async_stop(self, why: str) -> None:
         """End a running test at once (everything it engaged handed back)."""
@@ -514,6 +526,11 @@ class HardwareTest:
         self._closed = True
         # Ended with the run; again here in case the run never got to its end.
         self._release_hold()
+        # An OCPP charger's station ceiling set back before the site goes; one not taken stays in the hold's store and
+        # is set back at the next start.
+        with contextlib.suppress(Exception):
+            async with asyncio.timeout(RESTORE_AT_UNLOAD_S):
+                await self._hold().async_restore_ceilings()
 
     # ---- views
 

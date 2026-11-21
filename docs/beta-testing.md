@@ -61,7 +61,9 @@ It takes at most ten minutes and costs at most a few kronor of grid energy. Only
 per site, and once more after a SpotNav update or a new plant firmware.
 
 While the battery part runs, SpotNav holds every charger on the site stopped: no plan, sun or Start starts one, and
-a charge a charger begins by itself is stopped. Do not start a car charge during the test. A test with a battery
+a charge a charger begins by itself is stopped. An OCPP charger's **Maximum Current** (the `ocpp` integration's
+station limit) is set to 0 A meanwhile and set back to your value afterwards, also at the next start should Home
+Assistant stop in the middle. Do not start a car charge during the test. A test with a battery
 part does not start while a car charges; stop the charge first. The chargers are let go as soon as the battery part
 is over, and a plan whose window is open starts again.
 
