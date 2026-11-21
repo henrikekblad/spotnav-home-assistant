@@ -353,3 +353,35 @@ def test_the_meter_reads_power_or_current_and_is_given_per_phase() -> None:
     assert tool.meter_kw({"state": "10", "attributes": {"unit_of_measurement": "A"}}) == pytest.approx(2.3)
     assert tool.meter_kw({"state": "1500", "attributes": {"unit_of_measurement": "W"}}) == pytest.approx(1.5)
     assert tool.meter_kw({"state": "unavailable", "attributes": {"unit_of_measurement": "A"}}) is None
+
+
+def _scripted(monkeypatch: pytest.MonkeyPatch, run: Any, phases: dict[str, str]) -> None:
+    """The steps without waiting: each load step lands on the phase given, every prompt answered at once."""
+    def load_step(run: Any, step: str, *, stopped: bool = False) -> dict[str, Any]:
+        result = {"step": step, "phase": phases.get(step, "A"), "load_kw": 2.4, "verdict": "PASS"}
+        run.results.append(result)
+        return result
+
+    monkeypatch.setattr(tool, "load_step", load_step)
+    monkeypatch.setattr(run, "settle", lambda seconds: None)
+    monkeypatch.setattr(run, "wait", lambda prompt, least_s=0.0: "")
+    monkeypatch.setattr(run, "marker", lambda name: 0.0)
+    monkeypatch.setattr(tool.Run, "wait_available", lambda self, role, wait_s: True)
+
+
+def _args(**changes: Any) -> Any:
+    import argparse
+    values = {"limit_kw": 6.0, "charge_kw": 4.0, "low_charge_kw": 1.0, "second_phase": False,
+              "skip_stopped": True} | changes
+    return argparse.Namespace(**values)
+
+
+@pytest.mark.parametrize(("second", "verdict"), [("B", "PASS"), ("A", "not judged (the load landed on the same phase")])
+def test_the_under_limit_step_may_be_repeated_on_a_second_phase(
+    monkeypatch: pytest.MonkeyPatch, quick: None, second: str, verdict: str
+) -> None:
+    run = _run(FakeHA(_plant()))
+    _scripted(monkeypatch, run, {"binding": "A", "under": "A", "under2": second})
+    tool.steps(run, _args(second_phase=True))
+    results = {r["step"]: r["verdict"] for r in run.results}
+    assert results["under2"].startswith(verdict)

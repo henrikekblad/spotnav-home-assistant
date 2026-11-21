@@ -22,7 +22,7 @@ Steps (each waits for Enter; typing `q` and Enter at any prompt stops and restor
 3. Load under the limit (the decisive one): the charge is lowered to `--low-charge-kw` (1 kW) so that the total stays
    under the limit while the loaded phase alone goes over limit / 3. A plant that holds each phase pulls that phase
    down by itself; a plant that only limits the total leaves it over. Only the first lets SpotNav drop its HA-down
-   cap (`battery/gate.py`).
+   cap (`battery/gate.py`). `--second-phase` repeats it with the load on another phase; one phase is the default.
 4. Writes and polls stopped: the charge back at `--charge-kw`; the script writes nothing until the restore. The
    person disables SpotNav's entries and then the `sigen` integration (Settings > Devices & services > the entry's
    menu > Disable); the script waits ten minutes, the same load runs again with markers, and both are re-enabled.
@@ -702,7 +702,13 @@ def steps(run: Run, args: argparse.Namespace) -> None:
     run.step = "under"
     run.set("charge_limit", args.low_charge_kw)
     run.settle(30.0)
-    load_step(run, "under")
+    first = load_step(run, "under")
+    if args.second_phase:
+        run.wait("Now the same under-limit step on another phase: move the load to a socket on a different phase"
+                 f" than {first.get('phase', 'the first')}, then press Enter.")
+        second = load_step(run, "under2")
+        if "phase" in second and second.get("phase") == first.get("phase"):
+            second["verdict"] = "not judged (the load landed on the same phase as the first: use another socket)"
     if args.skip_stopped:
         return
     run.step = "stopped"
@@ -762,6 +768,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="restore at once when a phase imports more than this twice in a row (4 kW, 17 A)")
     parser.add_argument("--csv", type=Path, help="where to log (default: sigen_import_limit_<time>.csv here)")
     parser.add_argument("--dry-run", action="store_true", help="read, check and log only; write nothing")
+    parser.add_argument("--second-phase", action="store_true",
+                        help="repeat the under-limit step with the load on a second phase")
     parser.add_argument("--skip-stopped", action="store_true", help="leave out the writes-stopped step")
     parser.add_argument("--meter", metavar="a=ID,b=ID,c=ID",
                         help="an independent per-phase meter at the grid connection (W, kW or A), not from the plant's"
