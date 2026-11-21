@@ -208,3 +208,42 @@ async def test_an_ocpp_012_charger_with_only_a_session_limit_uses_it(
         "max_a": 25,
         "source": "session_limit",
     }
+
+
+class _PowerCharger:
+    """A charger given a power: its range carries `kw_per_a` and starts at 3 A (`controller.power_range`)."""
+
+    @staticmethod
+    def current_range() -> dict[str, Any]:
+        return {"min_a": 3, "max_a": 17, "source": "current_limit", "kw_per_a": 0.6928}
+
+
+@pytest.mark.parametrize(("amps", "refused"), [(2, True), (3, False), (17, False), (18, True)])
+def test_a_charger_given_a_power_refuses_amps_below_its_range_too(
+    monkeypatch: pytest.MonkeyPatch, amps: int, refused: bool
+) -> None:
+    """Below the first whole ampere at or above its lowest power nothing would be written to a DC charger."""
+    from custom_components.spotnav.api import settings as settings_api
+    from custom_components.spotnav.planning.auto_settings import AutoSettingsError
+
+    monkeypatch.setattr(settings_api, "controller_for", lambda _hass, _entry_id: _PowerCharger())
+    decoded = AutoSettings(amps=amps)
+    if refused:
+        with pytest.raises(AutoSettingsError) as caught:
+            settings_api.refuse_amps_above_charger_range(None, "evdc", decoded)  # type: ignore[arg-type]
+        assert caught.value.code == "invalid_amps"
+    else:
+        settings_api.refuse_amps_above_charger_range(None, "evdc", decoded)  # type: ignore[arg-type]
+
+
+def test_an_ac_charger_still_takes_amps_below_six(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a range with `kw_per_a` refuses below its bottom: an AC charger's write is judged as before."""
+    from custom_components.spotnav.api import settings as settings_api
+
+    class _Ac:
+        @staticmethod
+        def current_range() -> dict[str, Any]:
+            return {"min_a": 6, "max_a": 16, "source": "current_limit"}
+
+    monkeypatch.setattr(settings_api, "controller_for", lambda _hass, _entry_id: _Ac())
+    settings_api.refuse_amps_above_charger_range(None, "ac", AutoSettings(amps=5))  # type: ignore[arg-type]

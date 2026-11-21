@@ -2360,9 +2360,24 @@ class SiteCapacityController:
         minimum = self._min_current_a(charger_entry_id)
         if allowance >= minimum and self._battery_takes_the_fuse():
             # The battery fills the fuse as the car starts: the car goes in at its minimum, so the battery has a car
-            # it can give way to rather than a full one on top of it, and yield stepping raises it from there.
-            return minimum
+            # it can give way to rather than a full one on top of it, and yield stepping raises it from there. A DC
+            # charger's start needs its floor and `EVDC_START_MARGIN_A` (`ChargingController.start_needs_a`): that much
+            # is offered where the room has it, never more than the room, and the start still writes only the floor
+            # (`util.amps_at_floor`). For an AC charger the need is its minimum: exactly as before.
+            return min(allowance, max(minimum, self._start_needs_a(charger_entry_id)))
         return allowance
+
+    def _start_needs_a(self, charger_entry_id: str) -> float:
+        """The least allowance a start of a charger whose floor is below 6 A (a DC charger) goes out at
+        (`ChargingController.start_needs_a`); 0 for any other charger, so its minimum stands as before."""
+        charger = controller_for(self.hass, charger_entry_id)
+        if charger is None:
+            return 0.0
+        floor = getattr(charger, "min_current_a", None)
+        need = getattr(charger, "start_needs_a", None)
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in (floor, need)):
+            return 0.0
+        return float(need) if floor < DEFAULT_MIN_CURRENT_A else 0.0
 
     def reserve_start(self, charger_entry_id: str, amps: float | None) -> None:
         """A start of `amps` is on its way to this charger (`None`: it did not go out, or is over). Until
@@ -4131,17 +4146,26 @@ class SiteCapacityController:
     def _charger_floor_a(self, charger_entry_id: str) -> float:
         """The charger's own floor (`ChargingController.min_current_a`) where it is below the 6 A of an AC charger (a
         DC charger given a power, `execution/chargers/sigenergy.py`), else 6 A. Never above 6 A: a charger's floor
-        only ever lowers what the site reckons as a charger's minimum."""
+        only ever lowers what the site reckons as a charger's minimum.
+
+        While the charger charges this is its running floor (`ChargingController.running_min_current_a`): for a DC
+        charger whose running minimum is recorded (`sigenergy.EVDC_RUN_MIN_CONFIRMED`) the lower power it holds once
+        charging, so load balancing lowers a running charge to it before it pauses, and the sun before it stops. A
+        charger that does not charge reckons with its start floor, so a resume or a start still needs that."""
         charger = controller_for(self.hass, charger_entry_id)
-        floor = getattr(charger, "min_current_a", None) if charger is not None else None
+        floor = None
+        if charger is not None:
+            floor = getattr(charger, "running_min_current_a", None)
+            if not isinstance(floor, (int, float)) or isinstance(floor, bool):
+                floor = getattr(charger, "min_current_a", None)
         if isinstance(floor, (int, float)) and not isinstance(floor, bool) and 0.0 < floor < DEFAULT_MIN_CURRENT_A:
             return float(floor)
         return DEFAULT_MIN_CURRENT_A
 
     def charger_min_current_a(self, charger_entry_id: str) -> float:
         """The charger's minimum current: the wiring's, else its own floor (`_charger_floor_a`: 6 A, a DC charger's
-        lowest power as a current per phase). Below it the regulator pauses, the sun stops and the import target's
-        hold pauses rather than lowers."""
+        lowest power as a current per phase, or while it charges its running minimum where that is recorded). Below it
+        the regulator pauses, the sun stops and the import target's hold pauses rather than lowers."""
         wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
         configured = wiring.get("min_current_a")
         if configured is None:

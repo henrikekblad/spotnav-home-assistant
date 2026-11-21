@@ -508,6 +508,30 @@ describe("the status line renders the block and nothing else", () => {
     );
   });
 
+  it("names a DC charger's current as the power it is written as, in every language", () => {
+    // A charger given a power (`current_range.kw_per_a`): 2.17 A per phase at 0.6928 kW per ampere is 1.5 kW.
+    const dc = { ...format("en"), kwPerA: 0.6928 };
+    const lost = block(statusLine("load_balancing_limited", { limit_a: 2.17, cause: "measurement_lost" }));
+    expect(statusText(lost, dc, NOW)).toBe(
+      "The site's meter has no fresh reading: load balancing holds the car at its minimum of 1.5 kW until it is back.",
+    );
+    const limited = block(statusLine("load_balancing_limited", { limit_a: 10 }));
+    expect(statusText(limited, dc, NOW)).toBe("Charging is limited to 6.9 kW by the site's load balancing.");
+    expect(issueText("en", issuesOf(limited, "en", undefined, dc)[0]!)).toBe(
+      "Charging is limited to 6.9 kW by the site's load balancing.",
+    );
+    const held = block(statusLine("import_target_held", { limit_a: 3, target_kw: 5, hour_kw: 4.2, set_kw: 5 }));
+    expect(statusText(held, dc, NOW)).toContain("2.1 kW");
+    const solar = block(statusLine("solar_charging", { requested_a: 4 }));
+    expect(statusText(solar, dc, NOW)).toBe("Solar · charging 2.8 kW from surplus");
+    const all = ["sv", "en", "nb", "da", "fi", "de", "fr", "es", "nl"] as const;
+    for (const language of all) {
+      const words = statusText(lost, { ...format("sv"), language, kwPerA: 0.6928 } as unknown as ReturnType<typeof format>, NOW) ?? "";
+      expect(words).toMatch(/1[.,]5\s?kW/);
+      expect(words).not.toMatch(/\d\s?A\b/);
+    }
+  });
+
   it("says the car is held at its minimum while the site's measurement is lost", () => {
     const lost = block(statusLine("load_balancing_limited", { limit_a: 6, cause: "measurement_lost" }));
     expect(statusText(lost, format("en"), NOW)).toBe(

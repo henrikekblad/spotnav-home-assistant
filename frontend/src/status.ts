@@ -16,7 +16,7 @@ import {
   type FormatContext,
 } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
-import { nominalPowerKw } from "./settings";
+import { currentText, nominalPowerKw } from "./settings";
 import {
   STATUS_CODE_TABLE,
   type DemandBlock,
@@ -554,6 +554,11 @@ function loadBalancingLimitKey(cause: StatusParam | undefined): TranslationKey {
   return "status.loadBalancingLimitedTo";
 }
 
+/** A current a status line names, as the card shows the charger's current: amperes, or kW for a DC charger. */
+function limitText(language: Language, amps: number, format?: FormatContext): string {
+  return currentText(language, amps, format?.kwPerA);
+}
+
 function ms(value: StatusParam | undefined): number | null {
   if (typeof value !== "string") {
     return null;
@@ -715,7 +720,7 @@ export function lineText(
       const amps = num(p["requested_a"]);
       return amps === null
         ? say("strategy.status.solar.chargingUnknown")
-        : say("strategy.status.solar.charging", { amps: formatNumber(language, amps, 0) });
+        : say("strategy.status.solar.charging", { amps: limitText(language, amps, format) });
     }
     case "solar_charging_one_phase": {
       // The sun switched the charge to one phase: the power is the current on that one phase.
@@ -793,7 +798,7 @@ export function lineText(
       }
       return say(peak ? "status.importTargetHeldPeak" : "status.importTargetHeld", {
         ...kw,
-        limit: formatNumber(language, limit, 0),
+        limit: limitText(language, limit, format),
       });
     }
     case "import_target_paused": {
@@ -863,7 +868,7 @@ export function lineText(
       const limit = num(p["limit_a"]);
       return limit === null
         ? say("status.loadBalancingLimited")
-        : say(loadBalancingLimitKey(p["cause"]), { limit: formatNumber(language, limit, 0) });
+        : say(loadBalancingLimitKey(p["cause"]), { limit: limitText(language, limit, format) });
     }
     case "settings_incomplete": {
       // Setup, not a fault: name what is still needed when the fields are known words.
@@ -1152,7 +1157,7 @@ export function issuesOf(
             ? "status.loadBalancingLimited"
             : loadBalancingLimitKey(line.params["cause"])
           : STATUS_WORDING[line.code],
-      params: limit === null ? {} : { limit: formatNumber(language, limit, 0) },
+      params: limit === null ? {} : { limit: limitText(language, limit, format) },
       technical: reasonOf(line),
     });
     if (line.code === "settings_incomplete") {

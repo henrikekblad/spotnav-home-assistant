@@ -784,7 +784,7 @@ class SolarController:
         self._arming_since = None
         self._disarming_since = None
         self._import_since = None
-        requested = self._clamp_request(cfg.start_a)
+        requested = self._start_request()
         self._last_requested_a = requested
         self._step_pending = None
         self._verify_until = now + cfg.verify_s
@@ -1029,7 +1029,7 @@ class SolarController:
                 self._arming_since = None
                 # At the start minimum, never at what the surplus seems to allow: the car's draw shows
                 # within `verify_s` whether it is real (module docstring).
-                requested = self._clamp_request(cfg.start_a)
+                requested = self._start_request()
                 self._last_requested_a = requested
                 self._step_pending = None
                 self._verify_until = now + cfg.verify_s
@@ -1262,6 +1262,13 @@ class SolarController:
         self._last_requested_a = None
         self._step_pending = None
         return self._verdict("hold", None, reason, switch_phases=phases)
+
+    def _start_request(self) -> float:
+        """What a start asks for: the start minimum, clamped like any request, and never rounded below `start_a` (a
+        DC charger whose running floor is below its start floor of 2.17 A would otherwise start at 2 A)."""
+        cfg = self._config
+        assert cfg.start_a is not None
+        return max(cfg.start_a, self._clamp_request(cfg.start_a))
 
     def _clamp_request(self, available_a: float) -> float:
         """Floor to whole amps, then clamp to the charger limits, in that order."""

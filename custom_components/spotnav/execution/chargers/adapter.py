@@ -220,12 +220,23 @@ class ChargerAdapter:
         self.pre_current: PreSpotnavCurrent | None = None
         #: Awaited once the reading is recorded, to save it (the controller's store).
         self.pre_current_recorded: Callable[[], Awaitable[None]] | None = None
+        # A path whose floor depends on whether the charger charges (`sigenergy.PowerCurrent`) reads it from here: only
+        # a status that says charging counts (`charging_observation`), so an unreadable one keeps the start floor.
+        bind_charging = getattr(current, "bind_charging", None)
+        if callable(bind_charging):
+            bind_charging(self.observed_charging)
 
     @property
     def min_current_a(self) -> float:
         """The charger's floor, the lowest current it is written (`CurrentPath.min_a`): 6 A for an AC charger, the
         lowest power as a current per phase for a charger given a power (`sigenergy.PowerCurrent`)."""
         return self.current.min_a()
+
+    @property
+    def run_min_current_a(self) -> float:
+        """The lowest current a charge that is already running is written (`CurrentPath.run_min_a`): the floor, except
+        for a DC charger whose running minimum is recorded (`sigenergy.EVDC_RUN_MIN_CONFIRMED`)."""
+        return self.current.run_min_a()
 
     @property
     def min_start_current_a(self) -> float:
@@ -497,6 +508,11 @@ class ChargerAdapter:
         if status is not None:
             return status in self._charging_values
         return self.path.enabled_state() is True
+
+    def observed_charging(self) -> bool:
+        """Whether something readable says the charger is charging (`charging_observation` is `True`): an unreadable
+        status is not charging here, never the charge control in its place."""
+        return self.charging_observation() is True
 
     def charging_observation(self) -> bool | None:
         """Whether the charger is charging, or `None` when nothing readable says it: what the events and
