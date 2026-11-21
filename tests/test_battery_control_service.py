@@ -182,3 +182,35 @@ async def test_an_administrator_clears_an_outside_control_verdict_from_the_batte
     await client.send_json({"id": 3, **clear})
     assert (await client.receive_json())["result"]["error"] == "spotnav_not_clearable"
     assert shadow.outside.verdict.active
+
+
+async def test_only_an_administrator_accepts_the_ha_down_risk(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], hass_ws_client: Any,
+    hass_read_only_access_token: str, hass_admin_user: Any, hass_read_only_user: Any,
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, own=True)
+    await hass.async_block_till_done()
+    write = {"type": "spotnav/battery_control", "api_version": 1, "site_id": site.entry_id,
+             "changes": {gate.CONF_ACCEPT_HA_DOWN: True}}
+    reader = await hass_ws_client(hass, hass_read_only_access_token)
+    await reader.send_json({"id": 1, **write})
+    assert (await reader.receive_json())["result"]["error"] == "spotnav_not_admin"
+    assert controller.battery_control.options().accept_ha_down is False
+    with pytest.raises(Unauthorized):
+        await hass.services.async_call(
+            DOMAIN, "battery_control_settings", {gate.CONF_ACCEPT_HA_DOWN: True}, blocking=True,
+            context=Context(user_id=hass_read_only_user.id),
+        )
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, **write, "changes": {gate.CONF_ACCEPT_HA_DOWN: "yes"}})
+    assert (await client.receive_json())["result"]["error"] == "spotnav_invalid_value"
+    await client.send_json({"id": 2, **write})
+    result = (await client.receive_json())["result"]
+    assert result["ok"] and result["status"]["options"][gate.CONF_ACCEPT_HA_DOWN] is True
+    assert site.data[gate.CONF_ACCEPT_HA_DOWN] is True
+    answer = await hass.services.async_call(
+        DOMAIN, "battery_control_settings", {gate.CONF_ACCEPT_HA_DOWN: False}, blocking=True,
+        context=Context(user_id=hass_admin_user.id), return_response=True,
+    )
+    assert answer["options"][gate.CONF_ACCEPT_HA_DOWN] is False
+    assert plant.calls == []
