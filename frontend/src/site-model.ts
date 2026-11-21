@@ -79,6 +79,9 @@ export interface BatteryOptions {
   battery_control_shadow_only: boolean;
   battery_control_ai_takeover_ack: boolean;
   battery_control_import_limit_acts: boolean;
+  /** The person accepted that a fuse may trip if Home Assistant stops during a grid charge of the home battery
+   * (`false` from a Home Assistant before the key). */
+  battery_control_accept_ha_down: boolean;
   /** self_consumption | balanced | max_profit; the only one that may sell. */
   battery_mode: string;
 }
@@ -170,10 +173,19 @@ export interface PerPhase {
 
 export type PhaseValues = { L1: number; L2: number; L3: number };
 
+/** Whether accepting the Home Assistant down risk would change anything (`battery/control.py` `_ha_down_status`):
+ * `offered` where the HA-down cap binds, `held_kw` that cap with no car counted, `empty_house_kw` what the fuse
+ * allows with an empty house. */
+export interface HaDown {
+  offered: boolean;
+  held_kw: number | null;
+  empty_house_kw: number | null;
+}
+
 export interface GridChargeCap {
   cap_kw: number | null;
   /** `learned`, `learning` (the learned peaks with a further margin while the days are few), `conservative`,
-   * `import_limit` or `error`. */
+   * `import_limit`, `accepted` (the Home Assistant down risk accepted: the fuse with an empty house) or `error`. */
   rule: string;
   main_fuse_a: number | null;
   /** What the cap would be by the conservative rule, and by the learned peaks without the further margin. */
@@ -210,6 +222,8 @@ export interface GridChargeCap {
   } | null;
   /** `null` for a brand without such a limit, and from a Home Assistant that does not send it yet. */
   import_limit: ImportLimit | null;
+  /** `null` from a Home Assistant that does not send it yet. */
+  ha_down: HaDown | null;
 }
 
 export interface BatteryAnswer {
@@ -266,6 +280,7 @@ const OPTIONS = O({
   battery_control_shadow_only: "boolean",
   battery_control_ai_takeover_ack: "boolean",
   battery_control_import_limit_acts: "boolean",
+  battery_control_accept_ha_down: "boolean",
   battery_mode: "string",
 });
 
@@ -313,6 +328,7 @@ const GRID_CHARGE_CAP = O({
       per_phase: N(O({ max_kw: N("number"), holds: "boolean", why: N("string"), entity_id: N("string") })),
     }),
   ),
+  ha_down: N(O({ offered: "boolean", held_kw: N("number"), empty_house_kw: N("number") })),
 });
 
 const PER_PHASE = O({
@@ -419,7 +435,8 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
  * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.battery_found` (`true`),
  * `status.grid_charge_cap.import_limit`, its `per_phase` (also absent for a brand without) and that block's
- * `entity_id`. Anything else is left for the strict decoder. */
+ * `entity_id`, `status.grid_charge_cap.ha_down` and `status.options.battery_control_accept_ha_down` (`false`).
+ * Anything else is left for the strict decoder. */
 function withLaterBlocks(raw: unknown): unknown {
   const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
   if (typeof status !== "object" || status === null || Array.isArray(status)) {
@@ -428,11 +445,13 @@ function withLaterBlocks(raw: unknown): unknown {
   const block = status as Record<string, unknown>;
   const cap = block["grid_charge_cap"];
   const plainCap = typeof cap === "object" && cap !== null && !Array.isArray(cap);
+  const options = block["options"];
   return {
     ...(raw as Record<string, unknown>),
     status: {
       ...block,
       ...(plainCap ? { grid_charge_cap: withImportLimit(cap as Record<string, unknown>) } : {}),
+      ...(isPlain(options) ? { options: { battery_control_accept_ha_down: false, ...options } } : {}),
       per_phase: block["per_phase"] ?? null,
       plan_costs: block["plan_costs"] ?? null,
       preheat: block["preheat"] ?? null,
@@ -445,15 +464,18 @@ function isPlain(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** `grid_charge_cap` with `import_limit`, its `per_phase` and that block's `entity_id` read as `null` when absent. */
+/** `grid_charge_cap` with `import_limit`, its `per_phase`, that block's `entity_id` and `ha_down` read as `null` when
+ * absent. */
 function withImportLimit(cap: Record<string, unknown>): Record<string, unknown> {
   const limit = cap["import_limit"];
+  const haDown = cap["ha_down"] ?? null;
   if (!isPlain(limit)) {
-    return { ...cap, import_limit: limit ?? null };
+    return { ...cap, import_limit: limit ?? null, ha_down: haDown };
   }
   const phase = limit["per_phase"];
   return {
     ...cap,
+    ha_down: haDown,
     import_limit: { ...limit, per_phase: isPlain(phase) ? { entity_id: null, ...phase } : (phase ?? null) },
   };
 }
