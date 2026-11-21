@@ -1089,6 +1089,8 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    # The total rule alone here: the per-phase hold as not recorded (it ships recorded for Sigenergy).
+    _field_tested(monkeypatch, field_tested=False)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     # The limit's entity is disabled (the integration's default): nothing read, the suggestion still made.
     block = control.status()["grid_charge_cap"]["import_limit"]
@@ -1219,7 +1221,7 @@ def _per_phase_plant(hass: HomeAssistant, **states: str | None) -> None:
 
 def _field_tested(monkeypatch: pytest.MonkeyPatch, **changes: Any) -> None:
     """The recipe with the owner's on-site test of the per-phase hold recorded (it ships unrecorded)."""
-    phases = replace(commands_module.SIGENERGY_IMPORT_LIMIT_PHASES, field_tested=True, **changes)
+    phases = replace(commands_module.SIGENERGY_IMPORT_LIMIT_PHASES, **({"field_tested": True} | changes))
     tested = replace(commands_module.SIGENERGY_CONTROL, import_limit_phases=phases)
     monkeypatch.setattr(
         commands_module, "CONTROLS",
@@ -1227,9 +1229,9 @@ def _field_tested(monkeypatch: pytest.MonkeyPatch, **changes: Any) -> None:
     )
 
 
-def test_the_shipped_recipe_does_not_count_on_the_limit_held_per_phase_until_the_owner_s_test_passed() -> None:
+def test_the_shipped_recipe_records_the_owner_s_test_of_the_limit_held_per_phase_and_no_per_phase_output() -> None:
     phases = commands_module.SIGENERGY_CONTROL.import_limit_phases
-    assert phases is not None and phases.field_tested is False and phases.phase_output_max_kw is None
+    assert phases is not None and phases.field_tested is True and phases.phase_output_max_kw is None
     assert phases.sensor_online == "online" and phases.output_type == "l1_l2_l3_n"
 
 
@@ -1260,8 +1262,7 @@ async def test_a_limit_held_per_phase_lifts_the_cap_only_while_every_condition_r
     """The owner's 20 A fuse, where the cap leaves no grid charge at all: a limit held per phase at most 3 x (20 - 2)
     A x 231 V (12.47 kW) lifts it, with the recipe's fact recorded and the site's own word that its limit acts."""
     site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
-    if case != "unrecorded":
-        _field_tested(monkeypatch)
+    _field_tested(monkeypatch, field_tested=case != "unrecorded")
     _per_phase_plant(hass, **{
         "switch_off": {"switch": "off"}, "switch_unread": {"switch": None}, "sensor_offline": {"grid_sensor": "offline"},
         "sensor_unread": {"grid_sensor": None}, "output_unread": {"output_type": None},

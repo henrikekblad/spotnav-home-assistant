@@ -36,8 +36,11 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   live clamp per phase bounds the charge. A plant that holds its import limit **per phase**
   (`commands.ImportLimitPhases`, Sigenergy with independent phase power control on) needs no option: once the
   owner's on-site test is recorded in the recipe, and while the switch reads on, the grid sensor online and the
-  Output Type three-phase, a limit at most three times the fuse less the margin (`import_limit_phase_max_kw`) lifts
-  the cap (`grid_charge_cap_kw`); the live clamp per phase stays.
+  Output Type L1/L2/L3/N, and the site's own option says its limit acts, a limit at most three times the fuse less the
+  site's safety margin (`import_limit_phase_max_kw`) lifts the cap (`grid_charge_cap_kw`); the live clamp per phase
+  stays. Recorded for Sigenergy after the owner's on-site test of 2026-11-21. The residual risk is accepted (owner
+  decision 2026-11-21): a second fault while Home Assistant is down (the grid sensor dropping, 40040 raised or 40030
+  turned off in the app) goes unchecked until Home Assistant reads again, as it does under Sigenergy's own AI mode.
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)

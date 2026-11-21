@@ -1090,8 +1090,15 @@ SIGENERGY_PHASES: Final = PhaseControl(
 #: Sigenergy's grid import limit held per phase (`plans/v3_sigen_local_fuse_protection.md`): with independent phase
 #: power control on (40030), the owner's plant held each phase at limit / 3 once the limit bound, in AI mode (12 days,
 #: 13.8 kW: 4.60 kW a phase) and in Remote EMS "Command Charging (Grid First)" (2026-11-18, 6 kW: 2.00 kW a phase,
-#: putting out 0.33 kW on the loaded phase). Not yet seen: the hold while the total is under the limit, and with Home
-#: Assistant's writes stopped, so `field_tested` stays off until the on-site test passes. The limit regulates on the
+#: putting out 0.33 kW on the loaded phase). The on-site test of 2026-11-21 (`tools/sigen_import_limit_test.py`;
+#: SigenStor EC 12.0 TP, firmware V100R001C21SPC117, sigen 2.0.3, Remote EMS "Command Charging (Grid First)", 40030
+#: on, Output Type L1/L2/L3/N, grid sensor online) showed the rest: at 6 kW a kettle on B held at 2.0 kW at full
+#: charge and again after ten minutes with nothing written to the plant; at 8 kW the same at full charge, and
+#: **with the total under the limit** (6.0-6.26 kW of 8 kW, a 1 kW charge) B held at 2.58-2.73 kW with 3.3 kW of
+#: house on it, the plant putting out 0.67 kW on B and charging 1.0 kW on A and C: a per-phase hold, not a total
+#: one. Recorded as `field_tested` (owner, 2026-11-21); each site still says its plant's limit acts
+#: (`battery_control_import_limit_acts`) and every reading is checked again at each start and look. The limit
+#: regulates on the
 #: plant's grid sensor (V2.9 Table 5-2-1, "Grid Sensor needed"): its status, 30004, is TypQxQ 2.0.3
 #: `static_sensor.py` key `plant_grid_sensor_status` (states `offline`/`online`, disabled by default).
 SIGENERGY_IMPORT_LIMIT_PHASES: Final = ImportLimitPhases(
@@ -1101,8 +1108,8 @@ SIGENERGY_IMPORT_LIMIT_PHASES: Final = ImportLimitPhases(
     # V2.9: independent phase power control is "valid only when the output type is L1/L2/L3/N".
     output_type="l1_l2_l3_n",
     # `phase_output_max_kw` stays None (see `ImportLimitPhases`): never recorded from the on-site test.
-    # Flips to True once the owner's on-site test (`tools/sigen_import_limit_test.py`) has passed.
-    field_tested=False,
+    # The owner's on-site test passed on 2026-11-21 (see above).
+    field_tested=True,
 )
 
 SIGENERGY_CONTROL: Final = BrandControl(
