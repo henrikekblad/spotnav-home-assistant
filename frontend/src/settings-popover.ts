@@ -294,6 +294,10 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
       ? translate(language, "battery.cap.importLimit")
       : translate(language, "battery.cap.importLimitTotal", { kw: formatNumber(language, value, 1) });
   }
+  if (cap.rule === "accepted") {
+    // The Home Assistant down risk accepted: the fuse with an empty house, the live clamp below it.
+    return translate(language, "battery.cap.accepted", { kw: formatNumber(language, cap.cap_kw, 1) });
+  }
   if (cap.rule !== "learned" && cap.rule !== "learning" && cap.rule !== "conservative") {
     return null;
   }
@@ -322,6 +326,27 @@ export function gridChargeCapLine(language: Language, status: BatteryStatus): st
   return cap.cap_kw === 0
     ? translate(language, "battery.cap.zero", { rule })
     : translate(language, "battery.cap.line", { kw: formatNumber(language, cap.cap_kw, 1), rule });
+}
+
+/** The Home Assistant down acceptance (`battery_control_accept_ha_down`) as the battery section shows it: `row` (the
+ * setting, for an administrator, only where accepting would change something or it is on: `status.grid_charge_cap
+ * .ha_down.offered`) or `line` (it is on: one status line for anyone else); `null` for nothing at all. `help` is the
+ * row's line under it. */
+export function haDownView(
+  language: Language,
+  status: BatteryStatus,
+  admin: boolean,
+): { kind: "row"; help: string } | { kind: "line"; text: string } | null {
+  const accepted = status.options.battery_control_accept_ha_down;
+  const block = status.grid_charge_cap.ha_down;
+  if (accepted) {
+    const text = translate(language, "battery.haDown.accepted");
+    return admin ? { kind: "row", help: text } : { kind: "line", text };
+  }
+  if (!admin || block === null || !block.offered || block.held_kw === null) {
+    return null;
+  }
+  return { kind: "row", help: translate(language, "battery.haDown.offer", { kw: formatNumber(language, block.held_kw, 1) }) };
 }
 
 /** Under the cap's line, once the person said the plant's own import limit acts: why it does not guard the fuse as
@@ -650,6 +675,35 @@ export class SiteSections {
       editor.body.append(element(doc, "p", C.settingRowHelp, translate(language, "battery.strategyAck.text")));
       editor.form.dataset["batteryAck"] = idPrefix;
       editor.submit(async () => await this.writeBattery({ battery_control_ai_takeover_ack: true }));
+      return editor.form;
+    });
+  }
+
+  /** The Home Assistant down risk explained, with the checkbox that writes `battery_control_accept_ha_down`. */
+  openHaDown(): void {
+    const { doc, idPrefix } = this.input;
+    const language = this.language;
+    const accepted = this.battery?.options.battery_control_accept_ha_down === true;
+    this.input.openEditor(translate(language, "battery.haDown.title"), (handlers) => {
+      const editor = shell(doc, language, "battery-ha-down", handlers);
+      editor.body.append(element(doc, "p", C.settingRowHelp, translate(language, "battery.haDown.text")));
+      const list = element(doc, "ul", C.settingRowHelp);
+      for (const key of ["battery.haDown.worst", "battery.haDown.needs", "battery.haDown.without"] as const) {
+        list.append(element(doc, "li", undefined, translate(language, key)));
+      }
+      editor.body.append(list);
+      const box = doc.createElement("input");
+      box.type = "checkbox";
+      box.id = `${idPrefix}-battery-ha-down`;
+      box.checked = accepted;
+      box.dataset["field"] = "accept_ha_down";
+      const label = element(doc, "label", C.siteChoice);
+      label.append(box, doc.createTextNode(translate(language, "battery.haDown.check")));
+      editor.body.append(label);
+      editor.form.dataset["batteryHaDown"] = idPrefix;
+      editor.submit(async () =>
+        box.checked === accepted ? null : await this.writeBattery({ battery_control_accept_ha_down: box.checked }),
+      );
       return editor.form;
     });
   }
@@ -984,6 +1038,26 @@ export class SiteSections {
     const phaseStep = this.importLimitPhaseNotice(status, admin);
     if (phaseStep !== null) {
       section.append(phaseStep);
+    }
+    const haDown = haDownView(language, status, admin);
+    if (haDown?.kind === "line") {
+      const line = element(doc, "p", C.settingRowHelp, haDown.text);
+      line.dataset["haDown"] = "accepted";
+      section.append(line);
+    } else if (haDown?.kind === "row") {
+      const label = translate(language, "battery.haDown.label");
+      const on = options.battery_control_accept_ha_down;
+      const value = translate(language, on ? "battery.haDown.on" : "battery.haDown.off");
+      section.append(
+        ...settingRow(doc, {
+          key: "battery_control_accept_ha_down",
+          label,
+          value,
+          help: haDown.help,
+          onTap: () => this.openHaDown(),
+          changeableText: translate(language, "settings.row.changeable", { label, value }),
+        }),
+      );
     }
     const phaseLine = perPhaseLine(language, status);
     if (phaseLine !== null) {
