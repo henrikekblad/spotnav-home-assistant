@@ -910,6 +910,8 @@ export async function getSiteSettingsView(hass: HomeAssistantLike, target: SiteT
  * `enableControlEntities` is the person's confirm in the opt-in dialog: the backend enables the brand's disabled
  * control entities and reloads their integration once, before it writes `changes`. `clearOutsideControl` is the
  * person's "it was me": the outside-control mark found by the battery's own settings or behaviour ends.
+ * `enableFactEntities` is the person's confirm of the line that a fact the plan needs (the battery's size, its floor)
+ * sits in a disabled entity: the backend enables only those (never a control) and reloads their integration once.
  */
 export async function batteryControl(
   hass: HomeAssistantLike,
@@ -917,6 +919,7 @@ export async function batteryControl(
   changes: Record<string, boolean | string> | null = null,
   enableControlEntities = false,
   clearOutsideControl = false,
+  enableFactEntities = false,
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/battery_control",
@@ -925,6 +928,7 @@ export async function batteryControl(
     ...(changes === null ? {} : { changes }),
     ...(enableControlEntities ? { enable_control_entities: true } : {}),
     ...(clearOutsideControl ? { clear_outside_control: true } : {}),
+    ...(enableFactEntities ? { enable_fact_entities: true } : {}),
   });
 }
 

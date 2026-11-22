@@ -103,6 +103,10 @@ export interface BatteryStatus {
   /** The brand's control entities that are disabled in Home Assistant, for the opt-in dialog (`spotnav/battery_control`
    * with `enable_control_entities`); `null` when none is. */
   enable_entities: { integration: string; entities: { entity_id: string; name: string }[] } | null;
+  /** The disabled entities that hold a fact the battery plan needs and lacks (`needs`: `size`, `floor`), for one
+   * line with a button (`spotnav/battery_control` with `enable_fact_entities`); `null` when none is, and from a Home
+   * Assistant that does not send it yet. */
+  enable_facts: { integration: string; entities: { entity_id: string; name: string }[]; needs: string[] } | null;
   notes: { code: string; at: string }[];
   /** A cold battery whose own preheating is off (`off`) or whose switch is disabled in Home Assistant (`disabled`),
    * while SpotNav runs it; `null` otherwise, and from a Home Assistant that does not send it yet. */
@@ -352,6 +356,7 @@ const STATUS: Spec = O({
   needs: A("string"),
   device_id: N("string"),
   enable_entities: N(O({ integration: "string", entities: A(O({ entity_id: "string", name: "string" })) })),
+  enable_facts: N(O({ integration: "string", entities: A(O({ entity_id: "string", name: "string" })), needs: A("string") })),
   notes: A(O({ code: "string", at: "string" })),
   preheat: N(O({ code: "string", cell_c: N("number"), entity_id: "string", device_id: N("string") })),
   trial: "any",
@@ -433,7 +438,7 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 }
 
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
- * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.battery_found` (`true`),
+ * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.enable_facts`, `status.battery_found` (`true`),
  * `status.grid_charge_cap.import_limit`, its `per_phase` (also absent for a brand without) and that block's
  * `entity_id`, `status.grid_charge_cap.ha_down` and `status.options.battery_control_accept_ha_down` (`false`).
  * Anything else is left for the strict decoder. */
@@ -455,6 +460,7 @@ function withLaterBlocks(raw: unknown): unknown {
       per_phase: block["per_phase"] ?? null,
       plan_costs: block["plan_costs"] ?? null,
       preheat: block["preheat"] ?? null,
+      enable_facts: block["enable_facts"] ?? null,
       battery_found: block["battery_found"] ?? true,
     },
   };
