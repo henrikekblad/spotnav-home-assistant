@@ -149,6 +149,7 @@
   "issue.siteMeasurement": "Ahora mismo no se puede usar la medición de la instalación.",
   "issue.unknown": "El backend ha informado de algo que esta tarjeta todavía no conoce.",
   "settings.about.open": "Acerca de esta tarjeta",
+  "settings.docs": "Documentación",
   "header.settings": "Ajustes",
   "header.history": "Historial de carga",
   "history.title": "Historial de carga",

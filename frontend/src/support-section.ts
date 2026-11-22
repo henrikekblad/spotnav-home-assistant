@@ -1,7 +1,8 @@
 // Settings → Support, drawn the same in every card: the charger card's Settings page and the shared popover of the
 // house and heat cards both build it here, so it cannot drift apart again. In order: the heading with its icon, the
 // line about a card out of date (hidden until a check says so), the rows (Automations, Beta tester, Hardware test),
-// the line on what the debug file holds (when it can be downloaded here), then the buttons side by side.
+// the line on what the debug file holds (when it can be downloaded here), then the buttons side by side, the
+// documentation's link first.
 
 import { translate, type Language } from "./i18n";
 import { sectionHeading } from "./value-editors";
@@ -27,13 +28,20 @@ export function supportSection(parts: SupportSectionParts): HTMLElement {
   if (parts.debugIntro) {
     section.append(element(doc, "p", C.muted, translate(language, "debug.intro")));
   }
-  if (parts.buttons.length > 0) {
-    const actions = element(doc, "div", C.settingsSupportActions);
-    actions.append(...parts.buttons);
-    section.append(actions);
-  }
+  // The documentation first, for everyone: a link that looks as the buttons beside it, opened in a new tab.
+  const docs = element(doc, "a", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "settings.docs")) as HTMLAnchorElement;
+  docs.href = DOCS_URL;
+  docs.target = "_blank";
+  docs.rel = "noopener noreferrer";
+  docs.dataset["docs"] = "open";
+  const actions = element(doc, "div", C.settingsSupportActions);
+  actions.append(docs, ...parts.buttons);
+  section.append(actions);
   return section;
 }
+
+/** SpotNav's documentation for Home Assistant, on its own site. */
+export const DOCS_URL = "https://spotnav.sensnology.se/docs/home-assistant/";
 
 /** "The card in this browser or app is older than SpotNav…": hidden until a check finds it so. */
 export function cardOutdatedNote(doc: Document, language: Language, outdated: boolean): HTMLElement {

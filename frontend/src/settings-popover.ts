@@ -114,7 +114,7 @@ import { element } from "./dom";
 
 /** Where the popover opens: a section, or `house` for the top of the page (the house card's gear). */
 /** The docs page that explains the wear and the margin. */
-export const PLAN_DOCS_URL = "https://github.com/henrikekblad/spotnav-home-assistant/blob/main/docs/battery-plan.md#the-wear-cost";
+export const PLAN_DOCS_URL = "https://spotnav.sensnology.se/docs/home-assistant/battery-plan#the-wear-cost";
 
 export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "support";
 
