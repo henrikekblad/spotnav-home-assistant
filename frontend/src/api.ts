@@ -745,11 +745,13 @@ export async function getHouse(hass: HomeAssistantLike, target: { site: string }
  * Every load the site plans on one rolling time axis, for the house card's Plan tab (`spotnav/get_plan`, the site's id
  * or a charger's in it); `unknown` until `decodePlan()` decodes it. Read-only; any signed-in user may read it.
  */
-export async function getPlan(hass: HomeAssistantLike, target: { site: string } | { charger: string }): Promise<unknown> {
+export async function getPlan(hass: HomeAssistantLike, target: { site: string } | { charger: string }, date: string | null = null): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/get_plan",
     api_version: PLAN_API_VERSION,
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    // A local day stepped back to (`YYYY-MM-DD`); left out for the live plan, so an older backend is asked as before.
+    ...(date === null ? {} : { date }),
   });
 }
 

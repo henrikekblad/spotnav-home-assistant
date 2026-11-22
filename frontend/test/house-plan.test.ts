@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUSE_CARD_ELEMENT, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouse } from "../src/house-model";
-import { decodePlan, planBody, priceTones, resetPlanSections, runWords, type PlanAnswer } from "../src/house-plan";
+import { decodePlan, planBody, planCanStepBack, planStepDate, priceTones, resetPlanSections, runWords, type PlanAnswer } from "../src/house-plan";
 import { HOUSE_TABS } from "../src/house-tabs";
 import { houseBody } from "../src/house-view";
 import { LANGUAGES, translate } from "../src/i18n";
@@ -278,5 +278,137 @@ describe("the Plan tab on the card", () => {
       tabs: { live: null, history: null, day: null, today: "2026-11-13", plan: { kind: "failed", code: null } },
     });
     expect(card.querySelector("[data-line='plan-failed']")).not.toBeNull();
+  });
+});
+
+describe("the Plan tab stepped back (the decision history)", () => {
+  beforeEach(() => resetPlanSections());
+
+  it("decodes a past day and today's mixed day", () => {
+    const past = plan("past_day.json");
+    expect(past.past).toBe(true);
+    expect(past.date).toBe("2026-11-17");
+    expect(past.hours).toHaveLength(24);
+    expect(past.hours.filter((hour) => hour.recorded === "missing")).toHaveLength(3);
+    const car = past.loads.find((load) => load.kind === "car")!;
+    expect(car.planned?.[1]).toEqual({ what: "charge", kw: 3.7, reason: null });
+    expect(car.ran?.[1]).toEqual({ what: "charge", kw: 2.1 });
+    expect(car.reason?.[1]).toBe("car_limited");
+    const today = plan("today_mixed.json");
+    expect(today.hours.filter((hour) => hour.past)).toHaveLength(14);
+    expect(plan().past).toBe(false);
+    expect(plan().loads[0]!.planned).toBeNull();
+  });
+
+  it("refuses a past lane of the wrong length", () => {
+    const raw = read("plan", "past_day.json");
+    const loads = (raw.loads as Record<string, unknown>[]).map((load, index) => (index === 0 ? { ...load, ran: [] } : load));
+    expect(decodePlan({ ...raw, loads }).ok).toBe(false);
+  });
+
+  it("says what was planned, what happened and why, and where nothing was recorded", () => {
+    const root = body(plan("past_day.json"));
+    // Seen the next morning: yesterday.
+    expect(root.querySelector("h3")?.textContent).toBe("Plan och utfall, I går");
+    const lines = Array.from(root.querySelectorAll(".spotnav-plan-words li")).map((item) => item.textContent);
+    expect(lines).toContain("01–02Garage: planerat 3,7 kW, blev 2,1 kW – bilen tog emot mindre");
+    expect(lines).toContain("01–02Garage laddar 2,1 kWh med 2,1 kW: bilen tog emot mindre");
+    expect(lines).toContain("02–05Inget registrerat – Home Assistant var inte igång");
+    // The watched heat says would, in the past as live; no difference is claimed for it.
+    expect(root.querySelectorAll(".spotnav-plan-words li[data-load='heat'][data-part='differs']")).toHaveLength(0);
+    expect(Array.from(root.querySelectorAll(".spotnav-plan-words li[data-load='heat']")).every((item) => item.textContent?.endsWith("skulle"))).toBe(true);
+    // The chart: the missing hours grey, the plan's outline where it differed.
+    expect(root.querySelectorAll("svg [data-recorded='missing']")).toHaveLength(3);
+    expect(root.querySelector("[data-load='car'] [data-planned='true']")).not.toBeNull();
+    expect(root.querySelector(".spotnav-plan-now")).toBeNull();
+    const stats = Array.from(root.querySelectorAll("[data-part='summary'] .spotnav-plan-stat")).map((stat) => stat.textContent);
+    expect(stats[0]).toContain("Kostnad");
+    expect(stats[0]).toContain("från nätet, som uppmätt");
+  });
+
+  it("draws today with a now line between the hours gone by and the plan", () => {
+    const root = body(plan("today_mixed.json"));
+    expect(root.querySelector("svg .spotnav-plan-now")).not.toBeNull();
+    expect(root.querySelector(".spotnav-plan-lede")?.textContent).toContain("Linjen visar nu");
+  });
+
+  it("is worded in every language, nothing left as a key", () => {
+    for (const language of LANGUAGES) {
+      for (const name of ["past_day.json", "today_mixed.json"]) {
+        const text = planBody({ doc: document, language, plan: plan(name), width: 360, step: 2, onStep: vi.fn() }).textContent ?? "";
+        expect(text, `${language} ${name}`).not.toMatch(/house\.(plan|picker)\./);
+      }
+    }
+  });
+
+  it("steps one day at a time, as far back as the history and the days kept go", () => {
+    expect(planStepDate("2026-11-17", 0)).toBeNull();
+    expect(planStepDate("2026-11-17", 1)).toBe("2026-11-17");
+    expect(planStepDate("2026-11-17", 2)).toBe("2026-11-16");
+    expect(planStepDate("2026-03-01", 3)).toBe("2026-02-27");
+    const past = plan("past_day.json");
+    // The history begins on 16 November (20:00): 17 November is step 2 seen from the 18th, the 16th step 3.
+    expect(planCanStepBack(past, 2)).toBe(true);
+    expect(planCanStepBack(past, 3)).toBe(false);
+    expect(planCanStepBack({ ...past, history: { days: 7, firstMs: null } }, 0)).toBe(false);
+    expect(planCanStepBack({ ...past, history: { days: 1, firstMs: 0 } }, 2)).toBe(false);
+    const onStep = vi.fn();
+    const root = planBody({ doc: document, language: "sv", plan: past, width: 360, step: 2, onStep });
+    expect(root.querySelector(".spotnav-plan-day")?.textContent).toBe("I går");
+    root.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
+    expect(onStep).toHaveBeenLastCalledWith(3);
+    // The history begins later on the 17th: no further back, and the tab says from when.
+    const later = { ...past, history: { days: 7, firstMs: Date.parse("2026-11-17T08:00:00Z") } };
+    const first = planBody({ doc: document, language: "sv", plan: later, width: 360, step: 2, onStep });
+    expect(first.querySelector<HTMLButtonElement>("button[data-step='back']")!.disabled).toBe(true);
+    expect(first.querySelector("[data-note='history']")?.textContent).toBe("Historik finns från tis 17 09:00");
+    first.querySelector<HTMLButtonElement>("button[data-step='forward']")!.click();
+    expect(onStep).toHaveBeenLastCalledWith(1);
+    const live = planBody({ doc: document, language: "sv", plan: plan(), width: 360, step: 0, onStep });
+    expect(live.querySelector(".spotnav-plan-day")?.textContent).toBe("Nu");
+    expect(live.querySelector<HTMLButtonElement>("button[data-step='forward']")!.disabled).toBe(true);
+    expect(live.querySelector("[data-note='history']")?.textContent).toBe("Ingen historik ännu – SpotNav sparar den från och med nu.");
+  });
+});
+
+describe("the Plan tab's arrows on the card", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "";
+    localStorage.clear();
+    if (customElements.get(HOUSE_CARD_ELEMENT) === undefined) {
+      customElements.define(HOUSE_CARD_ELEMENT, SpotnavHouseCard);
+    }
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks for the day stepped back to and back to the live plan", async () => {
+    const hass = new FakeHass();
+    const element = document.createElement(HOUSE_CARD_ELEMENT) as SpotnavHouseCard;
+    element.setConfig({ type: "custom:spotnav-house-card", site: "site_villa", tab: "plan" });
+    element.hass = hass.snapshot("s", "en");
+    document.body.append(element);
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveNext(read("house", "villa_battery_sun.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    const live = read("plan", "villa.json");
+    hass.resolveNext({ ...live, history: { days: 7, first: "2026-11-10T00:00:00+00:00" } });
+    await vi.advanceTimersByTimeAsync(0);
+    const root = element.shadowRoot!;
+    expect(root.querySelector(".spotnav-plan-day")?.textContent).toBe("Now");
+    root.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    const asked = hass.messages.at(-1)!;
+    expect(asked).toMatchObject({ type: "spotnav/get_plan", api_version: 1, site_id: "site_villa" });
+    expect(asked.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    hass.resolveNext(read("plan", "past_day.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector(".spotnav-plan h3")?.textContent).toBe("Plan and outcome, Yesterday");
+    root.querySelector<HTMLButtonElement>("button[data-step='forward']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hass.messages.at(-1)!.date).toBeUndefined();
+    element.remove();
   });
 });

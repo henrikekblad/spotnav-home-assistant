@@ -30,7 +30,7 @@ import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from ".
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
-import { decodePlan, PLAN_STYLES, type PlanAnswer } from "./house-plan";
+import { decodePlan, PLAN_STYLES, planStepDate, type PlanAnswer } from "./house-plan";
 import { dayOnly, fitTabs, HOUSE_TABS, houseTabs, isHouseTab, readTab, shownHouseTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
@@ -156,6 +156,8 @@ export class SpotnavHouseCard extends HTMLElement {
   /** The Plan tab's answer, read while that tab is shown (again with each refresh); `null` before the first read. */
   private plan: Loadable<PlanAnswer> | null = null;
   private planSeq = 0;
+  /** The Plan tab's day: 0 the live plan, 1 today, a day back per step on. */
+  private planStep = 0;
   /** The pointer is over the card: a refresh waits for it to leave, so a hover's readout is not swept away. */
   private hovering = false;
   private pendingRender = false;
@@ -310,6 +312,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.periods.clear();
     this.days.clear();
     this.plan = null;
+    this.planStep = 0;
     this.live = null;
     this.liveUnsupported = false;
     this.stopLive();
@@ -539,6 +542,7 @@ export class SpotnavHouseCard extends HTMLElement {
       day: needs.day === null ? null : (this.days.get(needs.day) ?? { kind: "loading" }),
       today: this.today(),
       plan: needs.plan === true ? (this.plan ?? { kind: "loading" }) : null,
+      planStep: this.planStep,
     };
   }
 
@@ -612,7 +616,7 @@ export class SpotnavHouseCard extends HTMLElement {
     const seq = ++this.planSeq;
     let next: Loadable<PlanAnswer>;
     try {
-      const decoded = decodePlan(await getPlan(hass, target));
+      const decoded = decodePlan(await getPlan(hass, target, planStepDate(this.today(), this.planStep)));
       next = decoded.ok ? { kind: "ready", answer: decoded.value } : { kind: "failed", code: decoded.failure === "unsupported" ? UNSUPPORTED_API_VERSION : null };
     } catch (error) {
       next = { kind: "failed", code: error instanceof SpotnavApiError ? error.code : null };
@@ -927,6 +931,10 @@ export class SpotnavHouseCard extends HTMLElement {
           onHouseLoads: (opener, kind, period) => this.showLoads(opener, kind, period ?? null),
           onDoesNotFit: (chargerId, code) => {
             void this.doesNotFitChoice(chargerId, code);
+          },
+          onPlanStep: (next) => {
+            this.planStep = Math.max(0, next);
+            void this.loadPlan(false);
           },
         },
         width: this.width,
