@@ -717,7 +717,7 @@ one without the meter's total grid power; never dismissible), `grid_power_sign` 
 the charger's site reads its grid power, or a direct site its signed phase currents, with the sign the wrong way round,
 as the chargers' own steps show; never dismissible, and gone by itself once the steps agree or the setting is changed),
 `phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
-app has no push registration) or `app` (no charger's webhook has been used yet); for a charger in a site (SpotNav 3.0) also the site's `price`, `battery` and `heat` rows as `spotnav/get_site_settings_view` states them, each id once; a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
+app has no push registration) or `app` (no charger's webhook has been used yet); for a charger in a site (SpotNav 3.0) also the site's `battery` and `heat` rows as `spotnav/get_site_settings_view` states them (never its `price`), each id once; a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
 only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
 `spotnav_setup_item_not_dismissible`. A grid sign row also carries `field` (the site option, `grid_power_inverted` or
 `site_current_signed`) and `value` (what its button writes), e.g. `{"id": "grid_power_sign", "dismissible": false,
