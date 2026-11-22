@@ -21,23 +21,28 @@ members say what the cars want (`cars_held_w`, the ones the hold may lower or pa
    counts it). The steps below only go on while the period stays over after that, so the battery's help always
    counts first; its ramp is what the enter delay (`ENTER_S`) waits out.
 2. **Water heater** (`heat/water_heater_control.py`, a contactor behind its opt-in): paused for the rest of the period
-   while the period is over (`excess_w > 0`) for `ENTER_S` in a row. It gives what it draws now (measured, else its
-   learnt kW, `Offer.give_w`); one that gives less than `MIN_GIVE_W` (off, its thermostat satisfied, an unmetered
-   element whose kW is unknown) is no step. Only in a cheap window: its hard rules win (`water_heater.Rules.want`:
-   full heat every 20 h, never off 8 h, on without a plan or a reading, the tank low, the day's switchings), and a
-   hard rule ending the pause ends the step at once. **Counted ahead for the car**: from the first look over until
-   the pause has read back (at most `ENTER_S + CREDIT_S`), the hold counts the heater's draw as already gone
-   (`credit_w`, added to what the cars may draw), so the car is not cut, or paused for the hour, for what the heater
-   is about to give. Never in the period's last minutes (`raise_lock_s`: the hour's last 10, a quarter's last 2.5):
-   there the car is held as before, and what the credit let through earlier in the period the hold's budget takes
-   back from the cars on its own (it is in the period's import so far).
+   while the period is over (`excess_w > 0`) for `ENTER_S` in a row. It gives what its meter reads it drawing now
+   (`Offer.give_w`, never a learnt figure); one that gives less than `MIN_GIVE_W` (off, its thermostat satisfied, an
+   element without a trusted meter) is no step. Only in a cheap window whose time left after the pause still covers
+   what the heater needs in it (`Offer.until_max`): its hard rules win (`water_heater.Rules.want`: full heat every
+   20 h, never off 8 h, on without a plan or a reading, the tank low, the day's switchings), and a hard rule ending
+   the pause ends the step at once. **Counted ahead for the car**: once the step is taken, while the heater still
+   draws and for a short tail after its switch reads off (`CREDIT_TAIL_S`, until the house's reading has fallen by
+   half of it), at most `CREDIT_S + CREDIT_TAIL_S` from the step and once per period, the hold counts the heater's
+   draw as already gone (`credit_w`, added to what the cars may draw). Never in the period's last minutes
+   (`raise_lock_s`: the hour's last 10, a quarter's last 2.5): there the car is held as before, and what the credit
+   let through the hold's budget takes back from the cars on its own (it is in the period's import so far). During
+   the enter delay nothing is counted: the car is held as before for that minute.
 3. **Car**: the hold as before (lower, pause; `share_budget`), unchanged. With the water heater's give counted it
-   takes only what remains.
+   takes only what remains. In the projection a car counts at what its plan needs now (the plan's own rate in its
+   running window, where it has one), never more than the fuse would give it: a car charging faster than its plan
+   needs is no reason to pause the water heater.
 4. **Heat**: one step lower (the relay or SG Ready contact, the offset, and the controlled zones 1 °C) while the
    period is over even with the cars paused (`beyond_cars_w > 0`) for `ENTER_S`, after the water heater (paused, or
    with nothing to give). Through the heat control's own rules (`heat/relay_control.decide`, `zone_control.decide`):
    at least `MIN_LOWER`, at most 3 h in a row and 6 h a day, the rest between lowerings, the day's writes, never in
-   a cold room or below -15 °C outdoors; a safety reason ends it at once. Counted as giving the learnt share of the
+   a cold room or below -15 °C outdoors; a safety reason ends it at once. The step lasts at least `MIN_LOWER` and
+   `START_MARGIN_S` from when it is taken, so a lowering it asks for is long enough to start. Counted as giving the learnt share of the
    pump's heat (`relay_effect.Effect.lower_share`) and the zones' measured power; no credit (it acts slowly and the
    car is already paused by then).
 
@@ -47,11 +52,18 @@ step at a time, heat before the water heater. A step released (or ended by its o
 same period, nor within `REST_S` of its end: a contactor never flaps, and the water heater's planned switchings a day
 still count every pause.
 
+**A step must be taken**: a live step whose load's control does not hold it (`Offer.held`) within `TAKE_WITHIN_S`
+ends without a word: it is not logged, not shown (the plan view, the card and the states show only what the controls
+hold) and holds no other step back.
+
 **Watched loads** (a water heater without its opt-in, heat control off) take the same steps as `would` only: shown
 and logged, never written, and nothing counted (the next step goes on as if they were not there).
 
-**Not acting**: without the hold's budget (no import target or power level, outside the level's hours, load balancing
-off, the period not measurable) every step is put back at once and nothing is counted. The fuse is never this
+**Not acting**: without the hold's budget for good (no import target or power level, outside the level's hours,
+load balancing off: `clear`) every step is put back at once and nothing is counted; for a moment (no reading, a gap,
+the house or the battery unknown: `update` without a projection) the steps hold, nothing new is taken or counted, and
+they are put back only after `TURN_GRACE_S` without a budget. After a start nothing is taken for `REST_S` (what ended
+before the restart is not known). The fuse is never this
 module's: the hold only ever lowers what the fuse allows, and the credit only gives the cars back part of the
 target's own budget, never above the fuse's ceiling. The power tariff's soft ceiling is shadow only
 (`site/demand_ceiling.py`) and sheds nothing.
@@ -88,8 +100,16 @@ RELEASE_MARGIN_W: Final = 500.0
 #: How long after a water heater's step its give is still counted for the cars while it reads on: the heater's look
 #: (30 s) and its write's read-back (90 s).
 CREDIT_S: Final = 120.0
-#: At the period's turn a step holds this much longer while no pass has looked at the new period yet (s).
+#: How long the credit goes on after the heater's switch reads off, while the house's reading has not yet fallen by
+#: half its give (a slow meter) (s).
+CREDIT_TAIL_S: Final = 60.0
+#: At the period's turn a step holds this much longer while no pass has looked at the new period yet (s); and as long
+#: without a budget for a passing reason.
 TURN_GRACE_S: Final = 120.0
+#: A live step its load's control does not hold within this long is dropped (two and a half of the 30 s looks) (s).
+TAKE_WITHIN_S: Final = 75.0
+#: A heat step lasts at least `MIN_LOWER` and this from when it is taken (s): its control's look comes a little later.
+START_MARGIN_S: Final = 300.0
 #: After a step ends, the same load is not shed again for this long (s), across a period's turn too: a contactor is
 #: never switched back and forth within minutes.
 REST_S: Final = 900.0
@@ -121,6 +141,10 @@ class Offer:
     give_w: float
     drawing: bool = True
     why: str | None = None
+    #: The load's control holds it for the ceiling now (the water heater off, the heat lowered).
+    held: bool = False
+    #: The latest a pause may last and still leave the load its need (the water heater's cheap window), `None`: any.
+    until_max: datetime | None = None
 
     @property
     def useful(self) -> bool:
@@ -156,7 +180,8 @@ class Projection:
 
 @dataclass(slots=True)
 class Step:
-    """A step taken: the load, live or `would`, since when, until when it is shown to hold, and what it gives."""
+    """A step: the load, live or `would`, since when, until when it holds, what it gives, and whether its control has
+    taken it (`taken`: holds it; a `would` step at once)."""
 
     load: str
     live: bool
@@ -164,11 +189,16 @@ class Step:
     until: datetime
     give_w: float
     period_start: datetime
+    taken: bool = False
+    #: The house's reading when it was taken, and when the water heater's switch was first seen off (the credit's tail).
+    house_w: float = 0.0
+    off_seen_at: datetime | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "state": STATE_PAUSED if self.live else STATE_WOULD,
             "reason": REASON_CEILING,
+            "taken": self.taken,
             "since": self.since.isoformat(),
             "until": self.until.isoformat(),
             "give_kw": round(self.give_w / 1000.0, 2),
@@ -184,25 +214,35 @@ def combine(parts: list[Offer | None]) -> Offer | None:
     live = [part for part in found if part.live]
     chosen = live or found
     ready = [part for part in chosen if part.ready]
+    held = any(part.held for part in chosen)
     if not ready:
-        return Offer(live=bool(live), ready=False, give_w=0.0, drawing=False, why=next((part.why for part in chosen if part.why), None))
-    return Offer(live=bool(live), ready=True, give_w=sum(part.give_w for part in ready), drawing=any(part.drawing for part in ready))
+        why = next((part.why for part in chosen if part.why), None)
+        return Offer(live=bool(live), ready=False, give_w=0.0, drawing=False, why=why, held=held)
+    return Offer(
+        live=bool(live),
+        ready=True,
+        give_w=sum(part.give_w for part in ready),
+        drawing=any(part.drawing for part in ready),
+        held=held,
+    )
 
 
 def _until(load: str, since: datetime, projection: Projection) -> datetime:
-    """Until when a step holds: the period's end; heat at least its least lowering (`relay_control.MIN_LOWER`), which
-    its own rules keep anyway."""
+    """Until when a step holds: the period's end; heat at least its least lowering (`relay_control.MIN_LOWER`) and
+    `START_MARGIN_S` from when it was taken, so the lowering it asks for can start at its control's next look."""
     if load == LOAD_HEAT:
-        return max(projection.period_end, since + MIN_LOWER)
+        return max(projection.period_end, since + MIN_LOWER + timedelta(seconds=START_MARGIN_S))
     return projection.period_end
 
 
 class ShedOrder:
     """One site's shed order (see the module). Kept in memory only: a restart starts with nothing shed, and the
-    loads' own exits (the water heater on, the heat back) hold either way."""
+    loads' own exits (the water heater on, the heat back) hold either way. `started_at`: when the site started;
+    nothing is taken for `REST_S` after it (`None`: no such wait, for a plain test)."""
 
-    def __init__(self) -> None:
+    def __init__(self, started_at: datetime | None = None) -> None:
         self.steps: dict[str, Step] = {}
+        self._started_at = started_at
         #: Since when the period has been over (`excess_w > 0`), and over beyond the cars (`beyond_cars_w > 0`).
         self._over_since: datetime | None = None
         self._beyond_since: datetime | None = None
@@ -211,6 +251,8 @@ class ShedOrder:
         #: Per load, the period in which its step ended (not taken again in it) and when (`REST_S`).
         self._ended: dict[str, datetime] = {}
         self._ended_at: dict[str, datetime] = {}
+        #: The last pass with a budget (the steps hold `TURN_GRACE_S` without one).
+        self._budget_at: datetime | None = None
         #: Per load, the rule that kept it from a step that was due (`blocked`), as of the last pass.
         self.blocked: dict[str, str] = {}
         self.credit_w = 0.0
@@ -222,16 +264,22 @@ class ShedOrder:
     # ---- each pass
 
     def update(self, now: datetime, projection: Projection | None, offers: dict[str, Offer | None]) -> float:
-        """One pass on the hold's projection (`None`: nothing held, everything put back) and the loads' offers. The
-        water heater's give the hold counts ahead for the cars (W, see the module)."""
-        self.projection = projection
+        """One pass on the hold's projection and the loads' offers. The water heater's give the hold counts ahead for
+        the cars (W, see the module). `projection` `None`: no budget for a passing reason; the steps hold for
+        `TURN_GRACE_S`, nothing new is taken or counted (`clear` puts everything back for good)."""
         self.blocked = {}
+        self.credit_w = 0.0
         if projection is None:
-            self.clear(now, END_OFF)
+            self.projection = None
+            if self._budget_at is None or (now - self._budget_at).total_seconds() >= TURN_GRACE_S:
+                self.clear(now, END_OFF)
             return 0.0
+        self.projection = projection
+        self._budget_at = now
         for step in self.steps.values():
             step.until = _until(step.load, step.since, projection)
         self._end_by_rules(now, offers)
+        self._check_taken(now, offers)
         heater = offers.get(LOAD_WATER_HEATER)
         heater_step = self.steps.get(LOAD_WATER_HEATER)
         # The water heater's give still in the house's reading (its pause not taken yet) is not over beyond the cars.
@@ -246,20 +294,36 @@ class ShedOrder:
         return self.credit_w
 
     def _end_by_rules(self, now: datetime, offers: dict[str, Offer | None]) -> None:
-        """A step whose load's own rules no longer let it stay shed (a hard rule, a safety reason, the opt-in) ends
-        at once: the rules win."""
+        """A step whose load's own rules no longer let it stay shed (a hard rule, a safety reason, the opt-in, the
+        water heater's need in its window) ends at once: the rules win."""
         for load in list(self.steps):
             offer = offers.get(load)
             step = self.steps[load]
-            if offer is None or not offer.ready or offer.live != step.live:
-                self._end(now, load, END_RULE, rule=None if offer is None else offer.why)
+            short = offer is not None and offer.until_max is not None and offer.until_max < step.until
+            if offer is None or not offer.ready or offer.live != step.live or short:
+                self._end(now, load, END_RULE, rule=None if offer is None else ("need" if short and offer.ready else offer.why))
+
+    def _check_taken(self, now: datetime, offers: dict[str, Offer | None]) -> None:
+        """A live step is taken once its control holds it (logged then); one not held within `TAKE_WITHIN_S` is
+        dropped without a word."""
+        for load in list(self.steps):
+            step = self.steps[load]
+            if step.taken:
+                continue
+            offer = offers.get(load)
+            # The water heater's switch read off after the step is its pause read back.
+            if offer is not None and (offer.held or (load == LOAD_WATER_HEATER and not offer.drawing)):
+                step.taken = True
+                self._log(now, load, "shed", give_kw=round(step.give_w / 1000.0, 2))
+            elif (now - step.since).total_seconds() >= TAKE_WITHIN_S:
+                self._end(now, load, END_RULE)
 
     def _release(self, now: datetime, excess: float, beyond: float) -> None:
         """The last step taken put back once the period stays under with its give back for `RELEASE_S` (see the
-        module): heat before the water heater, one at a time."""
+        module): heat before the water heater, one at a time. A step its control has not taken yet holds none back."""
         for load, measure in ((LOAD_HEAT, beyond), (LOAD_WATER_HEATER, excess)):
             step = self.steps.get(load)
-            if step is None:
+            if step is None or not step.taken:
                 self._under_since.pop(load, None)
                 continue
             back = measure + (step.give_w if step.live else 0.0)
@@ -300,8 +364,10 @@ class ShedOrder:
         return (
             offer is not None
             and offer.useful
+            and (offer.until_max is None or offer.until_max >= _until(load, now, projection))
             and self._ended.get(load) != projection.period_start
             and (ended_at is None or (now - ended_at).total_seconds() >= REST_S)
+            and (self._started_at is None or (now - self._started_at).total_seconds() >= REST_S)
         )
 
     def _take(self, now: datetime, load: str, offer: Offer, projection: Projection) -> None:
@@ -312,9 +378,12 @@ class ShedOrder:
             until=_until(load, now, projection),
             give_w=offer.give_w,
             period_start=projection.period_start,
+            taken=not offer.live,
+            house_w=projection.house_w,
         )
         self._under_since.pop(load, None)
-        self._log(now, load, "shed" if offer.live else "would_shed", give_kw=round(offer.give_w / 1000.0, 2))
+        if not offer.live:
+            self._log(now, load, "would_shed", give_kw=round(offer.give_w / 1000.0, 2))
 
     def _end(self, now: datetime, load: str, why: str, **extra: Any) -> None:
         step = self.steps.pop(load, None)
@@ -325,34 +394,39 @@ class ShedOrder:
         period = self.projection.period_start if self.projection is not None else step.period_start
         self._ended[load] = period
         self._ended_at[load] = now
-        self._log(now, load, "put_back" if step.live else "would_put_back", why=why, **extra)
+        if step.taken:
+            self._log(now, load, "put_back" if step.live else "would_put_back", why=why, **extra)
 
     def _credit(self, now: datetime, projection: Projection, heater: Offer | None) -> float:
-        """The water heater's give the hold counts as gone already (see the module): from the first look over until
-        its pause has read back, never in the period's last minutes, never for a watched heater."""
-        if heater is None or not heater.live or not heater.ready or not heater.drawing:
+        """The water heater's give the hold counts as gone already (see the module): only for a live step, from when
+        it is taken while the heater still draws (or for the tail after its switch reads off), at most `CREDIT_S`
+        and `CREDIT_TAIL_S` from the step, which is once per period; never in the period's last minutes."""
+        step = self.steps.get(LOAD_WATER_HEATER)
+        if step is None or not step.live or heater is None or not heater.live or not heater.ready:
             return 0.0
         if projection.remaining_s <= raise_lock_s(0.0, projection.period_s):
             return 0.0
-        step = self.steps.get(LOAD_WATER_HEATER)
-        if step is not None:
-            if step.live and (now - step.since).total_seconds() <= CREDIT_S:
-                return step.give_w
+        elapsed = (now - step.since).total_seconds()
+        if elapsed > CREDIT_S + CREDIT_TAIL_S:
             return 0.0
-        if (
-            self._over_since is not None
-            and self._may_take(now, LOAD_WATER_HEATER, heater, projection)
-            and (now - self._over_since).total_seconds() <= ENTER_S
-        ):
-            return heater.give_w
-        return 0.0
+        if heater.drawing:
+            step.off_seen_at = None
+            return step.give_w if elapsed <= CREDIT_S else 0.0
+        # Read off: a slow meter may not show it yet; the tail ends once the house has fallen by half the give.
+        step.off_seen_at = step.off_seen_at or now
+        if (now - step.off_seen_at).total_seconds() > CREDIT_TAIL_S:
+            return 0.0
+        if projection.house_w <= step.house_w - step.give_w / 2:
+            return 0.0
+        return step.give_w
 
     def clear(self, now: datetime, why: str) -> None:
-        """Every step put back at once (nothing held, a failure): the loads' own exits do the rest."""
+        """Every step put back at once (nothing held for good, a failure): the loads' own exits do the rest."""
         for load in list(self.steps):
             self._end(now, load, why)
         self._over_since = self._beyond_since = None
         self._under_since = {}
+        self._budget_at = None
         self.credit_w = 0.0
 
     # ---- what the loads and the views read
