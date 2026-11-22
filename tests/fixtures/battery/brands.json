@@ -1346,5 +1346,152 @@
    "hold_unset": null,
    "grid_charge_usable": null
   }
+ },
+ "solis": {
+  "_source": "Unique ids from Pho3niX90/solis_modbus v4.5.0 f92ead8 (`solis_modbus_<serial>_<unique>`, helpers.py unique_id_generator; selects `<register>_select`, switches `<register>_<on value>`), an S6-EH3P hybrid as in the tester's report; the Ah setting and the off-grid and force-charge SoC are there to show they are not read.",
+  "platform": "solis_modbus",
+  "manufacturer": "Solis",
+  "battery": "sensor.solis_s6_eh3p_battery_power_net",
+  "entities": [
+   {
+    "entity_id": "sensor.solis_s6_eh3p_battery_power_net",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_battery_power_combined",
+    "device": "inverter",
+    "state": "-1500",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solis_s6_eh3p_battery_soc",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_battery_soc",
+    "device": "inverter",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solis_s6_eh3p_battery_voltage_bms",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_battery_voltage_bms",
+    "device": "inverter",
+    "state": "400.00",
+    "unit": "V",
+    "device_class": "voltage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solis_s6_eh3p_battery_charge_current_limitation_bms",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_battery_charge_current_limitation_bms",
+    "device": "inverter",
+    "state": "25.0",
+    "unit": "A",
+    "device_class": "current",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solis_s6_eh3p_battery_discharge_current_limitation_bms",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_battery_discharge_current_limitation_bms",
+    "device": "inverter",
+    "state": "30.0",
+    "unit": "A",
+    "device_class": "current",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solis_s6_eh3p_overdischarge_soc",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_overdischarge_soc",
+    "device": "inverter",
+    "state": "20",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solis_s6_eh3p_overdischarge_soc",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_overdischarge_soc",
+    "device": "inverter",
+    "state": "20",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solis_s6_eh3p_overdischarge_offgrid_soc",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_overdischarge_offgrid_soc",
+    "device": "inverter",
+    "state": "10",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solis_s6_eh3p_force_charge_soc",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_force_charge_soc",
+    "device": "inverter",
+    "state": "10",
+    "unit": "%",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solis_s6_eh3p_battery_rated_capacity",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_battery_rated_capacity",
+    "device": "inverter",
+    "state": "200",
+    "unit": "Ah",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solis_s6_eh3p_hmi_version",
+    "unique_id": "solis_modbus_2403123456_solis_modbus_inverter_hmi_version",
+    "device": "inverter",
+    "state": "59",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.solis_s6_eh3p_storage_mode",
+    "unique_id": "solis_modbus_2403123456_43110_select",
+    "device": "inverter",
+    "state": "Self-Use",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.solis_s6_eh3p_rc_force_battery_charge",
+    "unique_id": "solis_modbus_2403123456_43135_1",
+    "device": "inverter",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.solis_s6_eh3p_rc_force_battery_discharge",
+    "unique_id": "solis_modbus_2403123456_43135_2",
+    "device": "inverter",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "solis",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": 10.0,
+   "rated_discharge_kw": 12.0,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": null
+  }
  }
 }

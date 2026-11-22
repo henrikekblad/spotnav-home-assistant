@@ -22,6 +22,9 @@ markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum o
   `plans/research_integrations/solinteg_m2ht_2026-11.md`).
 * FoxESS's own modes are the options of `foxess_modbus`'s `work_mode` select (nathanmarlor `94252f0`). That
   1KOMMA5's Heartbeat steers its `1K5-HI` units is an assumption of `plans/v3_foxess.md` [U].
+* Solis's own optimiser is SolisCloud's "Solis AI" / "Smart Strategy" (evcc's `solis-hybrid-s` template asks for it
+  to be turned off for local control [F]); its local modes are the options of `solis_modbus`'s "Storage Mode"
+  select (Pho3niX90 v4.5.0). Enequi (QuiPower) running a Solis S6-EH3P is a field report (2026-11-22) [F].
 * The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
   `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
   0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `ferroamp` (henricm/ha-ferroamp 1.18.0),
@@ -74,6 +77,8 @@ COEXISTENCE: Final[tuple[Coexistence, ...]] = (
                 ("CheckWatt [F]", "Samvolt [F]", "Enequi [F]")),
     Coexistence("foxess", "FoxESS", ("foxess_modbus",), "FoxESS: Feed-in First, Back-up and Peak Shaving work modes",
                 ("1KOMMA5 Heartbeat (1K5 units) [U]",)),
+    Coexistence("solis", "Solis", ("solis_modbus",), "SolisCloud: Solis AI and time-of-use",
+                ("Enequi [F]", "Tibber [U]")),
     Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi",), "mySolarEdge: storage profiles"),
     Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
     Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),

@@ -66,6 +66,36 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
   ESOs and ESMs carry `<slug>_eso_<id>-<key>` and are not read. `soc` (%) and `ratedcap` (Wh) are the whole system's
   and exist only when the hub sends them. `pinv-L1..L3` is the hub's inverter power per phase on the grid's sign
   (import positive, so negative while it delivers): `plant_phase_sign` -1. Nothing is disabled by default.
+* Solis, `solis_modbus` (Pho3niX90/solis_modbus v4.5.0, `f92ead8`, read 2026-11-22, `plans/v3_solis_modbus_adapter.md`;
+  line numbers at that tag): read only (no control is mapped). Unique ids are `solis_modbus_<serial>_<unique>`
+  (`helpers.py` `unique_id_generator`, lines 48-74; the host or the identification stands in before the serial is
+  known), a sensor's `<unique>` being its `"unique"` in `sensor_data/hybrid_sensors.py`, e.g.
+  `solis_modbus_inverter_battery_soc`; an editable register is both a sensor and a number of the same unique id
+  (`sensor.py` lines 29-31, `number.py` lines 26-28). A select is `solis_modbus_<serial>_<register>_select`
+  (`sensors/solis_select_entity.py` line 20). The level is `battery_soc` (register 33139, line 726). The ratings
+  are the BMS' present limits `battery_charge_current_limitation_bms` and
+  `battery_discharge_current_limitation_bms` (33143/33144, A, lines 766/776) times the BMS' voltage
+  `battery_voltage_bms` (33141, V, line 745), an estimate as for GoodWe; the integration notes the limit derates with
+  the SoC (#467, beside 43012), so the estimate reads low near full or empty. No size is read: the only one is the
+  number `battery_rated_capacity` (43019, Ah, line 2202), a battery setting with a default of 200 Ah that no source
+  ties to the BMS's own bank, so the size is learnt. The floor is `overdischarge_soc` ("Overdischarge SOC", 43011,
+  line 2103, the on-grid one; `overdischarge_offgrid_soc` 43137 is off-grid and not read; `force_charge_soc` is
+  where the inverter charges from the grid, not a floor; `backup_soc` holds only in the Reserve/Backup mode and is
+  not read). The mode is the select "Storage Mode" (register 43110, `sensor_data/select_sensors.py` lines 65-84),
+  free only in "Self-Use": its TOU and Reserve/Backup variants, Feed-in Priority, Off-Grid and Peak Shaving are
+  not; and the remote force charge and discharge (register 43135), read from its two switches "RC Force Battery
+  Charge" and "RC Force Battery Discharge" (`switch_sensors.py` lines 175-181, unique ids `<serial>_43135_1` and
+  `_43135_2`, `helpers.py` `unique_id_generator_binary` lines 77-82), free while both are off. The select of the same
+  register (`select_sensors.py` lines 26-40) reads "None" when no force runs, a state SpotNav takes for no reading,
+  so it is not used. The selects and switches are left out in the integration's essential-only (read-only) mode,
+  so the mode is then unknown. On firmware with the V2 time-of-use (register 33289
+  = 0xAA55) the charge and discharge periods are twelve switches (43707, `switch_sensors.py` line 217) beside a
+  "Self-Use" mode; they are not read, so "Self-Use" with such periods on still reads free. The firmware is
+  `hmi_version` (33002, line 41; the device's `sw_version` is "Protocol <n>", the Modbus protocol, not the
+  firmware). The battery's counters are `total_battery_charge_energy` and `total_battery_discharge_energy`
+  (33161/33165, kWh in whole kWh, lines 901/932). The battery's power is the derived "Battery Power Net"
+  (`battery_power_combined`, discharge-positive, `site_detection.BATTERY_ROWS`). The inverter's "AC Grid Port Active
+  Power Phase A-C" (33512/33515/33518, S16, lines 1799-1823) states no sign, so there is no `plant_phase_power`.
 
 Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
 
@@ -678,9 +708,31 @@ FERROAMP: Final = Adapter(
     # No mode entity: the hub's own control (FerroAI, the person's EnergyCloud settings) is not readable here.
 )
 
+#: Solis through `solis_modbus` (see the module): read only.
+SOLIS: Final = Adapter(
+    brand="solis",
+    label="Solis",
+    platforms=("solis_modbus",),
+    facts={
+        "soc": _key("solis_modbus_inverter_battery_soc"),
+        "charge_current": _key("solis_modbus_inverter_battery_charge_current_limitation_bms"),
+        "discharge_current": _key("solis_modbus_inverter_battery_discharge_current_limitation_bms"),
+        "voltage": _key("solis_modbus_inverter_battery_voltage_bms"),
+        "firmware": _key("solis_modbus_inverter_hmi_version"),
+        "charged_total": _key("solis_modbus_inverter_total_battery_charge_energy"),
+        "discharged_total": _key("solis_modbus_inverter_total_battery_discharge_energy"),
+    },
+    modes=(
+        ModeRule(_key("43110_select", "select"), frozenset({"Self-Use"}), "storage mode"),
+        ModeRule(_key("43135_1", "switch"), frozenset({"off"}), "remote force charge", required=False),
+        ModeRule(_key("43135_2", "switch"), frozenset({"off"}), "remote force discharge", required=False),
+    ),
+    reserves=(ReserveSource(_key("solis_modbus_inverter_overdischarge_soc", "number", "sensor")),),
+)
+
 ADAPTERS: Final[tuple[Adapter, ...]] = (
     SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, SOFAR, GROWATT, SOLINTEG, VICTRON, VICTRON_MODBUS, GOODWE, TESLA, ENPHASE,
-    FERROAMP, FOXESS,
+    FERROAMP, FOXESS, SOLIS,
 )
 
 

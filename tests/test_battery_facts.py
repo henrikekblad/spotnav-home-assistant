@@ -445,6 +445,8 @@ PLAN_REASON = {
     "sofar": "no_capacity", "growatt": "no_capacity", "solinteg": None,
     # FoxESS states no size on any family (learnt).
     "foxess": "no_capacity",
+    # Solis states no size the BMS stands behind (its Ah number is a setting): learnt.
+    "solis": "no_capacity",
 }
 
 
