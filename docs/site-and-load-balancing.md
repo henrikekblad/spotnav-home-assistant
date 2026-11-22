@@ -664,11 +664,16 @@ charger draws on would turn from import to export (so the current the fuse carri
   - **Ask** (the default): the target holds, and the phones chosen for *the charge will not be ready in time* are
     told once per departure, in its place: *The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh
     short* (where the month's peak lifts the hour: *under the month's peak of 7.5 kW (import target 6.0 kW)*),
-    with two buttons for this departure only, *Take what fits (≈ 12 kWh)* and *Allow the peak (≈ 12 kW, ≈ 105 kr)*
-    (the price where a demand charge prices the peak). Never at night: one that arises between 22:00 and 07:00 is
-    told at 07:00 if it still stands and its departure is later, else never. Taken off the phones once it fits again
-    or a choice is made (on the phone, in the card or in the app). No answer: the target holds. The card's
-    "does not fit" line says the same, with the same choices and *Later departure*.
+    with buttons for this departure only, *Take what fits (≈ 12 kWh)*, *Later departure (17:00)* and *Allow the peak
+    (≈ 12 kW, ≈ 105 kr)* (the price where a demand charge prices the peak). *Later departure* is the earliest whole
+    hour after the departure by which all of it fits under the same ceiling, looked for up to the end of the prices
+    held (no button where none does); pressing it moves this departure alone there and the plan is made again for it,
+    while the daily departure, its weekdays and the calendar stay as set. It ends at that departure, at the unplug, or
+    when another departure is set. A car plugged in later in the day is told at the plug-in. Never at night: one that
+    arises between 22:00 and 07:00 is told at 07:00 if it still stands and its departure is later, else never. Taken
+    off the phones once it fits again or a choice is made (on the phone, in the card or in the app). No answer: the
+    target holds. The card's "does not fit" line says the same, with the same choices (*Later departure* without a
+    time opens the departure's editor).
   - **Release the import target**: the departure wins by itself; once holding would miss it the target is set aside for that
     charge until its departure, as *Release the import target for this charge* does, and the plan counts on the car's own power.
   - **Keep the import target**: the target holds, nothing is sent, and the status says how much will be missing.
