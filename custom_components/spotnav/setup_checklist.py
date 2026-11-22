@@ -39,9 +39,10 @@ as above (SpotNav 3.0: the app pairs with a home too; a site with a charger gets
 other charger rows are not among them.
 
 The charger card's rows (the dashboard's `setup`, `with_site_rows`) are the charger's own rows and, for a charger in
-a site, the site's rows a charger's own cannot have: `price`, `battery` and `heat` (`SITE_ROWS_FOR_CHARGER`). The
-rows both compute (the grid sign rows, `solar_forecast`, `demand_grid_power`) are the charger's, once; `charger`
-never applies to a charger, and `app` is the charger's own. A dismissal holds for the installation, so a "Not
+a site, the site's rows a charger's own cannot have: `battery` and `heat` (`SITE_ROWS_FOR_CHARGER`). The rows both
+compute (the grid sign rows, `solar_forecast`, `demand_grid_power`) are the charger's, once; `charger` never
+applies to a charger, `app` is the charger's own, and `price` is never one: a charger card that shows prices must
+not ask for a price, and a charger without any price has its own notice. A dismissal holds for the installation, so a "Not
 needed" in either card holds in both.
 
 Prices are not a charger row: the price provider notice (`pricing/providers/notices.py`) already asks for what an
@@ -113,10 +114,9 @@ SITE_SETUP_ITEMS: Final = (
     SETUP_APP,
 )
 #: The site's rows the charger card shows too (`with_site_rows`).
-SITE_ROWS_FOR_CHARGER: Final = (SETUP_PRICE, SETUP_BATTERY, SETUP_HEAT)
+SITE_ROWS_FOR_CHARGER: Final = (SETUP_BATTERY, SETUP_HEAT)
 #: The charger card's rows with the site's, in the order the card lists them.
 CHARGER_CARD_ITEMS: Final = (
-    SETUP_PRICE,
     SETUP_VEHICLE,
     SETUP_CAR_LEVEL,
     SETUP_SITE,

@@ -242,8 +242,8 @@ def test_the_site_rows_join_the_chargers_once_and_in_the_cards_order() -> None:
         SetupItem("heat", True),
         SetupItem("app", True),
     )
+    # The site's price is never the charger's: its card shows prices or has its own notice.
     assert [item.id for item in with_site_rows(charger, site)] == [
-        "price",
         "vehicle",
         "grid_power_sign",
         "solar_forecast",

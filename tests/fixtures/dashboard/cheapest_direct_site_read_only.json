@@ -2276,10 +2276,6 @@
   "setup": {
     "items": [
       {
-        "dismissible": false,
-        "id": "price"
-      },
-      {
         "dismissible": true,
         "id": "vehicle"
       },
