@@ -345,6 +345,40 @@ export interface ChoiceOption {
   group?: string;
 }
 
+/** The radio buttons of one of a few, the current one marked, each with its help line; [onChoose] hears a new choice. */
+export function choiceFieldset(
+  doc: Document,
+  input: { options: readonly ChoiceOption[]; selected: string | null; idPrefix: string },
+  onChoose: (value: string) => void,
+): HTMLFieldSetElement {
+  const group = element(doc, "fieldset", C.siteFieldset) as HTMLFieldSetElement;
+  for (const option of input.options) {
+    if (option.group !== undefined) {
+      const heading = element(doc, "p", C.settingsNote, option.group);
+      heading.dataset["valueGroup"] = "true";
+      group.append(heading);
+    }
+    const label = element(doc, "label", C.siteChoice);
+    const radio = doc.createElement("input");
+    radio.type = "radio";
+    radio.name = `${input.idPrefix}-value-single`;
+    radio.value = option.value;
+    radio.checked = option.value === input.selected;
+    radio.dataset["valueOption"] = option.value;
+    radio.addEventListener("change", () => {
+      if (radio.checked) {
+        onChoose(option.value);
+      }
+    });
+    label.append(radio, doc.createTextNode(option.label));
+    group.append(label);
+    if (option.help !== undefined) {
+      group.append(helpLine(doc, option.help));
+    }
+  }
+  return group;
+}
+
 /** One of a few, the current one marked, each with its help line when it has one. Choose saves a new choice. */
 export function singleEditor(
   doc: Document,
@@ -364,32 +398,11 @@ export function singleEditor(
     body.append(status);
   }
   let chosen = input.selected;
-  const group = element(doc, "fieldset", C.siteFieldset);
-  for (const option of input.options) {
-    if (option.group !== undefined) {
-      const heading = element(doc, "p", C.settingsNote, option.group);
-      heading.dataset["valueGroup"] = "true";
-      group.append(heading);
-    }
-    const label = element(doc, "label", C.siteChoice);
-    const radio = doc.createElement("input");
-    radio.type = "radio";
-    radio.name = `${input.idPrefix}-value-single`;
-    radio.value = option.value;
-    radio.checked = option.value === input.selected;
-    radio.dataset["valueOption"] = option.value;
-    radio.addEventListener("change", () => {
-      if (radio.checked) {
-        chosen = option.value;
-      }
-    });
-    label.append(radio, doc.createTextNode(option.label));
-    group.append(label);
-    if (option.help !== undefined) {
-      group.append(helpLine(doc, option.help));
-    }
-  }
-  body.append(group);
+  body.append(
+    choiceFieldset(doc, input, (value) => {
+      chosen = value;
+    }),
+  );
   editor.submit(async () => {
     if (chosen === null || chosen === input.selected) {
       return null;
