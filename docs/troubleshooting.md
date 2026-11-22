@@ -96,7 +96,12 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   balancing 150), and `dropped` counts the older ones it let go. A new plug-in starts a new entry;
   what happens while no car is plugged in goes with the plug-in before.
 - `log.warnings_24h`: SpotNav's warnings and errors of the last 24 hours (at most 500), also from
-  before a restart. `log.records` stays as it was: the last records at INFO and above since the start.
+  before a restart. `log.records` stays as it was: the last records at INFO and above since the start. SpotNav's own
+  INFO lines are kept for the bundle even at Home Assistant's default log level (WARNING), without being added to
+  Home Assistant's log: that shows only what its level lets through, as before. A module you set quieter in
+  Home Assistant's `logger` stays so in its log.
+- `shed_order` in the site's diagnostics: the [shed order](site-and-load-balancing.md#the-shed-order-under-the-ceiling)'s
+  steps (live or *would*), the projection of the hour it judged, what was blocked and why, and a log.
 - `client`, added by the card to the file it saves: the card version and bundle hash this browser runs
   and a short user agent, next to the backend's `versions.card_bundle_hash` (the file) and
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
