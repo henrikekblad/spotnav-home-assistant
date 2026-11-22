@@ -84,6 +84,9 @@ export interface BatteryOptions {
   battery_control_accept_ha_down: boolean;
   /** self_consumption | balanced | max_profit; the only one that may sell. */
   battery_mode: string;
+  /** The site's own wear per kWh each way in the area's minor unit; `null` for the currency's default (and from a
+   * Home Assistant before the key). */
+  battery_wear_minor_per_kwh: number | null;
 }
 
 export interface BatteryStatus {
@@ -116,7 +119,7 @@ export interface BatteryStatus {
   /** A grid charge per phase, where the plant takes a target per phase; `null` for a brand without, and from a
    * Home Assistant that does not send it yet. */
   per_phase: PerPhase | null;
-  /** The plan's two fixed figures, read-only; `null` while the site has no price area, and from a Home Assistant that
+  /** The plan's two figures (the wear may be the site's own); `null` while the site has no price area, and from a Home Assistant that
    * does not send it yet. */
   plan_costs: PlanCosts | null;
 }
@@ -132,6 +135,8 @@ export interface BatteryPreheat {
 /** The battery plan's wear per kWh each way and Balanced's selling margin per kWh, in the area's minor unit. */
 export interface PlanCosts {
   wear_minor_per_kwh: number;
+  /** The currency's default wear; `null` from a Home Assistant that cannot take a wear of the site's own. */
+  wear_default_minor_per_kwh: number | null;
   balanced_margin_minor_per_kwh: number;
   major_unit: string;
   minor_unit: string;
@@ -289,6 +294,7 @@ const OPTIONS = O({
   battery_control_import_limit_acts: "boolean",
   battery_control_accept_ha_down: "boolean",
   battery_mode: "string",
+  battery_wear_minor_per_kwh: N("number"),
 });
 
 const PHASE_VALUES = O({ L1: "number", L2: "number", L3: "number" });
@@ -365,7 +371,15 @@ const STATUS: Spec = O({
   trial: "any",
   grid_charge_cap: GRID_CHARGE_CAP,
   per_phase: N(PER_PHASE),
-  plan_costs: N(O({ wear_minor_per_kwh: "number", balanced_margin_minor_per_kwh: "number", major_unit: "string", minor_unit: "string" })),
+  plan_costs: N(
+    O({
+      wear_minor_per_kwh: "number",
+      wear_default_minor_per_kwh: N("number"),
+      balanced_margin_minor_per_kwh: "number",
+      major_unit: "string",
+      minor_unit: "string",
+    }),
+  ),
 });
 
 const BATTERY = O({ api_version: "number", ok: "boolean", error: N("string"), status: N(STATUS) });
@@ -443,7 +457,8 @@ function decodeSiteBlock(raw: unknown): Site | null | undefined {
 /** The answer with the blocks a Home Assistant before them does not send read as `null` (the payload only grows):
  * `status.per_phase`, `status.plan_costs`, `status.preheat`, `status.enable_facts`, `status.battery_found` (`true`),
  * `status.grid_charge_cap.import_limit`, its `per_phase` (also absent for a brand without) and that block's
- * `entity_id`, `status.grid_charge_cap.ha_down` and `status.options.battery_control_accept_ha_down` (`false`).
+ * `entity_id`, `status.grid_charge_cap.ha_down`, `status.options.battery_control_accept_ha_down` (`false`),
+ * `status.options.battery_wear_minor_per_kwh` and `status.plan_costs.wear_default_minor_per_kwh` (`null`).
  * Anything else is left for the strict decoder. */
 function withLaterBlocks(raw: unknown): unknown {
   const status = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>)["status"] : null;
@@ -454,14 +469,17 @@ function withLaterBlocks(raw: unknown): unknown {
   const cap = block["grid_charge_cap"];
   const plainCap = typeof cap === "object" && cap !== null && !Array.isArray(cap);
   const options = block["options"];
+  const costs = block["plan_costs"];
   return {
     ...(raw as Record<string, unknown>),
     status: {
       ...block,
       ...(plainCap ? { grid_charge_cap: withImportLimit(cap as Record<string, unknown>) } : {}),
-      ...(isPlain(options) ? { options: { battery_control_accept_ha_down: false, ...options } } : {}),
+      ...(isPlain(options)
+        ? { options: { battery_control_accept_ha_down: false, battery_wear_minor_per_kwh: null, ...options } }
+        : {}),
       per_phase: block["per_phase"] ?? null,
-      plan_costs: block["plan_costs"] ?? null,
+      plan_costs: isPlain(costs) ? { wear_default_minor_per_kwh: null, ...costs } : (costs ?? null),
       preheat: block["preheat"] ?? null,
       enable_facts: block["enable_facts"] ?? null,
       battery_found: block["battery_found"] ?? true,
