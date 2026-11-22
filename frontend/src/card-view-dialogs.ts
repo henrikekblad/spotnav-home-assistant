@@ -29,6 +29,8 @@ export interface DialogOpenersDeps {
   openEntities: (scope: EntityScope, focus?: { part: string; title: string } | null) => void;
   openSettingsOverview: () => void;
   overviewPanel: () => HTMLElement;
+  /** Show the shared heat section in full even when nothing is found ("Heat · nothing found" opened). */
+  expandHeat: () => void;
 }
 
 export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPageState, deps: DialogOpenersDeps) {
@@ -40,7 +42,8 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
   const strategyDialog = dialogs.strategy;
   const vehicleDialog = dialogs.vehicle;
   const settingsOverviewDialog = dialogs.settingsOverview;
-  const { mayPlan, setTimer, plannerButton, strategyButton, hideForChildDialog, openEntities, openSettingsOverview, overviewPanel } = deps;
+  const { mayPlan, setTimer, plannerButton, strategyButton, hideForChildDialog, openEntities, openSettingsOverview, overviewPanel, expandHeat } =
+    deps;
 
   function openIssues(opener: HTMLElement | null): void {
     if (isDestroyed()) {
@@ -64,6 +67,9 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
    * its entity configuration is read, so the row is looked for a few times before the section alone is left shown.
    */
   function openSettingAt(section: string, edit: string): void {
+    if (section === "heat") {
+      expandHeat();
+    }
     openSettingsOverview();
     overviewPanel().querySelector<HTMLElement>(`[data-section="${section}"]`)?.scrollIntoView?.({ block: "start" });
     let tries = 0;
@@ -324,5 +330,5 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
     });
   }
 
-  return { openIssues, confirmRelease, openCapabilities, openAutomations, openPause, openStrategy };
+  return { openIssues, openSettingAt, confirmRelease, openCapabilities, openAutomations, openPause, openStrategy };
 }
