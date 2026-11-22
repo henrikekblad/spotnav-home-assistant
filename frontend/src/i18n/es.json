@@ -2204,5 +2204,20 @@
   "house.plan.reason.room_warm": "la casa está caliente",
   "house.plan.reason.cheap": "hora barata",
   "house.plan.reason.full_heat": "calentamiento completo (legionela)",
-  "house.plan.reason.max_off": "no puede seguir apagado más tiempo"
+  "house.plan.reason.max_off": "no puede seguir apagado más tiempo",
+  "doesNotFit.line": "No cabe bajo el límite ({ceiling}): {need} para las {time} – da tiempo a {fits}.",
+  "doesNotFit.short": "No cabe bajo el límite ({ceiling}): faltan {kwh} para las {time}.",
+  "doesNotFit.shortNoTime": "No cabe bajo el límite ({ceiling}): faltan {kwh} para la salida.",
+  "doesNotFit.chosen.takesWhatFits": "El coche carga lo que cabe hasta las {time} ({kwh}).",
+  "doesNotFit.chosen.takesWhatFitsNoTime": "El coche carga lo que cabe hasta la salida.",
+  "doesNotFit.chosen.acceptPeak": "El límite ({ceiling}) queda suspendido para esta carga hasta las {time}.",
+  "doesNotFit.chosen.acceptPeakUnplug": "El límite ({ceiling}) queda suspendido para esta carga hasta que se desenchufe el coche.",
+  "doesNotFit.peakNote": "El pico puede llegar a unos {kw} kW.",
+  "doesNotFit.choice.takesWhatFits": "Cargar lo que cabe",
+  "doesNotFit.choice.takesWhatFitsKwh": "Cargar lo que cabe (≈ {kwh})",
+  "doesNotFit.choice.later": "Salida más tarde",
+  "doesNotFit.choice.acceptPeak": "Permitir el pico",
+  "doesNotFit.choice.acceptPeakKw": "Permitir el pico (≈ {kw} kW)",
+  "doesNotFit.choice.acceptPeakCost": "Permitir el pico (≈ {kw} kW, ≈ {cost})",
+  "doesNotFit.choice.acceptPeakAgain": "Sí, permitir el pico"
 }

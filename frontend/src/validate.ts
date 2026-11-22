@@ -11,6 +11,7 @@
 import { localDayKey } from "./chart";
 import { decodeSettingsRecord } from "./settings";
 import { hasUnknownKeys } from "./contract";
+import { doesNotFitOrNull, type DoesNotFit } from "./does-not-fit";
 import {
   ACTION_PAUSE,
   ACTION_RESUME,
@@ -317,6 +318,11 @@ export interface Dashboard {
   guest: GuestBlock | null;
   /** The sun for the price chart; `null` without a solar forecast, from an older backend, or unreadable. */
   sun: SunBlock | null;
+  /**
+   * The planned charge does not fit under the ceiling that acts now by its departure, with the person's choices
+   * (`site/does_not_fit.py`); `null` while it fits, from an older backend, or unreadable.
+   */
+  does_not_fit: DoesNotFit | null;
 }
 
 /**
@@ -1943,6 +1949,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         setup: setupOrNull(root),
         guest: guestOrNull(root.guest),
         sun: sunOrNull(root.sun),
+        does_not_fit: doesNotFitOrNull(root.does_not_fit),
       },
     };
   } catch {
@@ -2004,6 +2011,7 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "grid_tariff",
   "guest",
   "sun",
+  "does_not_fit",
 ] as const;
 
 /** The `sun` block, or `null` when it is missing or unreadable: the chart then draws no sun and offers no choice. */

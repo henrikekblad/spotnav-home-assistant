@@ -2204,5 +2204,20 @@
   "house.plan.reason.room_warm": "the house is warm",
   "house.plan.reason.cheap": "cheap hour",
   "house.plan.reason.full_heat": "full heat (legionella)",
-  "house.plan.reason.max_off": "may not stay off longer"
+  "house.plan.reason.max_off": "may not stay off longer",
+  "doesNotFit.line": "Does not fit under the ceiling ({ceiling}): {need} by {time} – {fits} fit in time.",
+  "doesNotFit.short": "Does not fit under the ceiling ({ceiling}): {kwh} short by {time}.",
+  "doesNotFit.shortNoTime": "Does not fit under the ceiling ({ceiling}): {kwh} short by the departure.",
+  "doesNotFit.chosen.takesWhatFits": "The car takes what fits by {time} ({kwh}).",
+  "doesNotFit.chosen.takesWhatFitsNoTime": "The car takes what fits by the departure.",
+  "doesNotFit.chosen.acceptPeak": "The ceiling ({ceiling}) is set aside for this charge until {time}.",
+  "doesNotFit.chosen.acceptPeakUnplug": "The ceiling ({ceiling}) is set aside for this charge until the car is unplugged.",
+  "doesNotFit.peakNote": "The peak may reach about {kw} kW.",
+  "doesNotFit.choice.takesWhatFits": "Take what fits",
+  "doesNotFit.choice.takesWhatFitsKwh": "Take what fits (≈ {kwh})",
+  "doesNotFit.choice.later": "Later departure",
+  "doesNotFit.choice.acceptPeak": "Allow the peak",
+  "doesNotFit.choice.acceptPeakKw": "Allow the peak (≈ {kw} kW)",
+  "doesNotFit.choice.acceptPeakCost": "Allow the peak (≈ {kw} kW, ≈ {cost})",
+  "doesNotFit.choice.acceptPeakAgain": "Yes, allow the peak"
 }

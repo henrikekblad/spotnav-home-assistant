@@ -2204,5 +2204,20 @@
   "house.plan.reason.room_warm": "la maison est chaude",
   "house.plan.reason.cheap": "heure bon marché",
   "house.plan.reason.full_heat": "chauffe complète (légionelle)",
-  "house.plan.reason.max_off": "ne peut pas rester coupé plus longtemps"
+  "house.plan.reason.max_off": "ne peut pas rester coupé plus longtemps",
+  "doesNotFit.line": "Ne tient pas sous le plafond ({ceiling}) : {need} pour {time} – {fits} passent à temps.",
+  "doesNotFit.short": "Ne tient pas sous le plafond ({ceiling}) : il manque {kwh} pour {time}.",
+  "doesNotFit.shortNoTime": "Ne tient pas sous le plafond ({ceiling}) : il manque {kwh} pour le départ.",
+  "doesNotFit.chosen.takesWhatFits": "La voiture prend ce qui tient d'ici {time} ({kwh}).",
+  "doesNotFit.chosen.takesWhatFitsNoTime": "La voiture prend ce qui tient d'ici le départ.",
+  "doesNotFit.chosen.acceptPeak": "Le plafond ({ceiling}) est levé pour cette charge jusqu'à {time}.",
+  "doesNotFit.chosen.acceptPeakUnplug": "Le plafond ({ceiling}) est levé pour cette charge jusqu'à ce que la voiture soit débranchée.",
+  "doesNotFit.peakNote": "La pointe peut atteindre environ {kw} kW.",
+  "doesNotFit.choice.takesWhatFits": "Prendre ce qui tient",
+  "doesNotFit.choice.takesWhatFitsKwh": "Prendre ce qui tient (≈ {kwh})",
+  "doesNotFit.choice.later": "Départ plus tard",
+  "doesNotFit.choice.acceptPeak": "Autoriser la pointe",
+  "doesNotFit.choice.acceptPeakKw": "Autoriser la pointe (≈ {kw} kW)",
+  "doesNotFit.choice.acceptPeakCost": "Autoriser la pointe (≈ {kw} kW, ≈ {cost})",
+  "doesNotFit.choice.acceptPeakAgain": "Oui, autoriser la pointe"
 }
