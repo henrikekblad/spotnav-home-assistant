@@ -375,7 +375,7 @@ describe("the settings section", () => {
       ["meter", "Värmepumpens mätareElmätare värme (Nibe + panna) Effekt"],
       ["path", "StyrningRelä (sänkning)"],
       ["control", "StyrutgångLarm utgång 1"],
-      ["hotWater", "VarmvattenIngen"],
+      ["hotWater", "Extra varmvattenIngen"],
       ["zones", "Zoner4"],
       ["zone:climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåningBevakas"],
       ["zone:climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåningBevakas"],
@@ -1045,6 +1045,23 @@ describe("the zones and the water heater SpotNav controls", () => {
     editor.body.querySelector<HTMLInputElement>("input[value='off']")!.click();
     (editor.body as HTMLFormElement).requestSubmit();
     await vi.waitFor(() => expect(write).toHaveBeenCalledWith({ water_heater: { entity_id: "switch.varmvattenberedare", control: false } }));
+  });
+
+  it("never offers one switch as both the hot water boost and the water heater", () => {
+    const value = answer("controlled.json");
+    const heater = "switch.varmvattenberedare";
+    const pulse = "switch.vv_puls";
+    const choice = (entity_id: string) => ({ entity_id, name: entity_id });
+    const both = {
+      ...value,
+      config: { ...value.config, hot_water_entity: pulse, water_heater: { entity_id: heater, control: false, tank_sensor: null } },
+      choices: { ...value.choices!, hot_water: [choice(heater), choice(pulse)], water_heater: [choice(heater), choice(pulse)] },
+    };
+    const offered = (key: "hotWater" | "waterHeater") =>
+      [...heatEditor({ doc: document, language: "sv", idPrefix: "t", answer: both, write: vi.fn() } as never, key, handlers as never)!.body.querySelectorAll<HTMLInputElement>("input[type='radio']")]
+        .map((input) => input.value);
+    expect(offered("hotWater")).toEqual(["", pulse]);
+    expect(offered("waterHeater")).toEqual(["", heater]);
   });
 
   it("words the water heater's note", () => {

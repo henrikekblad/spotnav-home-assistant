@@ -367,7 +367,7 @@ async def test_s4_a_pulse_relay_left_on_is_opened_at_the_start(hass: HomeAssista
     site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=PULSE_SWITCH)
     hot_water = controller.heat_shadow.hot_water
     writes = Writes(hass)
-    hot_water.ledger.add(Entry(PULSE_SWITCH, "turn_on", controller.demand.now(), SOURCE_BUTTON))
+    hot_water.ledger.add(Entry(PULSE_SWITCH, "turn_on", controller.demand.now(), SOURCE_BUTTON, found_off=True))
     hass.states.async_set(PULSE_SWITCH, "on")
     await hot_water.async_start()
     assert writes.calls == [("switch", "turn_off", {"entity_id": PULSE_SWITCH})]
@@ -377,6 +377,90 @@ async def test_s4_a_pulse_relay_left_on_is_opened_at_the_start(hass: HomeAssista
     hass.states.async_set(PULSE_SWITCH, "on")
     await hot_water.async_start()
     assert writes.calls == []
+
+
+# ---- A pulse never leaves a load off that was on (field report 2026-11-22: a water heater's contactor, normally on,
+# picked as the hot-water pulse input; one press switched it off for the night)
+
+HEATER = "switch.shellypro3em_water_heater"
+
+
+async def test_the_field_case_a_switch_found_on_is_never_pulsed_or_turned_off(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=HEATER)
+    hot_water = controller.heat_shadow.hot_water
+    hass.states.async_set(HEATER, "on")
+    writes = Writes(hass)
+    now = controller.demand.now()
+    answer = await press(hass, "start", site_id=site.entry_id)
+    assert answer["result"]["ok"] is True
+    # Nothing written: the water heater stays on, and the press shows failed.
+    assert writes.calls == [] and hass.states.get(HEATER).state == "on"
+    entry = hot_water.ledger.last()
+    assert (entry.value, entry.read_back, entry.found_off) == ("not_written", False, False)
+    assert hot_water.boost(now)["state"] == "failed"
+    # Hours of looks, and a restart: never turned off.
+    for minutes in (2, 30, 90):
+        freezer.tick(timedelta(minutes=minutes))
+        hot_water.tick(controller.demand.now())
+        await settle(hass)
+    await hot_water.async_start()
+    await settle(hass)
+    assert writes.calls == [] and hass.states.get(HEATER).state == "on"
+
+
+async def test_the_field_case_a_switch_turned_on_by_hand_after_an_old_pulse_stays_on(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.heat.dhw_ledger import Ledger
+
+    site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=HEATER)
+    hot_water = controller.heat_shadow.hot_water
+    now = controller.demand.now()
+    # The pulse kept before the fix (no `found_off`): it switched the water heater off; turned on again by hand.
+    hot_water.ledger = Ledger.from_stored(
+        [{"entity_id": HEATER, "value": "turn_on", "at": now.isoformat(), "source": "button", "read_back": False, "ended": None}]
+    )
+    assert hot_water.ledger.last().found_off is False
+    freezer.tick(timedelta(minutes=5))
+    hass.states.async_set(HEATER, "on")
+    writes = Writes(hass)
+    freezer.tick(timedelta(minutes=2))
+    hot_water.tick(controller.demand.now())
+    await settle(hass)
+    await hot_water.async_start()
+    await settle(hass)
+    assert writes.calls == [] and hass.states.get(HEATER).state == "on"
+
+
+async def test_a_planned_pulse_on_a_switch_found_on_writes_nothing(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    controller, hot_water, at = await _live(hass, freezer, monkeypatch, None, hot_water_entity=HEATER)
+    hass.states.async_set(HEATER, "on")
+    monkeypatch.setattr(hot_water, "making_now", lambda: False)
+    monkeypatch.setattr(hot_water, "_data_fresh", lambda _now: True)
+    writes = Writes(hass)
+    hot_water.tick(at)
+    await settle(hass)
+    assert writes.calls == [] and hass.states.get(HEATER).state == "on"
+    assert hot_water.ledger.last().value == "not_written"
+
+
+async def test_a_pulse_switch_turned_on_by_hand_after_the_pulse_is_left_on(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from .test_heat_dhw_runtime import press
+
+    site, controller = await _site(hass, freezer, monkeypatch, hot_water_entity=PULSE_SWITCH)
+    hot_water = controller.heat_shadow.hot_water
+    hass.states.async_set(PULSE_SWITCH, "off")
+    writes = Writes(hass)
+    assert (await press(hass, "start", site_id=site.entry_id))["result"]["ok"] is True
+    assert [service for _, service, _ in writes.calls] == ["turn_on", "turn_off"]
+    assert hot_water.ledger.last().found_off is True
+    # Turned on by hand well after the pulse: not the pulse's own, left alone.
+    freezer.tick(timedelta(minutes=30))
+    hass.states.async_set(PULSE_SWITCH, "on")
+    freezer.tick(timedelta(minutes=2))
+    hot_water.tick(controller.demand.now())
+    await settle(hass)
+    assert len(writes.calls) == 2 and hass.states.get(PULSE_SWITCH).state == "on"
 
 
 # ---- S5: a boost not verified to end by itself: the button only, with a backstop stop

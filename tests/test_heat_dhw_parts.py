@@ -247,3 +247,11 @@ def test_three_misses_in_a_week_back_off() -> None:
     assert back_off(reviews, today)
     assert not back_off(reviews[:2], today)
     assert not back_off([_review(today - timedelta(days=9), 2, mode="live", misses=3)], today)
+
+
+def test_the_ledger_keeps_whether_a_pulse_found_its_switch_off() -> None:
+    entry = Entry("switch.puls", "turn_on", T0, SOURCE_BUTTON, found_off=True)
+    assert Ledger.from_stored(Ledger([entry]).stored()).entries == [entry]
+    # An entry kept before this was known reads "found on": its switch is never turned off.
+    old = {"entity_id": "switch.puls", "value": "turn_on", "at": T0.isoformat(), "source": "button", "read_back": None, "ended": None}
+    assert Ledger.from_stored([old]).entries[0].found_off is False

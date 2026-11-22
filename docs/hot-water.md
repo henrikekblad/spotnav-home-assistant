@@ -85,12 +85,14 @@ button's are never ended.
 ## The Hot water now button
 
 Where the pump has a hot-water boost that ends by itself (NIBE's temporary lux "one time", myUplink's
-temporary lux, CTC's extra hot water for an hour) or you chose a **hot water entity**
-wired to the pump's hot-water input (SpotNav gives it a short pulse), the *Now* tab has a **Hot water now** button for
+temporary lux, CTC's extra hot water for an hour) or you chose a switch under **Hot water boost** in the settings
+wired to the pump's own input for an extra hot-water run (SpotNav gives it a short pulse), the *Now* tab has a **Hot water now** button for
 anyone who sees the card. It shows *Starting…* until the pump reads the start back, then the time left (exact on a
 timer, about on a one-time run) and, where the boost can be ended early, **Cancel**. One start per ten minutes (a
 start that failed does not count). While a phase is already over the main fuse the button says so and starts nothing:
-turn something off and press again. The button is your own start: SpotNav never stops it, never sheds it for the fuse,
+turn something off and press again. A switch chosen under **Hot water boost** must be off between runs: SpotNav sends no pulse to one that reads on, and
+after a pulse turns off only what that pulse turned on. It is never a water heater's power switch (that goes under
+**Water heater**, below); the settings refuse the same switch for both. The button is your own start: SpotNav never stops it, never sheds it for the fuse,
 and a heat block ends at once and starts no more until its run is over. HeishaMon's force hot water is offered to the
 button only, since whether it ends by itself is not verified: SpotNav turns it off 15 minutes after the expected run.
 Without such a boost the button is not shown.
@@ -146,7 +148,8 @@ block's end in the house's expected load, so the cars' and the battery's plans s
 ## A plain water heater on a switch
 
 A water heater with an immersion element and its own thermostat, switched by a relay or contactor in Home Assistant
-(a Shelly on a contactor), can be chosen under **Water heater** in the settings popover's **Heating** section. Chosen
+(a Shelly on a contactor), can be chosen under **Water heater** in the settings popover's **Heating** section (not
+under **Hot water boost**, which is the heat pump's own input). Chosen
 alone it is **watched**: the card shows which hours SpotNav would allow it. **Control the water heater** lets SpotNav
 switch it, off in expensive hours and on in the cheap ones.
 
