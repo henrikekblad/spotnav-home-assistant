@@ -59,8 +59,9 @@ leave it (0.54 °C). Two steps is also the shallow end of what the plan suggests
 curve a degree of room is 2 to 3 °C of supply, so -3 °C is about one NIBE step in the room, shallower than NIBE's
 two on purpose (the path is new), yet twice the fall the check must see on the calculated supply
 (`relay_control.SUPPLY_DROP_C`), and -2 °C when cold still shows. It raises 2 °C (the raise check's 1 °C). Thermia's
-comfort wheel takes NIBE's whole steps until a field test measures one. A number SpotNav does not know is treated as
-NIBE's.
+comfort wheel moves the whole curve 3 °C of supply per whole step (a tester's Genesis, 2026-11-22): one step is CTC's
+-3 °C, so it lowers one step, also when cold, and raises one (it has no smaller step). A number SpotNav does not know
+is treated as NIBE's.
 """
 
 from __future__ import annotations
@@ -132,12 +133,14 @@ class Depth:
 
 DEPTH_NIBE: Final = Depth(2.0, 1.0, 1.0)
 DEPTH_CTC: Final = Depth(3.0, 2.0, 2.0)
+#: Thermia's comfort wheel: 3 °C of supply per whole step (see the module).
+DEPTH_THERMIA: Final = Depth(1.0, 1.0, 1.0)
 #: Per adapter brand (`adapters.Adapter.brand`); a number SpotNav does not know is treated as NIBE's.
 DEPTHS: Final[dict[str, Depth]] = {
     "nibe_f": DEPTH_NIBE,
     "nibe_s": DEPTH_NIBE,
     "ctc_bms": DEPTH_CTC,
-    "thermia_genesis": DEPTH_NIBE,
+    "thermia_genesis": DEPTH_THERMIA,
 }
 #: The adapters whose offset SpotNav offers by itself (the others' are read through a cloud, or are no plain shift).
 OFFSET_BRANDS: Final = frozenset(DEPTHS)
