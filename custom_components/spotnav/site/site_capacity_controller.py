@@ -515,6 +515,8 @@ class TargetRisk:
     choice: str = IF_NOT_READY_ASK
     #: The import target as set, below `target_kw` where the month's peak lifts the running hour (`None`: the same).
     set_kw: float | None = None
+    #: What the plan still needs by the departure (kWh), of which `missing_kwh` does not fit (`None`: not known).
+    need_kwh: float | None = None
 
 #: Decision-log details of the battery-on-the-fuse handling (`site/battery_probe.py`).
 DETAIL_HELD_BATTERY_AT_LIMIT = "held_battery_at_limit"

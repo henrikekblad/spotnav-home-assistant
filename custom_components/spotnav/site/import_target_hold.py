@@ -159,7 +159,7 @@ class ImportTargetHold:
             found = self._target_shortfall(member, budget, now)
             if found is None:
                 continue
-            departure, shortfall = found
+            departure, shortfall, need_kwh = found
             was = self._site._target_risk.get(member.charger_entry_id)
             if not departure_at_risk(shortfall, at_risk=was is not None and was.departure == departure):
                 continue
@@ -172,6 +172,7 @@ class ImportTargetHold:
                 set_kw=budget.target_kw
                 if self._site._target_effective is None
                 else self._site._target_effective.set_kw,
+                need_kwh=round(need_kwh, 1),
             )
             if choice == IF_NOT_READY_RELEASE:
                 # The plan's own choice: the departure wins by itself, as long as holding would miss it.
@@ -438,9 +439,12 @@ class ImportTargetHold:
                 return True
         return False
 
-    def _target_shortfall(self, member: TargetMember, budget: HourBudget, now: datetime) -> tuple[str, float] | None:
-        """`(departure, kWh)`: how much a plan's charge would miss its departure by under the target
-        (`departure_shortfall_kwh`, negative: to spare), or `None` for a charge with no plan and departure ahead.
+    def _target_shortfall(
+        self, member: TargetMember, budget: HourBudget, now: datetime
+    ) -> tuple[str, float, float] | None:
+        """`(departure, kWh short, kWh needed)`: how much a plan's charge would miss its departure by under the target
+        (`departure_shortfall_kwh`, negative: to spare) of what it still needs, or `None` for a charge with no plan and
+        departure ahead.
 
         This hour and later ones are reckoned at the target less the house's typical load (`_typical_house_kw`, the
         estimate the plan counts on too, `import_target_plan_kw`), a later hour the house load forecast knows at the
@@ -508,7 +512,7 @@ class ImportTargetHold:
             later_kw=later_kw,
             later_kw_by_hour=later_by_hour,
         )
-        return None if shortfall is None else (plan.departure, shortfall)
+        return None if shortfall is None else (plan.departure, shortfall, need_kwh)
 
     def _target_floor_a(
         self,
