@@ -136,12 +136,13 @@ def action_power(
     if action == ACTION_DISCHARGE_HOUSE:
         return -min(deficit, discharge_lim)
     if action == ACTION_GRID_CHARGE:
-        power = min(charge_lim, max(charge_kw, surplus))
-        # What control would allow from the grid (the sun's surplus is charged on top, never held back): a cap of 0
-        # leaves only the surplus, which is a hold, and the search drops the duplicate.
+        want = max(charge_kw, surplus)
+        # What control would run: it commands the battery at most the cap in all (`gate.restricted`), the sun's
+        # surplus included. Under the cap the charge is the cap; where the cap is not above the surplus it is the
+        # surplus alone, a hold, and the search drops the duplicate. The sun's own charge is never held back.
         if slot.grid_charge_cap_kw is not None:
-            power = min(power, surplus + slot.grid_charge_cap_kw)
-        return power
+            want = max(surplus, min(want, slot.grid_charge_cap_kw))
+        return min(charge_lim, want)
     if action == ACTION_EXPORT_DISCHARGE:
         return -min(discharge_lim, abs(charge_kw)) if charge_kw else -discharge_lim
     if action == ACTION_SHAVE:

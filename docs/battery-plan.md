@@ -57,6 +57,7 @@ It also reads:
 * the solar forecast as SpotNav corrects it, once the correction has learnt, else the raw forecast,
 * the charging plans already made for your cars, as a fixed load,
 * the import limit (the main fuse less its margin, or the import target where you set one).
+* the most the battery may charge from the grid: the same fuse cap SpotNav's battery control obeys (0 until it has learnt your house's peaks, on a small fuse). The plan grid charges no more than that; the sun's charge is never held back, and the Plan tab says when the fuse held charging back. It is today's cap applied to the whole horizon, so a plan made before the cap rose is on the safe side and heals at the next plan.
 
 The battery's lowest level is the reserve its integration reports where SpotNav can read one; otherwise 10 % is assumed.
 SpotNav reads a reserve only where it knows the integration's entity for it: SolaX has none mapped, and Huawei's needs the

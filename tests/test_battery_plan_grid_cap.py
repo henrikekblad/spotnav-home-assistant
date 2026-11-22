@@ -166,6 +166,12 @@ def test_the_controls_cap_is_the_one_charge_limits_gives() -> None:
         def _cap_rule(self, options: Any, cap: Any, failed: bool, learned: Any) -> str:
             return "conservative"
 
+        def report(self) -> Any:
+            return {}
+
+        def _fixed_charge_kw(self) -> None:
+            return None
+
     assert BatteryControl.plan_grid_charge_cap(Fake(), NOW) == (4.5, "conservative")  # type: ignore[arg-type]
     assert seen == {"phased": True}
 
@@ -192,3 +198,108 @@ def test_the_solve_plans_under_the_cap_and_says_what_it_held_back() -> None:
 
 def test_a_cap_at_the_rated_charge_holds_nothing_back() -> None:
     assert _solved(5.0).grid_held is None
+
+
+# ---- the cap is the control's total, the sun included ---------------------------------------------------------------
+
+
+def _sunny_slot(cap: float | None):
+    from custom_components.spotnav.battery.plan_model import PlanSlot
+
+    # House 2 kW, sun 6 kW: a surplus of 4 kW.
+    return PlanSlot(MIDNIGHT, MIDNIGHT + timedelta(hours=1), 20.0, 40.0, 2.0, solar_kw=6.0, grid_charge_cap_kw=cap)
+
+
+@pytest.mark.parametrize(
+    ("cap", "expected"),
+    [(None, 5.0), (0.0, 4.0), (3.0, 4.0), (4.0, 4.0), (4.5, 4.5), (9.0, 5.0)],
+)
+def test_the_planned_charge_is_at_most_the_cap_in_all_and_never_below_the_suns_surplus(
+    cap: float | None, expected: float
+) -> None:
+    from custom_components.spotnav.battery.plan import action_power
+
+    # Control commands at most the cap in total (`gate.restricted`); the sun's own charge is never held back.
+    assert action_power(_sunny_slot(cap), BATTERY, 5.0, ACTION_GRID_CHARGE, 5.0) == pytest.approx(expected)
+
+
+# ---- where control runs no grid charge at all ------------------------------------------------------------------------
+
+
+def _control(cap: float | None, *, caps: Any = None, per_phase_only: bool = False, fixed: float | None = None) -> Any:
+    from custom_components.spotnav.battery import gate
+
+    class Fake:
+        executor = None
+
+        def options(self) -> Any:
+            return SimpleNamespace(accept_ha_down=False)
+
+        def _charge_limits(self, now: datetime, options: Any, *, phased: bool) -> tuple[float | None, Any]:
+            return cap, caps
+
+        def _learned(self, now: datetime) -> None:
+            return None
+
+        def _cap_rule(self, options: Any, cap: Any, failed: bool, learned: Any) -> str:
+            return "learned"
+
+        def report(self) -> Any:
+            return {"modes": {"charge": {"via": "per_phase" if per_phase_only else "direct"}}}
+
+        def _fixed_charge_kw(self) -> float | None:
+            return fixed
+
+    assert gate.MIN_RATE_KW == 0.5
+    return Fake()
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({"cap": 4.0}, 4.0),
+        ({"cap": None}, None),
+        ({"cap": 0.4}, 0.0),  # under the least rate control commands: self-consumption
+        ({"cap": 0.5}, 0.5),
+        ({"cap": 4.0, "fixed": 5.0}, 0.0),  # a plant that charges at its own rate, over the cap: not at all
+        ({"cap": 6.0, "fixed": 5.0}, 6.0),
+        ({"cap": None, "fixed": 5.0}, None),
+        ({"cap": 4.0, "fixed": math.inf}, 0.0),  # its size is not known: never run
+        ({"cap": None, "fixed": math.inf}, 0.0),
+        ({"cap": 4.0, "per_phase_only": True}, 0.0),  # shown only per phase, no caps per phase: the balanced one never runs
+        ({"cap": None, "per_phase_only": True}, 0.0),
+        ({"cap": 4.0, "per_phase_only": True, "caps": (1.0, 1.0, 2.0)}, 4.0),
+    ],
+)
+def test_the_plans_cap_is_zero_where_control_runs_no_grid_charge(kwargs: dict[str, Any], expected: float | None) -> None:
+    cap, rule = BatteryControl.plan_grid_charge_cap(_control(**kwargs), NOW)  # type: ignore[arg-type]
+
+    assert cap == expected and rule == "learned"
+
+
+# ---- when a changed cap plans again ----------------------------------------------------------------------------------
+
+
+def _keyed(*answers: tuple[float | None, int]) -> list[float | None]:
+    """The trigger's key for a cap read at each `(cap, minutes after the first)`."""
+    control = _Control((None, "import_limit"))
+    shadow = _shadow(control)
+    shadow._cap_seen = None
+    out = []
+    for cap, minutes in answers:
+        control.answer = (cap, "learned") if cap is not None else (None, "import_limit")
+        out.append(shadow._grid_cap_key(NOW + timedelta(minutes=minutes)))
+    return out
+
+
+def test_a_falling_cap_plans_again_at_once_and_a_rise_waits_a_quarter_of_an_hour() -> None:
+    # 3.0 kW, a car's step down to 2.0 (at once), up to 2.5 and 3.0 within minutes (waits), later (taken).
+    assert _keyed((3.0, 0), (2.0, 1), (2.5, 2), (3.0, 3), (3.0, 20)) == [3.0, 2.0, 2.0, 2.0, 3.0]
+
+
+def test_a_cap_crossing_zero_or_no_cap_plans_again_at_once() -> None:
+    assert _keyed((0.0, 0), (2.0, 1), (0.0, 2), (None, 3), (2.0, 4)) == [0.0, 2.0, 0.0, None, 2.0]
+
+
+def test_a_cap_within_the_same_step_is_the_same_key() -> None:
+    assert _keyed((3.1, 0), (3.4, 1), (3.0, 2)) == [3.0, 3.0, 3.0]

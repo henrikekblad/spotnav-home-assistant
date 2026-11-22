@@ -2035,8 +2035,17 @@ class BatteryControl:
             options = self.options()
             executor = self.executor
             phased = executor is not None and executor.control.phased
-            cap = self._charge_limits(now, options, phased=phased)[0]
-            return cap, self._cap_rule(options, cap, False, self._learned(now))
+            cap, caps = self._charge_limits(now, options, phased=phased)
+            rule = self._cap_rule(options, cap, False, self._learned(now))
+            # Where control runs no grid charge at all, the plan plans none: as `_control_slot` and `gate.restricted`.
+            if caps is None and gate.charge_by_phases(self.report()):
+                return 0.0, rule  # the charge was shown only per phase: the balanced one is never run
+            fixed = self._fixed_charge_kw()
+            if fixed is not None and (not math.isfinite(fixed) or (cap is not None and fixed > cap)):
+                return 0.0, rule  # a plant that charges at its own rate: as planned or not at all
+            if cap is not None and cap < gate.MIN_RATE_KW:
+                return 0.0, rule  # under the least rate control commands it does self-consumption
+            return cap, rule
         except Exception:  # noqa: BLE001 - an unknown cap allows no grid charge
             _LOGGER.debug("plan_grid_charge_cap: ignored failure (no grid charge is planned)", exc_info=True)
             return 0.0, "error"

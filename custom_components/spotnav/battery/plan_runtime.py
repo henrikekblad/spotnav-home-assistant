@@ -181,6 +181,8 @@ budget_clock = time.monotonic
 HELD_BACK_MIN_KWH: Final = 0.2
 #: The cap a plan is planned under changes the plan only in steps of this many kW (it follows the chargers' currents).
 GRID_CAP_STEP_KW: Final = 0.5
+#: A rise of the cap plans again only this long (s) after the last change of its key.
+GRID_CAP_RISE_S: Final = 900.0
 #: The old hidden hook for a credit per exported kWh (minor units), once read from the site's entry under this key.
 #: What a sold kWh earns beyond spot is now the electricity price's own figure (`sell_adjustment`, set in the card);
 #: a value still under this key is moved there once (`migrate_sell_credit`) and the key removed.
@@ -519,13 +521,13 @@ def _solve(
         now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear, keeps, misses,
         sell_margin, started, grid_charge_cap_kw,
     )
-    held = _grid_held(solved, params, soc_pct, mode, wear, keeps.get(mode), sell_margin, grid_charge_cap_kw, started)
-    if held is not None:
-        solved = solved._replace(grid_held=held)
-    return _solve_demand(
+    solved = _solve_demand(
         solved, now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear,
         keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started, peak_now, grid_charge_cap_kw,
     )
+    # Last, so the what-if never takes the demand variant's share of the CPU budget.
+    held = _grid_held(solved, params, soc_pct, mode, wear, keeps.get(mode), sell_margin, grid_charge_cap_kw, started)
+    return solved if held is None else solved._replace(grid_held=held)
 
 
 def _grid_charge_kwh(decisions: Sequence[Any]) -> float:
@@ -731,6 +733,8 @@ class BatteryPlanShadow:
         self._cap_kw: float | None = None
         #: The grid charge cap the plan in force was planned under (`_grid_cap`): `{cap_kw, rule, held_kwh, held_from}`.
         self.grid_cap: dict[str, Any] | None = None
+        #: The cap key the trigger last used and when it changed (`_grid_cap_key`).
+        self._cap_seen: tuple[float | None, datetime] | None = None
         self._facts = BatteryFacts()
         self._quarter: datetime | None = None
         self._checked_at: datetime | None = None
@@ -1250,9 +1254,25 @@ class BatteryPlanShadow:
         return float(cap), rule
 
     def _grid_cap_key(self, now: datetime) -> float | None:
-        """The grid charge cap in steps (`GRID_CAP_STEP_KW`), so a plan is made again when it really changes."""
+        """The grid charge cap as the plan's trigger sees it, in steps (`GRID_CAP_STEP_KW`). A cap that falls, or that
+        crosses 0 or no cap, makes a new plan at once (the plan in force charges more than control now allows); a
+        rise only counts after `GRID_CAP_RISE_S`, so the load-balancing steps of a charging car do not plan again
+        every minute (the plan is on the safe side meanwhile)."""
         cap = self._grid_cap(now)[0]
-        return None if cap is None else math.floor(cap / GRID_CAP_STEP_KW) * GRID_CAP_STEP_KW
+        key = None if cap is None else math.floor(cap / GRID_CAP_STEP_KW) * GRID_CAP_STEP_KW
+        seen = self._cap_seen
+        if seen is None:
+            self._cap_seen = (key, now)
+            return key
+        before, since = seen
+        if key == before:
+            return key
+        low, high = (math.inf if before is None else before), (math.inf if key is None else key)
+        edge = key is None or before is None or key == 0 or before == 0
+        if high < low or edge or (now - since).total_seconds() >= GRID_CAP_RISE_S:
+            self._cap_seen = (key, now)
+            return key
+        return before
 
     def _keys(self, now: datetime, facts: BatteryFacts) -> dict[str, Any]:
         windows = self._car_windows()

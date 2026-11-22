@@ -1083,3 +1083,60 @@ async def test_each_quarter_hour_feeds_the_round_trip_and_the_plan_uses_it_once_
 
     assert plan.inputs["battery"]["round_trip_efficiency"] == 0.83
     assert EST_ROUND_TRIP not in plan.inputs["estimates"]
+
+
+async def test_the_plan_takes_the_cap_a_real_control_obeys_without_touching_the_executor(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery import gate
+
+    _entry, controller = await _site(hass)
+    now = dt_util.now()
+    control = controller.battery_control
+    options = control.options()
+    if control.executor is not None:
+        def _no_use_phases(*_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("the planner must not change the executor")
+
+        monkeypatch.setattr(control.executor, "use_phases", _no_use_phases)
+    phased = control.executor is not None and control.executor.control.phased
+    expected, _caps = control._charge_limits(now, options, phased=phased)
+    if expected is not None and expected < gate.MIN_RATE_KW:
+        expected = 0.0
+
+    cap, rule = control.plan_grid_charge_cap(now)
+
+    assert cap == expected and rule
+    assert controller.battery_shadow.plan._grid_cap(now)[0] == expected
+
+
+async def test_a_plan_is_made_under_the_cap_and_a_changed_cap_changes_the_trigger(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _entry, controller = await _site(hass)
+    now = dt_util.now()
+    _give_prices(monkeypatch, _prices(now))
+    _house_forecast(controller, now)
+    shadow = controller.battery_shadow.plan
+    answer: list[tuple[float | None, str]] = [(2.0, "learned")]
+    monkeypatch.setattr(controller.battery_control, "plan_grid_charge_cap", lambda _now: answer[0])
+    controller.battery_shadow.tick(now)
+    await hass.async_block_till_done()
+    seen: list[Any] = []
+    real = plan_runtime._solve
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("grid_charge_cap_kw", "missing"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(plan_runtime, "_solve", spy)
+
+    await shadow.async_plan(now, TRIGGER_INPUTS)
+    assert seen == [2.0] and shadow.grid_cap["cap_kw"] == 2.0
+    before = shadow._keys(now, shadow._facts)["inputs_key"]
+    answer[0] = (1.0, "learned")
+    assert shadow._keys(now, shadow._facts)["inputs_key"] != before, "a lower cap plans again at once"
+    answer[0] = (0.0, "conservative")
+    await shadow.async_plan(now, TRIGGER_INPUTS)
+    assert seen == [2.0, 0.0] and shadow.grid_cap["rule"] == "conservative"
+    assert shadow.inputs["grid_charge_cap"] == shadow.grid_cap
