@@ -2199,6 +2199,7 @@
   "house.plan.lane.batteryCover": "Covers {kwh}",
   "house.plan.lane.batteryGrid": "grid charging of the home battery {kwh}",
   "house.plan.lane.batteryCharge": "charges {kwh} from the sun",
+  "house.plan.lane.batteryHeld": "would grid charge more, the fuse does not allow it yet",
   "house.plan.lane.heat": "Lowered {lowered} h, pre-heated {raised} h",
   "house.plan.lane.zone": "Lowered {lowered} h",
   "house.plan.lane.waterHeater": "May heat {hours} h, cheap hours",

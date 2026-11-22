@@ -547,6 +547,7 @@
       "summary": {
         "charge_kwh": 9.6,
         "cover_kwh": 16.2,
+        "grid_charge_held_kwh": null,
         "grid_charge_kwh": 6.0
       }
     },

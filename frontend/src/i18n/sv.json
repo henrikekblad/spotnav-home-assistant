@@ -2199,6 +2199,7 @@
   "house.plan.lane.batteryCover": "Täcker {kwh}",
   "house.plan.lane.batteryGrid": "nätladdning av husbatteriet {kwh}",
   "house.plan.lane.batteryCharge": "laddar {kwh} av solen",
+  "house.plan.lane.batteryHeld": "skulle nätladda mer, säkringen tillåter det inte än",
   "house.plan.lane.heat": "Sänkt {lowered} h, förvärmd {raised} h",
   "house.plan.lane.zone": "Sänkt {lowered} h",
   "house.plan.lane.waterHeater": "Får värmas {hours} h, billiga timmar",

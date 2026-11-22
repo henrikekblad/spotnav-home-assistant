@@ -2199,6 +2199,7 @@
   "house.plan.lane.batteryCover": "Dækker {kwh}",
   "house.plan.lane.batteryGrid": "netopladning af husbatteriet {kwh}",
   "house.plan.lane.batteryCharge": "lader {kwh} fra solen",
+  "house.plan.lane.batteryHeld": "ville netoplade mere, sikringen tillader det ikke endnu",
   "house.plan.lane.heat": "Sænket {lowered} t, forvarmet {raised} t",
   "house.plan.lane.zone": "Sænket {lowered} t",
   "house.plan.lane.waterHeater": "Må varme {hours} t, billige timer",

@@ -2199,6 +2199,7 @@
   "house.plan.lane.batteryCover": "Versorgt {kwh}",
   "house.plan.lane.batteryGrid": "Netzladung der Hausbatterie {kwh}",
   "house.plan.lane.batteryCharge": "lädt {kwh} aus der Sonne",
+  "house.plan.lane.batteryHeld": "würde mehr aus dem Netz laden, die Sicherung erlaubt es noch nicht",
   "house.plan.lane.heat": "Abgesenkt {lowered} h, vorgeheizt {raised} h",
   "house.plan.lane.zone": "Abgesenkt {lowered} h",
   "house.plan.lane.waterHeater": "Darf {hours} h heizen, günstige Stunden",

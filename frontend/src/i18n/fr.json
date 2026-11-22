@@ -2199,6 +2199,7 @@
   "house.plan.lane.batteryCover": "Alimente {kwh}",
   "house.plan.lane.batteryGrid": "charge de la batterie domestique sur le réseau {kwh}",
   "house.plan.lane.batteryCharge": "charge {kwh} grâce au soleil",
+  "house.plan.lane.batteryHeld": "chargerait davantage sur le réseau, le fusible ne le permet pas encore",
   "house.plan.lane.heat": "Abaissé {lowered} h, préchauffé {raised} h",
   "house.plan.lane.zone": "Abaissé {lowered} h",
   "house.plan.lane.waterHeater": "Peut chauffer {hours} h, heures bon marché",

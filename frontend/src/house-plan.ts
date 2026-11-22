@@ -625,6 +625,9 @@ export function laneReason(language: Language, ctx: FormatContext, load: PlanLoa
     if (num("charge_kwh") - num("grid_charge_kwh") > 0.05) {
       parts.push(translate(language, "house.plan.lane.batteryCharge", { kwh: kwhText(language, num("charge_kwh") - num("grid_charge_kwh")) }));
     }
+    if (num("grid_charge_held_kwh") > 0) {
+      parts.push(translate(language, "house.plan.lane.batteryHeld"));
+    }
     line = parts.join(" · ");
   } else if (load.kind === "heat") {
     line = translate(language, "house.plan.lane.heat", { lowered: String(num("lowered_hours")), raised: String(num("raised_hours")) });

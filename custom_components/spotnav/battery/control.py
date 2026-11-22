@@ -2004,14 +2004,9 @@ class BatteryControl:
         except Exception:  # noqa: BLE001 - the status must never fail on it
             _LOGGER.debug("cap_status: ignored failure (the status must never fail on it)", exc_info=True)
             cap, failed = None, True
-        usable = learned is not None and learned.phase_peaks() is not None
         return {
             "cap_kw": None if cap is None else round(cap, 2),
-            "rule": "error" if failed else "import_limit" if cap is None else "accepted" if (
-                options.accept_ha_down and _accept_applies(control_for(self.facts.brand))
-            ) else (
-                "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
-            ),
+            "rule": self._cap_rule(options, cap, failed, learned),
             "main_fuse_a": self._main_fuse_a(),
             "cap_conservative_kw": None if without is None else round(without, 2),
             "cap_learned_kw": None if done is None else round(done, 2),
@@ -2019,6 +2014,32 @@ class BatteryControl:
             "import_limit": import_limit,
             "ha_down": self._ha_down_status(now, options),
         }
+
+    def _cap_rule(self, options: gate.Options, cap: float | None, failed: bool, learned: Any) -> str:
+        """Which rule a grid charge cap rests on (`_cap_status`'s `rule`)."""
+        if failed:
+            return "error"
+        if cap is None:
+            return "import_limit"
+        if options.accept_ha_down and _accept_applies(control_for(self.facts.brand)):
+            return "accepted"
+        usable = learned is not None and learned.phase_peaks() is not None
+        return "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
+
+    def plan_grid_charge_cap(self, now: datetime) -> tuple[float | None, str]:
+        """The grid charge cap the battery plan plans under, `(cap_kw, rule)`: the one control obeys right now
+        (`_charge_limits`, per phase where it runs; read as the executor is, never changing it), so the plan and the
+        command can never disagree. `cap_kw` `None` with the rule `import_limit` is no cap of this kind (the plant's
+        own import limit guards the fuse); a cap that cannot be worked out is 0 with the rule `error`, never no cap."""
+        try:
+            options = self.options()
+            executor = self.executor
+            phased = executor is not None and executor.control.phased
+            cap = self._charge_limits(now, options, phased=phased)[0]
+            return cap, self._cap_rule(options, cap, False, self._learned(now))
+        except Exception:  # noqa: BLE001 - an unknown cap allows no grid charge
+            _LOGGER.debug("plan_grid_charge_cap: ignored failure (no grid charge is planned)", exc_info=True)
+            return 0.0, "error"
 
     def _ha_down_status(self, now: datetime, options: gate.Options) -> dict[str, Any]:
         """Whether accepting the HA-down risk (`battery_control_accept_ha_down`) would change anything here, for the

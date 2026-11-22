@@ -201,7 +201,9 @@ def test_the_villa() -> None:
     assert all(load["does_not_fit"] is None for load in answer["loads"] if load["kind"] != "car")
     battery = _load(answer, "home_battery")
     assert [run["what"] for run in battery["runs"]] == ["cover", "grid_charge", "sun_charge", "cover"]
-    assert battery["summary"] == {"charge_kwh": 9.6, "grid_charge_kwh": 6.0, "cover_kwh": 16.2}
+    assert battery["summary"] == {
+        "charge_kwh": 9.6, "grid_charge_kwh": 6.0, "cover_kwh": 16.2, "grid_charge_held_kwh": None,
+    }
     # The net: the house, the car and the battery, less the sun; the water heater is inside the house's figure.
     row = answer["hours"][5]  # 01:00 tomorrow: the car charges
     assert row["net_kw"] == round(1.6 + 3.7, 2)

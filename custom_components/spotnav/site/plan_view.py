@@ -172,6 +172,9 @@ class BatteryPlan:
     #: The plan in force's slots: `(start, end, action, battery kW (+ charging))`.
     slots: tuple[tuple[datetime, datetime, str, float], ...]
     live: bool
+    #: The grid charge (kWh) the fuse's cap (`battery/gate.grid_charge_cap_kw`) held back from the plan: it would have
+    #: charged that much more from the grid but for it; `None` when it held none back.
+    grid_held_kwh: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,7 +448,12 @@ def _battery(battery: BatteryPlan, hours: Sequence[datetime], sun: Mapping[datet
         kw,
         None,
         _runs(hours, what, kw, active=active),
-        {"charge_kwh": _r(charged, 2), "grid_charge_kwh": _r(grid, 2), "cover_kwh": _r(covered, 2)},
+        {
+            "charge_kwh": _r(charged, 2),
+            "grid_charge_kwh": _r(grid, 2),
+            "cover_kwh": _r(covered, 2),
+            "grid_charge_held_kwh": _r(battery.grid_held_kwh, 2),
+        },
     )
 
 

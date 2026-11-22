@@ -155,7 +155,11 @@ def _battery(controller: Any) -> BatteryPlan | None:
     control = getattr(controller, "battery_control", None)
     state = None if control is None else _guarded("battery control's state", control.state, None)
     slots = tuple((s.start, s.end, s.action, s.battery_kw) for s in controller.battery_shadow.plan.plan)
-    return BatteryPlan(id=facts.battery_entity_id, name=facts.label, slots=slots, live=state == "on")
+    held = (controller.battery_shadow.grid_cap or {}).get("held_kwh")
+    return BatteryPlan(
+        id=facts.battery_entity_id, name=facts.label, slots=slots, live=state == "on",
+        grid_held_kwh=held if isinstance(held, (int, float)) else None,
+    )
 
 
 def _heat(hass: HomeAssistant, controller: Any) -> tuple[HeatPlan | None, tuple[ZonePlan, ...], WaterHeaterPlan | None]:

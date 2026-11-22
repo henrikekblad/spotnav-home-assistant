@@ -1018,6 +1018,8 @@ async def test_cold_cells_leave_the_plan_in_force_as_it_was_and_the_derate_and_p
     now = dt_util.now()
     _give_prices(monkeypatch, _prices(now))
     _house_forecast(controller, now)
+    # The plant's own import limit guards the fuse (the owner's Sigenergy): no cap of the gate's kind.
+    monkeypatch.setattr(controller.battery_control, "plan_grid_charge_cap", lambda _now: (None, "import_limit"))
     logged: list[tuple[str, dict]] = []
     monkeypatch.setattr(controller, "_log_target", lambda charger, action, budget=None, **fields: logged.append((action, fields)))
     controller.battery_shadow.tick(now)

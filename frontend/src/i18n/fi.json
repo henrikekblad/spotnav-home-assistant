@@ -2199,6 +2199,7 @@
   "house.plan.lane.batteryCover": "Kattaa {kwh}",
   "house.plan.lane.batteryGrid": "kotiakun lataus verkosta {kwh}",
   "house.plan.lane.batteryCharge": "latautuu {kwh} auringosta",
+  "house.plan.lane.batteryHeld": "lataisi enemmän verkosta, sulake ei vielä salli sitä",
   "house.plan.lane.heat": "Laskettu {lowered} h, esilämmitetty {raised} h",
   "house.plan.lane.zone": "Laskettu {lowered} h",
   "house.plan.lane.waterHeater": "Saa lämmittää {hours} h, halvat tunnit",

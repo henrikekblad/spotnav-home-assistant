@@ -2199,6 +2199,7 @@
   "house.plan.lane.batteryCover": "Dekt {kwh}",
   "house.plan.lane.batteryGrid": "netladen van de thuisbatterij {kwh}",
   "house.plan.lane.batteryCharge": "laadt {kwh} van de zon",
+  "house.plan.lane.batteryHeld": "zou meer van het net laden, de zekering staat dat nog niet toe",
   "house.plan.lane.heat": "Verlaagd {lowered} u, voorverwarmd {raised} u",
   "house.plan.lane.zone": "Verlaagd {lowered} u",
   "house.plan.lane.waterHeater": "Mag {hours} u verwarmen, goedkope uren",
