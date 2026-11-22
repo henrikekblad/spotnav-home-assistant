@@ -300,7 +300,7 @@ its rebound after), and so in the battery's and the cars' plans and the day's re
 | SG Ready through the integration | NIBE S series, NIBE Heat Pump (`nibe_heatpump`, local) | number 46009 "Requested operating mode (SG Ready)", with switch 43033 "Activate SG Ready via API" on | at most 6 mode changes; the switch on at most 4 times | mode normal, then the switch off |
 | Heating curve offset, stored | NIBE F series 47011 "Heat Offset S1", NIBE S series 40031 "Heating offset climate system 1" (`nibe_heatpump`, local); any other number you choose | the offset: the value found less 2 steps (1 step below −5 °C outdoors), plus 1 step for a raise | at most 24 | the value found written back |
 | Heating curve offset, volatile | CTC, CTC Heat Pump (BMS) (`ctc_bms`) 1023 "Curve adjustment override" | the override: −3 °C (−2 °C below −5 °C outdoors), +2 °C for a raise | at most 24 changes; renewed every 2 minutes while held | the override released |
-| Heating curve offset, stored | Thermia Genesis, Thermia Genesis (`thermiagenesis`, local) "Comfort Wheel Setting" | the comfort wheel: the value found less 2 steps (1 step below −5 °C outdoors), plus 1 step for a raise, within 10..40 | at most 12 | the value found written back |
+| Heating curve offset, stored | Thermia Genesis, Thermia Genesis (`thermiagenesis`, local) "Comfort Wheel Setting" | the comfort wheel (3 °C on the whole curve a step): the value found less 1 step, plus 1 step for a raise, within 10..40 | at most 12 | the value found written back |
 
 SpotNav finds these entities on the pump: under **Control** a path the pump has is marked **Found on the heat pump**,
 and choosing it fills its entities in. Through NIBE's cloud (myUplink) nothing is steered, and CTC Local Easyconf

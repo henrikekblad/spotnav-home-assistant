@@ -69,7 +69,7 @@ def _thermia(hass: HomeAssistant, wheel: str = "20.0", *, disabled: bool = False
 def test_the_wheels_rules_are_the_stored_offsets_with_a_lower_cap() -> None:
     assert paths.max_writes(WHEEL_A, "thermia_genesis") == 12 and paths.max_writes(WHEEL_A, "nibe_f") == 24
     assert paths.max_writes(WHEEL_A) == 24 and paths.max_writes("switch.vp", "thermia_genesis") == 6
-    assert paths.depth_of("thermia_genesis") == paths.DEPTH_NIBE and "thermia_genesis" in paths.OFFSET_BRANDS
+    assert paths.depth_of("thermia_genesis") == paths.DEPTH_THERMIA and "thermia_genesis" in paths.OFFSET_BRANDS
     assert paths.write_class(WHEEL_A) == "setting" and "thermia_genesis" in paths.SUPPLY_PROOF
     # Only a whole step inside the integration's own 10..40 is a value to move from.
     assert paths.found_fits("thermia_genesis", 20.0) and paths.found_fits("thermia_genesis", 10.0)
@@ -120,10 +120,10 @@ async def _checking(hass: HomeAssistant, freezer: Any) -> tuple[HeatControl, Pum
 
 
 async def _looks(hass: HomeAssistant, control: HeatControl, now: datetime, minutes: int, *, moves: bool = True, demand: str = "4") -> datetime:
-    """A look a minute; the calculated supply follows the wheel 1 °C a step where `moves`, as a curve shift would."""
+    """A look a minute; the calculated supply follows the wheel 3 °C a step where `moves`, as the curve shift does (a tester's Genesis)."""
     for _ in range(minutes):
         wheel = float(hass.states.get(WHEEL).state)  # type: ignore[union-attr]
-        supply = 35.0 + (wheel - 20.0) if moves else 35.0
+        supply = 35.0 + 3.0 * (wheel - 20.0) if moves else 35.0
         hass.states.async_set(CALC, f"{supply:.1f}", {"unit_of_measurement": "°C"})
         hass.states.async_set(DEMAND, demand)
         await _look(control, now, {})
@@ -134,7 +134,7 @@ async def _looks(hass: HomeAssistant, control: HeatControl, now: datetime, minut
 async def test_the_check_passes_when_the_calculated_supply_follows_the_wheel(hass: HomeAssistant, freezer) -> None:
     control, pump, now = await _checking(hass, freezer)
     now = await _looks(hass, control, now, 15)
-    assert pump.calls == [(WHEEL, 18.0), (WHEEL, 20.0)] and pump.value(WHEEL) == "20.0"
+    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 20.0)] and pump.value(WHEEL) == "20.0"
     assert control.checks[WHEEL_A]["result"] == "passed"
     await _looks(hass, control, now, 1)
     assert control.status()["state"] == "running"
@@ -144,12 +144,12 @@ async def test_the_check_fails_when_the_wheel_does_not_move_the_calculated_suppl
     control, pump, now = await _checking(hass, freezer)
     now = await _looks(hass, control, now, 30, moves=False)
     # The value found is written back, and nothing more is written: the path stays read only.
-    assert pump.calls == [(WHEEL, 18.0), (WHEEL, 20.0)] and pump.value(WHEEL) == "20.0"
+    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 20.0)] and pump.value(WHEEL) == "20.0"
     assert control.checks[WHEEL_A] == {"result": "failed", "outcome": "failed:no_effect", "at": control.checks[WHEEL_A]["at"]}
     status = control.status()
     assert (status["state"], status["reason"], status["check"]) == ("waiting", "check_failed", "failed")
     await _looks(hass, control, now, 60, moves=False)
-    assert pump.calls == [(WHEEL, 18.0), (WHEEL, 20.0)]
+    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 20.0)]
 
 
 async def test_the_check_judges_the_calculated_supply_alone(hass: HomeAssistant, freezer) -> None:
@@ -173,15 +173,15 @@ async def test_the_check_waits_while_the_pump_does_not_heat(hass: HomeAssistant,
     assert pump.calls == [] and control.status()["state"] == "verifying"
     # Heating again: the try runs.
     now = await _looks(hass, control, now, 15)
-    assert pump.calls == [(WHEEL, 18.0), (WHEEL, 20.0)] and control.checks[WHEEL_A]["result"] == "passed"
+    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 20.0)] and control.checks[WHEEL_A]["result"] == "passed"
 
 
 async def test_a_hot_water_run_under_a_try_ends_it_unjudged_and_puts_the_wheel_back(hass: HomeAssistant, freezer) -> None:
     control, pump, now = await _checking(hass, freezer)
     now = await _looks(hass, control, now, 6)
-    assert pump.calls == [(WHEEL, 18.0)]
+    assert pump.calls == [(WHEEL, 19.0)]
     await _looks(hass, control, now, 1, demand="3")
-    assert pump.calls == [(WHEEL, 18.0), (WHEEL, 20.0)] and WHEEL_A not in control.checks
+    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 20.0)] and WHEEL_A not in control.checks
     assert control.check.last == "not_judgeable:not_heating"
 
 
@@ -191,17 +191,17 @@ async def test_a_hot_water_run_under_a_try_ends_it_unjudged_and_puts_the_wheel_b
 async def test_the_wheel_is_lowered_from_the_value_found_and_put_back(hass: HomeAssistant, freezer) -> None:
     _site_, control, pump, now = await _running(hass, freezer, _thermia(hass, "21.0"), {0: "lower", 1: "lower"})
     await _look(control, now)
-    assert pump.calls == [(WHEEL, 19.0)] and control.held
+    assert pump.calls == [(WHEEL, 20.0)] and control.held
     snapshot = control.snapshots[WHEEL_A]
-    assert (snapshot.found, snapshot.written, snapshot.volatile) == (21.0, 19.0, False)
+    assert (snapshot.found, snapshot.written, snapshot.volatile) == (21.0, 20.0, False)
     await _look(control, now + 2 * H, {})
-    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 21.0)] and pump.value(WHEEL) == "21.0" and not control.held
+    assert pump.calls == [(WHEEL, 20.0), (WHEEL, 21.0)] and pump.value(WHEEL) == "21.0" and not control.held
     assert control.writes[control._day(now)] == 2  # noqa: SLF001
     writes = control.diagnostics()["writes"]
     assert (writes["class"], writes["cap"]) == ("setting", 12)
 
 
-async def test_the_wheel_is_lowered_one_step_when_cold_and_raised_one_step(hass: HomeAssistant, freezer) -> None:
+async def test_the_wheel_is_lowered_one_step_also_when_cold(hass: HomeAssistant, freezer) -> None:
     _site_, control, pump, now = await _running(hass, freezer, _thermia(hass, "21.0"), {0: "lower"}, outdoor="-8.0")
     await _look(control, now)
     assert pump.calls == [(WHEEL, 20.0)]
@@ -239,7 +239,7 @@ async def test_twelve_writes_a_day_at_most(hass: HomeAssistant, freezer) -> None
     assert pump.calls == [] and control.decision is not None and control.decision.reason == "write_cap"
     control.writes[control._day(now)] = 10  # noqa: SLF001
     await _look(control, now + MIN)
-    assert pump.calls == [(WHEEL, 18.0)]
+    assert pump.calls == [(WHEEL, 19.0)]
 
 
 async def test_a_write_read_back_only_at_the_integrations_next_poll_is_taken(hass: HomeAssistant, freezer) -> None:
@@ -247,10 +247,10 @@ async def test_a_write_read_back_only_at_the_integrations_next_poll_is_taken(has
     # The integration shows a written value only at its next poll (every 30 s).
     pump.ignore.add(WHEEL)
     await _look(control, now)
-    assert control.pending is not None and pump.calls == [(WHEEL, 18.0)]
+    assert control.pending is not None and pump.calls == [(WHEEL, 19.0)]
     await _look(control, now + 30 * SEC)
     assert control.pending is not None and control.paused_until is None
-    hass.states.async_set(WHEEL, "18.0", WHEEL_ATTRIBUTES)
+    hass.states.async_set(WHEEL, "19.0", WHEEL_ATTRIBUTES)
     await _look(control, now + 40 * SEC)
     assert control.pending is None and control.held and control.paused_until is None
 
@@ -262,24 +262,24 @@ async def test_a_write_the_integration_swallowed_puts_the_value_found_back_and_p
     await _look(control, now)
     await _look(control, now + 2 * MIN)
     assert control.paused_reason == "no_read_back" and not control.held
-    assert pump.calls == [(WHEEL, 18.0), (WHEEL, 20.0)]
+    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 20.0)]
 
 
 async def test_a_wheel_someone_else_turned_wins(hass: HomeAssistant, freezer) -> None:
     _site_, control, pump, now = await _running(hass, freezer, _thermia(hass), {0: "lower", 1: "lower"})
     await _look(control, now)
-    # Turned on the pump's display (or through the integration's climate entity) while SpotNav holds 18.
+    # Turned on the pump's display (or through the integration's climate entity) while SpotNav holds 19.
     hass.states.async_set(WHEEL, "22.0", WHEEL_ATTRIBUTES)
     await _look(control, now + MIN)
     await _look(control, now + 2 * MIN + 5 * SEC)
     assert control.paused_reason == "foreign_change" and not control.held
     await _look(control, now + 3 * H, {})
-    assert pump.calls == [(WHEEL, 18.0)] and pump.value(WHEEL) == "22.0" and control.snapshots == {}
+    assert pump.calls == [(WHEEL, 19.0)] and pump.value(WHEEL) == "22.0" and control.snapshots == {}
 
 
 async def test_the_stop_puts_the_wheel_back(hass: HomeAssistant, freezer) -> None:
     _site_, control, pump, now = await _running(hass, freezer, _thermia(hass), {0: "lower", 1: "lower"})
     await _look(control, now)
-    assert pump.value(WHEEL) == "18.0"
+    assert pump.value(WHEEL) == "19.0"
     await control.async_shutdown()
-    assert pump.calls == [(WHEEL, 18.0), (WHEEL, 20.0)] and not control.held
+    assert pump.calls == [(WHEEL, 19.0), (WHEEL, 20.0)] and not control.held
