@@ -1790,7 +1790,7 @@
   "battery.cap.phase.actsLabel": "The import limit acts",
   "battery.cap.phase.turnOn": "Turn on…",
   "battery.cap.phase.open": "Open in Home Assistant",
-  "battery.cap.phase.setFailed": "The import limit could not be set. Set it in the Sigenergy app and try again.",
+  "battery.cap.phase.setFailed": "The import limit could not be set or confirmed yet. Wait a minute and try again, or set it in the Sigenergy app.",
   "battery.cap.phase.checked": "Before every grid charge SpotNav reads the limit and the plant's settings, and holds the charge back as before as soon as anything does not match.",
   "battery.cap.phase.setText": "SpotNav sets Sigenergy's import limit to {max} kW and then relies on it to hold each phase under the main fuse, even if Home Assistant stops. SpotNav never raises the limit. It shows, and can be changed, in the Sigenergy app.",
   "battery.cap.phase.turnOnText": "SpotNav relies on Sigenergy's import limit ({value} kW) to hold each phase under the main fuse, even if Home Assistant stops, and stops holding grid charging back to protect the fuse.",

@@ -159,6 +159,9 @@ export interface ImportLimit {
  * plant's entity that code points at. */
 export interface ImportLimitPhase {
   max_kw: number | null;
+  /** What the administrator's tap writes (`import_limit_write_kw`); `null` when the limit already guards, and from a
+   * Home Assistant that does not send it. */
+  set_kw: number | null;
   holds: boolean;
   why: string | null;
   entity_id: string | null;
@@ -329,7 +332,7 @@ const GRID_CHARGE_CAP = O({
       suggested_kw: N("number"),
       holds: "boolean",
       why: N("string"),
-      per_phase: N(O({ max_kw: N("number"), holds: "boolean", why: N("string"), entity_id: N("string") })),
+      per_phase: N(O({ max_kw: N("number"), set_kw: N("number"), holds: "boolean", why: N("string"), entity_id: N("string") })),
     }),
   ),
   ha_down: N(O({ offered: "boolean", held_kw: N("number"), empty_house_kw: N("number") })),
@@ -482,7 +485,7 @@ function withImportLimit(cap: Record<string, unknown>): Record<string, unknown> 
   return {
     ...cap,
     ha_down: haDown,
-    import_limit: { ...limit, per_phase: isPlain(phase) ? { entity_id: null, ...phase } : (phase ?? null) },
+    import_limit: { ...limit, per_phase: isPlain(phase) ? { entity_id: null, set_kw: null, ...phase } : (phase ?? null) },
   };
 }
 

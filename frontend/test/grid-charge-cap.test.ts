@@ -192,7 +192,7 @@ describe("the grid charge cap block", () => {
     const limit = (phase: Record<string, unknown>, more: Record<string, unknown> = {}) => ({
       import_limit: {
         value_kw: 13.8, max_kw: 4.47, suggested_kw: 4.4, holds: false, why: null,
-        per_phase: { max_kw: 13.16, holds: false, why: null, entity_id: null, ...phase }, ...more,
+        per_phase: { max_kw: 13.16, set_kw: 13.1, holds: false, why: null, entity_id: null, ...phase }, ...more,
       },
     });
     const step = (language: "sv" | "en", cap: Record<string, unknown>, more = on(), allowed = ["grid_charge"]) =>
@@ -222,7 +222,7 @@ describe("the grid charge cap block", () => {
           + " längre tillbaka.",
       });
       // Not said to act with the limit low enough: only saying it acts is left.
-      expect(step("sv", limit({ why: "not_said_to_act" }, { value_kw: 12.4 }))).toEqual({
+      expect(step("sv", limit({ why: "not_said_to_act", set_kw: null }, { value_kw: 12.4 }))).toEqual({
         code: "not_said_to_act",
         entityId: null,
         setKw: null,
@@ -251,7 +251,7 @@ describe("the grid charge cap block", () => {
                          "plant_not_three_phase", "sources_unknown", "a_code_from_later"]) {
         expect(step("sv", limit({ why })), why).toBeNull();
       }
-      expect(step("sv", limit({ max_kw: null }))).toBeNull();
+      expect(step("sv", limit({ max_kw: null, set_kw: null }))).toBeNull();
       expect(step("sv", limit({ why: "not_said_to_act" }), on({ battery_control_enabled: false }))).toBeNull();
       expect(step("sv", limit({ why: "not_said_to_act" }), on(), ["hold"])).toBeNull();
       expect(step("sv", limit({ why: "phase_control_off" }, { holds: true }))).toBeNull();

@@ -410,7 +410,7 @@ describe("the popover from the house card", () => {
       options: { ...checking["options"], battery_control_enabled: true },
       grid_charge_cap: {
         ...checking["grid_charge_cap"],
-        import_limit: { ...checking["grid_charge_cap"]["import_limit"], per_phase: { max_kw: 13.16, holds: false, entity_id: null, ...phase } },
+        import_limit: { ...checking["grid_charge_cap"]["import_limit"], per_phase: { max_kw: 13.16, set_kw: 13.1, holds: false, entity_id: null, ...phase } },
       },
       ...more,
     });
@@ -435,7 +435,7 @@ describe("the popover from the house card", () => {
     ]);
     high.element.remove();
     // Not said to act, the limit already low enough: the tap only says it acts (same command, nothing to lower).
-    const low = withPhase({ why: "not_said_to_act" }) as Record<string, any>;
+    const low = withPhase({ why: "not_said_to_act", set_kw: null }) as Record<string, any>;
     low["grid_charge_cap"]["import_limit"]["value_kw"] = 12.0;
     const said = await mount({ battery: "checking.json", status: low });
     popover = await open(said.root);

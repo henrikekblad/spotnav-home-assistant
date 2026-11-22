@@ -355,7 +355,8 @@ export function haDownView(
 
 /** Under the cap's line, once the person said the plant's own import limit acts: why it does not guard the fuse as
  * it reads now, and the most it may read to do so (it limits the total over the three phases, so that is less than
- * the fuse). `null` when the limit guards, was not said to act, or no value can guard. SpotNav never writes it. */
+ * the fuse). `null` when the limit guards, was not said to act, or no value can guard. Only the per-phase tap writes
+ * the limit (`importLimitPhaseStep`). */
 export function importLimitHint(language: Language, status: BatteryStatus): string | null {
   const limit = status.grid_charge_cap.import_limit;
   if (
@@ -410,10 +411,9 @@ export function importLimitPhaseStep(
   ) {
     return null;
   }
-  // Rounded down, so the value shown never lets a phase past the fuse.
-  const most = phase.max_kw === null ? null : Math.floor(phase.max_kw * 10 + 1e-9) / 10;
-  const usable = most !== null && most >= 0.1;
-  const tooHigh = usable && (limit.value_kw === null || limit.value_kw > most + 1e-6);
+  // The backend's own figure (`set_kw`): what the tap writes, `null` when the limit already guards.
+  const setKw = phase.set_kw;
+  const tooHigh = setKw !== null;
   if (phase.why !== null && !(phase.why === "not_said_to_act" && tooHigh)) {
     const key = PHASE_RULE_STEPS[phase.why];
     if (key === undefined) {
@@ -424,16 +424,16 @@ export function importLimitPhaseStep(
     // Said to act is the one step the card can take itself (`set_import_limit`), the value already low enough.
     return { code: phase.why, text: translate(language, key, { name: entity }), entityId, setKw: null };
   }
-  if (!usable || !tooHigh) {
+  if (setKw === null) {
     return null;
   }
   // The limit reads more than guards the fuse, or nothing: the card can set it (an administrator's tap), or the
   // person sets it in the maker's app.
-  const max = formatNumber(language, most, 1);
+  const max = formatNumber(language, setKw, 1);
   const text = limit.value_kw === null
     ? translate(language, "battery.cap.phase.limitUnset", { max })
     : translate(language, "battery.cap.phase.limitTooHigh", { value: formatNumber(language, limit.value_kw, 1), max });
-  return { code: "limit", text, entityId: null, setKw: most };
+  return { code: "limit", text, entityId: null, setKw };
 }
 
 /** The name a preheating switch goes by when Home Assistant has none to give (a disabled entity has no state). */
@@ -624,6 +624,7 @@ export class SiteSections {
       if (!decoded.value.ok && decoded.value.error === "spotnav_import_limit_not_set") {
         if (decoded.value.status !== null) {
           this.battery = decoded.value.status;
+          this.input.onChanged?.("battery");
         }
         return translate(language, "battery.cap.phase.setFailed");
       }

@@ -1790,7 +1790,7 @@
   "battery.cap.phase.actsLabel": "Importlimiet werkt",
   "battery.cap.phase.turnOn": "Aanzetten…",
   "battery.cap.phase.open": "Openen in Home Assistant",
-  "battery.cap.phase.setFailed": "De importlimiet kon niet worden ingesteld. Stel hem in de Sigenergy-app in en probeer het opnieuw.",
+  "battery.cap.phase.setFailed": "De importlimiet kon nog niet worden ingesteld of bevestigd. Wacht een minuut en probeer het opnieuw, of stel hem in de Sigenergy-app in.",
   "battery.cap.phase.checked": "Voor elke keer laden van het net leest SpotNav de limiet en de instellingen van de installatie, en houdt het laden zoals voorheen in zodra iets niet klopt.",
   "battery.cap.phase.setText": "SpotNav zet de importlimiet van Sigenergy op {max} kW en vertrouwt er daarna op dat die elke fase onder de hoofdzekering houdt, ook als Home Assistant stopt. SpotNav verhoogt de limiet nooit. Hij is zichtbaar en aan te passen in de Sigenergy-app.",
   "battery.cap.phase.turnOnText": "SpotNav vertrouwt erop dat de importlimiet van Sigenergy ({value} kW) elke fase onder de hoofdzekering houdt, ook als Home Assistant stopt, en houdt laden van het net niet meer in om de zekering te beschermen.",
