@@ -1340,7 +1340,7 @@ class HeatControl:
             return Offer(live=True, ready=False, give_w=give, why=self.reason or self.state)
         if self.held:
             if self._shed_until(now) is not None and self.decision is not None and self.decision.closed:
-                return Offer(live=True, ready=True, give_w=give)
+                return Offer(live=True, ready=True, give_w=give, held=True)
             # Lowered by the plan already: one step is all the shed takes.
             return Offer(live=True, ready=False, give_w=0.0, why=REASON_PLANNED)
         trial = decide(

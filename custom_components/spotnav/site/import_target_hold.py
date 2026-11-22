@@ -44,7 +44,7 @@ from .import_target import (
     TargetMember,
 )
 from .regulator import RegulatorDecision
-from .shed_order import combine, LOAD_HEAT, LOAD_WATER_HEATER, Offer, Projection, ShedOrder
+from .shed_order import combine, END_OFF, LOAD_HEAT, LOAD_WATER_HEATER, Offer, Projection, ShedOrder
 from .site_capacity import allocation_order, ChargerRequest, PhaseName, PHASES
 from .site_capacity_controller import (
     _current_write_lock,
@@ -118,7 +118,7 @@ class ImportTargetHold:
                 self._site._target_released.clear()
                 self._site._save_released()
             self._site._target_last_cap.clear()
-            self._shed(dt_util.utcnow(), None, [])
+            self._shed(dt_util.utcnow(), None, [], lasting=True)
             return decisions
         now = dt_util.utcnow()
         # The target lifted to the month's free level where a demand-charge part counts the running hour: only ever
@@ -131,13 +131,14 @@ class ImportTargetHold:
             self._site._note_target_state(TARGET_NOT_APPLIED_OUTSIDE_LEVEL)
             self._site._target_risk = {}
             self._site._tell_target_risk()
-            self._shed(now, None, [])
+            self._shed(now, None, [], lasting=True)
             return decisions
         budget, reason = self._import_target_budget(self._site._target_effective.kw, now)
         self._site._target_not_applied = reason
         self._site._note_target_state(TARGET_STATE_APPLIED if reason is None else reason)
         if budget is None:
-            self._shed(now, None, [])
+            # Load balancing off holds for good; a reading missing, a gap or the house unknown is a passing loss.
+            self._shed(now, None, [], lasting=reason == TARGET_NOT_APPLIED_LOAD_BALANCING_OFF)
             return decisions
         self._site._target_budget = budget
         # A pause and a held current hold to the end of their hour only.
@@ -325,19 +326,25 @@ class ImportTargetHold:
                     self._site._target_floor_limited.add(charger_entry_id)
         return held
 
-    def _shed(self, now: datetime, budget: HourBudget | None, members: Sequence[TargetMember]) -> float:
-        """The site's shed order on this pass's projection (`site/shed_order.py`); `budget` `None`: nothing held, every
-        step put back. The water heater's give counted ahead for the cars (W). A failure puts every step back and
-        counts nothing: the hold goes on as without it."""
+    def _shed(
+        self, now: datetime, budget: HourBudget | None, members: Sequence[TargetMember], *, lasting: bool = False
+    ) -> float:
+        """The site's shed order on this pass's projection (`site/shed_order.py`); `budget` `None`: nothing held now,
+        for good (`lasting`: no target or power level, outside the level's hours, load balancing off: every step put
+        back at once) or for a moment (the steps hold a while). The water heater's give counted ahead for the cars
+        (W). A failure puts every step back and counts nothing: the hold goes on as without it."""
         order: ShedOrder = self._site.shed_order
         before = {load: step.live for load, step in order.steps.items()}
         logged = order.logged
         try:
             if budget is None:
-                order.update(now, None, {})
+                if lasting:
+                    order.clear(now, END_OFF)
+                else:
+                    order.update(now, None, {})
                 credit_w = 0.0
             else:
-                credit_w = order.update(now, _projection(budget, members), self._offers())
+                credit_w = order.update(now, _projection(budget, members, self._planned_w(members, now)), self._offers())
         except Exception:  # noqa: BLE001 - the shed order never stands in the hold's way
             if not getattr(self, "_shed_failed_logged", False):
                 self._shed_failed_logged = True
@@ -357,6 +364,22 @@ class ImportTargetHold:
                 if part is not None:
                     part.request_look()
         return credit_w
+
+    def _planned_w(self, members: Sequence[TargetMember], now: datetime) -> dict[str, float]:
+        """Per holdable charger with a plan of SpotNav's whose window runs now: what the plan needs now (W, its own
+        rate, `_plan_power_kw`). A charge without one counts at what it wants."""
+        out: dict[str, float] = {}
+        for member in members:
+            if not member.holdable:
+                continue
+            charger_controller = controller_for(self._site.hass, member.charger_entry_id)
+            plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
+            if plan is None or not getattr(plan, "auto_owned", False):
+                continue
+            if not any(start <= now < end for start, end in plan.windows):
+                continue
+            out[member.charger_entry_id] = _plan_power_kw(plan) * 1000.0
+        return out
 
     def _offers(self) -> dict[str, Offer | None]:
         """Each stepped load's offer, from what its control saw at its last look (`shed_order.Offer`)."""
@@ -533,11 +556,7 @@ class ImportTargetHold:
         # What the plan still expects to deliver before the departure: its energy spread over its windows (the power
         # it planned at, which may already be the target's, `import_target_plan_kw`), for the windows' time left.
         windows = plan.windows
-        window_h = sum(max(0.0, (end - start).total_seconds()) for start, end in windows) / 3600.0
-        if plan.energy_kwh and window_h > 0:
-            power_kw = plan.energy_kwh / window_h
-        else:
-            power_kw = plan.power_kw if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
+        power_kw = _plan_power_kw(plan)
         need_kwh = plan_remaining_kwh(windows, power_kw, now, departure)
         preview = preview_for(self._site.hass, member.charger_entry_id)
         if preview is not None:
@@ -632,12 +651,26 @@ class ImportTargetHold:
         )
 
 
-def _projection(budget: HourBudget, members: Sequence[TargetMember]) -> Projection:
+def _plan_power_kw(plan: Any) -> float:
+    """The power a plan charges at in its windows (kW): its energy spread over its windows, else its own power."""
+    window_h = sum(max(0.0, (end - start).total_seconds()) for start, end in plan.windows) / 3600.0
+    if plan.energy_kwh and window_h > 0:
+        return float(plan.energy_kwh) / window_h
+    return float(plan.power_kw) if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
+
+
+def _projection(
+    budget: HourBudget, members: Sequence[TargetMember], planned_w: Mapping[str, float] | None = None
+) -> Projection:
     """The hold's period as the shed order reads it: its budget, and what the cars want (`share_budget`'s members): the
-    ones it may hold at what they would draw (a charge paused for the rest of the period wants nothing in it), the
-    others at what they draw."""
+    ones it may hold at what they would draw, no more than what their plan needs now (`planned_w`: a car charging
+    faster than its plan needs is no reason to shed anything; a charge paused for the rest of the period wants
+    nothing in it), the others at what they draw."""
+    planned = planned_w or {}
     held = sum(
-        member_w(member.phases, member.wants_a) for member in members if member.holdable and not member.paused_this_hour
+        min(member_w(member.phases, member.wants_a), planned.get(member.charger_entry_id, float("inf")))
+        for member in members
+        if member.holdable and not member.paused_this_hour
     )
     unheld = sum(member_w(member.phases, member.wants_a) for member in members if not member.holdable)
     return Projection(

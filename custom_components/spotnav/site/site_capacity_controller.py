@@ -894,7 +894,8 @@ class SiteCapacityController:
         self._import_target_hold = ImportTargetHold(self)
         # One shed order under the hold's ceiling (`site/shed_order.py`): battery, water heater, car, heat; run by the
         # hold on its own projection, kept in memory only.
-        self.shed_order = ShedOrder()
+        # Nothing is shed for a while after a start: what ended before it is not known (`ShedOrder`).
+        self.shed_order = ShedOrder(started_at=dt_util.utcnow())
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
         self._last_logged_conflicts: list[SiteMembershipConflict] = self.membership_conflicts

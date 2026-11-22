@@ -420,7 +420,7 @@ class ZonesControl:
             return Offer(live=True, ready=False, give_w=give, why=zone.reason or zone.state)
         if zone.held_lower():
             if self._shed_until(now) is not None and zone.decision is not None and zone.decision.action == ACTION_LOWER:
-                return Offer(live=True, ready=True, give_w=give)
+                return Offer(live=True, ready=True, give_w=give, held=True)
             # Lowered by the plan already: one step is all the shed takes.
             return Offer(live=True, ready=False, give_w=0.0, why=REASON_PLANNED)
         if action != ACTION_NORMAL:

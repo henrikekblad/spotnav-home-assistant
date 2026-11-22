@@ -18,11 +18,11 @@ from custom_components.spotnav.site.shed_order import LOAD_HEAT, LOAD_WATER_HEAT
 from .test_heat_control import _plan, _running, H, MIN, ROOM
 from .test_import_target_hold import _charging, _HOUR, _V, _world
 
-HEATER_W = 3000.0
+HEATER_W = 1500.0
 
 
 def _heater(world: Any) -> list[bool]:
-    """A water heater of 3 kW in the world's house, switched by the shed order: the meter reads it while it is not
+    """A water heater of 1.5 kW in the world's house, switched by the shed order: the meter reads it while it is not
     paused for the ceiling. Returns the record of its states, one per step."""
     controller = world.halo.controller
     base_a = world.house_a
@@ -47,28 +47,57 @@ def _heater(world: Any) -> list[bool]:
     return seen
 
 
-async def test_the_water_heater_pauses_before_the_car_is_cut(hass: HomeAssistant, monkeypatch) -> None:
-    """A 6 kW target, the house at 1 kW plus a 3 kW water heater, a 16 A car: without the order the car would be paused
-    for the hour (5.88 - 4 kW leaves less than its minimum); with it the heater gives way first and the car takes what
-    remains, every hour under the target."""
+async def test_the_water_heater_pauses_before_the_car_is_cut_further(hass: HomeAssistant, monkeypatch) -> None:
+    """An 8 kW target (7.84 held), the house at 1 kW plus a 1.5 kW water heater, a 16 A car: the hold holds the car at
+    7 A; once the order may act (`REST_S` after the start) the heater gives way and the car takes what remains (9 A or more),
+    never paused, every hour under the target."""
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
-        world = await _world(hass, monkeypatch, frozen, "shed")
+        world = await _world(hass, monkeypatch, frozen, "shed", target_kw=8.0)
         heater = _heater(world)
         await world.step()
         await _charging(world)
-        await world.run(130)
+        await world.run(10)
+        assert world.car_a == 7.0 and heater == [True]
+        await world.run(120)
         controller = world.halo.controller
         assert world.turn_offs == 0, "the car was paused"
-        assert world.car_a == 7.0
+        assert world.car_a >= 9.0
         assert heater == [True, False]
         snapshot = controller.shed_order.snapshot()
-        assert snapshot["steps"][LOAD_WATER_HEATER]["state"] == "paused"
+        assert snapshot["steps"][LOAD_WATER_HEATER]["state"] == "paused" and snapshot["steps"][LOAD_WATER_HEATER]["taken"]
         assert LOAD_HEAT not in snapshot["steps"]
         # In the site's change log too.
         log = controller.import_target_snapshot()["log"]
         assert [entry["load"] for entry in log if entry["action"] == "shed_order_shed"] == [LOAD_WATER_HEATER]
         for hour in world.complete_hours():
-            assert world.hour_kw(hour) <= 6.0, f"{hour}: {world.hour_kw(hour):.2f} kW"
+            assert world.hour_kw(hour) <= 8.0, f"{hour}: {world.hour_kw(hour):.2f} kW"
+
+
+async def test_a_passing_loss_of_the_budget_keeps_the_heater_paused_and_load_balancing_off_ends_it(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "blip", target_kw=8.0)
+        heater = _heater(world)
+        await world.step()
+        await _charging(world)
+        await world.run(30)
+        assert heater == [True, False]
+        # The house unknown for a minute: no budget for that while (a passing reason); the heater stays paused.
+        from custom_components.spotnav.site import import_target_hold
+
+        real = import_target_hold.hour_budget
+        monkeypatch.setattr(import_target_hold, "hour_budget", lambda **_kwargs: (None, "house_unknown"))
+        await world.run(1)
+        assert world.halo.controller._target_not_applied == "house_unknown"  # noqa: SLF001
+        assert heater == [True, False]
+        monkeypatch.setattr(import_target_hold, "hour_budget", real)
+        await world.run(2)
+        assert LOAD_WATER_HEATER in world.halo.controller.shed_order.steps
+        # Load balancing off: put back at once.
+        monkeypatch.setattr(world.halo.controller, "_active_control_allowed", lambda: False)
+        await world.step()
+        assert world.halo.controller.shed_order.steps == {}
 
 
 async def test_without_a_target_nothing_is_shed(hass: HomeAssistant, monkeypatch) -> None:
@@ -92,7 +121,7 @@ async def test_a_watched_water_heater_only_would_and_the_car_is_held_as_before(h
         controller.water_heater_control.shed_offer = lambda: Offer(live=False, ready=True, give_w=HEATER_W)
         await world.step()
         await _charging(world)
-        await world.run(10)
+        await world.run(20)
         step = controller.shed_order.steps[LOAD_WATER_HEATER]
         assert not step.live
         assert controller.shed_order.until(LOAD_WATER_HEATER, dt_util.utcnow()) is None
@@ -118,6 +147,9 @@ async def test_heat_is_lowered_for_the_ceiling_by_its_own_rules(hass: HomeAssist
     assert relay.calls == ["on"] and control.held
     status = control.status()
     assert (status["reason"], status["until"]) == ("ceiling", (now + 60 * MIN).isoformat())
+    # Its offer says it holds the step (the order counts the step as taken).
+    await control.async_look(now + 2 * MIN)
+    assert control.offer is not None and control.offer.held
     # Put back after 20 minutes: held to its least lowering (45 minutes), then opened.
     del control.site.shed_order.steps[LOAD_HEAT]
     await control.async_look(now + 20 * MIN)
@@ -183,6 +215,7 @@ async def test_a_zone_is_lowered_one_degree_for_the_ceiling(hass: HomeAssistant,
     await zones.async_look(now + 2 * MIN)
     status = zones.status(FLOOR)
     assert status is not None and status["reason"] == "ceiling" and status["held_c"] == 21.0
+    assert zones.offers[FLOOR].held
     # A cold zone is never lowered for the ceiling.
     del zones.site.shed_order.steps[LOAD_HEAT]
     thermostat.attributes = {**thermostat.attributes, "current_temperature": 21.0}
@@ -229,3 +262,20 @@ def test_the_flexible_loads_say_paused_for_the_ceiling_blocked_or_would() -> Non
     order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, False, start, start + H, 3000.0, start)
     watched = replace(loads[0], controlled=False)
     assert [(load.state, load.state_reason) for load in with_states(site, [watched])] == [("watched", "ceiling")]
+
+
+def test_a_car_counts_at_what_its_plan_needs_not_at_what_the_fuse_would_give() -> None:
+    """A car the fuse would let draw 11 kW whose plan needs 3.7 kW now is over by nothing in a 6 kW hour with a 1 kW
+    house: no reason to pause the water heater."""
+    from custom_components.spotnav.site.import_target import HourBudget, TargetMember
+    from custom_components.spotnav.site.import_target_hold import _projection
+
+    budget = HourBudget(
+        target_kw=6.0, hour_start=_HOUR, hour_end=_HOUR + H, so_far_kwh=0.0, hour_kw=0.0, remaining_s=3000.0,
+        house_w=1000.0, rate_w=5880.0, allowed_w=4880.0, house_over=False, hold_kw=5.88,
+    )
+    car = TargetMember(charger_entry_id="garage", phases=3, min_a=6.0, wants_a=16.0)
+    assert _projection(budget, [car]).excess_w > 0
+    assert _projection(budget, [car], {"garage": 3700.0}).excess_w < 0
+    # A plan asking more than the fuse gives counts at the fuse's.
+    assert _projection(budget, [car], {"garage": 20000.0}).cars_held_w == 16.0 * 3 * _V
