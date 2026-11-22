@@ -67,6 +67,14 @@ CHOICES: Final = (CHOICE_TAKES_WHAT_FITS, CHOICE_LATER, CHOICE_LESS_COMFORT, CHO
 #: Every give weighs the same until the plan learns to compare them (the person's shed order is still to come).
 DEFAULT_WEIGHT: Final = 1.0
 
+#: What a load is doing now (`FlexibleLoad.state`): steered as planned, paused (or lowered) by a rule of SpotNav's
+#: such as the shed order under the ceiling, kept from a step by its own hard rule, or only watched.
+STATE_RUNNING: Final = "running"
+STATE_PAUSED: Final = "paused"
+STATE_BLOCKED: Final = "blocked"
+STATE_WATCHED: Final = "watched"
+STATES: Final = (STATE_RUNNING, STATE_PAUSED, STATE_BLOCKED, STATE_WATCHED)
+
 
 def values(**items: Scalar) -> Values:
     """Named numbers as a record holds them."""
@@ -220,6 +228,10 @@ class FlexibleLoad:
     choices: tuple[Choice, ...] = ()
     controlled: bool = False
     name: str | None = None
+    #: What it is doing now (`STATES`, `None` where nothing says) and why (`ceiling`: the shed order holds it; a hard
+    #: rule's code where it keeps the load from a step).
+    state: str | None = None
+    state_reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -228,6 +240,8 @@ class FlexibleLoad:
             "site": self.site,
             "name": self.name,
             "controlled": self.controlled,
+            "state": self.state,
+            "state_reason": self.state_reason,
             "goal": self.goal.as_dict(),
             "handles": [handle.as_dict() for handle in self.handles],
             "hard_rules": [item.as_dict() for item in self.hard_rules],
@@ -249,6 +263,8 @@ class FlexibleLoad:
             site=_text(raw.get("site")),
             name=raw.get("name") if isinstance(raw.get("name"), str) else None,
             controlled=raw.get("controlled") is True,
+            state=raw.get("state") if isinstance(raw.get("state"), str) else None,
+            state_reason=raw.get("state_reason") if isinstance(raw.get("state_reason"), str) else None,
             goal=Goal.from_dict(goal if isinstance(goal, Mapping) else {}),
             handles=tuple(Handle.from_dict(item) for item in items("handles")),
             hard_rules=tuple(HardRule.from_dict(item) for item in items("hard_rules")),

@@ -4,6 +4,7 @@ chargers, the relay and the thermostats are fakes."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -187,3 +188,41 @@ async def test_a_zone_is_lowered_one_degree_for_the_ceiling(hass: HomeAssistant,
     await zones.async_look(now + 3 * H + MIN)
     offer = zones.offers.get(FLOOR)
     assert offer is not None and not offer.ready and offer.why == "zone_cold"
+
+
+def test_the_flexible_loads_say_paused_for_the_ceiling_blocked_or_would() -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.planning.flexible_load import FlexibleLoad, Goal
+    from custom_components.spotnav.site.flexible_loads import with_states
+    from custom_components.spotnav.site.shed_order import ShedOrder
+
+    order = ShedOrder()
+    start = _HOUR
+    order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, start, start + H, 3000.0, start)
+    order.blocked[LOAD_HEAT] = "room_cold"
+    site = SimpleNamespace(
+        shed_order=order,
+        water_heater_control=SimpleNamespace(held_off=True),
+        heat_control=SimpleNamespace(held=False),
+        zones_control=SimpleNamespace(zones={}),
+        _target_paused_hour={"car1": start},
+        _target_budget=SimpleNamespace(hour_start=start),
+    )
+    loads = [
+        FlexibleLoad(id="switch.vvb", kind="water_heater", site="s", goal=Goal("runtime_per_day"), controlled=True),
+        FlexibleLoad(id="switch.vp", kind="heat", site="s", goal=Goal("comfort_band"), controlled=True),
+        FlexibleLoad(id="car1", kind="car", site="s", goal=Goal("energy_by"), controlled=True),
+        FlexibleLoad(id="climate.hall", kind="heat_zone", site="s", goal=Goal("comfort_band"), controlled=False),
+    ]
+    found = {load.id: (load.state, load.state_reason) for load in with_states(site, loads)}
+    assert found == {
+        "switch.vvb": ("paused", "ceiling"),
+        "switch.vp": ("blocked", "room_cold"),
+        "car1": ("paused", "ceiling"),
+        "climate.hall": ("watched", None),
+    }
+    # A watched water heater the order would pause: watched, for the ceiling.
+    order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, False, start, start + H, 3000.0, start)
+    watched = replace(loads[0], controlled=False)
+    assert [(load.state, load.state_reason) for load in with_states(site, [watched])] == [("watched", "ceiling")]
