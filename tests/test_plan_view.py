@@ -288,3 +288,37 @@ def test_the_shed_order_shows_paused_and_lowered_for_the_ceiling() -> None:
     assert heat_lane["state"] == "would"
     assert (heat_lane["runs"][0]["what"], heat_lane["runs"][0]["reason"]) == ("lower", "ceiling")
     assert heat_lane["level"][0] == -1
+
+
+def test_a_grid_charge_that_ran_some_quarters_says_its_power_and_minutes() -> None:
+    # A SolaX tester's night: 3.3 kW in four of the eight quarters of 22-24, holds between.
+    start = at(22)
+    slots = []
+    for quarter in range(8):
+        charging = quarter in (0, 2, 4, 6)
+        slots.append(
+            (
+                start + timedelta(minutes=15 * quarter),
+                start + timedelta(minutes=15 * (quarter + 1)),
+                "grid_charge" if charging else "hold",
+                3.3 if charging else 0.0,
+            )
+        )
+    inputs = PlanInputs(
+        "site",
+        NOW,
+        TZ,
+        prices=prices(),
+        battery=BatteryPlan("sensor.soc", None, tuple(slots), live=False),
+    )
+    battery = _load(plan_view(inputs), "home_battery")
+    run = next(item for item in battery["runs"] if item["what"] == "grid_charge")
+    assert run["kw"] == 3.3
+    assert run["active_min"] == 60
+    assert run["kwh"] == 3.3  # the energy: 3.3 kW for an hour
+
+    # Every quarter charging keeps the old form: the mean, no minutes.
+    full = [(start + timedelta(minutes=15 * q), start + timedelta(minutes=15 * (q + 1)), "grid_charge", 3.3) for q in range(8)]
+    inputs = PlanInputs("site", NOW, TZ, prices=prices(), battery=BatteryPlan("sensor.soc", None, tuple(full), live=False))
+    run = _load(plan_view(inputs), "home_battery")["runs"][0]
+    assert run["kw"] == 3.3 and run["active_min"] is None

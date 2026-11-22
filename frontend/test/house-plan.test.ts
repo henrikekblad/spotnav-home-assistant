@@ -142,6 +142,22 @@ describe("the Plan tab", () => {
     }
   });
 
+  it("says the power and the minutes a battery action really ran, in every language", () => {
+    const battery = plan().loads.find((load) => load.kind === "home_battery")!;
+    const run = { ...battery.runs[0]!, what: "grid_charge", reason: null, kw: 3.3, activeMin: 75 };
+    expect(runWords("sv", battery, run)).toBe("Nätladdning av husbatteriet, 3,3 kW i 1 h 15 min");
+    expect(runWords("en", battery, run)).toBe("Grid charging of the home battery, 3.3 kW for 1 h 15 min");
+    // Ran every quarter: today's form.
+    expect(runWords("en", battery, { ...run, activeMin: null })).toBe("Grid charging of the home battery, 3.3 kW");
+    for (const language of LANGUAGES) {
+      for (const what of ["grid_charge", "charge", "cover", "sell"]) {
+        const words = runWords(language, battery, { ...run, what, kw: what === "cover" ? -3.3 : 3.3, activeMin: 45 });
+        expect(words, `${language} ${what}`).not.toMatch(/house\.plan\./);
+        expect(words, `${language} ${what}`).toContain("45 min");
+      }
+    }
+  });
+
   it("words the shed order's steps: paused and lowered for the ceiling", () => {
     const heater = plan().loads.find((load) => load.kind === "water_heater")!;
     const heat = plan().loads.find((load) => load.kind === "heat")!;

@@ -11,7 +11,7 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
      summary: {cost, peak_kw, peak_start, peak_ceiling_kw, peak_ceiling, over} ,
      hours: [{start, price, sell, house_kw, sun_kw, net_kw, ceiling_kw, ceiling, past, recorded, planned_net_kw}],
      loads: [{id, kind, name, state: "live" | "would", in_house, kw: [...], level: [...] | null,
-              runs: [{start, end, what, reason, kw, kwh}], summary: {...}, does_not_fit: {...} | null,
+              runs: [{start, end, what, reason, kw, kwh, active_min}], summary: {...}, does_not_fit: {...} | null,
               planned: [...] | null, ran: [...] | null, reason: [...] | null}],
      past: bool, date: "YYYY-MM-DD" | null, history: {days, first}}
 
@@ -119,7 +119,7 @@ LOAD_KEYS: Final = (
 )
 #: The local days before today the Plan tab may step back to (`site/decision_ledger.KEPT_DAYS`).
 HISTORY_DAYS: Final = 7
-RUN_KEYS: Final = ("start", "end", "what", "reason", "kw", "kwh")
+RUN_KEYS: Final = ("start", "end", "what", "reason", "kw", "kwh", "active_min")
 
 STATE_LIVE: Final = "live"
 STATE_WOULD: Final = "would"
@@ -291,8 +291,14 @@ def _runs(
     what: Sequence[str | None],
     kw: Sequence[float | None],
     reason: Sequence[str | None] | None = None,
+    active: Sequence[tuple[float, float] | None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Contiguous hours with the same `what` (and reason) as runs, with their mean kW and energy."""
+    """Contiguous hours with the same `what` (and reason) as runs, with their mean kW and energy.
+
+    `active` (per hour, `(kW, minutes)`): what the action really ran at and for how long inside the hour, where it
+    ran only part of it (quarters with holds between). A run with such an hour says the active power (energy over the
+    minutes it ran, never a mean over idle quarters) in `kw` and the minutes it ran in total in `active_min`;
+    `active_min` is `null` where the action ran every minute of the run."""
     runs: list[dict[str, Any]] = []
     index = 0
     while index < len(hours):
@@ -306,14 +312,25 @@ def _runs(
             end += 1
         values = [value for value in kw[index : end + 1] if value is not None]
         kwh = sum(abs(value) for value in values) if values else None
+        run_kw = _r(sum(values) / len(values), 2) if values else None
+        active_min: int | None = None
+        if active is not None:
+            parts = [active[position] for position in range(index, end + 1)]
+            if any(part is not None for part in parts):
+                minutes = sum(part[1] for part in parts if part is not None)
+                if minutes > 0 and minutes < 60.0 * (end + 1 - index) - 0.5:
+                    energy = sum(part[0] * part[1] / 60.0 for part in parts if part is not None)
+                    run_kw = _r(energy / (minutes / 60.0), 2)
+                    active_min = int(round(minutes))
         runs.append(
             {
                 "start": hours[index].isoformat(),
                 "end": (hours[end] + HOUR).isoformat(),
                 "what": current,
                 "reason": why,
-                "kw": _r(sum(values) / len(values), 2) if values else None,
+                "kw": run_kw,
                 "kwh": _r(kwh, 2),
+                "active_min": active_min,
             }
         )
         index = end + 1
@@ -378,17 +395,40 @@ def _battery_what(action: str, kw: float, sun_kw: float | None) -> str | None:
     return None
 
 
+def _active_in(
+    start: datetime, inside: Sequence[tuple[datetime, datetime, str, float]], mean: float
+) -> tuple[float, float] | None:
+    """The battery's power in the hour's slots that run in the direction of the hour's mean, and for how many
+    minutes: `(kW, minutes)`; `None` where it is a hold."""
+    sign = 1.0 if mean > 0 else -1.0
+    seconds = 0.0
+    energy = 0.0
+    for a, b, _action, power in inside:
+        if power * sign <= QUIET_KW:
+            continue
+        overlap = (min(b, start + HOUR) - max(a, start)).total_seconds()
+        if overlap > 0:
+            seconds += overlap
+            energy += power * overlap
+    if seconds <= 0:
+        return None
+    return energy / seconds, seconds / 60.0
+
+
 def _battery(battery: BatteryPlan, hours: Sequence[datetime], sun: Mapping[datetime, float] | None) -> dict[str, Any]:
     kw: list[float | None] = []
     what: list[str | None] = []
+    active: list[tuple[float, float] | None] = []
     strongest = (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE, ACTION_SHAVE, ACTION_DISCHARGE_HOUSE, ACTION_HOLD)
     for start in hours:
         inside = [slot for slot in battery.slots if slot[0] < start + HOUR and slot[1] > start]
         if not inside:
             kw.append(None)
             what.append(None)
+            active.append(None)
             continue
         value = _mean_in(start, start + HOUR, [(a, b, power) for a, b, _action, power in inside])
+        active.append(_active_in(start, inside, value))
         actions = [action for _a, _b, action, _p in inside]
         action = next((item for item in strongest if item in actions), actions[0])
         kw.append(value)
@@ -404,7 +444,7 @@ def _battery(battery: BatteryPlan, hours: Sequence[datetime], sun: Mapping[datet
         False,
         kw,
         None,
-        _runs(hours, what, kw),
+        _runs(hours, what, kw, active=active),
         {"charge_kwh": _r(charged, 2), "grid_charge_kwh": _r(grid, 2), "cover_kwh": _r(covered, 2)},
     )
 

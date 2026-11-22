@@ -450,6 +450,7 @@
       "reason": null,
       "runs": [
         {
+          "active_min": null,
           "end": "2026-11-17T04:00:00+00:00",
           "kw": 3.7,
           "kwh": 14.8,
@@ -506,6 +507,7 @@
       "reason": null,
       "runs": [
         {
+          "active_min": null,
           "end": "2026-11-16T22:00:00+00:00",
           "kw": -1.8,
           "kwh": 5.4,
@@ -514,6 +516,7 @@
           "what": "cover"
         },
         {
+          "active_min": null,
           "end": "2026-11-17T04:00:00+00:00",
           "kw": 3.0,
           "kwh": 6.0,
@@ -522,6 +525,7 @@
           "what": "grid_charge"
         },
         {
+          "active_min": null,
           "end": "2026-11-17T13:00:00+00:00",
           "kw": 1.2,
           "kwh": 3.6,
@@ -530,6 +534,7 @@
           "what": "sun_charge"
         },
         {
+          "active_min": null,
           "end": "2026-11-17T22:00:00+00:00",
           "kw": -1.8,
           "kwh": 10.8,
@@ -616,6 +621,7 @@
       "reason": null,
       "runs": [
         {
+          "active_min": null,
           "end": "2026-11-17T06:00:00+00:00",
           "kw": 1.0,
           "kwh": 2.0,
@@ -624,6 +630,7 @@
           "what": "preheat"
         },
         {
+          "active_min": null,
           "end": "2026-11-17T08:00:00+00:00",
           "kw": 0.5,
           "kwh": 1.0,
@@ -632,6 +639,7 @@
           "what": "lower"
         },
         {
+          "active_min": null,
           "end": "2026-11-17T18:00:00+00:00",
           "kw": 0.5,
           "kwh": 1.0,
@@ -717,6 +725,7 @@
       "reason": null,
       "runs": [
         {
+          "active_min": null,
           "end": "2026-11-17T08:00:00+00:00",
           "kw": null,
           "kwh": null,
@@ -772,6 +781,7 @@
       "reason": null,
       "runs": [
         {
+          "active_min": null,
           "end": "2026-11-17T00:00:00+00:00",
           "kw": 3.0,
           "kwh": 6.0,

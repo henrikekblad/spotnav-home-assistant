@@ -55,6 +55,7 @@
       "reason": null,
       "runs": [
         {
+          "active_min": null,
           "end": "2026-11-16T23:00:00+00:00",
           "kw": 11.0,
           "kwh": 11.0,
