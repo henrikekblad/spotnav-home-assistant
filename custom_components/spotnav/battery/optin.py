@@ -46,6 +46,10 @@ ENABLE_KEYS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
         ("sensor", "plant_phase_a_active_power"),
         ("sensor", "plant_phase_b_active_power"),
         ("sensor", "plant_phase_c_active_power"),
+        # Read by the small-fuse grid charge (`ImportLimitPhases`): the grid sensor's status and the Output Type
+        # (L1/L2/L3/N), both disabled by default; without them the plant's per-phase import limit is never relied on.
+        ("sensor", "plant_grid_sensor_status"),
+        ("sensor", "inverter_output_type"),
     ),
     "solaredge": (
         ("number", "storage_command_timeout"),
