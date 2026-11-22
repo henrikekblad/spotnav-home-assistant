@@ -6,8 +6,9 @@ controllers already hold, with no I/O (`observe`): the grid's import, each membe
 target, a person's Stop or the car did to it, the home battery's power, whether the heat control holds the pump
 lowered or raised, each floor-heating zone lowered, the water heater on or paused, and the shed order's step for the
 ceiling. At the first sample of a clock hour it closes the hour before into rows and reads the plan for the new one,
-once, from the plan view's own answer (`api/plan.async_plan_answer`, read-only; a read that fails is tried again
-every `RETRY_S` and the row then says how late it was read). A plan read later never replaces it.
+once, from the plan view's own answer (`api/plan.async_plan_answer`, read-only, handed in by the API layer at setup
+through `set_plan_reader`, as the site never imports the API; a read that fails is tried again every `RETRY_S` and the
+row then says how late it was read). A plan read later never replaces it.
 
 Kept in its own store (`spotnav.decision_ledger.<site>`), written off the event loop (`debug_day.DayStore`,
 `off_loop`) at most every `SAVE_DELAY_S` and at Home Assistant's stop; the running hour is kept with it, so a restart
@@ -17,6 +18,7 @@ never written: it reads as missing. Never raises into the site.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any, Final
@@ -58,6 +60,16 @@ RETRY_S: Final = 300.0
 CHARGING_KW: Final = 0.1
 #: The battery's power beyond this (kW) is charging or covering.
 BATTERY_KW: Final = 0.05
+
+
+#: The plan view's answer for a site entry (`api/plan.async_plan_answer`), set by the API layer at setup.
+_plan_reader: Callable[[HomeAssistant, Any], Awaitable[dict[str, Any]]] | None = None
+
+
+def set_plan_reader(reader: Callable[[HomeAssistant, Any], Awaitable[dict[str, Any]]] | None) -> None:
+    """Hand in how the plan view's answer is read (the API layer, at the integration's setup)."""
+    global _plan_reader  # noqa: PLW0603 - one reader for the domain, set once at setup
+    _plan_reader = reader
 
 
 def store_key(entry_id: str) -> str:
@@ -315,13 +327,12 @@ class DecisionRecorder:
         )
 
     async def _async_read_plan(self, site: SiteCapacityController, number: int) -> None:
-        from ..api.plan import async_plan_answer  # noqa: PLC0415 - the API imports the site
-
         try:
+            reader = _plan_reader
             entry = None if self._hass is None else self._hass.config_entries.async_get_entry(self._entry_id)
-            if entry is None:
+            if entry is None or reader is None:
                 return
-            answer = await async_plan_answer(self._hass, entry)  # type: ignore[arg-type]
+            answer = await reader(self._hass, entry)  # type: ignore[arg-type]
             self.take_plan(answer, number, dt_util.utcnow())
         except Exception:  # noqa: BLE001 - tried again at the next sample after RETRY_S
             _LOGGER.debug("SpotNav decision history: the plan could not be read", exc_info=True)

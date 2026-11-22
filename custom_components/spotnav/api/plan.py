@@ -45,6 +45,7 @@ from ..site.house_forecast import BASIS_GROSS
 from ..site.does_not_fit import site_does_not_fit
 from ..site.import_target import stored_import_target_kw
 from ..site.shed_order import LOAD_HEAT, LOAD_WATER_HEATER
+from ..site.decision_recorder import set_plan_reader
 from ..site.plan_history import day_hours, past_view
 from ..site.plan_view import (
     CEILING_IMPORT_TARGET,
@@ -383,5 +384,6 @@ async def websocket_get_plan(hass: HomeAssistant, connection: websocket_api.Acti
 
 @callback
 def async_setup_plan_api(hass: HomeAssistant) -> None:
-    """Register the command once for the domain."""
+    """Register the command once for the domain, and hand the decision history its plan reader."""
     websocket_api.async_register_command(hass, websocket_get_plan)
+    set_plan_reader(async_plan_answer)
