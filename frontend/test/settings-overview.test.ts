@@ -300,6 +300,13 @@ describe("Download debug info", () => {
     expect(admin.hass.betaMessages[0]).toMatchObject({ type: "spotnav/beta", api_version: 1, charger_id: "entry_a", action: "get" });
     // The overview itself holds no input: the box opens in its own dialog.
     expect(section(admin.element, "support")?.querySelector("input")).toBeNull();
+    // Drawn as the popover draws it (`support-section.ts`): heading icon, out-of-date line, rows, then the buttons.
+    const support = section(admin.element, "support")!;
+    expect(support.querySelector("h4 svg")).not.toBeNull();
+    const order = [...support.children].map((child) =>
+      (child as HTMLElement).dataset["row"] ?? (child.querySelector("button") !== null && child.tagName === "DIV" ? "buttons" : child.tagName.toLowerCase()),
+    );
+    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "p", "buttons"]);
     row?.querySelector<HTMLButtonElement>("[data-edit='beta']")?.click();
     await settle();
     expect(shadow(admin.element).querySelector("[data-beta='box'] [data-beta-field='on']")).not.toBeNull();

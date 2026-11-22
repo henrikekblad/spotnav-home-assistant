@@ -43,6 +43,20 @@ export const SETTINGS_FORM_STYLES = `
     gap: 8px;
     margin-top: 8px;
   }
+  /* A text field and its button on one line (the beta e-mail and its Save), wrapping on a narrow card. */
+  .spotnav-settings-input-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .spotnav-settings-input-row > .spotnav-settings-input {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+  .spotnav-settings-input-row > button {
+    flex: none;
+  }
   .spotnav-settings-check-row > input[type="checkbox"] {
     flex: none;
     margin: 0;

@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { betaBox, blockedText, decodeBetaAnswer, stepText, type BetaRequest } from "../src/beta";
+import { betaBox, blockedText, decodeBetaAnswer, stepText, testBox, testHidden, testSummary, type BetaRequest } from "../src/beta";
 import { translate } from "../src/i18n";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "beta");
@@ -78,9 +78,9 @@ describe("the words", () => {
   });
 });
 
-function box(answers: unknown[]): { root: HTMLElement; calls: BetaRequest[] } {
+function box(answers: unknown[], build: typeof betaBox = betaBox): { root: HTMLElement; calls: BetaRequest[] } {
   const calls: BetaRequest[] = [];
-  const root = betaBox({
+  const root = build({
     doc: document,
     language: "sv",
     idPrefix: "t",
@@ -94,6 +94,7 @@ function box(answers: unknown[]): { root: HTMLElement; calls: BetaRequest[] } {
 }
 
 const q = (root: HTMLElement, selector: string): HTMLElement => root.querySelector(selector) as HTMLElement;
+const test = (answers: unknown[]): { root: HTMLElement; calls: BetaRequest[] } => box(answers, testBox);
 
 describe("betaBox", () => {
   it("reads the state, ticks the box and shows the period", async () => {
@@ -144,9 +145,12 @@ describe("betaBox", () => {
     expect(q(root, "[data-beta=error]").textContent).toBe(translate("sv", "sendDebug.error.email"));
   });
 
+});
+
+describe("testBox", () => {
   it("starts the test, shows the steps live and reads again while it runs", async () => {
     vi.useFakeTimers();
-    const { root, calls } = box([fixture("off_idle.json"), fixture("on_running.json"), fixture("on_done_failed.json")]);
+    const { root, calls } = test([fixture("off_idle.json"), fixture("on_running.json"), fixture("on_done_failed.json")]);
     await settle();
     q(root, "[data-beta=runTest]").click();
     await settle();
@@ -171,7 +175,7 @@ describe("betaBox", () => {
   it("says when a part was skipped or nothing ran, and leaves Run open", async () => {
     const partial = fixture("on_done_partial.json");
     const skipped = { ...partial, test: { ...(partial.test as Record<string, unknown>), result: "skipped" } };
-    const { root } = box([partial]);
+    const { root } = test([partial]);
     await settle();
     expect(q(root, "[data-beta=result]").textContent).toContain(translate("sv", "test.result.partial"));
     expect((q(root, "[data-beta=runTest]") as HTMLButtonElement).disabled).toBe(false);
@@ -187,7 +191,7 @@ describe("betaBox", () => {
       test: { ...(done.test as Record<string, unknown>), sent_ref: null },
     };
     const sent = { ...off, test: { ...(off.test as Record<string, unknown>), sent_ref: "SN-ABCD" } };
-    const { root, calls } = box([off, sent]);
+    const { root, calls } = test([off, sent]);
     await settle();
     const send = q(root, "[data-beta=sendTest]");
     expect(send.hidden).toBe(false);
@@ -201,19 +205,63 @@ describe("betaBox", () => {
   it("hides the test where there is nothing to test and no test ran, and keeps an earlier test's result", async () => {
     const idle = fixture("off_idle.json") as { test: Record<string, unknown> };
     const nothing = { ...idle, test: { ...idle.test, state: "idle", blocked: "nothing_to_test", next_at: null } };
-    const { root } = box([nothing]);
+    const { root } = test([nothing]);
     await settle();
-    expect(q(root, "[data-beta=test]").hidden).toBe(true);
+    expect(root.hidden).toBe(true);
     document.body.innerHTML = "";
     const done = fixture("on_done_failed.json") as { test: Record<string, unknown> };
-    const after = box([{ ...done, test: { ...done.test, blocked: "nothing_to_test", next_at: null } }]);
+    const after = test([{ ...done, test: { ...done.test, blocked: "nothing_to_test", next_at: null } }]);
     await settle();
-    expect(q(after.root, "[data-beta=test]").hidden).toBe(false);
+    expect(after.root.hidden).toBe(false);
   });
 
   it("hides the test where the answer has no site", async () => {
-    const { root } = box([{ ...fixture("off_idle.json"), test: null }]);
+    const { root } = test([{ ...fixture("off_idle.json"), test: null }]);
     await settle();
-    expect(q(root, "[data-beta=test]").hidden).toBe(true);
+    expect(root.hidden).toBe(true);
+  });
+});
+
+describe("the layout", () => {
+  it("puts the e-mail address and its Save on one line", async () => {
+    const { root } = box([fixture("off_idle.json")]);
+    await settle();
+    const save = q(root, "[data-beta=saveEmail]");
+    expect(save.parentElement).toBe(q(root, "[data-beta-field=email]").parentElement);
+    expect(save.parentElement?.classList.contains("spotnav-settings-input-row")).toBe(true);
+  });
+
+  it("keeps the test out of the beta box and puts Send under the result, named for what it does", async () => {
+    const done = fixture("on_done_failed.json");
+    const off = {
+      ...done,
+      beta: { on: false, started_at: null, ends_at: null, ended: false, email: null },
+      test: { ...(done.test as Record<string, unknown>), sent_ref: null },
+    };
+    expect(box([off]).root.querySelector("[data-beta=runTest]")).toBeNull();
+    const { root } = test([off]);
+    await settle();
+    const send = q(root, "[data-beta=sendTest]");
+    expect(send.textContent).toBe("Skicka resultatet till utvecklaren");
+    const result = q(root, "[data-beta=result]");
+    expect(result.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(q(root, "[data-beta=runTest]").parentElement).not.toBe(send.parentElement);
+  });
+});
+
+describe("the hardware test row", () => {
+  it("shows the last result with its day, running, or not run, and hides where nothing can be tested", () => {
+    const done = decodeBetaAnswer(fixture("on_done_failed.json"))!;
+    expect(testSummary("sv", done)).toMatch(/^Problem · /);
+    expect(testSummary("sv", decodeBetaAnswer(fixture("on_running.json")))).toBe("Pågår");
+    const idle = decodeBetaAnswer(fixture("off_idle.json"))!;
+    expect(testSummary("sv", { ...idle, test: { ...idle.test!, state: "idle", result: null } })).toBe("Inte kört");
+    expect(testSummary("sv", null)).toBe("…");
+    expect(testHidden(null)).toBe(true);
+    expect(testHidden({ ...idle, test: null })).toBe(true);
+    expect(testHidden({ ...idle, test: { ...idle.test!, state: "idle", blocked: "nothing_to_test" } })).toBe(true);
+    expect(testHidden({ ...done, test: { ...done.test!, blocked: "nothing_to_test" } })).toBe(false);
+    // A part that is there but busy is no "turn control on first".
+    expect(blockedText("sv", { ...idle.test!, blocked: "not_ready" })).toBe(translate("sv", "test.blocked.later"));
   });
 });

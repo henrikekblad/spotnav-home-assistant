@@ -456,6 +456,14 @@ async def test_parts_that_are_not_there_or_not_ready(hass: HomeAssistant) -> Non
     assert runner.view()["result"] == "partial"
 
 
+async def test_parts_there_but_none_ready_is_not_nothing_to_test(hass: HomeAssistant) -> None:
+    """A battery waiting for an acknowledgement and a heat path that is busy: there is something to test, just not
+    now, so the card does not tell the person to turn control on."""
+    runner = await _runner(hass, _FakeBattery(refusal="needs:ai_takeover_ack"), _FakeHeat(refusal="busy"))
+    assert runner.view()["blocked"] == "not_ready"
+    assert await runner.async_start() == "not_ready"
+
+
 async def test_nothing_to_test_comes_before_the_days_slot(hass: HomeAssistant) -> None:
     """A site where nothing can be tested says so, even when a test ran today: the day's slot is no reason there."""
     battery, heat = _FakeBattery(), _FakeHeat()

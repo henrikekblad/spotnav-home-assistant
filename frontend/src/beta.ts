@@ -1,10 +1,12 @@
-// The beta tester box and the hardware test in Settings → Support (administrators only): `spotnav/beta`.
+// Settings → Support's "Betatestare" and "Hårdvarutest" rows (administrators only), each opening its own dialog:
+// `spotnav/beta`.
 //
-// The "Betatestare" box (off by default) with its "Läs mer" text, the optional e-mail address, the one line once the
-// 14-day period has ended by itself ("nothing is sent any more"), and "Kör hårdvarutest": started by the
-// administrator, its steps shown live (the box reads the command again while a test runs), its result, and "Skicka"
-// when beta is off (beta sends a finished test by itself). The backend decides everything; the card only shows the
-// answer; a missing or mistyped known key is no answer, an unknown key is ignored (see `contract.ts`).
+// The beta box (off by default) with its "Läs mer" text, the optional e-mail address beside its Save, and the one line
+// once the 14-day period has ended by itself ("nothing is sent any more"). The hardware test: started by the
+// administrator, its steps shown live (the box reads the command again while a test runs), its result, and under it
+// "Skicka resultatet till utvecklaren" when beta is off (beta sends a finished test by itself). The backend decides
+// everything; the card only shows the answer; a missing or mistyped known key is no answer, an unknown key is ignored
+// (see `contract.ts`).
 
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { hasAllKeys, hasUnknownKeys } from "./contract";
@@ -197,16 +199,17 @@ export function blockedText(language: Language, test: TestState): string | null 
   }
 }
 
+
 export interface BetaBoxInput {
   doc: Document;
   language: Language;
   idPrefix: string;
   call: BetaCall;
-  /** Every answer read, so the Support row's value can follow it. */
+  /** Every answer read, so the Support rows' values can follow it. */
   onAnswer?: (answer: BetaAnswer) => void;
 }
 
-/** The Support row's value: off, on until a date, or the one line once the period ended by itself. */
+/** The "Betatestare" row's value: off, on until a date, or the one line once the period ended by itself. */
 export function betaSummary(language: Language, answer: BetaAnswer | null): string {
   const beta = answer?.beta ?? null;
   if (beta === null) {
@@ -218,7 +221,36 @@ export function betaSummary(language: Language, answer: BetaAnswer | null): stri
   return beta.ended ? translate(language, "beta.ended") : translate(language, "settings.value.off");
 }
 
-/** Read the state once for the Support row; `null` when it cannot be read. */
+const RESULT_VALUES: Record<NonNullable<TestState["result"]>, TranslationKey> = {
+  passed: "test.value.passed",
+  partial: "test.value.partial",
+  skipped: "test.value.skipped",
+  failed: "test.value.failed",
+};
+
+/** A site with nothing to test and no earlier test has no "Hårdvarutest" row: nothing to press, nothing to read. */
+export function testHidden(answer: BetaAnswer | null): boolean {
+  const test = answer?.test ?? null;
+  return test === null || (test.blocked === "nothing_to_test" && test.state === "idle");
+}
+
+/** The "Hårdvarutest" row's value: running, the last result with its day, or not run yet. */
+export function testSummary(language: Language, answer: BetaAnswer | null): string {
+  const test = answer?.test ?? null;
+  if (test === null) {
+    return "…";
+  }
+  if (test.state === "running") {
+    return translate(language, "test.value.running");
+  }
+  if (test.result !== null) {
+    const result = translate(language, RESULT_VALUES[test.result]);
+    return test.finishedAt === null ? result : `${result} · ${dateText(language, test.finishedAt, false)}`;
+  }
+  return translate(language, "test.value.notRun");
+}
+
+/** Read the state once for the Support rows; `null` when it cannot be read. */
 export async function readBeta(call: BetaCall): Promise<BetaAnswer | null> {
   try {
     return decodeBetaAnswer(await call({ action: "get" }));
@@ -228,10 +260,10 @@ export async function readBeta(call: BetaCall): Promise<BetaAnswer | null> {
 }
 
 /**
- * The box as a dialog's body: a form (never submitted) with the box and one Close, as the value editors are drawn,
+ * A box as a dialog's body: a form (never submitted) with the box and one Close, as the value editors are drawn,
  * so the settings overview itself holds no input.
  */
-export function betaEditor(input: BetaBoxInput, onClose: () => void): HTMLFormElement {
+function boxEditor(input: BetaBoxInput, box: HTMLElement, onClose: () => void): HTMLFormElement {
   const form = input.doc.createElement("form");
   form.dataset["beta"] = "form";
   form.noValidate = true;
@@ -242,14 +274,103 @@ export function betaEditor(input: BetaBoxInput, onClose: () => void): HTMLFormEl
   close.dataset["beta"] = "close";
   close.addEventListener("click", () => onClose());
   actions.append(close);
-  form.append(betaBox(input), actions);
+  form.append(box, actions);
   return form;
 }
 
+/** The beta tester box in a dialog. */
+export function betaEditor(input: BetaBoxInput, onClose: () => void): HTMLFormElement {
+  return boxEditor(input, betaBox(input), onClose);
+}
+
+/** The hardware test in a dialog. */
+export function testEditor(input: BetaBoxInput, onClose: () => void): HTMLFormElement {
+  return boxEditor(input, testBox(input), onClose);
+}
+
+interface Session {
+  answer: () => BetaAnswer | null;
+  busy: () => boolean;
+  request: (body: BetaRequest, failure?: TranslationKey) => Promise<BetaAnswer | null>;
+}
+
 /**
- * The box: built empty, filled by the first read, read again after each action and every `TEST_POLL_MS` while a test
- * runs (until the box leaves the page).
+ * One box's link to `spotnav/beta`: the first read, a read after each action, and every `TEST_POLL_MS` while a test
+ * runs (until the box leaves the page). `paint` draws the box from the answer; `error` holds a failed action's line.
  */
+function session(input: BetaBoxInput, root: HTMLElement, error: HTMLElement, paint: () => void): Session {
+  const say = (key: TranslationKey): string => translate(input.language, key);
+  let answer: BetaAnswer | null = null;
+  let busy = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  function schedule(): void {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (answer?.test?.state === "running") {
+      timer = setTimeout(() => {
+        timer = null;
+        if (root.isConnected) {
+          void request({ action: "get" });
+        }
+      }, TEST_POLL_MS);
+    }
+  }
+
+  function errorText(body: BetaRequest, decoded: BetaAnswer): string {
+    if (body.action === "send_test") {
+      return sendFailureText(input.language, decoded.error, decoded.retryAfterS);
+    }
+    if (decoded.error === "spotnav_report_invalid_email") {
+      return say("sendDebug.error.email");
+    }
+    if (body.action === "start_test") {
+      return say("test.error");
+    }
+    return say("beta.error.failed");
+  }
+
+  async function request(body: BetaRequest, failure: TranslationKey = "beta.error.failed"): Promise<BetaAnswer | null> {
+    busy = body.action !== "get";
+    paint();
+    let decoded: BetaAnswer | null = null;
+    try {
+      decoded = decodeBetaAnswer(await input.call(body));
+    } catch {
+      decoded = null;
+    }
+    busy = false;
+    if (decoded !== null && decoded.beta !== null) {
+      answer = decoded;
+      input.onAnswer?.(decoded);
+    }
+    if (decoded === null) {
+      error.textContent = say(failure);
+    } else if (!decoded.ok && body.action !== "get") {
+      error.textContent = errorText(body, decoded);
+    } else {
+      error.textContent = "";
+    }
+    error.hidden = error.textContent === "";
+    paint();
+    schedule();
+    return decoded;
+  }
+
+  error.hidden = true;
+  return { answer: () => answer, busy: () => busy, request };
+}
+
+function errorLine(doc: Document): HTMLElement {
+  const error = element(doc, "p", C.muted);
+  error.dataset["beta"] = "error";
+  error.setAttribute("role", "alert");
+  return error;
+}
+
+/** The "Betatestare" box: the box with its "Läs mer" text, the period's line and the optional e-mail address. */
 export function betaBox(input: BetaBoxInput): HTMLElement {
   const { doc, language, idPrefix } = input;
   const say = (key: TranslationKey, values?: Record<string, string>): string => translate(language, key, values);
@@ -305,50 +426,25 @@ export function betaBox(input: BetaBoxInput): HTMLElement {
   const saveEmail = element(doc, "button", C.button, say("beta.save")) as HTMLButtonElement;
   saveEmail.type = "button";
   saveEmail.dataset["beta"] = "saveEmail";
+  // The address and its Save on one line, as the postcode and its button.
+  const emailRow = element(doc, "div", C.settingsInputRow);
+  emailRow.append(email, saveEmail);
   const emailField = element(doc, "div", C.settingsField);
-  emailField.append(emailLabel, email, saveEmail);
+  emailField.append(emailLabel, emailRow);
 
-  const testHeading = element(doc, "p", C.settingsLabel, say("test.heading"));
-  const testIntro = element(doc, "p", C.muted, say("test.intro"));
-  const run = element(doc, "button", C.button, say("test.run")) as HTMLButtonElement;
-  run.type = "button";
-  run.dataset["beta"] = "runTest";
-  const stop = element(doc, "button", C.button, say("test.stop")) as HTMLButtonElement;
-  stop.type = "button";
-  stop.dataset["beta"] = "stopTest";
-  const send = element(doc, "button", C.button, say("test.send")) as HTMLButtonElement;
-  send.type = "button";
-  send.dataset["beta"] = "sendTest";
-  const testActions = element(doc, "div", C.settingsSupportActions);
-  testActions.append(run, stop, send);
-  const blocked = element(doc, "p", C.muted);
-  blocked.dataset["beta"] = "blocked";
-  const steps = element(doc, "ol");
-  steps.dataset["beta"] = "steps";
-  const result = element(doc, "p");
-  result.dataset["beta"] = "result";
-  result.setAttribute("role", "status");
-  const testBox = element(doc, "div");
-  testBox.dataset["beta"] = "test";
-  testBox.append(testHeading, testIntro, testActions, blocked, steps, result);
+  const error = errorLine(doc);
+  root.append(checkRow, more, status, emailField, error);
 
-  const error = element(doc, "p", C.muted);
-  error.dataset["beta"] = "error";
-  error.setAttribute("role", "alert");
-
-  root.append(checkRow, more, status, emailField, testBox, error);
-
-  let answer: BetaAnswer | null = null;
-  let busy = false;
-  let timer: ReturnType<typeof setTimeout> | null = null;
   let emailTouched = false;
   email.addEventListener("input", () => {
     emailTouched = true;
   });
 
+  const link = session(input, root, error, paint);
+
   function paint(): void {
-    const beta = answer?.beta ?? null;
-    const test = answer?.test ?? null;
+    const beta = link.answer()?.beta ?? null;
+    const busy = link.busy();
     check.disabled = busy || beta === null;
     check.checked = beta?.on === true;
     status.textContent = beta === null
@@ -364,9 +460,80 @@ export function betaBox(input: BetaBoxInput): HTMLElement {
     }
     email.disabled = busy || beta === null;
     saveEmail.disabled = busy || beta === null;
-    // A site with nothing to test and no earlier test shows no box: there is nothing to press and nothing to read.
-    testBox.hidden = test === null || (test.blocked === "nothing_to_test" && test.state === "idle");
-    if (testBox.hidden || test === null) {
+  }
+
+  check.addEventListener("change", () => {
+    void link.request({ action: "set", changes: { on: check.checked } });
+  });
+  saveEmail.addEventListener("click", () => {
+    const address = email.value.trim();
+    if (address !== "" && (address.length > MAX_EMAIL_CHARS || !EMAIL.test(address))) {
+      error.textContent = say("sendDebug.error.email");
+      error.hidden = false;
+      return;
+    }
+    void link.request({ action: "set", changes: { email: address === "" ? null : address } }).then((decoded) => {
+      if (decoded?.ok === true) {
+        emailTouched = false;
+        paint();
+      }
+    });
+  });
+
+  paint();
+  void link.request({ action: "get" });
+  return root;
+}
+
+/**
+ * The "Hårdvarutest" box: what it does, "Kör hårdvarutest" (or "Avbryt testet" while it runs), why it cannot start
+ * now, the steps live, the result, and under it "Skicka resultatet till utvecklaren" when beta is off (beta sends a
+ * finished test by itself).
+ */
+export function testBox(input: BetaBoxInput): HTMLElement {
+  const { doc, language } = input;
+  const say = (key: TranslationKey, values?: Record<string, string>): string => translate(language, key, values);
+  const root = element(doc, "div");
+  root.dataset["beta"] = "test";
+
+  const intro = element(doc, "p", C.muted, say("test.intro"));
+  const run = element(doc, "button", C.button, say("test.run")) as HTMLButtonElement;
+  run.type = "button";
+  run.dataset["beta"] = "runTest";
+  const stop = element(doc, "button", C.button, say("test.stop")) as HTMLButtonElement;
+  stop.type = "button";
+  stop.dataset["beta"] = "stopTest";
+  const testActions = element(doc, "div", C.settingsSupportActions);
+  testActions.append(run, stop);
+  const blocked = element(doc, "p", C.muted);
+  blocked.dataset["beta"] = "blocked";
+  const steps = element(doc, "ol");
+  steps.dataset["beta"] = "steps";
+  const result = element(doc, "p");
+  result.dataset["beta"] = "result";
+  result.setAttribute("role", "status");
+  const send = element(doc, "button", C.button, say("test.send")) as HTMLButtonElement;
+  send.type = "button";
+  send.dataset["beta"] = "sendTest";
+  const sendActions = element(doc, "div", C.settingsSupportActions);
+  sendActions.append(send);
+  const error = errorLine(doc);
+  root.append(intro, testActions, blocked, steps, result, sendActions, error);
+
+  const link = session(input, root, error, paint);
+
+  function paint(): void {
+    const answer = link.answer();
+    const busy = link.busy();
+    const test = answer?.test ?? null;
+    root.hidden = answer !== null && testHidden(answer);
+    if (test === null) {
+      run.disabled = true;
+      stop.hidden = true;
+      sendActions.hidden = true;
+      blocked.hidden = true;
+      steps.hidden = true;
+      result.hidden = true;
       return;
     }
     const running = test.state === "running";
@@ -374,7 +541,8 @@ export function betaBox(input: BetaBoxInput): HTMLElement {
     run.disabled = busy || test.blocked !== null;
     stop.hidden = !running;
     stop.disabled = busy;
-    send.hidden = test.state !== "done" || beta?.on === true || test.sentRef !== null;
+    send.hidden = test.state !== "done" || answer?.beta?.on === true || test.sentRef !== null;
+    sendActions.hidden = send.hidden;
     send.disabled = busy;
     const why = blockedText(language, test);
     blocked.textContent = why ?? "";
@@ -403,90 +571,91 @@ export function betaBox(input: BetaBoxInput): HTMLElement {
     result.hidden = lines.length === 0;
   }
 
-  function schedule(): void {
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    if (answer?.test?.state === "running") {
-      timer = setTimeout(() => {
-        timer = null;
-        if (root.isConnected) {
-          void request({ action: "get" });
-        }
-      }, TEST_POLL_MS);
-    }
-  }
-
-  async function request(body: BetaRequest, failure: TranslationKey = "beta.error.failed"): Promise<BetaAnswer | null> {
-    busy = body.action !== "get";
-    paint();
-    let decoded: BetaAnswer | null = null;
-    try {
-      decoded = decodeBetaAnswer(await input.call(body));
-    } catch {
-      decoded = null;
-    }
-    busy = false;
-    if (decoded !== null && decoded.beta !== null) {
-      answer = decoded;
-      input.onAnswer?.(decoded);
-    }
-    if (decoded === null) {
-      error.textContent = say(failure);
-    } else if (!decoded.ok && body.action !== "get") {
-      error.textContent = errorText(body, decoded);
-    } else {
-      error.textContent = "";
-    }
-    error.hidden = error.textContent === "";
-    paint();
-    schedule();
-    return decoded;
-  }
-
-  function errorText(body: BetaRequest, decoded: BetaAnswer): string {
-    if (body.action === "send_test") {
-      return sendFailureText(language, decoded.error, decoded.retryAfterS);
-    }
-    if (decoded.error === "spotnav_report_invalid_email") {
-      return say("sendDebug.error.email");
-    }
-    if (body.action === "start_test") {
-      return say("test.error");
-    }
-    return say("beta.error.failed");
-  }
-
-  check.addEventListener("change", () => {
-    void request({ action: "set", changes: { on: check.checked } });
-  });
-  saveEmail.addEventListener("click", () => {
-    const address = email.value.trim();
-    if (address !== "" && (address.length > MAX_EMAIL_CHARS || !EMAIL.test(address))) {
-      error.textContent = say("sendDebug.error.email");
-      error.hidden = false;
-      return;
-    }
-    void request({ action: "set", changes: { email: address === "" ? null : address } }).then((decoded) => {
-      if (decoded?.ok === true) {
-        emailTouched = false;
-        paint();
-      }
-    });
-  });
   run.addEventListener("click", () => {
-    void request({ action: "start_test" });
+    void link.request({ action: "start_test" });
   });
   stop.addEventListener("click", () => {
-    void request({ action: "stop_test" });
+    void link.request({ action: "stop_test" });
   });
   send.addEventListener("click", () => {
-    void request({ action: "send_test" });
+    void link.request({ action: "send_test" });
   });
 
   paint();
-  error.hidden = true;
-  void request({ action: "get" });
+  void link.request({ action: "get" });
   return root;
+}
+
+export interface BetaRowsInput {
+  doc: Document;
+  language: Language;
+  idPrefix: string;
+  /** One value row that opens `onTap` (the host's own row, so it looks as the rest of its Support). */
+  row: (key: string, label: string, value: string, onTap: () => void) => HTMLElement;
+  /** Open a box in the host's value-editor dialog; `onClose` goes back to Settings. */
+  open: (title: string, build: (onClose: () => void) => HTMLFormElement) => void;
+}
+
+/**
+ * Support's "Betatestare" and "Hårdvarutest" rows for one site or charger: read once (the first time they are drawn),
+ * then from every answer their dialogs read, so a repaint of Settings keeps the last values without asking again.
+ */
+export class BetaRows {
+  private answer: BetaAnswer | null = null;
+  private read = false;
+  private language: Language = "en";
+  private betaValue: HTMLElement | null = null;
+  private testRow: HTMLElement | null = null;
+  private testValue: HTMLElement | null = null;
+
+  constructor(
+    private readonly call: BetaCall,
+    private readonly alive: () => boolean = () => true,
+  ) {}
+
+  rows(input: BetaRowsInput): HTMLElement[] {
+    const { language } = input;
+    this.language = language;
+    const box = (onAnswer: (answer: BetaAnswer) => void): BetaBoxInput => ({
+      doc: input.doc, language, idPrefix: input.idPrefix, call: this.call, onAnswer,
+    });
+    const show = (answer: BetaAnswer): void => this.show(answer);
+    const betaLabel = translate(language, "beta.label");
+    const betaRow = input.row("beta", betaLabel, betaSummary(language, this.answer), () =>
+      input.open(betaLabel, (onClose) => betaEditor(box(show), onClose)),
+    );
+    const testLabel = translate(language, "test.heading");
+    const testRow = input.row("hardware_test", testLabel, testSummary(language, this.answer), () =>
+      input.open(testLabel, (onClose) => testEditor(box(show), onClose)),
+    );
+    this.betaValue = betaRow.querySelector<HTMLElement>("[data-edit='beta']");
+    this.testRow = testRow;
+    this.testValue = testRow.querySelector<HTMLElement>("[data-edit='hardware_test']");
+    testRow.hidden = testHidden(this.answer);
+    if (!this.read) {
+      this.read = true;
+      void readBeta(this.call).then((answer) => {
+        if (answer !== null) {
+          this.show(answer);
+        }
+      });
+    }
+    return [betaRow, testRow];
+  }
+
+  private show(answer: BetaAnswer): void {
+    if (!this.alive()) {
+      return;
+    }
+    this.answer = answer;
+    if (this.betaValue !== null) {
+      this.betaValue.textContent = betaSummary(this.language, answer);
+    }
+    if (this.testValue !== null) {
+      this.testValue.textContent = testSummary(this.language, answer);
+    }
+    if (this.testRow !== null) {
+      this.testRow.hidden = testHidden(answer);
+    }
+  }
 }

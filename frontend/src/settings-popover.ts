@@ -19,6 +19,7 @@ import {
   dismissSetupItem,
   findRegion,
   getCardInfo,
+  getBlueprints,
   getDebugBundle,
   getHeat,
   betaCommand,
@@ -35,11 +36,13 @@ import {
   updateSiteSettingsBySite,
   type SiteTarget,
 } from "./api";
-import { clientBlock, decodeCardInfo, servedHashFromBundle } from "./card-identity";
+import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug";
 import { disconnectPhonesEditor, runDisconnectPhones } from "./phones";
-import { betaEditor, betaSummary, readBeta, type BetaAnswer, type BetaCall } from "./beta";
+import { BetaRows, type BetaCall } from "./beta";
+import { automationsBody, decodeBlueprintUse } from "./automations";
+import { cardOutdatedNote, supportButton, supportSection } from "./support-section";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
 import {
   decodeEntityAnswer,
@@ -2053,41 +2056,92 @@ export class SettingsPopover {
     return section;
   }
 
+  /**
+   * Support (`support-section.ts`, the same as on the charger card's Settings page): the card-out-of-date line, the
+   * Automations, beta tester and hardware test rows (administrators), the debug download, sending and "Disconnect all
+   * phones". "About this card" is the charger card's own (what that charger can do).
+   */
   private supportNode(): HTMLElement {
     const doc = this.input.doc;
     const language = this.language;
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "support";
-    section.append(sectionHeading(doc, "support", translate(language, "settings.section.support")));
-    section.append(element(doc, "p", C.muted, translate(language, "debug.intro")));
-    const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "debug.download")) as HTMLButtonElement;
-    button.type = "button";
-    button.dataset["debug"] = "download";
-    button.addEventListener("click", () => void this.downloadDebug(button));
-    const actions = element(doc, "div", C.settingsSupportActions);
-    actions.append(button);
+    const note = cardOutdatedNote(doc, language, this.cardIsOutdated === true);
+    this.outdatedNote = note;
+    void this.checkCardOutdated();
+    const rows: HTMLElement[] = [];
+    const buttons: HTMLElement[] = [];
+    const download = supportButton(doc, translate(language, "debug.download"), () => void this.downloadDebug(download));
+    download.dataset["debug"] = "download";
+    buttons.push(download);
     if (this.isAdmin()) {
-      const send = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "sendDebug.open")) as HTMLButtonElement;
-      send.type = "button";
+      const automations = translate(language, "settings.automations.label");
+      const [automationsRow] = settingRow(doc, {
+        key: "automations",
+        label: automations,
+        value: translate(language, "settings.automations.value"),
+        onTap: () => this.openAutomations(),
+        changeableText: translate(language, "settings.row.changeable", {
+          label: automations,
+          value: translate(language, "settings.automations.value"),
+        }),
+      });
+      rows.push(automationsRow!);
+      const siteId = this.state.kind === "ready" ? this.state.view.site_id : null;
+      if (siteId !== null) {
+        if (this.betaRows === null || this.betaRowsFor !== siteId) {
+          this.betaRows = new BetaRows(this.betaCall(siteId));
+          this.betaRowsFor = siteId;
+        }
+        rows.push(
+          ...this.betaRows.rows({
+            doc,
+            language,
+            idPrefix: this.input.idPrefix,
+            row: (key, label, value, onTap) =>
+              settingRow(doc, {
+                key,
+                label,
+                value,
+                onTap,
+                changeableText: translate(language, "settings.row.changeable", { label, value }),
+              })[0]!,
+            open: (title, build) => this.openEditor(title, (handlers) => build(() => handlers.onDone())),
+          }),
+        );
+      }
+      const send = supportButton(doc, translate(language, "sendDebug.open"), () => this.openSendDebug());
       send.dataset["debug"] = "send";
-      send.addEventListener("click", () => this.openSendDebug());
-      actions.append(send);
-      const phones = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(language, "phones.disconnect.open")) as HTMLButtonElement;
-      phones.type = "button";
+      const phones = supportButton(doc, translate(language, "phones.disconnect.open"), () => this.openDisconnectPhones());
       phones.dataset["disconnectPhones"] = "open";
-      phones.addEventListener("click", () => this.openDisconnectPhones());
-      actions.append(phones);
+      buttons.push(send, phones);
     }
-    section.append(actions);
-    const siteId = this.state.kind === "ready" ? this.state.view.site_id : null;
-    if (this.isAdmin() && siteId !== null) {
-      section.append(this.betaRow(siteId));
-    }
-    return section;
+    return supportSection({ doc, language, note, rows, debugIntro: true, buttons });
   }
 
-  private betaAnswer: BetaAnswer | null = null;
-  private betaReadFor: string | null = null;
+  private betaRows: BetaRows | null = null;
+  private betaRowsFor: string | null = null;
+  private outdatedNote: HTMLElement | null = null;
+  /** Whether the card running here is older than the one served: `null` until checked, checked once per page load. */
+  private cardIsOutdated: boolean | null = null;
+  private cardCheck: Promise<void> | null = null;
+
+  private async checkCardOutdated(): Promise<void> {
+    const hass = this.input.hass();
+    if (this.cardIsOutdated !== null || this.cardCheck !== null || hass === null) {
+      return;
+    }
+    this.cardCheck = (async () => {
+      const outdated = cardOutdated(ownCardBundleHash(), await this.servedCardHash(hass));
+      if (outdated !== null) {
+        this.cardIsOutdated = outdated;
+      }
+      if (this.outdatedNote !== null) {
+        this.outdatedNote.hidden = this.cardIsOutdated !== true;
+      }
+    })().finally(() => {
+      this.cardCheck = null;
+    });
+    await this.cardCheck;
+  }
 
   private betaCall(siteId: string): BetaCall {
     return async (request) => {
@@ -2099,42 +2153,35 @@ export class SettingsPopover {
     };
   }
 
-  /** "Betatestare": its state as the row's value (read once per site), its box in the popover's dialog. */
-  private betaRow(siteId: string): HTMLElement {
+  /** "Automations": SpotNav's blueprints, each with its import button, and how many automations use each one. */
+  private openAutomations(): void {
     const doc = this.input.doc;
     const language = this.language;
-    const call = this.betaCall(siteId);
-    const label = translate(language, "beta.label");
-    const value = betaSummary(language, this.betaAnswer);
-    const [row] = settingRow(doc, {
-      key: "beta",
-      label,
-      value,
-      onTap: () =>
-        this.openEditor(label, (handlers) =>
-          betaEditor(
-            { doc, language, idPrefix: this.input.idPrefix, call, onAnswer: (answer) => this.showBeta(answer) },
-            () => handlers.onDone(),
-          ),
-        ),
-      changeableText: translate(language, "settings.row.changeable", { label, value }),
+    this.openEditor(translate(language, "settings.automations.label"), (handlers) => {
+      const list = automationsBody(doc, language, (path) => this.navigate(path));
+      const form = doc.createElement("form");
+      form.noValidate = true;
+      form.dataset["automations"] = "form";
+      form.addEventListener("submit", (event) => event.preventDefault());
+      const actions = element(doc, "div", C.settingsActions);
+      const close = element(doc, "button", `${C.button} ${C.settingsSave}`, translate(language, "dialog.close")) as HTMLButtonElement;
+      close.type = "button";
+      close.addEventListener("click", () => handlers.onCancel());
+      actions.append(close);
+      form.append(list.body, actions);
+      const hass = this.input.hass();
+      if (hass !== null) {
+        void getBlueprints(hass)
+          .then((raw) => {
+            const use = decodeBlueprintUse(raw);
+            if (use !== null && form.isConnected) {
+              list.showUse(use);
+            }
+          })
+          .catch(() => undefined);
+      }
+      return form;
     });
-    if (this.betaReadFor !== siteId) {
-      this.betaReadFor = siteId;
-      void readBeta(call).then((answer) => this.showBeta(answer));
-    }
-    return row!;
-  }
-
-  private showBeta(answer: BetaAnswer | null): void {
-    if (answer === null) {
-      return;
-    }
-    this.betaAnswer = answer;
-    const value = this.dialog === null ? null : this.input.owner.querySelector<HTMLElement>("[data-edit='beta']");
-    if (value !== null) {
-      value.textContent = betaSummary(this.language, answer);
-    }
   }
 
   /** "Disconnect all phones" in the popover's dialog: one line, then the confirming button. Administrators only. */
