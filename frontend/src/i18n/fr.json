@@ -2061,7 +2061,7 @@
   "heat.ahead.night": "nuit plus fraîche {from}–{to}",
   "heat.ahead.away": "absent {from}–{to}",
   "heat.ahead.water": "eau chaude {time}",
-  "heat.ahead.none": "Aucun abaissement prévu dans les 12 prochaines heures",
+  "heat.ahead.none": "Aucun abaissement prévu dans les 24 prochaines heures",
   "heat.plan.none": "Rien à afficher pour ce jour.",
   "heat.use.label": "Consommation du chauffage par part",
   "heat.use.unit": "Unité",

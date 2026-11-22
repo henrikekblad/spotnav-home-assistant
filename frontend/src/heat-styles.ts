@@ -234,7 +234,7 @@ export const HEAT_STYLES = `
   .${X.ahead} { min-width: 0; }
   .${X.aheadRow} {
     display: flex;
-    gap: 2px;
+    gap: 1px;
     height: 10px;
   }
   .${X.aheadCell} {

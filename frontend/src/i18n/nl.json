@@ -2061,7 +2061,7 @@
   "heat.ahead.night": "koelere nacht {from}–{to}",
   "heat.ahead.away": "weg {from}–{to}",
   "heat.ahead.water": "warm water {time}",
-  "heat.ahead.none": "Geen verlaging gepland voor de komende 12 uur",
+  "heat.ahead.none": "Geen verlaging gepland voor de komende 24 uur",
   "heat.plan.none": "Niets te tonen voor deze dag.",
   "heat.use.label": "Verbruik van de verwarming per onderdeel",
   "heat.use.unit": "Eenheid",

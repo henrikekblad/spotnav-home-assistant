@@ -2061,7 +2061,7 @@
   "heat.ahead.night": "kühlere Nacht {from}–{to}",
   "heat.ahead.away": "abwesend {from}–{to}",
   "heat.ahead.water": "Warmwasser {time}",
-  "heat.ahead.none": "Keine Absenkung in den nächsten 12 Stunden geplant",
+  "heat.ahead.none": "Keine Absenkung in den nächsten 24 Stunden geplant",
   "heat.plan.none": "Für diesen Tag gibt es nichts anzuzeigen.",
   "heat.use.label": "Verbrauch der Heizung je Teil",
   "heat.use.unit": "Einheit",

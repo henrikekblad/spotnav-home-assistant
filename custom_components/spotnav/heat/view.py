@@ -70,9 +70,9 @@ after a back-off (`strict`). The review's `cold_risks` are the peaks a
 block held the pump's run into, `blocks_cut` the hours level A took out that day, `a_mode` level A's mode that day. An hour of the band with a planned boost is marked
 `hot_water` as a measured run's.
 
-`ahead` is the plan from the running hour on, `AHEAD_HOURS` of them at most (the card's strip under the dial): the
-band's own hours to midnight, then tomorrow's as the same rule plans them once every hour of tomorrow has its price
-(without them the list ends at midnight: nothing is guessed).
+`ahead` is the plan from the running hour on, a rolling `AHEAD_HOURS` across midnight (the card's strip under the
+dial): the band's own hours to midnight, then tomorrow's as the same rule plans them. An hour of tomorrow without a
+price is still there: it is planned normal unless a fixed rule (night, away) covers it.
 
 `control` is SpotNav's own steering of the pump (`heat/control.py`, `HeatControl.status`): `reason` is the check's
 phase while verifying, the rules' reason while running (`heat/relay_control.py`), what it waits for while waiting.
@@ -130,7 +130,7 @@ HEAT_KEYS: Final = (
 )
 AHEAD_HOUR_KEYS: Final = ("start", "action", "target_c", "reason", "hot_water")
 #: The hours the card's "now" strip shows from the running one on.
-AHEAD_HOURS: Final = 12
+AHEAD_HOURS: Final = 24
 BAND_HOUR_KEYS: Final = (
     "start", "action", "target_c", "reason", "price", "past", "hot_water", "car", "relay_min", "relay_expected",
     "executed_min", "raised_min",
@@ -419,21 +419,20 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
     ][:AHEAD_HOURS]
     if len(ahead) < AHEAD_HOURS and hours:
         tomorrow = day_hours(hours[-1] + timedelta(hours=1), zone_info)
-        if all(hour in hour_prices for hour in tomorrow):
-            following, _guard = band(
-                config,
-                tomorrow,
-                hour_prices,
-                now,
-                zone_info,
-                outdoor_c=outdoor_c,
-                tight=inputs.tight,
-                outdoor_by_hour=inputs.outdoor_by_hour,
-            )
-            ahead += [
-                {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": hour.start in planned_hours}
-                for hour in following[: AHEAD_HOURS - len(ahead)]
-            ]
+        following, _guard = band(
+            config,
+            tomorrow,
+            hour_prices,
+            now,
+            zone_info,
+            outdoor_c=outdoor_c,
+            tight=inputs.tight,
+            outdoor_by_hour=inputs.outdoor_by_hour,
+        )
+        ahead += [
+            {**{key: item for key, item in hour.as_dict().items() if key != "price"}, "hot_water": hour.start in planned_hours}
+            for hour in following[: AHEAD_HOURS - len(ahead)]
+        ]
 
     pump_state = pump_source = None
     if inputs.pump is not None and inputs.pump.priority is not None:

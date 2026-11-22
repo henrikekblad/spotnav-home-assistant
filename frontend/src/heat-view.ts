@@ -1,6 +1,6 @@
 // The heat card's body: a header (the live status after the name, the details' "i" and, for an administrator, the
 // settings button) and three tabs (`heat-tabs.ts`). Now: the thermostat dial with the comfort band and the measured
-// room, home or away, what SpotNav would do and the relay, a thin strip of the plan's next twelve hours, today's heat
+// room, home or away, what SpotNav would do and the relay, a thin strip of the plan's next 24 hours, today's heat
 // and hot water, and the notes the household can act on. Plan: the day's chart (`heat-day-chart.ts`), today's or a
 // past day's. Use: the period's energy or cost by what is measured (`heat-use.ts`). Below, the "Heating" settings
 // section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state with `textContent`
@@ -798,7 +798,7 @@ function boostRow(doc: Document, language: Language, answer: HeatAnswer, ui: Hea
 // ------------------------------------------------------------------------------------------------ the hours ahead
 
 /** How many hours the strip under the dial spans. */
-export const AHEAD_HOURS = 12;
+export const AHEAD_HOURS = 24;
 const AHEAD_ACTIONS = ["lower", "preheat", "night", "away"] as const;
 
 /**
@@ -854,7 +854,7 @@ export function aheadLine(language: Language, answer: HeatAnswer): string | null
   return translate(language, "heat.ahead.lead", { parts: parts.sort((a, b) => a.at - b.at).map((part) => part.text).join(" · ") });
 }
 
-/** The thin strip under the dial: the plan's next twelve hours, a cell an hour (a lowering, a pre-heat, the cooler
+/** The thin strip under the dial: the plan's next 24 hours, a cell an hour (a lowering, a pre-heat, the cooler
  * night, away, hot water as a dot), with the hours under it and the same in words (`aheadLine`). Hours the plan does
  * not reach yet (tomorrow before its prices) are left open. `null` without hours ahead. */
 function aheadStrip(doc: Document, language: Language, answer: HeatAnswer): HTMLElement | null {
@@ -1200,8 +1200,8 @@ export function holdLines(language: Language, answer: HeatAnswer): { key: string
     if (heater.live && heater.on === false && heater.until !== null) {
       out.push({ key: "waterHeater", text: translate(language, "heat.now.waterHeaterOff", { until: whenLabel(language, answer, Date.parse(heater.until)) }) });
     }
-    // The windows within the strip's twelve hours.
-    const horizon = Date.parse(answer.now) + 12 * 3_600_000;
+    // The windows within the strip's 24 hours.
+    const horizon = Date.parse(answer.now) + AHEAD_HOURS * 3_600_000;
     const ahead = heater.windows.filter((window) => Date.parse(window.start) < horizon);
     const windows = windowsText(language, answer, ahead);
     if (windows !== "") {

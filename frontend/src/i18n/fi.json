@@ -2061,7 +2061,7 @@
   "heat.ahead.night": "viileämpi yö {from}–{to}",
   "heat.ahead.away": "poissa {from}–{to}",
   "heat.ahead.water": "käyttövesi {time}",
-  "heat.ahead.none": "Ei suunniteltua laskua seuraavien 12 tunnin aikana",
+  "heat.ahead.none": "Ei suunniteltua laskua seuraavien 24 tunnin aikana",
   "heat.plan.none": "Tältä päivältä ei ole näytettävää.",
   "heat.use.label": "Lämmityksen kulutus osittain",
   "heat.use.unit": "Yksikkö",

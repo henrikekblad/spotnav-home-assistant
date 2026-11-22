@@ -2061,7 +2061,7 @@
   "heat.ahead.night": "kjøligere natt {from}–{to}",
   "heat.ahead.away": "borte {from}–{to}",
   "heat.ahead.water": "varmtvann {time}",
-  "heat.ahead.none": "Ingen senking planlagt de neste 12 timene",
+  "heat.ahead.none": "Ingen senking planlagt de neste 24 timene",
   "heat.plan.none": "Ingenting å vise for denne dagen.",
   "heat.use.label": "Varmens forbruk per del",
   "heat.use.unit": "Enhet",

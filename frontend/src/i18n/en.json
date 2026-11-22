@@ -2061,7 +2061,7 @@
   "heat.ahead.night": "cooler night {from}–{to}",
   "heat.ahead.away": "away {from}–{to}",
   "heat.ahead.water": "hot water {time}",
-  "heat.ahead.none": "No lowering planned for the next 12 hours",
+  "heat.ahead.none": "No lowering planned for the next 24 hours",
   "heat.plan.none": "Nothing to show for this day.",
   "heat.use.label": "What the heating used, per part",
   "heat.use.unit": "Unit",
