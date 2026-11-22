@@ -62,10 +62,10 @@ and the charging card's **Settings** share, for the card's site. Its sections fo
 
 ## What you see
 
-Above the tabs only the header. Then five tabs, in this order: **Now**, **Energy flow**, **Energy chart**, **Earnings**
-and **Price and battery**. Tap one, or move with the arrow keys (Home and End for the first and last; the tabs are a
+Above the tabs only the header. Then six tabs, in this order: **Now**, **Plan**, **Energy flow**, **Energy chart**,
+**Earnings** and **Price and battery**. Tap one, or move with the arrow keys (Home and End for the first and last; the tabs are a
 tablist for screen readers). The row says the long names while they fit the card; where they do not (a phone) it says
-short ones ("Now · Flow · Chart · Earned · Price"), and in a very narrow card an icon each. The card measures the row as
+short ones ("Now · Plan · Flow · Chart · Earned · Price"), and in a very narrow card an icon each. The card measures the row as
 drawn, so this follows the language and the font, and choosing a tab never changes the wording. A short name and an
 icon keep the long name as their tooltip and for screen readers. The card remembers the tab per card in this browser.
 A tab that can never fill on the site is left out: **Energy flow** without the day's energy flow, **Earnings** without
@@ -106,6 +106,26 @@ whether a car is plugged in and its level, the battery's own power, the sun from
 sensors and the heat from the heat pump's meter where it is a power sensor (else the last quarter hour's mean). They are
 written into the picture in place: the dots keep running and only start again when a line turns. From an older SpotNav
 the picture has the day's figures and the battery's own power only, and says "no live figures yet".
+
+### Plan
+
+Everything SpotNav plans for the home on one time axis, from the running hour to the end of the prices known: tonight
+and, once tomorrow's prices are out (about 13:00), all of tomorrow, at most 36 hours. It rolls with the clock, so late in
+the evening it shows the night and tomorrow, never just what is left of today.
+
+* **At the top**: the estimated cost from the grid over those hours, the highest hour from the grid against the ceiling
+  ("at 03:00 · over the ceiling"), and where the electricity price has a power tariff, the month's peak so far.
+* **The chart**: per hour what the house takes from the grid, split by load: the house, the heat pump and the water
+  heater (part of the house's figure), each car, the home battery charging; below zero the sun and the home battery
+  covering the house. A line is the net from the grid. The dashed line is the ceiling that applies, labelled: the import
+  target or the power level, the power tariff's ceiling, else the main fuse as total power. A dot marks an hour over it.
+  Under the chart a price strip: green the cheapest third of the hours, yellow the middle, red the most expensive.
+* **Per load**: a lane each with the hours it runs (the heat's and the zones' lowered hours dashed) and one line of why.
+* **In words**: the plan as a list, in time order ("01–05 Garage charges 14.8 kWh at 3.7 kW").
+
+A load SpotNav only watches (its control is off, or still being checked) is drawn faded and says *would*: what SpotNav
+would do, never shown as done. Read from `spotnav/get_plan` while the tab is shown and again with the card's refresh;
+nothing is planned anew for it.
 
 ### The period tabs
 

@@ -11,14 +11,15 @@
 // height (a wall screen) the shown tab's picture takes the box's spare height.
 //
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
-// optionally `tab: now | flow | graph | earn | price` to show only that tab (no tab row).
+// optionally `tab: now | plan | flow | graph | earn | price` to show only that tab (no tab row).
 
-import { getHouse, getHouseNow, getPeriodHistory, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { getHouse, getHouseNow, getPeriodHistory, getPlan, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { entityWordsOf } from "./entity-words";
 import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from "./house-loads";
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
 import { decodeHouseNow, NOW_STYLES, patchSchematic, renderSchematic, type HouseNow } from "./house-now";
 import { PERIOD_VIEW_STYLES } from "./house-period-view";
+import { decodePlan, PLAN_STYLES, type PlanAnswer } from "./house-plan";
 import { dayOnly, fitTabs, HOUSE_TABS, houseTabs, isHouseTab, readTab, shownHouseTab, TAB_STYLES, writeTab, type HouseTab, type PeriodChoice } from "./house-tabs";
 import { HEAT_STYLES } from "./heat-styles";
 import { HistoryDialog } from "./history-dialog";
@@ -141,6 +142,9 @@ export class SpotnavHouseCard extends HTMLElement {
   private liveUnsupported = false;
   private readonly periods = new Map<string, Loadable<HouseHistory>>();
   private readonly days = new Map<string, Loadable<HouseAnswer>>();
+  /** The Plan tab's answer, read while that tab is shown (again with each refresh); `null` before the first read. */
+  private plan: Loadable<PlanAnswer> | null = null;
+  private planSeq = 0;
   /** The pointer is over the card: a refresh waits for it to leave, so a hover's readout is not swept away. */
   private hovering = false;
   private pendingRender = false;
@@ -167,7 +171,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.idPrefix = `spotnav-house-${instances}`;
     const doc = this.ownerDocument;
     this.styleNode = doc.createElement("style");
-    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES + EARN_STYLES;
+    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES + LOADS_STYLES + TAB_STYLES + NOW_STYLES + PERIOD_VIEW_STYLES + EARN_STYLES + PLAN_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
@@ -294,6 +298,7 @@ export class SpotnavHouseCard extends HTMLElement {
     };
     this.periods.clear();
     this.days.clear();
+    this.plan = null;
     this.live = null;
     this.liveUnsupported = false;
     this.stopLive();
@@ -457,6 +462,10 @@ export class SpotnavHouseCard extends HTMLElement {
       this.renderSoon();
     }
     this.ensureData();
+    // The plan is read again with the answer while it is shown, the old one kept until the new is in.
+    if (!first && this.shownTab() === "plan") {
+      void this.loadPlan(true);
+    }
     // The running periods are read again with the answer, the old ones shown until the new are in; past ones stay.
     if (!first) {
       for (const key of [...this.periods.keys()].filter((key) => key.endsWith(":now"))) {
@@ -478,7 +487,7 @@ export class SpotnavHouseCard extends HTMLElement {
   }
 
   /** What the shown tab and period need besides the card's answer. */
-  needs(): { live: boolean; history: PeriodChoice | null; day: string | null } {
+  needs(): { live: boolean; history: PeriodChoice | null; day: string | null; plan?: boolean } {
     const tab = this.shownTab();
     const today = this.today();
     const chosen = this.ui.choice ?? { period: "day", date: null };
@@ -486,6 +495,9 @@ export class SpotnavHouseCard extends HTMLElement {
     const choice = tab === "price" ? dayOnly(chosen, today) : chosen;
     if (tab === "now") {
       return { live: true, history: null, day: null };
+    }
+    if (tab === "plan") {
+      return { live: false, history: null, day: null, plan: true };
     }
     const first = this.state.kind === "ready" ? (this.state.answer.day?.first ?? null) : null;
     const hours = choice.period === "day" && choice.date !== null && (first === null || choice.date >= first) ? choice.date : null;
@@ -515,6 +527,7 @@ export class SpotnavHouseCard extends HTMLElement {
       history: needs.history === null ? null : (this.periods.get(this.periodKey(needs.history)) ?? { kind: "loading" }),
       day: needs.day === null ? null : (this.days.get(needs.day) ?? { kind: "loading" }),
       today: this.today(),
+      plan: needs.plan === true ? (this.plan ?? { kind: "loading" }) : null,
     };
   }
 
@@ -543,6 +556,44 @@ export class SpotnavHouseCard extends HTMLElement {
     }
     if (needs.day !== null) {
       void this.loadDay(needs.day);
+    }
+    if (needs.plan === true && this.plan === null) {
+      void this.loadPlan(false);
+    }
+  }
+
+  /** Read the plan (`quiet`: again, the one shown kept until the new one is in, and kept when the read fails). */
+  private async loadPlan(quiet: boolean): Promise<void> {
+    const hass = this.hassObject;
+    const target = this.target();
+    if (hass === null || target === null) {
+      return;
+    }
+    if (!quiet) {
+      this.plan = { kind: "loading" };
+    }
+    const generation = this.generation;
+    const seq = ++this.planSeq;
+    let next: Loadable<PlanAnswer>;
+    try {
+      const decoded = decodePlan(await getPlan(hass, target));
+      next = decoded.ok ? { kind: "ready", answer: decoded.value } : { kind: "failed", code: decoded.failure === "unsupported" ? UNSUPPORTED_API_VERSION : null };
+    } catch (error) {
+      next = { kind: "failed", code: error instanceof SpotnavApiError ? error.code : null };
+    }
+    if (generation !== this.generation || seq !== this.planSeq) {
+      return;
+    }
+    if (quiet && next.kind === "failed" && this.plan?.kind === "ready") {
+      return;
+    }
+    this.plan = next;
+    if (this.shownTab() === "plan") {
+      if (quiet) {
+        this.renderSoon();
+      } else {
+        this.render();
+      }
     }
   }
 

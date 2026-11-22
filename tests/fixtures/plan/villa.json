@@ -1,0 +1,677 @@
+{
+  "api_version": 1,
+  "generated_at": "2026-11-16T19:10:00+00:00",
+  "hours": [
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": -0.2,
+      "price": 150.0,
+      "sell": 90.0,
+      "start": "2026-11-16T19:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": -0.2,
+      "price": 110.0,
+      "sell": 66.0,
+      "start": "2026-11-16T20:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": -0.2,
+      "price": 95.0,
+      "sell": 57.0,
+      "start": "2026-11-16T21:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 85.0,
+      "sell": 51.0,
+      "start": "2026-11-16T22:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 70.0,
+      "sell": 42.0,
+      "start": "2026-11-16T23:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 5.3,
+      "price": 62.0,
+      "sell": 37.2,
+      "start": "2026-11-17T00:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 5.3,
+      "price": 55.0,
+      "sell": 33.0,
+      "start": "2026-11-17T01:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 8.3,
+      "price": 50.0,
+      "sell": 30.0,
+      "start": "2026-11-17T02:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 8.3,
+      "price": 49.0,
+      "sell": 29.4,
+      "start": "2026-11-17T03:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 60.0,
+      "sell": 36.0,
+      "start": "2026-11-17T04:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 110.0,
+      "sell": 66.0,
+      "start": "2026-11-17T05:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 2.4,
+      "net_kw": 2.4,
+      "price": 180.0,
+      "sell": 108.0,
+      "start": "2026-11-17T06:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 2.4,
+      "net_kw": 2.4,
+      "price": 200.0,
+      "sell": 120.0,
+      "start": "2026-11-17T07:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 150.0,
+      "sell": 90.0,
+      "start": "2026-11-17T08:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.0,
+      "price": 110.0,
+      "sell": 66.0,
+      "start": "2026-11-17T09:00:00+00:00",
+      "sun_kw": 0.6
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 0.8,
+      "price": 95.0,
+      "sell": 57.0,
+      "start": "2026-11-17T10:00:00+00:00",
+      "sun_kw": 2.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 0.8,
+      "price": 90.0,
+      "sell": 54.0,
+      "start": "2026-11-17T11:00:00+00:00",
+      "sun_kw": 2.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 0.8,
+      "price": 88.0,
+      "sell": 52.8,
+      "start": "2026-11-17T12:00:00+00:00",
+      "sun_kw": 2.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.0,
+      "price": 95.0,
+      "sell": 57.0,
+      "start": "2026-11-17T13:00:00+00:00",
+      "sun_kw": 0.6
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 120.0,
+      "sell": 72.0,
+      "start": "2026-11-17T14:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 170.0,
+      "sell": 102.0,
+      "start": "2026-11-17T15:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 2.4,
+      "net_kw": 0.6,
+      "price": 230.0,
+      "sell": 138.0,
+      "start": "2026-11-17T16:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 2.4,
+      "net_kw": 0.6,
+      "price": 250.0,
+      "sell": 150.0,
+      "start": "2026-11-17T17:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 2.4,
+      "net_kw": 0.6,
+      "price": 210.0,
+      "sell": 126.0,
+      "start": "2026-11-17T18:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": -0.2,
+      "price": 140.0,
+      "sell": 84.0,
+      "start": "2026-11-17T19:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": -0.2,
+      "price": 100.0,
+      "sell": 60.0,
+      "start": "2026-11-17T20:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": -0.2,
+      "price": 90.0,
+      "sell": 54.0,
+      "start": "2026-11-17T21:00:00+00:00",
+      "sun_kw": 0.0
+    },
+    {
+      "ceiling": "power_tariff",
+      "ceiling_kw": 5.0,
+      "house_kw": 1.6,
+      "net_kw": 1.6,
+      "price": 80.0,
+      "sell": 48.0,
+      "start": "2026-11-17T22:00:00+00:00",
+      "sun_kw": 0.0
+    }
+  ],
+  "house": {
+    "basis": "gross",
+    "sun_in_house": false
+  },
+  "loads": [
+    {
+      "id": "charger_garage",
+      "in_house": false,
+      "kind": "car",
+      "kw": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        3.7,
+        3.7,
+        3.7,
+        3.7,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "level": null,
+      "name": "Garage",
+      "runs": [
+        {
+          "end": "2026-11-17T04:00:00+00:00",
+          "kw": 3.7,
+          "kwh": 14.8,
+          "reason": null,
+          "start": "2026-11-17T00:00:00+00:00",
+          "what": "charge"
+        }
+      ],
+      "state": "live",
+      "summary": {
+        "departure": "2026-11-17T06:00:00+00:00",
+        "kwh": 14.8
+      }
+    },
+    {
+      "id": "sensor.battery_soc",
+      "in_house": false,
+      "kind": "home_battery",
+      "kw": [
+        -1.8,
+        -1.8,
+        -1.8,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.2,
+        1.2,
+        1.2,
+        0.0,
+        0.0,
+        0.0,
+        -1.8,
+        -1.8,
+        -1.8,
+        -1.8,
+        -1.8,
+        -1.8,
+        0.0
+      ],
+      "level": null,
+      "name": "Sigenergy",
+      "runs": [
+        {
+          "end": "2026-11-16T22:00:00+00:00",
+          "kw": -1.8,
+          "kwh": 5.4,
+          "reason": null,
+          "start": "2026-11-16T19:00:00+00:00",
+          "what": "cover"
+        },
+        {
+          "end": "2026-11-17T04:00:00+00:00",
+          "kw": 3.0,
+          "kwh": 6.0,
+          "reason": null,
+          "start": "2026-11-17T02:00:00+00:00",
+          "what": "grid_charge"
+        },
+        {
+          "end": "2026-11-17T13:00:00+00:00",
+          "kw": 1.2,
+          "kwh": 3.6,
+          "reason": null,
+          "start": "2026-11-17T10:00:00+00:00",
+          "what": "sun_charge"
+        },
+        {
+          "end": "2026-11-17T22:00:00+00:00",
+          "kw": -1.8,
+          "kwh": 10.8,
+          "reason": null,
+          "start": "2026-11-17T16:00:00+00:00",
+          "what": "cover"
+        }
+      ],
+      "state": "live",
+      "summary": {
+        "charge_kwh": 9.6,
+        "cover_kwh": 16.2,
+        "grid_charge_kwh": 6.0
+      }
+    },
+    {
+      "id": "switch.sg_ready_a",
+      "in_house": true,
+      "kind": "heat",
+      "kw": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.5,
+        0.5,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.5,
+        0.5,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "name": "SG Ready A",
+      "runs": [
+        {
+          "end": "2026-11-17T06:00:00+00:00",
+          "kw": 1.0,
+          "kwh": 2.0,
+          "reason": "cheap_before_dear",
+          "start": "2026-11-17T04:00:00+00:00",
+          "what": "preheat"
+        },
+        {
+          "end": "2026-11-17T08:00:00+00:00",
+          "kw": 0.5,
+          "kwh": 1.0,
+          "reason": "dear_hour",
+          "start": "2026-11-17T06:00:00+00:00",
+          "what": "lower"
+        },
+        {
+          "end": "2026-11-17T18:00:00+00:00",
+          "kw": 0.5,
+          "kwh": 1.0,
+          "reason": "tight_hour",
+          "start": "2026-11-17T16:00:00+00:00",
+          "what": "lower"
+        }
+      ],
+      "state": "would",
+      "summary": {
+        "lowered_hours": 4,
+        "raised_hours": 2
+      }
+    },
+    {
+      "id": "climate.golvvarme_hall",
+      "in_house": true,
+      "kind": "heat_zone",
+      "kw": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "level": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "name": "Golvvärme hall",
+      "runs": [
+        {
+          "end": "2026-11-17T08:00:00+00:00",
+          "kw": null,
+          "kwh": null,
+          "reason": null,
+          "start": "2026-11-17T06:00:00+00:00",
+          "what": "lower"
+        }
+      ],
+      "state": "would",
+      "summary": {
+        "lowered_hours": 2
+      }
+    },
+    {
+      "id": "switch.varmvattenberedare",
+      "in_house": true,
+      "kind": "water_heater",
+      "kw": [
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "level": null,
+      "name": "Varmvattenberedare",
+      "runs": [
+        {
+          "end": "2026-11-17T00:00:00+00:00",
+          "kw": 3.0,
+          "kwh": 6.0,
+          "reason": "cheap",
+          "start": "2026-11-16T22:00:00+00:00",
+          "what": "on"
+        }
+      ],
+      "state": "live",
+      "summary": {
+        "kw": 3.0,
+        "on_hours": 2.0
+      }
+    }
+  ],
+  "money": {
+    "currency": "SEK",
+    "major_unit": "kr",
+    "minor_unit": "öre"
+  },
+  "month_peak": {
+    "kw": 5.4,
+    "start": "2026-11-12T17:00:00+00:00"
+  },
+  "power_tariff": true,
+  "site_id": "site_villa",
+  "summary": {
+    "cost": 4461.0,
+    "over": true,
+    "peak_ceiling": "power_tariff",
+    "peak_ceiling_kw": 5.0,
+    "peak_kw": 8.3,
+    "peak_start": "2026-11-17T02:00:00+00:00"
+  },
+  "time_zone": "Europe/Stockholm",
+  "window": {
+    "end": "2026-11-17T23:00:00+00:00",
+    "hours": 28,
+    "prices_end": "2026-11-17T23:00:00+00:00",
+    "start": "2026-11-16T19:00:00+00:00"
+  },
+  "would": true
+}

@@ -44,6 +44,7 @@ from .api.detected import async_setup_detected_api
 from .api.heat import async_setup_heat_api, forget_cached_heat
 from .api.heat_history import async_setup_heat_history_api, forget_cached_heat_history
 from .api.house import async_setup_house_api, forget_cached_flow
+from .api.plan import async_setup_plan_api
 from .api.house_now import async_setup_house_now_api
 from .api.house_history import async_setup_house_history_api, forget_cached_history
 from .api.saving import forget_cached_savings
@@ -254,6 +255,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_import_target_api(hass)
     async_setup_power_month_api(hass)
     async_setup_house_api(hass)
+    async_setup_plan_api(hass)
     async_setup_house_now_api(hass)
     async_setup_heat_api(hass)
     async_setup_house_history_api(hass)
