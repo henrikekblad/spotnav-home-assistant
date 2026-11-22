@@ -276,15 +276,15 @@ export function wallClockPosition(clock: ZoneClock, instantMs: number): number {
 }
 
 /**
- * How the x axis reads time: the wall-clock overlay of one day ("day", the default) or real time from
- * the current hour to the end of the last published day ("from_now"). A display preference of this
+ * How the x axis reads time: the wall-clock overlay of one day ("day") or real time from
+ * the current hour to the end of the last published day ("from_now", the default). A display preference of this
  * browser, never a charger setting.
  */
 export type ChartAxisMode = "day" | "from_now";
 
 export const CHART_AXIS_MODES: readonly ChartAxisMode[] = ["day", "from_now"];
 
-export const DEFAULT_CHART_AXIS: ChartAxisMode = "day";
+export const DEFAULT_CHART_AXIS: ChartAxisMode = "from_now";
 
 /**
  * The one time mapping, with two implementations (`wallClockAxis`, `rangeAxis`). Everything that turns
@@ -534,7 +534,7 @@ export function chartSeries(
   rows: readonly PriceInterval[],
   timeZone: string,
   nowMs: number,
-  mode: ChartAxisMode = DEFAULT_CHART_AXIS,
+  mode: ChartAxisMode = "day",
 ): ChartSeries {
   const clock = zoneClock(timeZone);
   // The one authority for a date's role: the market's local day at the now instant, never inferred from row order or the host's zone.
