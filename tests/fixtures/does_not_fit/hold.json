@@ -18,5 +18,6 @@
   "chosen": "takes_what_fits",
   "deliverable_kwh": 6.5,
   "departure": "2026-11-02T13:30:35+00:00",
+  "set_kw": 6.0,
   "short_kwh": 8.2
 }

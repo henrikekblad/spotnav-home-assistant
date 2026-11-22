@@ -29,16 +29,20 @@ _DAY = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
 # -- the words
 
 
-def test_the_notice_says_what_is_needed_and_what_fits_in_swedish_and_english() -> None:
-    assert does_not_fit_text("Garage", "sv", time="07:00", short_kwh=4.0, fits_kwh=12.0)[1] == (
-        "Ryms inte under taket: 16 kWh till 07:00 – 12 kWh hinner."
+def test_the_notice_names_the_ceiling_and_what_is_short_in_swedish_and_english() -> None:
+    assert does_not_fit_text("Garage", "sv", time="07:00", short_kwh=4.0, ceiling_kw=6.0, set_kw=6.0)[1] == (
+        "Bilen blir inte klar till 07:00 under effektmålet 6,0 kW – 4 kWh saknas."
     )
-    assert does_not_fit_text("Garage", "en", time="07:00", short_kwh=4.0, fits_kwh=12.0)[1] == (
-        "Does not fit under the ceiling: 16 kWh by 07:00 – 12 kWh fit in time."
+    assert does_not_fit_text("Garage", "en", time="07:00", short_kwh=4.0, ceiling_kw=6.0, set_kw=6.0)[1] == (
+        "The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh short."
     )
-    # What fits not known: what is short.
-    assert does_not_fit_text("Garage", "sv", time="07:00", short_kwh=4.0, fits_kwh=None)[1] == (
-        "Ryms inte under taket: 4 kWh saknas till 07:00."
+    # The month's peak lifts the hour: both are named.
+    assert does_not_fit_text("Garage", "en", time="07:00", short_kwh=4.0, ceiling_kw=7.5, set_kw=6.0)[1] == (
+        "The car will not be ready by 07:00 under the month's peak of 7.5 kW (import target 6.0 kW) – 4 kWh short."
+    )
+    # No time: by the departure.
+    assert does_not_fit_text("Garage", "sv", time=None, short_kwh=4.0, ceiling_kw=6.0)[1] == (
+        "Bilen blir inte klar till avresan under effektmålet 6,0 kW – 4 kWh saknas."
     )
 
 
@@ -101,7 +105,7 @@ async def test_in_the_daytime_it_is_told_at_once_and_once_per_departure(hass: Ho
         await hass.async_block_till_done()
         sent = _sent(calls)
         assert len(sent) == 1
-        assert sent[0]["message"] == "Does not fit under the ceiling: 16 kWh by 07:30 – 12 kWh fit in time."
+        assert sent[0]["message"] == "The car will not be ready by 07:30 under the 6.0 kW import target – 4 kWh short."
         assert [action["title"] for action in sent[0]["data"]["actions"]] == [
             "Take what fits (≈ 12 kWh)",
             "Allow the peak (≈ 12 kW)",  # no currency known in this test: no price
@@ -142,7 +146,7 @@ async def test_at_night_nothing_is_told_until_seven_if_it_still_stands(hass: Hom
         async_fire_time_changed(hass, _MORNING)
         await hass.async_block_till_done()
         sent = _sent(calls)
-        assert len(sent) == 1 and sent[0]["message"].endswith("by 07:30 – 12 kWh fit in time.")
+        assert len(sent) == 1 and sent[0]["message"].startswith("The car will not be ready by 07:30 ")
 
 
 async def test_at_night_one_that_ends_before_seven_is_never_told(hass: HomeAssistant) -> None:

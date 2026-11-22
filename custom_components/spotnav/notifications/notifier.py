@@ -65,8 +65,8 @@ replaced on every phone that got it (`retire_vehicle_question`) or cleared (`cle
 A planned charge that does not fit under the ceiling by its departure, where the plan asks (`does_not_fit`, the
 block of `site/does_not_fit.py` from the site on each recompute) is told as `plan_at_risk` is, under its choice and in
 its place: the same tag, so it replaces one told before, and no `plan_at_risk` while it is on the phones or waits for
-the morning. It says what is needed and what fits ("Does not fit under the ceiling: 16 kWh by 07:00 – 12 kWh fit in
-time.") and carries the person's choices for this departure as buttons: "Take what fits (≈ 12 kWh)"
+the morning. It says which ceiling and what is short ("The car will not be ready by 07:00 under the 6.0 kW import
+target – 4 kWh short.", or "under the month's peak of 7.5 kW (import target 6.0 kW)") and carries the person's choices for this departure as buttons: "Take what fits (≈ 12 kWh)"
 (`SiteCapacityController.async_take_what_fits`) and "Allow the peak (≈ 12 kW, ≈ 105 kr)" (the one-period release,
 `SiteCapacityController.async_release_import_target`). "Later departure" has no button: it is the departure's editor,
 which a tap on the notice opens with the dashboard. A press is the person's choice; one for a departure that is no
@@ -990,7 +990,8 @@ class ChargerNotifier:
             language,
             time=_local_time(departure),
             short_kwh=block.get("short_kwh"),
-            fits_kwh=block.get("deliverable_kwh"),
+            ceiling_kw=float(block["ceiling_kw"]),
+            set_kw=block.get("set_kw"),
         )
         # The departure it was told for rides with the press: one for a departure no longer the plan's is refused.
         stamp = _epoch(departure)

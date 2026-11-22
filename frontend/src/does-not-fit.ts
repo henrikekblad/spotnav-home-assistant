@@ -16,7 +16,7 @@ const CHOICE_CODES: readonly DoesNotFitChoiceCode[] = ["takes_what_fits", "later
 export type DoesNotFitCeiling = "import_target" | "power_level";
 const CEILINGS: readonly DoesNotFitCeiling[] = ["import_target", "power_level"];
 
-const BLOCK_KEYS = ["departure", "short_kwh", "deliverable_kwh", "ceiling", "ceiling_kw", "chosen", "choices"] as const;
+const BLOCK_KEYS = ["departure", "short_kwh", "deliverable_kwh", "ceiling", "ceiling_kw", "set_kw", "chosen", "choices"] as const;
 const CHOICE_KEYS = ["code", "kwh", "peak_kw", "cost"] as const;
 
 export interface DoesNotFitChoice {
@@ -33,6 +33,8 @@ export interface DoesNotFit {
   deliverable_kwh: number | null;
   ceiling: DoesNotFitCeiling;
   ceiling_kw: number;
+  /** The target (or power level) as set; below `ceiling_kw` where the month's peak lifts the running hour. */
+  set_kw: number;
   chosen: "takes_what_fits" | "accept_peak" | null;
   choices: DoesNotFitChoice[];
 }
@@ -55,7 +57,8 @@ export function decodeDoesNotFit(raw: unknown): DoesNotFit {
     throw new Malformed();
   }
   const ceilingKw = numberOrNull(source.ceiling_kw);
-  if (ceilingKw === null) {
+  const setKw = numberOrNull(source.set_kw);
+  if (ceilingKw === null || setKw === null) {
     throw new Malformed();
   }
   return {
@@ -64,6 +67,7 @@ export function decodeDoesNotFit(raw: unknown): DoesNotFit {
     deliverable_kwh: numberOrNull(source.deliverable_kwh),
     ceiling: oneOf(source.ceiling, CEILINGS),
     ceiling_kw: ceilingKw,
+    set_kw: setKw,
     chosen: source.chosen === null ? null : oneOf(source.chosen, ["takes_what_fits", "accept_peak"] as const),
     choices: list(source.choices).map((entry) => {
       const item = record(entry);

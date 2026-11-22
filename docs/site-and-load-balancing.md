@@ -662,7 +662,8 @@ charger draws on would turn from import to export (so the current the fuse carri
   on every recompute, with half a kWh of margin either way), what happens is the plan's own choice, *If the car
   cannot be ready in time* in the card's Plan dialog (shown while the site has a target):
   - **Ask** (the default): the target holds, and the phones chosen for *the charge will not be ready in time* are
-    told once per departure, in its place: *Does not fit under the ceiling: 16 kWh by 07:00 – 12 kWh fit in time*,
+    told once per departure, in its place: *The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh
+    short* (where the month's peak lifts the hour: *under the month's peak of 7.5 kW (import target 6.0 kW)*),
     with two buttons for this departure only, *Take what fits (≈ 12 kWh)* and *Allow the peak (≈ 12 kW, ≈ 105 kr)*
     (the price where a demand charge prices the peak). Never at night: one that arises between 22:00 and 07:00 is
     told at 07:00 if it still stands and its departure is later, else never. Taken off the phones once it fits again

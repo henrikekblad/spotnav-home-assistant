@@ -149,20 +149,22 @@ def identify_text(language: str, key: str, vehicle: str | None = None) -> str:
 
 
 def does_not_fit_text(
-    name: str, language: str, *, time: str | None, short_kwh: float | None, fits_kwh: float | None
+    name: str, language: str, *, time: str | None, short_kwh: float | None, ceiling_kw: float, set_kw: float | None = None
 ) -> tuple[str, str]:
-    """The title and message of the "does not fit" notice (`ChargerNotifier.does_not_fit`): "Does not fit under the
-    ceiling: 16 kWh by 07:00 – 12 kWh fit in time."; "4 kWh short by 07:00" where what fits is not known, "by the
-    departure" without its time. Whole kWh, as the card's line."""
+    """The title and message of the "does not fit" notice (`ChargerNotifier.does_not_fit`), naming the ceiling: "The
+    car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh short."; where the month's peak lifts the
+    hour (`ceiling_kw` above the target as set, `set_kw`), it names the month's peak and the import target both; "by
+    the departure" without its time. Whole kWh, one decimal kW."""
     text = table(language, NAMESPACE)
-    short = 0.0 if short_kwh is None else float(short_kwh)
-    if fits_kwh is None or time is None:
-        key = "does_not_fit.short.time" if time else "does_not_fit.short"
-        message = text[key].format(time=time or "", kwh=_number(language, short, 0))
-    else:
-        message = text["does_not_fit"].format(
-            need=_number(language, fits_kwh + short, 0), time=time, fits=_number(language, fits_kwh, 0)
-        )
+    peak = set_kw is not None and ceiling_kw > set_kw + 1e-9
+    key = "import_target.at_risk.peak" if peak else "import_target.at_risk"
+    key = f"{key}.time" if time else key
+    message = text[key].format(
+        time=time or "",
+        target=_number(language, ceiling_kw, 1),
+        set=_number(language, ceiling_kw if set_kw is None else set_kw, 1),
+        kwh=_number(language, 0.0 if short_kwh is None else float(short_kwh), 0),
+    )
     return text["title"].format(name=name), message
 
 

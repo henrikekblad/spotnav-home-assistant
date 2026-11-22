@@ -315,6 +315,7 @@
         "chosen": null,
         "deliverable_kwh": 14.8,
         "departure": "2026-11-17T06:00:00+00:00",
+        "set_kw": 6.0,
         "short_kwh": 3.0
       },
       "id": "charger_garage",
