@@ -215,6 +215,13 @@ def _soft(controller: Any) -> dict[datetime, float]:
     return out
 
 
+def _import_target_kw(controller: Any) -> float | None:
+    """The import target as the hold reads it: from the site's entry, written without a reload (the controller's copy
+    of the config may be older)."""
+    read = getattr(controller, "_import_target_kw", None)
+    return read() if callable(read) else stored_import_target_kw(controller.config)
+
+
 def _month_peak(controller: Any, now: datetime) -> tuple[float, datetime] | None:
     hours = controller.demand.tracker.month_hours(now)
     if not hours:
@@ -254,7 +261,7 @@ async def async_plan_answer(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             zones=zones,
             water_heater=heater,
             hold_kw=_guarded("import target's hold", lambda: site_hour_caps(hass, controller, now), {}),
-            hold_kind=CEILING_IMPORT_TARGET if stored_import_target_kw(config) is not None else CEILING_POWER_LEVEL,
+            hold_kind=CEILING_IMPORT_TARGET if _import_target_kw(controller) is not None else CEILING_POWER_LEVEL,
             soft_kw=_guarded("soft ceiling", lambda: _soft(controller), {}),
             fuse_kw=site_fuse_kw(config),
             power_tariff=bool(_guarded("power tariff", lambda: has_power_tariff(controller), False)),
