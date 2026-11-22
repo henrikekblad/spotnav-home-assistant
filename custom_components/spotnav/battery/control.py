@@ -2681,6 +2681,12 @@ class BatteryControl:
                     needs.append(f"control_not_found:{role.name}")
             elif role.method != "service" and not read.enabled:
                 needs.append(f"control_disabled:{role.name}")
+        # A setting of the person's on the plant that keeps an action from ever running ("Max inverter power" 0 on a
+        # Victron GX: the battery never discharges). Read only: SpotNav never writes it.
+        executor = self.executor
+        if executor is None or executor.control.brand != control.brand:
+            executor = Executor(control)
+        needs.extend(executor.told_problems(reads))
         management = facts.management
         if management.state == "externally_controlled":
             needs.append(f"outside_control:{management.reason}")

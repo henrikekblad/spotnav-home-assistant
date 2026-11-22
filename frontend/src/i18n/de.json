@@ -1715,6 +1715,7 @@
   "battery.need.aiTakeoverAck": "Bestätige, dass SpotNav den KI-Modus des Speichers ablöst.",
   "battery.need.strategyAck": "Bestätige, dass die Befehle von SpotNav Vorrang vor der Strategie haben, die der Speicher in seiner eigenen Cloud fährt.",
   "battery.need.selfManaged": "Der Speicher läuft mit seiner eigenen Optimierung. Stelle in der App des Speichers auf Eigenverbrauch, wenn SpotNav ihn steuern soll.",
+  "battery.need.inverterPowerZero": "\"Max inverter power\" steht im Victron GX auf 0, daher entlädt sich die Batterie nie, und SpotNav kann keine Entladung ausführen. Stelle sie in den ESS-Einstellungen des GX auf -1 (keine Grenze) oder eine Leistung, wenn die Batterie das Haus versorgen soll.",
   "battery.needs.heading.one": "Noch eine Sache, bevor SpotNav den Speicher steuern kann",
   "battery.needs.heading.other": "Noch {countWord} Dinge, bevor SpotNav den Speicher steuern kann",
   "battery.need.controlsDisabled.one": "Aktiviere die deaktivierte Einstellung {names} am Gerät des Speichers in Home Assistant.",

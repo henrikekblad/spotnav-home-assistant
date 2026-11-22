@@ -192,6 +192,7 @@ from .commands import (
     ACTION_CURTAIL_EXPORT,
     NORMAL,
     SNAPSHOT,
+    TOLD_ACTION_REASONS,
     WATCHDOG_RENEW_S,
     WATCHDOG_S,
     BrandControl,
@@ -200,6 +201,7 @@ from .commands import (
     Role,
     answered,
     fixed_rate_kw,
+    forbidden_read,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
@@ -1560,10 +1562,33 @@ class Executor:
         if not self.control.supports(action):
             return f"action_not_supported:{action}"
         for act, name, forbidden, why in self.control.action_requires:
-            read = inputs.reads.get(name)
-            if act == action and (read is None or read.state is None or read.state in forbidden):
+            if act == action and forbidden_read(self.person_state(name, inputs.reads.get(name)), forbidden):
                 return why
         return None
+
+    def person_state(self, name: str, read: RoleRead | None) -> str | None:
+        """A role's state as the person set it: the value found at enter while SpotNav's own write stands in it (a
+        Victron hold writes the discharge power 0, which must not read as the person's "never discharge"), else
+        the state now."""
+        state = self.state
+        if state.phase != "idle" and name in state.written and name in state.snapshot:
+            return state.snapshot[name]
+        return None if read is None else read.state
+
+    def told_problems(self, reads: Mapping[str, RoleRead]) -> tuple[str, ...]:
+        """The person's own settings that keep an action from ever running (`commands.TOLD_ACTION_REASONS`), for
+        the status."""
+        found: list[str] = []
+        for _act, name, forbidden, why in self.control.action_requires:
+            read = reads.get(name)
+            if why not in TOLD_ACTION_REASONS or why in found or read is None or not read.found:
+                continue
+            state = self.person_state(name, read)
+            if state is not None and reading(self.control.role(name), state) is not None and forbidden_read(
+                state, forbidden
+            ):
+                found.append(why)
+        return tuple(found)
 
     def _exit_reason(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts

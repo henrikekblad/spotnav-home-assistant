@@ -490,6 +490,8 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.strategyAck");
     case "self_managed":
       return translate(language, "battery.need.selfManaged");
+    case "inverter_power_zero":
+      return translate(language, "battery.need.inverterPowerZero");
     default:
       return need;
   }

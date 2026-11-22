@@ -623,7 +623,8 @@ class BrandControl:
     watchdog_roles: tuple[str, ...] = ()
     #: Roles that must read a value before anything is written (`(role, allowed states, reason)`).
     requires: tuple[tuple[str, frozenset[str], str], ...] = ()
-    #: Extra requirements for one action (`(action, role, forbidden states, reason)`).
+    #: Extra requirements for one action (`(action, role, forbidden states, reason)`); a forbidden state that is a
+    #: number matches a read of the same number ("0" matches "0.0"), `forbidden_read`.
     action_requires: tuple[tuple[str, str, frozenset[str], str], ...] = ()
     #: Whether the effect can only be judged by the battery's power (no read-back from the device).
     local_readback: bool = False
@@ -920,6 +921,29 @@ def fixed_rate_kw(control: BrandControl, facts: Any) -> float | None:
     units = max(1, math.ceil(capacity / control.fixed_unit_kwh - 0.15))
     rating = getattr(facts, "max_charge_kw", None)
     return max(control.fixed_charge_kw * units, rating if isinstance(rating, (int, float)) else 0.0)
+
+
+#: The `action_requires` reasons that are the person's own setting on the plant, told in the status (`needs`): only
+#: they can change it, and until they do the action never runs.
+TOLD_ACTION_REASONS: Final = frozenset({"inverter_power_zero"})
+
+
+def forbidden_read(state: str | None, forbidden: frozenset[str]) -> bool:
+    """Whether a role's state is one of an action's `forbidden` states (`BrandControl.action_requires`): the same
+    text, or the same number where both are numbers. No state at all is forbidden too (nothing shows it is not)."""
+    if state is None or state in forbidden:
+        return True
+    try:
+        value = float(state)
+    except ValueError:
+        return False
+    for item in forbidden:
+        try:
+            if math.isfinite(value) and float(item) == value:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def reading(role: Role, state: str | None) -> str | None:
@@ -1488,6 +1512,12 @@ VICTRON_CONTROL: Final = BrandControl(
     peak_first={ACTION_HOLD: ("discharge_power",), ACTION_GRID_CHARGE: ("grid_setpoint",)},
     # The entities do not say how many phases the Multis are on: the balanced charge is capped as if on one.
     grid_charge_phases=1,
+    # "Max inverter power" at 0 is the person's (or an installer's) "never discharge": the Multi feeds nothing, so a
+    # discharge would write and then show no effect. SpotNav never writes it up; the status says so (`needs`).
+    action_requires=tuple(
+        (action, "discharge_power", frozenset({"0"}), "inverter_power_zero")
+        for action in (ACTION_DISCHARGE_HOUSE, ACTION_EXPORT_DISCHARGE)
+    ),
     note="Mode 2 for a hold, a balanced charge and a discharge (settings on the GX, written rarely); external"
     " control with a setpoint per phase, renewed inside the Multi's 60 s watchdog, for a charge per phase. Not"
     " tested on a plant.",

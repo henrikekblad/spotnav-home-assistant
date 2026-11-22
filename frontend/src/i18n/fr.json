@@ -1715,6 +1715,7 @@
   "battery.need.aiTakeoverAck": "Acceptez que SpotNav prenne le relais du mode IA de la batterie.",
   "battery.need.strategyAck": "Acceptez que les commandes de SpotNav passent avant la stratégie que la batterie suit dans son propre cloud.",
   "battery.need.selfManaged": "La batterie suit sa propre optimisation. Passez-la en autoconsommation dans son application si SpotNav doit la piloter.",
+  "battery.need.inverterPowerZero": "« Max inverter power » vaut 0 sur le GX Victron : la batterie ne se décharge donc jamais et SpotNav ne peut lancer aucune décharge. Réglez-la sur -1 (sans limite) ou sur une puissance dans les réglages ESS du GX si la batterie doit alimenter la maison.",
   "battery.needs.heading.one": "Encore une chose avant que SpotNav puisse piloter la batterie",
   "battery.needs.heading.other": "Encore {countWord} choses avant que SpotNav puisse piloter la batterie",
   "battery.need.controlsDisabled.one": "Activez le réglage désactivé {names} sur l’appareil de la batterie dans Home Assistant.",

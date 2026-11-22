@@ -221,6 +221,21 @@ async def test_core_goodwe_without_the_hacs_numbers_gets_one_note_in_the_checkli
     assert not any(need.startswith("control_not_found") for need in needs)
 
 
+async def test_a_victron_max_inverter_power_of_0_is_told_in_the_checklist(hass: HomeAssistant) -> None:
+    """"Max inverter power" 0 on the GX keeps the battery from ever discharging: the person is told, SpotNav never
+    writes it."""
+    battery, found = _plant(hass, "victron", enabled=frozenset(key for _domain, key in optin.ENABLE_KEYS["victron"]))
+    _site_entry, control = await _site(hass, battery)
+    hass.states.async_set(found["system_ess_max_inverter_power_limit"], "0")
+    assert "inverter_power_zero" in control.status()["needs"]
+    hass.states.async_set(found["system_ess_max_inverter_power_limit"], "-1")
+    control._look_id += 1
+    assert "inverter_power_zero" not in control.status()["needs"]
+    hass.states.async_set(found["system_ess_max_inverter_power_limit"], "unknown")
+    control._look_id += 1
+    assert "inverter_power_zero" not in control.status()["needs"]
+
+
 async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_the_house_at_its_peak(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:

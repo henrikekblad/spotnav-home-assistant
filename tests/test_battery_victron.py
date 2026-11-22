@@ -671,3 +671,30 @@ def test_a_setpoint_that_reads_unknown_is_still_renewed_on_time() -> None:
     renewed = [at for at, op in plant.writes[start:] if op.role == "phase_l1_target"]
     assert renewed and (renewed[0] - (now - TICK * 12)).total_seconds() <= VICTRON_RENEW_S + 10
     assert not _events(results + more, "hand_back") and executor.state.phase == "active"
+
+
+@pytest.mark.parametrize("found", ["0", "0.0"])
+def test_a_max_inverter_power_of_0_keeps_every_discharge_from_starting_and_is_never_written(found: str) -> None:
+    plant = Plant()
+    plant.states["discharge_power"] = found
+    for action, rate in (("discharge_house", 0.0), ("export_discharge", 3.0)):
+        executor = Executor(VICTRON_CONTROL)
+        _now, results = _run(executor, plant, T0, 3, action, rate)
+        assert _written(results) == [] and executor.state.phase == "idle"
+        assert _events(results, "not_started")[0]["reason"] == "inverter_power_zero"
+        assert executor.told_problems(plant.reads(executor, T0)) == ("inverter_power_zero",)
+    # A hold and a charge still run.
+    executor = Executor(VICTRON_CONTROL)
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert executor.state.phase == "active"
+
+
+def test_spotnav_s_own_hold_at_0_is_not_the_person_s_and_a_discharge_follows_it_without_a_hand_back() -> None:
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert plant.states["discharge_power"] == "0"
+    assert executor.told_problems(plant.reads(executor, now)) == ()
+    now, results = _run(executor, plant, now, 6, "discharge_house")
+    assert not _events(results, "hand_back") and executor.state.action == "discharge_house"
+    assert ("charge_power", 0.0) in _written(results)
+    assert Executor(VICTRON_CONTROL).told_problems(Plant().reads(executor, now)) == ()
