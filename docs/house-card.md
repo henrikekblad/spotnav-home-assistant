@@ -121,7 +121,22 @@ the evening it shows the night and tomorrow, never just what is left of today.
   target or the power level, the power tariff's ceiling, else the main fuse as total power. A dot marks an hour over it.
   Under the chart a price strip: green the cheapest third of the hours, yellow the middle, red the most expensive.
 * **Per load**: a lane each with the hours it runs (the heat's and the zones' lowered hours dashed) and one line of why.
+  A load the [shed order](site-and-load-balancing.md#the-shed-order-under-the-ceiling) holds back right now says so
+  ("Water heater paused for the ceiling until 15:00", the heat lowered *for the ceiling*).
 * **In words**: the plan as a list, in time order ("01–05 Garage charges 14.8 kWh at 3.7 kW").
+
+**Per load** and **In words** fold away under their headings: both are folded until you open them, and while folded
+the heading says what is inside ("Per load · 4", "In words · 6 lines"). Tap the heading to open or fold it; the card
+remembers it per site in this browser. While a car's charge does not fit under the ceiling, **Per load** is always open,
+so the choices are never hidden.
+
+**When a car's charge does not fit.** Where the import target or the power level holds the hour and the car cannot be
+ready by its departure under it, the car's lane says so ("Does not fit under the ceiling (6.0 kW): 4 kWh short by
+07:00") with the choices for this departure only: **Take what fits (≈ 12 kWh)**, **Later departure (17:00)** (the
+earliest whole hour by which all of it fits; pressing it moves this one departure there) and **Allow the peak (≈ 12 kW,
+≈ 105 kr)**, asked twice since it can cost the month. The same line and choices are on the charging card and in the
+notice; see [the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target). A shadow-only
+ceiling (the power tariff's) and the main fuse never make a "does not fit": the plan is made at what the fuse allows.
 
 A load SpotNav only watches (its control is off, or still being checked) is drawn faded and says *would*: what SpotNav
 would do, never shown as done. Read from `spotnav/get_plan` while the tab is shown and again with the card's refresh;
@@ -185,7 +200,9 @@ tabs. Every figure in it is the chosen period's own and stands once; nothing is 
 * **Money**: what the period cost, and what the battery, the sun and both together saved (*The battery saved*, below).
 * **SpotNav saved**: the period's sum and a row per part (its bars are the Earnings tab).
 * **Forecast errors** and **Day by day**.
-* **How it is counted**: what SpotNav's saving is compared with, how the flow is allocated, and the sources.
+* **How it is counted**: what SpotNav's saving is compared with, how the flow is allocated, and the sources, among
+  them the home battery's round trip ("Round-trip efficiency: 84 %, learnt", or "assumed 90 %" until it is learnt; see
+  [the battery plan](battery-plan.md)).
 
 The energy flow is not here: it is the Energy flow tab.
 
