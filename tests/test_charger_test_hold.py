@@ -609,3 +609,29 @@ async def test_the_setting_back_at_the_start_runs_in_the_background_and_the_unlo
     await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == ["on"], "no retry after the unload"
 
+
+async def test_a_setting_back_that_keeps_failing_warns_once(
+    hass: HomeAssistant, freezer: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    import logging
+
+    sent = _availability(hass)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    async def refused(call: Any) -> None:
+        sent.append("on")
+
+    hass.services.async_register("switch", "turn_on", refused)
+    hold.release()
+    caplog.set_level(logging.DEBUG, logger=charger_test_hold.__name__)
+    await hold.async_restore_availability()
+    for _ in range(4):
+        freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done(wait_background_tasks=True)
+    failures = [record for record in caplog.records if "could not be set back to operative" in record.getMessage()]
+    assert len(failures) == 5
+    assert [record.levelno for record in failures] == [logging.WARNING] + [logging.DEBUG] * 4
+    await hold.async_close()

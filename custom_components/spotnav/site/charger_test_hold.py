@@ -546,9 +546,12 @@ class ChargerTestHold:
                     if state is not None and state.state == "off":
                         # Read and off: the person can turn it on (the only case told in Repairs).
                         actionable.append(entity_id)
-                    _LOGGER.warning(
+                    # Told once, at the first failure; the retries log at debug until the one error at
+                    # `RESTORE_TRIES` (and the Repairs issue from `ISSUE_AFTER_TRIES`).
+                    _LOGGER.log(
+                        logging.WARNING if self._tries == 0 else logging.DEBUG,
                         "SpotNav site %s: OCPP charger %s could not be set back to operative after the hardware test "
-                        "(%s)", self._site.entry_id, charger_entry_id, err,
+                        "(%s); tried again", self._site.entry_id, charger_entry_id, err,
                     )
                     continue
                 self._parked.pop(entity_id, None)
