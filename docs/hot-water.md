@@ -160,8 +160,9 @@ that has failed, or a tank that cools faster than expected.
 
 **The rules that come before any price**, checked every 30 seconds:
 
-* **Full heat every day.** With a power sensor on the switch's device, full heat is the element drawing (500 W or
-  more) and then idle (under 50 W) for 15 minutes in a row while on: its thermostat is satisfied. From **20 hours**
+* **Full heat every day.** With a power sensor on the switch's device that SpotNav trusts (below), full heat is the
+  element drawing (500 W or more) and then idle (under 50 W) for 15 minutes in a row while on: its thermostat is
+  satisfied. From **20 hours**
   after the last full heat the switch stays on, whatever the price, until full heat is seen again. With an optional
   **tank sensor**, full heat is the tank at 60 °C for 10 minutes, and under 40 °C it is turned on at once until it
   reads 45 °C. Without either, it gets one **5-hour window every night** (the cheapest five hours between 22:00 and
@@ -194,6 +195,19 @@ changes nothing: the tank is not held cold. At most 8 planned switchings a day; 
 **The check.** The first off and the following on must show on the switch within 90 seconds; where the element was
 drawing when switched off, its power must fall under 100 W within two minutes, else the switch does not cut the element
 (the wrong entity) and control stops with it on.
+
+**The meter is trusted only once it follows SpotNav's own switching.** A power sensor on the switch's device counts
+as the element's meter only after one of SpotNav's own offs took it from the element's draw to under 100 W, or one of
+its ons raised it to the element's draw, within two minutes. Until then the water heater is run as one without a
+meter (the 5-hour night window), and a later off the meter does not follow takes the trust back. So a meter on the
+contactor's coil, which does not follow the element, is never taken for the element's.
+
+**Paused for the ceiling.** Where the site has an import target or a power level, the
+[shed order](site-and-load-balancing.md#the-shed-order-under-the-ceiling) may pause the water heater to the end of
+the hour while the hour is heading over that ceiling: after the home battery, before the car. Only in a cheap window
+whose time left still covers what the heater needs, only on a trusted meter, never in the unmetered night window, never
+once 16 hours have passed since the last full heat, and always after every rule above. The card says "Paused for the
+ceiling until 15:00". With control off it only says it would.
 
 With a power sensor the windows' energy counts in the house forecast, moved from the rest of the day into them, so
 the cars and the battery see it. The diagnostics (`heat_settings.control.water_heater`) show the mode, the element's
