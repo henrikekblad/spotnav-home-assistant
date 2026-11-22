@@ -5,12 +5,14 @@
     {
       "code": "later",
       "cost": null,
+      "departure": null,
       "kwh": null,
       "peak_kw": null
     },
     {
       "code": "accept_peak",
       "cost": null,
+      "departure": null,
       "kwh": null,
       "peak_kw": 12.0
     }
@@ -18,5 +20,6 @@
   "chosen": "takes_what_fits",
   "deliverable_kwh": 6.5,
   "departure": "2026-11-02T13:30:35+00:00",
+  "set_kw": 6.0,
   "short_kwh": 8.2
 }

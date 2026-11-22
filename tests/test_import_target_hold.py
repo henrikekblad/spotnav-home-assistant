@@ -411,7 +411,7 @@ async def test_ask_holds_the_target_and_tells_once_with_a_button(hass: HomeAssis
         assert status is not None and status.at_risk is not None and status.at_risk.missing_kwh > 5
         told = _told(world)
         assert len(told) == 1, "told once, not on every recompute"
-        assert told[0]["message"].startswith("Does not fit under the ceiling: ") and "by 14:30" in told[0]["message"]
+        assert told[0]["message"].startswith("The car will not be ready by 14:30 under the 6.0 kW import target")
         actions = told[0]["data"]["actions"]
         stamp = int(world.departure.timestamp())
         assert [action["action"] for action in actions] == [
@@ -461,6 +461,7 @@ def _block(departure: str, *, short: float = 4.0, fits: float | None = 12.0) -> 
         "deliverable_kwh": fits,
         "ceiling": "import_target",
         "ceiling_kw": 6.0,
+        "set_kw": 6.0,
         "chosen": None,
         "choices": [
             {"code": "takes_what_fits", "kwh": fits, "peak_kw": None, "cost": None},

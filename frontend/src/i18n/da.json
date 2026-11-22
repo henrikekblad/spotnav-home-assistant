@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Tag det, der kan nås",
   "doesNotFit.choice.takesWhatFitsKwh": "Tag det, der kan nås (≈ {kwh})",
   "doesNotFit.choice.later": "Senere afgang",
+  "doesNotFit.choice.laterAt": "Senere afgang ({time})",
   "doesNotFit.choice.acceptPeak": "Tillad toppen",
   "doesNotFit.choice.acceptPeakKw": "Tillad toppen (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Tillad toppen (≈ {kw} kW, ≈ {cost})",

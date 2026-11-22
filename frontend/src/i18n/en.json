@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Take what fits",
   "doesNotFit.choice.takesWhatFitsKwh": "Take what fits (≈ {kwh})",
   "doesNotFit.choice.later": "Later departure",
+  "doesNotFit.choice.laterAt": "Later departure ({time})",
   "doesNotFit.choice.acceptPeak": "Allow the peak",
   "doesNotFit.choice.acceptPeakKw": "Allow the peak (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Allow the peak (≈ {kw} kW, ≈ {cost})",

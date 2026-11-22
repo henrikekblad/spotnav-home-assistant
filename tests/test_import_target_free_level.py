@@ -186,9 +186,8 @@ async def test_a_departure_at_risk_is_told_at_the_months_peak(hass: HomeAssistan
         _peak(world, 7.0)
         await world.run(10)
         told = _told(world)
-        # The month's peak and the import target as set, both named.
-        # The notice is the does-not-fit notice (one per departure); the month's peak it was held at is in the status.
-        assert told and told[-1]["message"].startswith("Does not fit under the ceiling"), told
+        # The month's peak and the import target as set, both named (one notice per departure).
+        assert told and "under the month's peak of 7.0 kW (import target 6.0 kW)" in told[-1]["message"], told
         status = world.halo.controller.import_target_status(world.halo.charger.entry_id)
         assert status is not None and status.at_risk is not None
         assert status.at_risk.target_kw == 7.0 and status.at_risk.set_kw == 6.0

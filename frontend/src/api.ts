@@ -599,6 +599,19 @@ export async function takeWhatFits(hass: HomeAssistantLike, chargerId: string): 
 }
 
 /**
+ * The "does not fit" line's "Later departure (14:00)" (any user): this charge's departure moves to the later one the
+ * block proposes, for that departure only; the departure's settings are left as they are. Answers `{api_version, ok,
+ * error}`.
+ */
+export async function laterDeparture(hass: HomeAssistantLike, chargerId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/later_departure",
+    api_version: RELEASE_IMPORT_TARGET_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
+/**
  * A suggested import target for the charger's site from Home Assistant's statistics (administrators only), the
  * import target's editor's advice; decoded by `target-suggestion.ts`.
  */

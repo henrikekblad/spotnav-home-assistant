@@ -4,12 +4,13 @@ the Plan tab's car lane (`spotnav/get_plan`, the load's `does_not_fit`), and whe
 (`ChargerNotifier.does_not_fit`, step 3b: once per departure, in the daytime). Words are the card's and the
 notice's; these are figures.
 
-    {departure, short_kwh, deliverable_kwh, ceiling, ceiling_kw, chosen,
-     choices: [{code, kwh, peak_kw, cost}]}
+    {departure, short_kwh, deliverable_kwh, ceiling, ceiling_kw, set_kw, chosen,
+     choices: [{code, kwh, peak_kw, cost, departure}]}
 
 * **Only a ceiling that acts now.** The import target's hold, or the price's power level where the hold keeps it
   without a target (`ceiling`: `import_target` / `power_level`): what `SiteCapacityController.import_target_status`
-  says this hour. The demand charge's soft ceiling (`site/demand_ceiling.py`) and the car's plan under it
+  says this hour; `ceiling_kw` the level that holds this hour, `set_kw` the target (or power level) as set, below
+  `ceiling_kw` where the month's peak lifts the running hour. The demand charge's soft ceiling (`site/demand_ceiling.py`) and the car's plan under it
   (`planning/car_demand.py`) are shadow only: they hold nothing back, so they show nothing here. The main fuse is not
   a "does not fit" either: the plan is made at what the fuse allows (load balancing then shares it out).
 * **Short** (`TargetRisk`): `short_kwh` the energy the hold leaves missing by the `departure` (an instant),
@@ -22,8 +23,10 @@ notice's; these are figures.
   (the lasting `if_not_ready` is the person's default, never changed by a choice). Once the peak is accepted by a
   person there is none (a set-aside has no undo); where the plan's own `release` accepted it, `takes_what_fits` is
   still offered for this departure.
-  `takes_what_fits` (`kwh` what it delivers, `spotnav/take_what_fits`); `later` (the departure moved, by the person
-  in the departure's editor); `accept_peak` (`spotnav/release_import_target` for this charge alone: `peak_kw`
+  `takes_what_fits` (`kwh` what it delivers, `spotnav/take_what_fits`); `later` (the departure moved: `departure`
+  the earliest whole hour after it by which it all fits under the same ceiling within the prices held,
+  `TargetRisk.later_departure`, which `spotnav/later_departure` moves this departure alone to; `None` where none
+  does: the person moves it in the departure's editor); `accept_peak` (`spotnav/release_import_target` for this charge alone: `peak_kw`
   the hour's import it may reach, `cost` what that peak adds to the month's demand charge in the area's minor unit
   where the price has one and it is known, else `None`).
 """
@@ -37,8 +40,10 @@ from homeassistant.util import dt as dt_util
 from ..planning.auto_settings import IF_NOT_READY_HOLD
 from ..planning.flexible_load import CHOICE_ACCEPT_PEAK, CHOICE_LATER, CHOICE_TAKES_WHAT_FITS
 
-BLOCK_KEYS: Final = ("departure", "short_kwh", "deliverable_kwh", "ceiling", "ceiling_kw", "chosen", "choices")
-CHOICE_KEYS: Final = ("code", "kwh", "peak_kw", "cost")
+BLOCK_KEYS: Final = (
+    "departure", "short_kwh", "deliverable_kwh", "ceiling", "ceiling_kw", "set_kw", "chosen", "choices"
+)
+CHOICE_KEYS: Final = ("code", "kwh", "peak_kw", "cost", "departure")
 
 CEILING_IMPORT_TARGET: Final = "import_target"
 CEILING_POWER_LEVEL: Final = "power_level"
@@ -52,8 +57,15 @@ def _instant(value: str | None) -> str | None:
     return dt_util.as_utc(moment).isoformat()
 
 
-def _choice(code: str, *, kwh: float | None = None, peak_kw: float | None = None, cost: float | None = None) -> dict[str, Any]:
-    return {"code": code, "kwh": kwh, "peak_kw": peak_kw, "cost": cost}
+def _choice(
+    code: str,
+    *,
+    kwh: float | None = None,
+    peak_kw: float | None = None,
+    cost: float | None = None,
+    departure: str | None = None,
+) -> dict[str, Any]:
+    return {"code": code, "kwh": kwh, "peak_kw": peak_kw, "cost": cost, "departure": departure}
 
 
 def does_not_fit(status: Any, *, ceiling: str, peak_cost: float | None = None) -> dict[str, Any] | None:
@@ -75,6 +87,7 @@ def does_not_fit(status: Any, *, ceiling: str, peak_cost: float | None = None) -
             "deliverable_kwh": None,
             "ceiling": ceiling,
             "ceiling_kw": float(status.target_kw),
+            "set_kw": float(status.set_kw),
             "chosen": CHOICE_ACCEPT_PEAK,
             "choices": [_choice(CHOICE_TAKES_WHAT_FITS)] if status.released_automatically else [],
         }
@@ -82,13 +95,14 @@ def does_not_fit(status: Any, *, ceiling: str, peak_cost: float | None = None) -
     deliverable = None if need is None else round(max(0.0, need - risk.missing_kwh), 1)
     held = risk.choice == IF_NOT_READY_HOLD
     choices = [] if held else [_choice(CHOICE_TAKES_WHAT_FITS, kwh=deliverable)]
-    choices += [_choice(CHOICE_LATER), accept]
+    choices += [_choice(CHOICE_LATER, departure=_instant(getattr(risk, "later_departure", None))), accept]
     return {
         "departure": _instant(risk.departure),
         "short_kwh": round(float(risk.missing_kwh), 1),
         "deliverable_kwh": deliverable,
         "ceiling": ceiling,
         "ceiling_kw": float(risk.target_kw),
+        "set_kw": float(risk.target_kw if risk.set_kw is None else risk.set_kw),
         "chosen": CHOICE_TAKES_WHAT_FITS if held else None,
         "choices": choices,
     }

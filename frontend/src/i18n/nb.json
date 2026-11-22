@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Ta det som får plass",
   "doesNotFit.choice.takesWhatFitsKwh": "Ta det som får plass (≈ {kwh})",
   "doesNotFit.choice.later": "Senere avreise",
+  "doesNotFit.choice.laterAt": "Senere avreise ({time})",
   "doesNotFit.choice.acceptPeak": "Tillat toppen",
   "doesNotFit.choice.acceptPeakKw": "Tillat toppen (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Tillat toppen (≈ {kw} kW, ≈ {cost})",

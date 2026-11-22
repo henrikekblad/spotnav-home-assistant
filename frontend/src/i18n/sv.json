@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Ta det som ryms",
   "doesNotFit.choice.takesWhatFitsKwh": "Ta det som ryms (≈ {kwh})",
   "doesNotFit.choice.later": "Senare avresa",
+  "doesNotFit.choice.laterAt": "Senare avresa ({time})",
   "doesNotFit.choice.acceptPeak": "Tillåt toppen",
   "doesNotFit.choice.acceptPeakKw": "Tillåt toppen (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Tillåt toppen (≈ {kw} kW, ≈ {cost})",

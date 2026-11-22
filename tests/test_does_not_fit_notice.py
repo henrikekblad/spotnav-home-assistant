@@ -10,7 +10,7 @@ from typing import Any
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.spotnav.notifications.messages import Money, does_not_fit_choice_text, does_not_fit_text
 from custom_components.spotnav.notifications.notifier import is_quiet, quiet_end
@@ -29,16 +29,20 @@ _DAY = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
 # -- the words
 
 
-def test_the_notice_says_what_is_needed_and_what_fits_in_swedish_and_english() -> None:
-    assert does_not_fit_text("Garage", "sv", time="07:00", short_kwh=4.0, fits_kwh=12.0)[1] == (
-        "Ryms inte under taket: 16 kWh till 07:00 – 12 kWh hinner."
+def test_the_notice_names_the_ceiling_and_what_is_short_in_swedish_and_english() -> None:
+    assert does_not_fit_text("Garage", "sv", time="07:00", short_kwh=4.0, ceiling_kw=6.0, set_kw=6.0)[1] == (
+        "Bilen blir inte klar till 07:00 under effektmålet 6,0 kW – 4 kWh saknas."
     )
-    assert does_not_fit_text("Garage", "en", time="07:00", short_kwh=4.0, fits_kwh=12.0)[1] == (
-        "Does not fit under the ceiling: 16 kWh by 07:00 – 12 kWh fit in time."
+    assert does_not_fit_text("Garage", "en", time="07:00", short_kwh=4.0, ceiling_kw=6.0, set_kw=6.0)[1] == (
+        "The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh short."
     )
-    # What fits not known: what is short.
-    assert does_not_fit_text("Garage", "sv", time="07:00", short_kwh=4.0, fits_kwh=None)[1] == (
-        "Ryms inte under taket: 4 kWh saknas till 07:00."
+    # The month's peak lifts the hour: both are named.
+    assert does_not_fit_text("Garage", "en", time="07:00", short_kwh=4.0, ceiling_kw=7.5, set_kw=6.0)[1] == (
+        "The car will not be ready by 07:00 under the month's peak of 7.5 kW (import target 6.0 kW) – 4 kWh short."
+    )
+    # No time: by the departure.
+    assert does_not_fit_text("Garage", "sv", time=None, short_kwh=4.0, ceiling_kw=6.0)[1] == (
+        "Bilen blir inte klar till avresan under effektmålet 6,0 kW – 4 kWh saknas."
     )
 
 
@@ -101,7 +105,7 @@ async def test_in_the_daytime_it_is_told_at_once_and_once_per_departure(hass: Ho
         await hass.async_block_till_done()
         sent = _sent(calls)
         assert len(sent) == 1
-        assert sent[0]["message"] == "Does not fit under the ceiling: 16 kWh by 07:30 – 12 kWh fit in time."
+        assert sent[0]["message"] == "The car will not be ready by 07:30 under the 6.0 kW import target – 4 kWh short."
         assert [action["title"] for action in sent[0]["data"]["actions"]] == [
             "Take what fits (≈ 12 kWh)",
             "Allow the peak (≈ 12 kW)",  # no currency known in this test: no price
@@ -142,7 +146,7 @@ async def test_at_night_nothing_is_told_until_seven_if_it_still_stands(hass: Hom
         async_fire_time_changed(hass, _MORNING)
         await hass.async_block_till_done()
         sent = _sent(calls)
-        assert len(sent) == 1 and sent[0]["message"].endswith("by 07:30 – 12 kWh fit in time.")
+        assert len(sent) == 1 and sent[0]["message"].startswith("The car will not be ready by 07:30 ")
 
 
 async def test_at_night_one_that_ends_before_seven_is_never_told(hass: HomeAssistant) -> None:
@@ -228,3 +232,39 @@ async def test_a_take_what_fits_press_for_another_departure_is_refused(hass: Hom
         await hass.async_block_till_done()
         assert controller.import_target_snapshot()["takes_what_fits"] == {}
         assert dt_util.utcnow() < world.departure
+
+
+async def test_a_car_plugged_in_later_is_told_at_the_plug_in_once(hass: HomeAssistant, monkeypatch) -> None:
+    """No car, no notice; a car plugged in later (by day) whose departure does not fit is told then, once."""
+    from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
+
+    from .test_import_target_hold import _plan, _world
+    from .test_notifications import _choose
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        await hass.config.async_set_time_zone("Europe/Stockholm")
+        world = await _world(hass, monkeypatch, frozen, "pluglater")
+        charger = world.halo.charger.entry_id
+        plugged = {"now": False}
+        monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: plugged["now"])
+        world.calls = async_mock_service(hass, "notify", "mobile_app_pixel")
+        await _choose(hass, charger, targets=("mobile_app_pixel",), events=("plan_at_risk",))
+        notifier = charger_data(hass, charger).notifier
+        notifier._observe()  # noqa: SLF001 - the charger reports no car
+        await world.step()
+        now = dt_util.utcnow()
+        departure = now + timedelta(hours=2, minutes=30)
+        # 16.5 kWh in a window from an hour on: under the 6 kW target it is about 4 kWh short.
+        world.halo.cc.plan = _plan(now, departure, [(now + timedelta(hours=1), departure)])
+        await world.run(2)
+        status = world.halo.controller.import_target_status(charger)
+        assert status is not None and status.at_risk is not None
+        assert _told(world) == [], "no car plugged in: nothing told"
+        # The car is plugged in: told at once, without waiting for the site's next pass.
+        plugged["now"] = True
+        notifier._observe()  # noqa: SLF001
+        await hass.async_block_till_done()
+        told = _told(world)
+        assert len(told) == 1 and told[0]["message"].startswith("The car will not be ready by 15:30 ")
+        await world.run(2)
+        assert len(_told(world)) == 1, "once per departure"

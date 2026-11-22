@@ -183,6 +183,9 @@ class _HoldingSite:
     def import_target_plan_kw_by_hour(self, _charger_entry_id: str) -> dict | None:
         return None
 
+    def later_departure_for(self, _charger_entry_id: str) -> None:
+        return None  # no "Later departure" chosen
+
     def import_target_holds(self, _charger_entry_id: str) -> bool:
         return False
 
@@ -231,6 +234,9 @@ class _ForecastSite(_HoldingSite):
     def import_target_plan_kw_by_hour(self, _charger_entry_id: str) -> dict | None:
         first = _FIRST_HOUR
         return {first + timedelta(hours=index): 2.0 if index % 2 == 0 else 6.0 for index in range(48)}
+
+    def later_departure_for(self, _charger_entry_id: str) -> None:
+        return None  # no "Later departure" chosen
 
 
 async def test_the_plan_counts_on_the_import_targets_figure_per_hour(

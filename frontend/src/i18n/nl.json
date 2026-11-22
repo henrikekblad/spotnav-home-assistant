@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Neem wat past",
   "doesNotFit.choice.takesWhatFitsKwh": "Neem wat past (≈ {kwh})",
   "doesNotFit.choice.later": "Later vertrek",
+  "doesNotFit.choice.laterAt": "Later vertrek ({time})",
   "doesNotFit.choice.acceptPeak": "Piek toestaan",
   "doesNotFit.choice.acceptPeakKw": "Piek toestaan (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Piek toestaan (≈ {kw} kW, ≈ {cost})",

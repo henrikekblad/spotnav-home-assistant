@@ -35,14 +35,19 @@ describe("the backend's does-not-fit blocks", () => {
     const money = { major_unit: "kr", minor_unit: "öre" };
     expect(ask.choices.map((choice) => choiceLabel(SV, choice, money))).toEqual([
       "Ta det som ryms (≈ 7,1 kWh)",
-      "Senare avresa",
+      "Senare avresa (17:00)",
       "Tillåt toppen (≈ 12 kW)",
     ]);
-    expect(choiceLabel(SV, { code: "accept_peak", kwh: null, peak_kw: 12, cost: 10500 }, money)).toBe("Tillåt toppen (≈ 12 kW, ≈ 105 kr)");
+    expect(choiceLabel(EN, ask.choices[1]!, money)).toBe("Later departure (17:00)");
+    expect(choiceLabel(SV, { code: "accept_peak", kwh: null, peak_kw: 12, cost: 10500, departureMs: null }, money)).toBe(
+      "Tillåt toppen (≈ 12 kW, ≈ 105 kr)",
+    );
     const hold = decodeDoesNotFit(fixture("does_not_fit", "hold.json"));
     expect(doesNotFitText(SV, hold)).toBe("Bilen tar det som ryms till 14:30 (6,5 kWh).");
     expect(doesNotFitText(EN, hold)).toBe("The car takes what fits by 14:30 (6.5 kWh).");
     expect(hold.choices.map((choice) => choice.code)).toEqual(["later", "accept_peak"]);
+    // No later hour fits within the prices held: the editor is the way.
+    expect(choiceLabel(SV, hold.choices[0]!, money)).toBe("Senare avresa");
     const release = decodeDoesNotFit(fixture("does_not_fit", "release.json"));
     expect(doesNotFitText(SV, release)).toBe("Taket (Effektmål 6,0 kW) är släppt för den här laddningen till 14:30.");
     expect(release.choices.map((choice) => choice.code)).toEqual(["takes_what_fits"]);
@@ -131,12 +136,24 @@ describe("the charger card's does-not-fit line", () => {
     expect(buttons(shadow(element))).toContain("takes_what_fits");
   });
 
-  it("opens the departure's editor for Later departure", async () => {
+  it("moves this departure for Later departure (17:00), never writing the departure's settings", async () => {
     const { hass, root } = await mounted("ask.json");
+    const later = root.querySelector<HTMLButtonElement>("[data-choice='later']")!;
+    expect(later.textContent).toBe("Senare avresa (17:00)");
+    later.click();
+    await settle();
+    expect(hass.messages.at(-1)).toMatchObject({ type: "spotnav/later_departure", api_version: 1, charger_id: "entry_a" });
+    expect(hass.messages.some((message) => message["type"] === "spotnav/update_settings")).toBe(false);
+  });
+
+  it("opens the departure's editor for Later departure where no later hour fits", async () => {
+    const { hass, root } = await mounted("hold.json");
     const before = hass.messages.length;
     root.querySelector<HTMLButtonElement>("[data-choice='later']")!.click();
     await settle();
-    expect(hass.messages.slice(before).map((message) => message["type"])).toContain("spotnav/get_settings");
+    const sent = hass.messages.slice(before).map((message) => message["type"]);
+    expect(sent).toContain("spotnav/get_settings");
+    expect(sent).not.toContain("spotnav/later_departure");
   });
 
   it("sets the import target aside for this charge for Allow the peak, confirmed first, also where the plan holds", async () => {
@@ -176,16 +193,19 @@ describe("the Plan tab's car lane", () => {
     const line = body.querySelector("[data-load='car'] [data-part='does-not-fit']");
     expect(line?.textContent).toContain("Ryms inte under taket (Effektmål 6,0 kW): 17,8 kWh till 07:00 – 14,8 kWh hinner.");
     const choices = [...line!.querySelectorAll<HTMLButtonElement>("button")];
-    // "Later departure" is the charger card's: its departure editor is there.
-    expect(choices.map((button) => button.dataset["choice"])).toEqual(["takes_what_fits", "accept_peak"]);
-    expect(choices[1]!.textContent).toBe("Tillåt toppen (≈ 13 kW, ≈ 45 kr)");
+    // "Later departure" with the hour it all fits by moves this departure there.
+    expect(choices.map((button) => button.dataset["choice"])).toEqual(["takes_what_fits", "later", "accept_peak"]);
+    expect(choices[1]!.textContent).toBe("Senare avresa (08:00)");
+    expect(choices[2]!.textContent).toBe("Tillåt toppen (≈ 13 kW, ≈ 45 kr)");
     choices[0]!.click();
     expect(choose).toHaveBeenCalledWith("charger_garage", "takes_what_fits");
+    choices[1]!.click();
+    expect(choose).toHaveBeenLastCalledWith("charger_garage", "later");
     // Allowing the peak is asked again before it is chosen.
-    choices[1]!.click();
-    expect(choose).toHaveBeenCalledTimes(1);
-    expect(choices[1]!.textContent).toBe("Ja, tillåt toppen");
-    choices[1]!.click();
+    choices[2]!.click();
+    expect(choose).toHaveBeenCalledTimes(2);
+    expect(choices[2]!.textContent).toBe("Ja, tillåt toppen");
+    choices[2]!.click();
     expect(choose).toHaveBeenLastCalledWith("charger_garage", "accept_peak");
   });
 

@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Ota mikä mahtuu",
   "doesNotFit.choice.takesWhatFitsKwh": "Ota mikä mahtuu (≈ {kwh})",
   "doesNotFit.choice.later": "Myöhempi lähtö",
+  "doesNotFit.choice.laterAt": "Myöhempi lähtö ({time})",
   "doesNotFit.choice.acceptPeak": "Salli huippu",
   "doesNotFit.choice.acceptPeakKw": "Salli huippu (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Salli huippu (≈ {kw} kW, ≈ {cost})",

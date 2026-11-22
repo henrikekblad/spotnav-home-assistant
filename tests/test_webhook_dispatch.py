@@ -40,6 +40,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "fix_own_mode",
         "release_import_target",
         "take_what_fits",
+        "later_departure",
         "get_power_month",
         "suggest_import_target",
         "dismiss_setup_item",

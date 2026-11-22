@@ -15,6 +15,13 @@ charger_id}` holds this charge's departure as `if_not_ready` `hold` would, for t
 told), leaving the lasting `if_not_ready` as it is (`SiteCapacityController.async_take_what_fits`). Any user may ask,
 as for a release. Same answer; refusals `spotnav_no_site`, `spotnav_no_import_target`, `spotnav_no_departure` and the
 charger lookup's codes. The charger webhook's `take_what_fits` is the same for the paired app.
+
+`spotnav/later_departure` is the line's "Later departure (14:00)": `{api_version: 1, charger_id}` moves this charge's
+departure to the later one the block proposes (the `later` choice's `departure`), for that departure alone: the
+departure's settings are left as they are, and the plan is made again for it
+(`SiteCapacityController.async_later_departure`). Any user may ask. Same answer; refusals `spotnav_no_site`,
+`spotnav_no_import_target`, `spotnav_no_departure`, `spotnav_no_later_departure` (nothing later fits within the prices
+held) and the charger lookup's codes. The charger webhook's `later_departure` is the same for the paired app.
 """
 
 from __future__ import annotations
@@ -34,6 +41,7 @@ ERROR_NO_SITE: Final = "spotnav_no_site"
 #: The charger webhook's action for the same.
 WEBHOOK_ACTION: Final = "release_import_target"
 TAKE_WHAT_FITS_ACTION: Final = "take_what_fits"
+LATER_DEPARTURE_ACTION: Final = "later_departure"
 
 
 def _answer(error: str | None = None) -> dict[str, Any]:
@@ -59,6 +67,48 @@ def take_what_fits(hass: HomeAssistant, entry: ConfigEntry, source: str | None =
     if site is None:
         return ERROR_NO_SITE
     return site.async_take_what_fits(entry.entry_id, source=source)
+
+
+def later_departure(hass: HomeAssistant, entry: ConfigEntry, source: str | None = None) -> str | None:
+    """Move this charger's departure to the later one where it fits, for that departure only; the refusal's code,
+    else `None`."""
+    from ..execution.solar_execution import site_controller_for_charger  # noqa: PLC0415 - it imports the site
+
+    site = site_controller_for_charger(hass, entry.entry_id)
+    if site is None:
+        return ERROR_NO_SITE
+    return site.async_later_departure(entry.entry_id, source=source)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "spotnav/later_departure",
+        vol.Optional("api_version"): object,
+        vol.Optional("charger_id"): object,
+    }
+)
+@callback
+def websocket_later_departure(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """"Later departure" for this charger's charge: its departure moved to the later one proposed."""
+    version = msg.get("api_version")
+    if isinstance(version, bool) or version != RELEASE_API_VERSION:
+        send_unsupported_version(connection, msg, RELEASE_API_VERSION)
+        return
+    entry, failure = lookup_charger(hass, msg.get("charger_id"))
+    if failure is not None or entry is None:
+        connection.send_result(msg["id"], _answer(failure))
+        return
+    connection.send_result(msg["id"], _answer(later_departure(hass, entry, "card")))
+
+
+async def webhook_later_departure(hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]) -> web.Response:
+    """`later_departure` over the charger webhook (the paired app): HTTP 200 once moved, 400 with the refusal's code."""
+    version = payload.get("api_version", RELEASE_API_VERSION)
+    if isinstance(version, bool) or version != RELEASE_API_VERSION:
+        error: str | None = ERROR_UNSUPPORTED_VERSION
+    else:
+        error = later_departure(hass, entry, "app")
+    return web.json_response({**_answer(error), "action": LATER_DEPARTURE_ACTION}, status=200 if error is None else 400)
 
 
 @websocket_api.websocket_command(
@@ -133,3 +183,4 @@ def async_setup_import_target_api(hass: HomeAssistant) -> None:
     """Register the command once for the domain."""
     websocket_api.async_register_command(hass, websocket_release_import_target)
     websocket_api.async_register_command(hass, websocket_take_what_fits)
+    websocket_api.async_register_command(hass, websocket_later_departure)

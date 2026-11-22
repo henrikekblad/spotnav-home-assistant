@@ -246,7 +246,8 @@ export interface AdvisoryFacts {
 /** The "does not fit" line as the charger card shows it (`does-not-fit.ts`). */
 export interface DoesNotFitLine {
   text: string;
-  choices: { code: DoesNotFitChoiceCode; label: string }[];
+  /** `moves`: "Later departure" with its time, which moves this departure there (else it opens the editor). */
+  choices: { code: DoesNotFitChoiceCode; label: string; moves: boolean }[];
 }
 
 /** The status lines the "does not fit" line says in their place. */
@@ -264,7 +265,11 @@ function doesNotFitLine(dashboard: Dashboard, format: FormatContext): DoesNotFit
   const money = { major_unit: format.majorUnit, minor_unit: null };
   return {
     text: doesNotFitText(format, block),
-    choices: block.choices.map((choice) => ({ code: choice.code, label: choiceLabel(format, choice, money) })),
+    choices: block.choices.map((choice) => ({
+      code: choice.code,
+      label: choiceLabel(format, choice, money),
+      moves: choice.code === "later" && choice.departureMs !== null,
+    })),
   };
 }
 
