@@ -69,7 +69,11 @@ from ..vehicles.ocpp_identity import (
     resolve_target,
     STATUS_CONNECTOR_KEY,
 )
-from .charger_connection import FINISHED as CONNECTION_FINISHED
+from .charger_connection import (
+    CHARGING as CONNECTION_CHARGING,
+    DISCONNECTED as CONNECTION_DISCONNECTED,
+    FINISHED as CONNECTION_FINISHED,
+)
 from .car_plug_fallback import CarPlugFallback, plan_vehicle, SOURCE_CAR_PLUG
 from .charger_entities import charger_conflicts, charger_is_disabled, FixableConflict
 from .power_energy import integrated_energy_unique_id, read_power_w
@@ -1745,9 +1749,13 @@ class ChargingController:
         state is not SpotNav's own (`_own_stop`, kept across a restart; a stop on a slow cloud may land long after it was
         sent) and no stop of ours is on its way or just went out. Kept while it says so, also through a stop of ours
         sent later (a window's end: an Easee stays `completed`)."""
-        if self.adapter.connection()[0] != CONNECTION_FINISHED:
-            self._finished_by_car = None
+        connection = self.adapter.connection()[0]
+        if connection in (CONNECTION_DISCONNECTED, CONNECTION_CHARGING) or self.charging:
+            # Unplugged, or a charge seen: the plan's one try is spent on something else now. A charger that only
+            # leaves its finished state for a moment after a try's start (an Easee's `awaiting_start`) keeps it.
             self._finished_tried = self._finished_tried_soc = None
+        if connection != CONNECTION_FINISHED:
+            self._finished_by_car = None
         elif self._finished_by_car is None:
             since = self._stop_settle_since
             ours = (

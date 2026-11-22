@@ -431,6 +431,37 @@ async def test_a_new_plan_does_not_pause_an_empty_charger(hass: HomeAssistant, f
     assert commands == []
 
 
+async def _completed_after_charging(hass: HomeAssistant, freezer: Any, plan: dict[str, Any]):
+    controller = await _shaped_charger(hass, "easee")
+    _easee(hass, "awaiting_start")
+    commands = _easee_commands(hass)
+    await install_schedule(controller, plan)
+    await _after(hass, freezer, 31)
+    _easee(hass, "charging")
+    await _walk(hass, freezer, 600)
+    _easee(hass, "completed")
+    await hass.async_block_till_done()
+    return controller, commands
+
+
+async def test_a_moment_out_of_completed_after_the_try_does_not_give_another(hass: HomeAssistant, freezer: Any) -> None:
+    """After a try's `resume` an Easee shows `awaiting_start` for half a minute, then `completed` again: still one
+    try for the plan, not one per window."""
+    _controller, commands = await _completed_after_charging(
+        hass, freezer, _windows((0, 30), (60, 90), (120, 150), (180, 210))
+    )
+    seen = len(commands)
+    for _minute in range(200):
+        await _after(hass, freezer, 60)
+        if len(commands) > seen and commands[-1] == "resume":
+            _easee(hass, "awaiting_start")
+            await _after(hass, freezer, 30)
+            _easee(hass, "completed")
+            await hass.async_block_till_done()
+        seen = len(commands)
+    assert commands.count("resume") == 2, f"the first window's start and one try: {commands}"
+
+
 async def test_a_stale_car_cloud_unplugged_does_not_spare_the_stop(hass: HomeAssistant, freezer: Any) -> None:
     """Only the charger's own "no vehicle" spares a new plan's stop: the car's plug sensor standing in for a charger
     that says nothing may be a stale cloud reading."""
