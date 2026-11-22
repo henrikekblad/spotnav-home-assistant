@@ -27,6 +27,7 @@ from homeassistant.components import websocket_api
 from homeassistant.components.websocket_api.messages import message_to_json_bytes, result_message
 from homeassistant.core import callback, HomeAssistant
 
+from ..beta import beta_of
 from ..card_asset import async_manifest_version, read_bundle_digest
 from ..debug_bundle import async_build_debug_bundle
 from ..runtime import domain_data
@@ -136,6 +137,12 @@ async def websocket_send_debug_info(
     if not valid:
         connection.send_result(msg["id"], _report_answer(error=ERROR_INVALID_EMAIL))
         return
+    if email is not None:
+        # The installation's one address (the beta box's too), so the next report or the beta box has it filled in.
+        # A blank field sends without one and keeps what was saved.
+        beta = beta_of(hass)
+        if beta is not None and beta.state.email != email:
+            await beta.async_set(email=email)
     result = await async_send_report(hass, message, email, clean_client(msg.get("client")))
     connection.send_result(
         msg["id"], _report_answer(ref=result.ref, error=result.error, retry_after_s=result.retry_after_s)
