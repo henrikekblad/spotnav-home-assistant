@@ -44,7 +44,8 @@ members say what the cars want (`cars_held_w`, the ones the hold may lower or pa
 **Put back in reverse**: heat while `beyond_cars_w + its give` stays under by `RELEASE_MARGIN_W` for `RELEASE_S`; the
 car is the hold's own (it raises as the budget allows); then the water heater while `excess_w + its give` does. One
 step at a time, heat before the water heater. A step released (or ended by its own rules) is not taken again in the
-same period: a contactor never flaps, and the water heater's planned switchings a day still count every pause.
+same period, nor within `REST_S` of its end: a contactor never flaps, and the water heater's planned switchings a day
+still count every pause.
 
 **Watched loads** (a water heater without its opt-in, heat control off) take the same steps as `would` only: shown
 and logged, never written, and nothing counted (the next step goes on as if they were not there).
@@ -89,6 +90,9 @@ RELEASE_MARGIN_W: Final = 500.0
 CREDIT_S: Final = 120.0
 #: At the period's turn a step holds this much longer while no pass has looked at the new period yet (s).
 TURN_GRACE_S: Final = 120.0
+#: After a step ends, the same load is not shed again for this long (s), across a period's turn too: a contactor is
+#: never switched back and forth within minutes.
+REST_S: Final = 900.0
 #: A step that gives less than this (W) is not worth a switching.
 MIN_GIVE_W: Final = 300.0
 
@@ -204,8 +208,9 @@ class ShedOrder:
         self._beyond_since: datetime | None = None
         #: Per step, since when it could be put back.
         self._under_since: dict[str, datetime] = {}
-        #: Per load, the period in which its step ended: not taken again in it.
+        #: Per load, the period in which its step ended (not taken again in it) and when (`REST_S`).
         self._ended: dict[str, datetime] = {}
+        self._ended_at: dict[str, datetime] = {}
         #: Per load, the rule that kept it from a step that was due (`blocked`), as of the last pass.
         self.blocked: dict[str, str] = {}
         self.credit_w = 0.0
@@ -270,7 +275,7 @@ class ShedOrder:
         if self._over_since is None:
             return
         heater = offers.get(LOAD_WATER_HEATER)
-        if LOAD_WATER_HEATER not in self.steps and self._may_take(LOAD_WATER_HEATER, heater, projection):
+        if LOAD_WATER_HEATER not in self.steps and self._may_take(now, LOAD_WATER_HEATER, heater, projection):
             if (now - self._over_since).total_seconds() >= ENTER_S:
                 self._take(now, LOAD_WATER_HEATER, heater, projection)  # type: ignore[arg-type]
             # The heater is the step due: heat waits for it, and its own delay starts after it.
@@ -281,15 +286,21 @@ class ShedOrder:
         if self._beyond_since is None or LOAD_HEAT in self.steps:
             return
         heat = offers.get(LOAD_HEAT)
-        if not self._may_take(LOAD_HEAT, heat, projection):
+        if not self._may_take(now, LOAD_HEAT, heat, projection):
             if heat is not None and not heat.ready and heat.why is not None:
                 self.blocked[LOAD_HEAT] = heat.why
             return
         if (now - self._beyond_since).total_seconds() >= ENTER_S:
             self._take(now, LOAD_HEAT, heat, projection)  # type: ignore[arg-type]
 
-    def _may_take(self, load: str, offer: Offer | None, projection: Projection) -> bool:
-        return offer is not None and offer.useful and self._ended.get(load) != projection.period_start
+    def _may_take(self, now: datetime, load: str, offer: Offer | None, projection: Projection) -> bool:
+        ended_at = self._ended_at.get(load)
+        return (
+            offer is not None
+            and offer.useful
+            and self._ended.get(load) != projection.period_start
+            and (ended_at is None or (now - ended_at).total_seconds() >= REST_S)
+        )
 
     def _take(self, now: datetime, load: str, offer: Offer, projection: Projection) -> None:
         self.steps[load] = Step(
@@ -311,6 +322,7 @@ class ShedOrder:
         # Not taken again in the period it ended in (nor, ended by a period it no longer knows, in the step's own).
         period = self.projection.period_start if self.projection is not None else step.period_start
         self._ended[load] = period
+        self._ended_at[load] = now
         self._log(now, load, "put_back" if step.live else "would_put_back", why=why, **extra)
 
     def _credit(self, now: datetime, projection: Projection, heater: Offer | None) -> float:
@@ -327,8 +339,7 @@ class ShedOrder:
             return 0.0
         if (
             self._over_since is not None
-            and heater.useful
-            and self._ended.get(LOAD_WATER_HEATER) != projection.period_start
+            and self._may_take(now, LOAD_WATER_HEATER, heater, projection)
             and (now - self._over_since).total_seconds() <= ENTER_S
         ):
             return heater.give_w

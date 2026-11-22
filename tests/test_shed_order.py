@@ -14,6 +14,7 @@ from custom_components.spotnav.site.shed_order import (
     Projection,
     RELEASE_MARGIN_W,
     RELEASE_S,
+    REST_S,
     ShedOrder,
     TURN_GRACE_S,
 )
@@ -284,3 +285,20 @@ def test_combine_heat_parts() -> None:
     assert found is not None and found.live and not found.ready and found.why == "zone_cold"
     found = combine([pump_watched, None])
     assert found is not None and not found.live and found.ready and found.give_w == 1000.0
+
+
+def test_a_load_rests_after_its_step_across_the_period_s_turn() -> None:
+    order = ShedOrder()
+    off = Offer(True, True, 0.0, False)
+    now, _ = _run(order, HOUR + timedelta(minutes=48), ENTER_S, house=4000, held=6000)
+    assert LOAD_WATER_HEATER in order.steps
+    # Put back just before the hour's end.
+    now, _ = _run(order, now, RELEASE_S + 5, house=1000, held=1000, offers={LOAD_WATER_HEATER: off})
+    assert order.steps == {}
+    ended = now
+    # Over again right after the turn: not shed (nor counted ahead) until `REST_S` after it was put back.
+    turn = HOUR + timedelta(hours=1, minutes=1)
+    moment, credit = _run(order, turn, 120, house=4000, held=6000)
+    assert order.steps == {} and credit == 0.0
+    _run(order, ended + timedelta(seconds=REST_S), ENTER_S + 5, house=4000, held=6000)
+    assert LOAD_WATER_HEATER in order.steps
