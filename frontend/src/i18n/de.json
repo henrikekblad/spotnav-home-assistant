@@ -1279,6 +1279,8 @@
   "house.sources.heatFromSetting": "Wärmepumpenzähler: {name} (in den Einstellungen gewählt)",
   "house.sources.heatSplit": "Hausprognose als Wärme plus Rest: {split} gegen {whole} für das Ganze ({hours} h, nur angezeigt)",
   "house.sources.battery": "Batterie: {name}",
+  "house.sources.roundTripLearned": "Wirkungsgrad (Laden und Entladen): {pct}, gelernt",
+  "house.sources.roundTripAssumed": "Wirkungsgrad (Laden und Entladen): angenommen {pct}",
   "house.note.selfManaged": "Die Batterie läuft mit ihrem eigenen Optimierer. SpotNav plant daneben nur zum Vergleich und schreibt nichts an sie.",
   "house.note.shadow": "Test: SpotNav plant die Batterie, steuert sie aber noch nicht.",
   "house.note.controlling": "SpotNav steuert die Batterie nach dem Plan.",

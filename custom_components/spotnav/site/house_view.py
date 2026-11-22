@@ -79,6 +79,7 @@ from ..battery.plan_model import (
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     DEFAULT_MODE,
+    DEFAULT_ROUND_TRIP_EFFICIENCY,
     MODES,
 )
 from .. import time_zones
@@ -230,6 +231,11 @@ class BatteryInputs:
     #: `ExecState.action` while active; `None` when it runs none) and the battery's measured power (kW, + charging).
     action_now: str | None = None
     power_kw: float | None = None
+    #: The round trip the plan uses (0-1), whether it was learnt from the battery's own meters (else assumed), and
+    #: each window learnt as `(date, round trip)`, oldest first (`battery/round_trip.py`).
+    round_trip: float = DEFAULT_ROUND_TRIP_EFFICIENCY
+    round_trip_learned: bool = False
+    round_trip_series: Sequence[tuple[str, float]] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -603,6 +609,11 @@ def _battery_block(battery: BatteryInputs, log: ForecastLog) -> dict[str, Any]:
         "soc_review": _score(log.last_week(KIND_BATTERY)),
         "estimates": sorted(set(battery.estimates)),
         "now": {"action": battery.action_now, "power_kw": _round(battery.power_kw, 2)},
+        "round_trip": {
+            "pct": round(battery.round_trip * 100.0, 1),
+            "learned": battery.round_trip_learned,
+            "series": [[day, round(value * 100.0, 1)] for day, value in battery.round_trip_series],
+        },
     }
 
 

@@ -62,7 +62,30 @@ installer password in the integration. Sofar's is its depth of discharge (*BatCo
 TL-XH and TL3-XH's is *EMS Discharging Stop SOC (on grid)*; both are disabled in Home Assistant by default and are read
 once you enable them. Growatt's SPH and SPA give *Load First Battery Minimum SOC*, and Solinteg *Battery SOC Min On Grid*,
 which the inverter applies only while its *Battery SOC Protection On Grid* is on. FoxESS gives *Min SoC (On Grid)*.
-The round trip is assumed to be 90 %. Both are said to be assumed in the card's details.
+The lowest level is said to be assumed in the card's details while it is.
+
+**The round trip is learnt from your battery's own meters.** Until it is known the plan assumes 90 %: of each kWh
+charged, 0.9 kWh comes back out. SpotNav then learns your battery's own figure, with no setting:
+
+* It looks at windows that start and end at the same level (within 1.5 points) and in which at least 20 kWh went into
+  the battery. What went in and what came out in such a window is the same energy stored once, so out over in is the
+  round trip, standby use included. A window ends at the first moment the level is back (put where the level passed
+  it inside a quarter hour); the next one starts there, and one not over in 14 days starts again.
+* What went in and out is read from the battery's lifetime charge and discharge counters where the integration has
+  them (Sigenergy, Huawei, SolarEdge, SolaX, Sofar, Solinteg, GoodWe ET, FoxESS, Victron with a battery monitor's
+  history, Enphase), else from the battery's power that SpotNav measures every quarter hour. Most brands count at the
+  battery (DC), as they measure its power; Enphase counts on the AC side. Energy from DC-coupled panels into the battery
+  counts as charged, as it should. Growatt's charge counter counts only the grid's share, so it is not used.
+* A counter that falls or jumps faster than the battery could charge (a reset, a wrap) spoils the window it falls in;
+  so does a quarter hour that was not measured. Where both the counters and the measured power are known they must
+  agree within 15 %, or the window teaches nothing: a counter that counts something else is not believed.
+* A window's round trip must lie between 60 % and 98 %. The learnt value is the median of the last nine windows that
+  agree within 5 points, once three do. The plan follows it slowly: only when it is 2 points or more away, and by at
+  most 3 points per window, so one odd window never moves the plan. The learnt size uses it too.
+
+The card's details show it: "Round-trip efficiency: 84 %, learnt" or "assumed 90 %". The diagnostics
+(`battery.plan.learned.round_trip`) list every window taken, with its dates, energies and source, kept for two years,
+and the last ones thrown away and why.
 
 **A cold battery takes less charge.** Where the integration reads the cells' temperature (Sigenergy), SpotNav shows
 in the diagnostics (`battery.plan.preheat`) how the plan's coming charges would fare while the cells are cold: each

@@ -434,3 +434,47 @@ def test_sigenergy_finds_the_plants_cell_temperature_else_the_inverters() -> Non
     older = _facts("sigenergy", **{"sensor.sigen_plant_ess_average_cell_temperature": {"disabled": True}})
     assert older.cell_temperature_entity == "sensor.sigen_inverter_battery_average_cell_temperature"
     assert _facts("huawei").cell_temperature_entity is None
+
+
+def _with_counters(name: str, charged: dict[str, Any], discharged: dict[str, Any]):
+    brand = BRANDS[name]
+    rows = [{"device": "battery", "device_class": "energy", "disabled": False} | row for row in (charged, discharged)]
+    entities = _entities(brand) + _entities({"platform": brand["platform"], "entities": rows})
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+    return battery_facts(battery, entities, manufacturer=brand["manufacturer"], power_kw=-1.0)
+
+
+def test_the_lifetime_counters_are_read_in_kwh_where_the_brand_has_them() -> None:
+    sigen = _with_counters(
+        "sigenergy",
+        {"entity_id": "sensor.sigen_charged", "unique_id": "ENTRY_sigen_plant_plant_accumulated_battery_charge_energy",
+         "state": "1234.5", "unit": "kWh"},
+        {"entity_id": "sensor.sigen_discharged",
+         "unique_id": "ENTRY_sigen_plant_plant_accumulated_battery_discharge_energy", "state": "1.1", "unit": "MWh"},
+    )
+    assert sigen.charged_total_kwh == pytest.approx(1234.5)
+    assert sigen.discharged_total_kwh == pytest.approx(1100.0)
+    assert sigen.sources["charged_total"] == "sensor.sigen_charged"
+
+    solaredge = _with_counters(
+        "solaredge",
+        {"entity_id": "sensor.b1_in", "unique_id": "SE10K_7E1234_B1_energy_import", "state": "500000", "unit": "Wh"},
+        {"entity_id": "sensor.b1_out", "unique_id": "SE10K_7E1234_B1_energy_export", "state": "450000", "unit": "Wh"},
+    )
+    assert (solaredge.charged_total_kwh, solaredge.discharged_total_kwh) == (500.0, 450.0)
+
+    goodwe = _with_counters(
+        "goodwe",
+        {"entity_id": "sensor.gw_in", "unique_id": "goodwe-e_bat_charge_total-9010KETU000W0000", "state": "80.2",
+         "unit": "kWh"},
+        {"entity_id": "sensor.gw_out", "unique_id": "goodwe-e_bat_discharge_total-9010KETU000W0000", "state": "unavailable",
+         "unit": "kWh"},
+    )
+    assert goodwe.charged_total_kwh == pytest.approx(80.2) and goodwe.discharged_total_kwh is None
+    json.dumps(goodwe.as_dict())
+
+
+def test_growatt_has_no_counters_its_charge_counter_is_only_from_the_grid() -> None:
+    adapter = adapter_for("solax_modbus", "Growatt New Energy")
+    assert adapter is not None and "charged_total" not in adapter.facts
+    assert _facts("growatt").charged_total_kwh is None

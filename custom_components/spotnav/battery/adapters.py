@@ -103,6 +103,24 @@ target power (kW) as numbers `plant_ess_preheating_tou_<n>_{start_time,end_time,
 person when the switch is off on a cold battery and works out, in shadow, what it would write ahead of a planned
 charge (`preheat.py`); it never writes it.
 
+And the battery's lifetime energy counters (`charged_total`, `discharged_total`, read 2026-11-22), from which its
+round trip is learnt (`round_trip.py`): the energy that went into the battery and came out of it since it was made.
+Each is counted where the brand counts its battery's power, so the round trip learnt is on the same side as the
+battery energy the plan measures:
+
+* At the battery (DC), losses in the cells, the BMS and the battery's own converter: Sigenergy
+  `plant_accumulated_battery_{charge,discharge}_energy`, Huawei `storage_total_{charge,discharge}`, SolarEdge
+  `B<n>_energy_{import,export}` (Wh; the integration lets a battery's counter fall back to 0, a reset here), SolaX and
+  Sofar `battery_{input,output}_energy_total` (SolaX's Gen2 registers are marked "need revisit" in the plugin; a wrong
+  pair falls outside the believable round trip), Solinteg `battery_{charge,discharge}_total`, GoodWe (ET family)
+  `e_bat_{charge,discharge}_total`, FoxESS `battery_{charge,discharge}_total` (the H1 LAN's is the integration's own
+  sum of the battery's power), Victron `battery_{charged,discharged}_energy` and the Modbus
+  `battery_history_{charged,discharged}energy` (a battery monitor's history; the Modbus registers wrap at 6553.5 kWh).
+  Energy from DC-coupled panels into the battery is counted as charged, as it must be: it went into the cells.
+* On the AC side, inverter losses included: Enphase `lifetime_battery_{charged,discharged}` (the storage CT).
+* Not used: Growatt's `total_ac_charge` counts only what was charged from the grid (not from the panels), beside a
+  discharge counter of everything, so its ratio is no round trip; Tesla and Ferroamp have none mapped.
+
 A battery whose integration states its size in amp-hours and its limits as currents (Victron, GoodWe) gets kWh and
 kW from the battery voltage the same integration reads (`voltage`): energy = Ah x V, power = A x V. That is an
 estimate (the voltage is the live one, not the nominal) and is named as one (`BatteryFacts.estimates`).
@@ -130,6 +148,9 @@ FactRole = Literal[
     "charge_current",
     "discharge_current",
     "voltage",
+    # The battery's lifetime energy counters (kWh, Wh or MWh), for its round trip (`round_trip.py`; see the module).
+    "charged_total",
+    "discharged_total",
 ]
 
 #: How a control would be written.
@@ -276,6 +297,9 @@ SIGENERGY: Final = Adapter(
         "rated_charge": _key("plant_ess_rated_charging_power"),
         "rated_discharge": _key("plant_ess_rated_discharging_power"),
         "firmware": _key("inverter_machine_firmware_version"),
+        # The plant's ESS counters (registers 30200/30204, kWh), counted at the battery like `plant_ess_power`.
+        "charged_total": _key("plant_accumulated_battery_charge_energy"),
+        "discharged_total": _key("plant_accumulated_battery_discharge_energy"),
     },
     modes=(
         ModeRule(_key("plant_ems_work_mode"), frozenset({"max_self_consumption"}), "EMS work mode"),
@@ -332,6 +356,8 @@ HUAWEI: Final = Adapter(
         "capacity": _key("storage_rated_capacity"),
         "rated_charge": _key("storage_maximum_charge_power"),
         "rated_discharge": _key("storage_maximum_discharge_power"),
+        "charged_total": _key("storage_total_charge"),
+        "discharged_total": _key("storage_total_discharge"),
     },
     modes=(
         ModeRule(
@@ -367,6 +393,9 @@ SOLAREDGE: Final = Adapter(
         "capacity": _key("max_energy"),
         "rated_charge": _key("max_charge_power"),
         "rated_discharge": _key("max_discharge_power"),
+        # The battery's own `B<n>` counters (Wh): import is what went in, export what came out.
+        "charged_total": Match(("sensor",), re.compile(r"_b\d+_energy_import$")),
+        "discharged_total": Match(("sensor",), re.compile(r"_b\d+_energy_export$")),
     },
     modes=(
         ModeRule(_key("storage_control_mode", "select"), frozenset({"Remote Control"}), "storage control mode"),
@@ -394,6 +423,8 @@ SOLAX: Final = Adapter(
     facts={
         "soc": _key("battery_capacity", reject=r"(?:bms|pm|pm_i\d+)_battery_capacity$"),
         "capacity": _key("battery_install_capacity"),
+        "charged_total": _key("battery_input_energy_total"),
+        "discharged_total": _key("battery_output_energy_total"),
     },
     modes=(
         ModeRule(_key("charger_use_mode", "select"), frozenset({"Self Use Mode"}), "use mode"),
@@ -418,7 +449,11 @@ SOFAR: Final = Adapter(
     label="Sofar (SolaX Modbus)",
     platforms=("solax_modbus",),
     manufacturer="sofar",
-    facts={"soc": _key("battery_capacity_total")},
+    facts={
+        "soc": _key("battery_capacity_total"),
+        "charged_total": _key("battery_input_energy_total"),
+        "discharged_total": _key("battery_output_energy_total"),
+    },
     modes=(ModeRule(_key("charger_use_mode", "select"), frozenset({"Self Use"}), "energy storage mode"),),
     reserves=(ReserveSource(_key("bat_config_depth_of_discharge"), depth=True),),
 )
@@ -448,6 +483,8 @@ SOLINTEG: Final = Adapter(
         "discharge_current": _key("battery_discharge_limit"),
         "voltage": _key("battery_voltage"),
         "firmware": _key("software_version"),
+        "charged_total": _key("battery_charge_total"),
+        "discharged_total": _key("battery_discharge_total"),
     },
     modes=(ModeRule(_key("working_mode", "select"), frozenset({"General"}), "working mode"),),
     reserves=(ReserveSource(_key("battery_soc_min_ongrid", "number")),),
@@ -467,6 +504,9 @@ VICTRON: Final = Adapter(
         # The GX's Venus OS version (`/Firmware/Installed/Version` on the platform service): its ESS loop and the
         # control points are the GX's, so a change of it is what a control check is kept per.
         "firmware": _key("platform_venus_firmware_installed_version"),
+        # The battery monitor's history (`/History/ChargedEnergy`, `/History/DischargedEnergy`, kWh), where it has one.
+        "charged_total": _key("battery_charged_energy"),
+        "discharged_total": _key("battery_discharged_energy"),
     },
     # The ESS minimum SoC (Settings/CGwacs/BatteryLife/MinimumSocLimit), the floor the system discharges to.
     reserves=(ReserveSource(_key("system_ess_min_soc_limit", "number")),),
@@ -503,6 +543,9 @@ VICTRON_MODBUS: Final = Adapter(
         "charge_current": _key("battery_info_maxchargecurrent"),
         "discharge_current": _key("battery_info_maxdischargecurrent"),
         "voltage": _key("system_battery_voltage"),
+        # The battery monitor's history registers 302/301 (kWh in steps of 0.1, which wrap at 6553.5).
+        "charged_total": _key("battery_history_chargedenergy"),
+        "discharged_total": _key("battery_history_dischargedenergy"),
     },
     reserves=(ReserveSource(_key("settings_ess_batterylife_minimumsoc", "number")),),
     modes=(
@@ -526,6 +569,9 @@ GOODWE: Final = Adapter(
         "charge_current": _goodwe("battery_charge_limit"),
         "discharge_current": _goodwe("battery_discharge_limit"),
         "voltage": _goodwe("vbattery1"),
+        # The ET family's battery counters (registers 35206/35209, kWh).
+        "charged_total": _goodwe("e_bat_charge_total"),
+        "discharged_total": _goodwe("e_bat_discharge_total"),
     },
     modes=(ModeRule(_goodwe("operation_mode", "select"), frozenset({"general"}), "operating mode"),),
     reserves=(ReserveSource(_goodwe("battery_discharge_depth", "number"), depth=True),),
@@ -560,7 +606,13 @@ ENPHASE: Final = Adapter(
     brand="enphase",
     label="Enphase",
     platforms=("enphase_envoy",),
-    facts={"soc": _key("battery_level"), "capacity": _key("max_capacity")},
+    facts={
+        "soc": _key("battery_level"),
+        "capacity": _key("max_capacity"),
+        # The storage CT's counters (Wh): on the AC side, where the battery's power is read too.
+        "charged_total": _key("lifetime_battery_charged"),
+        "discharged_total": _key("lifetime_battery_discharged"),
+    },
     modes=(ModeRule(_key("storage_mode", "select"), frozenset({"self_consumption"}), "storage mode"),),
     reserves=(ReserveSource(_key("reserve_soc", "number")),),
     # No discharge cap: only "Full backup" or a reserve at the current level, both coarse.
@@ -582,6 +634,8 @@ FOXESS: Final = Adapter(
         "discharge_current": _key("bms_discharge_rate"),
         "voltage": _key("invbatvolt"),
         "firmware": _key("master_version"),
+        "charged_total": _key("battery_charge_total"),
+        "discharged_total": _key("battery_discharge_total"),
     },
     soc_packs=(
         SocPack(_key("battery_soc_1"), _key("bms_kwh_remaining_1")),

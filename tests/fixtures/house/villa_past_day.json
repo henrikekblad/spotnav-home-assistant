@@ -107,6 +107,24 @@
       "self_consumption_net": 30450.0,
       "sun_gave": 5220.0
     },
+    "round_trip": {
+      "learned": true,
+      "pct": 84.0,
+      "series": [
+        [
+          "2026-10-20",
+          85.1
+        ],
+        [
+          "2026-10-23",
+          83.8
+        ],
+        [
+          "2026-10-26",
+          84.2
+        ]
+      ]
+    },
     "soc_pct": 48.3,
     "soc_review": {
       "big_under_share": 0.0,

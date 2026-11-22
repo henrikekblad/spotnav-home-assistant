@@ -12,6 +12,11 @@
       "cap_conservative_kw": 0.0,
       "cap_kw": 0.0,
       "cap_learned_kw": null,
+      "ha_down": {
+        "empty_house_kw": null,
+        "held_kw": null,
+        "offered": false
+      },
       "import_limit": null,
       "learned": {
         "basis": "none",
@@ -37,7 +42,6 @@
         "ready": false,
         "usable": false
       },
-      "ha_down": {"offered": false, "held_kw": null, "empty_house_kw": null},
       "main_fuse_a": 25.0,
       "rule": "conservative"
     },
@@ -45,12 +49,11 @@
     "line": "off",
     "needs": [],
     "notes": [],
-    "preheat": null,
     "options": {
+      "battery_control_accept_ha_down": false,
       "battery_control_ai_takeover_ack": false,
       "battery_control_enabled": false,
       "battery_control_import_limit_acts": false,
-      "battery_control_accept_ha_down": false,
       "battery_control_shadow_only": true,
       "battery_mode": "balanced"
     },
@@ -61,6 +64,7 @@
       "minor_unit": "\u00f6re",
       "wear_minor_per_kwh": 15.0
     },
+    "preheat": null,
     "report": null,
     "state": "off",
     "trial": null,

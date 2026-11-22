@@ -14,7 +14,10 @@ the battery's energy and the SoC at the start and end of each) show it.
   discharging apart. It is a floor: the battery may well manage more than it was ever asked for, and the
   plant's own limit shows in it. It only ever rises.
 
-Both are estimates: SpotNav marks them (`capacity_learned`, `rated_learned`) and never lets one replace a value the
+* **Round trip.** Learnt from the battery's own meters (`round_trip.py`), and used here in place of the assumed one
+  once it is known.
+
+Size and rating are estimates: SpotNav marks them (`capacity_learned`, `rated_learned`) and never lets one replace a value the
 integration reads. What this cannot tell: a battery that was never cycled 20 points, or never charged at its limit,
 stays unknown (the plan then says why); the SoC's own scaling (a battery that shows 10-90 % of its cells as 0-100 %)
 is the size of the part the SoC covers, which is what the plan wants.
@@ -31,12 +34,15 @@ from typing import TYPE_CHECKING, Any, Final
 
 from .facts import BatteryFacts
 from .plan_model import DEFAULT_ROUND_TRIP_EFFICIENCY
+from .round_trip import RoundTrip
 
 if TYPE_CHECKING:
     from .plan_shadow import Bucket
 
 EST_CAPACITY_LEARNED: Final = "capacity_learned"
 EST_RATED_LEARNED: Final = "rated_learned"
+#: Where the round trip came from (`BatteryFacts.sources["round_trip"]`).
+SOURCE_LEARNED: Final = "learned"
 
 BUCKET: Final = timedelta(minutes=15)
 #: A quarter hour counts only when this much of it was measured (s).
@@ -65,8 +71,14 @@ class LearnedBattery:
     samples: list[tuple[datetime, float]] = field(default_factory=list)
     rated_charge_kw: float | None = None
     rated_discharge_kw: float | None = None
+    round_trip: RoundTrip = field(default_factory=RoundTrip)
 
     # ---- the answers
+
+    @property
+    def round_trip_efficiency(self) -> float:
+        """The round trip the plan uses: the learnt one, else the assumed one."""
+        return self.round_trip.efficiency or DEFAULT_ROUND_TRIP_EFFICIENCY
 
     @property
     def capacity_kwh(self) -> float | None:
@@ -82,10 +94,10 @@ class LearnedBattery:
 
     # ---- learning
 
-    def learn(
-        self, buckets: Iterable[Bucket], now: datetime, round_trip: float = DEFAULT_ROUND_TRIP_EFFICIENCY
-    ) -> bool:
-        """Take in the quarter hours kept; `True` when something new was learnt. Idempotent over the same buckets."""
+    def learn(self, buckets: Iterable[Bucket], now: datetime, round_trip: float | None = None) -> bool:
+        """Take in the quarter hours kept; `True` when something new was learnt. Idempotent over the same buckets.
+        The size counts the round trip learnt (`round_trip` stands in for it where given)."""
+        round_trip = self.round_trip_efficiency if round_trip is None else round_trip
         ordered = sorted((b for b in buckets if b.end <= now), key=lambda b: b.start)
         changed = False
         for run in _runs(ordered, now):
@@ -140,6 +152,7 @@ class LearnedBattery:
             "samples": [[end.isoformat(), round(kwh, 3)] for end, kwh in self.samples],
             "rated_charge_kw": self.rated_charge_kw,
             "rated_discharge_kw": self.rated_discharge_kw,
+            "round_trip": self.round_trip.as_dict(),
         }
 
     def view(self) -> dict[str, Any]:
@@ -149,6 +162,7 @@ class LearnedBattery:
             "capacity_samples": [round(kwh, 2) for _end, kwh in self.samples],
             "rated_charge_kw": self.rated_charge_kw,
             "rated_discharge_kw": self.rated_discharge_kw,
+            "round_trip": self.round_trip.view(),
         }
 
     @classmethod
@@ -169,6 +183,7 @@ class LearnedBattery:
             samples=sorted(samples, key=lambda item: item[0])[-MAX_SAMPLES:],
             rated_charge_kw=_rating(raw.get("rated_charge_kw")),
             rated_discharge_kw=_rating(raw.get("rated_discharge_kw")),
+            round_trip=RoundTrip.from_dict(raw.get("round_trip")),
         )
 
 
@@ -249,6 +264,9 @@ def with_learned(facts: BatteryFacts, learned: LearnedBattery) -> BatteryFacts:
         rated = True
     if rated:
         estimates.append(EST_RATED_LEARNED)
+    if facts.round_trip_efficiency is None and learned.round_trip.efficiency is not None:
+        updates["round_trip_efficiency"] = learned.round_trip.efficiency
+        sources["round_trip"] = SOURCE_LEARNED
     if not updates:
         return facts
     return replace(facts, estimates=tuple(estimates), sources=sources, **updates)

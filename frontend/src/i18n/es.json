@@ -1279,6 +1279,8 @@
   "house.sources.heatFromSetting": "Medidor de la bomba de calor: {name} (elegido en Ajustes)",
   "house.sources.heatSplit": "Previsión de la casa como calefacción más el resto: {split} frente a {whole} para el conjunto ({hours} h, solo mostrada)",
   "house.sources.battery": "Batería: {name}",
+  "house.sources.roundTripLearned": "Rendimiento de ida y vuelta: {pct}, aprendido",
+  "house.sources.roundTripAssumed": "Rendimiento de ida y vuelta: {pct} supuesto",
   "house.note.selfManaged": "La batería usa su propio optimizador. SpotNav planifica al lado solo para comparar y no le escribe nada.",
   "house.note.shadow": "Prueba: SpotNav planifica la batería, pero aún no la controla.",
   "house.note.controlling": "SpotNav controla la batería según el plan.",

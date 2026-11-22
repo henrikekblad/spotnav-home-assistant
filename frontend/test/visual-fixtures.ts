@@ -56,15 +56,15 @@ export function modelWith(
   language: CardModel["language"] = "en",
   nowMs: number = NOW,
 ): CardModel {
-  return buildModel({ dashboard: decoded(overrides), language, nowMs });
+  return buildModel({ chartAxis: "day", dashboard: decoded(overrides), language, nowMs });
 }
 
 export function baseModel(nowMs: number = NOW): CardModel {
-  return buildModel({ dashboard: decoded(), language: "en", nowMs });
+  return buildModel({ chartAxis: "day", dashboard: decoded(), language: "en", nowMs });
 }
 
 export function externalModel(nowMs: number = NOW): CardModel {
-  return buildModel({ dashboard: bare(), language: "en", nowMs });
+  return buildModel({ chartAxis: "day", dashboard: bare(), language: "en", nowMs });
 }
 
 /** Deterministic, language-free labels: the SVG must not depend on any particular language. */
@@ -160,6 +160,7 @@ export function fixedMeasure(size: ChartSize) {
 /** A model whose rows are 60-minute intervals: the renderer must draw segments, not points. */
 export function hourlyModel(nowMs: number = NOW): CardModel {
   return buildModel({
+    chartAxis: "day",
     dashboard: dashboardWithRows("2026-09-22T04:00:00+00:00", [100, 200], { duration: 60 }),
     language: "en",
     nowMs,
@@ -173,6 +174,7 @@ export function quarterModel(
   nowMs: number = NOW,
 ): CardModel {
   return buildModel({
+    chartAxis: "day",
     dashboard: dashboardWithRows("2026-09-22T04:00:00+00:00", prices, { flags }),
     language: "en",
     nowMs,
@@ -183,7 +185,7 @@ export function quarterModel(
 export function twoDayModel(nowMs: number = NOW): CardModel {
   const today = dashboardWithRows("2026-09-22T04:00:00+00:00", [100, 200], { day: "2026-09-22" });
   const tomorrow = dashboardWithRows("2026-09-23T04:00:00+00:00", [300, 400], { day: "2026-09-23" });
-  return buildModel({ dashboard: dashboardWithDayRows(today, tomorrow), language: "en", nowMs });
+  return buildModel({ chartAxis: "day", dashboard: dashboardWithDayRows(today, tomorrow), language: "en", nowMs });
 }
 
 /**
@@ -195,6 +197,7 @@ export function twoDayModel(nowMs: number = NOW): CardModel {
  */
 export function midnightModel(nowMs: number = AFTER_MIDNIGHT_MS): CardModel {
   return buildModel({
+    chartAxis: "day",
     dashboard: dashboardWithDayRows(
       dashboardWithRows("2026-09-22T21:45:00+00:00", [100], { day: SEPT }),
       dashboardWithRows("2026-09-22T22:00:00+00:00", [200, 300, 400, 500], { day: NEXT_DAY }),
@@ -218,7 +221,7 @@ export function twoDayPlanModel(nowMs: number = NOW): CardModel {
     day: NEXT_DAY,
     flags: (index) => (index === 0 ? { installed_planned: true } : { proposal_planned: true }),
   });
-  return buildModel({ dashboard: dashboardWithDayRows(today, tomorrow), language: "en", nowMs });
+  return buildModel({ chartAxis: "day", dashboard: dashboardWithDayRows(today, tomorrow), language: "en", nowMs });
 }
 
 /**
@@ -277,7 +280,7 @@ export function waitingProposalModel(options: { pending?: boolean; nowMs?: numbe
   if (!result.ok) {
     throw new Error(`waiting-proposal fixture did not decode: ${result.failure}`);
   }
-  return buildModel({ dashboard: result.value, language: "en", nowMs: options.nowMs ?? NOW });
+  return buildModel({ chartAxis: "day", dashboard: result.value, language: "en", nowMs: options.nowMs ?? NOW });
 }
 
 /** Several decoded days' rows in one decoded dashboard, flags kept, in instant order, through the real decoder. */
@@ -367,7 +370,7 @@ export function crossClientModel(
   if (!result.ok) {
     throw new Error(`cross-client fixture did not decode: ${result.failure}`);
   }
-  return buildModel({ dashboard: result.value, language: "en", nowMs: CROSS_NOW });
+  return buildModel({ chartAxis: "day", dashboard: result.value, language: "en", nowMs: CROSS_NOW });
 }
 
 /**
@@ -412,7 +415,7 @@ export function autumnModel(nowMs: number = Date.parse("2026-10-25T00:30:00Z")):
   if (!result.ok) {
     throw new Error(`autumn fixture did not decode: ${result.failure}`);
   }
-  return buildModel({ dashboard: result.value, language: "en", nowMs });
+  return buildModel({ chartAxis: "day", dashboard: result.value, language: "en", nowMs });
 }
 
 /** A host with the chart drawn into it, as the card view would build it. */
