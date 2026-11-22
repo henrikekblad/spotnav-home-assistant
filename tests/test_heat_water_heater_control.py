@@ -542,3 +542,32 @@ async def test_a_frozen_reading_is_no_reading(hass: HomeAssistant, freezer, monk
     assert heater._power(HEATER) == (POWER, 3000.0)  # noqa: SLF001
     freezer.tick(timedelta(seconds=POWER_STALE_S + 60))
     assert heater._power(HEATER) == (POWER, None)  # noqa: SLF001
+
+
+async def test_a_quiet_change_only_meter_at_nothing_stays_a_reading_and_full_heat_is_seen(
+    hass: HomeAssistant, freezer, monkeypatch
+) -> None:
+    """A Zigbee or Z-Wave plug reports 0 W once and is then quiet: still a reading after 20 minutes, so full heat is
+    seen and no `sensor_lost` turns the switch on 40 minutes on; a draw frozen for over 15 minutes is none."""
+    from custom_components.spotnav.site import heat_zones
+    from custom_components.spotnav.site.heat_zones import DeviceSensor, POWER_STALE_S
+
+    _site_, heater, switch, now = await _site(hass, freezer)
+    monkeypatch.setattr(heat_zones, "device_sensors", lambda _hass, _entity: ("device", [DeviceSensor(POWER, "power", "W", "measurement")]))
+    heater.meter_seen = {"entity": HEATER, "sensor": POWER}
+    heater.check = {"entity": HEATER, "result": "passed", "at": now.isoformat()}
+    heater.rules.kept.last_full = now - 19 * H
+    hass.states.async_set(POWER, "2800", {"unit_of_measurement": "W"})
+    await heater.async_look(now)
+    # The thermostat is satisfied: one 0 W report, then silence.
+    hass.states.async_set(POWER, "0", {"unit_of_measurement": "W"})
+    for minute in range(1, 41):
+        freezer.tick(MIN)
+        await heater.async_look(now + minute * MIN)
+    assert heater.rules.kept.last_full is not None and heater.rules.kept.last_full > now
+    assert heater.want is not None and heater.want.reason != "sensor_lost"
+    assert heater._power(HEATER) == (POWER, 0.0)  # noqa: SLF001
+    # A draw that stopped reporting: no reading once older than the limit.
+    hass.states.async_set(POWER, "2500", {"unit_of_measurement": "W"})
+    freezer.tick(timedelta(seconds=POWER_STALE_S + 60))
+    assert heater._power(HEATER) == (POWER, None)  # noqa: SLF001

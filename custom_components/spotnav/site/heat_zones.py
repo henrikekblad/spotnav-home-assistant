@@ -169,13 +169,17 @@ def pick_power_sensor(sensors: Iterable[DeviceSensor]) -> str | None:
     return min(power, key=lambda s: (_qualifier_rank(s) == 2, _qualifier_rank(s), s.entity_id)).entity_id
 
 
-#: A power reading not reported for this long is not trusted (a meter frozen at its last value).
+#: A power reading at or above `QUIET_BELOW_W` not reported for this long is not trusted (a meter frozen at a draw).
+#: One under it stays valid while the entity is available: a change-only meter (Zigbee, Z-Wave plugs) reports 0 W
+#: once and is then quiet for as long as nothing draws.
 POWER_STALE_S: Final = 15 * 60.0
+QUIET_BELOW_W: Final = 100.0
 
 
 def read_power_w(hass: HomeAssistant, entity_id: str, now: datetime | None = None, max_age_s: float = POWER_STALE_S) -> float | None:
     """A power sensor's reading now in W (Home Assistant's `PowerConverter` from its unit; a unit it does not know, or
-    none, is no reading); `None` while it does not read, or has not reported for `max_age_s`."""
+    none, is no reading); `None` while it does not read, or reads a draw (`QUIET_BELOW_W` or more) it has not reported
+    for `max_age_s`."""
     from homeassistant.util import dt as dt_util  # noqa: PLC0415
     from homeassistant.util.unit_conversion import PowerConverter  # noqa: PLC0415
 
@@ -188,10 +192,11 @@ def read_power_w(hass: HomeAssistant, entity_id: str, now: datetime | None = Non
     unit = state.attributes.get("unit_of_measurement")
     if value is None or unit not in PowerConverter.VALID_UNITS:
         return None
+    watts = PowerConverter.convert(value, unit, "W")
     reported = getattr(state, "last_reported", None) or state.last_updated
-    if (((now or dt_util.utcnow()) - reported).total_seconds()) > max_age_s:
+    if watts >= QUIET_BELOW_W and (((now or dt_util.utcnow()) - reported).total_seconds()) > max_age_s:
         return None
-    return PowerConverter.convert(value, unit, "W")
+    return watts
 
 
 def resolve_zones(
