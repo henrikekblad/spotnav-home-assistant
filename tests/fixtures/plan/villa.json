@@ -296,18 +296,21 @@
           {
             "code": "takes_what_fits",
             "cost": null,
+            "departure": null,
             "kwh": 14.8,
             "peak_kw": null
           },
           {
             "code": "later",
             "cost": null,
+            "departure": "2026-11-17T07:00:00+00:00",
             "kwh": null,
             "peak_kw": null
           },
           {
             "code": "accept_peak",
             "cost": 4500.0,
+            "departure": null,
             "kwh": null,
             "peak_kw": 13.0
           }

@@ -5,6 +5,7 @@
     {
       "code": "takes_what_fits",
       "cost": null,
+      "departure": null,
       "kwh": null,
       "peak_kw": null
     }

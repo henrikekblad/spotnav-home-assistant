@@ -30,9 +30,11 @@ from .import_target import (
     hour_budget,
     hour_end_lock_a,
     HourBudget,
+    later_departure,
     lowering_floor_a,
     member_w,
     plan_remaining_kwh,
+    RISK_LEAVE_KWH,
     share_budget,
     TargetMember,
 )
@@ -159,7 +161,7 @@ class ImportTargetHold:
             found = self._target_shortfall(member, budget, now)
             if found is None:
                 continue
-            departure, shortfall, need_kwh = found
+            departure, shortfall, need_kwh, later = found
             was = self._site._target_risk.get(member.charger_entry_id)
             if not departure_at_risk(shortfall, at_risk=was is not None and was.departure == departure):
                 continue
@@ -173,6 +175,7 @@ class ImportTargetHold:
                 if self._site._target_effective is None
                 else self._site._target_effective.set_kw,
                 need_kwh=round(need_kwh, 1),
+                later_departure=None if later is None else later.isoformat(),
             )
             if choice == IF_NOT_READY_RELEASE:
                 # The plan's own choice: the departure wins by itself, as long as holding would miss it.
@@ -441,10 +444,11 @@ class ImportTargetHold:
 
     def _target_shortfall(
         self, member: TargetMember, budget: HourBudget, now: datetime
-    ) -> tuple[str, float, float] | None:
-        """`(departure, kWh short, kWh needed)`: how much a plan's charge would miss its departure by under the target
-        (`departure_shortfall_kwh`, negative: to spare) of what it still needs, or `None` for a charge with no plan and
-        departure ahead.
+    ) -> tuple[str, float, float, datetime | None] | None:
+        """`(departure, kWh short, kWh needed, later departure)`: how much a plan's charge would miss its departure by
+        under the target (`departure_shortfall_kwh`, negative: to spare) of what it still needs, and where it misses
+        it the earliest whole hour after it by which it all fits under the same ceiling within the prices held
+        (`later_departure`, `None`: none); or `None` for a charge with no plan and departure ahead.
 
         This hour and later ones are reckoned at the target less the house's typical load (`_typical_house_kw`, the
         estimate the plan counts on too, `import_target_plan_kw`), a later hour the house load forecast knows at the
@@ -512,7 +516,23 @@ class ImportTargetHold:
             later_kw=later_kw,
             later_kw_by_hour=later_by_hour,
         )
-        return None if shortfall is None else (plan.departure, shortfall, need_kwh)
+        if shortfall is None:
+            return None
+        later = None
+        if shortfall > RISK_LEAVE_KWH:
+            # Only where it may be at risk: the hours up to the end of the prices held, the first that fits.
+            later = later_departure(
+                need_kwh=need_kwh,
+                now=now,
+                departure=departure,
+                hour_end=budget.hour_end,
+                held_kw=held_kw,
+                later_kw=later_kw,
+                later_kw_by_hour=later_by_hour,
+                until=self._site.prices_end(now),
+                tz=dt_util.get_default_time_zone(),
+            )
+        return (plan.departure, shortfall, need_kwh, later)
 
     def _target_floor_a(
         self,

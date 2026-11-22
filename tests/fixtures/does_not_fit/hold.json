@@ -5,12 +5,14 @@
     {
       "code": "later",
       "cost": null,
+      "departure": null,
       "kwh": null,
       "peak_kw": null
     },
     {
       "code": "accept_peak",
       "cost": null,
+      "departure": null,
       "kwh": null,
       "peak_kw": 12.0
     }

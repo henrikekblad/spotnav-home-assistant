@@ -59,7 +59,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, tzinfo
 import math
 from typing import Any, Final
 
@@ -516,6 +516,49 @@ def departure_shortfall_kwh(
             deliverable += max(0.0, later_kw_by_hour.get(start, later_kw)) * seconds / HOUR_S
         start = end
     return need_kwh - deliverable
+
+
+#: The most whole hours `later_departure` tries past the departure: two days of prices at most are ever held.
+LATER_DEPARTURE_MAX_HOURS: Final = 48
+
+
+def later_departure(
+    *,
+    need_kwh: float,
+    now: datetime,
+    departure: datetime,
+    hour_end: datetime,
+    held_kw: float,
+    later_kw: float,
+    later_kw_by_hour: Mapping[datetime, float] | None,
+    until: datetime | None,
+    tz: tzinfo,
+) -> datetime | None:
+    """The earliest whole hour (local, `tz`) after `departure` by which the held charge delivers `need_kwh` under the
+    same ceiling (`departure_shortfall_kwh` with the same figures, `RISK_LEAVE_KWH` to spare: a departure that is not
+    at risk once moved there), no later than `until` (the end of the prices held); `None` where none does, or no
+    prices are held. The first hour that fits ends the search: at most `LATER_DEPARTURE_MAX_HOURS` shortfalls of a few
+    dozen hours each, plain arithmetic, no planner."""
+    if until is None or need_kwh <= 0:
+        return None
+    start = departure.astimezone(tz).replace(minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    candidate = start + timedelta(hours=1)
+    for _ in range(LATER_DEPARTURE_MAX_HOURS):
+        if candidate > until:
+            return None
+        shortfall = departure_shortfall_kwh(
+            need_kwh=need_kwh,
+            now=now,
+            departure=candidate,
+            hour_end=hour_end,
+            held_kw=held_kw,
+            later_kw=later_kw,
+            later_kw_by_hour=later_kw_by_hour,
+        )
+        if shortfall is not None and shortfall <= RISK_LEAVE_KWH:
+            return candidate
+        candidate += timedelta(hours=1)
+    return None
 
 
 def departure_at_risk(shortfall_kwh: float | None, *, at_risk: bool) -> bool:

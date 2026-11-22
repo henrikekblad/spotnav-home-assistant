@@ -173,6 +173,9 @@ class _HoldingSite:
     def import_target_plan_kw_by_hour(self, _charger_entry_id: str) -> dict | None:
         return None
 
+    def later_departure_for(self, _charger_entry_id: str) -> None:
+        return None  # no "Later departure" chosen
+
     def import_target_holds(self, _charger_entry_id: str) -> bool:
         return False
 

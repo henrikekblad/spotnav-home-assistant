@@ -76,7 +76,8 @@ def _write_or_compare(name: str, answer: dict[str, Any]) -> None:
 
 
 def _short_status() -> ImportTargetStatus:
-    """The import target holds the garage's car 3 kWh short of its 07:00 departure (14.8 of 17.8 kWh fit)."""
+    """The import target holds the garage's car 3 kWh short of its 07:00 departure (14.8 of 17.8 kWh fit); all of it
+    fits by 08:00."""
     return ImportTargetStatus(
         target_kw=6.0,
         set_kw=6.0,
@@ -85,7 +86,13 @@ def _short_status() -> ImportTargetStatus:
         paused_until=None,
         released_for=None,
         house_over=False,
-        at_risk=TargetRisk(departure=at(31).isoformat(), missing_kwh=3.0, target_kw=6.0, need_kwh=17.8),
+        at_risk=TargetRisk(
+            departure=at(31).isoformat(),
+            missing_kwh=3.0,
+            target_kw=6.0,
+            need_kwh=17.8,
+            later_departure=at(32).isoformat(),
+        ),
         release_until=at(31).isoformat(),
         release_peak_kw=13.0,
     )
@@ -190,6 +197,7 @@ def test_the_villa() -> None:
     block = car["does_not_fit"]
     assert (block["short_kwh"], block["deliverable_kwh"], block["ceiling"], block["chosen"]) == (3.0, 14.8, "import_target", None)
     assert [choice["code"] for choice in block["choices"]] == ["takes_what_fits", "later", "accept_peak"]
+    assert block["choices"][1]["departure"] == at(32).isoformat()
     assert all(load["does_not_fit"] is None for load in answer["loads"] if load["kind"] != "car")
     battery = _load(answer, "home_battery")
     assert [run["what"] for run in battery["runs"]] == ["cover", "grid_charge", "sun_charge", "cover"]

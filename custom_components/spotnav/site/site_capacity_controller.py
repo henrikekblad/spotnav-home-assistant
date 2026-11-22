@@ -115,7 +115,7 @@ from ..planning.auto_settings import (
     STRATEGY_HYBRID,
     STRATEGY_SOLAR,
 )
-from ..runtime import charger_data, controller_for, domain_data
+from ..runtime import charger_data, controller_for, domain_data, preview_for
 from ..util import amps_at_floor
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
 from ..battery.control import BatteryControl
@@ -377,6 +377,8 @@ ERROR_STALE_DEPARTURE = "spotnav_stale_departure"
 ERROR_NO_DEPARTURE = "spotnav_no_departure"
 #: The one choice a person may make for one departure only (`async_take_what_fits`).
 ACKNOWLEDGED_TAKES_WHAT_FITS = "takes_what_fits"
+#: "Later departure" asked where no later departure fits within the prices held (`async_later_departure`).
+ERROR_NO_LATER_DEPARTURE = "spotnav_no_later_departure"
 #: The target's own code failed (`_compute_regulator_decisions`): the fuse's decisions went as they were.
 TARGET_NOT_APPLIED_ERROR = "error"
 #: Why the target could not hold a charger it would hold (`import_target_snapshot`'s `inert`): a phase it draws on has
@@ -523,6 +525,9 @@ class TargetRisk:
     set_kw: float | None = None
     #: What the plan still needs by the departure (kWh), of which `missing_kwh` does not fit (`None`: not known).
     need_kwh: float | None = None
+    #: The earliest whole hour after the departure (ISO) by which it all fits under the same ceiling within the prices
+    #: held (`import_target.later_departure`), `None` where none does: what "Later departure" moves it to.
+    later_departure: str | None = None
 
 #: Decision-log details of the battery-on-the-fuse handling (`site/battery_probe.py`).
 DETAIL_HELD_BATTERY_AT_LIMIT = "held_battery_at_limit"
@@ -870,6 +875,11 @@ class SiteCapacityController:
         # (`async_take_what_fits`): that departure alone is held as `if_not_ready` `hold` would (said, never told),
         # whatever the lasting `if_not_ready`. Kept beside the set-asides, ended by the same rules (`_prune_released`).
         self._target_acknowledged: dict[str, str] = {}
+        # Per charger a person's "Later departure" (`async_later_departure`): `(departure moved, departure it moves
+        # to)`, as instants. The charger's plan is made for the later one in place of the one moved
+        # (`later_departure_for`), for this departure only; kept beside the set-asides, ended at the later departure,
+        # an unplug, or another departure (`_prune_released`, `drop_later_departure`).
+        self._target_later: dict[str, tuple[datetime, datetime]] = {}
         # The departures a plan's own choice (`if_not_ready` `release`) sets the target aside for, while holding
         # would miss them: decided again on every recompute, never stored.
         self._target_auto_released: dict[str, str] = {}
@@ -5601,6 +5611,18 @@ class SiteCapacityController:
         level = self._power_level()
         return None if level is None else level.level_kw
 
+    def prices_end(self, now: datetime) -> datetime | None:
+        """The end of the prices held for the site's area (nothing is fetched), `None` without any: how far a "Later
+        departure" is looked for (`import_target.later_departure`)."""
+        from ..battery.plan_runtime import price_days, site_price_source_of  # noqa: PLC0415 - it imports the site
+
+        try:
+            documents = price_days(self.hass, site_price_source_of(self.hass, self), now)
+        except Exception:  # noqa: BLE001 - no later departure is offered rather than a recompute failing
+            _LOGGER.debug("SpotNav site %s: the prices held could not be read", self.entry_id, exc_info=True)
+            return None
+        return max((document.intervals[-1].utc_end for document in documents if document.intervals), default=None)
+
     def plan_hold_kw_at(self, start: datetime, target_kw: float | None, level: Any) -> float | None:
         """The level a plan counts on the hold keeping the hour starting at `start` under (kW, before its margin): the
         import target, no more than the power level where it holds then; the power level alone without a target, in
@@ -5807,6 +5829,87 @@ class SiteCapacityController:
         self._recompute()
         return None
 
+    def async_later_departure(
+        self,
+        charger_entry_id: str,
+        *,
+        for_departure: int | None = None,
+        to: int | None = None,
+        source: str | None = None,
+    ) -> str | None:
+        """A person's "Later departure" (the card, the app, a phone's button): the plan's departure ahead is moved to
+        the later one where it all fits under the same ceiling (`TargetRisk.later_departure`; a phone's button gives
+        the time it was told, `to` in epoch seconds), for this departure only: the departure's settings (the daily
+        time, the weekdays, the calendar) are left as they are, and the charger's plan is made again for it
+        (`later_departure_for`). Ends at the later departure, an unplug or another departure set; kept across a
+        restart. The error's code, else `None`: `spotnav_no_import_target`, `spotnav_no_departure`,
+        `spotnav_stale_departure` (`for_departure` is not the plan's departure any more), `spotnav_no_later_departure`
+        (nothing later fits within the prices held, or `to` is not after the departure)."""
+        if self._hold_set_kw() is None:
+            self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_NO_IMPORT_TARGET)
+            return ERROR_NO_IMPORT_TARGET
+        plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
+        departure = None if plan is None or not plan.departure else _aware_instant(plan.departure)
+        now = dt_util.utcnow()
+        if departure is None or departure <= now:
+            self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_NO_DEPARTURE)
+            return ERROR_NO_DEPARTURE
+        assert plan is not None
+        if for_departure is not None and for_departure != int(departure.timestamp()):
+            self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_STALE_DEPARTURE)
+            return ERROR_STALE_DEPARTURE
+        if to is not None:
+            later: datetime | None = datetime.fromtimestamp(to, tz=dt_util.UTC)
+        else:
+            risk = self._target_risk.get(charger_entry_id)
+            later = (
+                None
+                if risk is None or risk.departure != plan.departure or risk.later_departure is None
+                else _aware_instant(risk.later_departure)
+            )
+        if later is None or later <= departure:
+            self._log_target(charger_entry_id, "later_departure_refused", source=source, error=ERROR_NO_LATER_DEPARTURE)
+            return ERROR_NO_LATER_DEPARTURE
+        was = self._target_later.get(charger_entry_id)
+        # A departure already moved keeps the one first moved: the plan's own departure is what it replaces.
+        moved = departure if was is None or was[1] != departure else was[0]
+        _LOGGER.info(
+            "SpotNav site %s: charger %s departs at %s instead of %s, for this departure only, as a person chose",
+            self.entry_id,
+            charger_entry_id,
+            later.isoformat(),
+            plan.departure,
+        )
+        self._target_later[charger_entry_id] = (moved, later)
+        self._save_released()
+        self._log_target(
+            charger_entry_id, "later_departure", self._target_budget, source=source, until=later.isoformat(),
+            was=plan.departure,
+        )
+        self._replan(charger_entry_id)
+        return None
+
+    def later_departure_for(self, charger_entry_id: str) -> tuple[datetime, datetime] | None:
+        """`(departure moved, departure it moves to)` where a person chose "Later departure" for this charger's
+        departure (`async_later_departure`), else `None`: what its plan reads (`AutoPlannerController`)."""
+        return self._target_later.get(charger_entry_id)
+
+    def drop_later_departure(self, charger_entry_id: str, reason: str = RELEASE_END_DEPARTURE_CHANGED) -> None:
+        """A person set another departure (the charger's departure settings were written): a "Later departure" no
+        longer holds. The plan is made again by the write itself."""
+        moved = self._target_later.pop(charger_entry_id, None)
+        if moved is None:
+            return
+        self._save_released()
+        self._log_target(charger_entry_id, "later_departure_ended", reason=reason, until=moved[1].isoformat())
+
+    def _replan(self, charger_entry_id: str) -> None:
+        """The charger's plan made again (its departure moved, or moved back), then the site's recompute."""
+        preview = preview_for(self.hass, charger_entry_id)
+        if preview is not None:
+            self.hass.async_create_task(preview.async_recalculate(), eager_start=False)
+        self._recompute()
+
     def _tell_target_risk(self) -> None:
         """Give each charger's notifier its "does not fit" block where the plan asks the person, or none
         (`ChargerNotifier.does_not_fit`): told once per departure in the daytime, and taken off the phones once it
@@ -5875,17 +5978,36 @@ class SiteCapacityController:
                 if parsed is not None and parsed.tzinfo is not None:
                     kept_choices[key] = departure
             self._target_acknowledged = kept_choices
+        later = raw.get("later") if isinstance(raw, dict) else None
+        if isinstance(later, dict):
+            kept_later: dict[str, tuple[datetime, datetime]] = {}
+            for key, value in later.items():
+                if not isinstance(key, str) or not isinstance(value, dict):
+                    continue
+                moved = value.get("from")
+                to = value.get("to")
+                if not isinstance(moved, str) or not isinstance(to, str):
+                    continue
+                moved_at, to_at = _aware_instant(moved), _aware_instant(to)
+                if moved_at is not None and to_at is not None and to_at > moved_at:
+                    kept_later[key] = (moved_at, to_at)
+            self._target_later = kept_later
 
     def _save_released(self) -> None:
         self._target_release_store.async_delay_save(self._released_record, 1.0)
 
     def _released_record(self) -> dict[str, Any]:
-        """What the site's store keeps: the set-asides, and the departures a person chose "Take what fits" for."""
+        """What the site's store keeps: the set-asides, the departures a person chose "Take what fits" for, and the
+        ones a person moved with "Later departure"."""
         return {
             "released": dict(self._target_released),
             "acknowledged": {
                 charger_entry_id: {"departure": departure, "choice": ACKNOWLEDGED_TAKES_WHAT_FITS}
                 for charger_entry_id, departure in self._target_acknowledged.items()
+            },
+            "later": {
+                charger_entry_id: {"from": moved.isoformat(), "to": to.isoformat()}
+                for charger_entry_id, (moved, to) in self._target_later.items()
             },
         }
 
@@ -6103,6 +6225,17 @@ class SiteCapacityController:
                 del self._target_acknowledged[charger_entry_id]
                 self._log_target(charger_entry_id, "takes_what_fits_ended", reason=reason, until=departure)
                 changed = True
+        for charger_entry_id, (moved, to) in list(self._target_later.items()):
+            reason = self._later_end(charger_entry_id, moved, to, now)
+            if reason is not None:
+                del self._target_later[charger_entry_id]
+                self._log_target(charger_entry_id, "later_departure_ended", reason=reason, until=to.isoformat())
+                changed = True
+                if reason != RELEASE_END_DEPARTURE_CHANGED:
+                    # The plan may still be for the later departure: made again for the departure as set.
+                    preview = preview_for(self.hass, charger_entry_id)
+                    if preview is not None:
+                        self.hass.async_create_task(preview.async_recalculate(), eager_start=False)
         if changed:
             self._save_released()
         kept_auto: dict[str, str] = {}
@@ -6116,6 +6249,20 @@ class SiteCapacityController:
             else:
                 self._log_target(charger_entry_id, "release_ended", reason=reason, until=departure, automatic=True)
         self._target_auto_released = kept_auto
+
+    def _later_end(self, charger_entry_id: str, moved: datetime, to: datetime, now: datetime) -> str | None:
+        """Why a "Later departure" has ended, else `None`: the later departure passed, the car was unplugged, or the
+        plan is for neither the departure moved (not yet made again) nor the later one (another departure was set)."""
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        if charger_controller is not None and charger_controller.adapter.vehicle_connected() is False:
+            return RELEASE_END_UNPLUGGED
+        if to <= now:
+            return RELEASE_END_DEPARTURE_PASSED
+        plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
+        departure = None if plan is None or not plan.departure else _aware_instant(plan.departure)
+        if departure is None or departure not in (moved, to):
+            return RELEASE_END_DEPARTURE_CHANGED
+        return None
 
     def _dropped_by_a_start(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
         """Whether a person's set-aside until `departure` (still ahead, the car still plugged in) lost its plan to a
@@ -6540,6 +6687,11 @@ class SiteCapacityController:
             "released_by_plan": dict(self._target_auto_released),
             # The departures a person chose "Take what fits" for (`async_take_what_fits`).
             "takes_what_fits": dict(self._target_acknowledged),
+            # The departures a person moved with "Later departure" (`async_later_departure`).
+            "later_departure": {
+                charger_entry_id: {"from": moved.isoformat(), "to": to.isoformat()}
+                for charger_entry_id, (moved, to) in self._target_later.items()
+            },
             "at_risk": {
                 charger_entry_id: {"departure": risk.departure, "missing_kwh": risk.missing_kwh, "choice": risk.choice}
                 for charger_entry_id, risk in self._target_risk.items()

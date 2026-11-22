@@ -76,10 +76,14 @@ def test_a_short_charge_offers_every_choice() -> None:
     assert (block["ceiling"], block["ceiling_kw"], block["chosen"]) == ("import_target", 6.0, None)
     assert all(tuple(choice) == CHOICE_KEYS for choice in block["choices"])
     assert block["choices"] == [
-        {"code": "takes_what_fits", "kwh": 12.0, "peak_kw": None, "cost": None},
-        {"code": "later", "kwh": None, "peak_kw": None, "cost": None},
-        {"code": "accept_peak", "kwh": None, "peak_kw": 12.0, "cost": 4500.0},
+        {"code": "takes_what_fits", "kwh": 12.0, "peak_kw": None, "cost": None, "departure": None},
+        {"code": "later", "kwh": None, "peak_kw": None, "cost": None, "departure": None},
+        {"code": "accept_peak", "kwh": None, "peak_kw": 12.0, "cost": 4500.0, "departure": None},
     ]
+    # Where a later whole hour fits within the prices held, "Later departure" carries it.
+    later = replace(_risk(), later_departure="2026-11-23T09:00:00+01:00")
+    block = does_not_fit(_status(at_risk=later), ceiling="import_target")
+    assert block is not None and block["choices"][1]["departure"] == "2026-11-23T08:00:00+00:00"
 
 
 def test_hold_is_said_as_chosen_and_offers_the_rest() -> None:
@@ -144,6 +148,8 @@ async def _dashboard(hass: HomeAssistant, world) -> dict:
 async def test_the_dashboard_says_it_while_the_plan_asks(hass: HomeAssistant, monkeypatch) -> None:
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _tight_night(hass, monkeypatch, frozen, "dnfask")
+        # Prices held to the end of tomorrow: a later departure is looked for up to there.
+        monkeypatch.setattr(world.halo.controller, "prices_end", lambda now: _HOUR + timedelta(hours=35))
         await world.run(2)
         block = (await _dashboard(hass, world))["does_not_fit"]
         _write_or_compare("ask.json", block)
@@ -152,6 +158,8 @@ async def test_the_dashboard_says_it_while_the_plan_asks(hass: HomeAssistant, mo
         assert block["departure"] == world.departure.astimezone(timezone.utc).isoformat()
         assert [choice["code"] for choice in block["choices"]] == ["takes_what_fits", "later", "accept_peak"]
         assert block["choices"][0]["kwh"] == block["deliverable_kwh"]
+        later = dt_util.parse_datetime(block["choices"][1]["departure"])
+        assert later is not None and later > world.departure and later.minute == 0
 
 
 async def test_the_dashboard_says_hold_as_chosen(hass: HomeAssistant, monkeypatch) -> None:

@@ -544,6 +544,18 @@ class _EnergyResolution:
     learned_capacity_kwh: float | None = None
 
 
+def _departure_fields(settings: AutoSettings) -> tuple[Any, ...]:
+    """What makes a charger's departure, as a person sets it (a write changing any is another departure set)."""
+    return (
+        settings.departure_enabled,
+        settings.departure,
+        settings.departure_date,
+        settings.departure_weekdays,
+        settings.departure_calendar,
+        settings.departure_calendar_only,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class AutoSnapshot:
     """The controller's whole state as one immutable value.
@@ -861,7 +873,7 @@ class AutoPlannerController:
         if entity_id is None:
             if record:
                 self._calendar_status = None
-            return settings
+            return self._with_later_departure(settings)
         status: dict[str, Any] = {"entity_id": entity_id, "state": "off"}
         if settings.departure_calendar_only and settings.departure_date is not None:
             # The calendar alone decides: a chosen date no longer goes first (writes clear it; this covers one stored
@@ -900,7 +912,42 @@ class AutoPlannerController:
                     status.update(_calendar_used(found, applied))
         if record:
             self._calendar_status = status
-        return updated
+        return self._with_later_departure(updated)
+
+    def _later_departure(self) -> tuple[datetime, datetime] | None:
+        """`(departure moved, departure it moves to)` where a person chose "Later departure" on the site, else
+        `None`."""
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        return None if site is None else site.later_departure_for(self._entry_id)
+
+    def _drop_later_departure(self) -> None:
+        """Another departure was set: the site's "Later departure" for the one before ends."""
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        if site is not None and site.later_departure_for(self._entry_id) is not None:
+            site.drop_later_departure(self._entry_id)
+
+    def _with_later_departure(self, settings: AutoSettings) -> AutoSettings:
+        """[settings] planning for the later departure a person chose for this one departure ("Later departure",
+        `SiteCapacityController.async_later_departure`), as a dated departure; unchanged without one, or where the
+        departure it moved is no longer the one ahead (another was set; the site then ends it). Never stored: the
+        departure's settings stay the person's."""
+        moved = self._later_departure()
+        if moved is None or not settings.departure_enabled or not settings.area_id:
+            return settings
+        entry = self._manager.catalogue_snapshot().area(settings.area_id)
+        zone = None if entry is None else time_zones.zone(entry.tz)
+        if entry is None or zone is None:
+            return settings
+        was, later = moved
+        now = self._now()
+        if later <= now:
+            return settings
+        ahead = self._departure_instant(settings, now, entry)
+        # The departure moved, or (once it has gone by) the next one the settings make: still this plug-in's.
+        if ahead is None or not (ahead == was or (was <= now and ahead > was)):
+            return settings
+        local = later.astimezone(zone)
+        return replace(settings, departure=local.time(), departure_date=local.date())
 
     @staticmethod
     def _calendar_overlay(settings: AutoSettings, found: CalendarDeparture) -> tuple[AutoSettings, str | None]:
@@ -1072,6 +1119,7 @@ class AutoPlannerController:
         """The one way a caller changes Auto settings: write them, then reconcile."""
         if mutate is not None:
             mutate = self._with_departure_date_guard(mutate)
+        before = self._store.settings(self._entry_id)
         try:
             if self._executor is not None:
                 # Through the executor: the attempt moves before the write so in-flight work cannot
@@ -1102,6 +1150,9 @@ class AutoPlannerController:
         # The write returned, so `settings` is durable. Anything raised from here is post-commit
         # (including an `AutoSettingsError` from calculation code); no rollback, see the exception.
         committed = settings
+        if _departure_fields(before) != _departure_fields(committed):
+            # Another departure set: a "Later departure" for the one before no longer holds.
+            self._drop_later_departure()
         try:
             await self._reconcile(committed)
         except Exception as err:  # noqa: BLE001 - the boundary must classify every failure
