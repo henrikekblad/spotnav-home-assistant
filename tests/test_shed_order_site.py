@@ -21,8 +21,8 @@ from .test_import_target_hold import _charging, _HOUR, _V, _world
 HEATER_W = 1500.0
 
 
-def _heater(world: Any) -> list[bool]:
-    """A water heater of 1.5 kW in the world's house, switched by the shed order: the meter reads it while it is not
+def _heater(world: Any, heater_w: float = HEATER_W) -> list[bool]:
+    """A water heater (1.5 kW unless said) in the world's house, switched by the shed order: the meter reads it while it is not
     paused for the ceiling. Returns the record of its states, one per step."""
     controller = world.halo.controller
     base_a = world.house_a
@@ -30,7 +30,7 @@ def _heater(world: Any) -> list[bool]:
 
     def offer() -> Offer:
         on = controller.shed_order.until(LOAD_WATER_HEATER, dt_util.utcnow()) is None
-        return Offer(live=True, ready=True, give_w=HEATER_W if on else 0.0, drawing=on)
+        return Offer(live=True, ready=True, give_w=heater_w if on else 0.0, drawing=on)
 
     controller.water_heater_control.shed_offer = offer
 
@@ -38,7 +38,7 @@ def _heater(world: Any) -> list[bool]:
 
     def show() -> None:
         on = controller.shed_order.until(LOAD_WATER_HEATER, dt_util.utcnow()) is None
-        world.house_a = base_a + (HEATER_W / (3 * _V) if on else 0.0)
+        world.house_a = base_a + (heater_w / (3 * _V) if on else 0.0)
         if not seen or seen[-1] != on:
             seen.append(on)
         original()
@@ -71,6 +71,26 @@ async def test_the_water_heater_pauses_before_the_car_is_cut_further(hass: HomeA
         assert [entry["load"] for entry in log if entry["action"] == "shed_order_shed"] == [LOAD_WATER_HEATER]
         for hour in world.complete_hours():
             assert world.hour_kw(hour) <= 8.0, f"{hour}: {world.hour_kw(hour):.2f} kW"
+
+
+async def test_a_car_the_hold_would_pause_keeps_charging_and_the_water_heater_pauses(hass: HomeAssistant, monkeypatch) -> None:
+    """A 6 kW target (5.88 held), the house at 1 kW plus a 3 kW metered water heater, a 16 A car: the hold alone would
+    pause the car for the hour (5.88 - 4 kW is below its minimum); the heater goes at once instead, without the enter
+    delay, and the car charges on what remains, every hour under the target."""
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "shed6")
+        heater = _heater(world, 3000.0)
+        # The order's rest after a start (`REST_S`) has passed before the car starts.
+        await world.run(16)
+        await _charging(world)
+        await world.run(120)
+        controller = world.halo.controller
+        assert world.turn_offs == 0, "the car was paused"
+        assert world.car_a >= 6.0
+        assert heater == [True, False]
+        assert controller.shed_order.steps[LOAD_WATER_HEATER].taken
+        for hour in world.complete_hours():
+            assert world.hour_kw(hour) <= 6.0, f"{hour}: {world.hour_kw(hour):.2f} kW"
 
 
 async def test_a_passing_loss_of_the_budget_keeps_the_heater_paused_and_load_balancing_off_ends_it(

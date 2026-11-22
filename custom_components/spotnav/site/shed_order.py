@@ -32,7 +32,9 @@ members say what the cars want (`cars_held_w`, the ones the hold may lower or pa
    draw as already gone (`credit_w`, added to what the cars may draw). Never in the period's last minutes
    (`raise_lock_s`: the hour's last 10, a quarter's last 2.5): there the car is held as before, and what the credit
    let through the hold's budget takes back from the cars on its own (it is in the period's import so far). During
-   the enter delay nothing is counted: the car is held as before for that minute.
+   the enter delay nothing is counted: the car is held as before for that minute; but where the hold would pause a
+   car for the rest of the period (`Projection.car_pause_due`), the heater's step is taken at once, without the
+   delay: a few minutes' pause of the heater is cheaper than a car paused for the hour.
 3. **Car**: the hold as before (lower, pause; `share_budget`), unchanged. With the water heater's give counted it
    takes only what remains. In the projection a car counts at what its plan needs now (the plan's own rate in its
    running window, where it has one), never more than the fuse would give it: a car charging faster than its plan
@@ -166,6 +168,9 @@ class Projection:
     #: What the cars the hold may lower or pause want (W), and what the ones it may not touch draw.
     cars_held_w: float = 0.0
     cars_unheld_w: float = 0.0
+    #: The hold would pause a car for the rest of the period this pass (its share fell below its minimum): the water
+    #: heater, the earlier step, is then taken without the enter delay.
+    car_pause_due: bool = False
 
     @property
     def excess_w(self) -> float:
@@ -342,7 +347,7 @@ class ShedOrder:
             return
         heater = offers.get(LOAD_WATER_HEATER)
         if LOAD_WATER_HEATER not in self.steps and self._may_take(now, LOAD_WATER_HEATER, heater, projection):
-            if (now - self._over_since).total_seconds() >= ENTER_S:
+            if (now - self._over_since).total_seconds() >= ENTER_S or projection.car_pause_due:
                 self._take(now, LOAD_WATER_HEATER, heater, projection)  # type: ignore[arg-type]
             # The heater is the step due: heat waits for it, and its own delay starts after it.
             self._beyond_since = None

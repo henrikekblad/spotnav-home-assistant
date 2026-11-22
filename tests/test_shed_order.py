@@ -452,3 +452,15 @@ def test_no_credit_without_a_draw_the_meter_reads_now() -> None:
     # Its switch on, its meter lost: nothing counted.
     lost = Offer(True, True, 0.0, drawing=True)
     assert order.update(now, _projection(now, house=4000, held=6000), {LOAD_WATER_HEATER: lost}) == 0.0
+
+
+def test_the_water_heater_goes_at_once_where_the_hold_would_pause_a_car() -> None:
+    from dataclasses import replace
+
+    order = ShedOrder()
+    now = HOUR + timedelta(minutes=5)
+    due = replace(_projection(now, house=4000, held=6000), car_pause_due=True)
+    credit = order.update(now, due, {LOAD_WATER_HEATER: HEATER, LOAD_HEAT: HEAT})
+    assert LOAD_WATER_HEATER in order.steps and credit == 3000.0
+    # Heat still waits its own delay.
+    assert LOAD_HEAT not in order.steps

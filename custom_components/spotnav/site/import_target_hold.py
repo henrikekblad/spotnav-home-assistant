@@ -211,7 +211,16 @@ class ImportTargetHold:
                 for request in ordered
             ]
             shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
-        credit_w = self._shed(now, budget, members)
+        # A car the shares pause for the rest of the period (not paused already): the water heater goes first, now.
+        car_pause_due = any(
+            shares.get(member.charger_entry_id) is not None
+            and shares[member.charger_entry_id].action == ACTION_PAUSED
+            and member.holdable
+            and not member.paused_this_hour
+            and member.wants_a > 0
+            for member in members
+        )
+        credit_w = self._shed(now, budget, members, car_pause_due=car_pause_due)
         if credit_w > 0:
             # The water heater's pause counted ahead: the cars take only what remains after it (`site/shed_order.py`).
             ceiling_w = max(0.0, self._site._import_ceiling_w())
@@ -327,7 +336,13 @@ class ImportTargetHold:
         return held
 
     def _shed(
-        self, now: datetime, budget: HourBudget | None, members: Sequence[TargetMember], *, lasting: bool = False
+        self,
+        now: datetime,
+        budget: HourBudget | None,
+        members: Sequence[TargetMember],
+        *,
+        lasting: bool = False,
+        car_pause_due: bool = False,
     ) -> float:
         """The site's shed order on this pass's projection (`site/shed_order.py`); `budget` `None`: nothing held now,
         for good (`lasting`: no target or power level, outside the level's hours, load balancing off: every step put
@@ -344,7 +359,10 @@ class ImportTargetHold:
                     order.update(now, None, {})
                 credit_w = 0.0
             else:
-                credit_w = order.update(now, _projection(budget, members, self._planned_w(members, now)), self._offers())
+                projection = replace(
+                    _projection(budget, members, self._planned_w(members, now)), car_pause_due=car_pause_due
+                )
+                credit_w = order.update(now, projection, self._offers())
         except Exception:  # noqa: BLE001 - the shed order never stands in the hold's way
             if not getattr(self, "_shed_failed_logged", False):
                 self._shed_failed_logged = True
