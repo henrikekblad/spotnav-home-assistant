@@ -12,14 +12,16 @@ the Plan tab's car lane (`spotnav/get_plan`, the load's `does_not_fit`). Words a
   a "does not fit" either: the plan is made at what the fuse allows (load balancing then shares it out).
 * **Short** (`TargetRisk`): `short_kwh` the energy the hold leaves missing by the `departure` (an instant),
   `deliverable_kwh` what it still delivers of what the plan needs (`None` where the need is not known).
-* **`chosen`**: `takes_what_fits` where the plan's `if_not_ready` is `hold` (a lasting setting: every charge it
-  misses takes what fits, said without a notice); `accept_peak` while the target is set aside for this charge (a
-  person's "Release the import target for this charge", or the plan's own `release`): then nothing is short and
-  `short_kwh` is `None`; else `None` (the plan asks).
-* **`choices`** (the codes of `planning/flexible_load.py`), the ones not chosen; none once the peak is accepted (a
-  set-aside lasts until the departure or the unplug and has no undo):
-  `takes_what_fits` (`kwh` what it delivers, the plan's `if_not_ready` `hold`); `later` (the departure moved, by the
-  person in the departure's editor); `accept_peak` (`spotnav/release_import_target` for this charge alone: `peak_kw`
+* **`chosen`**: `takes_what_fits` where this departure is held as `if_not_ready` `hold` holds it: a person's "Take
+  what fits" for this departure (`SiteCapacityController.async_take_what_fits`), or the lasting `hold`; `accept_peak`
+  while the target is set aside for this charge (a person's "Release the import target for this charge", or the
+  plan's own `release`): then nothing is short and `short_kwh` is `None`; else `None` (the plan asks).
+* **`choices`** (the codes of `planning/flexible_load.py`), the ones not chosen. Each is for this departure only
+  (the lasting `if_not_ready` is the person's default, never changed by a choice). Once the peak is accepted by a
+  person there is none (a set-aside has no undo); where the plan's own `release` accepted it, `takes_what_fits` is
+  still offered for this departure.
+  `takes_what_fits` (`kwh` what it delivers, `spotnav/take_what_fits`); `later` (the departure moved, by the person
+  in the departure's editor); `accept_peak` (`spotnav/release_import_target` for this charge alone: `peak_kw`
   the hour's import it may reach, `cost` what that peak adds to the month's demand charge in the area's minor unit
   where the price has one and it is known, else `None`).
 """
@@ -72,7 +74,7 @@ def does_not_fit(status: Any, *, ceiling: str, peak_cost: float | None = None) -
             "ceiling": ceiling,
             "ceiling_kw": float(status.target_kw),
             "chosen": CHOICE_ACCEPT_PEAK,
-            "choices": [],
+            "choices": [_choice(CHOICE_TAKES_WHAT_FITS)] if status.released_automatically else [],
         }
     need = getattr(risk, "need_kwh", None)
     deliverable = None if need is None else round(max(0.0, need - risk.missing_kwh), 1)

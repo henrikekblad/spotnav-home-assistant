@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.planning.demand_cost import HourCeiling
 from custom_components.spotnav.site.does_not_fit import (
@@ -91,9 +92,14 @@ def test_hold_is_said_as_chosen_and_offers_the_rest() -> None:
 
 
 def test_a_set_aside_is_the_peak_accepted_with_nothing_left_to_choose() -> None:
+    # The plan's own release: "Take what fits" is still offered for this departure.
     block = does_not_fit(_status(released_for=DEPARTURE, released_automatically=True), ceiling="import_target")
-    assert block is not None and block["chosen"] == "accept_peak" and block["choices"] == []
+    assert block is not None and block["chosen"] == "accept_peak"
+    assert [choice["code"] for choice in block["choices"]] == ["takes_what_fits"]
     assert block["short_kwh"] is None and block["departure"] == DEPARTURE
+    # A person's release has no undo: nothing left to choose.
+    persons = does_not_fit(_status(released_for=DEPARTURE), ceiling="import_target")
+    assert persons is not None and persons["chosen"] == "accept_peak" and persons["choices"] == []
     # A person's Start set aside until the unplug: no departure.
     unplug = does_not_fit(_status(released_for="until_unplug:2026-11-22T20:00:00+00:00"), ceiling="import_target")
     assert unplug is not None and unplug["departure"] is None
@@ -164,7 +170,8 @@ async def test_the_dashboard_says_release_as_the_peak_accepted(hass: HomeAssista
         await world.run(5)
         block = (await _dashboard(hass, world))["does_not_fit"]
         _write_or_compare("release.json", block)
-        assert block["chosen"] == "accept_peak" and block["choices"] == []
+        assert block["chosen"] == "accept_peak"
+        assert [choice["code"] for choice in block["choices"]] == ["takes_what_fits"]
 
 
 async def test_a_charge_that_fits_has_no_dashboard_block(hass: HomeAssistant, monkeypatch) -> None:
@@ -176,3 +183,103 @@ async def test_a_charge_that_fits_has_no_dashboard_block(hass: HomeAssistant, mo
         await _charging(world)
         await world.run(5)
         assert "does_not_fit" not in await _dashboard(hass, world)
+
+
+# -- "Take what fits" for one departure (`SiteCapacityController.async_take_what_fits`, `spotnav/take_what_fits`)
+
+
+def _settings_choice(hass: HomeAssistant, charger: str) -> str:
+    from custom_components.spotnav.runtime import domain_data
+
+    return domain_data(hass).auto_store.settings(charger).if_not_ready
+
+
+async def test_take_what_fits_holds_this_departure_only_and_leaves_the_lasting_setting(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.api.import_target import take_what_fits
+
+    from .test_import_target_hold import _plan, _told
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "dnftake")
+        await world.run(2)
+        charger = world.halo.charger.entry_id
+        controller = world.halo.controller
+        assert len(_told(world)) == 1, "the plan asks: told once"
+        assert take_what_fits(hass, world.halo.charger) is None
+        await world.run(3)
+        block = (await _dashboard(hass, world))["does_not_fit"]
+        assert block["chosen"] == "takes_what_fits"
+        assert [choice["code"] for choice in block["choices"]] == ["later", "accept_peak"]
+        assert world.car_a == 7.0, "still held"
+        assert any(call.data.get("message") == "clear_notification" for call in world.calls), "the notice is taken off"
+        assert len(_told(world)) == 1, "and not told again"
+        assert _settings_choice(hass, charger) == "ask", "the lasting if_not_ready is untouched"
+        assert controller.import_target_snapshot()["takes_what_fits"] == {charger: world.departure.isoformat()}
+        # The next night's plan is another departure: the choice was for tonight only, the plan asks again.
+        now = dt_util.utcnow()
+        tomorrow = world.departure + timedelta(days=1)
+        world.halo.cc.plan = _plan(now, tomorrow, [(now, world.departure)])
+        await world.run(2)
+        assert controller.import_target_snapshot()["takes_what_fits"] == {}
+        assert controller._if_not_ready(charger) == "ask"  # noqa: SLF001
+
+
+async def test_take_what_fits_survives_a_restart_and_ends_at_the_departure(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "dnfrestart")
+        await world.run(2)
+        charger = world.halo.charger.entry_id
+        controller = world.halo.controller
+        assert controller.async_take_what_fits(charger) is None
+        record = controller._released_record()  # noqa: SLF001
+        assert record["acknowledged"] == {charger: {"departure": world.departure.isoformat(), "choice": "takes_what_fits"}}
+        await controller._target_release_store.async_save(record)  # noqa: SLF001
+        fresh = SiteCapacityController(hass, controller.entry_id, dict(controller.config))
+        await fresh._async_load_released()  # noqa: SLF001
+        assert fresh._target_acknowledged == {charger: world.departure.isoformat()}  # noqa: SLF001
+        assert fresh._if_not_ready(charger, world.departure.isoformat()) == "hold"  # noqa: SLF001
+        assert fresh._if_not_ready(charger, (world.departure + timedelta(days=1)).isoformat()) == "ask"  # noqa: SLF001
+        # The departure passes: the choice ends with it.
+        frozen.tick(timedelta(hours=2))
+        world.halo.advance(7200.0)
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        assert controller._target_acknowledged == {}  # noqa: SLF001
+
+
+async def test_take_what_fits_ends_at_the_unplug(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.runtime import controller_for
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "dnfunplug")
+        await world.run(2)
+        charger = world.halo.charger.entry_id
+        controller = world.halo.controller
+        assert controller.async_take_what_fits(charger) is None
+        monkeypatch.setattr(controller_for(hass, charger).adapter, "vehicle_connected", lambda: False)
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        assert controller._target_acknowledged == {}  # noqa: SLF001
+
+
+async def test_take_what_fits_overrides_the_plans_own_release_for_this_departure(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "dnfover", choice="release")
+        await world.run(5)
+        charger = world.halo.charger.entry_id
+        assert world.car_a == 16.0
+        block = (await _dashboard(hass, world))["does_not_fit"]
+        assert block["chosen"] == "accept_peak"
+        assert [choice["code"] for choice in block["choices"]] == ["takes_what_fits"]
+        assert world.halo.controller.async_take_what_fits(charger) is None
+        await world.run(5)
+        assert world.car_a < 16.0, "held again for this departure"
+        assert (await _dashboard(hass, world))["does_not_fit"]["chosen"] == "takes_what_fits"
+        assert _settings_choice(hass, charger) == "release"
+
+
+async def test_take_what_fits_needs_a_departure_ahead(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "dnfnoplan")
+        world.halo.cc.plan = None
+        assert world.halo.controller.async_take_what_fits(world.halo.charger.entry_id) == "spotnav_no_departure"

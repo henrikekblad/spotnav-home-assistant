@@ -163,7 +163,7 @@ class ImportTargetHold:
             was = self._site._target_risk.get(member.charger_entry_id)
             if not departure_at_risk(shortfall, at_risk=was is not None and was.departure == departure):
                 continue
-            choice = self._site._if_not_ready(member.charger_entry_id)
+            choice = self._site._if_not_ready(member.charger_entry_id, departure)
             risks[member.charger_entry_id] = TargetRisk(
                 departure=departure,
                 missing_kwh=round(max(0.0, shortfall), 1),

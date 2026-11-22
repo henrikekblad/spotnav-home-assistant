@@ -107,6 +107,7 @@ from ..core.electric import PHASE_V, site_fuse_kw, stored_safety_margin_a
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
+    IF_NOT_READY_HOLD,
     IF_NOT_READY_RELEASE,
     MANUAL_START,
     MANUAL_STOP,
@@ -371,6 +372,10 @@ def unplug_release_latest(since: datetime) -> datetime:
     # Wall-clock arithmetic on the local zone: the next day's noon also across a DST change.
     return noon if noon >= earliest else noon + timedelta(days=1)
 ERROR_STALE_DEPARTURE = "spotnav_stale_departure"
+#: "Take what fits" asked for a charge with no plan's departure ahead (`async_take_what_fits`).
+ERROR_NO_DEPARTURE = "spotnav_no_departure"
+#: The one choice a person may make for one departure only (`async_take_what_fits`).
+ACKNOWLEDGED_TAKES_WHAT_FITS = "takes_what_fits"
 #: The target's own code failed (`_compute_regulator_decisions`): the fuse's decisions went as they were.
 TARGET_NOT_APPLIED_ERROR = "error"
 #: Why the target could not hold a charger it would hold (`import_target_snapshot`'s `inert`): a phase it draws on has
@@ -860,6 +865,10 @@ class SiteCapacityController:
             hass, 1, f"{DOMAIN}.import_target_release.{entry_id}"
         )
         self._target_risk: dict[str, TargetRisk] = {}
+        # Per charger the departure (ISO, as the plan has it) a person chose "Take what fits" for
+        # (`async_take_what_fits`): that departure alone is held as `if_not_ready` `hold` would (said, never told),
+        # whatever the lasting `if_not_ready`. Kept beside the set-asides, ended by the same rules (`_prune_released`).
+        self._target_acknowledged: dict[str, str] = {}
         # The departures a plan's own choice (`if_not_ready` `release`) sets the target aside for, while holding
         # would miss them: decided again on every recompute, never stored.
         self._target_auto_released: dict[str, str] = {}
@@ -5744,10 +5753,52 @@ class SiteCapacityController:
         """The fuse's decisions with the import target min-ed in (`ImportTargetHold.hold`, `site/import_target_hold.py`)."""
         return self._import_target_hold.hold(decisions, requests, voltage_by_phase, max_age_s)
 
-    def _if_not_ready(self, charger_entry_id: str) -> str:
-        """The plan's choice for a departure the target makes it miss (`AutoSettings.if_not_ready`)."""
+    def _if_not_ready(self, charger_entry_id: str, departure: str | None = None) -> str:
+        """The plan's choice for a departure the target makes it miss (`AutoSettings.if_not_ready`): `hold` for the
+        departure a person chose "Take what fits" for (`async_take_what_fits`; `departure` `None`: the plan's own)."""
+        if departure is None:
+            plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
+            departure = None if plan is None else plan.departure
+        acknowledged = self._target_acknowledged.get(charger_entry_id)
+        if acknowledged is not None and acknowledged == departure:
+            return IF_NOT_READY_HOLD
         store = domain_data(self.hass).auto_store
         return IF_NOT_READY_ASK if store is None else store.settings(charger_entry_id).if_not_ready
+
+    def async_take_what_fits(self, charger_entry_id: str, *, source: str | None = None) -> str | None:
+        """A person's "Take what fits" for this charge (the card, the app): the plan's departure ahead is held as
+        `if_not_ready` `hold` would hold it, for that departure only; the lasting `if_not_ready` is left as it is. Ends
+        at the departure, an unplug or another departure (`_prune_released`); kept across a restart. The error's code,
+        else `None`: `spotnav_no_import_target` (the site has neither a target nor a power level),
+        `spotnav_no_departure` (no plan's departure ahead)."""
+        if self._hold_set_kw() is None:
+            self._log_target(charger_entry_id, "takes_what_fits_refused", source=source, error=ERROR_NO_IMPORT_TARGET)
+            return ERROR_NO_IMPORT_TARGET
+        plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
+        departure = None if plan is None or not plan.departure else dt_util.parse_datetime(plan.departure)
+        if departure is None or departure.tzinfo is None or departure <= dt_util.utcnow():
+            self._log_target(charger_entry_id, "takes_what_fits_refused", source=source, error=ERROR_NO_DEPARTURE)
+            return ERROR_NO_DEPARTURE
+        assert plan is not None
+        _LOGGER.info(
+            "SpotNav site %s: charger %s takes what fits under the import target until %s, as a person chose",
+            self.entry_id,
+            charger_entry_id,
+            plan.departure,
+        )
+        self._target_acknowledged[charger_entry_id] = plan.departure
+        if self._target_auto_released.get(charger_entry_id) == plan.departure:
+            # The plan's own release gives way to the person's choice for this departure.
+            del self._target_auto_released[charger_entry_id]
+        risk = self._target_risk.get(charger_entry_id)
+        if risk is not None and risk.departure == plan.departure:
+            # Said as chosen at once; the phones' notice is taken off.
+            self._target_risk[charger_entry_id] = replace(risk, choice=IF_NOT_READY_HOLD)
+            self._tell_target_risk()
+        self._save_released()
+        self._log_target(charger_entry_id, "takes_what_fits", self._target_budget, source=source, until=plan.departure)
+        self._recompute()
+        return None
 
     def _tell_target_risk(self) -> None:
         """Give each charger's notifier the departure the target makes it miss, or none (`ChargerNotifier.
@@ -5798,9 +5849,32 @@ class SiteCapacityController:
                     # Kept as written where it has its offset (the plan's departure is compared as text).
                     kept[key] = value if dt_util.parse_datetime(value).tzinfo is not None else moment.isoformat()
             self._target_released = kept
+        acknowledged = raw.get("acknowledged") if isinstance(raw, dict) else None
+        if isinstance(acknowledged, dict):
+            kept_choices: dict[str, str] = {}
+            for key, value in acknowledged.items():
+                if not isinstance(key, str) or not isinstance(value, dict):
+                    continue
+                departure = value.get("departure")
+                if value.get("choice") != ACKNOWLEDGED_TAKES_WHAT_FITS or not isinstance(departure, str):
+                    continue
+                parsed = dt_util.parse_datetime(departure)
+                if parsed is not None and parsed.tzinfo is not None:
+                    kept_choices[key] = departure
+            self._target_acknowledged = kept_choices
 
     def _save_released(self) -> None:
-        self._target_release_store.async_delay_save(lambda: {"released": dict(self._target_released)}, 1.0)
+        self._target_release_store.async_delay_save(self._released_record, 1.0)
+
+    def _released_record(self) -> dict[str, Any]:
+        """What the site's store keeps: the set-asides, and the departures a person chose "Take what fits" for."""
+        return {
+            "released": dict(self._target_released),
+            "acknowledged": {
+                charger_entry_id: {"departure": departure, "choice": ACKNOWLEDGED_TAKES_WHAT_FITS}
+                for charger_entry_id, departure in self._target_acknowledged.items()
+            },
+        }
 
     @staticmethod
     async def async_remove_released(hass: HomeAssistant, entry_id: str) -> None:
@@ -6010,11 +6084,20 @@ class SiteCapacityController:
                 del self._target_released[charger_entry_id]
                 self._log_target(charger_entry_id, "release_ended", reason=reason, until=departure)
                 changed = True
+        for charger_entry_id, departure in list(self._target_acknowledged.items()):
+            reason = self._release_end(charger_entry_id, departure, now)
+            if reason is not None:
+                del self._target_acknowledged[charger_entry_id]
+                self._log_target(charger_entry_id, "takes_what_fits_ended", reason=reason, until=departure)
+                changed = True
         if changed:
             self._save_released()
         kept_auto: dict[str, str] = {}
         for charger_entry_id, departure in self._target_auto_released.items():
             reason = self._release_end(charger_entry_id, departure, now)
+            if reason is None and self._target_acknowledged.get(charger_entry_id) == departure:
+                # A person chose "Take what fits" for this departure: the plan's own release gives way to it.
+                reason = "takes_what_fits"
             if reason is None:
                 kept_auto[charger_entry_id] = departure
             else:
@@ -6442,6 +6525,8 @@ class SiteCapacityController:
             "paused_hour": {key: value.isoformat() for key, value in self._target_paused_hour.items()},
             "released": dict(self._target_released),
             "released_by_plan": dict(self._target_auto_released),
+            # The departures a person chose "Take what fits" for (`async_take_what_fits`).
+            "takes_what_fits": dict(self._target_acknowledged),
             "at_risk": {
                 charger_entry_id: {"departure": risk.departure, "missing_kwh": risk.missing_kwh, "choice": risk.choice}
                 for charger_entry_id, risk in self._target_risk.items()
