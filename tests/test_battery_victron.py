@@ -698,3 +698,31 @@ def test_spotnav_s_own_hold_at_0_is_not_the_person_s_and_a_discharge_follows_it_
     assert not _events(results, "hand_back") and executor.state.action == "discharge_house"
     assert ("charge_power", 0.0) in _written(results)
     assert Executor(VICTRON_CONTROL).told_problems(Plant().reads(executor, now)) == ()
+
+
+def test_a_grid_setpoint_found_selling_is_handed_back_as_the_gx_default_never_as_found() -> None:
+    """A negative grid setpoint at the snapshot is a sale running then (SpotNav's own left by a lost state, or
+    another tool's): written back, the GX would sell the battery for good."""
+    from custom_components.spotnav.battery.commands import VICTRON_GRID_DEFAULT_W
+
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    plant.states["grid_setpoint"] = "-2000"
+    now, results = _run(executor, plant, T0, 5, "grid_charge", 2.0)
+    assert executor.state.restore_values["grid_setpoint"] == VICTRON_GRID_DEFAULT_W
+    assert [role for role, _value in _written(results)] == ["charge_power", "grid_setpoint"]
+    _now, results = _run(executor, plant, now, 5, "self_consume")
+    assert _written(results) == [("grid_setpoint", VICTRON_GRID_DEFAULT_W), ("charge_power", -1.0)]
+    # A hold does not touch the setpoint: it is left as found, not written to the default.
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    plant.states["grid_setpoint"] = "-100"
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert executor.state.phase == "active"
+    _now, more = _run(executor, plant, now, 4, "self_consume")
+    assert [role for role, _value in _written(results + more)] == ["discharge_power", "discharge_power"]
+    assert plant.states["grid_setpoint"] == "-100"
+    # A positive one is the person's and is written back as found.
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    plant.states["grid_setpoint"] = "120"
+    now, _ = _run(executor, plant, T0, 5, "grid_charge", 2.0)
+    _now, results = _run(executor, plant, now, 5, "self_consume")
+    assert ("grid_setpoint", 120.0) in _written(results)

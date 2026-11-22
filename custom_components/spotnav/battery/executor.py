@@ -1039,9 +1039,13 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
             return None if rating is None else round(rating * role.scale, 6)
         text = reading(role, state)
         try:
-            return None if text is None else float(text)
+            value = None if text is None else float(text)
         except ValueError:
             return None
+        if value is not None and role.negative_restored_as is not None and value < 0:
+            # A sale running when it was found is never the person's value (`Role.negative_restored_as`).
+            return role.negative_restored_as
+        return value
     return reading(role, state)
 
 
