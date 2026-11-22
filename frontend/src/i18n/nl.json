@@ -2173,6 +2173,8 @@
   "house.plan.wouldNote": "Vaag: wat SpotNav zou doen met een last die het alleen toont. Die last wordt nu niet aangestuurd.",
   "house.plan.perLoad": "Per last",
   "house.plan.inWords": "In woorden",
+  "house.plan.rows.one": "{count} regel",
+  "house.plan.rows.other": "{count} regels",
   "house.plan.nothing": "Niets gepland voor de komende uren.",
   "house.plan.rolling": "een rollende dag vanaf nu",
   "house.plan.would": "zou",

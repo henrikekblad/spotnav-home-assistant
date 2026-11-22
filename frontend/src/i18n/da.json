@@ -2173,6 +2173,8 @@
   "house.plan.wouldNote": "Bleg: hvad SpotNav ville gøre med en last, den kun viser. Den last styres ikke nu.",
   "house.plan.perLoad": "Pr. last",
   "house.plan.inWords": "I ord",
+  "house.plan.rows.one": "{count} linje",
+  "house.plan.rows.other": "{count} linjer",
   "house.plan.nothing": "Intet planlagt de næste timer.",
   "house.plan.rolling": "et rullende døgn fra nu",
   "house.plan.would": "ville",

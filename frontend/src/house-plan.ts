@@ -4,13 +4,16 @@
 // month's peak), the stacked chart (the loads above zero, the sun and the battery's cover below, the net from the
 // grid as a line, the ceiling labelled, a price strip), a lane per load with one line of why, and the plan in words.
 // A load SpotNav only watches is drawn hatched and says "would": the view never claims an action that is not taken.
+// "Per load" and "In words" fold away under their headings, folded until this browser opens them; a car's "does not
+// fit" choice is never folded away: while one is there, "Per load" is open with a plain heading.
 // Read-only; every figure is the backend's. Built with `textContent` only.
 
 import { exactKeys, flag, list, numberOrNull, record, text, textOrNull, Malformed } from "./decode-primitives";
 import { clock, dayCue, formatFixed, hourLabel, kwText, kwhText, moneyMinorAsMajor, type FormatContext } from "./format";
-import { translate, type Language, type TranslationKey } from "./i18n";
+import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { element } from "./dom";
 import en from "./i18n/en.json";
+import { browserStore, readPlanSectionOpen, writePlanSectionOpen, type PlanSection, type PreferenceStore } from "./chart-preference";
 import { choiceLabel, decodeDoesNotFit, doesNotFitText, type DoesNotFit, type DoesNotFitChoiceCode } from "./does-not-fit";
 
 export const PLAN_API_VERSION = 1;
@@ -236,6 +239,9 @@ export const PLAN_CLASSES = {
   would: "spotnav-plan-would",
   fit: "spotnav-plan-fit",
   fitChoices: "spotnav-plan-fit-choices",
+  toggle: "spotnav-plan-toggle",
+  chevron: "spotnav-plan-chevron",
+  hint: "spotnav-plan-hint",
 } as const;
 const P = PLAN_CLASSES;
 
@@ -306,6 +312,11 @@ export const PLAN_STYLES = `
   .${P.words} li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; font-size: 0.88rem; }
   .${P.words} time { color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
   .${P.would} { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px solid var(--divider-color, #e0e0e0); border-radius: 999px; font-size: 0.72rem; color: var(--secondary-text-color); }
+  .${P.toggle} { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin: 0; padding: 2px 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .${P.toggle}:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 4px; }
+  .${P.chevron} { flex: none; width: 6px; height: 6px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform 0.15s; }
+  .${P.toggle}[aria-expanded="true"] .${P.chevron} { transform: rotate(45deg); }
+  .${P.hint} { font-weight: 400; color: var(--secondary-text-color); }
   @media (max-width: 480px) { .${P.words} li { grid-template-columns: 78px minmax(0, 1fr); } }
 `;
 
@@ -319,6 +330,53 @@ export interface PlanRenderInput {
    * it the line is said with no buttons. "Later departure" is the charger card's: its departure editor is there.
    */
   onDoesNotFit?: (chargerId: string, code: DoesNotFitChoiceCode) => void;
+  /** Where the folded sections are remembered; this browser's storage unless a test hands in its own. */
+  store?: () => PreferenceStore | null;
+}
+
+/** The sections opened or folded on this page, so a choice holds across redraws where nothing can be stored. */
+const pageOpen = new Map<PlanSection, boolean>();
+
+/**
+ * A section's heading as a button that folds `content` away, with a chevron and, while folded, a hint of what is
+ * inside ("Per last · 4"). With `forced` the section is open under a plain heading and does not fold.
+ */
+function foldable(input: PlanRenderInput, section: PlanSection, title: string, hint: string, content: HTMLElement, forced: boolean): HTMLElement[] {
+  const { doc } = input;
+  const heading = element(doc, "h4", P.heading);
+  heading.dataset["section"] = section;
+  const wrap = element(doc, "div");
+  wrap.dataset["section"] = section;
+  wrap.append(content);
+  if (forced) {
+    heading.textContent = title;
+    return [heading, wrap];
+  }
+  const store = input.store ?? browserStore;
+  const open = pageOpen.get(section) ?? readPlanSectionOpen(section, store);
+  const button = element(doc, "button", P.toggle) as HTMLButtonElement;
+  button.type = "button";
+  const hintNode = element(doc, "span", P.hint, ` · ${hint}`);
+  button.append(element(doc, "span", P.chevron), element(doc, "span", undefined, title), hintNode);
+  const show = (next: boolean): void => {
+    button.setAttribute("aria-expanded", String(next));
+    hintNode.hidden = next;
+    wrap.hidden = !next;
+  };
+  show(open);
+  button.addEventListener("click", () => {
+    const next = button.getAttribute("aria-expanded") !== "true";
+    show(next);
+    pageOpen.set(section, next);
+    writePlanSectionOpen(section, next, store);
+  });
+  heading.append(button);
+  return [heading, wrap];
+}
+
+/** Forget this page's fold choices (tests). */
+export function resetPlanSections(): void {
+  pageOpen.clear();
 }
 
 function context(language: Language, plan: PlanAnswer): FormatContext {
@@ -774,14 +832,13 @@ export function planBody(input: PlanRenderInput): HTMLElement {
     panel.append(note);
   }
   if (plan.loads.length > 0) {
-    panel.append(element(doc, "h4", P.heading, translate(language, "house.plan.perLoad")), lanes(input, ctx));
+    const choice = plan.loads.some((load) => load.does_not_fit !== null);
+    panel.append(...foldable(input, "lanes", translate(language, "house.plan.perLoad"), String(plan.loads.length), lanes(input, ctx), choice));
   }
-  panel.append(element(doc, "h4", P.heading, translate(language, "house.plan.inWords")));
   const listed = words(input, ctx);
-  if (listed.childElementCount === 0) {
-    panel.append(element(doc, "p", P.note, translate(language, "house.plan.nothing")));
-  } else {
-    panel.append(listed);
-  }
+  const rows = listed.childElementCount;
+  const content = rows === 0 ? element(doc, "p", P.note, translate(language, "house.plan.nothing")) : listed;
+  const rowsKey: TranslationKey = `house.plan.rows.${pluralForm(language, rows)}`;
+  panel.append(...foldable(input, "words", translate(language, "house.plan.inWords"), translate(language, rowsKey, { count: String(rows) }), content, false));
   return panel;
 }

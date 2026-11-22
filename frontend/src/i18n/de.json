@@ -2173,6 +2173,8 @@
   "house.plan.wouldNote": "Blass: was SpotNav mit einer Last täte, die es nur anzeigt. Diese Last wird jetzt nicht gesteuert.",
   "house.plan.perLoad": "Je Last",
   "house.plan.inWords": "In Worten",
+  "house.plan.rows.one": "{count} Zeile",
+  "house.plan.rows.other": "{count} Zeilen",
   "house.plan.nothing": "Für die nächsten Stunden ist nichts geplant.",
   "house.plan.rolling": "ein rollender Tag ab jetzt",
   "house.plan.would": "würde",

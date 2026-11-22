@@ -2173,6 +2173,8 @@
   "house.plan.wouldNote": "Haalea: mitä SpotNav tekisi kuormalle, jota se vain näyttää. Sitä kuormaa ei nyt ohjata.",
   "house.plan.perLoad": "Kuormittain",
   "house.plan.inWords": "Sanoin",
+  "house.plan.rows.one": "{count} rivi",
+  "house.plan.rows.other": "{count} riviä",
   "house.plan.nothing": "Seuraaville tunneille ei ole suunniteltu mitään.",
   "house.plan.rolling": "liukuva vuorokausi nyt alkaen",
   "house.plan.would": "tekisi",
