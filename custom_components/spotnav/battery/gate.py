@@ -20,6 +20,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   (`export_discharge_cap_kw`); Self-consumption never does. It replaced
   `battery_control_allow_sell`, which an early 3.0 build stored: read once at load, as the source of a one-time
   migration (`legacy_mode`, `BatteryControl._migrate_mode`), then removed from the entry; never written or sent.
+* `battery_wear_minor_per_kwh` (`CONF_WEAR`: a number in the area's minor unit per kWh each way, or absent / `None`
+  = the currency's default, `plan_model.WEAR_MINOR_PER_KWH`): what the plan weighs as the battery's wear. A write
+  takes a finite number from 0 to `WEAR_MAX_FACTOR` times the currency's default (`valid_change`), or `None` to go
+  back to the default. Balanced still doubles it.
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
   import limit acts under Remote EMS. Until then, and whenever that limit reads more than keeps the worst phase
   under the fuse (`import_limit_max_kw`: the plant limits the **total** import, not each phase), a grid
@@ -87,6 +91,7 @@ from typing import Any, Final, Literal
 from ..core.electric import phase_volts
 from .commands import ACTION_CURTAIL_EXPORT
 from .plan_model import (
+    DEFAULT_CYCLE_COST,
     DEFAULT_MODE,
     EXPORT_OFF,
     MODE_MAX_PROFIT,
@@ -97,6 +102,7 @@ from .plan_model import (
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
     mode_named,
+    wear_minor_per_kwh,
 )
 from .shadow import parse_aware_datetime
 
@@ -108,6 +114,10 @@ CONF_ALLOW_SELL: Final = "battery_control_allow_sell"
 #: The site's battery mode (the plan's `plan_runtime.MODE_KEY`).
 CONF_MODE: Final = "battery_mode"
 CONF_IMPORT_LIMIT_ACTS: Final = "battery_control_import_limit_acts"
+#: The site's own wear per kWh each way in the area's minor unit (`None`/absent: the currency's default).
+CONF_WEAR: Final = "battery_wear_minor_per_kwh"
+#: The most a write may set the wear to, as a multiple of the currency's default.
+WEAR_MAX_FACTOR: Final = 10.0
 CONF_ACCEPT_HA_DOWN: Final = "battery_control_accept_ha_down"
 #: The setup the acceptance was given for (`ha_down_setup`): stored beside it, never written by a request.
 CONF_ACCEPT_HA_DOWN_SETUP: Final = "battery_control_accept_ha_down_setup"
@@ -119,8 +129,8 @@ DEFAULTS: Final[Mapping[str, bool]] = {
     CONF_IMPORT_LIMIT_ACTS: False,
     CONF_ACCEPT_HA_DOWN: False,
 }
-#: The keys a write may set: the booleans above and the mode.
-WRITABLE: Final = (*DEFAULTS, CONF_MODE)
+#: The keys a write may set: the booleans above, the mode and the wear.
+WRITABLE: Final = (*DEFAULTS, CONF_MODE, CONF_WEAR)
 
 #: The battery's modes the routine judges, and normal (the hand-back's check).
 BATTERY_MODES: Final = ("hold", "charge", "discharge_house")
@@ -175,11 +185,40 @@ def _flag(value: Any, default: bool) -> bool:
     return value if isinstance(value, bool) else default
 
 
-def valid_change(key: str, value: Any) -> bool:
-    """Whether a write may set this key to this value: a boolean for an option, one of `MODES` for the mode."""
+def valid_change(key: str, value: Any, *, wear_default: float = DEFAULT_CYCLE_COST) -> bool:
+    """Whether a write may set this key to this value: a boolean for an option, one of `MODES` for the mode, and for
+    the wear `None` (the default) or a finite number from 0 to `WEAR_MAX_FACTOR` times [wear_default] (the area
+    currency's own figure)."""
     if key == CONF_MODE:
         return isinstance(value, str) and value in MODES
+    if key == CONF_WEAR:
+        if value is None:
+            return True
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return False
+        return 0 <= value <= WEAR_MAX_FACTOR * wear_default
     return key in DEFAULTS and isinstance(value, bool)
+
+
+def stored_wear(config: Mapping[str, Any]) -> float | None:
+    """The site's own wear (`CONF_WEAR`) when it holds a finite number of at least 0, else `None` (the default)."""
+    value = config.get(CONF_WEAR)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        return None
+    return float(value)
+
+
+def wear_default(currency: str | None) -> tuple[float, bool]:
+    """The currency's own wear per kWh each way, and whether the table lacks it (then the SEK figure)."""
+    wear = wear_minor_per_kwh(currency)
+    return (DEFAULT_CYCLE_COST, True) if wear is None else (wear, False)
+
+
+def site_wear(config: Mapping[str, Any], currency: str | None) -> tuple[float, bool]:
+    """The wear the plan weighs on a site: its own (`CONF_WEAR`) when set, else the currency's default; and whether
+    that default stood in for a currency the table lacks."""
+    own = stored_wear(config)
+    return (own, False) if own is not None else wear_default(currency)
 
 
 def legacy_mode(config: Mapping[str, Any]) -> str | None:
@@ -199,6 +238,7 @@ class Options:
     mode: str = DEFAULT_MODE
     import_limit_acts: bool = False
     accept_ha_down: bool = False
+    wear_minor_per_kwh: float | None = None
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any], *, shadow_default: bool = True) -> Options:
@@ -211,6 +251,7 @@ class Options:
             mode=_mode(config),
             import_limit_acts=_flag(config.get(CONF_IMPORT_LIMIT_ACTS), False),
             accept_ha_down=_flag(config.get(CONF_ACCEPT_HA_DOWN), False),
+            wear_minor_per_kwh=stored_wear(config),
         )
 
     @property
@@ -225,12 +266,12 @@ class Options:
         """Whether anything may be written at all (the routine, control, the export limit)."""
         return self.enabled and not self.shadow_only
 
-    def as_dict(self) -> dict[str, bool | str]:
+    def as_dict(self) -> dict[str, bool | str | float | None]:
         """The payload's options."""
         return {
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
             CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts, CONF_ACCEPT_HA_DOWN: self.accept_ha_down,
-            CONF_MODE: self.mode,
+            CONF_MODE: self.mode, CONF_WEAR: self.wear_minor_per_kwh,
         }
 
 

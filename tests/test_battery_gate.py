@@ -528,6 +528,26 @@ def test_the_ha_down_acceptance_is_an_option_off_by_default_written_as_a_boolean
     assert valid_change(CONF_ACCEPT_HA_DOWN, True) and not valid_change(CONF_ACCEPT_HA_DOWN, 1)
 
 
+def test_the_wear_is_a_number_from_zero_to_ten_times_the_currency_s_default_or_null_for_the_default() -> None:
+    from custom_components.spotnav.battery import gate as g
+
+    assert g.CONF_WEAR in g.WRITABLE
+    assert g.valid_change(g.CONF_WEAR, None) and g.valid_change(g.CONF_WEAR, 0) and g.valid_change(g.CONF_WEAR, 150)
+    assert not g.valid_change(g.CONF_WEAR, 150.5), "ten times the SEK figure when no currency is told"
+    assert g.valid_change(g.CONF_WEAR, 14, wear_default=1.4) and not g.valid_change(g.CONF_WEAR, 14.1, wear_default=1.4)
+    for bad in (-0.1, True, "15", float("nan"), float("inf"), [15]):
+        assert not g.valid_change(g.CONF_WEAR, bad), bad
+    assert Options.from_config({}).wear_minor_per_kwh is None
+    assert Options.from_config({g.CONF_WEAR: 20}).wear_minor_per_kwh == 20.0
+    assert Options.from_config({g.CONF_WEAR: -3}).wear_minor_per_kwh is None
+    assert Options.from_config({g.CONF_WEAR: True}).wear_minor_per_kwh is None
+    assert Options().as_dict()[g.CONF_WEAR] is None
+    assert g.site_wear({}, "SEK") == (15.0, False) and g.site_wear({}, "EUR") == (1.4, False)
+    assert g.site_wear({}, "XYZ") == (15.0, True), "the SEK figure stands in, marked"
+    assert g.site_wear({g.CONF_WEAR: 3}, "XYZ") == (3.0, False), "the site's own needs no currency"
+    assert g.site_wear({g.CONF_WEAR: 0}, "EUR") == (0.0, False)
+
+
 def test_the_accepted_ha_down_risk_caps_a_grid_charge_at_the_fuse_of_an_empty_house() -> None:
     volts = 400.0 / 3 ** 0.5
     rule = {"margin_a": 2.0, "cars_a": 0.0, "house_peak_kw": None, "plant_phases": 3}

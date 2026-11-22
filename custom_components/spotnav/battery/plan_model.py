@@ -40,7 +40,8 @@ ACTIONS: Final = (
 )
 
 #: A battery's wear per kWh through it, each way (charged, and again discharged; AC side), in the area's minor unit:
-#: one constant, not a setting (`plans/research_integrations/battery_cycle_cost_and_modes_2026-11-13.md` part 1).
+#: the currency's default; a site may set its own (`gate.CONF_WEAR`, written in the card's mode dialog), which the
+#: shell passes instead (`plans/research_integrations/battery_cycle_cost_and_modes_2026-11-13.md` part 1).
 #: 15 öre is about 60 % of a 2 500 kr/kWh LFP bank's replacement cost over 6 000 cycles to 70 %; the other
 #: currencies are the same money at the rates of November 2026, rounded. Every currency the area catalogue holds is
 #: here (a test keeps it so).

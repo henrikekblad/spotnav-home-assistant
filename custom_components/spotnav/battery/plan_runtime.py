@@ -11,7 +11,8 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
   trigger while one runs is skipped (`skipped_busy`) and seen again at the next check.
 * **Modes**: the site's mode (entry key `MODE_KEY`, Balanced when unset; no setting yet) is planned first and is the
   plan in force; the other modes are planned on the same inputs while the solve stays within `MODES_BUDGET_S`, and
-  are reviewed beside it each night. The wear is the area currency's constant (`plan_model.WEAR_MINOR_PER_KWH`).
+  are reviewed beside it each night. The wear is the site's own (`gate.CONF_WEAR`), else the area currency's
+  constant (`plan_model.WEAR_MINOR_PER_KWH`).
 * **Battery limits** (`limited_params`): the plant's maximum output where its adapter reads one and it is below the
   battery's rating (the owner's Sigenergy: 13.2 kW beside 20.6/23.04 kW), and the battery's own reserve as the floor
   where one can be read; otherwise the assumed floor, said to be (`min_soc_assumed`).
@@ -102,7 +103,6 @@ from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_va
 from .plan import plan_mode, self_consumption
 from .plan_model import (
     ACTION_GRID_CHARGE,
-    DEFAULT_CYCLE_COST,
     DEFAULT_MODE,
     DEFAULT_SELL_MARGIN,
     MODE_DEFS,
@@ -113,7 +113,6 @@ from .plan_model import (
     PlanSlot,
     mode_named,
     sell_margin_minor_per_kwh,
-    wear_minor_per_kwh,
 )
 from .plan_shadow import (
     EST_HOUSE_COUNTS_BATTERY,
@@ -1217,11 +1216,12 @@ class BatteryPlanShadow:
         return (DEFAULT_MODE, True) if mode is None else (mode.name, False)
 
     def _wear(self) -> tuple[float, bool]:
-        """The wear per kWh each way in the area's currency, and whether the currency has none (then the default)."""
+        """The wear per kWh each way in the area's currency: the site's own (`gate.CONF_WEAR`) when set, else the
+        currency's; and whether the currency has none (then the SEK figure)."""
         source = self._price_source()
         currency = None if source is None or source.area is None else source.area.currency
-        wear = wear_minor_per_kwh(currency)
-        return (DEFAULT_CYCLE_COST, True) if wear is None else (wear, False)
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        return gate.site_wear(self.site.config if entry is None else entry.data, currency)
 
     def _sell_margin(self) -> float:
         """The spread gate's margin per kWh sold in the area's currency (the SEK figure for one not listed)."""
@@ -1291,11 +1291,12 @@ class BatteryPlanShadow:
                 self._cap(),
                 self._grid_cap_key(now),
                 self._site_mode(),
+                self._wear(),
             ),
         }
 
     def mode_changed(self, now: datetime) -> None:
-        """The site's mode was written: plan again at once, not at the next check."""
+        """The site's mode or wear was written: plan again at once, not at the next check."""
         if not self._loaded or self._closed or self._facts.battery_entity_id is None:
             return
         try:

@@ -350,6 +350,31 @@ async def test_a_written_mode_re_plans_at_once_and_moves_the_plan_in_force(
     assert controller.battery_shadow.snapshot()["plan"]["mode"] == MODE_SELF_CONSUMPTION
 
 
+async def test_a_written_wear_is_the_plans_own_re_plans_at_once_and_balanced_doubles_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery import gate, plan as plan_module
+
+    site, controller, now = await _planned(hass, monkeypatch)
+    shadow = controller.battery_shadow.plan
+    assert shadow._wear()[0] == 15.0, "the default"
+    weighed: dict[str, float] = {}
+    original = plan_module.mode_request
+
+    def spy(request, mode, wear, sell_margin=plan_module.DEFAULT_SELL_MARGIN):
+        made = original(request, mode, wear, sell_margin)
+        weighed[mode.name] = made.cycle_cost
+        return made
+
+    monkeypatch.setattr(plan_module, "mode_request", spy)
+    hass.config_entries.async_update_entry(site, data={**site.data, gate.CONF_WEAR: 22.0})
+    assert shadow._wear() == (22.0, False)
+    shadow.mode_changed(now)
+    await hass.async_block_till_done()
+    assert controller.battery_shadow.snapshot()["plan"]["inputs"]["wear"] == 22.0
+    assert weighed == {MODE_BALANCED: 44.0, MODE_MAX_PROFIT: 22.0}
+
+
 async def test_the_quarter_hours_record_what_the_battery_did_and_the_day_is_reviewed(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:

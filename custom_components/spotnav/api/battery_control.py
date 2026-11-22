@@ -5,11 +5,13 @@ state and the one line under the switch as stable codes, the verification report
 actions it allows, the routine's progress, what the person still has to do (`needs`), the notes and a cold battery's
 preheating line (`preheat`, `battery/preheat.py`). Any user may read.
 
-`{api_version: 1, site_id, changes: {battery_control_*: bool, battery_mode: str}}` writes some options first (administrators only):
+`{api_version: 1, site_id, changes: {battery_control_*: bool, battery_mode: str, battery_wear_minor_per_kwh: number | null}}` writes some options first (administrators only):
 `battery_control_enabled` (the switch), `battery_control_ai_takeover_ack` (the explanation was read: Sigenergy's AI mode taken over, or a plant's own
 strategy that cannot be read overridden),
 `battery_mode` (`self_consumption`, `balanced` or `max_profit`: the only one that may sell; the status's `options`
-carry it), `battery_control_accept_ha_down` (the person accepts that a fuse may trip if Home Assistant stops during a
+carry it), `battery_wear_minor_per_kwh` (the battery's wear per kWh each way in the area's minor unit: a finite
+number from 0 to 10 times the currency's default, or `null` for the default; the status's `options` carry it and
+`plan_costs` both the value in force and `wear_default_minor_per_kwh`; never over the webhook), `battery_control_accept_ha_down` (the person accepts that a fuse may trip if Home Assistant stops during a
 grid charge of the home battery, `gate`); the owner's `battery_control_shadow_only` and
 `battery_control_import_limit_acts` too.
 Written to the site entry without a reload; turning off hands the plant back before the answer. Refusals are stable
@@ -80,6 +82,13 @@ def _answer(status: dict[str, Any] | None = None, error: str | None = None) -> d
 WEBHOOK_WRITABLE: Final = (gate.CONF_MODE,)
 
 
+def _valid_changes(changes: Any, wear_default: float) -> bool:
+    """Whether [changes] is a non-empty dict of writable options with valid values (`gate.valid_change`)."""
+    return isinstance(changes, dict) and bool(changes) and all(
+        gate.valid_change(key, value, wear_default=wear_default) for key, value in changes.items()
+    )
+
+
 async def async_battery_control_answer(
     hass: HomeAssistant,
     entry: ConfigEntry | None,
@@ -126,9 +135,7 @@ async def async_battery_control_answer(
         # The person's confirm of the opt-in dialog: never over the webhook, never without an administrator.
         if over_webhook or not admin:
             return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
-        if changes is not None and (not isinstance(changes, dict) or not changes or any(
-            not gate.valid_change(key, value) for key, value in changes.items()
-        )):
+        if changes is not None and not _valid_changes(changes, control.wear_default()):
             return _answer(error=ERROR_INVALID_VALUE)
         try:
             await control.async_enable_entities()
@@ -144,9 +151,7 @@ async def async_battery_control_answer(
             return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK)
     elif not admin:
         return _answer(error=ERROR_NOT_ADMIN)
-    if not isinstance(changes, dict) or not changes or any(
-        not gate.valid_change(key, value) for key, value in changes.items()
-    ):
+    if not _valid_changes(changes, control.wear_default()):
         return _answer(error=ERROR_INVALID_VALUE)
     return _answer(await control.async_update_options(dict(changes)))
 
