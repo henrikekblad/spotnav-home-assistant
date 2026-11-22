@@ -132,42 +132,64 @@ def _step(value: Any) -> float | None:
     return float(value) if math.isfinite(value) and value > 0 else None
 
 
-#: Predbat's own switches, as it names them with its default prefix `predbat` (the same prefix its `predbat.*` states
-#: carry, which is how it is found): read-only mode (`set_read_only`, on: it plans and writes nothing) and its mode
-#: select (`mode`; `Monitor` only watches, the `Control ...` options write to the inverter).
+#: Predbat's read-only switch, as it names it with its default prefix `predbat` (the same prefix its `predbat.*` states
+#: carry, which is how it is found): on, it plans and writes nothing to the inverter. Its Monitor mode is not read:
+#: Predbat may still write in it (the inverter's balancing).
 PREDBAT_READ_ONLY: Final = "switch.predbat_set_read_only"
-PREDBAT_MODE: Final = "select.predbat_mode"
-PREDBAT_MONITOR: Final = "Monitor"
+#: How long read-only must read `on` without a break before Predbat counts as not controlling. Predbat writes a reset
+#: to the inverter when the switch is changed, turned on included, so controlling counts at once and watch-only only
+#: after this.
+PREDBAT_READ_ONLY_HOLD: Final = timedelta(minutes=10)
+#: `hass.data` key: the read-only switch's `last_changed` and the loop-clock time it was first seen `on` with it.
+_READ_ONLY_SEEN_KEY: Final = f"{DOMAIN}_predbat_read_only_seen"
+
+
+def _predbat_read_only_since(hass: HomeAssistant) -> float | None:
+    """How long (s) Predbat's read-only switch has read `on` without a break, the shorter of its own `last_changed`
+    and the loop clock since SpotNav first saw it so (a wall-clock step cannot shorten it); `None` when it is not
+    `on` (off, unknown, unavailable or missing)."""
+    state = hass.states.get(PREDBAT_READ_ONLY)
+    if state is None or state.state != "on":
+        hass.data.pop(_READ_ONLY_SEEN_KEY, None)
+        return None
+    now = _monotonic(hass)
+    seen = hass.data.get(_READ_ONLY_SEEN_KEY)
+    if not isinstance(seen, tuple) or seen[0] != state.last_changed:
+        seen = (state.last_changed, now)
+        hass.data[_READ_ONLY_SEEN_KEY] = seen
+    wall_s = (dt_util.utcnow() - state.last_changed).total_seconds()
+    return max(0.0, min(wall_s, now - seen[1]))
 
 
 def predbat_watch_only(hass: HomeAssistant) -> bool:
-    """Whether Predbat says itself that it does not control the battery: read-only on, or its mode Monitor. Only a
-    readable `on` or `Monitor` counts; anything else, `unknown`, `unavailable` or no such entity, is controlling."""
-    read_only = hass.states.get(PREDBAT_READ_ONLY)
-    if read_only is not None and read_only.state == "on":
-        return True
-    mode = hass.states.get(PREDBAT_MODE)
-    return mode is not None and mode.state == PREDBAT_MONITOR
+    """Whether Predbat says itself that it does not control the battery: read-only has read `on` for
+    `PREDBAT_READ_ONLY_HOLD` without a break. Anything else, `off`, `unknown`, `unavailable`, no such entity or `on` for
+    less, is controlling."""
+    since = _predbat_read_only_since(hass)
+    return since is not None and since >= PREDBAT_READ_ONLY_HOLD.total_seconds()
 
 
 def watched_planner(hass: HomeAssistant) -> dict[str, Any] | None:
-    """For the diagnostics: a planner that runs here but says it does not control the battery (Predbat read-only or
-    in Monitor), watched and not counted as outside control; `None` when there is none."""
-    if not hass.states.async_entity_ids("predbat") or not predbat_watch_only(hass):
+    """For the diagnostics: Predbat runs here with its read-only switch on, watched and, once that has held for
+    `PREDBAT_READ_ONLY_HOLD`, not counted as outside control (`watched_not_controlling`; before, `read_only_pending`,
+    still controlling); `None` when Predbat does not run or read-only is not on."""
+    if not hass.states.async_entity_ids("predbat"):
         return None
-    read_only = hass.states.get(PREDBAT_READ_ONLY)
-    mode = hass.states.get(PREDBAT_MODE)
+    since = _predbat_read_only_since(hass)
+    if since is None:
+        return None
+    watched = since >= PREDBAT_READ_ONLY_HOLD.total_seconds()
     return {
         "reason": "planner:predbat",
-        "read_only": read_only is not None and read_only.state == "on",
-        "mode": None if mode is None else mode.state,
-        "state": "watched_not_controlling",
+        "read_only": True,
+        "read_only_s": round(since),
+        "state": "watched_not_controlling" if watched else "read_only_pending",
     }
 
 
 def external_planner(hass: HomeAssistant) -> str | None:
     """A battery planner that runs here and controls the battery: Predbat (its `predbat.*` states), unless it says it
-    does not (`predbat_watch_only`: read-only, or Monitor), or EMHASS (its battery forecast)."""
+    does not (`predbat_watch_only`: read-only on for `PREDBAT_READ_ONLY_HOLD`), or EMHASS (its battery forecast)."""
     if hass.states.async_entity_ids("predbat") and not predbat_watch_only(hass):
         return "predbat"
     if hass.states.get("sensor.p_batt_forecast") is not None:
@@ -485,13 +507,14 @@ class BatteryShadow:
             for control in (facts.hold, facts.grid_charge)
             if control is not None and control.entity_id is not None
         }
-        watched = watched_planner(self.hass) is not None
+        planner = watched_planner(self.hass)
+        watched = planner is not None and planner["state"] == "watched_not_controlling"
         if watched != self._planner_watched:
             if watched or self._planner_watched is not None:
                 _LOGGER.info(
                     "SpotNav battery: Predbat %s",
-                    "is read-only or in Monitor: watched, not counted as controlling the battery" if watched
-                    else "no longer says it is read-only or in Monitor",
+                    "has been read-only for ten minutes: watched, not counted as controlling the battery" if watched
+                    else "is no longer read-only: counted as controlling the battery",
                 )
             self._planner_watched = watched
         events = self.outside.observe(
@@ -763,8 +786,8 @@ class BatteryShadow:
             "dry_run": self._dry_run_snapshot(),
             # Another system driving the battery (`outside_control.py`): the verdict now, the signals counted, the
             # setting changes within the day and the last occurrences.
-            # A planner here that says it does not control the battery (Predbat read-only or in Monitor): watched,
-            # not outside control, so the shadow plan can be compared with it.
+            # Predbat with its read-only switch on: watched; once on for `PREDBAT_READ_ONLY_HOLD` not outside control,
+            # so the shadow plan can be compared with it.
             "outside_control": self.outside.as_dict() | {"watched_planner": watched_planner(self.hass)},
             "log": [entry.as_dict() for entry in self.book.entries],
             "plan": self.plan.snapshot(),
