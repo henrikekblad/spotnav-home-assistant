@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import timedelta
+from typing import Any
 
 from hypothesis import assume, example, given, settings, strategies as st
 import pytest
@@ -26,6 +27,7 @@ from custom_components.spotnav.battery.commands import (
     table,
 )
 from custom_components.spotnav.battery.executor import (
+    RENEW_ON_CHANGE_GAP_S,
     BLOCKED_RESTORE_S,
     CALL_TIMEOUT_BLOCK_S,
     DAILY_WRITE_CAP,
@@ -1730,3 +1732,70 @@ def test_solaredge_s_timeout_is_written_again_well_inside_it_when_the_action_cha
     gaps = [later - earlier for earlier, later in zip([0.0, *times], [*times, (now - T0).total_seconds()], strict=True)]
     assert max(gaps) <= WATCHDOG_RENEW_S + 60, gaps
     assert max(gaps) < WATCHDOG_S / 2 + 60
+
+
+def test_an_action_that_flips_at_every_look_writes_its_command_each_time_and_ends_at_the_days_cap() -> None:
+    """The safety review (2026-11-22): the unchanged timeout renewed at every change went first, uncounted, and the
+    command was never written. A role whose value changes goes before a renewal, and the change renews at most once a
+    `RENEW_ON_CHANGE_GAP_S`."""
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, _ = run(executor, battery, T0, 6, "hold")
+    timeouts = modes = 0
+    reasons: list[str] = []
+    for n in range(2 * 360):  # two hours, a flip at every look
+        now, results = run(executor, battery, now, 1, ("discharge_house", "hold")[n % 2])
+        for role, _value in written(results):
+            timeouts += role == "command_timeout"
+            modes += role == "command_mode"
+        reasons += [event["reason"] for event in events(results, "hand_back")]
+        if executor.state.phase != "active":
+            break
+    assert "daily_write_cap" in reasons, reasons
+    assert modes >= DAILY_WRITE_CAP - 10
+    assert timeouts <= (now - T0).total_seconds() / RENEW_ON_CHANGE_GAP_S + 2
+
+
+def _changed(control: Any, states: dict[str, str], first: str, then: str) -> Executor:
+    """The executor just after a change of action made `RENEW_ON_CHANGE_GAP_S` and more after the start."""
+    executor = Executor(control)
+    battery = FakeBattery(control, dict(states))
+    now, _ = run(executor, battery, T0, 6, first)
+    run(executor, battery, now + timedelta(seconds=RENEW_ON_CHANGE_GAP_S), 1, then)
+    return executor
+
+
+def test_a_change_renews_the_watchdog_role_it_leaves_as_it_was_and_not_the_one_it_changes() -> None:
+    """The timeout is renewed (uncounted); the command mode it changes is a write of its own, counted."""
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, _ = run(executor, battery, T0, 6, "hold")
+    before = executor.state.writes_today
+    now, results = run(executor, battery, now + timedelta(seconds=RENEW_ON_CHANGE_GAP_S), 1, "discharge_house")
+    assert written(results) == [("command_mode", "Discharge to Minimize Import")]
+    assert executor.state.renew == ("command_timeout",) and executor.state.writes_today == before + 1
+    _now, results = run(executor, battery, now, 3, "discharge_house")
+    assert ("command_timeout", 1800.0) in written(results) and executor.state.writes_today == before + 1
+
+
+def test_a_change_never_renews_a_button_it_presses_anyway() -> None:
+    """SolaX's trigger sends the whole new command: it is pressed for the new target and counted."""
+    executor = _changed(SOLAX_CONTROL, SOLAX_STATES, "hold", "discharge_house")
+    assert "trigger" not in executor.state.renew
+
+
+def test_a_change_puts_nothing_in_a_fast_watchdogs_renewal() -> None:
+    """A fast watchdog (`BrandControl.watchdog_renew_s`) renews on its own round, never on a change."""
+    fast = replace(SOLAREDGE_CONTROL, watchdog_renew_s=20)
+    executor = _changed(fast, SOLAREDGE_STATES, "hold", "discharge_house")
+    assert executor.state.renew == ()
+
+
+def test_a_change_soon_after_the_last_keeps_its_renewal_time() -> None:
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, _ = run(executor, battery, T0, 4, "hold")
+    renewed_at = executor.state.watchdog_at
+    assert renewed_at is not None and (now - renewed_at).total_seconds() < RENEW_ON_CHANGE_GAP_S
+    run(executor, battery, now, 1, "discharge_house")
+    assert executor.state.renew == () and executor.state.watchdog_at == renewed_at

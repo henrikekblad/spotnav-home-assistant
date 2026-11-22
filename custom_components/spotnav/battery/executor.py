@@ -308,6 +308,9 @@ CALL_TIMEOUT_BLOCK_S: Final = 900.0
 #: Writes a day outside restores and watchdog renewals (flash wear is unknown for most brands). A renewal is bounded
 #: by its timer: `WATCHDOG_RENEW_S` per role (SolarEdge renews two roles: 192 a day).
 DAILY_WRITE_CAP: Final = 96
+#: The least time since the last renewal (or change) before a change of action renews the watchdog roles it leaves
+#: as they were (s).
+RENEW_ON_CHANGE_GAP_S: Final = 60.0
 #: Hand-back reasons for a day's budget that neither block the control nor are logged at every look after.
 _BUDGET_REASONS: Final = ("setpoint_write_cap", "charge_write_budget")
 #: A restore write that does not read back is retried after these delays (s), then given up.
@@ -2319,16 +2322,23 @@ class Executor:
             # timeout) is written again with the new command: with an action change every quarter hour it would
             # otherwise never be renewed after the start. The roles it changes are written anyway, and counted; so is
             # a button, pressed once per target (SolaX's trigger sends the whole new command).
-            renew = () if self._fast_renewal() else tuple(
+            # At most once a `RENEW_ON_CHANGE_GAP_S` (an action that flips at every look would otherwise renew at
+            # every look, uncounted): a change sooner keeps the last renewal's time, so the shared timer still
+            # renews `WATCHDOG_RENEW_S` after it.
+            unchanged = () if self._fast_renewal() else tuple(
                 name for name in self.control.watchdog_roles
                 if name in target and state.target.get(name) == target[name]
                 and self.control.role(name).method != "button"
             )
+            due = state.watchdog_at is None or (now - state.watchdog_at).total_seconds() >= RENEW_ON_CHANGE_GAP_S
+            renew = unchanged if due else ()
+            watchdog_at = state.watchdog_at if unchanged and not due else now
             self.state = replace(
                 state, action=action, rate_kw=rate,
                 target=target,
                 house_kw=house, phase_behind_kw=behind, phase_was_behind_kw=None,
-                sent=(), renew=renew, rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
+                sent=(), renew=renew, rate_changed_at=now, watchdog_at=watchdog_at, covered_at=None,
+                peak_low_since=None,
                 lead=self._lead(state.action), phase_kw=phases, phase_bad=(), phase_judged_at=None,
                 phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
                 # The runaway's grace counts from the charge's own start.
@@ -2586,23 +2596,28 @@ class Executor:
             order = restore_order(self.control, state.action)
         else:
             order = (*state.lead, *(name for name in self.control.enter_order if name not in state.lead))
+        # A role whose value must change goes before a role that is only renewed: renewals never hold back a write
+        # the action owes (an action that flips at every look must still write its command, and be counted).
+        renewals: list[str] = []
         for name in order:
             if name not in state.target or name in state.given_up or name in state.unrestored or name in state.in_flight:
                 continue
             retry = state.retries.get(name)
             if retry is not None and inputs.now < retry[1]:
                 continue
-            if name in state.renew:
-                return name
             entity_id = state.entities.get(name)
             claim = None if entity_id is None else self.ledger.claim(entity_id)
             if claim is not None and claim.owned is not None and claim.intended == state.target[name]:
                 # Written and read back: a later difference is the ledger's to judge (another system, or a
                 # gap), never a reason to write it again.
+                if name in state.renew:
+                    renewals.append(name)
                 continue
             if not self._satisfied(self.control.role(name), state.target[name], inputs.reads.get(name), restoring=restoring):
                 return name
-        return None
+            if name in state.renew:
+                renewals.append(name)
+        return renewals[0] if renewals else None
 
     def _progress(self, inputs: ExecInputs) -> list[Op]:
         state = self.state
