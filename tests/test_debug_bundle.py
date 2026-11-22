@@ -574,3 +574,49 @@ async def test_a_charger_stored_by_profile_key_is_noted_by_its_integration(hass:
     related = await _related_integrations(hass, [ac, other], (), ())
     charger_domains = {item["domain"] for item in related if "charger" in item["roles"]}
     assert charger_domains == {"sigen", "easee"}
+
+
+def test_home_assistant_s_own_logger_service_levels_reach_its_log_and_the_buffer_as_set() -> None:
+    """The pre-release review (2026-11-22): the level set with Home Assistant's `logger` integration (its own
+    `_set_log_level`, what `logger.set_level` calls) is what Home Assistant's log shows; the buffer keeps INFO and up
+    whatever it is, and DEBUG only when DEBUG is set."""
+    from homeassistant.components.logger.helpers import _set_log_level
+
+    spotnav = logging.getLogger(SPOTNAV_LOGGER)
+    child = logging.getLogger(f"{SPOTNAV_LOGGER}.test_service")
+
+    def emit() -> None:
+        child.debug("debug line")
+        child.info("info line")
+        child.warning("warning line")
+        child.error("error line")
+
+    seen: dict[int, tuple[list[str], list[str], list[str]]] = {}
+    with _home_assistant_log(logging.WARNING) as (buffer, collect):
+        for level in (logging.DEBUG, logging.NOTSET, logging.ERROR):
+            _set_log_level(spotnav, level)
+            buffer.clear()
+            collect.messages.clear()
+            emit()
+            seen[level] = (
+                list(collect.messages),
+                [r["message"] for r in buffer.records()],
+                [r["message"] for r in buffer.debug_records()],
+            )
+    every = ["debug line", "info line", "warning line", "error line"]
+    assert seen[logging.DEBUG] == (every, every[1:], ["debug line"])
+    assert seen[logging.NOTSET] == (["warning line", "error line"], every[1:], []), "HA's default: WARNING"
+    assert seen[logging.ERROR] == (["error line"], every[1:], [])
+
+
+def test_the_forwarder_looks_a_logger_up_once_not_per_record(monkeypatch) -> None:
+    with _home_assistant_log(logging.WARNING) as (_buffer, collect):
+        logger = logging.getLogger(f"{SPOTNAV_LOGGER}.test_lookup")
+        logger.warning("first")
+        calls: list[str] = []
+        real = logging.getLogger
+        monkeypatch.setattr(logging, "getLogger", lambda name=None: calls.append(name) or real(name))
+        for _ in range(5):
+            logger.warning("again")
+        monkeypatch.undo()
+    assert calls == [] and collect.messages == ["first"] + ["again"] * 5

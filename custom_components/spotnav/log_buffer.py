@@ -9,6 +9,21 @@ as before. A level the person set on the SpotNav logger is kept: DEBUG or INFO s
 is. DEBUG records exist only if the person turned DEBUG on. Only SpotNav loggers are ever captured
 (the handlers sit on that tree, not on the root), and every buffer is bounded.
 
+**The design and its trade-off.** Python's logging drops a record before any handler sees it when its logger is not
+enabled for the level, so a handler alone cannot keep INFO lines under Home Assistant's default WARNING. Two other
+ways were weighed: lowering the SpotNav logger's level to INFO (Home Assistant's log would then show every INFO line,
+and the person's own `logger:` setting would be overwritten), or a handler on the root logger (it sees only what is
+already enabled). Instead the SpotNav logger's `level` is a property (`_CapturingLogger`) that reports at least INFO
+while keeping the level the person set apart; the logger does not propagate, and `_Forwarder` stands in for the
+propagation, handing a record to the parent's handlers only at or above the level the person configured
+(`_user_level`). Verified with Home Assistant's own `logger` service (`logger.set_level`, `logger.set_default_level`,
+which call `setLevel`): DEBUG set there gives DEBUG in both the HA log and the buffer, NOTSET falls back to the
+default level for the HA log, and ERROR keeps the HA log at errors while the buffer still keeps INFO and up
+(`tests/test_debug_bundle.py`). The cost: every SpotNav INFO record is created and formatted for the buffer whatever
+the level, so INFO is for events, never for lines logged at each look of a 10 s loop (those log at DEBUG); and
+`logging.getLogger(SPOTNAV_LOGGER).level` reads INFO where the person set a quieter level (`getEffectiveLevel` likewise), which
+only code reading the level itself would notice.
+
 WARNING and above are also kept apart for `WARNINGS_S` (24 hours, at most `MAX_WARNINGS`), and across restarts in a
 small store of their own (`debug_day.DayStore`, written at most every five minutes and at Home Assistant's stop): the
 warning that explains a field report is often from before the update's restart that came before the download.
@@ -198,9 +213,16 @@ def _capturing(logger: logging.Logger) -> None:
     logger.manager._clear_cache()  # noqa: SLF001 - the cached isEnabledFor answers are stale now
 
 
+#: The loggers by name, so a record's own logger is not looked up with `logging.getLogger` (under the logging module's
+#: lock) for every record: a logger, once made, is the same object for the life of the process.
+_LOGGERS: dict[str, logging.Logger] = {}
+
+
 def _user_level(name: str) -> int:
     """The effective level `name` would have without the capture: what Home Assistant's log shows."""
-    logger: logging.Logger | None = logging.getLogger(name)
+    logger: logging.Logger | None = _LOGGERS.get(name)
+    if logger is None:
+        logger = _LOGGERS[name] = logging.getLogger(name)
     while logger is not None:
         if isinstance(logger, _CapturingLogger):
             level = logger.__dict__.get(_USER_LEVEL, logging.NOTSET)
@@ -220,10 +242,12 @@ class _Forwarder(logging.Handler):
 
     def __init__(self, logger: logging.Logger) -> None:
         super().__init__(level=logging.NOTSET)
+        #: The SpotNav logger; its `parent` is read per record (an attribute, no lookup), as logging sets it again when
+        #: a logger between it and the root (`custom_components`) is made later.
         self._logger = logger
 
     def handle(self, record: logging.LogRecord) -> bool:  # no lock needed: the parent's handlers take their own
-        if record.levelno >= _user_level(record.name) and (parent := self._logger.parent) is not None:
+        if (parent := self._logger.parent) is not None and record.levelno >= _user_level(record.name):
             parent.callHandlers(record)
         return True
 
