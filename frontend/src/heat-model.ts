@@ -688,8 +688,8 @@ export interface HeatAnswer {
   relay: HeatRelay | null;
   review: HeatReview | null;
   control: HeatControl | null;
-  /** The plan from the running hour on, twelve hours at most (the strip under the dial); it ends at midnight until
-   * tomorrow has its prices. */
+  /** The plan from the running hour on, 24 hours at most, rolling across midnight (the strip under the dial); an hour of tomorrow
+   * without a price is planned normal. */
   ahead: HeatAheadHour[];
   /** The site's hot water; `null` without the heat shadow. */
   hot_water: HeatHotWater | null;

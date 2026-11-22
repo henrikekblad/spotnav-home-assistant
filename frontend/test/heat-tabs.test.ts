@@ -202,23 +202,23 @@ describe("Now", () => {
     expect(panel.querySelector(".spotnav-house-picker")).toBeNull();
   });
 
-  it("draws twelve hours ahead, an open cell where tomorrow is not planned yet, and says the plan in words", () => {
+  it("draws 24 hours ahead, tomorrow's hours planned though unpriced, and says the plan in words", () => {
     const villa = answer();
-    expect(villa.ahead).toHaveLength(7);
+    expect(villa.ahead).toHaveLength(24);
     expect(villa.ahead[0]!.startMs).toBe(Date.parse("2026-11-16T16:00:00+00:00"));
     const strip = body({ tab: "now" }, villa).querySelector<HTMLElement>("[data-block='ahead']")!;
     const cells = [...strip.querySelectorAll<HTMLElement>(".spotnav-heat-ahead-cell")];
-    expect(cells).toHaveLength(12);
-    expect(cells.map((cell) => cell.dataset["action"])).toEqual(["lower", "lower", "normal", "lower", "normal", "normal", "night", "open", "open", "open", "open", "open"]);
-    expect([...strip.querySelectorAll(".spotnav-heat-ahead-axis span")].map((item) => item.textContent)).toEqual(["17:00", "20:00", "23:00", "02:00"]);
-    expect(strip.querySelector("[data-line='ahead']")!.textContent).toBe("Plan: sänkning 17:00–19:00 · svalare natt 23:00–00:00");
-    expect(aheadLine("en", villa)).toBe("Plan: lowering 17:00–19:00 · cooler night 23:00–00:00");
+    expect(cells).toHaveLength(24);
+    expect(cells.slice(0, 8).map((cell) => cell.dataset["action"])).toEqual(["lower", "lower", "normal", "lower", "normal", "normal", "night", "night"]);
+    expect([...strip.querySelectorAll(".spotnav-heat-ahead-axis span")].map((item) => item.textContent)).toEqual(["17:00", "20:00", "23:00", "02:00", "05:00", "08:00", "11:00", "14:00"]);
+    expect(strip.querySelector("[data-line='ahead']")!.textContent).toBe("Plan: sänkning 17:00–19:00 · svalare natt 23:00–06:00 · varmvatten 03:30");
+    expect(aheadLine("en", villa)).toBe("Plan: lowering 17:00–19:00 · cooler night 23:00–06:00 · hot water 03:30");
   });
 
   it("names a pre-heat, a raise through SG Ready, hot water and a plan that lowers nothing", () => {
     const villa = answer();
     const hours = villa.ahead.map((hour, index) => ({ ...hour, action: index === 1 ? "preheat" : "normal", hot_water: index === 4 }));
-    const planned = { ...villa, ahead: hours };
+    const planned = { ...villa, ahead: hours, hot_water: { ...villa.hot_water!, planned: [] } };
     expect(aheadLine("sv", planned)).toBe("Plan: förvärmning 18:00–19:00 · varmvatten 21:00");
     const sgReady = { ...planned, config: { ...villa.config, control_path: "sg_ready", control_entity: "switch.a", control_entity_b: "switch.b" } };
     expect(aheadLine("sv", sgReady)).toBe("Plan: höjning 18:00–19:00 · varmvatten 21:00");
@@ -226,8 +226,8 @@ describe("Now", () => {
     const cells = [...strip.querySelectorAll<HTMLElement>(".spotnav-heat-ahead-cell")];
     expect(cells[1]!.dataset["action"]).toBe("raise");
     expect(cells[4]!.dataset["water"]).toBe("true");
-    const calm = { ...villa, ahead: villa.ahead.map((hour) => ({ ...hour, action: "normal", hot_water: false })) };
-    expect(aheadLine("sv", calm)).toBe("Ingen sänkning planerad de närmaste 12 timmarna");
+    const calm = { ...villa, ahead: villa.ahead.map((hour) => ({ ...hour, action: "normal", hot_water: false })), hot_water: planned.hot_water };
+    expect(aheadLine("sv", calm)).toBe("Ingen sänkning planerad de närmaste 24 timmarna");
     expect(aheadLine("sv", { ...villa, ahead: [] })).toBeNull();
     expect(body({ tab: "now" }, { ...villa, ahead: [] }).querySelector("[data-block='ahead']")).toBeNull();
   });

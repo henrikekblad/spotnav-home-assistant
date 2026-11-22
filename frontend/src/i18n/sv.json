@@ -2061,7 +2061,7 @@
   "heat.ahead.night": "svalare natt {from}–{to}",
   "heat.ahead.away": "borta {from}–{to}",
   "heat.ahead.water": "varmvatten {time}",
-  "heat.ahead.none": "Ingen sänkning planerad de närmaste 12 timmarna",
+  "heat.ahead.none": "Ingen sänkning planerad de närmaste 24 timmarna",
   "heat.plan.none": "Inget att visa för den här dagen.",
   "heat.use.label": "Värmens förbrukning per del",
   "heat.use.unit": "Enhet",
