@@ -130,3 +130,38 @@ async def test_while_the_plan_holds_the_charge_the_suns_decision_log_records_onl
     assert [entry["to"] for entry in held] == ["off", "arming", "on"], held
     assert controller.requested_current_a == requested, "nothing the sun decided reached the charger"
     assert turn_on_calls == [] and turn_off_calls == []
+
+
+async def test_a_start_held_for_room_says_so_at_info_once_then_at_debug(caplog: pytest.LogCaptureFixture) -> None:
+    """The pre-release review (2026-11-22): no INFO line at each look of a hot path."""
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.execution.controller import ChargingController
+
+    async def nothing() -> None:
+        return None
+
+    controller = SimpleNamespace(entry_id="c1", _start_held_back=False, _async_save=nothing, _notify=lambda: None)
+    caplog.set_level(logging.DEBUG, logger="custom_components.spotnav.execution.controller")
+    for _ in range(3):
+        await ChargingController._hold_start_for_room(controller, False, "solar", 4.0, 6)  # type: ignore[arg-type]
+    levels = [record.levelno for record in caplog.records if "not started, the site allows" in record.getMessage()]
+    assert levels == [logging.INFO, logging.DEBUG, logging.DEBUG] and controller._start_held_back is True
+
+
+def test_a_held_regulator_decision_logs_at_debug_and_a_write_at_info(caplog: pytest.LogCaptureFixture) -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    site = SimpleNamespace(entry_id="s1", _logged_apply_outcomes={}, _record_decision=lambda *a, **k: None)
+    caplog.set_level(logging.DEBUG, logger="custom_components.spotnav.site.site_capacity_controller")
+    for proposed in (7.0, 8.0):
+        decision = SimpleNamespace(proposed_current_a=proposed, reason="room", limiting_phase="L1")
+        SiteCapacityController._log_active_control_outcome(site, "c1", decision, outcome="held", detail="x")  # type: ignore[arg-type]
+    decision = SimpleNamespace(proposed_current_a=9.0, reason="room", limiting_phase="L1")
+    SiteCapacityController._log_active_control_outcome(  # type: ignore[arg-type]
+        site, "c1", decision, outcome="wrote", setpoint=9, previous_setpoint=8
+    )
+    levels = [record.levelno for record in caplog.records if "active control: charger c1" in record.getMessage()]
+    assert levels == [logging.DEBUG, logging.DEBUG, logging.INFO]

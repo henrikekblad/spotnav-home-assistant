@@ -1686,11 +1686,10 @@ class SiteCapacityController:
         previous_setpoint: int | None = None,
         yield_verdict: YieldVerdict | None = None,
     ) -> None:
-        """Log one INFO line per charger per change, not per pass.
+        """Log one line per charger per change, not per pass: a write at INFO, a held decision at DEBUG.
 
-        The signature is the whole logged content, so an identical outcome is logged once. Held
-        decisions are logged too, since they leave no other trace; `detail` names the check that
-        stopped it.
+        The signature is the whole logged content, so an identical outcome is logged once. Every decision is also
+        kept in the decision record (`_record_decision`); `detail` names the check that stopped a held one.
         """
         signature: tuple[Any, ...] = (
             outcome,
@@ -1729,7 +1728,9 @@ class SiteCapacityController:
                 decision.limiting_phase,
             )
             return
-        _LOGGER.info(
+        # A held decision is in the decision record already (`_record_decision`), and its proposal changes with every
+        # reading, so a new signature can come at each look: debug, not info.
+        _LOGGER.debug(
             "SpotNav site %s active control: charger %s held at %s, would have written "
             "%sA -- stopped_by=%s%s reason=%s",
             self.entry_id,
@@ -3668,7 +3669,8 @@ class SiteCapacityController:
         )
         if on_charger is None:
             return None
-        _LOGGER.info(
+        # It may come again at the next look while the charger keeps drawing above what is written: debug.
+        _LOGGER.debug(
             "SpotNav site %s active control: charger %s reads %.1fA, above the %sA written to it; "
             "the overload is lowered from what it draws",
             self.entry_id,

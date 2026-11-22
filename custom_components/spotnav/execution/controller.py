@@ -4017,13 +4017,15 @@ class ChargingController:
         """A start load balancing held back for want of room (`allowance` below `floor`): the charge that was asked
         for waits for headroom as what it is (the plan's, a person's, the sun's), as the start's result says
         (`balancing_held`, which the core keeps); the regulator's resume gives it back that origin."""
-        self._start_held_back = True
-        _LOGGER.info(
+        # Said once per hold-back: a start asked again at each look while there is no room logs at debug.
+        _LOGGER.log(
+            logging.DEBUG if self._start_held_back else logging.INFO,
             "SpotNav charger %s: not started, the site allows %.1fA (below the %sA floor)",
             self.entry_id,
             allowance,
             floor,
         )
+        self._start_held_back = True
         await self._async_save()
         self._notify()
 
