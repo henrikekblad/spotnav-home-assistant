@@ -122,9 +122,43 @@ def _step(value: Any) -> float | None:
     return float(value) if math.isfinite(value) and value > 0 else None
 
 
+#: Predbat's own switches, as it names them with its default prefix `predbat` (the same prefix its `predbat.*` states
+#: carry, which is how it is found): read-only mode (`set_read_only`, on: it plans and writes nothing) and its mode
+#: select (`mode`; `Monitor` only watches, the `Control ...` options write to the inverter).
+PREDBAT_READ_ONLY: Final = "switch.predbat_set_read_only"
+PREDBAT_MODE: Final = "select.predbat_mode"
+PREDBAT_MONITOR: Final = "Monitor"
+
+
+def predbat_watch_only(hass: HomeAssistant) -> bool:
+    """Whether Predbat says itself that it does not control the battery: read-only on, or its mode Monitor. Only a
+    readable `on` or `Monitor` counts; anything else, `unknown`, `unavailable` or no such entity, is controlling."""
+    read_only = hass.states.get(PREDBAT_READ_ONLY)
+    if read_only is not None and read_only.state == "on":
+        return True
+    mode = hass.states.get(PREDBAT_MODE)
+    return mode is not None and mode.state == PREDBAT_MONITOR
+
+
+def watched_planner(hass: HomeAssistant) -> dict[str, Any] | None:
+    """For the diagnostics: a planner that runs here but says it does not control the battery (Predbat read-only or
+    in Monitor), watched and not counted as outside control; `None` when there is none."""
+    if not hass.states.async_entity_ids("predbat") or not predbat_watch_only(hass):
+        return None
+    read_only = hass.states.get(PREDBAT_READ_ONLY)
+    mode = hass.states.get(PREDBAT_MODE)
+    return {
+        "reason": "planner:predbat",
+        "read_only": read_only is not None and read_only.state == "on",
+        "mode": None if mode is None else mode.state,
+        "state": "watched_not_controlling",
+    }
+
+
 def external_planner(hass: HomeAssistant) -> str | None:
-    """A battery planner that runs here: Predbat (its `predbat.*` states) or EMHASS (its battery forecast)."""
-    if hass.states.async_entity_ids("predbat"):
+    """A battery planner that runs here and controls the battery: Predbat (its `predbat.*` states), unless it says it
+    does not (`predbat_watch_only`: read-only, or Monitor), or EMHASS (its battery forecast)."""
+    if hass.states.async_entity_ids("predbat") and not predbat_watch_only(hass):
         return "predbat"
     if hass.states.get("sensor.p_batt_forecast") is not None:
         return "emhass"
@@ -288,6 +322,8 @@ class BatteryShadow:
         #: fully started; `None` before both.
         self._wait_from: datetime | None = None
         self._unsub_started: Callable[[], None] | None = None
+        #: Whether a planner was last seen watched, not controlling (`watched_planner`), for its log line on a change.
+        self._planner_watched: bool | None = None
 
     @property
     def _hold(self) -> HoldMemory:
@@ -429,6 +465,15 @@ class BatteryShadow:
             for control in (facts.hold, facts.grid_charge)
             if control is not None and control.entity_id is not None
         }
+        watched = watched_planner(self.hass) is not None
+        if watched != self._planner_watched:
+            if watched or self._planner_watched is not None:
+                _LOGGER.info(
+                    "SpotNav battery: Predbat %s",
+                    "is read-only or in Monitor: watched, not counted as controlling the battery" if watched
+                    else "no longer says it is read-only or in Monitor",
+                )
+            self._planner_watched = watched
         events = self.outside.observe(
             Observation(
                 now=inputs.now,
@@ -698,7 +743,9 @@ class BatteryShadow:
             "dry_run": self._dry_run_snapshot(),
             # Another system driving the battery (`outside_control.py`): the verdict now, the signals counted, the
             # setting changes within the day and the last occurrences.
-            "outside_control": self.outside.as_dict(),
+            # A planner here that says it does not control the battery (Predbat read-only or in Monitor): watched,
+            # not outside control, so the shadow plan can be compared with it.
+            "outside_control": self.outside.as_dict() | {"watched_planner": watched_planner(self.hass)},
             "log": [entry.as_dict() for entry in self.book.entries],
             "plan": self.plan.snapshot(),
             # No export while the sell price is below zero (`export_curtail.py`), in shadow: the slot now, the export

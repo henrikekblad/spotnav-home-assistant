@@ -10,6 +10,8 @@ The signals, each judged on what the shell hands over (`Observation`):
 
 * **Integration** (`integration:<domain>`): an integration that exists to run batteries is set up (`coexist.py`,
   strength `runs`), or a battery planner runs here (`planner:predbat`, `planner:emhass`). It lasts while it is there.
+  Predbat read-only or in Monitor does not control the battery and does not mark (`runtime.predbat_watch_only`; the
+  diagnostics show it as watched); any other state of its switches, unknown included, marks.
   An integration of strength `hint` (Tibber, Greenely) never marks by itself; it is named as the likely source
   when another signal marks.
 * **Settings** (`settings_changed`): the battery's own mode settings or its control entities (the discharge limit,
