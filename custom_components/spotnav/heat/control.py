@@ -55,6 +55,11 @@ SpotNav did not make), never raises:
    within `CAUGHT_WITHIN` of the closing, which caught it, and stays where it is seen later: the block lets it run)
    and the tank under 40 °C where a tank sensor reads (`hot_water_low`, until 45 °C: `heat/dhw_level_a.py`).
 
+   **The ceiling** (`site/shed_order.py`): where the site's shed order lowers the heat for the ceiling, its end
+   (`ShedOrder.until`) stands in for the plan's run where the plan does not lower longer, and `decide` judges it by the
+   same rules (`ceiling` is the reason while the plan alone would not lower). What a lowering could give is offered
+   at each look (`offer`).
+
 7. **SG Ready's raise** (contact B, where SG Ready has both contacts): after the lowering's look,
    `relay_control.decide_raise` on the plan's raise hours (the cheap hour before a lowered run, the warm-up before the
    return) while control runs. **(1,1) never occurs**: B closes only while A has read open for `DEAD_TIME` with
@@ -99,6 +104,7 @@ from ..core.parse import aware_instant
 from .. import time_zones
 from ..const import CONF_HEAT_OFFSET_HOME, DOMAIN
 from . import optin, paths
+from ..site.shed_order import LOAD_HEAT, REASON_CEILING, Offer
 from .automations import SteeringAutomation, steering_automations
 from .config import BAND_C, HeatConfig
 from .shadow_rule import RETURN_HOURS
@@ -107,8 +113,10 @@ from .relay_control import (
     closings_ahead as relay_closings_ahead,
     FAILED,
     GOOD_FOR,
+    MIN_LOWER,
     NO_LOWER_AT_C,
     PASSED,
+    REASON_PLANNED,
     RAISE_AWAY,
     RAISE_INTERLOCK,
     RAISE_NIGHT,
@@ -358,6 +366,8 @@ class HeatControl:
         #: The parts that keep their state in this control's store under their own key (`zones`: the zones' control,
         #: `water_heater`: the water heater's), each with `stored()` and `restore(raw)`.
         self.parts: dict[str, Any] = {}
+        #: What a lowering for the ceiling would give and whether the rules allow it, as of the last look.
+        self.offer: Offer | None = None
 
     # ---- life cycle
 
@@ -740,6 +750,11 @@ class HeatControl:
         except Exception:  # noqa: BLE001 - the next look tries again
             _LOGGER.warning("SpotNav heat control: the path's upkeep failed", exc_info=True)
         self._trim(now)
+        try:
+            self.offer = self._offer(now)
+        except Exception:  # noqa: BLE001 - nothing offered: the shed order skips the pump
+            _LOGGER.debug("SpotNav heat control: its offer to the shed order could not be made", exc_info=True)
+            self.offer = None
         # Again after the writes, so the line says what holds now.
         self._safe_track_home()
         self._save()
@@ -905,10 +920,12 @@ class HeatControl:
             await self._async_test_look(now, relay, safety)
             return
 
+        planned = planned_run_end(self.shadow.plan, now)
+        shed = self._shed_until(now)
         self.decision = decide(
             Situation(
                 now=now,
-                plan_until=planned_run_end(self.shadow.plan, now),
+                plan_until=planned if shed is None else max(planned or shed, shed),
                 held_since=self.held_since if self.held else None,
                 last_end=self.last_end,
                 lowered_24h=self.lowered_24h(now),
@@ -917,6 +934,9 @@ class HeatControl:
                 max_writes=self._max_writes(relay),
             )
         )
+        if self.decision.closed and shed is not None and (planned is None or planned < shed) and self.decision.reason == REASON_PLANNED:
+            # Lowered for the ceiling where the plan alone would not (or not as long).
+            self.decision = Decision(True, REASON_CEILING, self.decision.until)
         self._set(STATE_RUNNING, self.decision.reason)
         if self.decision.closed != self.held:
             await self._async_write(self.decision.closed, now, why=self.decision.reason)
@@ -1291,6 +1311,51 @@ class HeatControl:
         if pumps and pumps[0].price_control.state == "active":
             return WAIT_PUMP_PRICE_CONTROL
         return None
+
+    # ---- the shed order (`site/shed_order.py`)
+
+    def _shed_until(self, now: datetime) -> datetime | None:
+        order = getattr(self.site, "shed_order", None)
+        return None if order is None else order.until(LOAD_HEAT, now)
+
+    def shed_give_w(self, now: datetime) -> float:
+        """What one lowering of the pump gives (W): the learnt share it takes away of the pump's own heat this hour."""
+        hour = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        heat_kw = self.shadow.heat_kw()(hour)
+        return max(0.0, float(self.shadow.effect.lower_share) * (heat_kw or 0.0) * 1000.0)
+
+    def _offer(self, now: datetime) -> Offer | None:
+        """The pump's offer to the shed order (`shed_order.Offer`), `None` without a lowering path. Controlled: ready
+        while control runs and its rules would start (or keep) a lowering now; a lowering the plan holds already gives
+        nothing more. Watched: what it would give where the plan does not lower and no safety reason holds."""
+        config = self.shadow.config()
+        if lower_entity(config) is None:
+            return None
+        give = self.shed_give_w(now)
+        planned = planned_run_end(self.shadow.plan, now)
+        if not config.control_enabled:
+            safety = self.safety_now(config, now)
+            return Offer(live=False, ready=planned is None and safety is None, give_w=give, why=safety)
+        if self.state != STATE_RUNNING:
+            return Offer(live=True, ready=False, give_w=give, why=self.reason or self.state)
+        if self.held:
+            if self._shed_until(now) is not None and self.decision is not None and self.decision.closed:
+                return Offer(live=True, ready=True, give_w=give)
+            # Lowered by the plan already: one step is all the shed takes.
+            return Offer(live=True, ready=False, give_w=0.0, why=REASON_PLANNED)
+        trial = decide(
+            Situation(
+                now=now,
+                plan_until=now + MIN_LOWER,
+                held_since=None,
+                last_end=self.last_end,
+                lowered_24h=self.lowered_24h(now),
+                writes_today=self.writes.get(self._day(now), 0),
+                safety=self.safety,
+                max_writes=self._max_writes(self.relay),
+            )
+        )
+        return Offer(live=True, ready=trial.closed, give_w=give, why=None if trial.closed else trial.reason)
 
     def outdoor_now(self, config: HeatConfig) -> float | None:
         """The outdoor temperature now: the chosen sensor (a frozen one does not read), else the site's."""

@@ -32,6 +32,11 @@ written without it.
    reading, its lowerings of the last day and its writes; `stale` while the plan is older than `FRESH_PLAN` or no
    outdoor reading, `too_cold` at -15 °C or colder, `settling` until good data has held `GOOD_FOR`.
 
+7. **The ceiling** (`site/shed_order.py`): where the site's shed order lowers the heat for the ceiling, an hour the
+   plan leaves normal is lowered 1 °C until the shed's end (`ceiling`), by the same rules as the plan's lowering (the
+   zone cold, the rest, the day's lowered time and writes). What each zone could give (its measured power) is offered
+   at each look (`offers`).
+
 Kept per zone in the heat control's store (`spotnav.heat_control.<entry>`, key `zones`): the person's value, what
 SpotNav wrote and the value before it, since when and why, the day's writes, the lowerings, the pause and the check.
 
@@ -56,22 +61,29 @@ from homeassistant.util import dt as dt_util
 from .. import time_zones
 from ..core.parse import aware_instant, finite_number
 from ..const import DOMAIN
+from ..site.shed_order import LOAD_HEAT, REASON_CEILING, Offer
 from .automations import SteeringAutomation, steering_automations
 from .config import HeatConfig
 from .relay_control import (
     GOOD_FOR,
+    MIN_LOWER,
     NO_LOWER_AT_C,
+    REASON_PLANNED,
     SAFETY_SETTLING,
     SAFETY_STALE,
     SAFETY_TOO_COLD,
+    Situation,
     closings_ahead,
+    decide as relay_decide,
     lowered_within,
     planned_run_end,
 )
 from .shadow_rule import ACTION_LOWER, ACTION_NORMAL, BandHour, would_do
 from .zone_control import (
+    COMFORT_C,
     MAX_WRITES_DAY,
     RAISES,
+    REASON_ZONE_COLD,
     REASON_ZONE_WARM,
     WHY_NOT_HEAT,
     WHY_UNAVAILABLE,
@@ -250,6 +262,8 @@ class ZonesControl:
         self._again = False
         self._task: asyncio.Task[None] | None = None
         self._timer_cancel: Callable[[], None] | None = None
+        #: Per zone chosen: what a lowering for the ceiling would give and whether its rules allow it (last look).
+        self.offers: dict[str, Offer] = {}
         control.parts["zones"] = self
         shadow.extra_deltas.append(self.forecast_delta)
 
@@ -378,7 +392,56 @@ class ZonesControl:
                 del self.zones[entity_id]
         self._trim(now)
         await self._async_power(now)
+        try:
+            self.offers = {zone.entity_id: self._offer(zone, config, safety, now) for zone in config.zones}
+        except Exception:  # noqa: BLE001 - nothing offered: the shed order skips the zones
+            _LOGGER.debug("SpotNav zones: their offer to the shed order could not be made", exc_info=True)
+            self.offers = {}
         self.control.keep_soon()
+
+    # ---- the shed order (`site/shed_order.py`)
+
+    def _shed_until(self, now: datetime) -> datetime | None:
+        order = getattr(self.site, "shed_order", None)
+        return None if order is None else order.until(LOAD_HEAT, now)
+
+    def _offer(self, chosen: Any, config: HeatConfig, safety: str | None, now: datetime) -> Offer:
+        """One zone's offer to the shed order (`shed_order.Offer`): its measured power, and whether the zone's rules
+        would lower it (or keep it lowered) for the ceiling now. A watched zone: `would` only."""
+        give = max(0.0, self.kw.get(chosen.entity_id) or 0.0) * 1000.0
+        plan = self.shadow.first_plan or self.shadow.plan
+        hour = self._plan_hour(plan, now)
+        action = None if hour is None else hour.action
+        zone = self.zones.get(chosen.entity_id)
+        if not chosen.control or zone is None:
+            ready = action == ACTION_NORMAL and safety in (None, SAFETY_SETTLING)
+            return Offer(live=False, ready=ready, give_w=give, why=None if ready else (safety or action))
+        if zone.state != STATE_RUNNING:
+            return Offer(live=True, ready=False, give_w=give, why=zone.reason or zone.state)
+        if zone.held_lower():
+            if self._shed_until(now) is not None and zone.decision is not None and zone.decision.action == ACTION_LOWER:
+                return Offer(live=True, ready=True, give_w=give)
+            # Lowered by the plan already: one step is all the shed takes.
+            return Offer(live=True, ready=False, give_w=0.0, why=REASON_PLANNED)
+        if action != ACTION_NORMAL:
+            return Offer(live=True, ready=False, give_w=give, why=action or SAFETY_STALE)
+        state = self.hass.states.get(chosen.entity_id)
+        current = None if state is None else finite_number(state.attributes.get("current_temperature"))
+        if current is not None and zone.home_c is not None and current < zone.home_c - COMFORT_C:
+            return Offer(live=True, ready=False, give_w=give, why=REASON_ZONE_COLD)
+        trial = relay_decide(
+            Situation(
+                now=now,
+                plan_until=now + MIN_LOWER,
+                held_since=None,
+                last_end=zone.last_end,
+                lowered_24h=self._lowered_24h(zone, now),
+                writes_today=zone.writes.get(self._day(now), 0),
+                safety=safety,
+                max_writes=MAX_WRITES_DAY,
+            )
+        )
+        return Offer(live=True, ready=trial.closed, give_w=give, why=None if trial.closed else trial.reason)
 
     def _setpoint(self, entity_id: str) -> float | None:
         state = self.hass.states.get(entity_id)
@@ -531,11 +594,19 @@ class ZonesControl:
         plan = self.shadow.first_plan or self.shadow.plan
         hour = self._plan_hour(plan, now)
         would = would_do(plan, now) if plan else None
+        action = None if hour is None else hour.action
+        plan_until = planned_run_end(plan, now)
+        shed = self._shed_until(now)
+        for_ceiling = False
+        if shed is not None and action in (ACTION_NORMAL, ACTION_LOWER):
+            # Lowered for the ceiling: an hour the plan leaves normal, or a lowering the plan ends sooner.
+            for_ceiling = action == ACTION_NORMAL or plan_until is None or plan_until < shed
+            action, plan_until = ACTION_LOWER, shed if plan_until is None else max(plan_until, shed)
         decision = zone.decision = decide(
             ZoneSituation(
                 now=now,
-                action=None if hour is None else hour.action,
-                plan_until=planned_run_end(plan, now),
+                action=action,
+                plan_until=plan_until,
                 action_until=None if would is None else would.until,
                 home_c=zone.home_c,
                 current_c=finite_number(attributes.get("current_temperature")),
@@ -551,6 +622,8 @@ class ZonesControl:
                 limits=limits,
             )
         )
+        if for_ceiling and decision.action == ACTION_LOWER and decision.reason == REASON_PLANNED:
+            decision = zone.decision = ZoneDecision(ACTION_LOWER, decision.setpoint_c, REASON_CEILING, decision.until)
         if zone.effect is not None:
             zone.state, zone.reason = STATE_VERIFYING, "effect"
         else:
