@@ -393,13 +393,15 @@ function phaseRuleApplies(limit: ImportLimit): boolean {
  * for the plant's own per-phase hold to guard the fuse, so grid charging is no longer capped. `null` while battery
  * control is off, grid charging is not allowed, the plant's limit already guards, or nothing here can be done
  * (`PHASE_RULE_NOT_HERE`, the total rule's own refusals, an unknown code, no value that guards). `code` is the
- * refusal (`limit` for a value to lower or set), `entityId` the plant's entity to open. SpotNav never writes any of
- * it but the site's own word (`battery_control_import_limit_acts`). */
+ * refusal (`limit` for a value to lower or set), `entityId` the plant's entity to open, `setKw` the value the
+ * administrator's tap sets the limit to (`set_import_limit`: lowered, never raised, then said to act; `null` where
+ * the value already guards and only saying it acts is left). Said to act with a value too high or unset is shown as
+ * `limit`, so one tap does both. */
 export function importLimitPhaseStep(
   language: Language,
   status: BatteryStatus,
   name?: (entityId: string) => string,
-): { code: string; text: string; entityId: string | null } | null {
+): { code: string; text: string; entityId: string | null; setKw: number | null } | null {
   const limit = status.grid_charge_cap.import_limit;
   const phase = limit?.per_phase ?? null;
   if (
@@ -408,28 +410,30 @@ export function importLimitPhaseStep(
   ) {
     return null;
   }
-  if (phase.why !== null) {
+  // Rounded down, so the value shown never lets a phase past the fuse.
+  const most = phase.max_kw === null ? null : Math.floor(phase.max_kw * 10 + 1e-9) / 10;
+  const usable = most !== null && most >= 0.1;
+  const tooHigh = usable && (limit.value_kw === null || limit.value_kw > most + 1e-6);
+  if (phase.why !== null && !(phase.why === "not_said_to_act" && tooHigh)) {
     const key = PHASE_RULE_STEPS[phase.why];
     if (key === undefined) {
       return null;
     }
     const entityId = phase.entity_id;
     const entity = entityId === null ? "" : (name?.(entityId) ?? entityId);
-    return { code: phase.why, text: translate(language, key, { name: entity }), entityId };
+    // Said to act is the one step the card can take itself (`set_import_limit`), the value already low enough.
+    return { code: phase.why, text: translate(language, key, { name: entity }), entityId, setKw: null };
   }
-  if (phase.max_kw === null) {
+  if (!usable || !tooHigh) {
     return null;
   }
-  // Rounded down, so the value shown never lets a phase past the fuse.
-  const most = Math.floor(phase.max_kw * 10 + 1e-9) / 10;
-  if (most < 0.1) {
-    return null;
-  }
+  // The limit reads more than guards the fuse, or nothing: the card can set it (an administrator's tap), or the
+  // person sets it in the maker's app.
   const max = formatNumber(language, most, 1);
   const text = limit.value_kw === null
     ? translate(language, "battery.cap.phase.limitUnset", { max })
     : translate(language, "battery.cap.phase.limitTooHigh", { value: formatNumber(language, limit.value_kw, 1), max });
-  return { code: "limit", text, entityId: null };
+  return { code: "limit", text, entityId: null, setKw: most };
 }
 
 /** The name a preheating switch goes by when Home Assistant has none to give (a disabled entity has no state). */
@@ -602,6 +606,7 @@ export class SiteSections {
     enableControlEntities = false,
     clearOutsideControl = false,
     enableFactEntities = false,
+    setImportLimit = false,
   ): Promise<string | null> {
     const hass = this.input.hass();
     const target = this.input.target();
@@ -611,10 +616,16 @@ export class SiteSections {
     }
     try {
       const decoded = decodeBatteryControl(
-        await batteryControl(hass, target, Object.keys(changes).length === 0 ? null : changes, enableControlEntities, clearOutsideControl, enableFactEntities),
+        await batteryControl(hass, target, Object.keys(changes).length === 0 ? null : changes, enableControlEntities, clearOutsideControl, enableFactEntities, setImportLimit),
       );
       if (!decoded.ok) {
         return translate(language, "battery.error.generic");
+      }
+      if (!decoded.value.ok && decoded.value.error === "spotnav_import_limit_not_set") {
+        if (decoded.value.status !== null) {
+          this.battery = decoded.value.status;
+        }
+        return translate(language, "battery.cap.phase.setFailed");
       }
       if (!decoded.value.ok) {
         return translate(language, decoded.value.error === "spotnav_not_admin" ? "battery.error.notAdmin" : "battery.error.generic");
@@ -684,6 +695,30 @@ export class SiteSections {
       editor.body.append(element(doc, "p", C.settingRowHelp, translate(language, "battery.strategyAck.text")));
       editor.form.dataset["batteryAck"] = idPrefix;
       editor.submit(async () => await this.writeBattery({ battery_control_ai_takeover_ack: true }));
+      return editor.form;
+    });
+  }
+
+  /**
+   * The per-phase import limit's one tap, confirmed in a dialog: with `setKw` SpotNav lowers the plant's own import
+   * limit to it first (`set_import_limit`: never raised, read back), then says that it acts; without, the value is
+   * already low enough and only that is said.
+   */
+  private openImportLimit(status: BatteryStatus, setKw: number | null): void {
+    const { doc } = this.input;
+    const language = this.language;
+    const value = status.grid_charge_cap.import_limit?.value_kw ?? null;
+    const title = translate(language, "battery.cap.phase.actsLabel");
+    this.input.openEditor(title, (handlers) => {
+      const positive = translate(language, setKw === null ? "battery.cap.phase.turnOnConfirm" : "battery.cap.phase.setConfirm");
+      const editor = shell(doc, language, "battery-import-limit", handlers, positive);
+      const text = setKw === null
+        ? translate(language, "battery.cap.phase.turnOnText", { value: value === null ? "–" : formatNumber(language, value, 1) })
+        : translate(language, "battery.cap.phase.setText", { max: formatNumber(language, setKw, 1) });
+      editor.body.append(element(doc, "p", C.settingRowHelp, text));
+      editor.body.append(element(doc, "p", C.settingRowHelp, translate(language, "battery.cap.phase.checked")));
+      editor.form.dataset["batteryImportLimit"] = setKw === null ? "acts" : "set";
+      editor.submit(async () => await this.writeBattery({}, false, false, false, true));
       return editor.form;
     });
   }
@@ -930,14 +965,15 @@ export class SiteSections {
     if (!admin) {
       return note;
     }
-    if (step.code === "not_said_to_act") {
-      const label = translate(language, "battery.cap.phase.actsLabel");
-      const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.cap.phase.turnOn")) as HTMLButtonElement;
+    if (step.code === "not_said_to_act" || step.setKw !== null) {
+      const setKw = step.setKw;
+      const label = setKw === null
+        ? translate(language, "battery.cap.phase.turnOn")
+        : translate(language, "battery.cap.phase.setTo", { max: formatNumber(language, setKw, 1) });
+      const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, label) as HTMLButtonElement;
       button.type = "button";
-      button.dataset["action"] = "import-limit-acts";
-      button.addEventListener("click", () =>
-        this.onOff(label, "battery_control_import_limit_acts", status.options.battery_control_import_limit_acts, translate(language, "battery.cap.phase.actsHelp")),
-      );
+      button.dataset["action"] = setKw === null ? "import-limit-acts" : "import-limit-set";
+      button.addEventListener("click", () => this.openImportLimit(status, setKw));
       note.append(" ", button);
     } else if (step.entityId !== null) {
       const entityId = step.entityId;

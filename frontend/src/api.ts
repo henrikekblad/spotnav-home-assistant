@@ -922,6 +922,7 @@ export async function batteryControl(
   enableControlEntities = false,
   clearOutsideControl = false,
   enableFactEntities = false,
+  setImportLimit = false,
 ): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/battery_control",
@@ -931,6 +932,7 @@ export async function batteryControl(
     ...(enableControlEntities ? { enable_control_entities: true } : {}),
     ...(clearOutsideControl ? { clear_outside_control: true } : {}),
     ...(enableFactEntities ? { enable_fact_entities: true } : {}),
+    ...(setImportLimit ? { set_import_limit: true } : {}),
   });
 }
 
