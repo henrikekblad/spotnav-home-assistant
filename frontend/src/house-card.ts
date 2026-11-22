@@ -13,7 +13,17 @@
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
 // optionally `tab: now | plan | flow | graph | earn | price` to show only that tab (no tab row).
 
-import { getHouse, getHouseNow, getPeriodHistory, getPlan, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import {
+  getHouse,
+  getHouseNow,
+  getPeriodHistory,
+  getPlan,
+  releaseImportTarget,
+  SpotnavApiError,
+  takeWhatFits,
+  UNSUPPORTED_API_VERSION,
+} from "./api";
+import type { DoesNotFitChoiceCode } from "./does-not-fit";
 import { entityWordsOf } from "./entity-words";
 import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from "./house-loads";
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
@@ -562,6 +572,28 @@ export class SpotnavHouseCard extends HTMLElement {
     }
   }
 
+  /**
+   * A car's "does not fit" choice in the Plan tab, for that charge's departure only (any user): "Take what fits"
+   * (`spotnav/take_what_fits`), "Allow the peak" (`spotnav/release_import_target`). The plan is read again either way; a refusal leaves
+   * the line as the next read says.
+   */
+  private async doesNotFitChoice(chargerId: string, code: DoesNotFitChoiceCode): Promise<void> {
+    const hass = this.hassObject;
+    if (hass === null) {
+      return;
+    }
+    try {
+      if (code === "accept_peak") {
+        await releaseImportTarget(hass, chargerId);
+      } else if (code === "takes_what_fits") {
+        await takeWhatFits(hass, chargerId);
+      }
+    } catch {
+      // Not written: the line stays until the next read says otherwise.
+    }
+    void this.loadPlan(true);
+  }
+
   /** Read the plan (`quiet`: again, the one shown kept until the new one is in, and kept when the read fails). */
   private async loadPlan(quiet: boolean): Promise<void> {
     const hass = this.hassObject;
@@ -889,6 +921,9 @@ export class SpotnavHouseCard extends HTMLElement {
           ...(admin ? { onSettings: () => this.showSettings() } : {}),
           onHistory: (opener) => this.showHistory(opener),
           onHouseLoads: (opener, kind, period) => this.showLoads(opener, kind, period ?? null),
+          onDoesNotFit: (chargerId, code) => {
+            void this.doesNotFitChoice(chargerId, code);
+          },
         },
         width: this.width,
         nowMs: Date.now(),

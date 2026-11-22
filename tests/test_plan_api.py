@@ -71,3 +71,19 @@ async def test_refusals(hass: HomeAssistant, freezer) -> None:
     assert await hass.config_entries.async_unload(site.entry_id)
     answer = await ask(hass, 99, api_version=1, site_id=site.entry_id)
     assert not answer["success"] and answer["error"]["code"] == "spotnav_no_site"
+
+
+async def test_a_target_written_without_a_reload_is_labelled_the_import_target(hass: HomeAssistant, freezer) -> None:
+    # A low target (under the soft ceiling) written to the site's entry without a reload, as the card's editor writes it: the hold reads it
+    # from there (`_import_target_kw`), and so does the label, never the controller's older copy of the config.
+    from custom_components.spotnav.const import CONF_IMPORT_TARGET_KW
+    from custom_components.spotnav.runtime import site_controller_for
+
+    site = await pilot_site(hass, freezer)
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_IMPORT_TARGET_KW: 2.0})
+    await run(hass, freezer, 60, 4000.0)
+    controller = site_controller_for(hass, site.entry_id)
+    assert CONF_IMPORT_TARGET_KW not in controller.config, "the controller's copy is the older one"
+    result = (await ask(hass, 1, api_version=1, site_id=site.entry_id))["result"]
+    labels = {row["ceiling"] for row in result["hours"]}
+    assert "import_target" in labels and "power_level" not in labels

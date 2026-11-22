@@ -11,6 +11,7 @@ import { clock, dayCue, formatFixed, hourLabel, kwText, kwhText, moneyMinorAsMaj
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { element } from "./dom";
 import en from "./i18n/en.json";
+import { choiceLabel, decodeDoesNotFit, doesNotFitText, type DoesNotFit, type DoesNotFitChoiceCode } from "./does-not-fit";
 
 export const PLAN_API_VERSION = 1;
 const HOUR_MS = 3_600_000;
@@ -21,7 +22,7 @@ const WINDOW_KEYS = ["start", "end", "hours", "prices_end"] as const;
 const HOUSE_KEYS = ["basis", "sun_in_house"] as const;
 const SUMMARY_KEYS = ["cost", "peak_kw", "peak_start", "peak_ceiling_kw", "peak_ceiling", "over"] as const;
 const HOUR_KEYS = ["start", "price", "sell", "house_kw", "sun_kw", "net_kw", "ceiling_kw", "ceiling"] as const;
-const LOAD_KEYS = ["id", "kind", "name", "state", "in_house", "kw", "level", "runs", "summary"] as const;
+const LOAD_KEYS = ["id", "kind", "name", "state", "in_house", "kw", "level", "runs", "summary", "does_not_fit"] as const;
 const RUN_KEYS = ["start", "end", "what", "reason", "kw", "kwh"] as const;
 const MONEY_KEYS = ["currency", "major_unit", "minor_unit"] as const;
 
@@ -60,6 +61,8 @@ export interface PlanLoad {
   level: number[] | null;
   runs: PlanRun[];
   summary: Record<string, number | string | null>;
+  /** A car's charge that does not fit under the ceiling by its departure (`does-not-fit.ts`), else `null`. */
+  does_not_fit: DoesNotFit | null;
 }
 
 export interface PlanAnswer {
@@ -151,6 +154,7 @@ function decodeLoad(raw: unknown, count: number): PlanLoad {
     level,
     runs: list(source.runs).map(decodeRun),
     summary,
+    does_not_fit: source.does_not_fit === null ? null : decodeDoesNotFit(source.does_not_fit),
   };
 }
 
@@ -230,6 +234,8 @@ export const PLAN_CLASSES = {
   reason: "spotnav-plan-reason",
   words: "spotnav-plan-words",
   would: "spotnav-plan-would",
+  fit: "spotnav-plan-fit",
+  fitChoices: "spotnav-plan-fit-choices",
 } as const;
 const P = PLAN_CLASSES;
 
@@ -291,7 +297,11 @@ export const PLAN_STYLES = `
   .${P.track} { position: relative; height: 18px; border-radius: 5px; background: var(--divider-color, #e0e0e0); overflow: hidden; }
   .${P.block} { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; }
   .${P.block}[data-level="-1"] { background: transparent !important; outline: 2px dashed var(--spotnav-heat-colour); outline-offset: -3px; }
-  .${P.reason} { grid-column: 2; }
+  .${P.reason}, .${P.fit} { grid-column: 2; }
+  .${P.fit} { display: grid; gap: 6px; margin: 2px 0 0; font-size: 0.86rem; }
+  .${P.fitChoices} { display: flex; flex-wrap: wrap; gap: 6px; }
+  .${P.fitChoices} button { font: inherit; font-size: 0.82rem; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--divider-color, #e0e0e0); background: transparent; color: var(--primary-color); cursor: pointer; }
+  .${P.fitChoices} button:disabled { opacity: 0.5; cursor: default; }
   .${P.words} { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   .${P.words} li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; font-size: 0.88rem; }
   .${P.words} time { color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
@@ -304,6 +314,11 @@ export interface PlanRenderInput {
   language: Language;
   plan: PlanAnswer;
   width: number;
+  /**
+   * A choice on a car's "does not fit" line (`takes_what_fits` or `accept_peak`, for the charger `chargerId`); without
+   * it the line is said with no buttons. "Later departure" is the charger card's: its departure editor is there.
+   */
+  onDoesNotFit?: (chargerId: string, code: DoesNotFitChoiceCode) => void;
 }
 
 function context(language: Language, plan: PlanAnswer): FormatContext {
@@ -667,6 +682,9 @@ function lanes(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
       track.append(block);
     }
     lane.append(track, element(doc, "p", P.reason, laneReason(language, ctx, load)));
+    if (load.does_not_fit !== null) {
+      lane.append(doesNotFitNode(input, ctx, load.id, load.does_not_fit));
+    }
     box.append(lane);
   }
   const first = plan.hours[0]!.startMs;
@@ -674,6 +692,45 @@ function lanes(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
   const foot = element(doc, "div", P.lane);
   foot.append(element(doc, "span"), element(doc, "p", P.note, `${marks.join(" · ")} → ${translate(language, "house.plan.rolling")}`));
   box.append(foot);
+  return box;
+}
+
+/**
+ * A car's "does not fit" line under its lane, with "Take what fits" and "Allow the peak" (asked again before it is
+ * sent: it may cost the month's peak).
+ */
+function doesNotFitNode(input: PlanRenderInput, ctx: FormatContext, chargerId: string, block: DoesNotFit): HTMLElement {
+  const { doc, language, plan } = input;
+  const box = element(doc, "div", P.fit);
+  box.dataset["part"] = "does-not-fit";
+  box.append(element(doc, "p", P.lede, doesNotFitText(ctx, block)));
+  const choose = input.onDoesNotFit;
+  if (choose === undefined) {
+    return box;
+  }
+  const row = element(doc, "div", P.fitChoices);
+  for (const choice of block.choices) {
+    if (choice.code === "later") {
+      continue;
+    }
+    const button = element(doc, "button", undefined, choiceLabel(ctx, choice, plan.money));
+    button.setAttribute("type", "button");
+    button.dataset["choice"] = choice.code;
+    let asked = choice.code !== "accept_peak";
+    button.addEventListener("click", () => {
+      if (!asked) {
+        asked = true;
+        button.textContent = translate(language, "doesNotFit.choice.acceptPeakAgain");
+        return;
+      }
+      button.disabled = true;
+      choose(chargerId, choice.code);
+    });
+    row.append(button);
+  }
+  if (row.childElementCount > 0) {
+    box.append(row);
+  }
   return box;
 }
 

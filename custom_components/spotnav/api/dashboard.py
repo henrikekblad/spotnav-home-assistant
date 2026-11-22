@@ -18,6 +18,7 @@ Rules:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from collections.abc import Mapping
@@ -172,6 +173,8 @@ from .common import (
     unsupported_version_text,
 )
 from .settings import encode_pause, encode_settings, included_components, strategy_of
+
+_LOGGER = logging.getLogger(__name__)
 
 
 DASHBOARD_API_VERSION: Final = 1
@@ -404,6 +407,9 @@ class CapturedSite:
     current_settable: bool = True
     #: What the site's import target does to this charger now (`SiteCapacityController.import_target_status`).
     import_target: Any = None
+    #: The charge does not fit under the ceiling by its departure, with the person's choices (`site/does_not_fit.py`),
+    #: else `None`.
+    does_not_fit: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1141,7 +1147,19 @@ def capture_site(
         balancing_cause=None if balancing is None else balancing.cause,
         current_settable=bool(getattr(controller_for(hass, charger_entry_id), "is_commandable", True)),
         import_target=controller.import_target_status(charger_entry_id),
+        does_not_fit=_does_not_fit(controller, charger_entry_id),
     )
+
+
+def _does_not_fit(controller: Any, charger_entry_id: str) -> dict[str, Any] | None:
+    """The charge's "does not fit" block (`site/does_not_fit.py`), or `None`; never fails the dashboard."""
+    from ..site.does_not_fit import site_does_not_fit  # noqa: PLC0415 - it imports the site
+
+    try:
+        return site_does_not_fit(controller, charger_entry_id)
+    except Exception:  # noqa: BLE001 - the dashboard stands without it
+        _LOGGER.debug("SpotNav dashboard: the does-not-fit block could not be made", exc_info=True)
+        return None
 
 
 def _held_documents(
@@ -2193,6 +2211,14 @@ def serialize_dashboard(
         # Additive, and only where the site can run Sol/Hybrid (or has a solar forecast): the sun the price chart draws (`api/sun.py`). An app
         # reads it only with `reads: ["sun"]` (`api/webhook.py`).
         **({} if capture.sun is None else {"sun": capture.sun}),
+        # Additive, and only while the planned charge does not fit under the ceiling by its departure (or the peak was
+        # accepted for it): the person's choices (`site/does_not_fit.py`). An app reads it only with
+        # `reads: ["does_not_fit"]` (`api/webhook.py`).
+        **(
+            {}
+            if capture.site is None or capture.site.does_not_fit is None
+            else {"does_not_fit": capture.site.does_not_fit}
+        ),
     }
 
 

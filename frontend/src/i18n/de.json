@@ -2206,5 +2206,20 @@
   "house.plan.reason.room_warm": "das Haus ist warm",
   "house.plan.reason.cheap": "günstige Stunde",
   "house.plan.reason.full_heat": "volle Aufheizung (Legionellen)",
-  "house.plan.reason.max_off": "darf nicht länger aus sein"
+  "house.plan.reason.max_off": "darf nicht länger aus sein",
+  "doesNotFit.line": "Passt nicht unter die Grenze ({ceiling}): {need} bis {time} – {fits} schafft es.",
+  "doesNotFit.short": "Passt nicht unter die Grenze ({ceiling}): {kwh} fehlen bis {time}.",
+  "doesNotFit.shortNoTime": "Passt nicht unter die Grenze ({ceiling}): {kwh} fehlen bis zur Abfahrt.",
+  "doesNotFit.chosen.takesWhatFits": "Das Auto nimmt bis {time}, was passt ({kwh}).",
+  "doesNotFit.chosen.takesWhatFitsNoTime": "Das Auto nimmt bis zur Abfahrt, was passt.",
+  "doesNotFit.chosen.acceptPeak": "Die Grenze ({ceiling}) ist für diese Ladung bis {time} ausgesetzt.",
+  "doesNotFit.chosen.acceptPeakUnplug": "Die Grenze ({ceiling}) ist für diese Ladung ausgesetzt, bis das Auto abgesteckt wird.",
+  "doesNotFit.peakNote": "Die Spitze kann etwa {kw} kW erreichen.",
+  "doesNotFit.choice.takesWhatFits": "Nehmen, was passt",
+  "doesNotFit.choice.takesWhatFitsKwh": "Nehmen, was passt (≈ {kwh})",
+  "doesNotFit.choice.later": "Spätere Abfahrt",
+  "doesNotFit.choice.acceptPeak": "Spitze zulassen",
+  "doesNotFit.choice.acceptPeakKw": "Spitze zulassen (≈ {kw} kW)",
+  "doesNotFit.choice.acceptPeakCost": "Spitze zulassen (≈ {kw} kW, ≈ {cost})",
+  "doesNotFit.choice.acceptPeakAgain": "Ja, Spitze zulassen"
 }

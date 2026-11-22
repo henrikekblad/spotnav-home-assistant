@@ -5,7 +5,7 @@
   3.7 kW, a home battery whose plan SpotNav runs (it covers the evening, grid-charges 03-05 and charges from the sun
   at noon), a heat pump whose plan SpotNav only watches (lowered 07-09 and 17-19, pre-heated 05-07), one floor
   zone watched, a water heater SpotNav switches (23-01, cheap), a demand charge with a soft ceiling of 5 kW and the
-  month's peak so far 5.4 kW.
+  month's peak so far 5.4 kW; the import target leaves the car 3 kWh short of its 07:00 departure (`does_not_fit`).
 * `car_only.json`: a flat with only a car, no power tariff, no battery and no sun: the main fuse is the ceiling,
   late evening before tomorrow's prices.
 """
@@ -35,6 +35,9 @@ from custom_components.spotnav.site.plan_view import (
     plan_view,
     window,
 )
+
+from custom_components.spotnav.site.does_not_fit import does_not_fit
+from custom_components.spotnav.site.site_capacity_controller import ImportTargetStatus, TargetRisk
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plan"
 TZ = "Europe/Stockholm"
@@ -70,6 +73,22 @@ def _write_or_compare(name: str, answer: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     assert json.loads(path.read_text(encoding="utf-8")) == json.loads(text)
+
+
+def _short_status() -> ImportTargetStatus:
+    """The import target holds the garage's car 3 kWh short of its 07:00 departure (14.8 of 17.8 kWh fit)."""
+    return ImportTargetStatus(
+        target_kw=6.0,
+        set_kw=6.0,
+        hour_kw=4.1,
+        held_a=None,
+        paused_until=None,
+        released_for=None,
+        house_over=False,
+        at_risk=TargetRisk(departure=at(31).isoformat(), missing_kwh=3.0, target_kw=6.0, need_kwh=17.8),
+        release_until=at(31).isoformat(),
+        release_peak_kw=13.0,
+    )
 
 
 def villa_inputs() -> PlanInputs:
@@ -110,7 +129,16 @@ def villa_inputs() -> PlanInputs:
         house_basis="gross",
         sun_in_house=False,
         sun=sun,
-        cars=(CarPlan("charger_garage", "Garage", ((at(25), at(29), 3.7),), live=True, departure=at(31)),),
+        cars=(
+            CarPlan(
+                "charger_garage",
+                "Garage",
+                ((at(25), at(29), 3.7),),
+                live=True,
+                departure=at(31),
+                does_not_fit=does_not_fit(_short_status(), ceiling="import_target", peak_cost=4500.0),
+            ),
+        ),
         battery=BatteryPlan("sensor.battery_soc", "Sigenergy", tuple(battery_slots), live=True),
         heat=HeatPlan(
             "switch.sg_ready_a", "SG Ready A", tuple(band), live=False, heat_kw=lambda _hour: 1.0, lower_share=0.5
@@ -158,6 +186,11 @@ def test_the_villa() -> None:
     assert [(run["start"], run["end"], run["what"], run["kw"], run["kwh"]) for run in car["runs"]] == [
         (at(25).isoformat(), at(29).isoformat(), "charge", 3.7, 14.8)
     ]
+    # Its charge does not fit under the import target by 07:00: the block and the choices (`site/does_not_fit.py`).
+    block = car["does_not_fit"]
+    assert (block["short_kwh"], block["deliverable_kwh"], block["ceiling"], block["chosen"]) == (3.0, 14.8, "import_target", None)
+    assert [choice["code"] for choice in block["choices"]] == ["takes_what_fits", "later", "accept_peak"]
+    assert all(load["does_not_fit"] is None for load in answer["loads"] if load["kind"] != "car")
     battery = _load(answer, "home_battery")
     assert [run["what"] for run in battery["runs"]] == ["cover", "grid_charge", "sun_charge", "cover"]
     assert battery["summary"] == {"charge_kwh": 9.6, "grid_charge_kwh": 6.0, "cover_kwh": 16.2}
@@ -197,6 +230,8 @@ def test_a_load_only_watched_says_would() -> None:
 def test_only_a_car_and_the_fuse() -> None:
     answer = plan_view(car_only_inputs())
     _write_or_compare("car_only.json", answer)
+    # The car's charge fits: no block.
+    assert _load(answer, "car")["does_not_fit"] is None
     # Tomorrow's prices are not out yet: the window ends with today's.
     assert answer["window"]["hours"] == 2
     assert answer["power_tariff"] is False and answer["month_peak"] is None

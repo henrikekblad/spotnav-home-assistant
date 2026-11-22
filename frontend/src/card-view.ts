@@ -25,7 +25,7 @@ import { createDialog, takeActions, type DialogHandle } from "./dialog";
 import { changeCarBody, identificationBanner, methodWords } from "./identification";
 import { clock, dayCue, hourLabel, formatNumber, priceAxisLabel, type PriceUnit } from "./format";
 import { translate, type TranslationKey } from "./i18n";
-import { type CardModel, type SiteFacts } from "./model";
+import { type CardModel, type DoesNotFitLine, type SiteFacts } from "./model";
 import type { ActiveControlNotice } from "./site-settings";
 import { type EntityConfig, type EntityDraft, type EntityFieldError, type EntityScope } from "./entity-config";
 import { type MarketFormValues } from "./market";
@@ -302,6 +302,8 @@ export interface CardViewInput {
   onFixOwnMode?: (entity: string, value: string) => void;
   /** An issue's "Release the import target for this charge" (any user): the card sets the import target aside for this charge, then reads again. */
   onReleaseImportTarget?: () => void;
+  /** The "does not fit" line's "Take what fits", for this departure only (`spotnav/take_what_fits`). */
+  onTakeWhatFits?: () => void;
   /** The import target's editor opened (administrators): the suggestion from Home Assistant's statistics, `null` for none. */
   onSuggestImportTarget?: () => Promise<unknown>;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
@@ -741,6 +743,45 @@ export function createCardView(input: CardViewInput): CardView {
     );
   }
 
+  /**
+   * The planned charge does not fit under the ceiling by its departure: the line, and a button per choice still open.
+   * "Take what fits" holds this departure only (`spotnav/take_what_fits`, any user); "Later departure" opens the departure's editor; "Allow
+   * the peak" is the import target's set-aside for this charge, confirmed first as everywhere.
+   */
+  function doesNotFitNode(line: DoesNotFitLine): HTMLElement {
+    const box = element(doc, "div", C.suggestion);
+    box.dataset["part"] = "does-not-fit";
+    box.setAttribute("role", "status");
+    box.append(element(doc, "p", C.suggestionText, line.text));
+    const answers = element(doc, "div", C.suggestionAnswers);
+    for (const choice of line.choices) {
+      if (choice.code === "takes_what_fits" && input.onTakeWhatFits === undefined) {
+        continue;
+      }
+      if (choice.code === "accept_peak" && (input.onReleaseImportTarget === undefined || model.releaseConfirm === null)) {
+        continue;
+      }
+      const button = element(doc, "button", C.choiceButton, choice.label);
+      button.setAttribute("type", "button");
+      button.dataset["choice"] = choice.code;
+      button.addEventListener("click", () => {
+        if (choice.code === "takes_what_fits") {
+          button.disabled = true;
+          input.onTakeWhatFits?.();
+        } else if (choice.code === "later") {
+          input.onOpenSettings("deadline");
+        } else {
+          confirmRelease(button);
+        }
+      });
+      answers.append(button);
+    }
+    if (answers.childElementCount > 0) {
+      box.append(answers);
+    }
+    return box;
+  }
+
   // The status sentence, the one row that gives up lines when the card is in a box too short for it.
   const statusNode = model.status === null ? null : element(doc, "p", C.status, model.status);
   if (statusNode !== null) {
@@ -757,7 +798,10 @@ export function createCardView(input: CardViewInput): CardView {
     answers.append(open);
     card.append(answers);
   }
-  if (model.releaseConfirm !== null && input.onReleaseImportTarget !== undefined) {
+  if (model.doesNotFit !== null) {
+    card.append(doesNotFitNode(model.doesNotFit));
+  }
+  if (model.doesNotFit === null && model.releaseConfirm !== null && input.onReleaseImportTarget !== undefined) {
     // The one way past the import target, offered whenever it holds or pauses the charge: confirmed first.
     const answers = element(doc, "div", C.suggestionAnswers);
     answers.dataset["part"] = "release-import-target";

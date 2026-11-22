@@ -11,7 +11,7 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
      summary: {cost, peak_kw, peak_start, peak_ceiling_kw, peak_ceiling, over} ,
      hours: [{start, price, sell, house_kw, sun_kw, net_kw, ceiling_kw, ceiling}],
      loads: [{id, kind, name, state: "live" | "would", in_house, kw: [...], level: [...] | null,
-              runs: [{start, end, what, reason, kw, kwh}], summary: {...}}]}
+              runs: [{start, end, what, reason, kw, kwh}], summary: {...}, does_not_fit: {...} | null}]}
 
 * **The window** rolls: from the running local hour to the end of the prices held (today's, and tomorrow's once
   published), at most `MAX_HOURS`; `MIN_HOURS` from the running hour without prices. Never a calendar day.
@@ -31,7 +31,9 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
   `house_kw` (drawn inside it, never added). `state` is `live` where SpotNav steers it now, `would` where it only
   watches (what it would do, never claimed as done). `runs` are the hours in words: contiguous hours with one
   `what` (`charge`, `grid_charge`, `sun_charge`, `cover`, `sell`, `on`, `lower`, `preheat`, `night`, `away`)
-  and the plan's `reason` where it has one.
+  and the plan's `reason` where it has one. `does_not_fit`: a car's charge that does not fit under the ceiling that
+  acts now by its departure, with the person's choices (`site/does_not_fit.py`, the same block as the charger's
+  dashboard); `null` for every other load and for a car whose charge fits.
 * **`summary`**: the window's import cost less export earnings (`cost`, minor units, over the priced hours), the
   highest hour from the grid and the ceiling at it (`over` when above); `month_peak` the month's highest measured
   hour so far, where the price has a demand charge or a power level (`power_tariff`).
@@ -76,7 +78,7 @@ PLAN_KEYS: Final = (
     "loads",
 )
 HOUR_KEYS: Final = ("start", "price", "sell", "house_kw", "sun_kw", "net_kw", "ceiling_kw", "ceiling")
-LOAD_KEYS: Final = ("id", "kind", "name", "state", "in_house", "kw", "level", "runs", "summary")
+LOAD_KEYS: Final = ("id", "kind", "name", "state", "in_house", "kw", "level", "runs", "summary", "does_not_fit")
 RUN_KEYS: Final = ("start", "end", "what", "reason", "kw", "kwh")
 
 STATE_LIVE: Final = "live"
@@ -116,6 +118,8 @@ class CarPlan:
     windows: tuple[tuple[datetime, datetime, float], ...]
     live: bool
     departure: datetime | None = None
+    #: The charge does not fit under the ceiling by its departure (`site/does_not_fit.py`), else `None`.
+    does_not_fit: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +281,7 @@ def _load(
     level: Sequence[int] | None,
     runs: list[dict[str, Any]],
     summary: dict[str, Any],
+    does_not_fit: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": plan_id,
@@ -288,6 +293,7 @@ def _load(
         "level": None if level is None else list(level),
         "runs": runs,
         "summary": summary,
+        "does_not_fit": does_not_fit,
     }
 
 
@@ -305,6 +311,7 @@ def _car(car: CarPlan, hours: Sequence[datetime]) -> dict[str, Any]:
         None,
         _runs(hours, what, kw),
         {"kwh": _r(sum(planned), 2), "departure": None if car.departure is None else car.departure.isoformat()},
+        car.does_not_fit,
     )
 
 

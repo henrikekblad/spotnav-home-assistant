@@ -200,6 +200,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `dismiss_setup_item` | Answer a "Get started" row with "Not needed": `{"item"}` (see below). |
 | `fix_own_mode` | Set one of the charger's own settings back to the value SpotNav works with: `{"entity_id", "value"}` (see below). |
 | `release_import_target` | Set the site's import target aside for this charge until its departure: `{}` (see below). |
+| `take_what_fits` | The "does not fit" line's "Take what fits": this charge's departure is held as `if_not_ready` `hold` would, for that departure only; the lasting `if_not_ready` is left as it is: `{}`. Refusals `spotnav_no_import_target`, `spotnav_no_departure`. |
 | `get_power_month` | One month of this charger's site's measured import: `{"month"}` (optional), the answer of `spotnav/get_power_month` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [Power by month](#power-by-month)). |
 | `suggest_import_target` | A suggested import target for this charger's site from Home Assistant's statistics: `{}`, the answer of `spotnav/suggest_import_target` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [A suggested import target](#a-suggested-import-target)). |
 | `get_house` | The house card's view of this charger's site: `{"date"}` (optional), the answer of `spotnav/get_house` (see [the site over the webhook](#the-site-over-the-webhook)). |

@@ -2206,5 +2206,20 @@
   "house.plan.reason.room_warm": "huset er varmt",
   "house.plan.reason.cheap": "billig time",
   "house.plan.reason.full_heat": "full oppvarming (legionella)",
-  "house.plan.reason.max_off": "kan ikke være av lenger"
+  "house.plan.reason.max_off": "kan ikke være av lenger",
+  "doesNotFit.line": "Får ikke plass under taket ({ceiling}): {need} til {time} – {fits} rekkes.",
+  "doesNotFit.short": "Får ikke plass under taket ({ceiling}): {kwh} mangler til {time}.",
+  "doesNotFit.shortNoTime": "Får ikke plass under taket ({ceiling}): {kwh} mangler til avreisen.",
+  "doesNotFit.chosen.takesWhatFits": "Bilen tar det som får plass til {time} ({kwh}).",
+  "doesNotFit.chosen.takesWhatFitsNoTime": "Bilen tar det som får plass til avreisen.",
+  "doesNotFit.chosen.acceptPeak": "Taket ({ceiling}) er sluppet for denne ladingen til {time}.",
+  "doesNotFit.chosen.acceptPeakUnplug": "Taket ({ceiling}) er sluppet for denne ladingen til bilen kobles fra.",
+  "doesNotFit.peakNote": "Toppen kan bli omtrent {kw} kW.",
+  "doesNotFit.choice.takesWhatFits": "Ta det som får plass",
+  "doesNotFit.choice.takesWhatFitsKwh": "Ta det som får plass (≈ {kwh})",
+  "doesNotFit.choice.later": "Senere avreise",
+  "doesNotFit.choice.acceptPeak": "Tillat toppen",
+  "doesNotFit.choice.acceptPeakKw": "Tillat toppen (≈ {kw} kW)",
+  "doesNotFit.choice.acceptPeakCost": "Tillat toppen (≈ {kw} kW, ≈ {cost})",
+  "doesNotFit.choice.acceptPeakAgain": "Ja, tillat toppen"
 }

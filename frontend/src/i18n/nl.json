@@ -2206,5 +2206,20 @@
   "house.plan.reason.room_warm": "het huis is warm",
   "house.plan.reason.cheap": "goedkoop uur",
   "house.plan.reason.full_heat": "volledig opwarmen (legionella)",
-  "house.plan.reason.max_off": "mag niet langer uit staan"
+  "house.plan.reason.max_off": "mag niet langer uit staan",
+  "doesNotFit.line": "Past niet onder het plafond ({ceiling}): {need} voor {time} – {fits} lukt op tijd.",
+  "doesNotFit.short": "Past niet onder het plafond ({ceiling}): {kwh} tekort voor {time}.",
+  "doesNotFit.shortNoTime": "Past niet onder het plafond ({ceiling}): {kwh} tekort voor het vertrek.",
+  "doesNotFit.chosen.takesWhatFits": "De auto neemt wat past tot {time} ({kwh}).",
+  "doesNotFit.chosen.takesWhatFitsNoTime": "De auto neemt wat past tot het vertrek.",
+  "doesNotFit.chosen.acceptPeak": "Het plafond ({ceiling}) is losgelaten voor deze laadbeurt tot {time}.",
+  "doesNotFit.chosen.acceptPeakUnplug": "Het plafond ({ceiling}) is losgelaten voor deze laadbeurt tot de auto wordt losgekoppeld.",
+  "doesNotFit.peakNote": "De piek kan ongeveer {kw} kW worden.",
+  "doesNotFit.choice.takesWhatFits": "Neem wat past",
+  "doesNotFit.choice.takesWhatFitsKwh": "Neem wat past (≈ {kwh})",
+  "doesNotFit.choice.later": "Later vertrek",
+  "doesNotFit.choice.acceptPeak": "Piek toestaan",
+  "doesNotFit.choice.acceptPeakKw": "Piek toestaan (≈ {kw} kW)",
+  "doesNotFit.choice.acceptPeakCost": "Piek toestaan (≈ {kw} kW, ≈ {cost})",
+  "doesNotFit.choice.acceptPeakAgain": "Ja, piek toestaan"
 }

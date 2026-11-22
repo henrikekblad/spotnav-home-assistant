@@ -29,6 +29,7 @@
   },
   "loads": [
     {
+      "does_not_fit": null,
       "id": "charger_flat",
       "in_house": false,
       "kind": "car",
