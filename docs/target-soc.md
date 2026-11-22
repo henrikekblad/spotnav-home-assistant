@@ -204,7 +204,10 @@ integration takes (50 to 100 % in steps of 10 on a Kia, for example; 1 to 100 % 
 writes at most once a minute per car, and the car takes the new limit when its integration next reads it.
 
 The limit is a number, or a percent picker (a select with options
-from 50 to 100); the AC limit is preferred over the DC limit, and discharge (V2L), minimum,
+from 50 to 100); the AC limit is preferred over the DC limit, chosen by its entity, not by what it reads: an AC
+limit that reads 0 (some cars report so for a while) leaves the car's ceiling unknown rather than falling back to the
+DC limit. A limit that drops below the car's level during a charge (a passing glitch in the car's cloud) is not taken
+until the charge ends, so a plan that stopped at its target is not taken for one the car ended. Discharge (V2L), minimum,
 profile, solar and share settings are never taken as the limit. A limit that the integration
 enforces itself rather than the car (a soft limit with its own on/off switch) is ignored. A
 read-only "target" sensor is used to plan up to the car's ceiling but cannot be set. When a
