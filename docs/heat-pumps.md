@@ -80,6 +80,9 @@ out until there is a path SpotNav steers.
 * **Plan**: the day's chart: the rooms, the comfort band, the setpoint, SpotNav's lowerings (what it did solid, what it
   plans lighter), the relay, hot water and the car. The arrows step back through past days (tap the day to choose
   one); this tab shows days only. Tap or point at the chart for a time's figures.
+
+  ![The heat card's Plan tab: today's rooms against the comfort band, the setpoint with SpotNav's lowerings, and the hot-water runs](images/heat-card-plan.png)
+
 * **Use**: bars per hour, day or month (the period picker: Day, Month, Year), in **kWh or money** (the switch at the
   right, remembered). Each bar is stacked by **what is actually measured**: the **heat pump** (its meter less the hot
   water), **hot water** (the meter's plateaus of about 3 kW, on the days Home Assistant still has in 5-minute detail;
@@ -89,6 +92,8 @@ out until there is a path SpotNav steers.
   bar: nothing is guessed. The parts in the legend are toggles with their sums (remembered). The headline is **what
   SpotNav saved on heat** over the period, the same figure as *Heat* in the house card's Earnings tab; a period
   without one is headed by the heat's total.
+
+  ![The heat card's Use tab: today's heat per hour in kWh, the heat pump and the hot water stacked](images/heat-card-use.png)
 
 Plan and Use share the period: a day chosen in one is the day in the other, and a month or year chosen in Use is
 still there after a look at Plan. The tab, the unit and the hidden parts are remembered per card in the browser.
