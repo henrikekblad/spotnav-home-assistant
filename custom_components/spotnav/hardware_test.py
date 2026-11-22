@@ -263,17 +263,20 @@ class HardwareTest:
             return None
 
     def blocked(self, now: datetime, version: str | None) -> tuple[str | None, datetime | None]:
-        """Why a test cannot start now (`running`, `once_a_day`, `nothing_to_test`, `car_charging`), and when it
-        may."""
+        """Why a test cannot start now (`running`, `once_a_day`, `nothing_to_test`, `not_ready`, `car_charging`),
+        and when it may."""
         if self.running:
             return "running", None
         # Nothing to test comes first: the day's slot is no reason on a site where no test could run at all.
         parts = self._parts(now)
-        if not parts or all(why is not None for why in parts.values()):
+        if not parts:
             return "nothing_to_test", None
         blocked, next_at = allowance(self._counted_last(), now, version, self._firmware_key())
         if blocked is not None:
             return blocked, next_at
+        if all(why is not None for why in parts.values()):
+            # A part is there but cannot run now (starting, busy, waiting for an acknowledgement): not "nothing".
+            return "not_ready", None
         if parts.get("battery", "absent") is None and self._hold().charging_now():
             # The battery's charge step is reckoned with the site's chargers held stopped: none may run at the start.
             return BLOCKED_CAR_CHARGING, None
