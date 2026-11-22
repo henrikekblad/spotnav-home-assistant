@@ -499,6 +499,26 @@ describe("Send debug info", () => {
     expect(sends(hass)).toEqual([]);
   });
 
+  it("fills in the installation's saved address, and keeps a newly sent one for next time", async () => {
+    const beta = JSON.parse(
+      readFileSync(join(__dirname, "..", "..", "tests", "fixtures", "beta", "ended.json"), "utf-8"),
+    ) as { beta: Record<string, unknown> };
+    const { hass, element } = await mounted();
+    hass.betaHandler = async () => ({ ...beta, beta: { ...beta.beta, email: "saved@example.com" } });
+    await openSend(element);
+    expect(field<HTMLInputElement>(element, "email").value).toBe("saved@example.com");
+    expect(form(element)?.querySelector("[data-send-debug-email-kept]")?.textContent).toBe(translate("en", "sendDebug.emailKept"));
+    fill(element, "It stopped", "new@example.com", true);
+    await submit(element);
+    hass.resolveNext({ api_version: 1, ok: true, error: null, ref: "SN-7KQ4", retry_after_s: null });
+    await settle();
+    form(element)?.querySelector<HTMLButtonElement>("[data-send-debug-close]")?.click();
+    await settle();
+    root(element).querySelector<HTMLButtonElement>("[data-send-debug='open']")?.click();
+    await settle();
+    expect(field<HTMLInputElement>(element, "email").value).toBe("new@example.com");
+  });
+
   it("sends the message and shows the reference", async () => {
     const { hass, element } = await mounted();
     await openSend(element);

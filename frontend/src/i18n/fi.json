@@ -785,6 +785,7 @@
   "sendDebug.privacy": "Tietosuojakäytäntö",
   "sendDebug.message": "Mitä tapahtui ja suunnilleen milloin?",
   "sendDebug.email": "Sähköposti (valinnainen, jos haluat vastauksen)",
+  "sendDebug.emailKept": "Tallennetaan Home Assistantiin seuraavaa kertaa varten, sama osoite kuin kohdassa Beetatestaaja.",
   "sendDebug.consent": "Hyväksyn, että tiedot lähetetään SpotNavin kehittäjälle",
   "sendDebug.send": "Lähetä",
   "sendDebug.sent": "Lähetetty. Viitteesi: {ref}. Mainitse se, kun kirjoitat foorumille tai ryhmään.",

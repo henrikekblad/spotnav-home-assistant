@@ -246,7 +246,13 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
       return;
     }
     openValueEditor(translate(model.language, "sendDebug.title"), (handlers) =>
-      sendDebugEditor(doc, model.language, idPrefix, send, handlers),
+      sendDebugEditor(doc, model.language, idPrefix, async (message, email) => {
+        const outcome = await send(message, email);
+        if ("ref" in outcome && email !== null) {
+          betaRows?.rememberEmail(email);
+        }
+        return outcome;
+      }, handlers, betaRows?.email ?? null),
     );
   }
 

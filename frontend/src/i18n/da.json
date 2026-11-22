@@ -785,6 +785,7 @@
   "sendDebug.privacy": "Privatlivspolitik",
   "sendDebug.message": "Hvad skete der, og cirka hvornår?",
   "sendDebug.email": "E-mail (valgfrit, hvis du vil have svar)",
+  "sendDebug.emailKept": "Gemmes i Home Assistant til næste gang, samme adresse som under Betatester.",
   "sendDebug.consent": "Jeg accepterer, at oplysningerne sendes til SpotNavs udvikler",
   "sendDebug.send": "Send",
   "sendDebug.sent": "Sendt. Din reference: {ref}. Angiv den, når du skriver i forummet eller i gruppen.",
