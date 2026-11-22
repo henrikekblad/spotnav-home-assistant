@@ -75,8 +75,10 @@ The entity keys, options and services below were checked against each integratio
   only while the storage control mode is already Remote Control (`select.py` `StorageControlMode`, option 4): the
   command mode (`storage_command_mode`, `const.py` `STORAGE_MODE`), the charge and discharge limits (W) and the
   command timeout (s, at most 86400), all available only in Remote Control (`number.py`). The timeout is the
-  watchdog: when SpotNav stops renewing the command the inverter falls back to its default mode by itself. A grid
-  charge needs an AC charge policy other than Disabled (`ac_charge_policy`).
+  watchdog: when SpotNav stops renewing the command the inverter falls back to its default mode by itself. It is
+  written as `WATCHDOG_S` (30 minutes) and written again, with the command mode, every `WATCHDOG_RENEW_S` (half of
+  it) and at every change of action, so it is renewed whether the inverter restarts its timer on the timeout's write
+  or on the command's. A grid charge needs an AC charge policy other than Disabled (`ac_charge_policy`).
 * **Huawei Solar**, `huawei_solar`, wlcrs `c754df504587cac15f8f9c5866e88013e64c67c4` (library huawei-solar 3.1.0):
   services `forcible_charge` / `forcible_discharge` (`device_id` of the battery, `power` W, `duration` minutes
   1-1440) and `stop_forcible_charge` (`services.py`), registered only with the installer password; read back from
@@ -245,7 +247,11 @@ The entity keys, options and services below were checked against each integratio
     (`grid_charge_phases` 1: the entities do not say how many phases the Multis are on). The page warns that
     2700 (this setpoint) is logged to VRM and wears the GX's flash when written repeatedly (Venus 3.50 added a
     volatile 2716, `/Overrides/Setpoint` on the hub4 service, whose life the page does not describe: not used), so
-    the setpoint is written only when the rate changes, never to follow the house.
+    the setpoint is written only when the rate changes, never to follow the house. A grid setpoint found below
+    `VICTRON_SALE_BELOW_W` (a sale running when the snapshot was taken) is handed back as the GX's default 50 W, never
+    as found (`Role.restored_below`); a smaller negative bias (-20 W, so the house never imports) is the person's and
+    is handed back as found. While it reads below that and SpotNav holds no snapshot of it, the checklist says so
+    (`grid_setpoint_selling`): a hold or a discharge for the house does not write it, so the sale would go on.
   * **Mode 3** (`VICTRON_PHASES`, the charge per phase): select `system_ess_mode` (`/Settings/CGwacs/Hub4Mode`:
     `phase_compensation_enabled` 1, `phase_compensation_disabled` 2, `external_control` 3), numbers
     `vebus_ac_power_setpoint_l1..l3` (`/Hub4/L1..L3/AcPowerSetpoint` on the VE.Bus service, Modbus 37/40/41, W,
@@ -411,6 +417,11 @@ class Role:
     #: The entity may not exist on a plant of this brand (Tesla's grid-charging switch needs solar): when it is not
     #: found the role is left out of every state and nothing is missing.
     optional: bool = False
+    #: `(below, value)`: a number found below `below` is restored as `value` instead (in the entity's unit); `None`:
+    #: as found. Victron's grid setpoint far below 0 is a sale running when the snapshot was taken (SpotNav's own left
+    #: by a lost state, or another tool's), never a value to put back for good: the GX would then sell the battery
+    #: until someone noticed. The executor logs each such replacement (`restore_replaced`).
+    restored_below: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -623,7 +634,8 @@ class BrandControl:
     watchdog_roles: tuple[str, ...] = ()
     #: Roles that must read a value before anything is written (`(role, allowed states, reason)`).
     requires: tuple[tuple[str, frozenset[str], str], ...] = ()
-    #: Extra requirements for one action (`(action, role, forbidden states, reason)`).
+    #: Extra requirements for one action (`(action, role, forbidden states, reason)`); a forbidden state that is a
+    #: number matches a read of the same number ("0" matches "0.0"), `forbidden_read`.
     action_requires: tuple[tuple[str, str, frozenset[str], str], ...] = ()
     #: Whether the effect can only be judged by the battery's power (no read-back from the device).
     local_readback: bool = False
@@ -920,6 +932,29 @@ def fixed_rate_kw(control: BrandControl, facts: Any) -> float | None:
     units = max(1, math.ceil(capacity / control.fixed_unit_kwh - 0.15))
     rating = getattr(facts, "max_charge_kw", None)
     return max(control.fixed_charge_kw * units, rating if isinstance(rating, (int, float)) else 0.0)
+
+
+#: The `action_requires` reasons that are the person's own setting on the plant, told in the status (`needs`): only
+#: they can change it, and until they do the action never runs.
+TOLD_ACTION_REASONS: Final = frozenset({"inverter_power_zero"})
+
+
+def forbidden_read(state: str | None, forbidden: frozenset[str]) -> bool:
+    """Whether a role's state is one of an action's `forbidden` states (`BrandControl.action_requires`): the same
+    text, or the same number where both are numbers. No state at all is forbidden too (nothing shows it is not)."""
+    if state is None or state in forbidden:
+        return True
+    try:
+        value = float(state)
+    except ValueError:
+        return False
+    for item in forbidden:
+        try:
+            if math.isfinite(value) and float(item) == value:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def reading(role: Role, state: str | None) -> str | None:
@@ -1392,8 +1427,13 @@ _VIC_DISCHARGE = Role(
     "discharge_power", "number", _key("system_ess_max_inverter_power_limit", "number"), scale=1000.0, step=50.0,
     tolerance=1.0,
 )
+#: The GX's own default grid setpoint (W), what a sale found at the snapshot is restored as, and the setpoint (W)
+#: below which a found value is a sale, not a person's small bias against importing.
+VICTRON_GRID_DEFAULT_W: Final = 50.0
+VICTRON_SALE_BELOW_W: Final = -200.0
 _VIC_GRID = Role(
-    "grid_setpoint", "number", _key("system_ac_power_set_point", "number"), scale=1000.0, step=10.0, tolerance=1.0
+    "grid_setpoint", "number", _key("system_ac_power_set_point", "number"), scale=1000.0, step=10.0, tolerance=1.0,
+    restored_below=(VICTRON_SALE_BELOW_W, VICTRON_GRID_DEFAULT_W),
 )
 _VIC_MODE = Role("ess_mode", "select", _key("system_ess_mode", "select"))
 #: The two Hub4 flags are written off for a charge per phase and never handed back: outside external control the GX
@@ -1488,6 +1528,12 @@ VICTRON_CONTROL: Final = BrandControl(
     peak_first={ACTION_HOLD: ("discharge_power",), ACTION_GRID_CHARGE: ("grid_setpoint",)},
     # The entities do not say how many phases the Multis are on: the balanced charge is capped as if on one.
     grid_charge_phases=1,
+    # "Max inverter power" at 0 is the person's (or an installer's) "never discharge": the Multi feeds nothing, so a
+    # discharge would write and then show no effect. SpotNav never writes it up; the status says so (`needs`).
+    action_requires=tuple(
+        (action, "discharge_power", frozenset({"0"}), "inverter_power_zero")
+        for action in (ACTION_DISCHARGE_HOUSE, ACTION_EXPORT_DISCHARGE)
+    ),
     note="Mode 2 for a hold, a balanced charge and a discharge (settings on the GX, written rarely); external"
     " control with a setpoint per phase, renewed inside the Multi's 60 s watchdog, for a charge per phase. Not"
     " tested on a plant.",

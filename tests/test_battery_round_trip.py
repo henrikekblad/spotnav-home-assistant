@@ -10,6 +10,7 @@ from custom_components.spotnav.battery.plan_model import DEFAULT_ROUND_TRIP_EFFI
 from custom_components.spotnav.battery.plan_shadow import BUCKET, Bucket
 from custom_components.spotnav.battery.round_trip import (
     MIN_WINDOWS,
+    PLAN_CAP,
     REJECT_DISAGREE,
     REJECT_IMPLAUSIBLE,
     SOURCE_COUNTERS,
@@ -251,3 +252,30 @@ def test_a_stored_point_or_window_without_an_offset_is_not_taken() -> None:
     assert Window.from_dict(window) is None
     assert Window.from_dict({**window, "start": "2026-11-01T00:00:00"}) is None
     assert Window.from_dict({**window, "end": "2026-11-01T08:00:00+00:00"}) is not None
+
+
+def test_a_round_trip_above_the_cap_is_kept_raw_but_the_plan_uses_the_cap() -> None:
+    """Counters at the battery miss the inverter's loss: a 97 % DC round trip is taken as a window and shown raw in
+    the diagnostics, but the plan never uses more than `PLAN_CAP`."""
+    learner = RoundTrip()
+
+    _run(learner, Battery(0.97), days=12)
+
+    assert learner.windows and not learner.rejected
+    assert all(window.efficiency == pytest.approx(0.97, abs=0.01) for window in learner.windows)
+    assert learner.efficiency == PLAN_CAP == 0.95
+    view = learner.view()
+    assert view["median"] == pytest.approx(0.97, abs=0.01)
+    assert view["capped"] is True and view["cap"] == PLAN_CAP
+
+
+def test_a_round_trip_under_the_cap_is_not_marked_capped() -> None:
+    learner = RoundTrip()
+    _run(learner, Battery(0.84), days=12)
+    assert learner.view()["capped"] is False
+
+
+def test_a_value_stored_above_the_cap_is_brought_under_it() -> None:
+    learner = RoundTrip.from_dict({"efficiency": 0.97})
+    assert learner.efficiency == PLAN_CAP
+    assert RoundTrip.from_dict({"efficiency": 0.91}).efficiency == 0.91

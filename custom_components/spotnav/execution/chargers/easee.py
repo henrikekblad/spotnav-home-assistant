@@ -85,6 +85,16 @@ _EASEE_AUTHORIZATION_ATTRIBUTE: Final = "config_authorizationrequired"
 #: The disabled-by-default diagnostic sensor that carries the dynamic limit (easee_hass
 #: `dynamic_charger_limit`); its state is the only read-back there is.
 EASEE_LIMIT_SENSOR_KEY: Final = "dynamic_charger_limit"
+#: The circuit's dynamic limit, on the circuit's master charger only and disabled by default (easee_hass
+#: nordicopen/easee_hass `d05d7d41`, v2026.11.0, `const.py` `dynamic_circuit_limit`: `only_master`, attributes
+#: `circuit_id` and `state_dynamicCircuitCurrentP1..P3`). pyeasee (nordicopen/pyeasee `840ab44a`, v0.8.23,
+#: `const.py`) names it "Dynamically set circuit maximum current for phase N", beside `dynamicChargerCurrent`, "Max
+#: current this charger is allowed to offer to car": a circuit limit below the charger's caps it (the circuit's
+#: chargers share it), so a `set_charger_dynamic_limit` above it is taken and read back but not drawn. Read only,
+#: for the diagnostics and the status (`charger_circuit_limited`); SpotNav never writes it (a circuit limit is the
+#: whole circuit's, every charger on it, and Easee's Equalizer or the person's own automation may own it).
+EASEE_CIRCUIT_LIMIT_SENSOR_KEY: Final = "dynamic_circuit_limit"
+_EASEE_CIRCUIT_PHASE_ATTRIBUTES: Final = tuple(f"state_dynamiccircuitcurrentp{n}" for n in (1, 2, 3))
 #: After a charge was started or re-sent at the floor, the regulator may not take it lower for this
 #: long: a fast 7 A to 6 A drop aborts charges on slow cars (evcc#33963).
 EASEE_START_HOLD_S: Final = 60.0
@@ -596,10 +606,21 @@ class EaseeDynamicLimit(CurrentPath):
     def describe(self) -> dict[str, Any]:
         return current_description(self.kind, service=f"{_EASEE_DOMAIN}.set_charger_dynamic_limit")
 
+    def circuit_limit_a(self) -> float | None:
+        """The circuit's dynamic limit (A), the lowest of its phases above 0, where its sensor is enabled; `None`
+        otherwise. A phase at 0 is one the circuit does not use (a one-phase install reads 16/0/0), and a circuit at 0
+        on every phase is read as no limit: it is no reading SpotNav can tell apart from an unset one."""
+        found = easee_circuit_limit(self.hass, self.status_entity_id)
+        used = [] if found is None else [value for value in found[1] if value > 0]
+        return min(used) if used else None
+
     def describe_state(self) -> dict[str, Any]:
+        circuit = easee_circuit_limit(self.hass, self.status_entity_id)
         return {
             "last_written_a": self.last_written_a,
             "read_back_a": self.read_back_a(),
+            # Read only: a circuit limit below the charger's caps it (`EASEE_CIRCUIT_LIMIT_SENSOR_KEY`).
+            "circuit_limit": None if circuit is None else {"entity_id": circuit[0], "phases_a": list(circuit[1])},
             "limit_sensor_enabled": self.limit_entity_id() is not None,
             "cache_suspect": self.cache_suspect(),
             "holding_start_floor": self._holding_start_floor(),
@@ -670,6 +691,39 @@ def _circuit_of(hass: HomeAssistant, status_entity_id: str) -> str | None:
     if value is None or isinstance(value, bool) or str(value).strip() == "":
         return None
     return str(value).strip()
+
+
+def easee_circuit_limit(hass: HomeAssistant, status_entity_id: str | None) -> tuple[str, tuple[float, ...]] | None:
+    """The circuit's dynamic limit per phase (A) and the sensor read, from the enabled `dynamic_circuit_limit` sensor
+    of whichever Easee charger is master of this charger's circuit (by `circuit_id`); `None` when there is none or it
+    reads nothing. Read only (`EASEE_CIRCUIT_LIMIT_SENSOR_KEY`)."""
+    if not status_entity_id:
+        return None
+    circuit = _circuit_of(hass, status_entity_id)
+    if circuit is None:
+        return None
+    registry = er.async_get(hass)
+    for entry in list(registry.entities.values()):
+        if (
+            entry.platform != _EASEE_DOMAIN
+            or entry.domain != "sensor"
+            or entry.disabled_by is not None
+            or not entity_matches_keys(
+                translation_key=entry.translation_key, unique_id=entry.unique_id, keys=(EASEE_CIRCUIT_LIMIT_SENSOR_KEY,)
+            )
+            or _circuit_of(hass, entry.entity_id) != circuit
+        ):
+            continue
+        phases = tuple(
+            value for name in _EASEE_CIRCUIT_PHASE_ATTRIBUTES
+            if (value := _finite(_attribute(hass, entry.entity_id, name))) is not None and value >= 0
+        )
+        if not phases:
+            state = hass.states.get(entry.entity_id)
+            total = _finite(state.state) if state is not None else None
+            phases = () if total is None or total < 0 else (total,)
+        return (entry.entity_id, phases) if phases else None
+    return None
 
 
 def easee_alone_on_circuit(hass: HomeAssistant, status_entity_id: str) -> bool:

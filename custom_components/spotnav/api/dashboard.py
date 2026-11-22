@@ -296,6 +296,8 @@ class CapturedLive:
     measured_current_a: float | None
     #: The charger's own scheduler or load balancer holds the charge (Easee's waiting statuses).
     held_by_charger: bool = False
+    #: A limit outside SpotNav's reach that caps the charger below what SpotNav set (A; Easee's circuit limit).
+    circuit_limit_a: float | None = None
     #: The charger's own enable switch is off, so it cannot start.
     charger_disabled: bool = False
     #: The charger's own modes that are on and its own enable switch when it is off, each with its fix.
@@ -1300,6 +1302,7 @@ def _capture_dashboard(
             setpoint_current_a=None if controller is None else controller.setpoint_current_a,
             measured_current_a=measured_current_of(hass, entry_id, controller),
             held_by_charger=bool(controller is not None and controller.held_by_charger),
+            circuit_limit_a=None if controller is None else controller.circuit_limit_a,
             charger_disabled=bool(controller is not None and controller.charger_disabled),
             conflicts=conflicts,
             conflict_words=tuple((found.entity_id, conflict_words(hass, found)) for found in conflicts),
@@ -2810,6 +2813,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         prices_unpriced=None if snapshot is None else snapshot.unpriced,
         charging=capture.live.charging,
         held_by_charger=capture.live.held_by_charger,
+        circuit_limit_a=capture.live.circuit_limit_a,
         charger_disabled=capture.live.charger_disabled,
         charger_disabled_entity=None if disabled is None else disabled.entity_id,
         charger_disabled_entity_name=None if disabled is None else words.get(disabled.entity_id, _NO_WORDS).entity_name,

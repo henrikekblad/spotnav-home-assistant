@@ -192,6 +192,7 @@ from .commands import (
     ACTION_CURTAIL_EXPORT,
     NORMAL,
     SNAPSHOT,
+    TOLD_ACTION_REASONS,
     WATCHDOG_RENEW_S,
     WATCHDOG_S,
     BrandControl,
@@ -200,6 +201,7 @@ from .commands import (
     Role,
     answered,
     fixed_rate_kw,
+    forbidden_read,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
@@ -306,6 +308,11 @@ CALL_TIMEOUT_BLOCK_S: Final = 900.0
 #: Writes a day outside restores and watchdog renewals (flash wear is unknown for most brands). A renewal is bounded
 #: by its timer: `WATCHDOG_RENEW_S` per role (SolarEdge renews two roles: 192 a day).
 DAILY_WRITE_CAP: Final = 96
+#: The least time since the last renewal (or change) before a change of action renews the watchdog roles it leaves
+#: as they were (s).
+RENEW_ON_CHANGE_GAP_S: Final = 60.0
+#: The checklist's code for a sale left standing in a setpoint SpotNav holds no snapshot of (`told_problems`).
+SETPOINT_SELLING: Final = "grid_setpoint_selling"
 #: Hand-back reasons for a day's budget that neither block the control nor are logged at every look after.
 _BUDGET_REASONS: Final = ("setpoint_write_cap", "charge_write_budget")
 #: A restore write that does not read back is retried after these delays (s), then given up.
@@ -1037,9 +1044,13 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
             return None if rating is None else round(rating * role.scale, 6)
         text = reading(role, state)
         try:
-            return None if text is None else float(text)
+            value = None if text is None else float(text)
         except ValueError:
             return None
+        if value is not None and role.restored_below is not None and value < role.restored_below[0]:
+            # A sale running when it was found is never the person's value (`Role.restored_below`).
+            return role.restored_below[1]
+        return value
     return reading(role, state)
 
 
@@ -1560,10 +1571,46 @@ class Executor:
         if not self.control.supports(action):
             return f"action_not_supported:{action}"
         for act, name, forbidden, why in self.control.action_requires:
-            read = inputs.reads.get(name)
-            if act == action and (read is None or read.state is None or read.state in forbidden):
+            if act == action and forbidden_read(self.person_state(name, inputs.reads.get(name)), forbidden):
                 return why
         return None
+
+    def person_state(self, name: str, read: RoleRead | None) -> str | None:
+        """A role's state as the person set it: the value found at enter while SpotNav's own write stands in it (a
+        Victron hold writes the discharge power 0, which must not read as the person's "never discharge"), else
+        the state now."""
+        state = self.state
+        if state.phase != "idle" and name in state.written and name in state.snapshot:
+            return state.snapshot[name]
+        return None if read is None else read.state
+
+    def told_problems(self, reads: Mapping[str, RoleRead]) -> tuple[str, ...]:
+        """The person's own settings that keep an action from ever running (`commands.TOLD_ACTION_REASONS`), and a
+        sale left standing in a setpoint SpotNav holds no snapshot of (`SETPOINT_SELLING`), for the status."""
+        found: list[str] = []
+        for _act, name, forbidden, why in self.control.action_requires:
+            read = reads.get(name)
+            if why not in TOLD_ACTION_REASONS or why in found or read is None or not read.found:
+                continue
+            state = self.person_state(name, read)
+            if state is not None and reading(self.control.role(name), state) is not None and forbidden_read(
+                state, forbidden
+            ):
+                found.append(why)
+        for role in self.control.roles:
+            # A sale left standing (`Role.restored_below`: Victron's grid setpoint far below 0) that SpotNav holds no
+            # snapshot of: a hold or a discharge for the house does not write it, so it sells on. Told, never written.
+            read = reads.get(role.name)
+            if role.restored_below is None or read is None or not read.found or role.name in self.state.snapshot:
+                continue
+            text = reading(role, read.state)
+            try:
+                value = None if text is None else float(text)
+            except ValueError:
+                value = None
+            if value is not None and math.isfinite(value) and value < role.restored_below[0]:
+                found.append(SETPOINT_SELLING)
+        return tuple(found)
 
     def _exit_reason(self, inputs: ExecInputs) -> str | None:
         facts = inputs.facts
@@ -2154,6 +2201,7 @@ class Executor:
             return False, [_event(now, "not_started", why)]
         snapshot: dict[str, str] = {}
         restore_values: dict[str, Native] = {}
+        replaced: dict[str, dict[str, Any]] = {}
         entities: dict[str, str] = {}
         device_id: str | None = None
         for role in self.control.roles:
@@ -2169,6 +2217,10 @@ class Executor:
                 return False, [_event(now, "not_started", f"no_restore_value:{role.name}", read=read.state)]
             snapshot[role.name] = read.state or ""
             restore_values[role.name] = value
+            if role.restored_below is not None and value == role.restored_below[1] and _restore_value(
+                replace(role, restored_below=None), read.state, inputs.facts
+            ) != value:
+                replaced[role.name] = {"found": read.state, "restored_as": value}
         action = inputs.action
         assert action is not None
         house, behind = self._grid_terms(inputs, action, phases)
@@ -2188,7 +2240,10 @@ class Executor:
         )
         self._watch(inputs, action, rate)
         detail: dict[str, Any] = {} if phases is None else {"phase_kw": list(phases)}
-        return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot, **detail)]
+        events = [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot, **detail)]
+        # A value found that is handed back as something else (`Role.restored_below`): said in the change log.
+        events += [_event(now, "restore_replaced", name, **row) for name, row in replaced.items()]
+        return True, events
 
     def _grid_terms(
         self, inputs: ExecInputs, action: str, phases: Phases | None
@@ -2285,11 +2340,29 @@ class Executor:
             return events + self._begin_restore(now, "headroom_too_small")
         if action != state.action:
             house, behind = self._grid_terms(inputs, action, phases)
+            target = self._wanted(action, rate, state.restore_values, phases, house_kw=house, behind=behind)
+            # The renewal counts from this change, so a watchdog role the new action leaves as it was (SolarEdge's
+            # timeout) is written again with the new command: with an action change every quarter hour it would
+            # otherwise never be renewed after the start. The roles it changes are written anyway, and counted; so is
+            # a button, pressed once per target (SolaX's trigger sends the whole new command).
+            # At most once a `RENEW_ON_CHANGE_GAP_S` (an action that flips at every look would otherwise renew at
+            # every look, uncounted): a change sooner keeps the last renewal's time, so the shared timer still
+            # renews `WATCHDOG_RENEW_S` after it.
+            unchanged = () if self._fast_renewal() else tuple(
+                name for name in self.control.watchdog_roles
+                if name in target and state.target.get(name) == target[name]
+                and self.control.role(name).method != "button"
+            )
+            due = state.watchdog_at is None or (now - state.watchdog_at).total_seconds() >= RENEW_ON_CHANGE_GAP_S
+            # Within the gap, a renewal the timer already owed (and `watchdog_at` records as done) is kept.
+            renew = unchanged if due else tuple(name for name in state.renew if name in unchanged)
+            watchdog_at = state.watchdog_at if unchanged and not due else now
             self.state = replace(
                 state, action=action, rate_kw=rate,
-                target=self._wanted(action, rate, state.restore_values, phases, house_kw=house, behind=behind),
+                target=target,
                 house_kw=house, phase_behind_kw=behind, phase_was_behind_kw=None,
-                sent=(), renew=(), rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
+                sent=(), renew=renew, rate_changed_at=now, watchdog_at=watchdog_at, covered_at=None,
+                peak_low_since=None,
                 lead=self._lead(state.action), phase_kw=phases, phase_bad=(), phase_judged_at=None,
                 phase_was_kw=None, phase_raised_at=None, phase_over=0, phase_over_at=None,
                 # The runaway's grace counts from the charge's own start.
@@ -2547,23 +2620,28 @@ class Executor:
             order = restore_order(self.control, state.action)
         else:
             order = (*state.lead, *(name for name in self.control.enter_order if name not in state.lead))
+        # A role whose value must change goes before a role that is only renewed: renewals never hold back a write
+        # the action owes (an action that flips at every look must still write its command, and be counted).
+        renewals: list[str] = []
         for name in order:
             if name not in state.target or name in state.given_up or name in state.unrestored or name in state.in_flight:
                 continue
             retry = state.retries.get(name)
             if retry is not None and inputs.now < retry[1]:
                 continue
-            if name in state.renew:
-                return name
             entity_id = state.entities.get(name)
             claim = None if entity_id is None else self.ledger.claim(entity_id)
             if claim is not None and claim.owned is not None and claim.intended == state.target[name]:
                 # Written and read back: a later difference is the ledger's to judge (another system, or a
                 # gap), never a reason to write it again.
+                if name in state.renew:
+                    renewals.append(name)
                 continue
             if not self._satisfied(self.control.role(name), state.target[name], inputs.reads.get(name), restoring=restoring):
                 return name
-        return None
+            if name in state.renew:
+                renewals.append(name)
+        return renewals[0] if renewals else None
 
     def _progress(self, inputs: ExecInputs) -> list[Op]:
         state = self.state

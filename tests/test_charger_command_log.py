@@ -187,6 +187,7 @@ async def test_the_charger_diagnostics_carry_the_start_stop_state_and_the_log(ha
         "limit_sensor_enabled",
         "cache_suspect",
         "holding_start_floor",
+        "circuit_limit",
     }
     assert block["charger_disabled"] is False
     assert [(c["kind"], c["result"]) for c in block["commands"]] == [("start", "sent")]

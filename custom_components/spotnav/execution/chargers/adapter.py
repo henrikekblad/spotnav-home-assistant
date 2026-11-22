@@ -539,6 +539,13 @@ class ChargerAdapter:
         """Whether the status sensor is configured and says something (not unavailable or unknown)."""
         return self._status() is not None
 
+    def circuit_limit_a(self) -> float | None:
+        """A limit outside SpotNav's reach that caps the charger below what SpotNav set (Easee's circuit dynamic
+        limit, `CurrentPath.circuit_limit_a`), `None` when none is read or it is not below the current set."""
+        limit = self.current.circuit_limit_a()
+        setpoint = self.current.setpoint_a()
+        return limit if limit is not None and setpoint is not None and limit < setpoint else None
+
     def held_by_charger(self) -> bool:
         """Whether the charger's own scheduler or load balancer holds the charge (Easee's
         `awaiting_scheduled_start`, `awaiting_smart_start`, `awaiting_load_balancing`,

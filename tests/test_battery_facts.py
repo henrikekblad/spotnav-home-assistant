@@ -302,6 +302,50 @@ def test_an_unknown_brand_reads_its_level_by_device_class_and_has_no_controls() 
     assert facts.management.state == "unknown" and facts.management.reason == "no_adapter"
 
 
+def _car_or_phone(platform: str, uid: str, **extra: EntityFact) -> list[EntityFact]:
+    power = EntityFact(f"sensor.{uid}_power", platform, f"{uid}_battery_power", device_id="dev", state="1200", unit="W")
+    level = EntityFact(
+        f"sensor.{uid}_level", platform, f"{uid}_battery_level", device_id="dev", device_class="battery", state="64",
+        unit="%",
+    )
+    return [power, level, *extra.values()]
+
+
+@pytest.mark.parametrize(
+    ("platform", "uid", "extra"),
+    [
+        # The Android companion app: "Battery power" (W) beside the phone's level.
+        ("mobile_app", "pixel", {}),
+        # Car integrations: a power and the car's level on the car's device.
+        ("mg_saic", "mg4", {}),
+        ("volkswagen_we_connect_id", "id4", {}),
+        ("octopus_energy", "intelligent", {}),
+        # TeslaMate's MQTT sensors, by their names.
+        ("mqtt", "teslamate_1", {}),
+        # Tibber's Data API puts a car's level (`storage.stateOfCharge`) on its device, as it does a home battery's;
+        # a car's device also says where it is.
+        ("tibber", "car", {"tracker": EntityFact("device_tracker.car", "tibber", "car_location", device_id="dev")}),
+        # A Tesla integration holds Powerwalls too: the car's range on its device tells it apart.
+        ("tessie", "model_y", {"range": EntityFact(
+            "sensor.model_y_range", "tessie", "vin_range", device_id="dev", device_class="distance", state="300",
+        )}),
+    ],
+)
+def test_a_cars_or_a_phones_battery_level_is_never_the_house_batterys(
+    platform: str, uid: str, extra: dict[str, EntityFact]
+) -> None:
+    entities = _car_or_phone(platform, uid, **extra)
+    facts = battery_facts(entities[0], entities, power_kw=1.2)
+    assert facts.soc_pct is None and "soc" not in facts.sources
+
+
+def test_a_home_battery_of_a_shared_integration_still_reads_its_level() -> None:
+    """Tibber's Data API home battery (a Homevolt) and Tesla Custom's energy site: no place, no range, a level."""
+    for platform in ("tibber", "tesla_custom"):
+        entities = _car_or_phone(platform, "home")
+        assert battery_facts(entities[0], entities, power_kw=1.2).soc_pct == 64.0
+
+
 def test_no_battery_has_no_facts() -> None:
     facts = battery_facts(None, [])
 

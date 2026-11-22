@@ -1528,6 +1528,12 @@ class ChargingController:
         """Whether the charger's own scheduler or load balancer holds the charge."""
         return self.adapter.held_by_charger()
 
+    @property
+    def circuit_limit_a(self) -> float | None:
+        """A limit outside SpotNav's reach that caps the charger below what SpotNav set (Easee's circuit dynamic
+        limit), `None` when none is read or it does not cap. Read only."""
+        return self.adapter.circuit_limit_a()
+
     def connection(self) -> tuple[str, str | None]:
         """The charger's connection state and the entity it came from (`charger_connection.py`)."""
         return self.adapter.connection()

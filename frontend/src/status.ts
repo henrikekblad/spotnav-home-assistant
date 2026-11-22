@@ -248,6 +248,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
+  charger_circuit_limited: "issue.circuitLimited",
   charger_disabled: "issue.chargerDisabled",
   charger_own_mode: "issue.ownMode",
   held_until_window: "status.heldUntilWindow",
@@ -873,6 +874,8 @@ export function lineText(
       const time = momentText(format, departure, nowMs);
       return say(automatic ? "status.importTargetReleasedAuto" : "status.importTargetReleased", { time });
     }
+    case "charger_circuit_limited":
+      return say("issue.circuitLimited", { limit: limitText(language, num(p["limit_a"]) ?? 0, format) });
     case "load_balancing_limited": {
       const limit = num(p["limit_a"]);
       return limit === null
@@ -1143,6 +1146,11 @@ export function issuesOf(
         technical: null,
         fix: { entity: line.params["entity"], value: "on", labelKey: "issue.chargerDisabled.turnOn", labelParams: {} },
       });
+      continue;
+    }
+    if (line.code === "charger_circuit_limited") {
+      const limit = limitText(language, num(line.params["limit_a"]) ?? 0, format);
+      issues.push({ code: line.code, severity, textKey: "issue.circuitLimited", params: { limit }, technical: null });
       continue;
     }
     if (line.code === "duplicate_charger") {

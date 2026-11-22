@@ -6,7 +6,7 @@ hand-back, and an unbalanced house that never passes the fuse. The plant here is
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -616,3 +616,165 @@ class _Never(dict):  # type: ignore[type-arg]
 
     def __setitem__(self, _key: Any, _value: Any) -> None:
         return None
+
+
+# --- quirks seen in other installations ------------------------------------------------------------------------------
+
+
+class GappyPlant(Plant):
+    """A GX that has not republished some values for a while: victron-mqtt marks a metric not seen for
+    `STALE_METRIC_TIMEOUT_SECONDS` (360 s) unavailable, and a value the GX publishes as null reads `unknown`."""
+
+    def __init__(self, gaps: dict[str, str] | None = None) -> None:
+        super().__init__()
+        self.gaps: dict[str, str] = gaps or {}
+
+    def reads(self, executor: Executor, now: datetime) -> dict[str, RoleRead]:
+        reads = super().reads(executor, now)
+        for name, state in self.gaps.items():
+            if name in reads:
+                reads[name] = RoleRead(
+                    entity_id=reads[name].entity_id, state=state, found=True, enabled=True, step=reads[name].step,
+                    device_id="GX",
+                )
+        return reads
+
+
+def test_a_setting_spotnav_owns_that_goes_unknown_or_unavailable_is_neither_a_failure_nor_written_again() -> None:
+    """Mode 2's settings are stored on the GX and do not revert (the module): a read that stops is the GX not
+    republishing, no evidence of anything, and the battery's power keeps judging the effect."""
+    plant, executor = GappyPlant(), Executor(VICTRON_CONTROL)
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert _written(results) == [("discharge_power", 0.0)]
+    for gap in ("unavailable", "unknown"):
+        plant.gaps = {"discharge_power": gap}
+        now, results = _run(executor, plant, now, 60, "hold")  # 10 minutes
+        assert _written(results) == [] and not _events(results, "hand_back") and executor.state.phase == "active"
+    plant.gaps = {}
+    now, results = _run(executor, plant, now, 4, "hold")
+    assert _written(results) == [] and executor.state.phase == "active"
+    _now, results = _run(executor, plant, now, 4, "self_consume")
+    assert _written(results) == [("discharge_power", -1.0)]
+
+
+def test_a_setpoint_that_reads_unknown_is_still_renewed_on_time() -> None:
+    """The setpoints per phase are written again every `VICTRON_RENEW_S` whatever they read: an `unknown` before a
+    renewal is no evidence and never holds a write back."""
+    plant, executor = GappyPlant(), _phased()
+    caps = _lifted()
+    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=caps)
+    start = len(plant.writes)
+    plant.gaps = {"phase_l1_target": "unknown"}
+    now, results = _run(executor, plant, now, 2, "grid_charge", 3.0, phase_caps_kw=caps)
+    plant.gaps = {}
+    now, more = _run(executor, plant, now, 10, "grid_charge", 3.0, phase_caps_kw=caps)
+    renewed = [at for at, op in plant.writes[start:] if op.role == "phase_l1_target"]
+    assert renewed and (renewed[0] - (now - TICK * 12)).total_seconds() <= VICTRON_RENEW_S + 10
+    assert not _events(results + more, "hand_back") and executor.state.phase == "active"
+
+
+@pytest.mark.parametrize("found", ["0", "0.0"])
+def test_a_max_inverter_power_of_0_keeps_every_discharge_from_starting_and_is_never_written(found: str) -> None:
+    plant = Plant()
+    plant.states["discharge_power"] = found
+    for action, rate in (("discharge_house", 0.0), ("export_discharge", 3.0)):
+        executor = Executor(VICTRON_CONTROL)
+        _now, results = _run(executor, plant, T0, 3, action, rate)
+        assert _written(results) == [] and executor.state.phase == "idle"
+        assert _events(results, "not_started")[0]["reason"] == "inverter_power_zero"
+        assert executor.told_problems(plant.reads(executor, T0)) == ("inverter_power_zero",)
+    # A hold and a charge still run.
+    executor = Executor(VICTRON_CONTROL)
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert executor.state.phase == "active"
+
+
+def test_spotnav_s_own_hold_at_0_is_not_the_person_s_and_a_discharge_follows_it_without_a_hand_back() -> None:
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert plant.states["discharge_power"] == "0"
+    assert executor.told_problems(plant.reads(executor, now)) == ()
+    now, results = _run(executor, plant, now, 6, "discharge_house")
+    assert not _events(results, "hand_back") and executor.state.action == "discharge_house"
+    assert ("charge_power", 0.0) in _written(results)
+    assert Executor(VICTRON_CONTROL).told_problems(Plant().reads(executor, now)) == ()
+
+
+def test_a_grid_setpoint_found_selling_is_handed_back_as_the_gx_default_never_as_found() -> None:
+    """A negative grid setpoint at the snapshot is a sale running then (SpotNav's own left by a lost state, or
+    another tool's): written back, the GX would sell the battery for good."""
+    from custom_components.spotnav.battery.commands import VICTRON_GRID_DEFAULT_W
+
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    plant.states["grid_setpoint"] = "-2000"
+    now, results = _run(executor, plant, T0, 5, "grid_charge", 2.0)
+    assert executor.state.restore_values["grid_setpoint"] == VICTRON_GRID_DEFAULT_W
+    assert [role for role, _value in _written(results)] == ["charge_power", "grid_setpoint"]
+    # The replacement is said in the change log.
+    [replaced] = _events(results, "restore_replaced")
+    assert replaced["reason"] == "grid_setpoint" and replaced["found"] == "-2000"
+    assert replaced["restored_as"] == VICTRON_GRID_DEFAULT_W
+    _now, results = _run(executor, plant, now, 5, "self_consume")
+    assert _written(results) == [("grid_setpoint", VICTRON_GRID_DEFAULT_W), ("charge_power", -1.0)]
+    # A hold does not touch the setpoint: it is left as found, not written to the default.
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    plant.states["grid_setpoint"] = "-100"
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert executor.state.phase == "active"
+    _now, more = _run(executor, plant, now, 4, "self_consume")
+    assert [role for role, _value in _written(results + more)] == ["discharge_power", "discharge_power"]
+    assert plant.states["grid_setpoint"] == "-100"
+    # A positive one, or a small negative bias against importing (down to `VICTRON_SALE_BELOW_W`), is the person's
+    # and is written back as found, with nothing to log.
+    for found in ("120", "-20", "-200"):
+        plant, executor = Plant(), Executor(VICTRON_CONTROL)
+        plant.states["grid_setpoint"] = found
+        now, results = _run(executor, plant, T0, 5, "grid_charge", 2.0)
+        assert not _events(results, "restore_replaced")
+        _now, results = _run(executor, plant, now, 5, "self_consume")
+        assert ("grid_setpoint", float(found)) in _written(results), found
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    plant.states["grid_setpoint"] = "-210"
+    _run(executor, plant, T0, 5, "grid_charge", 2.0)
+    assert executor.state.restore_values["grid_setpoint"] == VICTRON_GRID_DEFAULT_W
+
+
+def test_the_ess_controls_are_found_on_another_device_of_the_battery_s_entry_but_never_guessed_between_two() -> None:
+    """Victron puts the ESS settings on the GX's system device and the setpoints per phase on the VE.Bus device, not
+    always the device of the battery's own entity (`facts.find_entity`): one in the entry is taken, two that cannot be
+    told apart are none (control then says it is not found, never writes the wrong one)."""
+    from custom_components.spotnav.battery.executor import role_reads
+    from custom_components.spotnav.battery.facts import EntityFact
+
+    battery = EntityFact("sensor.battery_power", "victron_gx", unique_id="abc_battery_512_battery_power",
+                         device_id="battery", state="100")
+    ess = EntityFact("number.ess_max_charge", "victron_gx", unique_id="abc_system_0_system_ess_max_charge_power",
+                     device_id="system", state="-1")
+    reads = role_reads(VICTRON_CONTROL, [battery, ess], battery)
+    assert reads["charge_power"].entity_id == "number.ess_max_charge"
+    other = replace(ess, entity_id="number.other_ess_max_charge", unique_id="xyz_system_0_system_ess_max_charge_power",
+                    device_id="system2")
+    assert "charge_power" not in role_reads(VICTRON_CONTROL, [battery, ess, other], battery)
+    # One on the battery's own device wins over another elsewhere.
+    own = replace(other, device_id="battery")
+    assert role_reads(VICTRON_CONTROL, [battery, ess, own], battery)["charge_power"].entity_id == own.entity_id
+
+
+def test_a_sale_left_standing_in_the_grid_setpoint_is_told_while_spotnav_holds_no_snapshot_of_it() -> None:
+    """A setpoint far below 0 that SpotNav did not write keeps selling under a hold or a discharge for the house (they
+    do not write it): the checklist says so, and nothing writes it."""
+    plant = Plant()
+    plant.states["grid_setpoint"] = "-2000"
+    idle = Executor(VICTRON_CONTROL)
+    assert idle.told_problems(plant.reads(idle, T0)) == ("grid_setpoint_selling",)
+    # Nothing writes it.
+    _now, results = _run(Executor(VICTRON_CONTROL), plant, T0, 4, "hold")
+    assert all(role != "grid_setpoint" for role, _value in _written(results))
+    # A small bias, or SpotNav's own sale (with a snapshot of the value found), is not.
+    plant = Plant()
+    plant.states["grid_setpoint"] = "-150"
+    assert idle.told_problems(plant.reads(idle, T0)) == ()
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    now, _ = _run(executor, plant, T0, 4, "export_discharge", 6.0)
+    assert float(plant.states["grid_setpoint"]) < -200 and "grid_setpoint" in executor.state.snapshot
+    assert executor.told_problems(plant.reads(executor, now)) == ()

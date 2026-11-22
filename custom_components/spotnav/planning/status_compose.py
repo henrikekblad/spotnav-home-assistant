@@ -99,7 +99,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    remaining_need_estimated (a manual need counted without the energy register: its last remainder
    kept, or the charger's recorded charges; not for `kept_recent`, a register that was read and is
    unread for less than half an hour, nor `rebased`, one that reads again),
-   held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
+   held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_circuit_limited{limit_a}
+   (while it charges, a limit outside SpotNav's reach caps it below the current SpotNav set: Easee's circuit dynamic
+   limit, read only), charger_disabled
    (its own enable switch is off, so it cannot start), charger_own_mode (one per own mode of the charger
    that is on and works against SpotNav, charging or not), site_measurement_problem (the phases that
    make the site's measurement unusable and why; site_meter_unavailable in its place when the meter's
@@ -336,6 +338,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
     # wrong, and nothing SpotNav sends releases it.
     "held_by_charger": (TONE_NOTICE, ()),
+    # The charger draws under a limit outside SpotNav's reach, below the current SpotNav set: Easee's circuit
+    # dynamic limit (`limit_a`), shared by the circuit's chargers and set by Easee's Equalizer, its app or an
+    # automation. SpotNav reads it and never writes it.
+    "charger_circuit_limited": (TONE_NOTICE, ("limit_a",)),
     # The charger's own enable switch is off (Easee's `is_enabled`): it cannot start, whatever is sent.
     # `entity` is that switch, which an administrator may turn on from the card (`spotnav/fix_own_mode`);
     # `entity_name` its name as Home Assistant shows it (the id when it has none), `null` with `entity`.
@@ -601,6 +607,8 @@ class StatusFacts:
     charging: bool = False
     #: The charger itself reports that its own scheduler or load balancer holds the charge.
     held_by_charger: bool = False
+    #: A limit outside SpotNav's reach that caps the charger below what SpotNav set (A), `None` when none does.
+    circuit_limit_a: float | None = None
     #: The charger's own enable switch is off, so it cannot start; that switch, where it is known.
     charger_disabled: bool = False
     charger_disabled_entity: str | None = None
@@ -1129,6 +1137,8 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         )
     if facts.held_by_charger and not facts.charging:
         lines.append(_line("held_by_charger"))
+    if facts.circuit_limit_a is not None and facts.charging:
+        lines.append(_line("charger_circuit_limited", limit_a=round(facts.circuit_limit_a, 1)))
     if facts.charger_disabled and not facts.charging:
         lines.append(
             _line(
