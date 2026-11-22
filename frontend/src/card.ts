@@ -114,6 +114,7 @@ import {
   settingsErrorKey,
   strategyReplacement,
   vehicleReplacement,
+  ifNotReadyReplacement,
   type ReplacementCheck,
   type CurrentRange,
   type DepartureDays,
@@ -3095,6 +3096,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onReleaseImportTarget: () => {
           void this.releaseImportTarget();
+        },
+        onTakeWhatFits: () => {
+          void this.writeFreshSettings((record) => ifNotReadyReplacement(record, "hold"));
         },
         onSuggestImportTarget: () => this.suggestImportTarget(),
         onAnswerOnboardPhases: (vehicleId, phases) => {

@@ -444,6 +444,14 @@ function monthPeak(p: StatusLine["params"]): boolean {
  * departure. */
 const RELEASE_LINES: ReadonlySet<string> = new Set(["import_target_held", "import_target_paused", "import_target_at_risk"]);
 
+/**
+ * The line a release is confirmed from: one that offers it (`releasable`), or with `anyLine` any held, paused or
+ * at-risk line (the "does not fit" line's "Allow the peak" is offered whatever the plan's `if_not_ready`).
+ */
+function releaseLine(status: Status | null, anyLine: boolean): StatusLine | undefined {
+  return status?.lines.find((entry) => RELEASE_LINES.has(entry.code) && (anyLine || entry.params["releasable"] === true));
+}
+
 /** What setting the import target aside would mean (`releaseConfirm`). */
 export interface ReleaseConfirm {
   text: string;
@@ -465,12 +473,13 @@ export function releaseConfirm(
   format: FormatContext,
   nowMs: number,
   demand: DemandBlock | null = null,
+  anyLine = false,
 ): ReleaseConfirm | null {
-  const text = releaseConfirmText(status, format, nowMs);
+  const text = releaseConfirmText(status, format, nowMs, anyLine);
   if (text === null) {
     return null;
   }
-  const line = status?.lines.find((entry) => RELEASE_LINES.has(entry.code) && entry.params["releasable"] === true);
+  const line = releaseLine(status, anyLine);
   const level = demand?.power_level ?? null;
   const count = demand?.level_count ?? null;
   const peak = line === undefined ? null : num(line.params["release_peak_kw"]);
@@ -503,8 +512,8 @@ export function releaseConfirm(
  * What setting the import target aside would mean, for the confirmation before it is sent: until the unplug (or the
  * departure, at its time), and the month's peak it may reach against today's level. `null` when no line offers it.
  */
-export function releaseConfirmText(status: Status | null, format: FormatContext, nowMs: number): string | null {
-  const line = status?.lines.find((entry) => RELEASE_LINES.has(entry.code) && entry.params["releasable"] === true);
+export function releaseConfirmText(status: Status | null, format: FormatContext, nowMs: number, anyLine = false): string | null {
+  const line = releaseLine(status, anyLine);
   if (line === undefined) {
     return null;
   }

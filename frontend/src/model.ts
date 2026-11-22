@@ -33,6 +33,7 @@ import {
   type EntityWords,
 } from "./format";
 import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
+import { choiceLabel, doesNotFitText, type DoesNotFitChoiceCode } from "./does-not-fit";
 import {
   issuesOf,
   statusForCharger,
@@ -71,6 +72,7 @@ import type {
   Vehicle,
   PriceProvider,
   PriceSourceBlock,
+  Status,
 } from "./validate";
 
 export type { Issue } from "./status";
@@ -241,6 +243,31 @@ export interface AdvisoryFacts {
   code: string | null;
 }
 
+/** The "does not fit" line as the charger card shows it (`does-not-fit.ts`). */
+export interface DoesNotFitLine {
+  text: string;
+  choices: { code: DoesNotFitChoiceCode; label: string }[];
+}
+
+/** The status lines the "does not fit" line says in their place. */
+const DOES_NOT_FIT_SAYS: ReadonlySet<string> = new Set(["import_target_at_risk", "import_target_released"]);
+
+function withoutLines(status: Status | null, codes: ReadonlySet<string>): Status | null {
+  return status === null ? null : { ...status, lines: status.lines.filter((line) => !codes.has(line.code)) };
+}
+
+function doesNotFitLine(dashboard: Dashboard, format: FormatContext): DoesNotFitLine | null {
+  const block = dashboard.does_not_fit;
+  if (block === null) {
+    return null;
+  }
+  const money = { major_unit: format.majorUnit, minor_unit: null };
+  return {
+    text: doesNotFitText(format, block),
+    choices: block.choices.map((choice) => ({ code: choice.code, label: choiceLabel(format, choice, money) })),
+  };
+}
+
 export interface CardModel {
   language: Language;
   format: FormatContext;
@@ -275,6 +302,12 @@ export interface CardModel {
    * exceedance); `null` when nothing offers it.
    */
   releaseConfirm: ReleaseConfirm | null;
+  /**
+   * The planned charge does not fit under the ceiling by its departure (`does_not_fit`): the line and the choices
+   * still open, each with its label. While it is shown, the import target's at-risk and set-aside status lines are
+   * left out (the line says the same), and `releaseConfirm` is what "Allow the peak" confirms. `null` while it fits.
+   */
+  doesNotFit: DoesNotFitLine | null;
   severity: Severity | null;
   chart: ChartSeries;
   bands: PlanBands;
@@ -948,7 +981,9 @@ export function buildModel(input: BuildInput): CardModel {
   const chart = chartSeries(rows, format.timeZone, input.nowMs, chartAxis);
   const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs), chart.time);
   const chargerName = dashboard.charger.charger_name ?? dashboard.charger.charger_id;
-  const status = statusForCharger(dashboard.status, chargerName);
+  const fullStatus = statusForCharger(dashboard.status, chargerName);
+  const doesNotFit = doesNotFitLine(dashboard, format);
+  const status = doesNotFit === null ? fullStatus : withoutLines(fullStatus, DOES_NOT_FIT_SAYS);
   const issues = issuesOf(status, language, input.entityWords, format, input.nowMs);
   const zone = hasZone(format);
   // A fact nobody has is omitted from the plot, never shown as "unknown": this returns `null` rather than
@@ -988,7 +1023,14 @@ export function buildModel(input: BuildInput): CardModel {
     statusNeedsSiteSettings: statusNeedsSiteSettings(status),
     chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),
     issues,
-    releaseConfirm: releaseConfirm(status, format, input.nowMs, dashboard.grid_tariff?.demand ?? null),
+    releaseConfirm: releaseConfirm(
+      doesNotFit === null ? status : fullStatus,
+      format,
+      input.nowMs,
+      dashboard.grid_tariff?.demand ?? null,
+      doesNotFit !== null,
+    ),
+    doesNotFit,
     severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
     bands,

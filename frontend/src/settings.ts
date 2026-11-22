@@ -614,6 +614,17 @@ export function vehicleReplacement(record: SettingsRecord, vehicleId: string): R
   };
 }
 
+/**
+ * The plan's `if_not_ready` written alone (the "does not fit" line's "Take what fits": `hold`). Refused against a
+ * backend without the field: nothing would keep it.
+ */
+export function ifNotReadyReplacement(record: SettingsRecord, value: IfNotReady): ReplacementCheck {
+  if (record.if_not_ready === undefined) {
+    return { ok: false, errorKey: "settings.error.invalid" };
+  }
+  return { ok: true, body: { ...encodeBody(record), if_not_ready: value }, changed: value !== record.if_not_ready };
+}
+
 export interface SettingsFormValues {
   energy: string;
   /** The kWh slider's last step, "Fill" (`fill_to_limit`); always `false` against a backend without it. */
