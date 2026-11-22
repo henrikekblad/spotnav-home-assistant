@@ -653,7 +653,10 @@ def battery_facts(
     if adapter.plant_max is not None:
         plant = find_entity(adapter.plant_max, entities, battery)
         if plant is not None and plant.available:
-            plant_max_kw = to_kw(plant.state, plant.unit)
+            if adapter.plant_max_attribute is None:
+                plant_max_kw = to_kw(plant.state, plant.unit)
+            else:
+                plant_max_kw = to_kw(str(plant.attributes.get(adapter.plant_max_attribute)), "W")
             if plant_max_kw is not None and plant_max_kw > 0:
                 sources["plant_max"] = plant.entity_id
             else:
