@@ -173,3 +173,32 @@ def test_marstek_over_modbus_is_not_detected_because_its_sign_is_not_known() -> 
     r.add("marstek_modbus", "venus_battery_power", "01JABCDEF_battery_power", device_class="power", unit="W", device="venus", entry="mm")
 
     assert r.detect().batteries == ()
+
+
+# ---- never a car's or a phone's battery ----------------------------------------------------------------------------
+
+
+def test_a_cars_or_a_phones_battery_is_never_offered_as_the_home_battery() -> None:
+    """The detection offers only the catalogue's battery rows: a phone's "Battery power" (the Android companion app), a
+    car's power and level (Tibber's Data API, MG, Volkswagen, TeslaMate over MQTT, Octopus Intelligent) and a Tesla
+    integration's car (beside a Powerwall's site) are none of them."""
+    r = Registry()
+    r.device("phone", model="Pixel 9", manufacturer="Google", entry="app")
+    r.add("mobile_app", "pixel_battery_power", "abc_battery_power", device_class="power", unit="W", device="phone", entry="app")
+    r.add("mobile_app", "pixel_battery_level", "abc_battery_level", device_class="battery", unit="%", device="phone", entry="app")
+    for platform, slug in (
+        ("tibber", "car"), ("mg_saic", "mg4"), ("volkswagen_we_connect_id", "id4"), ("mqtt", "teslamate_1"),
+        ("octopus_energy", "intelligent"),
+    ):
+        r.device(slug, entry=platform)
+        r.add(platform, f"{slug}_battery_power", f"{slug}_battery_power", device_class="power", unit="W", device=slug, entry=platform)
+        r.add(platform, f"{slug}_battery_level", f"{slug}_battery_level", device_class="battery", unit="%", device=slug, entry=platform)
+    r.device("car", model="Model Y", manufacturer="Tesla", entry="fleet")
+    r.add("tesla_fleet", "model_y_battery_level", "VIN1-charge_state_battery_level", device_class="battery", unit="%", device="car", entry="fleet")
+    r.add("tesla_fleet", "model_y_power", "VIN1-drive_state_power", device_class="power", unit="kW", device="car", entry="fleet")
+    assert r.detect().batteries == ()
+    # The Powerwall's site in the same entry is the one offered.
+    r.device("site", model="Powerwall", manufacturer="Tesla", entry="fleet")
+    r.add("tesla_fleet", "home_battery_power", "1234-battery_power", device_class="power", unit="kW", device="site", entry="fleet")
+    [battery] = r.detect().batteries
+    assert battery.entity_id == "sensor.home_battery_power"

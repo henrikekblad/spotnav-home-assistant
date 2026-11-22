@@ -503,7 +503,39 @@ def _control(
     )
 
 
+#: Integrations of cars and phones: a battery level there is a car's or a phone's, never the house battery's. The
+#: Android companion app has a "Battery power" sensor (W) beside the phone's level; car integrations a power and a
+#: level on the car's device. Tesla's integrations (Tesla Fleet, Teslemetry, Tessie, Tesla Custom) hold Powerwalls
+#: too and are not named: there the car's device decides (its place and its range, `vehicle_or_phone`).
+VEHICLE_OR_PHONE_PLATFORMS: Final = frozenset({
+    "mobile_app", "teslamate", "saic_ismart", "mg_saic",
+    "volkswagen_we_connect_id", "volkswagencarnet", "myskoda", "skodaconnect", "audiconnect", "bmw_connected_drive",
+    "kia_uvo", "hyundai_kia_connect", "renault", "polestar_api", "volvo", "volvooncall", "toyota", "fordpass",
+    "mbapi2020", "nissan_leaf", "ovms", "octopus_energy",
+})
+#: What only a car or a phone has on its device: where it goes, how far it reaches, how far it went.
+_VEHICLE_DEVICE_CLASSES: Final = frozenset({"distance"})
+
+
+def vehicle_or_phone(entities: Sequence[EntityFact], battery: EntityFact) -> bool:
+    """Whether the battery's power entity is a car's or a phone's: its integration is one of
+    `VEHICLE_OR_PHONE_PLATFORMS`, TeslaMate's MQTT entities, or its device also has a place (`device_tracker`) or a
+    distance (range, odometer)."""
+    if "teslamate" in battery.unique_id.lower() or "teslamate" in battery.entity_id.lower():
+        return True
+    siblings = [
+        entity for entity in entities if battery.device_id is not None and entity.device_id == battery.device_id
+    ]
+    if any(entity.domain == "device_tracker" or entity.device_class in _VEHICLE_DEVICE_CLASSES for entity in siblings):
+        return True
+    return battery.platform in VEHICLE_OR_PHONE_PLATFORMS
+
+
 def _unknown_brand_soc(entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:
+    """A battery sensor on the battery's own device, for a brand SpotNav has no adapter for; never a car's or a
+    phone's (`vehicle_or_phone`): the plan would charge and sell against the car's level."""
+    if vehicle_or_phone(entities, battery):
+        return None
     for entity in sorted(entities, key=lambda item: item.entity_id):
         if (
             entity.domain == "sensor"
