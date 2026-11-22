@@ -244,8 +244,8 @@ def _runs(ordered: list[Bucket], now: datetime) -> list[list[Bucket]]:
 
 
 def with_learned(facts: BatteryFacts, learned: LearnedBattery) -> BatteryFacts:
-    """The facts with what was learnt filled in where the integration reads nothing (never over a read value); the
-    estimates say which."""
+    """The facts with what was learnt filled in where the integration reads nothing (never over a read value, except a
+    rating worked out from the BMS's present current limit when more has been seen held); the estimates say which."""
     updates: dict[str, Any] = {}
     estimates = list(facts.estimates)
     sources = dict(facts.sources)
@@ -254,14 +254,20 @@ def with_learned(facts: BatteryFacts, learned: LearnedBattery) -> BatteryFacts:
         estimates.append(EST_CAPACITY_LEARNED)
         sources["capacity"] = "learned"
     rated = False
-    if facts.rated_charge_kw is None and learned.rated_charge_kw is not None:
-        updates["rated_charge_kw"] = learned.rated_charge_kw
-        sources["rated_charge"] = "learned"
-        rated = True
-    if facts.rated_discharge_kw is None and learned.rated_discharge_kw is not None:
-        updates["rated_discharge_kw"] = learned.rated_discharge_kw
-        sources["rated_discharge"] = "learned"
-        rated = True
+    for key, read, seen in (
+        ("rated_charge", facts.rated_charge_kw, learned.rated_charge_kw),
+        ("rated_discharge", facts.rated_discharge_kw, learned.rated_discharge_kw),
+    ):
+        if seen is None:
+            continue
+        # A rating worked out from the BMS's present current limit (`facts.EST_RATED_FROM_CURRENT`, "<A> x <V>") is
+        # what the BMS allows now, which it lowers for its own reasons (near full or empty, cold, a setting): the
+        # power the battery has been seen to hold is a truer floor, so the higher of the two counts.
+        from_current = read is not None and " x " in sources.get(key, "")
+        if read is None or (from_current and seen > read):
+            updates[f"{key}_kw"] = seen
+            sources[key] = "learned"
+            rated = True
     if rated:
         estimates.append(EST_RATED_LEARNED)
     if facts.round_trip_efficiency is None and learned.round_trip.efficiency is not None:
