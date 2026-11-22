@@ -31,6 +31,7 @@ import type { GridTariffBody } from "./grid-tariff";
 import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
 import { HEAT_API_VERSION, HEAT_HISTORY_API_VERSION } from "./heat-model";
 import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION, HOUSE_LOADS_API_VERSION, HOUSE_NOW_API_VERSION } from "./house-model";
+import { PLAN_API_VERSION } from "./house-plan";
 import { BATTERY_CONTROL_API_VERSION, SITE_VIEW_API_VERSION } from "./site-model";
 import { hasUnknownKeys } from "./contract";
 
@@ -712,6 +713,18 @@ export async function getHouse(hass: HomeAssistantLike, target: { site: string }
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     // A past local day (`YYYY-MM-DD`); left out for today, so an older backend is asked as before.
     ...(date === null ? {} : { date }),
+  });
+}
+
+/**
+ * Every load the site plans on one rolling time axis, for the house card's Plan tab (`spotnav/get_plan`, the site's id
+ * or a charger's in it); `unknown` until `decodePlan()` decodes it. Read-only; any signed-in user may read it.
+ */
+export async function getPlan(hass: HomeAssistantLike, target: { site: string } | { charger: string }): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_plan",
+    api_version: PLAN_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
   });
 }
 

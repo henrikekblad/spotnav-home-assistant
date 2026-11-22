@@ -1,5 +1,5 @@
-// The house card's tabs (SpotNav 3.0): Now, Energy flow, Energy chart, Earnings, Price and battery, in that fixed
-// order.
+// The house card's tabs (SpotNav 3.0): Now, Plan, Energy flow, Energy chart, Earnings, Price and battery, in that
+// fixed order.
 //
 // * A tab says its long name ("Energiflöde") while the whole row fits the card, else its short one ("Flöde"), else
 //   an icon alone; the card measures the row as drawn (`fitTabs`), never guessing by language. Whatever is drawn, a
@@ -9,7 +9,7 @@
 //   the page's tab order (a roving tabindex), the panel follows it.
 // * The tab chosen is remembered per card in this browser (by the site or charger the card names), guarded like the
 //   chart preferences (`chart-preference.ts`): a storage that is missing or throws means the first tab.
-// * The card's YAML may lock one tab (`tab: now | flow | graph | price`, the card editor's "Show only tab"): the row is
+// * The card's YAML may lock one tab (`tab: now | plan | flow | graph | earn | price`, the card editor's "Show only tab"): the row is
 //   then not drawn and the choice is neither read nor written.
 // * Today's label may say how far its figures reach ("I dag · till 17:00"); where the row has no room for that part
 //   it is left out whole ("I dag"), never cut to "…".
@@ -31,8 +31,8 @@ import {
   type HistoryPeriod,
 } from "./period-history";
 
-export type HouseTab = "now" | "flow" | "graph" | "earn" | "price";
-export const HOUSE_TABS: readonly HouseTab[] = ["now", "flow", "graph", "earn", "price"];
+export type HouseTab = "now" | "plan" | "flow" | "graph" | "earn" | "price";
+export const HOUSE_TABS: readonly HouseTab[] = ["now", "plan", "flow", "graph", "earn", "price"];
 
 /** How a tab is worded: its long name, its short name, or its icon alone. */
 export type TabFit = "long" | "short" | "icons";
@@ -84,6 +84,7 @@ export function writeTab(target: string, tab: HouseTab, store: () => PreferenceS
 
 const TAB_WORDS: Record<HouseTab, TranslationKey> = {
   now: "house.tab.now",
+  plan: "house.tab.plan",
   flow: "house.tab.flow",
   graph: "house.tab.graph",
   earn: "house.tab.earn",
@@ -92,6 +93,7 @@ const TAB_WORDS: Record<HouseTab, TranslationKey> = {
 
 const TAB_SHORT_WORDS: Record<HouseTab, TranslationKey> = {
   now: "house.tab.short.now",
+  plan: "house.tab.short.plan",
   flow: "house.tab.short.flow",
   graph: "house.tab.short.graph",
   earn: "house.tab.short.earn",
@@ -142,9 +144,11 @@ export function tabShortWord(language: Language, tab: HouseTab): string {
   return translate(language, TAB_SHORT_WORDS[tab]);
 }
 
-/** The tabs' icons, stroked, in a 24-unit box: a bolt, two crossing flows, bars, coins, a price tag. */
+/** The tabs' icons, stroked, in a 24-unit box: a bolt, bars under a ceiling, two crossing flows, bars, coins, a price
+ * tag. */
 const TAB_ICONS: Record<HouseTab, string[]> = {
   now: ["M13 2.5L4.5 13.5H11L10 21.5L19.5 10H13z"],
+  plan: ["M3 20.5h18", "M6.5 20.5v-6M10.5 20.5v-9M14.5 20.5v-4M18 20.5v-7", "M3 6.5h3M9 6.5h3M15 6.5h3"],
   flow: ["M3 6.5h3.5c5.5 0 5.5 11 11 11H21", "M3 17.5h3.5c5.5 0 5.5-11 11-11H21"],
   graph: ["M3 20.5h18", "M6.5 20.5v-8M12 20.5V4.5M17.5 20.5v-11"],
   earn: ["M4 7.5c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z", "M4 7.5V12c0 1.7 3.6 3 8 3s8-1.3 8-3V7.5", "M4 12v4.5c0 1.7 3.6 3 8 3s8-1.3 8-3V12"],

@@ -19,6 +19,7 @@ import { hiddenIn, type HiddenSeries } from "./house-series";
 import { cardHeader, headerButton, headerTitle } from "./card-header";
 import { statusLine, testStatus } from "./heat-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
+import { planBody, type PlanAnswer } from "./house-plan";
 import { daysLeft, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
@@ -46,6 +47,8 @@ export interface HouseTabsData {
   day: Loadable<HouseAnswer> | null;
   /** The site's local date. */
   today: string;
+  /** The Plan tab's answer (`spotnav/get_plan`) while that tab is shown; else `null`. */
+  plan?: Loadable<PlanAnswer> | null;
 }
 
 export interface HouseUi {
@@ -1082,6 +1085,22 @@ function earnPanel(input: HouseRenderInput, answer: HouseAnswer, panel: HTMLElem
 
 // ------------------------------------------------------------------------------------------------ body
 
+/** The Plan tab: the plan's answer once read, else a line that it is on its way or could not be read. */
+function planPanel(input: HouseRenderInput, panel: HTMLElement): void {
+  const { doc, language } = input;
+  const plan = input.tabs?.plan ?? { kind: "loading" };
+  if (plan.kind === "ready") {
+    panel.append(planBody({ doc, language, plan: plan.answer, width: input.width }));
+    return;
+  }
+  const failed = plan.kind === "failed";
+  const line = statusParagraph(doc, language, failed ? "house.failed" : "house.loading", failed ? "plan-failed" : "plan-loading");
+  if (!failed) {
+    line.setAttribute("aria-busy", "true");
+  }
+  panel.append(line);
+}
+
 /** The card's whole content for one state. */
 export function houseBody(input: HouseRenderInput): HTMLElement {
   const { doc, language, state } = input;
@@ -1131,6 +1150,8 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
       panel.append(statusParagraph(doc, language, "house.day.noData", "no-data"));
     }
     nowPanel(input, answer, panel);
+  } else if (tab === "plan") {
+    planPanel(input, panel);
   } else if (tab === "flow") {
     flowPanel(input, answer, panel, today);
   } else if (tab === "graph") {
