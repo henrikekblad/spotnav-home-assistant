@@ -150,24 +150,24 @@ async def test_a_charge_begun_under_the_hold_is_stopped_a_bounded_number_of_time
     hold = _hold(hass, {"on": on, "off": _Charger()})
     assert hold.charging_now() == ["on"]
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert on.stops == 0, "nothing is written at the start"
     hold.observe()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert on.stops == 1
     hold.observe()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert on.stops == 1, "not again within the gap"
     for _ in range(MAX_STOPS + 2):
         freezer.tick(charger_test_hold.STOP_GAP_S + 1)
         hold.observe()
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     assert on.stops == MAX_STOPS
     assert hold.counts_nothing("on") is False, "a charger that charges is counted"
     assert hold.release() == ["on"], "a charger stopped during the test has its plan armed again"
     freezer.tick(charger_test_hold.STOP_GAP_S + 1)
     hold.observe()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert on.stops == MAX_STOPS, "nothing after the release"
 
 
@@ -189,14 +189,14 @@ async def test_no_start_of_any_kind_goes_out_while_the_site_holds_the_charger(ha
     controller.set_test_hold(lambda: held[0], refused=lambda: refused.append(1))
     await plug.set(True)
     await install_schedule(controller, _open_window())
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert starts == [] and refused, "the plan's window does not start"
     assert await controller.async_start(cause="solar") is False and starts == []
     assert await controller.async_start(manual=True) is False and starts == []
     assert controller.control_confirmed_off is True
     held[0] = False
     await controller.async_rearm()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert len(starts) == 1, "armed again at the release, the open window starts"
     assert controller.control_confirmed_off is False
     await controller.async_shutdown()
@@ -278,7 +278,7 @@ async def test_an_ocpp_charger_out_of_service_counts_nothing_and_is_set_back(
     ocpp = _Ocpp()
     hold = _hold(hass, {"ocpp": ocpp})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == ["off"] and hold.counts_nothing("ocpp") is True
     # Kept before the command went out, so a restart in the middle finds it.
     assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {SWITCH: {"chargers": ["ocpp"]}}
@@ -296,7 +296,7 @@ async def test_an_ocpp_charger_that_does_not_report_itself_unavailable_stays_cou
     sent = _availability(hass, reports=False)
     hold = _hold(hass, {"ocpp": _Ocpp()})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == ["off"] and hold.counts_nothing("ocpp") is False
     hold.release()
     await hold.async_close()
@@ -306,14 +306,14 @@ async def test_an_ocpp_charger_already_out_of_service_or_without_the_switch_is_l
     sent = _availability(hass, state="off")
     hold = _hold(hass, {"ocpp": _Ocpp()})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == [] and hold.counts_nothing("ocpp") is False and hold.unavailable_kept == []
     hold.release()
     other = _Ocpp()
     other.ocpp_target = SimpleNamespace(charge_point_id="no_switch", connector_id=1)
     hold = _hold(hass, {"other": other})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == [] and hold.counts_nothing("other") is False
     hold.release()
 
@@ -329,12 +329,12 @@ async def test_an_ocpp_charger_left_out_of_service_by_a_restart_is_set_back_at_t
     hass.states.async_set(SWITCH, "unavailable")  # the charge point not connected yet
     hold = _hold(hass, {"ocpp": _Ocpp()})
     await hold.async_load()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == [] and hold.unavailable_kept == [SWITCH]
     hass.states.async_set(SWITCH, "off")
     freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == ["on"] and hold.unavailable_kept == []
     assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {}
     await hold.async_close()
@@ -350,7 +350,7 @@ async def test_two_connectors_of_one_charge_point_share_its_switch_taken_out_and
     second.ocpp_target = SimpleNamespace(charge_point_id="halo_charger", connector_id=2)
     hold = _hold(hass, {"first": first, "second": second})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert sent == ["off"]
     assert hold.counts_nothing("first") is True and hold.counts_nothing("second") is True
     assert hass_storage[charger_test_hold.store_key("site_1")]["data"]["unavailable"] == {
@@ -369,7 +369,7 @@ async def test_a_switch_that_reads_off_counts_nothing_only_with_the_connector_re
     ocpp = _Ocpp()
     hold = _hold(hass, {"ocpp": ocpp})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     status = "sensor.halo_charger_connector_1_status_connector"
     assert hold.counts_nothing("ocpp") is True
     for reported in ("Charging", "Preparing", "unavailable"):
@@ -392,7 +392,7 @@ async def test_a_charge_point_that_answers_scheduled_is_not_taken_as_out_of_serv
     hass.states.async_set("sensor.halo_charger_connector_1_status_connector", "Charging")
     hold = _hold(hass, {"ocpp": _Ocpp()})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert hold.counts_nothing("ocpp") is False
     hold.release()
     await hold.async_close()
@@ -402,7 +402,7 @@ async def test_a_switch_a_person_turned_on_during_the_test_is_left_as_it_is(hass
     sent = _availability(hass)
     hold = _hold(hass, {"ocpp": _Ocpp()})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     hass.states.async_set(SWITCH, "on")  # the person, in the middle of the test
     hold.release()
     await hold.async_restore_availability()
@@ -419,7 +419,7 @@ async def test_a_switch_not_set_back_is_told_in_repairs_and_the_message_goes_onc
     sent = _availability(hass)
     hold = _hold(hass, {"ocpp": _Ocpp()})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     async def refused(call: Any) -> None:
         sent.append("on")  # the charge point stays unavailable
@@ -432,13 +432,13 @@ async def test_a_switch_not_set_back_is_told_in_repairs_and_the_message_goes_onc
         assert ir.async_get(hass).async_get_issue(*issue) is None
         freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
         async_fire_time_changed(hass)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     found = ir.async_get(hass).async_get_issue(*issue)
     assert found is not None and found.translation_placeholders == {"switches": SWITCH} and issue[0] == DOMAIN
     hass.states.async_set(SWITCH, "on")  # the person turns it on
     freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
     async_fire_time_changed(hass)
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert ir.async_get(hass).async_get_issue(*issue) is None and hold.unavailable_kept == []
     await hold.async_close()
 
@@ -476,13 +476,13 @@ async def test_a_retry_of_an_earlier_test_s_setting_back_leaves_a_new_test_s_tak
         await finish.wait()
 
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     hold._park_task = hass.async_create_task(slow())  # noqa: SLF001 - a new test's taking out on its way
     await started.wait()
     await hold.async_restore_availability()  # a retry, while the hold is on
     assert hold._park_task is not None and not hold._park_task.done()  # noqa: SLF001
     finish.set()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     hold.release()
     await hold.async_close()
 
@@ -508,7 +508,7 @@ async def test_a_retry_during_a_new_test_s_taking_out_leaves_that_switch_to_the_
     await hold.async_restore_availability()  # the earlier test's retry
     assert hold.unavailable_kept == [SWITCH], "still the new test's"
     gate.set()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     hold.release()
     await hold.async_restore_availability()
     assert hass.states.get(SWITCH).state == "on" and hold.unavailable_kept == []
@@ -524,7 +524,7 @@ async def test_a_charge_point_operative_again_with_a_car_plugged_in_is_set_back_
     sent = _availability(hass)
     hold = _hold(hass, {"ocpp": _Ocpp()})
     hold.begin(dt_util.utcnow() + timedelta(minutes=11))
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
     async def operative_with_a_car(call: Any) -> None:
         sent.append("on")
@@ -549,11 +549,63 @@ async def test_a_switch_that_is_gone_is_dropped_and_one_not_reachable_raises_no_
     hass.states.async_set(SWITCH, "unavailable")  # the charge point not connected: nothing the person can do here
     hold = _hold(hass, {"ocpp": _Ocpp()})
     await hold.async_load()
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     for _ in range(charger_test_hold.ISSUE_AFTER_TRIES + 1):
         freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
         async_fire_time_changed(hass)
-        await hass.async_block_till_done()
+        await hass.async_block_till_done(wait_background_tasks=True)
     assert hold.unavailable_kept == [SWITCH], "the gone one dropped, the unreachable one kept"
     assert ir.async_get(hass).async_get_issue("spotnav", "hardware_test_out_of_service_site_1") is None
     await hold.async_close()
+
+
+async def test_the_taking_out_runs_in_the_background_and_the_unload_cancels_it(hass: HomeAssistant) -> None:
+    """The pre-release review (2026-11-22): the work was a tracked task, holding up Home Assistant's start-up for a
+    minute per switch. It runs in the background now, and the unload cancels what still runs."""
+    sent = _availability(hass)
+    gate = asyncio.Event()
+
+    async def slow_off(call: Any) -> None:
+        sent.append("off")
+        await gate.wait()
+
+    hass.services.async_register("switch", "turn_off", slow_off)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    hold.begin(dt_util.utcnow() + timedelta(minutes=11))
+    await hass.async_block_till_done()  # returns: not waited for
+    assert sent == ["off"]
+    task = hold._park_task  # noqa: SLF001
+    assert task is not None and not task.done() and task in hass._background_tasks  # noqa: SLF001
+    await hold.async_close()
+    assert task.cancelled() and hold._tasks == set()  # noqa: SLF001
+    # What it took out stays in the store, for the next start.
+    assert hold.unavailable_kept == [SWITCH]
+
+
+async def test_the_setting_back_at_the_start_runs_in_the_background_and_the_unload_cancels_its_retry(
+    hass: HomeAssistant, hass_storage: dict[str, Any], freezer: Any
+) -> None:
+    hass_storage[charger_test_hold.store_key("site_1")] = {
+        "version": 1, "key": charger_test_hold.store_key("site_1"),
+        "data": {"unavailable": {SWITCH: {"chargers": ["ocpp"]}}},
+    }
+    sent = _availability(hass, state="off")
+    gate = asyncio.Event()
+
+    async def slow_on(call: Any) -> None:
+        sent.append("on")
+        await gate.wait()
+
+    hass.services.async_register("switch", "turn_on", slow_on)
+    hold = _hold(hass, {"ocpp": _Ocpp()})
+    await hold.async_load()
+    await hass.async_block_till_done()
+    assert sent == ["on"] and len(hold._tasks) == 1  # noqa: SLF001
+    (task,) = hold._tasks  # noqa: SLF001
+    await hold.async_close()
+    assert task.cancelled() and hold.unavailable_kept == [SWITCH]
+    freezer.tick(charger_test_hold.RESTORE_RETRY_S + 1)
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert sent == ["on"], "no retry after the unload"
+
