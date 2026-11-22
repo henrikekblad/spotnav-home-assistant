@@ -703,6 +703,14 @@ export function houseSources(doc: Document, language: Language, answer: HouseAns
     const name = battery.label ?? battery.brand ?? "";
     const size = battery.usable_kwh === null ? "" : ` · ${kwhText(language, battery.usable_kwh)}`;
     add(translate(language, "house.sources.battery", { name: `${name}${size}` }));
+    const roundTrip = battery.round_trip;
+    if (roundTrip !== null) {
+      add(
+        translate(language, roundTrip.learned ? "house.sources.roundTripLearned" : "house.sources.roundTripAssumed", {
+          pct: percentWhole(language, roundTrip.pct),
+        }),
+      );
+    }
     const today = answer.today;
     if (today !== null && today.stored_kwh !== null && today.average_cost !== null) {
       add(
@@ -722,7 +730,9 @@ export function houseSources(doc: Document, language: Language, answer: HouseAns
         battery.control === "on" ? "house.note.controlling" : battery.management === "self_managed" ? "house.note.selfManaged" : "house.note.shadow",
       ),
     );
-    const assumed = battery.estimates.map((code) => ESTIMATE_KEYS[code]).filter((key): key is TranslationKey => key !== undefined);
+    // The round trip has its own line above, learnt or assumed.
+    const codes = battery.round_trip === null ? battery.estimates : battery.estimates.filter((code) => code !== "round_trip_assumed");
+    const assumed = codes.map((code) => ESTIMATE_KEYS[code]).filter((key): key is TranslationKey => key !== undefined);
     if (assumed.length > 0) {
       notes.push(translate(language, "house.note.assumed", { list: assumed.map((key) => translate(language, key)).join(", ") }));
     }

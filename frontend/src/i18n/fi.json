@@ -1279,6 +1279,8 @@
   "house.sources.heatFromSetting": "Lämpöpumpun mittari: {name} (valittu asetuksissa)",
   "house.sources.heatSplit": "Taloennuste lämpönä ja muuna: {split} vastaan {whole} kokonaisena ({hours} h, vain näytetty)",
   "house.sources.battery": "Akku: {name}",
+  "house.sources.roundTripLearned": "Hyötysuhde (lataus ja purku): {pct}, opittu",
+  "house.sources.roundTripAssumed": "Hyötysuhde (lataus ja purku): oletettu {pct}",
   "house.note.selfManaged": "Akkua ohjaa sen oma optimoija. SpotNav suunnittelee rinnalla vain vertailuksi eikä kirjoita siihen mitään.",
   "house.note.shadow": "Testi: SpotNav suunnittelee akun käytön mutta ei vielä ohjaa sitä.",
   "house.note.controlling": "SpotNav ohjaa akkua suunnitelman mukaan.",

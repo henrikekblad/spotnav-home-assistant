@@ -1279,6 +1279,8 @@
   "house.sources.heatFromSetting": "Heat pump meter: {name} (chosen in Settings)",
   "house.sources.heatSplit": "House forecast as heat plus the rest: {split} against {whole} for the whole ({hours} h, shown only)",
   "house.sources.battery": "Battery: {name}",
+  "house.sources.roundTripLearned": "Round-trip efficiency: {pct}, learnt",
+  "house.sources.roundTripAssumed": "Round-trip efficiency: assumed {pct}",
   "house.note.selfManaged": "The battery runs its own optimiser. SpotNav plans beside it only to compare, and writes nothing to it.",
   "house.note.shadow": "Test: SpotNav plans the battery but does not control it yet.",
   "house.note.controlling": "SpotNav controls the battery by its plan.",
