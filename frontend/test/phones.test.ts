@@ -95,7 +95,7 @@ describe("Disconnect all phones", () => {
     );
     await openSettings(element);
     const open = shadow(element).querySelector<HTMLButtonElement>("[data-disconnect-phones='open']");
-    expect(open?.textContent).toBe(translate("en", "phones.disconnect.open"));
+    expect(open?.closest("[data-row]")?.textContent).toBe(translate("en", "phones.disconnect.open"));
     open?.click();
     await settle();
     const dialog = openDialog(element);

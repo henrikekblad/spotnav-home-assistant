@@ -42,7 +42,7 @@ import { sendDebugEditor, sendDebugReport, sendFailureText } from "./send-debug"
 import { disconnectPhonesEditor, runDisconnectPhones } from "./phones";
 import { BetaRows, type BetaCall } from "./beta";
 import { automationsBody, decodeBlueprintUse } from "./automations";
-import { cardOutdatedNote, supportButton, supportSection } from "./support-section";
+import { cardOutdatedNote, supportAction, supportSection, type SupportAction } from "./support-section";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
 import {
   decodeEntityAnswer,
@@ -2105,10 +2105,11 @@ export class SettingsPopover {
     this.outdatedNote = note;
     void this.checkCardOutdated();
     const rows: HTMLElement[] = [];
-    const buttons: HTMLElement[] = [];
-    const download = supportButton(doc, translate(language, "debug.download"), () => void this.downloadDebug(download));
-    download.dataset["debug"] = "download";
-    buttons.push(download);
+    const actions: SupportAction[] = [];
+    const download = supportAction(doc, "download_debug", translate(language, "debug.download"),
+      () => void this.downloadDebug(download.button), translate(language, "debug.intro"));
+    download.button.dataset["debug"] = "download";
+    actions.push(download);
     if (this.isAdmin()) {
       const automations = translate(language, "settings.automations.label");
       const [automationsRow] = settingRow(doc, {
@@ -2145,13 +2146,13 @@ export class SettingsPopover {
           }),
         );
       }
-      const send = supportButton(doc, translate(language, "sendDebug.open"), () => this.openSendDebug());
-      send.dataset["debug"] = "send";
-      const phones = supportButton(doc, translate(language, "phones.disconnect.open"), () => this.openDisconnectPhones());
-      phones.dataset["disconnectPhones"] = "open";
-      buttons.push(send, phones);
+      const send = supportAction(doc, "send_debug", translate(language, "sendDebug.open"), () => this.openSendDebug());
+      send.button.dataset["debug"] = "send";
+      const phones = supportAction(doc, "disconnect_phones", translate(language, "phones.disconnect.open"), () => this.openDisconnectPhones());
+      phones.button.dataset["disconnectPhones"] = "open";
+      actions.push(send, phones);
     }
-    return supportSection({ doc, language, note, rows, debugIntro: true, buttons });
+    return supportSection({ doc, language, note, rows, actions });
   }
 
   private betaRows: BetaRows | null = null;
@@ -2257,6 +2258,7 @@ export class SettingsPopover {
       return;
     }
     button.disabled = true;
+    button.textContent = translate(this.language, "debug.preparing");
     try {
       const answer = decodeDebugAnswer(await getDebugBundle(hass));
       if (answer !== null && answer.ok) {
@@ -2268,6 +2270,7 @@ export class SettingsPopover {
       // The button comes back; the bundle is asked for again on the next press.
     } finally {
       button.disabled = false;
+      button.textContent = "";
     }
   }
 }
