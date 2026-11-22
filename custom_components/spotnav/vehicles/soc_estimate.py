@@ -890,8 +890,14 @@ class SocReader:
         now: Callable[[], datetime] | None = None,
         plugged_in_since: Callable[[], datetime | None] | None = None,
         learned_kwh_per_percent: Callable[[str | None, float | None], float | None] | None = None,
+        charging: Callable[[], bool] | None = None,
     ) -> None:
         self._hass = hass
+        # Whether the charger is charging now (`None`: not known, so no ceiling is ever held).
+        self._charging = charging
+        # Per car: the ceiling kept through the running charge after the car's limit fell below its level
+        # (`_plausible_ceiling`).
+        self._held_ceilings: dict[str, float] = {}
         # The planned car's learned wall kWh per percent once trusted (`planning/learned_energy.py`), given its
         # battery size; `None` carries the estimate forward at `CHARGE_EFFICIENCY` and the battery size.
         self._learned_kwh_per_percent = learned_kwh_per_percent
@@ -1065,16 +1071,49 @@ class SocReader:
         # This car's device alone: a fact or level change forces this read, and a sweep over every device on each
         # of a charging car's sensor ticks would cost loop time that grows with the install.
         candidate = discover_vehicle(self._hass, vehicle_id)
+        soc_percent: float | None = None
         if candidate is not None:
             capacity = candidate.battery_capacity_kwh
             ceiling = candidate.target_soc_percent_max
+            soc_percent = candidate.soc_percent
         if capacity is None and cached is not None:
             # A sleeping car drops out of discovery; its pack size has not changed.
             capacity = cached[1]
         if ceiling is None and cached is not None:
+            # A limit that reads nothing now (asleep, a cloud glitch) has not changed either.
             ceiling = cached[2]
+        elif ceiling is not None:
+            ceiling = self._plausible_ceiling(vehicle_id, ceiling, None if cached is None else cached[2], soc_percent)
         self._facts_cache[vehicle_id] = (now, capacity, ceiling)
         return (capacity, ceiling)
+
+    def _plausible_ceiling(
+        self, vehicle_id: str, fresh: float, previous: float | None, soc_percent: float | None
+    ) -> float:
+        """The car's limit as read, unless it fell below the car's level during a charge.
+
+        A car's limit does not drop under its level in the middle of a charge; a cloud that briefly reports a
+        lower one (a Kia sending its AC limit as 0, or another limit) would turn a plan SpotNav ends at its
+        target into one the car ends at its real limit. So the last good ceiling holds until the charge ends
+        or the limit is back at it; a lowering while not charging, or one still above the level, is the car's.
+        """
+        held = self._held_ceilings.get(vehicle_id)
+        if self._charging is None or not self._charging():
+            self._held_ceilings.pop(vehicle_id, None)
+            return fresh
+        good = held if held is not None else previous
+        if good is None or fresh >= good:
+            self._held_ceilings.pop(vehicle_id, None)
+            return fresh
+        if held is None:
+            if soc_percent is None or fresh >= soc_percent:
+                return fresh
+            _LOGGER.debug(
+                "Charge limit of %s fell to %s %% below its level %s %% during a charge; keeping %s %%",
+                vehicle_id, fresh, soc_percent, good,
+            )
+            self._held_ceilings[vehicle_id] = good
+        return good
 
     def capacity_with_source(self, vehicle_id: str | None) -> tuple[float | None, str | None]:
         """`(kWh, "reported" | "stored")`: the vehicle's own figure, else the stored one; `(None, None)` if missing."""

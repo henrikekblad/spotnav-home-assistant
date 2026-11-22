@@ -445,6 +445,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         remembered_capacity=lambda vehicle_id: stored_capacity_kwh(hass, vehicle_id),
         plugged_in_since=lambda: controller.plugged_in_since,
         learned_kwh_per_percent=lambda vehicle_id, capacity: _learned_kwh_per_percent(vehicle_id, capacity),
+        charging=lambda: controller.charging,
     )
     await soc_reader.async_load()
     entry.async_on_unload(soc_reader.async_shutdown)
