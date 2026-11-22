@@ -22,6 +22,11 @@ meters show it.
   `RECENT` windows' that lie within `AGREE_POINTS` of their median, once `MIN_WINDOWS` of them do. The plan's value
   (`efficiency`) moves slowly: it follows the median only when that is `DEADBAND` or more away, and then at most
   `MAX_STEP` per window, so a plan never flaps on one odd window.
+* **A cap.** The plan's value is never above `PLAN_CAP`, though a window up to `PLAUSIBLE`'s top is taken. Most
+  brands' counters, and the battery power SpotNav measures, count at the battery (DC, `adapters`): the inverter's own
+  loss on the way in and again on the way out (about 2-3 % each) is not in them, so a DC round trip of 97 % is an AC
+  one of 91-93 %. The plan buys and sells on the AC side, and no home battery does better than about 95 % there, so a
+  higher value would make it cycle for spreads that do not pay. The raw median stays in the diagnostics (`view`).
 
 Every window taken is kept with its date (the last `KEEP` days), for the diagnostics and a chart later.
 """
@@ -48,8 +53,10 @@ MIN_CHARGED_KWH: Final = 20.0
 MAX_WINDOW: Final = timedelta(days=14)
 #: The highest step between two quarter hours' points over which the level is put in between them.
 MAX_STEP_GAP: Final = timedelta(minutes=20)
-#: A believable round trip.
+#: A believable round trip (a window's, counted at the battery's terminals).
 PLAUSIBLE: Final = (0.60, 0.98)
+#: The highest round trip the plan uses (see the module: counters at the battery miss the inverter's loss).
+PLAN_CAP: Final = 0.95
 #: Counters and measured power must agree within this share.
 AGREE_SHARE: Final = 0.15
 #: The windows looked at for the answer, and those within this many hundredths of their median agree.
@@ -348,7 +355,7 @@ class RoundTrip:
         median = self.median
         if median is None:
             return
-        target = min(PLAUSIBLE[1], max(PLAUSIBLE[0], median))
+        target = min(PLAN_CAP, max(PLAUSIBLE[0], median))
         if self.efficiency is None:
             self.efficiency = round(target, 3)
         elif abs(target - self.efficiency) >= DEADBAND:
@@ -379,7 +386,10 @@ class RoundTrip:
         median = self.median
         return {
             "efficiency": self.efficiency,
+            # The raw median of what was measured, before the plan's cap (`PLAN_CAP`).
             "median": None if median is None else round(median, 4),
+            "capped": median is not None and median > PLAN_CAP,
+            "cap": PLAN_CAP,
             "windows": [window.as_dict() for window in self.windows],
             "rejected": [window.as_dict() for window in self.rejected],
             "open_since": None if self.anchor is None else self.anchor.at.isoformat(),
@@ -412,7 +422,8 @@ class RoundTrip:
         return cls(
             windows=[w for w in windows("windows") if w.rejected is None],
             rejected=windows("rejected")[-KEEP_REJECTED:],
-            efficiency=float(efficiency)
+            # A value stored before the cap (`PLAN_CAP`) is brought under it.
+            efficiency=min(PLAN_CAP, float(efficiency))
             if _finite(efficiency) and PLAUSIBLE[0] <= efficiency <= PLAUSIBLE[1]
             else None,
             anchor=Point.from_dict(raw.get("anchor")),
