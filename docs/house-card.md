@@ -113,6 +113,8 @@ Everything SpotNav plans for the home on one time axis, from the running hour to
 and, once tomorrow's prices are out (about 13:00), all of tomorrow, at most 36 hours. It rolls with the clock, so late in
 the evening it shows the night and tomorrow, never just what is left of today.
 
+![The house card's Plan tab: the next hours from the grid per hour, split by load against the main fuse, with Per load and In words opened](images/house-card-plan.png)
+
 * **At the top**: the estimated cost from the grid over those hours, the highest hour from the grid against the ceiling
   ("at 03:00 · over the ceiling"), and where the electricity price has a power tariff, the month's peak so far.
 * **The chart**: per hour what the house takes from the grid, split by load: the house, the heat pump and the water
@@ -149,6 +151,8 @@ and so on. A past hour shows, per load, what the plan said when the hour began, 
 differs from the plan, the planned figure is a faint dashed outline. Hours Home Assistant was not running are grey and
 say so; nothing is filled in for them. The history starts when SpotNav 3.0 is installed, so the first days are short.
 
+![The Plan tab stepped back to Yesterday: what was planned and what ran, the night's car charge that took less than planned drawn as a dashed outline](images/house-card-plan-past.png)
+
 #### When SpotNav plans again
 
 The plan and the control are two things. The plan picks the hours; the control follows the meters all the time: the
@@ -178,12 +182,18 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   ("Car · 35 %") and its kWh under it; a column grows as wide as its widest pill needs. Tap House (or Heat) for what
   used it. Only where no diagram can be drawn yet (nothing has flowed between two blocks) the figures stand as tiles:
   *Sun*, *House*, *Discharged*, *Charged*, *Bought*, *Sold*, *Heat* and *Car*, each only where it has energy.
+
+  ![The house card's Energy flow tab: today's energy from the sun, the battery and the grid to the battery, the house and the heat](images/house-card-flow.png)
+
 * **Energy chart**: today covers 12 hours back and 24 ahead: bars for the house's load per hour (measured before now,
   forecast after in a lighter shade), the heat in it, and an area for the sun; over a past bar a short line shows what
   the forecast was. The car is hidden until you tap it in the legend; shown, it is stacked on the hour's bar, so the
   whole bar is the hour's mean power with the car. A past day has its 24 hours. A month has a bar per day and a year a bar per
   month, as wide as the chart allows, with the house, the heat and the car stacked and the sun as a stepped line over
   them, on a kWh axis. Tap a bar or an hour for its figures; the arrow keys walk them.
+
+  ![The house card's Energy chart tab on a month: a bar per day with the house, the heat and the car stacked and the sun as a stepped line](images/house-card-chart.png)
+
 * **Earnings**: what SpotNav saved over the period as bars, an hour, a day or a month each, stacked with a part per
   thing it controls: **Arbitrage (battery)**, **Heat** and **Car**, only those the site has (each as in *What SpotNav
   saved* below). The parts are toggles above the bars, each with its sum; the headline ("Earned 54 kr") is the sum of the
@@ -197,6 +207,9 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   review (the battery's own figure plus what the review says the plan's day would have cost less, or more). So the two
   can be compared before control is turned on. The would-be figure is never in the headline, a day not reviewed yet
   counts as it went, and a single day has it in words under the bars (today's comes the night after).
+
+  ![The house card's Earnings tab on a month: the battery's own earnings per day beside what SpotNav would have saved, hatched](images/house-card-earnings.png)
+
 * **Price and battery**: a day only (a month or a year chosen on another tab becomes the day inside it; the picker has no
   Day | Month | Year here). Under the picker a line with what the battery's figure counts ("What the battery gave back, at
   the price then, less what charging it cost") and what the electricity cost. It is not the cash flow some battery apps
@@ -212,6 +225,8 @@ today is offered, and nothing more than ten years back. The period stays chosen 
   SpotNav counts a kWh's cost when that kWh is used, at the average of what the stored energy cost, with the sun's
   energy valued at the sell price. Over a few days the two should be close. Days from before the breakdown was kept
   show the short figure.
+
+  ![The house card's Price and battery tab: today's buy and sell prices per hour, the battery's level measured and planned, and the hours it charges from the grid or sells](images/house-card-price.png)
 
 ### The details
 

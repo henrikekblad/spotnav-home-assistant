@@ -106,11 +106,93 @@ def _battery_plan(result):
     return body
 
 
+#: The recorded day's spot prices (EUR/kWh a quarter hour), read once at install (not on the event loop).
+_SPOT: list[float] = []
+
+
+def _decision_ledger(hass, result):
+    """The site's decision history (the Plan tab's days gone by) with the hours before the first one recorded, from
+    three days back: per hour the demo house's measured means, the prices as the plan had them (the recorded day of
+    `nordpool`, the same every day: sell = spot, buy = spot with VAT and fees), the fuse as the ceiling, and per load
+    what the plan said at the hour's start and what ran. The car (controlled) charges 01-04 at night and once took
+    less than planned (`car_limited`); the battery and the heat are only watched (test mode), as in the demo site."""
+    from datetime import timedelta
+
+    from custom_components.demo_house import model
+    from custom_components.spotnav.site.decision_ledger import (
+        HINT_CAR_LIMITED, HourRow, Ledger, LoadRow, Planned, hour_number)
+
+    try:
+        ledger = Ledger.from_store(result)
+    except Exception:  # noqa: BLE001 - nothing readable: start from the seed alone
+        ledger = Ledger()
+    garage = next((e.entry_id for e in hass.config_entries.async_entries("spotnav") if e.title == "Garage"), None)
+    m = model.get()
+    now = datetime.now(timezone.utc)
+    running = hour_number(now)
+    first = min([*ledger.hours, ledger.open.hour if ledger.open is not None else running, running])
+    spot = _SPOT
+    today = now.astimezone(model.ZONE).date()
+    start = datetime.combine(today - timedelta(days=3), datetime.min.time(), tzinfo=model.ZONE).astimezone(timezone.utc)
+    hour = start
+    while hour_number(hour) < first:
+        local = hour.astimezone(model.ZONE)
+        h = local.hour
+        back = (today - local.date()).days
+        quarter = spot[h * 4:h * 4 + 4]
+        sell = round(sum(quarter) / len(quarter) * 1129, 2)
+        price = round(sell * 1.25 + 82.5, 2)
+        lo = m.index(hour)
+        span = range(lo, min(lo + 12, m.n))
+        mean = lambda series: sum(series[i] for i in span) / len(span)  # noqa: E731
+        sun, heat, batt = mean(m.sun), mean(m.heat), mean(m.batt)
+        house = mean(m.house) + heat
+        car_plan = 6.93 if 1 <= h < 4 else None
+        car_ran = None if car_plan is None else (3.2 if back == 1 and h == 3 else 6.9)
+        grid = house + batt - sun + (car_ran or 0.0)
+        planned_net = house + batt - sun + (car_plan or 0.0)
+        number = hour_number(hour)
+        rows = []
+        if garage is not None:
+            rows.append(LoadRow(
+                number, garage, "car", "Garage", False,
+                Planned("charge", car_plan, None) if car_plan else Planned(None, None, None),
+                "charge" if car_ran else None, car_ran,
+                HINT_CAR_LIMITED if car_ran is not None and car_ran < car_plan - 1 else None, None))
+        if batt > 0.1:
+            what = "grid_charge" if 2 <= h < 6 and sun < 0.5 else "sun_charge"
+        elif batt < -0.1:
+            what = "cover"
+        else:
+            what = None
+        rows.append(LoadRow(
+            number, "sensor.sigen_plant_ess_power", "home_battery", "Sigenergy", True,
+            Planned(what, round(batt, 2) if what else None, None), what, round(batt, 2), None, None))
+        if h in (7, 8, 17, 18, 19):
+            heat_plan = Planned("lower", None, "dear_hour", -1)
+        elif h in (5, 16):
+            heat_plan = Planned("preheat", None, "cheap_before_dear", 1)
+        else:
+            heat_plan = Planned(None, None, None, 0)
+        rows.append(LoadRow(
+            number, "switch.heat_pump_curve_relay", "heat", "Heat pump Curve relay", True, heat_plan, None,
+            round(heat, 2), None, None))
+        ledger.keep(HourRow(number, 60, 0, price, sell, round(grid, 2), round(house - sun, 2), 17.32, "fuse",
+                            round(planned_net, 2)), rows)
+        hour += timedelta(hours=1)
+    return ledger.as_store()
+
+
 def install() -> None:
     """Patch the integration's house-history restore once a site's load-forecast store is read, and give the heat
     store its hot-water shadow."""
+    import json
+    import os
+
     from homeassistant.helpers import storage
 
+    with open(os.environ["DOCS_PRICE_FIXTURE"], encoding="utf-8") as handle:
+        _SPOT[:] = json.load(handle)["prices"]
     original = storage.Store.async_load
 
     async def load(self, *args, **kwargs):
@@ -122,6 +204,13 @@ def install() -> None:
             result = _battery_plan(result)
         elif key.startswith("spotnav.heat_shadow.") and not (result or {}).get("hot_water"):
             result = _hot_water(result)
+        elif key.startswith("spotnav.decision_ledger."):
+            try:
+                result = _decision_ledger(self.hass, result)
+            except Exception:  # noqa: BLE001 - a seed that fails leaves the history as it was
+                import logging
+
+                logging.getLogger(__name__).exception("docs: the decision history seed failed")
         return result
 
     storage.Store.async_load = load
