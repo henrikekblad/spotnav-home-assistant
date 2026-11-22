@@ -109,6 +109,8 @@ FOREIGN_CONFIRM: Final = timedelta(seconds=60)
 FRESH_PLAN: Final = timedelta(hours=2)
 EFFECT_GRACE: Final = timedelta(minutes=10)
 EFFECT_SHARE: Final = 0.3
+#: The effect (or its absence past the grace) must be seen on this many looks in a row.
+EFFECT_LOOKS: Final = 2
 #: A zone's power that counts as drawing (W).
 DRAWING_W: Final = 50.0
 CALL_TIMEOUT_S: Final = 10.0
@@ -809,16 +811,23 @@ class ZonesControl:
         if effect is None or effect.get("since") is None:
             return
         since = datetime.fromisoformat(effect["since"])
+        action = attributes.get("hvac_action")
         if effect["by"] == "power":
+            # The meter on the device may be another channel's: its fall counts only where the thermostat does not
+            # say it still heats, and the thermostat saying it stopped counts as well.
             power = self._zone_power_w(zone.entity_id)
-            seen = power is not None and power <= EFFECT_SHARE * float(effect["baseline"])
+            fell = power is not None and power <= EFFECT_SHARE * float(effect["baseline"])
+            seen = (fell and action != "heating") or action in ("idle", "off")
         else:
-            seen = attributes.get("hvac_action") in ("idle", "off")
-        if seen:
+            seen = action in ("idle", "off")
+        # Judged on two looks in a row either way: one reading is no proof (a compressor's pause, a meter's blip).
+        effect["seen"] = effect.get("seen", 0) + 1 if seen else 0
+        effect["missed"] = 0 if seen else effect.get("missed", 0) + 1
+        if effect["seen"] >= EFFECT_LOOKS:
             zone.effect = None
             zone.check = {"result": CHECK_PASSED, "at": now.isoformat(), "why": effect["by"]}
             self._log(now, zone, "check_passed", why=effect["by"])
-        elif now - since > EFFECT_GRACE:
+        elif now - since > EFFECT_GRACE and effect["missed"] >= EFFECT_LOOKS:
             zone.effect = None
             zone.check = {"result": CHECK_FAILED, "at": now.isoformat(), "why": "no_effect"}
             self._log(now, zone, "check_failed", why="no_effect")
