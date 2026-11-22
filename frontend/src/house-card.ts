@@ -13,7 +13,19 @@
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`, and
 // optionally `tab: now | plan | flow | graph | earn | price` to show only that tab (no tab row).
 
-import { getHouse, getHouseNow, getPeriodHistory, getPlan, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import {
+  getHouse,
+  getHouseNow,
+  getPeriodHistory,
+  getPlan,
+  getSettings,
+  releaseImportTarget,
+  SpotnavApiError,
+  UNSUPPORTED_API_VERSION,
+  updateSettings,
+} from "./api";
+import type { DoesNotFitChoiceCode } from "./does-not-fit";
+import { decodeSettingsAnswer, ifNotReadyReplacement } from "./settings";
 import { entityWordsOf } from "./entity-words";
 import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from "./house-loads";
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
@@ -562,6 +574,36 @@ export class SpotnavHouseCard extends HTMLElement {
     }
   }
 
+  /**
+   * A car's "does not fit" choice in the Plan tab: "Take what fits" writes the charger's plan `if_not_ready` `hold`
+   * (refused by the backend where this user may not change the plan), "Allow the peak" sets the import target aside
+   * for that charge (`spotnav/release_import_target`, any user). The plan is read again either way; a refusal leaves
+   * the line as the next read says.
+   */
+  private async doesNotFitChoice(chargerId: string, code: DoesNotFitChoiceCode): Promise<void> {
+    const hass = this.hassObject;
+    if (hass === null) {
+      return;
+    }
+    try {
+      if (code === "accept_peak") {
+        await releaseImportTarget(hass, chargerId);
+      } else if (code === "takes_what_fits") {
+        const read = decodeSettingsAnswer(await getSettings(hass, chargerId));
+        if (read.ok && read.value.ok && read.value.settings !== null) {
+          const record = read.value.settings;
+          const check = ifNotReadyReplacement(record, "hold");
+          if (check.ok && check.changed) {
+            await updateSettings(hass, chargerId, record.revision, check.body);
+          }
+        }
+      }
+    } catch {
+      // Not written: the line stays until the next read says otherwise.
+    }
+    void this.loadPlan(true);
+  }
+
   /** Read the plan (`quiet`: again, the one shown kept until the new one is in, and kept when the read fails). */
   private async loadPlan(quiet: boolean): Promise<void> {
     const hass = this.hassObject;
@@ -889,6 +931,9 @@ export class SpotnavHouseCard extends HTMLElement {
           ...(admin ? { onSettings: () => this.showSettings() } : {}),
           onHistory: (opener) => this.showHistory(opener),
           onHouseLoads: (opener, kind, period) => this.showLoads(opener, kind, period ?? null),
+          onDoesNotFit: (chargerId, code) => {
+            void this.doesNotFitChoice(chargerId, code);
+          },
         },
         width: this.width,
         nowMs: Date.now(),

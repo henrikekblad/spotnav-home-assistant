@@ -3,6 +3,7 @@
 // (`house-history.ts`, which holds the analysis of a period). Built fresh for each state with `textContent` only;
 // every figure is the backend's.
 
+import type { DoesNotFitChoiceCode } from "./does-not-fit";
 import { attachScrub } from "./chart-scrub";
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, kwhText, kwText, moneyMinorAsMajor as amount, percentWhole, type EntityWords, type FormatContext } from "./format";
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
@@ -98,6 +99,8 @@ export interface HouseHandlers {
   onBar?(key: string | null): void;
   /** The viewer hid or showed a part of the Earnings tab: the whole hidden list after the change. */
   onEarnPart?(hidden: string[]): void;
+  /** A choice on a car's "does not fit" line in the Plan tab (`house-plan.ts`). Without it the line has no buttons. */
+  onDoesNotFit?(chargerId: string, code: DoesNotFitChoiceCode): void;
 }
 
 export interface HouseRenderInput {
@@ -1090,7 +1093,16 @@ function planPanel(input: HouseRenderInput, panel: HTMLElement): void {
   const { doc, language } = input;
   const plan = input.tabs?.plan ?? { kind: "loading" };
   if (plan.kind === "ready") {
-    panel.append(planBody({ doc, language, plan: plan.answer, width: input.width }));
+    const choose = input.handlers.onDoesNotFit;
+    panel.append(
+      planBody({
+        doc,
+        language,
+        plan: plan.answer,
+        width: input.width,
+        ...(choose === undefined ? {} : { onDoesNotFit: (chargerId: string, code: DoesNotFitChoiceCode) => choose(chargerId, code) }),
+      }),
+    );
     return;
   }
   const failed = plan.kind === "failed";
