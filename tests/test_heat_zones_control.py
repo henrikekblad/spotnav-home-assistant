@@ -347,3 +347,15 @@ async def test_the_zones_are_set_back_at_the_stop_at_the_same_time(hass: HomeAss
     await zones.async_shutdown()
     assert sorted(started) == sorted(by_id)
     assert floor.setpoint == 22.0 and other.setpoint == 22.0 and not zones.holds_any()
+
+
+async def test_a_zone_s_power_is_read_from_its_text_state(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    from custom_components.spotnav.site import heat_zones
+
+    _entry, zones, _thermostat, _now = await _running(hass, freezer, {})
+    monkeypatch.setattr(heat_zones, "device_sensors", lambda _hass, _entity: ("device", []))
+    monkeypatch.setattr(heat_zones, "pick_zone_sensor", lambda _sensors: ("sensor.golv_effekt", "power"))
+    hass.states.async_set("sensor.golv_effekt", "450", {"unit_of_measurement": "W"})
+    assert zones._zone_power_w(FLOOR) == 450.0  # noqa: SLF001
+    hass.states.async_set("sensor.golv_effekt", "0.5", {"unit_of_measurement": "kW"})
+    assert zones._zone_power_w(FLOOR) == 500.0  # noqa: SLF001

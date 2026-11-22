@@ -59,7 +59,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
-from ..core.parse import aware_instant, finite_number
+from ..core.parse import aware_instant, finite_number, number_from_state
 from ..const import DOMAIN
 from ..site.shed_order import LOAD_HEAT, REASON_CEILING, Offer
 from .automations import SteeringAutomation, steering_automations
@@ -787,7 +787,7 @@ class ZonesControl:
         if picked is None or picked[1] != KIND_POWER:
             return None
         state = self.hass.states.get(picked[0])
-        value = None if state is None else finite_number(state.state)
+        value = None if state is None else number_from_state(state.state)
         if value is None:
             return None
         unit = state.attributes.get("unit_of_measurement")  # type: ignore[union-attr]
