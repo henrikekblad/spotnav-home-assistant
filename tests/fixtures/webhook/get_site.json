@@ -5,6 +5,7 @@
     "battery_control": true,
     "get_heat": true,
     "get_house": true,
+    "get_plan": true,
     "get_power_month": true,
     "get_site_settings_view": true,
     "suggest_import_target": true,

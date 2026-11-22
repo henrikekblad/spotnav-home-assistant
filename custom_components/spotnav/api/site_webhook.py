@@ -13,6 +13,7 @@ Reads (HTTP 200, or 400 with `{"ok": false, "error": <the command's stable code>
 | `get_house_loads` | `spotnav/get_house_loads` | `period?`, `date?`, `kind?` |
 | `get_heat` | `spotnav/get_heat` (as someone who is no administrator: `writable` false, no `choices`) | |
 | `get_heat_history` | `spotnav/get_heat_history` | `period`, `date?` |
+| `get_plan` | `spotnav/get_plan` (the house card's Plan tab, with each car's `does_not_fit`) | |
 | `get_site_settings_view` | `spotnav/get_site_settings_view` (`writable` true, `site.active_control.writable` false, as the webhook's dashboard) | |
 | `battery_control` | `spotnav/battery_control` | `changes?` |
 
@@ -56,6 +57,7 @@ from ..site.house_now import HOUSE_NOW_API_VERSION
 from ..site.house_period import HOUSE_HISTORY_API_VERSION
 from ..site.house_loads import HOUSE_LOADS_API_VERSION
 from ..site.house_view import HOUSE_API_VERSION
+from ..site.plan_view import PLAN_API_VERSION
 from . import heat_history, house_history
 from .battery_control import BATTERY_CONTROL_API_VERSION, async_battery_control_answer
 from .common import (
@@ -76,6 +78,7 @@ from .heat import (
 from .house import async_house_answer
 from .house_loads import async_loads_answer
 from .house_now import async_house_now
+from .plan import async_plan_answer
 from .power_month import PowerMonthRefusal
 from .grid_tariff import READS_POWER_LEVEL, without_power_level
 from .site_view import SITE_VIEW_API_VERSION, site_settings_view
@@ -137,6 +140,10 @@ async def _heat(hass: HomeAssistant, site: ConfigEntry, payload: dict[str, Any])
 
 async def _heat_history(hass: HomeAssistant, site: ConfigEntry, payload: dict[str, Any]) -> dict[str, Any]:
     return await heat_history.history_answer(hass, site, payload.get("period"), payload.get("date"))
+
+
+async def _plan(hass: HomeAssistant, site: ConfigEntry, payload: dict[str, Any]) -> dict[str, Any]:
+    return await async_plan_answer(hass, site)
 
 
 def site_settings_view_handler(*, price_writable: bool) -> SiteHandler:
@@ -223,6 +230,7 @@ def site_handlers(*, price_writable: bool) -> dict[str, SiteHandler]:
         "get_house_loads": _read("get_house_loads", HOUSE_LOADS_API_VERSION, async_loads_answer),
         "get_heat": _read("get_heat", HEAT_API_VERSION, _heat),
         "get_heat_history": _read("get_heat_history", HEAT_HISTORY_API_VERSION, _heat_history),
+        "get_plan": _read("get_plan", PLAN_API_VERSION, _plan),
         "get_site_settings_view": site_settings_view_handler(price_writable=price_writable),
         "battery_control": _battery_control,
         "update_heat": _update_heat,

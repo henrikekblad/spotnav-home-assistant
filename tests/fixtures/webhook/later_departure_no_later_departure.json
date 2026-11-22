@@ -1,0 +1,6 @@
+{
+  "action": "later_departure",
+  "api_version": 1,
+  "error": "spotnav_no_later_departure",
+  "ok": false
+}

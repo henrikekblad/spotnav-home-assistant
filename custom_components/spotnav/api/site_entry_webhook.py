@@ -10,8 +10,8 @@ Assistant's empty 200 that the app reads as "pair again". Only a removed entry o
 
 * **The site's own actions**, bound to this site (a `site_id` in the body is never read): `get_site` (below), the
   site actions of the charger webhook (`api/site_webhook.py`: `get_house`, `get_house_now`, `get_house_history`,
-  `get_house_loads`, `get_heat`, `get_heat_history`, `get_site_settings_view`, `battery_control`, `update_heat`,
-  `heat_boost`), `update_site_settings` (the site-bound path, load balancing refused), `get_power_month` and
+  `get_house_loads`, `get_heat`, `get_heat_history`, `get_plan`, `get_site_settings_view`, `battery_control`,
+  `update_heat`, `heat_boost`), `update_site_settings` (the site-bound path, load balancing refused), `get_power_month` and
   `suggest_import_target`. A site without a charger answers them all.
 * **Every action of the charger webhook** (`api/webhook.py:ACTIONS`) for one charger of this site, named by
   `charger_id` in the body: the same answer the charger's own webhook gives. A body without `charger_id` is
@@ -28,7 +28,8 @@ its webhook (parity with the charger webhook). The control opt-ins stay refused 
 `get_site` (`api_version` 1, optional in the body):
 
     {ok, action, api_version: 1, site_id, name, loaded, capabilities: {get_house, get_heat, battery_control,
-     get_site_settings_view, update_site_settings, get_power_month, suggest_import_target}, chargers: [{id, name}]}
+     get_site_settings_view, update_site_settings, get_power_month, suggest_import_target, get_plan},
+     chargers: [{id, name}]}
 
 `chargers` lists this site's chargers in the site's order, each addressable by its `id` as `charger_id`; a charger
 added to the site later shows up here, with no new pairing. The capabilities are true while the site is loaded.
@@ -87,6 +88,7 @@ GET_SITE_CAPABILITIES: Final = (
     "update_site_settings",
     "get_power_month",
     "suggest_import_target",
+    "get_plan",
 )
 
 

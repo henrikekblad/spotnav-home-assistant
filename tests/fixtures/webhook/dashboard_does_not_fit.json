@@ -1,0 +1,371 @@
+{
+  "action": "dashboard",
+  "api_version": 1,
+  "charge_progress": {
+    "reason": "connector_status_unavailable",
+    "since": null,
+    "state": "unknown"
+  },
+  "charger": {
+    "available": true,
+    "capabilities": {
+      "auto_price": true,
+      "battery_control": true,
+      "current_limit": true,
+      "dismiss_setup_item": true,
+      "fix_own_mode": true,
+      "get_heat": true,
+      "get_house": true,
+      "get_power_month": true,
+      "get_site_settings_view": true,
+      "load_balancing": true,
+      "plan_preview": true,
+      "price_days": true,
+      "refresh_vehicle": true,
+      "regulated_current": true,
+      "release_import_target": true,
+      "set_charge_limit": true,
+      "set_current": true,
+      "site_import_target": true,
+      "suggest_import_target": true,
+      "target_soc": false,
+      "target_stop": true
+    },
+    "charger_id": "<charger_id>",
+    "charger_name": "HALO"
+  },
+  "charger_priority": {
+    "choices": [
+      "first",
+      "normal",
+      "last"
+    ],
+    "value": "normal",
+    "writable": true
+  },
+  "chargers": [
+    {
+      "id": "<charger_id>",
+      "name": "HALO"
+    }
+  ],
+  "charging_phases": {
+    "charger": 3,
+    "limited_by": null,
+    "phases": 3,
+    "vehicle": null
+  },
+  "connection": {
+    "shown": "charging",
+    "source": null,
+    "state": "charging"
+  },
+  "control": {
+    "automatic_action": "pause",
+    "automatic_action_reason": null,
+    "can_act": true,
+    "execution_error": null,
+    "immediate_action": "stop",
+    "immediate_action_reason": null,
+    "pause": {
+      "admitted_at": null,
+      "choice": null,
+      "expires_at": null
+    },
+    "pause_blocks_execution": false,
+    "pause_choices": [
+      "until_resumed"
+    ]
+  },
+  "current_range": {
+    "max_a": 32,
+    "min_a": 6,
+    "source": "default"
+  },
+  "detected_phases": null,
+  "does_not_fit": {
+    "ceiling": "import_target",
+    "ceiling_kw": 6.0,
+    "choices": [
+      {
+        "code": "takes_what_fits",
+        "cost": null,
+        "departure": null,
+        "kwh": 7.1,
+        "peak_kw": null
+      },
+      {
+        "code": "later",
+        "cost": null,
+        "departure": "2026-11-02T16:00:00+00:00",
+        "kwh": null,
+        "peak_kw": null
+      },
+      {
+        "code": "accept_peak",
+        "cost": null,
+        "departure": null,
+        "kwh": null,
+        "peak_kw": 12.0
+      }
+    ],
+    "chosen": null,
+    "deliverable_kwh": 7.1,
+    "departure": "2026-11-02T13:30:35+00:00",
+    "set_kw": 6.0,
+    "short_kwh": 9.1
+  },
+  "fiscal": null,
+  "generated_at": "2026-11-02T12:02:35+00:00",
+  "identification": null,
+  "live": {
+    "charging": true,
+    "measured_current_a": 6.0,
+    "requested_current_a": 16.0,
+    "schedule_active": true,
+    "setpoint_current_a": null
+  },
+  "market": {
+    "area_id": null,
+    "area_name": null,
+    "catalogue_attempt_error": null,
+    "catalogue_fetched_at": null,
+    "catalogue_state": "ready",
+    "countries": null,
+    "currency": null,
+    "included": null,
+    "major_unit": null,
+    "market_timezone": null,
+    "minor_unit": null,
+    "source": null,
+    "suggested_grid_fee": null,
+    "suggested_tax": null,
+    "suggested_vat_percent": null,
+    "timezone": null
+  },
+  "ok": true,
+  "phase_detection": {
+    "confidence": "none",
+    "source": "unknown"
+  },
+  "plan": {
+    "delivered_kwh": null,
+    "installed": {
+      "active_period_index": 0,
+      "amps": 16,
+      "identity": "<id>",
+      "periods": [
+        {
+          "end": "2026-11-02T13:30:35+00:00",
+          "start": "2026-11-02T12:00:35+00:00"
+        }
+      ],
+      "phases": 3,
+      "power_kw": 11.04
+    },
+    "proposal": null,
+    "relation": {
+      "applied": false,
+      "applied_identity": null,
+      "pending_identity": null
+    },
+    "remaining_kwh": null
+  },
+  "plan_notice": {
+    "at": null,
+    "seq": 0
+  },
+  "planning": {
+    "applied": false,
+    "applied_identity": null,
+    "calculated_at": "2026-11-02T12:00:05+00:00",
+    "execution_paused": false,
+    "execution_reason": null,
+    "execution_state": "active",
+    "generation": 0,
+    "historical": true,
+    "missing": [
+      "area",
+      "amps"
+    ],
+    "must_buy_now_kwh": null,
+    "pending_attempt": null,
+    "pending_identity": null,
+    "price_identity": null,
+    "price_state": null,
+    "price_wait": null,
+    "publication_at": null,
+    "reason": "settings_missing",
+    "settings_revision": 0,
+    "state": "incomplete_settings",
+    "today": null,
+    "tomorrow": null
+  },
+  "prices": {
+    "area_id": null,
+    "index_revision": null,
+    "index_state": null,
+    "interval_count": 0,
+    "intervals": [],
+    "priced_slots": 0,
+    "reason": null,
+    "resolution_minutes": null,
+    "resolutions_minutes": [],
+    "state": null,
+    "today": null,
+    "today_attempt_at": null,
+    "today_attempt_error": null,
+    "today_fetched_at": null,
+    "today_source": null,
+    "today_state": null,
+    "tomorrow": null,
+    "tomorrow_attempt_at": null,
+    "tomorrow_attempt_error": null,
+    "tomorrow_fetched_at": null,
+    "tomorrow_source": null,
+    "tomorrow_state": null,
+    "unpriced": false,
+    "unpriced_slots": 0,
+    "waiting_for_tomorrow": null
+  },
+  "progress": null,
+  "sessions_summary": {
+    "last_month": {
+      "average_price_minor_per_kwh": null,
+      "cost": null,
+      "currency": null,
+      "energy_kwh": 0.0,
+      "estimated": false,
+      "major_unit": null,
+      "minor_unit": null,
+      "period": "2026-10",
+      "reference_cost": null,
+      "savings": null,
+      "savings_basis": "day_average_price",
+      "savings_estimate": true,
+      "sessions": 0,
+      "solar_share": null
+    },
+    "this_month": {
+      "average_price_minor_per_kwh": null,
+      "cost": null,
+      "currency": null,
+      "energy_kwh": 0.0,
+      "estimated": false,
+      "major_unit": null,
+      "minor_unit": null,
+      "period": "2026-11",
+      "reference_cost": null,
+      "savings": null,
+      "savings_basis": "day_average_price",
+      "savings_estimate": true,
+      "sessions": 0,
+      "solar_share": null
+    }
+  },
+  "settings": {
+    "amps": null,
+    "area_id": null,
+    "departure_enabled": true,
+    "departure_time": "08:00",
+    "driver": "manual_kwh",
+    "max_periods": 8,
+    "overrides": [],
+    "phases": 3,
+    "requested_kwh": 20.0,
+    "revision": 2,
+    "strategy": "cheapest",
+    "target": {
+      "target_percent": null,
+      "vehicle_id": null
+    }
+  },
+  "site": {
+    "active_control": {
+      "available": true,
+      "direction_hint": null,
+      "enabled": true,
+      "reason": null,
+      "writable": false
+    },
+    "charger_count": 1,
+    "name": "Site",
+    "solar_forecast": {
+      "choices": [],
+      "selected": []
+    },
+    "solar_priority": "car_first",
+    "writable": true
+  },
+  "soc": null,
+  "starting_up": {
+    "active": false,
+    "until": null,
+    "waiting_for": []
+  },
+  "status": {
+    "lines": [
+      {
+        "code": "settings_incomplete",
+        "params": {
+          "missing": [
+            "area",
+            "amps"
+          ],
+          "reason": "settings_missing"
+        }
+      },
+      {
+        "code": "charging_now",
+        "params": {
+          "until": "2026-11-02T13:30:35+00:00"
+        }
+      }
+    ],
+    "tone": "notice"
+  },
+  "strategy": {
+    "available": [
+      {
+        "available": true,
+        "reason": null,
+        "strategy": "cheapest"
+      },
+      {
+        "available": true,
+        "reason": null,
+        "strategy": "solar"
+      },
+      {
+        "available": true,
+        "reason": null,
+        "strategy": "hybrid"
+      }
+    ],
+    "selected": "cheapest"
+  },
+  "strategy_options": [
+    "cheapest",
+    "solar",
+    "hybrid"
+  ],
+  "strategy_state": null,
+  "summary": {
+    "charger": {
+      "current_entity_name": null,
+      "current_path": "change_configuration",
+      "energy_automatic": true,
+      "energy_name": null,
+      "start_stop_name": "whdnf charger"
+    },
+    "site": {
+      "battery_name": null,
+      "main_fuse_a": 20.0,
+      "measurement_mode": "derived_phase_current"
+    },
+    "vehicles": {}
+  },
+  "target_vehicle_id": null,
+  "vehicle_choices": [],
+  "vehicles": []
+}

@@ -1,0 +1,6 @@
+{
+  "action": "take_what_fits",
+  "api_version": 1,
+  "error": "spotnav_unsupported_api_version",
+  "ok": false
+}

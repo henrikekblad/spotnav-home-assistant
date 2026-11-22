@@ -32,6 +32,14 @@ Friday (a household member's answer, with the notes).
 (no sun, no battery, two indoor sensors), each the WebSocket twin's answer with `ok` and `action` beside it
 (`tests/test_webhook_site_parity.py`); the richer shapes of the same documents are the directories above. The heat
 documents' `money` has the house documents' keys (`currency`, `major_unit`, `minor_unit`).
+`webhook/get_plan_success.json` is the webhook's `get_plan` on the same site (a car whose charge fits).
+
+`webhook/get_plan_does_not_fit.json`, `dashboard_does_not_fit.json`, `get_plan_takes_what_fits.json`,
+`take_what_fits_*.json` and `later_departure_*.json` are a charge that does not fit under a 6 kW import target by its
+departure (`tests/test_import_target_hold.py`'s tight night, prices held to the end of tomorrow): the car lane's
+`does_not_fit` block in `get_plan`, the same block in the dashboard for an app that reads it (`reads:
+["does_not_fit"]`), the plan once "Take what fits" is pressed, and the two choices' answers and refusals
+(`tests/test_webhook_site_parity.py`). Ids are placeholders (`<site_id>`, `<charger_id>`).
 
 `pairing/approved_v1_sites.json` is the pairing poll's approved answer for an instance with a home that has a
 charger and a home without one (`tests/test_pairing_handshake.py`): `chargers` with each charger's `site_id`, and
