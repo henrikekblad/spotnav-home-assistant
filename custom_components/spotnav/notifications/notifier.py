@@ -647,6 +647,12 @@ class ChargerNotifier:
             self._burst_quiet = False
         self._arm_plan_timer(self._plan_due())
         self._save_plan()
+        if reading and self._fit_asking is not None:
+            # A car plugged in whose departure does not fit: told now (by day), not first at the site's next pass.
+            if self._fit_recheck is not None:
+                self._fit_recheck()
+            else:
+                self.does_not_fit(self._fit_asking)
 
     def _expectation(self, now: datetime) -> ExpectationFacts:
         controller = self._controller

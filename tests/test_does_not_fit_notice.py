@@ -10,7 +10,7 @@ from typing import Any
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.spotnav.notifications.messages import Money, does_not_fit_choice_text, does_not_fit_text
 from custom_components.spotnav.notifications.notifier import is_quiet, quiet_end
@@ -232,3 +232,39 @@ async def test_a_take_what_fits_press_for_another_departure_is_refused(hass: Hom
         await hass.async_block_till_done()
         assert controller.import_target_snapshot()["takes_what_fits"] == {}
         assert dt_util.utcnow() < world.departure
+
+
+async def test_a_car_plugged_in_later_is_told_at_the_plug_in_once(hass: HomeAssistant, monkeypatch) -> None:
+    """No car, no notice; a car plugged in later (by day) whose departure does not fit is told then, once."""
+    from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
+
+    from .test_import_target_hold import _plan, _world
+    from .test_notifications import _choose
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        await hass.config.async_set_time_zone("Europe/Stockholm")
+        world = await _world(hass, monkeypatch, frozen, "pluglater")
+        charger = world.halo.charger.entry_id
+        plugged = {"now": False}
+        monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: plugged["now"])
+        world.calls = async_mock_service(hass, "notify", "mobile_app_pixel")
+        await _choose(hass, charger, targets=("mobile_app_pixel",), events=("plan_at_risk",))
+        notifier = charger_data(hass, charger).notifier
+        notifier._observe()  # noqa: SLF001 - the charger reports no car
+        await world.step()
+        now = dt_util.utcnow()
+        departure = now + timedelta(hours=2, minutes=30)
+        # 16.5 kWh in a window from an hour on: under the 6 kW target it is about 4 kWh short.
+        world.halo.cc.plan = _plan(now, departure, [(now + timedelta(hours=1), departure)])
+        await world.run(2)
+        status = world.halo.controller.import_target_status(charger)
+        assert status is not None and status.at_risk is not None
+        assert _told(world) == [], "no car plugged in: nothing told"
+        # The car is plugged in: told at once, without waiting for the site's next pass.
+        plugged["now"] = True
+        notifier._observe()  # noqa: SLF001
+        await hass.async_block_till_done()
+        told = _told(world)
+        assert len(told) == 1 and told[0]["message"].startswith("The car will not be ready by 15:30 ")
+        await world.run(2)
+        assert len(_told(world)) == 1, "once per departure"
