@@ -142,6 +142,30 @@ A load SpotNav only watches (its control is off, or still being checked) is draw
 would do, never shown as done. Read from `spotnav/get_plan` while the tab is shown and again with the card's refresh;
 nothing is planned anew for it.
 
+**Days gone by.** The arrows beside the tab's title step back a day at a time, up to 7 days: **Now** (the plan above),
+**Today** (midnight to midnight, the hours gone by as they were, the rest as planned, with a line at now), **Yesterday**
+and so on. A past hour shows, per load, what the plan said when the hour began, what actually ran (measured) and why:
+"Garage: planned 3.7 kW, charged 2.1 kW – the car took less", "Water heater paused for the ceiling". Where the outcome
+differs from the plan, the planned figure is a faint dashed outline. Hours Home Assistant was not running are grey and
+say so; nothing is filled in for them. The history starts when SpotNav 3.0 is installed, so the first days are short.
+
+#### When SpotNav plans again
+
+The plan and the control are two things. The plan picks the hours; the control follows the meters all the time: the
+main fuse, the sun, the import target and the [shed order](site-and-load-balancing.md#the-shed-order-under-the-ceiling)
+act within seconds. So a car can charge less than planned in an hour without the plan changing.
+
+* **The home battery** is planned again at least once an hour, and at once when something changes: new prices, a new
+  solar or house forecast, a car's plan, a setting, or a battery whose level has drifted well away from the plan (at
+  most every 15 minutes for that).
+* **A car** is planned again when something happens: it is plugged in, new prices are out, the departure, the target or
+  the strategy changes, or its level is read. During a charging window SpotNav checks each minute that the charge keeps
+  up; if it falls behind, it plans again, at most every 5 minutes and less often while that changes nothing.
+* **The heat** is planned again each hour. Its rules (a cold room, the hot water, the legionella heat) apply all the time.
+
+The days gone by keep the plan as it stood when each hour began, so a plan made again within the hour shows as a
+difference between the planned and what ran.
+
 ### The period tabs
 
 Energy flow, Energy chart, Earnings and Price and battery share one row to choose the period: "‹ Today ›" and **Day |
