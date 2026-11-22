@@ -1279,6 +1279,8 @@
   "house.sources.heatFromSetting": "Warmtepompmeter: {name} (gekozen bij Instellingen)",
   "house.sources.heatSplit": "Huisprognose als warmte plus de rest: {split} tegen {whole} voor het geheel ({hours} u, alleen getoond)",
   "house.sources.battery": "Batterij: {name}",
+  "house.sources.roundTripLearned": "Rendement (laden en ontladen): {pct}, geleerd",
+  "house.sources.roundTripAssumed": "Rendement (laden en ontladen): aangenomen {pct}",
   "house.note.selfManaged": "De batterij draait op haar eigen optimalisatie. SpotNav plant ernaast alleen om te vergelijken en schrijft niets naar haar.",
   "house.note.shadow": "Test: SpotNav plant de batterij, maar stuurt die nog niet aan.",
   "house.note.controlling": "SpotNav stuurt de batterij volgens het plan.",

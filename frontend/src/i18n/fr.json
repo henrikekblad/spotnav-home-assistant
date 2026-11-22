@@ -1279,6 +1279,8 @@
   "house.sources.heatFromSetting": "Compteur de la pompe à chaleur : {name} (choisi dans les Paramètres)",
   "house.sources.heatSplit": "Prévision de la maison en chauffage plus le reste : {split} contre {whole} pour l'ensemble ({hours} h, affichée seulement)",
   "house.sources.battery": "Batterie : {name}",
+  "house.sources.roundTripLearned": "Rendement aller-retour : {pct}, appris",
+  "house.sources.roundTripAssumed": "Rendement aller-retour : {pct} supposé",
   "house.note.selfManaged": "La batterie suit son propre optimiseur. SpotNav planifie à côté seulement pour comparer et n'y écrit rien.",
   "house.note.shadow": "Test : SpotNav planifie la batterie mais ne la pilote pas encore.",
   "house.note.controlling": "SpotNav pilote la batterie selon le plan.",

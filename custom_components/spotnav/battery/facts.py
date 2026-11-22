@@ -164,6 +164,13 @@ class BatteryFacts:
     #: their values are read live, with their age, by the one that uses them (`site/phase_peaks.py`).
     plant_phase_entities: tuple[str, str, str] | None = None
     plant_phase_sign: float = 1.0
+    #: The battery's lifetime energy counters now (kWh: into it and out of it, `adapters` says where each brand counts
+    #: them), `None` where the brand has none or it reads none. The round trip is learnt from them (`round_trip.py`).
+    charged_total_kwh: float | None = None
+    discharged_total_kwh: float | None = None
+    #: The battery's round trip (0-1) learnt from its own meters (`learned.with_learned`), `None` until it is known:
+    #: the plan then assumes `plan_model.DEFAULT_ROUND_TRIP_EFFICIENCY`.
+    round_trip_efficiency: float | None = None
     #: The battery's average cell temperature entity (`adapters.Adapter.cell_temperature`), found and enabled, else
     #: `None`. Its day is read from the recorder's statistics by the nightly review, never live.
     cell_temperature_entity: str | None = None
@@ -208,6 +215,9 @@ class BatteryFacts:
             "firmware": self.firmware,
             "on_grid": self.on_grid,
             "cell_temperature_c": self.cell_temperature_c,
+            "charged_total_kwh": self.charged_total_kwh,
+            "discharged_total_kwh": self.discharged_total_kwh,
+            "round_trip_efficiency": self.round_trip_efficiency,
             "preheat": None if self.preheat is None else self.preheat.as_dict(),
             "management": {
                 "state": self.management.state,
@@ -601,6 +611,8 @@ def battery_facts(
     reserve_soc_pct, reserve_read = _reserve(adapter.reserves, entities, battery, found_states)
     if reserve_read:
         sources["reserve"] = ", ".join(reserve_read)
+    charged = found.get("charged_total")
+    discharged = found.get("discharged_total")
     on_grid: bool | None = None
     if adapter.grid_status is not None:
         status = find_entity(adapter.grid_status[0], entities, battery)
@@ -623,6 +635,8 @@ def battery_facts(
         on_grid=on_grid,
         plant_phase_entities=plant_phases,
         plant_phase_sign=adapter.plant_phase_sign,
+        charged_total_kwh=None if charged is None else to_kwh(charged.state, charged.unit),
+        discharged_total_kwh=None if discharged is None else to_kwh(discharged.state, discharged.unit),
         cell_temperature_entity=cell_temperature,
         cell_temperature_c=_cell_temperature_c(entities, cell_temperature),
         preheat=_preheat(adapter.preheat, entities, battery),

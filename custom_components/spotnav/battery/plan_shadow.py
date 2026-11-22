@@ -194,7 +194,8 @@ def _finite(value: Any) -> bool:
 
 
 def battery_params(facts: BatteryFacts) -> tuple[BatteryParams | None, str | None, tuple[str, ...]]:
-    """The battery as the plan sees it, or why it cannot be planned; with what was assumed."""
+    """The battery as the plan sees it, or why it cannot be planned; with what was assumed (the round trip only
+    until it is learnt)."""
     if facts.battery_entity_id is None:
         return None, NO_BATTERY, ()
     if facts.soc_pct is None:
@@ -205,14 +206,18 @@ def battery_params(facts: BatteryFacts) -> tuple[BatteryParams | None, str | Non
         return None, NO_RATED_POWER, ()
     if (facts.rated_charge_kw or 0) <= 0 and (facts.rated_discharge_kw or 0) <= 0:
         return None, NO_RATED_POWER, ()
+    # The round trip learnt from the battery's own meters (`round_trip.py`), else the assumed one.
+    learned = facts.round_trip_efficiency if _finite(facts.round_trip_efficiency) else None
+    if learned is not None and not 0 < learned <= 1:
+        learned = None
     params = BatteryParams(
         usable_kwh=float(facts.capacity_kwh),  # type: ignore[arg-type]
         max_charge_kw=max(0.0, float(facts.rated_charge_kw)),  # type: ignore[arg-type]
         max_discharge_kw=max(0.0, float(facts.rated_discharge_kw)),  # type: ignore[arg-type]
         min_soc_pct=ASSUMED_MIN_SOC_PCT,
-        round_trip_efficiency=DEFAULT_ROUND_TRIP_EFFICIENCY,
+        round_trip_efficiency=DEFAULT_ROUND_TRIP_EFFICIENCY if learned is None else learned,
     )
-    return params, None, (EST_MIN_SOC, EST_ROUND_TRIP)
+    return params, None, (EST_MIN_SOC, EST_ROUND_TRIP) if learned is None else (EST_MIN_SOC,)
 
 
 @dataclass(frozen=True, slots=True)

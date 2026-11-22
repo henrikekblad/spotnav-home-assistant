@@ -13,7 +13,7 @@ from custom_components.spotnav.battery.learned import (
     LearnedBattery,
     with_learned,
 )
-from custom_components.spotnav.battery.plan_shadow import BUCKET, Bucket, battery_params
+from custom_components.spotnav.battery.plan_shadow import BUCKET, EST_ROUND_TRIP, Bucket, battery_params
 from tests.test_battery_facts import _facts
 
 T0 = datetime(2026, 11, 10, 0, 0, tzinfo=timezone.utc)
@@ -275,3 +275,44 @@ def test_the_plan_runs_for_a_goodwe_once_the_size_and_the_rating_are_learnt() ->
     params, reason, _estimates = battery_params(with_learned(goodwe, learned))
 
     assert reason in (None,) and params is not None and params.usable_kwh == pytest.approx(10.0, abs=0.01)
+
+
+# ---- the round trip -----------------------------------------------------------------------------------------------
+
+
+def test_the_plan_assumes_ninety_percent_until_the_round_trip_is_learnt_then_uses_it() -> None:
+    victron = _facts("victron")
+    learned = LearnedBattery()
+    params, _reason, estimates = battery_params(with_learned(victron, learned))
+    assert params is not None and params.round_trip_efficiency == 0.90 and EST_ROUND_TRIP in estimates
+
+    learned.round_trip.efficiency = 0.84
+    filled = with_learned(victron, learned)
+    params, _reason, estimates = battery_params(filled)
+
+    assert params is not None and params.round_trip_efficiency == 0.84
+    assert EST_ROUND_TRIP not in estimates and filled.sources["round_trip"] == "learned"
+
+
+def test_the_size_counts_the_round_trip_learnt() -> None:
+    assumed = LearnedBattery()
+    assumed.learn(_three_runs(10.0), NOW)
+    worse = LearnedBattery()
+    worse.round_trip.efficiency = 0.81
+    worse.learn(_three_runs(10.0), NOW)
+
+    # The same charge and discharge runs with a lossier battery: less reached the cells on the way in, more left
+    # them on the way out; the charge runs (two of three) set the median lower.
+    assert worse.capacity_kwh is not None and assumed.capacity_kwh is not None
+    assert worse.capacity_kwh == pytest.approx(10.0 * (0.81 / 0.9) ** 0.5, abs=0.01)
+
+
+def test_the_round_trip_survives_a_restart_in_the_learnt_record() -> None:
+    learned = LearnedBattery()
+    learned.round_trip.efficiency = 0.86
+
+    restored = LearnedBattery.from_dict(learned.as_dict())
+
+    assert restored.round_trip.efficiency == 0.86 and restored.round_trip_efficiency == 0.86
+    assert LearnedBattery().round_trip_efficiency == 0.90
+    assert "round_trip" in restored.view()

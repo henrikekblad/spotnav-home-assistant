@@ -1279,6 +1279,8 @@
   "house.sources.heatFromSetting": "Varmepumpens måler: {name} (valgt i Indstillinger)",
   "house.sources.heatSplit": "Husprognose som varme plus resten: {split} mod {whole} for helheden ({hours} t, kun vist)",
   "house.sources.battery": "Batteri: {name}",
+  "house.sources.roundTripLearned": "Virkningsgrad (frem og tilbage): {pct}, lært",
+  "house.sources.roundTripAssumed": "Virkningsgrad (frem og tilbage): antaget {pct}",
   "house.note.selfManaged": "Batteriet styres af sin egen optimering. SpotNav planlægger ved siden af kun for at sammenligne og skriver intet til det.",
   "house.note.shadow": "Test: SpotNav planlægger batteriet, men styrer det ikke endnu.",
   "house.note.controlling": "SpotNav styrer batteriet efter planen.",

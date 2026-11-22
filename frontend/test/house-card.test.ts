@@ -256,6 +256,27 @@ describe("the body", () => {
     expect(sources).toContain("Solprognos: Forecast.Solar · korrigeringen lär sig, 2 dygn kvar");
     expect(open.textContent).toContain("Batteriet styrs av sin egen optimerare");
     expect(open.textContent).toContain("Antaget tills vidare: batteriets lägsta nivå.");
+    // The round trip learnt from the battery's own meters, on its own line.
+    expect(sources).toContain("Verkningsgrad (tur och retur): 84 %, inlärd");
+  });
+
+  it("says the round trip is assumed until it is learnt, once, in every language", () => {
+    const value = answer();
+    expect(value.battery?.round_trip?.series).toEqual([["2026-10-20", 85.1], ["2026-10-23", 83.8], ["2026-10-26", 84.2]]);
+    value.battery!.round_trip = { pct: 90, learned: false, series: [] };
+    value.battery!.estimates = ["min_soc_assumed", "round_trip_assumed"];
+    const open = body(value, { sources: true }, "sv");
+    const sources = Array.from(open.querySelectorAll(".spotnav-house-facts li")).map((item) => item.textContent);
+    expect(sources).toContain("Verkningsgrad (tur och retur): antagen 90 %");
+    expect(open.textContent).not.toContain("batteriets verkningsgrad");
+    for (const language of LANGUAGES) {
+      for (const key of ["house.sources.roundTripLearned", "house.sources.roundTripAssumed"]) {
+        expect(translate(language, key as never)).not.toBe(key);
+      }
+    }
+    // An older backend without it keeps the old note.
+    value.battery!.round_trip = null;
+    expect(body(value, { sources: true }, "sv").textContent).toContain("batteriets verkningsgrad");
   });
 
   it("words every estimate code the battery's facts can carry, in every language", () => {

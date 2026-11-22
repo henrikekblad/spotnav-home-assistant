@@ -146,6 +146,15 @@ export interface BatteryView {
   /** What the battery does now, for the header: the action SpotNav's control runs (`null`: none, the battery's own
    * self-consumption) and its measured power (kW, + charging); `null` from a backend before it. */
   now: BatteryNow | null;
+  /** The round trip the plan uses (%), whether it was learnt from the battery's own meters (else assumed), and each
+   * learnt window as `[date, %]`, oldest first; `null` from a backend before it. */
+  round_trip: RoundTrip | null;
+}
+
+export interface RoundTrip {
+  pct: number;
+  learned: boolean;
+  series: Array<[string, number]>;
 }
 
 export interface BatteryNow {
@@ -467,6 +476,22 @@ function battery(value: unknown): BatteryView | null {
     soc_review: score(source.soc_review),
     estimates: list(source.estimates).map(text),
     now: additive(source, "now", batteryNow, null),
+    round_trip: additive(source, "round_trip", roundTrip, null),
+  };
+}
+
+function roundTrip(value: unknown): RoundTrip | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  return {
+    pct: number(source.pct),
+    learned: flag(source.learned),
+    series: list(source.series).map((row) => {
+      const pair = list(row);
+      return pair.length === 2 ? [day(pair[0]), number(pair[1])] : bad();
+    }),
   };
 }
 
