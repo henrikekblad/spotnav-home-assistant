@@ -588,9 +588,11 @@ class WaterHeaterControl:
         running = self.state == STATE_RUNNING
         if not running:
             return Offer(live=True, ready=False, give_w=give, drawing=read is True, why=self.reason)
-        held = self.held_off and reason == WANT_SHED
+        held = self.held_off and reason == WANT_SHED and self.pending is None
+        # Its off written for the ceiling, not read back yet.
+        taking = reason == WANT_SHED and self.pending is not None and not self.pending[0]
         # The rules asked as the next look would (the write cap, the longest off stretch, every hard rule).
-        ready = held or (
+        ready = held or taking or (
             reason == WINDOW_CHEAP
             and self._look_mode is not None
             and self.rules.would_shed(
@@ -605,6 +607,7 @@ class WaterHeaterControl:
             why=None if ready else reason,
             held=held,
             until_max=self._until_max(now),
+            pending=taking,
         )
 
     def shed_offer(self) -> Offer | None:

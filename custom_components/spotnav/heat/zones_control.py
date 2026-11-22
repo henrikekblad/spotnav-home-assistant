@@ -422,9 +422,14 @@ class ZonesControl:
             return Offer(live=True, ready=False, give_w=give, why=zone.reason or zone.state)
         if zone.held_lower():
             if self._shed_until(now) is not None and zone.decision is not None and zone.decision.action == ACTION_LOWER:
-                return Offer(live=True, ready=True, give_w=give, held=True)
+                # Held once its setpoint has read back; until then it is still being taken.
+                read_back = zone.pending is None
+                return Offer(live=True, ready=True, give_w=give, held=read_back, pending=not read_back)
             # Lowered by the plan already: one step is all the shed takes.
             return Offer(live=True, ready=False, give_w=0.0, why=REASON_PLANNED)
+        if self._shed_until(now) is not None and zone.decision is not None and zone.decision.action == ACTION_LOWER:
+            # Decided and written, not read back yet: still being taken.
+            return Offer(live=True, ready=True, give_w=give, pending=True)
         if action != ACTION_NORMAL:
             return Offer(live=True, ready=False, give_w=give, why=action or SAFETY_STALE)
         state = self.hass.states.get(chosen.entity_id)

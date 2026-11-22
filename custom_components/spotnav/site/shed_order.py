@@ -55,7 +55,7 @@ same period, nor within `REST_S` of its end: a contactor never flaps, and the wa
 still count every pause.
 
 **A step must be taken**: a live step whose load's control does not hold it (`Offer.held`) within `TAKE_WITHIN_S`
-ends without a word: it is not logged, not shown (the plan view, the card and the states show only what the controls
+(`TAKE_PENDING_S` while the control says it is still taking it, `Offer.pending`) ends without a word: it is not logged, not shown (the plan view, the card and the states show only what the controls
 hold) and holds no other step back.
 
 **Watched loads** (a water heater without its opt-in, heat control off) take the same steps as `would` only: shown
@@ -108,8 +108,10 @@ CREDIT_TAIL_S: Final = 60.0
 #: At the period's turn a step holds this much longer while no pass has looked at the new period yet (s); and as long
 #: without a budget for a passing reason.
 TURN_GRACE_S: Final = 120.0
-#: A live step its load's control does not hold within this long is dropped (two and a half of the 30 s looks) (s).
+#: A live step its load's control does not hold within this long is dropped (two and a half of the 30 s looks) (s),
+#: and one the control says it is still taking (`Offer.pending`: a slow path) within this long.
 TAKE_WITHIN_S: Final = 75.0
+TAKE_PENDING_S: Final = 600.0
 #: A heat step lasts at least `MIN_LOWER` and this from when it is taken (s): its control's look comes a little later.
 START_MARGIN_S: Final = 300.0
 #: After a step ends, the same load is not shed again for this long (s), across a period's turn too: a contactor is
@@ -147,6 +149,9 @@ class Offer:
     held: bool = False
     #: The latest a pause may last and still leave the load its need (the water heater's cheap window), `None`: any.
     until_max: datetime | None = None
+    #: The control is taking the step but does not hold it yet (a write awaiting its read-back, SG Ready's other
+    #: contact to open first, an offset's write spacing): the step waits `TAKE_PENDING_S` for it instead.
+    pending: bool = False
 
     @property
     def useful(self) -> bool:
@@ -220,15 +225,17 @@ def combine(parts: list[Offer | None]) -> Offer | None:
     chosen = live or found
     ready = [part for part in chosen if part.ready]
     held = any(part.held for part in chosen)
+    pending = any(part.pending for part in chosen)
     if not ready:
         why = next((part.why for part in chosen if part.why), None)
-        return Offer(live=bool(live), ready=False, give_w=0.0, drawing=False, why=why, held=held)
+        return Offer(live=bool(live), ready=False, give_w=0.0, drawing=False, why=why, held=held, pending=pending)
     return Offer(
         live=bool(live),
         ready=True,
         give_w=sum(part.give_w for part in ready),
         drawing=any(part.drawing for part in ready),
         held=held,
+        pending=pending,
     )
 
 
@@ -316,11 +323,13 @@ class ShedOrder:
             if step.taken:
                 continue
             offer = offers.get(load)
-            # The water heater's switch read off after the step is its pause read back.
-            if offer is not None and (offer.held or (load == LOAD_WATER_HEATER and not offer.drawing)):
+            # Only the control saying it holds the step counts (a switch that merely does not read is no pause).
+            if offer is not None and offer.held:
                 step.taken = True
                 self._log(now, load, "shed", give_kw=round(step.give_w / 1000.0, 2))
-            elif (now - step.since).total_seconds() >= TAKE_WITHIN_S:
+                continue
+            wait = TAKE_PENDING_S if offer is not None and offer.pending else TAKE_WITHIN_S
+            if (now - step.since).total_seconds() >= wait:
                 self._end(now, load, END_RULE)
 
     def _release(self, now: datetime, excess: float, beyond: float) -> None:

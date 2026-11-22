@@ -30,7 +30,7 @@ def _heater(world: Any, heater_w: float = HEATER_W) -> list[bool]:
 
     def offer() -> Offer:
         on = controller.shed_order.until(LOAD_WATER_HEATER, dt_util.utcnow()) is None
-        return Offer(live=True, ready=True, give_w=heater_w if on else 0.0, drawing=on)
+        return Offer(live=True, ready=True, give_w=heater_w if on else 0.0, drawing=on, held=not on)
 
     controller.water_heater_control.shed_offer = offer
 
@@ -232,6 +232,8 @@ async def test_a_zone_is_lowered_one_degree_for_the_ceiling(hass: HomeAssistant,
     zones.site.shed_order.steps[LOAD_HEAT] = Step(LOAD_HEAT, True, now, now + 60 * MIN, 500.0, now.replace(minute=0))
     await zones.async_look(now + MIN)
     assert thermostat.calls == [21.0]
+    # Written, not read back yet: being taken, not held.
+    assert zones.offers[FLOOR].pending and not zones.offers[FLOOR].held
     await zones.async_look(now + 2 * MIN)
     status = zones.status(FLOOR)
     assert status is not None and status["reason"] == "ceiling" and status["held_c"] == 21.0
@@ -326,3 +328,18 @@ def test_the_plan_view_shows_only_what_the_controls_hold() -> None:
     order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, False, start, start + H, 1500.0, start, taken=True)
     controller.water_heater_control.held_off = False
     assert _shed(controller, LOAD_WATER_HEATER) == (start, start + H)
+
+
+async def test_a_relay_slow_to_read_back_says_the_step_is_being_taken(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer)
+    await control.async_look(now)
+    relay.ignore = True
+    _shed_heat(control, now)
+    await control.async_look(now + MIN)
+    assert relay.calls == ["on"] and control.pending is not None
+    assert control.offer is not None and control.offer.pending and not control.offer.held
+    relay.ignore = False
+    relay.hass.states.async_set(relay.entity_id, "on")
+    await control.async_look(now + 2 * MIN)
+    await control.async_look(now + 3 * MIN)
+    assert control.held and control.offer is not None and control.offer.held

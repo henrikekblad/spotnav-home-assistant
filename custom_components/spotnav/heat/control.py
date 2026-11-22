@@ -1340,9 +1340,15 @@ class HeatControl:
             return Offer(live=True, ready=False, give_w=give, why=self.reason or self.state)
         if self.held:
             if self._shed_until(now) is not None and self.decision is not None and self.decision.closed:
-                return Offer(live=True, ready=True, give_w=give, held=True)
+                # Held once its closing has read back; until then it is still being taken.
+                read_back = self.pending is None
+                return Offer(live=True, ready=True, give_w=give, held=read_back, pending=not read_back)
             # Lowered by the plan already: one step is all the shed takes.
             return Offer(live=True, ready=False, give_w=0.0, why=REASON_PLANNED)
+        if self._shed_until(now) is not None and self.decision is not None and self.decision.closed:
+            # Asked for and decided, not read back yet (a slow relay, SG Ready's other contact first, the offset's
+            # write spacing): still being taken.
+            return Offer(live=True, ready=True, give_w=give, pending=True)
         trial = decide(
             Situation(
                 now=now,

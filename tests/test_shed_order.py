@@ -18,6 +18,7 @@ from custom_components.spotnav.site.shed_order import (
     REST_S,
     ShedOrder,
     Step,
+    TAKE_PENDING_S,
     TAKE_WITHIN_S,
     TURN_GRACE_S,
 )
@@ -99,7 +100,7 @@ def test_the_water_heater_goes_first_and_is_counted_ahead_for_the_car() -> None:
 def test_the_credit_ends_once_the_pause_reads_back_or_after_its_time() -> None:
     order = ShedOrder()
     now, _ = _run(order, HOUR + timedelta(minutes=5), ENTER_S, house=4000, held=6000)
-    off = Offer(live=True, ready=True, give_w=0.0, drawing=False)
+    off = Offer(live=True, ready=True, give_w=0.0, drawing=False, held=True)
     assert order.update(now, _projection(now, house=1000, held=6000), {LOAD_WATER_HEATER: off, LOAD_HEAT: HEAT}) == 0.0
     # A pause that does not read back is counted no longer than `CREDIT_S`.
     order = ShedOrder()
@@ -123,10 +124,10 @@ def test_heat_only_when_even_the_paused_car_cannot_cover() -> None:
     now = HOUR + timedelta(minutes=5)
     # Over with the car; the heater is paused: the house alone (1 kW after the heater) fits.
     now, _ = _run(order, now, ENTER_S, house=4000, held=6000)
-    now, _ = _run(order, now, 600, house=1000, held=8000, offers={LOAD_WATER_HEATER: Offer(True, True, 0.0, False), LOAD_HEAT: HEAT})
+    now, _ = _run(order, now, 600, house=1000, held=8000, offers={LOAD_WATER_HEATER: Offer(True, True, 0.0, False, held=True), LOAD_HEAT: HEAT})
     assert set(order.steps) == {LOAD_WATER_HEATER}
     # The house alone goes over the rate: heat goes down one step.
-    now, _ = _run(order, now, ENTER_S, house=9000, held=6000, offers={LOAD_WATER_HEATER: Offer(True, True, 0.0, False), LOAD_HEAT: HEAT})
+    now, _ = _run(order, now, ENTER_S, house=9000, held=6000, offers={LOAD_WATER_HEATER: Offer(True, True, 0.0, False, held=True), LOAD_HEAT: HEAT})
     assert set(order.steps) == {LOAD_WATER_HEATER, LOAD_HEAT}
     assert order.steps[LOAD_HEAT].until >= order.steps[LOAD_HEAT].since + timedelta(minutes=45)
 
@@ -156,7 +157,7 @@ def test_without_a_water_heater_to_give_heat_follows_the_car() -> None:
 
 def test_put_back_in_reverse_order_with_a_margin_and_a_delay() -> None:
     order = ShedOrder()
-    off = Offer(True, True, 0.0, False)
+    off = Offer(True, True, 0.0, False, held=True)
     offers = {LOAD_WATER_HEATER: off, LOAD_HEAT: HELD_HEAT}
     now = HOUR + timedelta(minutes=5)
     now, _ = _run(order, now, ENTER_S, house=4000, held=6000)
@@ -305,7 +306,7 @@ def test_the_period_s_turn_holds_the_step_until_a_pass_looks() -> None:
     assert order.until(LOAD_WATER_HEATER, end + timedelta(seconds=5)) == end + timedelta(seconds=5 + TURN_GRACE_S)
     assert order.until(LOAD_WATER_HEATER, end + timedelta(seconds=TURN_GRACE_S + 1)) is None
     # A pass in the new period moves it to the new period's end.
-    order.update(end + timedelta(seconds=3), _projection(end + timedelta(seconds=3), house=4000, held=6000), {LOAD_WATER_HEATER: Offer(True, True, 0.0, False)})
+    order.update(end + timedelta(seconds=3), _projection(end + timedelta(seconds=3), house=4000, held=6000), {LOAD_WATER_HEATER: Offer(True, True, 0.0, False, held=True)})
     assert order.until(LOAD_WATER_HEATER, end + timedelta(seconds=4)) == end + timedelta(hours=1)
 
 
@@ -324,7 +325,7 @@ def test_combine_heat_parts() -> None:
 
 def test_a_load_rests_after_its_step_across_the_period_s_turn() -> None:
     order = ShedOrder()
-    off = Offer(True, True, 0.0, False)
+    off = Offer(True, True, 0.0, False, held=True)
     now, _ = _run(order, HOUR + timedelta(minutes=48), ENTER_S, house=4000, held=6000)
     assert LOAD_WATER_HEATER in order.steps
     # Put back just before the hour's end.
@@ -463,4 +464,32 @@ def test_the_water_heater_goes_at_once_where_the_hold_would_pause_a_car() -> Non
     credit = order.update(now, due, {LOAD_WATER_HEATER: HEATER, LOAD_HEAT: HEAT})
     assert LOAD_WATER_HEATER in order.steps and credit == 3000.0
     # Heat still waits its own delay.
+    assert LOAD_HEAT not in order.steps
+
+
+def test_a_switch_that_does_not_read_is_no_pause_taken() -> None:
+    """The heater's switch unavailable (it reads neither on nor off): the step is not taken by that, and is dropped."""
+    order = ShedOrder()
+    now, _ = _run(order, HOUR + timedelta(minutes=5), ENTER_S, house=4000, held=6000, offers={LOAD_WATER_HEATER: HEATER})
+    unread = Offer(True, True, 0.0, drawing=False)
+    now, _ = _run(order, now, TAKE_WITHIN_S + 5, house=4000, held=6000, offers={LOAD_WATER_HEATER: unread})
+    assert order.steps == {} and list(order.log) == []
+
+
+def test_a_slow_path_still_taking_the_step_keeps_it() -> None:
+    """A cloud relay or SG Ready waiting for its other contact: the control says it is still taking the step, which
+    waits `TAKE_PENDING_S` for it, then is taken once held."""
+    order = ShedOrder()
+    nothing = Offer(live=True, ready=False, give_w=0.0)
+    now, _ = _run(order, HOUR + timedelta(minutes=5), ENTER_S, house=12000, offers={LOAD_WATER_HEATER: nothing, LOAD_HEAT: HEAT})
+    assert LOAD_HEAT in order.steps
+    taking = Offer(True, True, 1500.0, pending=True)
+    now, _ = _run(order, now, TAKE_WITHIN_S * 3, house=12000, offers={LOAD_WATER_HEATER: nothing, LOAD_HEAT: taking})
+    assert LOAD_HEAT in order.steps and not order.steps[LOAD_HEAT].taken
+    order.update(now, _projection(now, house=12000), {LOAD_WATER_HEATER: nothing, LOAD_HEAT: HELD_HEAT})
+    assert order.steps[LOAD_HEAT].taken
+    # Never taken at all: dropped after `TAKE_PENDING_S`.
+    order = ShedOrder()
+    now, _ = _run(order, HOUR + timedelta(minutes=5), ENTER_S, house=12000, offers={LOAD_WATER_HEATER: nothing, LOAD_HEAT: HEAT})
+    _run(order, now, TAKE_PENDING_S + 5, step_s=15, house=12000, offers={LOAD_WATER_HEATER: nothing, LOAD_HEAT: taking})
     assert LOAD_HEAT not in order.steps
