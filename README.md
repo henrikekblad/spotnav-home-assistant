@@ -27,7 +27,7 @@ Assistant.
 2. Add SpotNav with this button, or go to **Settings → Devices & services → Add integration → SpotNav**. Add your
    charger or your site: SpotNav finds your charger, grid meter, battery and heat pump.
 
-   [![Open your Home Assistant instance and start setting up SpotNav.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=spotnav)
+   [![Open your Home Assistant instance and start setting up SpotNav.](docs/images/badge-config-flow-start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=spotnav)
 3. Add the **SpotNav** card to a dashboard. The card comes with the integration: there is
    no dashboard resource to add.
 

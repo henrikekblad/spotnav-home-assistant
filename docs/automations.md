@@ -46,7 +46,7 @@ this repository's main branch through my.home-assistant.io. With SpotNav install
 
 ## Setpoint by electricity price
 
-[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Fprice_setpoint.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](images/badge-blueprint-import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Fprice_setpoint.yaml)
 
 Sets one or more thermostats from the electricity price's **Cheap now** and **Expensive now** sensors. The
 temperature is chosen in this order, the first that applies:
@@ -96,7 +96,7 @@ that is allowed to modulate.
 
 ## Run on solar surplus
 
-[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Fsolar_surplus_switch.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](images/badge-blueprint-import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Fsolar_surplus_switch.yaml)
 
 Switches a load on and off from a SpotNav site's **Solar surplus** sensor (see
 [Site and load balancing](site-and-load-balancing.md#solar-and-forecast-settings)), so it needs a site
@@ -137,7 +137,7 @@ see to that; it only switches the power on and off.
 
 ## Relay by electricity price
 
-[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Frelay_by_price.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](images/badge-blueprint-import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Frelay_by_price.yaml)
 
 Many heat pumps and water heaters have **potential-free inputs**: contacts that do something when they
 are closed. This blueprint closes a relay (a Shelly or any other switch in Home Assistant) on such an
