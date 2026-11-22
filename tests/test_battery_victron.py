@@ -616,3 +616,58 @@ class _Never(dict):  # type: ignore[type-arg]
 
     def __setitem__(self, _key: Any, _value: Any) -> None:
         return None
+
+
+# --- quirks seen in other installations ------------------------------------------------------------------------------
+
+
+class GappyPlant(Plant):
+    """A GX that has not republished some values for a while: victron-mqtt marks a metric not seen for
+    `STALE_METRIC_TIMEOUT_SECONDS` (360 s) unavailable, and a value the GX publishes as null reads `unknown`."""
+
+    def __init__(self, gaps: dict[str, str] | None = None) -> None:
+        super().__init__()
+        self.gaps: dict[str, str] = gaps or {}
+
+    def reads(self, executor: Executor, now: datetime) -> dict[str, RoleRead]:
+        reads = super().reads(executor, now)
+        for name, state in self.gaps.items():
+            if name in reads:
+                reads[name] = RoleRead(
+                    entity_id=reads[name].entity_id, state=state, found=True, enabled=True, step=reads[name].step,
+                    device_id="GX",
+                )
+        return reads
+
+
+def test_a_setting_spotnav_owns_that_goes_unknown_or_unavailable_is_neither_a_failure_nor_written_again() -> None:
+    """Mode 2's settings are stored on the GX and do not revert (the module): a read that stops is the GX not
+    republishing, no evidence of anything, and the battery's power keeps judging the effect."""
+    plant, executor = GappyPlant(), Executor(VICTRON_CONTROL)
+    now, results = _run(executor, plant, T0, 4, "hold")
+    assert _written(results) == [("discharge_power", 0.0)]
+    for gap in ("unavailable", "unknown"):
+        plant.gaps = {"discharge_power": gap}
+        now, results = _run(executor, plant, now, 60, "hold")  # 10 minutes
+        assert _written(results) == [] and not _events(results, "hand_back") and executor.state.phase == "active"
+    plant.gaps = {}
+    now, results = _run(executor, plant, now, 4, "hold")
+    assert _written(results) == [] and executor.state.phase == "active"
+    _now, results = _run(executor, plant, now, 4, "self_consume")
+    assert _written(results) == [("discharge_power", -1.0)]
+
+
+def test_a_setpoint_that_reads_unknown_is_still_renewed_on_time() -> None:
+    """The setpoints per phase are written again every `VICTRON_RENEW_S` whatever they read: an `unknown` before a
+    renewal is no evidence and never holds a write back."""
+    plant, executor = GappyPlant(), _phased()
+    caps = _lifted()
+    now, _ = _run(executor, plant, T0, 8, "grid_charge", 3.0, phase_caps_kw=caps)
+    start = len(plant.writes)
+    plant.gaps = {"phase_l1_target": "unknown"}
+    now, results = _run(executor, plant, now, 2, "grid_charge", 3.0, phase_caps_kw=caps)
+    plant.gaps = {}
+    now, more = _run(executor, plant, now, 10, "grid_charge", 3.0, phase_caps_kw=caps)
+    renewed = [at for at, op in plant.writes[start:] if op.role == "phase_l1_target"]
+    assert renewed and (renewed[0] - (now - TICK * 12)).total_seconds() <= VICTRON_RENEW_S + 10
+    assert not _events(results + more, "hand_back") and executor.state.phase == "active"
