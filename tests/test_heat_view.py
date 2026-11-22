@@ -636,25 +636,58 @@ def test_the_villa_has_its_indoor_curve_up_to_now() -> None:
     assert villa_answer(indoor_day=None)["indoor_day"] is None
 
 
-def test_the_hours_ahead_end_at_midnight_until_tomorrow_has_its_prices() -> None:
-    """The strip under the dial: the plan from the running hour on. Today's hours are the band's own; tomorrow's are
-    planned only once every hour of tomorrow is priced."""
+def _two_days(drop: tuple[int, ...] = ()) -> tuple[tuple[datetime, datetime, float], ...]:
+    """Today's prices and tomorrow's, but for the hours of tomorrow in `drop`."""
+    tomorrow = tuple(
+        (start + timedelta(days=1), end + timedelta(days=1), price)
+        for start, end, price in _slots()
+        if (start - MIDNIGHT).seconds // 3600 not in drop
+    )
+    return _slots() + tomorrow
+
+
+def test_the_hours_ahead_are_a_rolling_day_across_midnight() -> None:
+    """The strip under the dial: the plan from the running hour on, 24 hours. Today's hours are the band's own,
+    tomorrow's follow, priced or not."""
     answer = villa_answer()
     ahead = answer["ahead"]
     assert all(tuple(hour) == AHEAD_HOUR_KEYS for hour in ahead)
     band_ahead = [hour for hour in answer["band"]["hours"] if not hour["past"]]
-    assert [hour["start"] for hour in ahead] == [hour["start"] for hour in band_ahead]
-    assert len(ahead) == 7 and ahead[0]["start"] == (MIDNIGHT + timedelta(hours=17)).isoformat()
-    assert [(hour["action"], hour["target_c"]) for hour in ahead] == [(hour["action"], hour["target_c"]) for hour in band_ahead]
-    two_days = _slots() + tuple(
-        (start + timedelta(days=1), end + timedelta(days=1), price) for start, end, price in _slots()
-    )
-    longer = villa_answer(prices=two_days)["ahead"]
-    assert len(longer) == 12
-    assert [hour["start"] for hour in longer] == [(MIDNIGHT + timedelta(hours=17 + index)).isoformat() for index in range(12)]
+    assert [hour["start"] for hour in ahead[:7]] == [hour["start"] for hour in band_ahead]
+    assert [(hour["action"], hour["target_c"]) for hour in ahead[:7]] == [(hour["action"], hour["target_c"]) for hour in band_ahead]
+    # Late evening and no price for tomorrow: still 24 hours, tomorrow's planned as the plan has them (normal, and
+    # the cooler night, which needs no price).
+    assert len(ahead) == 24 and ahead[0]["start"] == (MIDNIGHT + timedelta(hours=17)).isoformat()
+    assert [hour["start"] for hour in ahead] == [(MIDNIGHT + timedelta(hours=17 + index)).isoformat() for index in range(24)]
+    assert [hour["action"] for hour in ahead[7:13]] == ["night"] * 6 and ahead[13]["action"] == "normal"
+    assert {hour["action"] for hour in ahead[14:]} == {"normal"}
+
+
+def test_the_hours_ahead_cross_midnight_with_tomorrow_planned_and_a_price_missing() -> None:
+    """With tomorrow priced the strip plans it by the prices; a missing price hour stays in the strip, unlowered."""
+    full = villa_answer(prices=_two_days())["ahead"]
+    assert len(full) == 24
+    assert [hour["start"] for hour in full] == [(MIDNIGHT + timedelta(hours=17 + index)).isoformat() for index in range(24)]
     # The cooler night runs on past midnight; tomorrow's hot water is its planned boost at 03:30.
-    assert longer[7]["action"] == "night"
-    assert [hour["hot_water"] for hour in longer[7:]] == [False, False, False, True, False]
+    assert full[7]["action"] == "night"
+    assert [hour["hot_water"] for hour in full[7:12]] == [False, False, False, True, False]
+    assert "lower" in {hour["action"] for hour in full[13:]}
+    # Tomorrow's 08:00 is a dear hour; without its price it is not lowered, and no hour goes missing.
+    gap = villa_answer(prices=_two_days(drop=(8,)))["ahead"]
+    assert len(gap) == 24 and [hour["start"] for hour in gap] == [hour["start"] for hour in full]
+    at = (MIDNIGHT + timedelta(hours=24 + 8)).isoformat()
+    assert next(hour for hour in full if hour["start"] == at)["action"] == "lower"
+    assert next(hour for hour in gap if hour["start"] == at)["action"] == "normal"
+
+
+def test_the_hours_ahead_in_the_late_evening_show_tomorrow() -> None:
+    """At 23:20 the strip holds this hour and a whole of tomorrow."""
+    late = MIDNIGHT + timedelta(hours=23, minutes=20)
+    ahead = villa_answer(now=late, prices=_two_days())["ahead"]
+    assert len(ahead) == 24
+    assert ahead[0]["start"] == (MIDNIGHT + timedelta(hours=23)).isoformat()
+    assert ahead[-1]["start"] == (MIDNIGHT + timedelta(hours=46)).isoformat()
+    assert ahead[1]["start"] == (MIDNIGHT + timedelta(hours=24)).isoformat()
 
 
 def test_an_automation_on_a_controlled_zone_blocks_it_and_the_water_heater_s_note() -> None:
