@@ -25,6 +25,9 @@ without it.
 6. **Control**: `water_heater.Rules.want` on the windows (`water_heater.plan_windows`, made again every look from the
    prices with their fees and the heat plan's tight hours; a window that has begun is kept as it is). Without prices
    for the running hour the switch is on (`no_plan`).
+7. **The ceiling** (`site/shed_order.py`): where the site's shed order pauses the water heater for the ceiling, a
+   cheap window is paused until the period's end (`ceiling`), after every hard rule. What it could give is offered at
+   each look (`shed_offer`): what it draws, and whether its rules let it be paused (or stay paused) now.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
@@ -43,6 +47,7 @@ from homeassistant.util import dt as dt_util
 from .. import time_zones
 from ..core.parse import aware_instant, finite_number
 from ..const import DOMAIN
+from ..site.shed_order import LOAD_WATER_HEATER, Offer
 from .automations import SteeringAutomation, steering_automations
 from .config import HeatConfig
 from .water_heater import (
@@ -51,6 +56,7 @@ from .water_heater import (
     MODE_UNMETERED,
     WINDOW_CHEAP,
     WANT_OFF,
+    WANT_SHED,
     Kept,
     Rules,
     Want,
@@ -156,6 +162,8 @@ class WaterHeaterControl:
         self._again = False
         self._task: asyncio.Task[None] | None = None
         self._timer_cancel: Callable[[], None] | None = None
+        #: What a pause for the ceiling would give and whether the rules allow it, as of the last look.
+        self.offer: Offer | None = None
         control.parts["water_heater"] = self
         shadow.extra_deltas.append(self.forecast_delta)
 
@@ -316,6 +324,11 @@ class WaterHeaterControl:
         except Exception:  # noqa: BLE001 - the windows' sizes as without history
             _LOGGER.debug("SpotNav water heater: the history could not be read", exc_info=True)
         self.rules.trim(now, self._day(now - timedelta(days=3)))
+        try:
+            self.offer = self._offer(now)
+        except Exception:  # noqa: BLE001 - nothing offered: the shed order skips the water heater
+            _LOGGER.debug("SpotNav water heater: its offer to the shed order could not be made", exc_info=True)
+            self.offer = None
         self.control.keep_soon()
 
     async def _async_look(self, now: datetime) -> None:
@@ -491,12 +504,64 @@ class WaterHeaterControl:
 
         # Seen on while control runs: an off from here on that SpotNav did not write is someone else's.
         self._seen_on = read is True and not self.held_off
-        want = self.want = self.rules.want(now, mode=mode, windows=windows, plan_fresh=fresh, day=self._day(now))
+        want = self.want = self.rules.want(
+            now, mode=mode, windows=windows, plan_fresh=fresh, day=self._day(now), shed_until=self._shed_until(now)
+        )
         verifying = self.check is None or self.check.get("entity") != switch
         self.state, self.reason = (STATE_VERIFYING if verifying else STATE_RUNNING), want.reason
         if want.on == read:
             return
         await self._async_write(want.on, now, planned=(not want.on) or want.reason == WINDOW_CHEAP, why=want.reason, power=power)
+
+    # ---- the shed order (`site/shed_order.py`)
+
+    def _shed_until(self, now: datetime) -> datetime | None:
+        order = getattr(self.site, "shed_order", None)
+        return None if order is None else order.until(LOAD_WATER_HEATER, now)
+
+    def _give_w(self, read: bool | None) -> float:
+        """What a pause gives now (W): the meter's reading where it is trusted, else the learnt element's power while
+        the switch reads on; nothing while it reads off or the power is not known."""
+        if read is not True:
+            return 0.0
+        if self.metered and self.power_sensor is not None:
+            state = self.hass.states.get(self.power_sensor)
+            value = None if state is None else finite_number(state.state)
+            if value is not None:
+                return max(0.0, value * 1000.0 if state.attributes.get("unit_of_measurement") == "kW" else value)  # type: ignore[union-attr]
+        return 0.0 if self.kw is None else self.kw * 1000.0
+
+    def _offer(self, now: datetime) -> Offer | None:
+        """The water heater's offer to the shed order (`shed_order.Offer`), `None` without a switch chosen. Controlled:
+        ready while running in a cheap window (or already paused for the ceiling), its hard rules not holding it on.
+        Watched: what it would give in a cheap window, `would` only."""
+        heater = self.shadow.config().water_heater
+        if heater is None or self.entity != heater.entity_id:
+            return None
+        read = self._read(heater.entity_id)
+        give = self._give_w(read)
+        if not heater.control:
+            window = next((item for item in self.rules.kept.windows if item.covers(now)), None)
+            ready = read is True and window is not None and window.reason == WINDOW_CHEAP
+            return Offer(live=False, ready=ready, give_w=give, drawing=read is True)
+        reason = None if self.want is None else self.want.reason
+        running = self.state == STATE_RUNNING
+        ready = running and reason in (WINDOW_CHEAP, WANT_SHED)
+        return Offer(
+            live=True,
+            ready=ready,
+            give_w=give,
+            drawing=read is True,
+            why=None if ready else (reason if running else self.reason),
+        )
+
+    def shed_offer(self) -> Offer | None:
+        """The offer as of the last look, with the switch read now (whether it still draws what it would give)."""
+        offer = self.offer
+        if offer is None or self.entity is None:
+            return offer
+        drawing = self._read(self.entity) is True
+        return offer if drawing == offer.drawing else replace(offer, drawing=drawing)
 
     # ---- writes
 

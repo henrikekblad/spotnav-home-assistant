@@ -24,6 +24,7 @@ from custom_components.spotnav.heat.water_heater import (
     WINDOW_CHEAP,
     WINDOW_FULL_HEAT,
     WINDOW_MAX_OFF,
+    WANT_SHED,
     Kept,
     SENSOR_LOST_AFTER,
     Rules,
@@ -314,19 +315,28 @@ class Tank:
 
 
 def simulate(
-    mode: str, seed: int, outages: list[tuple[int, int, str]], days: int = 5, *, planned: bool = True, coil: bool = False
+    mode: str,
+    seed: int,
+    outages: list[tuple[int, int, str]],
+    days: int = 5,
+    *,
+    planned: bool = True,
+    coil: bool = False,
+    shed_share: float = 0.0,
 ) -> dict[str, object]:
     """Run the rules for `days` with looks 30 to 300 s apart, random prices and tight hours, the losses given
     (`(start minute, minutes, what)`, what being meter, tank or plan), replanning every hour, and a switch that
     always takes. Not `planned`: no window at all on a plan that reads fresh, so only the live rules turn the switch
     on. Returns the longest off stretch, the full-heat gaps, the nights' longest on stretch, the time off in all, and
     the looks that left the switch off although the plan was missing or the mode's own sensor had not read for
-    `SENSOR_LOST_AFTER` (H3)."""
+    `SENSOR_LOST_AFTER` (H3). `shed_share`: that share of the hours the site's shed order pauses it for the ceiling
+    to the hour's end (`site/shed_order.py`)."""
     rng = random.Random(seed)
     start = local(19, 12)
     end = start + days * 24 * H
     prices = {start - 48 * H + i * H: rng.uniform(5, 300) for i in range((days + 4) * 24)}
     tight = {hour for hour in prices if rng.random() < 0.1}
+    shed_hours = {hour for hour in prices if rng.random() < shed_share}
     metered = mode in (MODE_METERED, MODE_TANK) and mode == MODE_METERED
     tank_sensor = mode == MODE_TANK
     rules = Rules()
@@ -372,7 +382,15 @@ def simulate(
             tank=tank_sensor,
         )
         rules.gave_up(now, mode)
-        want = rules.want(now, mode=mode, windows=windows, plan_fresh=fresh, day=now.astimezone(ZONE).date().isoformat())
+        hour = now.replace(minute=0, second=0, microsecond=0)
+        want = rules.want(
+            now,
+            mode=mode,
+            windows=windows,
+            plan_fresh=fresh,
+            day=now.astimezone(ZONE).date().isoformat(),
+            shed_until=hour + H if hour in shed_hours else None,
+        )
         if want.on != switch_on:
             switch_on = want.on
             rules.switched(now, want.on, day=now.astimezone(ZONE).date().isoformat(), planned=(not want.on) or want.reason == WINDOW_CHEAP)
@@ -445,7 +463,10 @@ def test_where_full_heat_is_seen_the_tank_reaches_its_thermostat_within_every_24
 @settings(max_examples=100, deadline=None)
 @given(seed=st.integers(0, 10**6), outages=OUTAGES)
 def test_unmetered_every_night_has_five_hours_on_in_a_row(seed: int, outages) -> None:
-    result = simulate(MODE_UNMETERED, seed, outages)
+    _every_night_has_five_hours_on(simulate(MODE_UNMETERED, seed, outages))
+
+
+def _every_night_has_five_hours_on(result: dict[str, object]) -> None:
     spans = result["on_spans"]
     first = result["start"].astimezone(ZONE).date() + timedelta(days=1)
     last = result["end"].astimezone(ZONE).date()
@@ -520,3 +541,52 @@ def test_a_meter_on_a_contactor_coil_behaves_as_unmetered(seed: int, outages) ->
         rules.observe(NOON + hour * H, on=True, power_w=4.0, metered=False, tank_c=None, tank=False)
         assert not rules.gave_up(NOON + hour * H, MODE_UNMETERED)
     assert not rules.kept.stopped
+
+
+@settings(max_examples=150, deadline=None)
+@given(
+    seed=st.integers(0, 10**6),
+    outages=OUTAGES,
+    mode=st.sampled_from([MODE_METERED, MODE_TANK, MODE_UNMETERED]),
+    share=st.sampled_from([0.3, 0.7, 1.0]),
+)
+def test_the_hard_rules_hold_whatever_the_shed_order_pauses(seed: int, outages, mode: str, share: float) -> None:
+    """The site's shed order pausing the heater for the ceiling in any share of the hours, every hour included: never
+    off over eight hours, full heat within every 24 hours where it is seen, the unmetered night's five hours, and
+    on without a plan or the mode's sensor."""
+    result = simulate(mode, seed, outages, shed_share=share)
+    assert result["longest_off"] <= MAX_OFF, result["longest_off"]
+    assert result["h3_off"] == [], result["h3_off"][:3]
+    if mode == MODE_METERED:
+        assert result["full_gap"] <= 24 * H, result["full_gap"]
+    elif mode == MODE_TANK:
+        assert result["hot_gap"] <= 24 * H, result["hot_gap"]
+    else:
+        _every_night_has_five_hours_on(result)
+
+
+def test_the_shed_order_pauses_only_a_cheap_window_after_every_hard_rule() -> None:
+    rules = Rules(Kept(last_full=NOON))
+    cheap = Window(NOON, NOON + 2 * H, WINDOW_CHEAP, "day:x")
+    paused = rules.want(NOON + 10 * MIN, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H)
+    assert (paused.on, paused.reason, paused.until) == (False, WANT_SHED, NOON + H)
+    # Past its end the window holds again.
+    assert _want(rules, NOON + H + MIN, windows=[cheap]).on is True
+    # The unmetered night window and a gap filler are hard rules: never paused.
+    for reason in (WINDOW_FULL_HEAT, WINDOW_MAX_OFF):
+        hard = Window(NOON, NOON + 2 * H, reason, "x")
+        want = rules.want(NOON + 10 * MIN, mode=MODE_METERED, windows=[hard], plan_fresh=True, day=DAY, shed_until=NOON + H)
+        assert want.on is True
+    # Full heat due, no plan, a cold tank: on.
+    due = Rules(Kept(last_full=NOON - FULL_EVERY))
+    assert due.want(NOON, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H).reason == "full_heat"
+    assert rules.want(NOON, mode=MODE_METERED, windows=[cheap], plan_fresh=False, day=DAY, shed_until=NOON + H).reason == "no_plan"
+    cold = Rules(Kept(last_full=NOON, tank_low=True))
+    assert cold.want(NOON, mode=MODE_TANK, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H).reason == "tank_low"
+    # Off long already: the pause ends by the eight hours.
+    long_off = Rules(Kept(last_full=NOON, off_since=NOON - 7 * H))
+    want = long_off.want(NOON + 10 * MIN, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H)
+    assert want.until == NOON - 7 * H + MAX_OFF - 5 * MIN
+    # The day's switchings: an off it could not end with an on leaves it on.
+    capped = Rules(Kept(last_full=NOON, switchings={DAY: MAX_SWITCHINGS_DAY - 1}))
+    assert capped.want(NOON + 10 * MIN, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H).reason == "write_cap"

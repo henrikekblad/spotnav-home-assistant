@@ -27,6 +27,10 @@ day's need `E` is the `NEED_QUANTILE` of the last days' kWh times `NEED_SHARE`, 
 or under `WARM_DAYS` of history) the 5-hour night window ending by 07:00 and a 3-hour day window ending by 17:00. Each
 is the cheapest block of its span, one without a tight hour where one fits. Away changes nothing. At most
 `MAX_SWITCHINGS_DAY` planned switchings a day: the next off would pass it, so the switch stays on for the day.
+
+**The ceiling** (`site/shed_order.py`): the site's shed order may pause a cheap window to the period's end
+(`Rules.want(shed_until=...)`, `ceiling`), after every hard rule above, within the longest off stretch, and counted
+among the day's switchings; never the unmetered night window or a gap filler.
 """
 
 from __future__ import annotations
@@ -96,6 +100,8 @@ WANT_FULL_HEAT: Final = "full_heat"
 WANT_TANK_LOW: Final = "tank_low"
 WANT_WRITE_CAP: Final = "write_cap"
 WANT_OFF: Final = "planned_off"
+#: Paused for the ceiling (`site/shed_order.py`): only in a cheap window, after every hard rule.
+WANT_SHED: Final = "ceiling"
 
 
 def mode_of(metered: bool, tank: bool) -> str:
@@ -464,9 +470,21 @@ class Rules:
         return kept.stopped
 
     def want(
-        self, now: datetime, *, mode: str, windows: Sequence[Window], plan_fresh: bool, day: str
+        self,
+        now: datetime,
+        *,
+        mode: str,
+        windows: Sequence[Window],
+        plan_fresh: bool,
+        day: str,
+        shed_until: datetime | None = None,
     ) -> Want:
-        """Whether the switch is to be on now while control runs, and why (see the module); hard rules first."""
+        """Whether the switch is to be on now while control runs, and why (see the module); hard rules first.
+
+        `shed_until`: the site's shed order pauses it for the ceiling until then (`site/shed_order.py`). Only a cheap
+        window is paused, after every hard rule above (an unmetered night window and the gap fillers are hard rules
+        too), within the longest off stretch and the day's switchings (an off it could not end with an on in the day's
+        cap leaves it on)."""
         kept = self.kept
         if kept.forced_until is not None and now < kept.forced_until:
             return Want(True, WANT_FORCED, kept.forced_until)
@@ -486,6 +504,11 @@ class Rules:
             return Want(True, WANT_FORCED, kept.forced_until)
         window = next((item for item in windows if item.covers(now)), None)
         if window is not None:
+            if shed_until is not None and now < shed_until and window.reason == WINDOW_CHEAP:
+                if kept.off_since is None and kept.switchings.get(day, 0) + 2 > MAX_SWITCHINGS_DAY:
+                    return Want(True, WANT_WRITE_CAP)
+                latest = (kept.off_since or now) + MAX_OFF - MAX_OFF_MARGIN
+                return Want(False, WANT_SHED, min(shed_until, latest))
             return Want(True, window.reason, window.end)
         if kept.off_since is None and kept.switchings.get(day, 0) + 2 > MAX_SWITCHINGS_DAY:
             return Want(True, WANT_WRITE_CAP)

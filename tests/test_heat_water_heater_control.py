@@ -308,3 +308,83 @@ async def test_a_meter_is_trusted_only_once_it_has_seen_the_element(hass: HomeAs
     heater._power = lambda _entity: ("sensor.other", 1.0)  # type: ignore[method-assign]  # noqa: SLF001
     await heater.async_look(now + 63 * H)
     assert heater.metered is False and heater.meter_waiting is True and heater.meter_seen is None
+
+
+def _in_cheap_window(heater: WaterHeaterControl) -> datetime:
+    window = next(window for window in heater.rules.kept.windows if window.reason == "cheap")
+    return window.start + 5 * MIN
+
+
+async def _checked(heater: WaterHeaterControl, now: datetime) -> datetime:
+    """The check passed, full heat just seen, the element's power learnt: a look inside a cheap window, on."""
+    heater.check = {"entity": HEATER, "result": "passed", "at": now.isoformat()}
+    heater.rules.kept.last_full = now
+    heater.kw = 3.0
+    await heater.async_look(now)
+    moment = _in_cheap_window(heater)
+    heater.rules.kept.last_full = moment
+    await heater.async_look(moment)
+    return moment
+
+
+async def test_the_shed_order_pauses_it_for_the_ceiling_and_puts_it_back(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.site.shed_order import LOAD_WATER_HEATER, Step
+
+    site, heater, switch, now = await _site(hass, freezer)
+    controller = site_controller_for(hass, site.entry_id)
+    moment = await _checked(heater, now)
+    assert switch.state == "on" and switch.calls == []
+    offer = heater.shed_offer()
+    assert offer is not None and offer.live and offer.ready and offer.give_w == 3000.0 and offer.drawing
+    end = moment.replace(minute=0) + H
+    controller.shed_order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, moment, end, 3000.0, end - H)
+    await heater.async_look(moment + MIN)
+    assert switch.calls == ["off"] and heater.held_off
+    status = heater.status()
+    assert status is not None and status["reason"] == "ceiling" and status["until"] == end.isoformat() and status["on"] is False
+    # Still ready while paused (its rules allow it), no longer drawing.
+    await heater.async_look(moment + 2 * MIN)
+    offer = heater.shed_offer()
+    assert offer is not None and offer.ready and not offer.drawing
+    # Put back: on at the next look, inside its window.
+    del controller.shed_order.steps[LOAD_WATER_HEATER]
+    await heater.async_look(moment + 3 * MIN)
+    await heater.async_look(moment + 4 * MIN)
+    assert switch.calls == ["off", "on"] and not heater.held_off
+    # Both switchings count toward the day's cap.
+    assert sum(heater.rules.kept.switchings.values()) == 2
+
+
+async def test_a_hard_rule_keeps_it_on_whatever_the_shed_order_asks(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.site.shed_order import LOAD_WATER_HEATER, Step
+
+    site, heater, switch, now = await _site(hass, freezer)
+    controller = site_controller_for(hass, site.entry_id)
+    moment = await _checked(heater, now)
+    end = moment.replace(minute=0) + H
+    controller.shed_order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, moment, end, 3000.0, end - H)
+    # Metered and full heat due (21 hours since the last): held on, and the offer says why.
+    heater.meter_seen = {"entity": HEATER, "sensor": "sensor.varmvatten_effekt"}
+    heater._power = lambda _entity: ("sensor.varmvatten_effekt", 2900.0)  # type: ignore[method-assign]  # noqa: SLF001
+    heater.rules.kept.last_full = moment - 21 * H
+    await heater.async_look(moment + MIN)
+    assert switch.calls == []
+    offer = heater.shed_offer()
+    assert offer is not None and not offer.ready and offer.why == "full_heat"
+
+
+async def test_a_watched_water_heater_is_only_offered_as_would(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.site.shed_order import LOAD_WATER_HEATER, Step
+
+    site, heater, switch, now = await _site(hass, freezer, control=False)
+    controller = site_controller_for(hass, site.entry_id)
+    heater.kw = 3.0
+    await heater.async_look(now)
+    moment = _in_cheap_window(heater)
+    await heater.async_look(moment)
+    offer = heater.shed_offer()
+    assert offer is not None and not offer.live and offer.ready and offer.give_w == 3000.0
+    end = moment.replace(minute=0) + H
+    controller.shed_order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, False, moment, end, 3000.0, end - H)
+    await heater.async_look(moment + MIN)
+    assert switch.calls == []
