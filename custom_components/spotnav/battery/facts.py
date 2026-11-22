@@ -517,6 +517,27 @@ def _unknown_brand_soc(entities: Sequence[EntityFact], battery: EntityFact) -> E
     return None
 
 
+def device_firmware(sw_version: Any) -> str | None:
+    """A device registry entry's `sw_version` as the firmware, stripped; `None` when it is blank or no reading, so
+    the firmware stays unknown rather than a key made of nothing."""
+    if not isinstance(sw_version, str):
+        return None
+    text = sw_version.strip()
+    return None if text.lower() in _NO_READING else text
+
+
+def _firmware(entity: EntityFact | None, sw_version: str | None, sources: dict[str, str]) -> str | None:
+    """The firmware: the adapter's firmware entity first, else the battery device's software version (SolaX Modbus
+    keeps its firmware registers internal and puts the version only on its inverter device)."""
+    if entity is not None:
+        # As read, unstripped: the reports kept per firmware key were stored under this string.
+        return entity.state
+    firmware = device_firmware(sw_version)
+    if firmware is not None:
+        sources["firmware"] = "device sw_version"
+    return firmware
+
+
 def with_outside_control(facts: BatteryFacts, active: bool, reason: str | None) -> BatteryFacts:
     """The facts with the outside-control verdict (`outside_control.Verdict`) applied: a battery another system
     drives is `externally_controlled`, whatever its own mode says (its settings are kept for the reader)."""
@@ -535,11 +556,14 @@ def battery_facts(
     power_kw: float | None = None,
     external_planner: str | None = None,
     found_states: Mapping[str, str] | None = None,
+    sw_version: str | None = None,
 ) -> BatteryFacts:
     """What SpotNav knows of the site's battery. `entities` are the battery integration's entities (its config
     entry's); `manufacturer` is the battery device's; `external_planner` names a battery planner found running
     (Predbat, EMHASS), which runs the battery whatever its own mode says. `found_states`: the states SpotNav's control found
-    before it first wrote, by entity id (`Executor.found_states`): a floor it set is read as the one found."""
+    before it first wrote, by entity id (`Executor.found_states`): a floor it set is read as the one found.
+    `sw_version`: the battery device's software version in the device registry, the firmware where the adapter
+    names no firmware entity or it reads nothing (`device_firmware`)."""
     if battery is None:
         return BatteryFacts(power_kw=power_kw)
     adapter = adapter_for(battery.platform, manufacturer)
@@ -631,7 +655,7 @@ def battery_facts(
         rated_discharge_kw=rated_discharge_kw,
         plant_max_kw=plant_max_kw,
         reserve_soc_pct=reserve_soc_pct,
-        firmware=None if firmware_entity is None else firmware_entity.state,
+        firmware=_firmware(firmware_entity, sw_version, sources),
         on_grid=on_grid,
         plant_phase_entities=plant_phases,
         plant_phase_sign=adapter.plant_phase_sign,

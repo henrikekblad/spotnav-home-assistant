@@ -51,7 +51,7 @@ from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .executor import ExecInputs, RoleRead, preview, role_reads
 from .export_curtail import CurtailLook, CurtailShadow, curtails
 from .adapters import Match
-from .facts import BatteryFacts, EntityFact, battery_facts, find_entity, with_outside_control
+from .facts import BatteryFacts, EntityFact, battery_facts, device_firmware, find_entity, with_outside_control
 from .hold import HoldDecision, HoldInputs, HoldMemory, requested_action, restart, step
 from .ledger import Ledger
 from .monitor import Monitor
@@ -123,6 +123,18 @@ def external_planner(hass: HomeAssistant) -> str | None:
     return None
 
 
+def _device_sw_version(devices: dr.DeviceRegistry, device: dr.DeviceEntry | None) -> str | None:
+    """The software version of the battery's device, else of the device it sits under (a battery pack's device under
+    its inverter): the firmware where the brand has no firmware entity (`facts.device_firmware`)."""
+    if device is None:
+        return None
+    own = device_firmware(device.sw_version)
+    if own is not None or device.via_device_id is None:
+        return own
+    parent = devices.async_get(device.via_device_id)
+    return None if parent is None else device_firmware(parent.sw_version)
+
+
 def read_battery_facts(
     hass: HomeAssistant, config: dict[str, Any], power_kw: float | None, found: Mapping[str, str] | None = None
 ) -> BatteryFacts:
@@ -140,7 +152,8 @@ def read_battery_facts(
     else:
         entries = [battery_entry]
     entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform]
-    device = None if battery_entry.device_id is None else dr.async_get(hass).async_get(battery_entry.device_id)
+    devices = dr.async_get(hass)
+    device = None if battery_entry.device_id is None else devices.async_get(battery_entry.device_id)
     return battery_facts(
         _entity_fact(battery_entry, hass),
         entities,
@@ -148,6 +161,7 @@ def read_battery_facts(
         power_kw=power_kw,
         external_planner=external_planner(hass),
         found_states=found,
+        sw_version=_device_sw_version(devices, device),
     )
 
 
