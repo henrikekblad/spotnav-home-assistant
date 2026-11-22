@@ -141,7 +141,7 @@ Rules chosen where the card and the app differ
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Final
 
@@ -780,6 +780,34 @@ def _saving_minor(proposal: ProposalFacts) -> int | None:
     return int(round(saving * 100))
 
 
+def _at_room(proposal: ProposalFacts | None, planning: PlanningFacts | None) -> ProposalFacts | None:
+    """A plan whose need is capped at the room in the car, its figures capped there too: the planner buys whole
+    slots, but the car ends the charge when it is full, so the energy is the need and the cost, the cost of charging
+    now and the distance are the slots' figures for that share of their energy."""
+    if proposal is None or planning is None or planning.room_kwh is None or planning.room_kwh <= 0:
+        return proposal
+    planned = proposal.planned_kwh
+    need = planning.room_kwh if proposal.requested_kwh is None else min(proposal.requested_kwh, planning.room_kwh)
+    if proposal.short_of_deadline or planned is None or planned <= 0 or planned <= need + _ROOM_EPSILON_KWH:
+        return proposal
+    share = need / planned
+
+    def scaled(value: float | None) -> float | None:
+        return None if value is None else value * share
+
+    return replace(
+        proposal,
+        planned_kwh=need,
+        cost=scaled(proposal.cost),
+        now_cost=scaled(proposal.now_cost),
+        distance_mil=scaled(proposal.distance_mil),
+    )
+
+
+#: Less than this above the room is the same energy (float noise).
+_ROOM_EPSILON_KWH: Final = 1e-6
+
+
 def _plan_facts(
     proposal: ProposalFacts | None, *, energy: bool, cost: bool, distance: bool, saving: bool = False
 ) -> list[dict[str, Any]]:
@@ -983,7 +1011,7 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     """The card's `statusSentence` chain, with the compound facts as their own lines."""
     now = facts.now
     planning = facts.planning
-    proposal = facts.proposal
+    proposal = _at_room(facts.proposal, planning)
     installed = facts.installed_periods
     proposed = () if proposal is None else proposal.periods
     active = next((span for span in installed if span[0] <= now < span[1]), None)

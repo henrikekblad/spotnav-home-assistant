@@ -1216,6 +1216,24 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "held_until_window", "params": {"time": iso(2)}}, *PLANNED[1:]],
     ),
     (
+        "a need capped at the room in the car: the plan's energy, cost and distance stop at the room, not the slots'",
+        base(
+            hold_until=at(2),
+            installed_periods=((at(2), at(3)),),
+            proposal=proposal(planned_kwh=4.6, requested_kwh=4.1, cost=5.90, distance_mil=2.3),
+            relation_applied=True,
+            planning=PlanningFacts(state="proposal_ready", reason="ready", energy_basis="register", room_kwh=4.1),
+        ),
+        "normal",
+        [
+            {"code": "held_until_window", "params": {"time": iso(2)}},
+            {"code": "plan_energy", "params": {"kwh": 4.1}},
+            {"code": "plan_cost", "params": {"amount_minor": 526, "currency": "SEK"}},
+            {"code": "plan_distance", "params": {"mil": 2.05}},
+            {"code": "need_limited_by_room", "params": {"kwh": 4.1}},
+        ],
+    ),
+    (
         "a pending proposal's figures are another plan's: the wait for the installed window stands alone",
         base(
             hold_until=at(2),
