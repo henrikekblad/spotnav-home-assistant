@@ -406,6 +406,8 @@ class ChargerNotifier:
         self._fit_timer: CALLBACK_TYPE | None = None
         self._fit_timer_at: datetime | None = None
         self._fit_recheck: Callable[[], None] | None = None
+        #: Shut down (`async_shutdown`): no timer is armed any more.
+        self._closed = False
         # A `plan_at_risk` held back behind the "does not fit" notice.
         self._at_risk_behind_target: dict[str, Any] | None = None
 
@@ -518,6 +520,8 @@ class ChargerNotifier:
         self._unsubscribe.clear()
         self._cancel_recheck()
         self._arm_plan_timer(None)
+        self._closed = True
+        self._fit_recheck = None
         self._arm_fit_timer(None)
 
     @callback
@@ -1056,6 +1060,9 @@ class ChargerNotifier:
         return True
 
     def _arm_fit_timer(self, due: datetime | None) -> None:
+        if self._closed:
+            # Shut down: a late `does_not_fit` (the site's last recompute) arms nothing; one still armed is cancelled.
+            due = None
         if due == self._fit_timer_at:
             return
         if self._fit_timer is not None:

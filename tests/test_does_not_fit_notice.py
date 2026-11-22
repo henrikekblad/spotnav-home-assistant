@@ -149,6 +149,24 @@ async def test_at_night_nothing_is_told_until_seven_if_it_still_stands(hass: Hom
         assert len(sent) == 1 and sent[0]["message"].startswith("The car will not be ready by 07:30 ")
 
 
+async def test_after_the_shutdown_a_late_block_arms_no_morning_timer(hass: HomeAssistant) -> None:
+    """The pre-release review (2026-11-22): the site's last recompute after the notifier's shutdown re-armed the
+    morning timer, which then fired on a notifier that was gone."""
+    with freeze_time(_NIGHT) as frozen:
+        notifier, calls = await _phone(hass)
+        site = _Site(notifier, _block(_DEPARTURE.isoformat()))
+        site.tell()
+        assert notifier._fit_timer is not None  # noqa: SLF001
+        notifier.async_shutdown()
+        assert notifier._fit_timer is None and notifier._fit_recheck is None  # noqa: SLF001
+        site.tell()
+        assert notifier._fit_timer is None, "nothing armed after the shutdown"  # noqa: SLF001
+        frozen.move_to(_MORNING)
+        async_fire_time_changed(hass, _MORNING)
+        await hass.async_block_till_done()
+        assert calls == []
+
+
 async def test_at_night_one_that_ends_before_seven_is_never_told(hass: HomeAssistant) -> None:
     with freeze_time(_NIGHT) as frozen:
         notifier, calls = await _phone(hass)
