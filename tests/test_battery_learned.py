@@ -227,10 +227,10 @@ def test_what_was_learnt_fills_only_what_the_integration_does_not_read() -> None
 
     assert filled.capacity_kwh == pytest.approx(10.0, abs=0.01) and EST_CAPACITY_LEARNED in filled.estimates
     assert filled.sources["capacity"] == "learned"
-    if goodwe.rated_charge_kw is None:
-        assert filled.rated_charge_kw == 3.0 and EST_RATED_LEARNED in filled.estimates
-    else:
-        assert filled.rated_charge_kw == goodwe.rated_charge_kw  # a read value is never replaced
+    # GoodWe's rating is the BMS's present limit x the voltage (2.56 kW): 3.0 kW seen held is higher, so it counts.
+    assert goodwe.rated_charge_kw == pytest.approx(2.56) and "rated_from_current" in goodwe.estimates
+    assert filled.rated_charge_kw == 3.0 and EST_RATED_LEARNED in filled.estimates
+    assert filled.sources["rated_charge"] == "learned"
     assert set(goodwe.estimates) <= set(filled.estimates)
 
 
@@ -243,7 +243,27 @@ def test_a_read_value_is_never_replaced() -> None:
     filled = with_learned(victron, learned)
 
     assert filled.capacity_kwh == pytest.approx(10.24) and EST_CAPACITY_LEARNED not in filled.estimates
-    assert filled is victron
+    # Its ratings are the BMS's present limits: only a higher power seen held lifts them, a lower one never lowers.
+    assert (filled.rated_charge_kw or 0.0) >= (victron.rated_charge_kw or 0.0)
+    assert (filled.rated_discharge_kw or 0.0) >= (victron.rated_discharge_kw or 0.0)
+
+
+def test_a_rating_the_plant_states_is_never_replaced_but_a_bms_limit_is_lifted_by_what_was_seen() -> None:
+    from dataclasses import replace as replaced
+
+    learned = LearnedBattery()
+    learned.learn([*_run(T0, 6.0, 20.0, 1.0, 3), *_run(T0 + timedelta(hours=3), -6.0, 80.0, -1.0, 3)], NOW)
+    stated = replaced(_goodwe(), rated_charge_kw=5.0, rated_discharge_kw=5.0,
+                      sources={"rated_charge": "sensor.plant_rated_charge", "rated_discharge": "sensor.plant_rated_discharge"},
+                      estimates=())
+    assert with_learned(stated, learned).rated_charge_kw == 5.0
+    assert with_learned(stated, learned).rated_discharge_kw == 5.0
+    bms = replaced(stated, sources={"rated_charge": "sensor.bms_charge_limit x sensor.bms_voltage",
+                                    "rated_discharge": "sensor.bms_discharge_limit x sensor.bms_voltage"},
+                   rated_charge_kw=3.7, rated_discharge_kw=11.0, estimates=("rated_from_current",))
+    filled = with_learned(bms, learned)
+    assert filled.rated_charge_kw == 6.0, "a BMS limit lowered for its own reasons is lifted by what was seen held"
+    assert filled.rated_discharge_kw == 11.0, "a BMS limit above what was seen stays"
 
 
 def test_a_victron_without_bms_limits_gets_its_rating_learnt_and_the_plan_then_runs() -> None:
