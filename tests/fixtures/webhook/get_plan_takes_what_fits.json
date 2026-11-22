@@ -1,14 +1,22 @@
 {
   "action": "get_plan",
   "api_version": 1,
+  "date": null,
   "generated_at": "2026-11-02T12:04:35+00:00",
+  "history": {
+    "days": 7,
+    "first": null
+  },
   "hours": [
     {
       "ceiling": "import_target",
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T12:00:00+00:00",
       "sun_kw": null
@@ -18,7 +26,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T13:00:00+00:00",
       "sun_kw": null
@@ -28,7 +39,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T14:00:00+00:00",
       "sun_kw": null
@@ -38,7 +52,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T15:00:00+00:00",
       "sun_kw": null
@@ -48,7 +65,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T16:00:00+00:00",
       "sun_kw": null
@@ -58,7 +78,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T17:00:00+00:00",
       "sun_kw": null
@@ -68,7 +91,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T18:00:00+00:00",
       "sun_kw": null
@@ -78,7 +104,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T19:00:00+00:00",
       "sun_kw": null
@@ -88,7 +117,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T20:00:00+00:00",
       "sun_kw": null
@@ -98,7 +130,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T21:00:00+00:00",
       "sun_kw": null
@@ -108,7 +143,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T22:00:00+00:00",
       "sun_kw": null
@@ -118,7 +156,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-02T23:00:00+00:00",
       "sun_kw": null
@@ -128,7 +169,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T00:00:00+00:00",
       "sun_kw": null
@@ -138,7 +182,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T01:00:00+00:00",
       "sun_kw": null
@@ -148,7 +195,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T02:00:00+00:00",
       "sun_kw": null
@@ -158,7 +208,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T03:00:00+00:00",
       "sun_kw": null
@@ -168,7 +221,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T04:00:00+00:00",
       "sun_kw": null
@@ -178,7 +234,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T05:00:00+00:00",
       "sun_kw": null
@@ -188,7 +247,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T06:00:00+00:00",
       "sun_kw": null
@@ -198,7 +260,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T07:00:00+00:00",
       "sun_kw": null
@@ -208,7 +273,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T08:00:00+00:00",
       "sun_kw": null
@@ -218,7 +286,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T09:00:00+00:00",
       "sun_kw": null
@@ -228,7 +299,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T10:00:00+00:00",
       "sun_kw": null
@@ -238,7 +312,10 @@
       "ceiling_kw": 5.88,
       "house_kw": null,
       "net_kw": null,
+      "past": false,
+      "planned_net_kw": null,
       "price": null,
+      "recorded": null,
       "sell": null,
       "start": "2026-11-03T11:00:00+00:00",
       "sun_kw": null
@@ -306,6 +383,9 @@
       ],
       "level": null,
       "name": "HALO",
+      "planned": null,
+      "ran": null,
+      "reason": null,
       "runs": [
         {
           "end": "2026-11-02T14:00:00+00:00",
@@ -326,6 +406,7 @@
   "money": null,
   "month_peak": null,
   "ok": true,
+  "past": false,
   "power_tariff": false,
   "site_id": "<site_id>",
   "summary": {

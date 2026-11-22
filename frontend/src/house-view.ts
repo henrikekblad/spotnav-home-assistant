@@ -50,6 +50,8 @@ export interface HouseTabsData {
   today: string;
   /** The Plan tab's answer (`spotnav/get_plan`) while that tab is shown; else `null`. */
   plan?: Loadable<PlanAnswer> | null;
+  /** The Plan tab's day: 0 the live plan, 1 today, a day back per step on (`house-plan.ts:planStepDate`). */
+  planStep?: number;
 }
 
 export interface HouseUi {
@@ -101,6 +103,8 @@ export interface HouseHandlers {
   onEarnPart?(hidden: string[]): void;
   /** A choice on a car's "does not fit" line in the Plan tab (`house-plan.ts`). Without it the line has no buttons. */
   onDoesNotFit?(chargerId: string, code: DoesNotFitChoiceCode): void;
+  /** The Plan tab's arrows: another day (`HouseTabsData.planStep`). Without it the tab has no arrows. */
+  onPlanStep?(next: number): void;
 }
 
 export interface HouseRenderInput {
@@ -1104,13 +1108,17 @@ function planPanel(input: HouseRenderInput, panel: HTMLElement): void {
   const plan = input.tabs?.plan ?? { kind: "loading" };
   if (plan.kind === "ready") {
     const choose = input.handlers.onDoesNotFit;
+    const onStep = input.handlers.onPlanStep;
+    const step = input.tabs?.planStep ?? 0;
     panel.append(
       planBody({
         doc,
         language,
         plan: plan.answer,
         width: input.width,
-        ...(choose === undefined ? {} : { onDoesNotFit: (chargerId: string, code: DoesNotFitChoiceCode) => choose(chargerId, code) }),
+        // A choice on a day gone by is not one to make: only the live plan and today have the buttons.
+        ...(choose === undefined || step > 1 ? {} : { onDoesNotFit: (chargerId: string, code: DoesNotFitChoiceCode) => choose(chargerId, code) }),
+        ...(onStep === undefined ? {} : { step, onStep: (next: number) => onStep.call(input.handlers, next) }),
       }),
     );
     return;

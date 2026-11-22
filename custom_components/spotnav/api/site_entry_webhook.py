@@ -28,7 +28,8 @@ its webhook (parity with the charger webhook). The control opt-ins stay refused 
 `get_site` (`api_version` 1, optional in the body):
 
     {ok, action, api_version: 1, site_id, name, loaded, capabilities: {get_house, get_heat, battery_control,
-     get_site_settings_view, update_site_settings, get_power_month, suggest_import_target, get_plan},
+     get_site_settings_view, update_site_settings, get_power_month, suggest_import_target, get_plan,
+     get_plan_history},
      chargers: [{id, name}]}
 
 `chargers` lists this site's chargers in the site's order, each addressable by its `id` as `charger_id`; a charger
@@ -89,6 +90,7 @@ GET_SITE_CAPABILITIES: Final = (
     "get_power_month",
     "suggest_import_target",
     "get_plan",
+    "get_plan_history",
 )
 
 

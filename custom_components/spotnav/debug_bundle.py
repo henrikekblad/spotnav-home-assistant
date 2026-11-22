@@ -102,6 +102,10 @@ Since 3.0 a site section also carries `day_records` (additive, no new version): 
 under `chargers` already): the forecast log's rows and reviews of each day, its prices, the battery plan's quarter
 hours and review, the house's hours, the settings and the shadow logs of the switched load and the export limit.
 
+Since 3.0 a site section also carries `decision_history` (additive, no new version): the decision history's ledger
+(`site/decision_ledger.py`, its stored columns) cut to the last three local days and today, with the running hour:
+per hour what each load's plan said at the hour's start, what ran and why.
+
 Since 3.0 a site's `diagnostics` also carry `flexible_loads` (additive, no new version): every load the plan can move
 (each member charger's car, the home battery, the heat pump, each floor-heating zone, the water heater) in one shape,
 its goal, handles, hard rules, give and choices (`site/flexible_loads.py`, `planning/flexible_load.py`), each with its
@@ -116,6 +120,7 @@ import logging
 import re
 import sys
 from collections.abc import Iterable, Mapping
+from datetime import datetime, timedelta
 from typing import Any, Final
 
 from homeassistant.config_entries import ConfigEntry
@@ -125,6 +130,7 @@ from homeassistant.helpers.system_info import async_get_system_info
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
+from . import time_zones
 from .api.dashboard import capture_dashboard, serialize_dashboard
 from .card_asset import CARD_ASSET_PATH, read_bundle_digest
 from .const import (
@@ -145,7 +151,7 @@ from .const import (
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
-from .day_record import bundle_days
+from .day_record import BUNDLE_DAYS, bundle_days
 from .debug_day import history_block
 from .beta import bundle_block
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
@@ -542,6 +548,14 @@ async def _charger_section(
     return section
 
 
+def bundle_history(controller: Any, now: datetime) -> dict[str, Any]:
+    """The decision history's stored columns from the local day `BUNDLE_DAYS` before today on, with the running hour."""
+    zone = time_zones.require_zone(controller.demand.tracker.tz)
+    first = now.astimezone(zone).date() - timedelta(days=BUNDLE_DAYS)
+    start = datetime(first.year, first.month, first.day, tzinfo=zone)
+    return controller.decision_history.ledger.since(start).as_store()
+
+
 def _charger_day(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """A charger's last plug-ins and, while it is in no site, its minute rows (`debug_day.ChargerDay`)."""
     from .runtime import charger_data
@@ -589,6 +603,13 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
             except Exception as err:  # noqa: BLE001 - the days kept must not cost the whole bundle
                 _LOGGER.warning("The debug bundle could not read a site's day records: %s", type(err).__name__)
                 day_records = {"available": False, "reason": "read_failed"}
+        decision_history: Any = None
+        if controller is not None:
+            try:
+                decision_history = bundle_history(controller, dt_util.utcnow())
+            except Exception as err:  # noqa: BLE001 - the history must not cost the whole bundle
+                _LOGGER.warning("The debug bundle could not read a site's decision history: %s", type(err).__name__)
+                decision_history = {"available": False, "reason": "read_failed"}
         site_sections.append(
             {
                 "entry_id": entry.entry_id,
@@ -601,6 +622,8 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
                 "history_24h": None if controller is None else controller.history_samples,
                 # The last completed days as `export_day` writes them (`day_record.py`).
                 "day_records": day_records,
+                # Per hour what was planned at its start, what ran and why (`site/decision_ledger.py`).
+                "decision_history": decision_history,
             }
         )
     vehicle_entities = [

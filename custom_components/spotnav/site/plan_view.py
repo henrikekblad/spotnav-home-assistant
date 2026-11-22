@@ -9,9 +9,16 @@ zones' lowerings, the house forecast, the sun's forecast, the prices); nothing i
      power_tariff: bool, would: bool,
      month_peak: {kw, start} | null,
      summary: {cost, peak_kw, peak_start, peak_ceiling_kw, peak_ceiling, over} ,
-     hours: [{start, price, sell, house_kw, sun_kw, net_kw, ceiling_kw, ceiling}],
+     hours: [{start, price, sell, house_kw, sun_kw, net_kw, ceiling_kw, ceiling, past, recorded, planned_net_kw}],
      loads: [{id, kind, name, state: "live" | "would", in_house, kw: [...], level: [...] | null,
-              runs: [{start, end, what, reason, kw, kwh}], summary: {...}, does_not_fit: {...} | null}]}
+              runs: [{start, end, what, reason, kw, kwh}], summary: {...}, does_not_fit: {...} | null,
+              planned: [...] | null, ran: [...] | null, reason: [...] | null}],
+     past: bool, date: "YYYY-MM-DD" | null, history: {days, first}}
+
+* **Past and history** (plan `plans/v3_decision_history.md`): the live answer has `past` false, `date` null, each
+  hour `past` false with `recorded` and `planned_net_kw` null, each load `planned`, `ran` and `reason` null. A past
+  day, or today with its hours gone by, is `site/plan_history.py`'s, in this same shape. `history` says how far back
+  the Plan tab may step (`days`) and the first hour the decision history holds (`first`, `null` before any).
 
 * **The window** rolls: from the running local hour to the end of the prices held (today's, and tomorrow's once
   published), at most `MAX_HOURS`; `MIN_HOURS` from the running hour without prices. Never a calendar day.
@@ -78,9 +85,40 @@ PLAN_KEYS: Final = (
     "summary",
     "hours",
     "loads",
+    "past",
+    "date",
+    "history",
 )
-HOUR_KEYS: Final = ("start", "price", "sell", "house_kw", "sun_kw", "net_kw", "ceiling_kw", "ceiling")
-LOAD_KEYS: Final = ("id", "kind", "name", "state", "in_house", "kw", "level", "runs", "summary", "does_not_fit")
+HOUR_KEYS: Final = (
+    "start",
+    "price",
+    "sell",
+    "house_kw",
+    "sun_kw",
+    "net_kw",
+    "ceiling_kw",
+    "ceiling",
+    "past",
+    "recorded",
+    "planned_net_kw",
+)
+LOAD_KEYS: Final = (
+    "id",
+    "kind",
+    "name",
+    "state",
+    "in_house",
+    "kw",
+    "level",
+    "runs",
+    "summary",
+    "does_not_fit",
+    "planned",
+    "ran",
+    "reason",
+)
+#: The local days before today the Plan tab may step back to (`site/decision_ledger.KEPT_DAYS`).
+HISTORY_DAYS: Final = 7
 RUN_KEYS: Final = ("start", "end", "what", "reason", "kw", "kwh")
 
 STATE_LIVE: Final = "live"
@@ -199,6 +237,8 @@ class PlanInputs:
     power_tariff: bool = False
     #: The month's highest measured hour so far: `(kW, start)`.
     month_peak: tuple[float, datetime] | None = None
+    #: The first hour the decision history holds (`site/decision_ledger.py`), `None` before any.
+    history_first: datetime | None = None
 
 
 def _r(value: float | None, digits: int = 3) -> float | None:
@@ -303,6 +343,9 @@ def _load(
         "runs": runs,
         "summary": summary,
         "does_not_fit": does_not_fit,
+        "planned": None,
+        "ran": None,
+        "reason": None,
     }
 
 
@@ -502,6 +545,9 @@ def plan_view(inputs: PlanInputs) -> dict[str, Any]:
                 "net_kw": _r(net, 2),
                 "ceiling_kw": _r(ceiling_kw, 2),
                 "ceiling": ceiling,
+                "past": False,
+                "recorded": None,
+                "planned_net_kw": None,
             }
         )
     money = inputs.money
@@ -534,4 +580,12 @@ def plan_view(inputs: PlanInputs) -> dict[str, Any]:
         },
         "hours": rows,
         "loads": loads,
+        "past": False,
+        "date": None,
+        "history": history_block(inputs.history_first),
     }
+
+
+def history_block(first: datetime | None) -> dict[str, Any]:
+    """How far back the Plan tab may step: the days, and the first hour recorded (`None` before any)."""
+    return {"days": HISTORY_DAYS, "first": None if first is None else first.isoformat()}

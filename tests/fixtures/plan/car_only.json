@@ -1,13 +1,21 @@
 {
   "api_version": 1,
+  "date": null,
   "generated_at": "2026-11-16T21:40:00+00:00",
+  "history": {
+    "days": 7,
+    "first": null
+  },
   "hours": [
     {
       "ceiling": "fuse",
       "ceiling_kw": 13.8,
       "house_kw": 0.9,
       "net_kw": 0.9,
+      "past": false,
+      "planned_net_kw": null,
       "price": 95.0,
+      "recorded": null,
       "sell": 57.0,
       "start": "2026-11-16T21:00:00+00:00",
       "sun_kw": null
@@ -17,7 +25,10 @@
       "ceiling_kw": 13.8,
       "house_kw": 0.9,
       "net_kw": 11.9,
+      "past": false,
+      "planned_net_kw": null,
       "price": 85.0,
+      "recorded": null,
       "sell": 51.0,
       "start": "2026-11-16T22:00:00+00:00",
       "sun_kw": null
@@ -39,6 +50,9 @@
       ],
       "level": null,
       "name": "Laddbox",
+      "planned": null,
+      "ran": null,
+      "reason": null,
       "runs": [
         {
           "end": "2026-11-16T23:00:00+00:00",
@@ -62,6 +76,7 @@
     "minor_unit": "öre"
   },
   "month_peak": null,
+  "past": false,
   "power_tariff": false,
   "site_id": "site_flat",
   "summary": {

@@ -13,14 +13,20 @@ is the solar forecast (the integrations' own forecast platform, as the battery p
 plan corrects it). Nothing is planned anew and nothing is written. A part that cannot be read is left out, never the
 whole answer.
 
+`date` (`YYYY-MM-DD`, the site's local day) or `start` (an ISO instant, its local day) steps back (plan
+`plans/v3_decision_history.md`): a day before today is the decision history's (`site/plan_history.py`), today its
+hours gone by from the history and the rest from the live answer, `past` true either way; without either the live
+answer as before (`past` false). At most `HISTORY_DAYS` days back.
+
 Refusals (WebSocket errors) as `spotnav/get_house`: `spotnav_unsupported_api_version`, `spotnav_charger_required`,
-the charger lookup's codes, `spotnav_unknown_site` and `spotnav_no_site`.
+the charger lookup's codes, `spotnav_unknown_site` and `spotnav_no_site`; and `spotnav_invalid_date` for a `date` or
+`start` that is not one, after today, or more than `HISTORY_DAYS` days back.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -31,6 +37,7 @@ from homeassistant.core import HomeAssistant, callback
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_SOLAR_FORECAST_ENTRIES
 from ..core.electric import site_fuse_kw, stored_voltage_between_phases_v
 from ..core.parse import aware_instant
+from .. import time_zones
 from ..pricing.price_source import site_price_source
 from ..runtime import controller_for, site_controller_for
 from ..site.flexible_loads import has_power_tariff
@@ -38,9 +45,12 @@ from ..site.house_forecast import BASIS_GROSS
 from ..site.does_not_fit import site_does_not_fit
 from ..site.import_target import stored_import_target_kw
 from ..site.shed_order import LOAD_HEAT, LOAD_WATER_HEATER
+from ..site.decision_recorder import set_plan_reader
+from ..site.plan_history import day_hours, past_view
 from ..site.plan_view import (
     CEILING_IMPORT_TARGET,
     CEILING_POWER_LEVEL,
+    HISTORY_DAYS,
     PLAN_API_VERSION,
     BatteryPlan,
     CarPlan,
@@ -52,6 +62,7 @@ from ..site.plan_view import (
     plan_view,
 )
 from .common import send_unsupported_version
+from .house_history import ERROR_INVALID_DATE
 from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 
 _LOGGER = logging.getLogger(__name__)
@@ -257,14 +268,62 @@ def _month_peak(controller: Any, now: datetime) -> tuple[float, datetime] | None
     return top.kw, top.start
 
 
-async def async_plan_answer(hass: HomeAssistant, site: Any) -> dict[str, Any]:
-    """The answer for one site, or a `PowerMonthRefusal`."""
-    from ..battery.plan_runtime import site_hour_caps  # noqa: PLC0415 - it imports the site
+def asked_day(asked_date: Any, asked_start: Any, today: date, tz: str) -> date | None:
+    """The local day `date` or `start` asks for (`None`: neither, the live answer); a `PowerMonthRefusal` for one that
+    is not a day the Plan tab can show."""
+    if asked_date is None and asked_start is None:
+        return None
+    day: date | None = None
+    if isinstance(asked_date, str):
+        try:
+            day = date.fromisoformat(asked_date)
+        except ValueError:
+            day = None
+    elif asked_date is None and isinstance(asked_start, str):
+        moment = aware_instant(asked_start)
+        day = None if moment is None else moment.astimezone(time_zones.require_zone(tz)).date()
+    if day is None or day > today or day < today - timedelta(days=HISTORY_DAYS):
+        raise PowerMonthRefusal(ERROR_INVALID_DATE, "The day is not one the Plan tab can show")
+    return day
 
+
+async def async_plan_answer(
+    hass: HomeAssistant, site: Any, asked_date: Any = None, asked_start: Any = None
+) -> dict[str, Any]:
+    """The answer for one site (a past day where `asked_date` or `asked_start` asks for one), or a
+    `PowerMonthRefusal`."""
     controller = site_controller_for(hass, site.entry_id)
     if site.state is not ConfigEntryState.LOADED or controller is None:
         raise PowerMonthRefusal(ERROR_NO_SITE, "The site is not loaded")
     now = controller.demand.now()
+    tz = controller.demand.tracker.tz
+    today = now.astimezone(time_zones.require_zone(tz)).date()
+    day = asked_day(asked_date, asked_start, today, tz)
+    if day is None:
+        return await _live_answer(hass, site, controller, now)
+    history = controller.decision_history
+    hours = day_hours(day, tz)
+    rows = history.ledger.between(hours[0], hours[-1] + timedelta(hours=1))
+    source = site_price_source(hass, site.entry_id)
+    area = None if source is None else source.area
+    return past_view(
+        site_id=site.entry_id,
+        tz=tz,
+        now=now,
+        day=day,
+        rows=rows,
+        history_first=history.first_hour,
+        live=await _live_answer(hass, site, controller, now) if day == today else None,
+        money=None
+        if area is None
+        else {"currency": area.currency, "major_unit": area.major_unit, "minor_unit": area.minor_unit},
+    )
+
+
+async def _live_answer(hass: HomeAssistant, site: Any, controller: Any, now: datetime) -> dict[str, Any]:
+    """The live answer (`site/plan_view.py`)."""
+    from ..battery.plan_runtime import site_hour_caps  # noqa: PLC0415 - it imports the site
+
     tz = controller.demand.tracker.tz
     source = site_price_source(hass, site.entry_id)
     area = None if source is None else source.area
@@ -293,6 +352,7 @@ async def async_plan_answer(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             fuse_kw=site_fuse_kw(config),
             power_tariff=bool(_guarded("power tariff", lambda: has_power_tariff(controller), False)),
             month_peak=_guarded("month's peak", lambda: _month_peak(controller, now), None),
+            history_first=_guarded("decision history", lambda: controller.decision_history.first_hour, None),
         )
     )
 
@@ -303,6 +363,8 @@ async def async_plan_answer(hass: HomeAssistant, site: Any) -> dict[str, Any]:
         vol.Optional("api_version"): object,
         vol.Optional("charger_id"): object,
         vol.Optional("site_id"): object,
+        vol.Optional("date"): object,
+        vol.Optional("start"): object,
     }
 )
 @websocket_api.async_response
@@ -313,7 +375,7 @@ async def websocket_get_plan(hass: HomeAssistant, connection: websocket_api.Acti
         send_unsupported_version(connection, msg, PLAN_API_VERSION)
         return
     try:
-        answer = await async_plan_answer(hass, _site_of_request(hass, msg))
+        answer = await async_plan_answer(hass, _site_of_request(hass, msg), msg.get("date"), msg.get("start"))
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return
@@ -322,5 +384,6 @@ async def websocket_get_plan(hass: HomeAssistant, connection: websocket_api.Acti
 
 @callback
 def async_setup_plan_api(hass: HomeAssistant) -> None:
-    """Register the command once for the domain."""
+    """Register the command once for the domain, and hand the decision history its plan reader."""
     websocket_api.async_register_command(hass, websocket_get_plan)
+    set_plan_reader(async_plan_answer)

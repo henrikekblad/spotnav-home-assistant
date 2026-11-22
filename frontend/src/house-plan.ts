@@ -9,7 +9,8 @@
 // Read-only; every figure is the backend's. Built with `textContent` only.
 
 import { exactKeys, flag, list, numberOrNull, record, text, textOrNull, Malformed } from "./decode-primitives";
-import { clock, dayCue, formatFixed, hourLabel, kwText, kwhText, moneyMinorAsMajor, type FormatContext } from "./format";
+import { clock, dateLabel, dayCue, formatFixed, hourLabel, kwText, kwhText, moneyMinorAsMajor, type FormatContext } from "./format";
+import { localDayKey } from "./chart";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { element } from "./dom";
 import en from "./i18n/en.json";
@@ -20,12 +21,15 @@ export const PLAN_API_VERSION = 1;
 const HOUR_MS = 3_600_000;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const PLAN_KEYS = ["api_version", "site_id", "time_zone", "generated_at", "money", "window", "house", "power_tariff", "would", "month_peak", "summary", "hours", "loads"] as const;
+const PLAN_KEYS = ["api_version", "site_id", "time_zone", "generated_at", "money", "window", "house", "power_tariff", "would", "month_peak", "summary", "hours", "loads", "past", "date", "history"] as const;
 const WINDOW_KEYS = ["start", "end", "hours", "prices_end"] as const;
 const HOUSE_KEYS = ["basis", "sun_in_house"] as const;
 const SUMMARY_KEYS = ["cost", "peak_kw", "peak_start", "peak_ceiling_kw", "peak_ceiling", "over"] as const;
-const HOUR_KEYS = ["start", "price", "sell", "house_kw", "sun_kw", "net_kw", "ceiling_kw", "ceiling"] as const;
-const LOAD_KEYS = ["id", "kind", "name", "state", "in_house", "kw", "level", "runs", "summary", "does_not_fit"] as const;
+const HOUR_KEYS = ["start", "price", "sell", "house_kw", "sun_kw", "net_kw", "ceiling_kw", "ceiling", "past", "recorded", "planned_net_kw"] as const;
+const LOAD_KEYS = ["id", "kind", "name", "state", "in_house", "kw", "level", "runs", "summary", "does_not_fit", "planned", "ran", "reason"] as const;
+const PLANNED_KEYS = ["what", "kw", "reason"] as const;
+const RAN_KEYS = ["what", "kw"] as const;
+const HISTORY_KEYS = ["days", "first"] as const;
 const RUN_KEYS = ["start", "end", "what", "reason", "kw", "kwh"] as const;
 const MONEY_KEYS = ["currency", "major_unit", "minor_unit"] as const;
 
@@ -34,8 +38,16 @@ const LOAD_KINDS: readonly PlanLoadKind[] = ["car", "home_battery", "heat", "hea
 export type CeilingKind = "import_target" | "power_level" | "power_tariff" | "fuse";
 const CEILINGS: readonly CeilingKind[] = ["import_target", "power_level", "power_tariff", "fuse"];
 
+/** How an hour gone by was recorded (`site/plan_history.py`); `null` for an hour of the plan. */
+export type Recorded = "full" | "partial" | "missing";
+const RECORDED: readonly Recorded[] = ["full", "partial", "missing"];
+
 export interface PlanHour {
   startMs: number;
+  /** An hour gone by: its figures are measured, its plan the one read at its start. */
+  past: boolean;
+  recorded: Recorded | null;
+  planned_net_kw: number | null;
   price: number | null;
   sell: number | null;
   house_kw: number | null;
@@ -54,6 +66,19 @@ export interface PlanRun {
   kwh: number | null;
 }
 
+/** A load's plan for an hour gone by, as it stood at the hour's start. */
+export interface PlanPlanned {
+  what: string | null;
+  kw: number | null;
+  reason: string | null;
+}
+
+/** What a load did in an hour gone by. */
+export interface PlanRan {
+  what: string | null;
+  kw: number | null;
+}
+
 export interface PlanLoad {
   id: string;
   kind: PlanLoadKind;
@@ -66,6 +91,10 @@ export interface PlanLoad {
   summary: Record<string, number | string | null>;
   /** A car's charge that does not fit under the ceiling by its departure (`does-not-fit.ts`), else `null`. */
   does_not_fit: DoesNotFit | null;
+  /** Per hour gone by (else `null`): the plan at its start, what ran and the reason; `null` for the live plan. */
+  planned: (PlanPlanned | null)[] | null;
+  ran: (PlanRan | null)[] | null;
+  reason: (string | null)[] | null;
 }
 
 export interface PlanAnswer {
@@ -86,6 +115,13 @@ export interface PlanAnswer {
     over: boolean;
   };
   sun_in_house: boolean;
+  generatedMs: number;
+  /** A day stepped back to (or today with its hours gone by), else the live plan. */
+  past: boolean;
+  /** The local day asked for (`YYYY-MM-DD`), `null` for the live plan. */
+  date: string | null;
+  /** How far back the tab may step, and the first hour the history holds (`null` before any). */
+  history: { days: number; firstMs: number | null };
 }
 
 export type PlanDecodeResult = { ok: true; value: PlanAnswer } | { ok: false; failure: "unsupported" | "malformed" };
@@ -119,7 +155,32 @@ function decodeHour(raw: unknown): PlanHour {
     net_kw: numberOrNull(source.net_kw),
     ceiling_kw: numberOrNull(source.ceiling_kw),
     ceiling: ceilingOrNull(source.ceiling),
+    past: flag(source.past),
+    recorded: source.recorded === null ? null : oneOf(source.recorded, RECORDED),
+    planned_net_kw: numberOrNull(source.planned_net_kw),
   };
+}
+
+/** A per-hour list of the past (`null`, or one entry per hour, each `null` or decoded). */
+function perHour<T>(value: unknown, count: number, decode: (item: Record<string, unknown>) => T): (T | null)[] | null {
+  if (value === null) {
+    return null;
+  }
+  const items = list(value);
+  if (items.length !== count) {
+    throw new Malformed();
+  }
+  return items.map((item) => (item === null ? null : decode(record(item))));
+}
+
+function decodePlanned(source: Record<string, unknown>): PlanPlanned {
+  exactKeys(source, PLANNED_KEYS);
+  return { what: textOrNull(source.what), kw: numberOrNull(source.kw), reason: textOrNull(source.reason) };
+}
+
+function decodeRan(source: Record<string, unknown>): PlanRan {
+  exactKeys(source, RAN_KEYS);
+  return { what: textOrNull(source.what), kw: numberOrNull(source.kw) };
 }
 
 function decodeRun(raw: unknown): PlanRun {
@@ -158,6 +219,15 @@ function decodeLoad(raw: unknown, count: number): PlanLoad {
     runs: list(source.runs).map(decodeRun),
     summary,
     does_not_fit: source.does_not_fit === null ? null : decodeDoesNotFit(source.does_not_fit),
+    planned: perHour(source.planned, count, decodePlanned),
+    ran: perHour(source.ran, count, decodeRan),
+    reason: source.reason === null ? null : (() => {
+      const items = list(source.reason).map(textOrNull);
+      if (items.length !== count) {
+        throw new Malformed();
+      }
+      return items;
+    })(),
   };
 }
 
@@ -184,6 +254,9 @@ export function decodePlan(raw: unknown): PlanDecodeResult {
       throw new Malformed();
     }
     const peak = source.month_peak === null ? null : record(source.month_peak);
+    const history = record(source.history);
+    exactKeys(history, HISTORY_KEYS);
+    const first = textOrNull(history.first);
     const peakStart = textOrNull(summary.peak_start);
     return {
       ok: true,
@@ -205,6 +278,10 @@ export function decodePlan(raw: unknown): PlanDecodeResult {
           over: flag(summary.over),
         },
         sun_in_house: flag(house.sun_in_house),
+        generatedMs: instant(source.generated_at),
+        past: flag(source.past),
+        date: textOrNull(source.date),
+        history: { days: numberOrNull(history.days) ?? 0, firstMs: first === null ? null : instant(first) },
       },
     };
   } catch (error) {
@@ -242,6 +319,8 @@ export const PLAN_CLASSES = {
   toggle: "spotnav-plan-toggle",
   chevron: "spotnav-plan-chevron",
   hint: "spotnav-plan-hint",
+  nav: "spotnav-plan-nav",
+  day: "spotnav-plan-day",
 } as const;
 const P = PLAN_CLASSES;
 
@@ -295,6 +374,16 @@ export const PLAN_STYLES = `
   .${P.chart} .spotnav-plan-over { fill: var(--spotnav-plan-ceiling); }
   .${P.chart} .spotnav-plan-midnight { stroke: var(--secondary-text-color); stroke-dasharray: 2 3; }
   .${P.chart} rect[data-would="true"], .${P.block}[data-would="true"] { fill-opacity: 0.45; opacity: 0.6; }
+  .${P.chart} .spotnav-plan-planned { fill: none; stroke: var(--primary-text-color); stroke-opacity: 0.45; stroke-width: 1.2; stroke-dasharray: 3 2; }
+  .${P.chart} .spotnav-plan-missing { fill: var(--divider-color, #e0e0e0); opacity: 0.5; }
+  .${P.chart} .spotnav-plan-now { stroke: var(--primary-color); stroke-width: 1.5; }
+  .${P.chart} text.spotnav-plan-now-label { fill: var(--primary-color); }
+  .${P.block}[data-planned="true"] { background: transparent !important; outline: 1.5px dashed var(--secondary-text-color); outline-offset: -3px; opacity: 0.7; }
+  .${P.nav} { display: flex; align-items: center; gap: 8px; }
+  .${P.nav} button { font: inherit; font-size: 1.1rem; line-height: 1; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--divider-color, #e0e0e0); background: transparent; color: var(--primary-text-color); cursor: pointer; }
+  .${P.nav} button:disabled { opacity: 0.35; cursor: default; }
+  .${P.nav} button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .${P.day} { min-width: 0; font-weight: 600; overflow-wrap: break-word; }
   .${P.legend} { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.8rem; }
   .${P.swatch} { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
   .${P.lanes} { display: grid; gap: 6px; }
@@ -332,6 +421,70 @@ export interface PlanRenderInput {
   onDoesNotFit?: (chargerId: string, code: DoesNotFitChoiceCode) => void;
   /** Where the folded sections are remembered; this browser's storage unless a test hands in its own. */
   store?: () => PreferenceStore | null;
+  /**
+   * The day shown, a step back from the live plan (0): today (1), yesterday (2), ... With `onStep` the heading has
+   * arrows to the day before and after; without it the tab shows the answer it has.
+   */
+  step?: number;
+  onStep?: (next: number) => void;
+}
+
+/** The local day a step shows (`YYYY-MM-DD`): `null` for the live plan (0), `today` for 1, a day back per step on. */
+export function planStepDate(today: string, step: number): string | null {
+  if (step <= 0) {
+    return null;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (match === null) {
+    return null;
+  }
+  const back = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) - (step - 1), 12));
+  return back.toISOString().slice(0, 10);
+}
+
+/** The furthest step back: today and the history's days before it. */
+export function planMaxStep(plan: PlanAnswer): number {
+  return plan.history.days + 1;
+}
+
+/** The site's local date of the answer. */
+function answerToday(plan: PlanAnswer): string {
+  try {
+    return localDayKey(plan.generatedMs, plan.time_zone);
+  } catch {
+    return new Date(plan.generatedMs).toISOString().slice(0, 10);
+  }
+}
+
+/** Whether the tab may step back from `step`: within the days kept and not before the first hour recorded. */
+export function planCanStepBack(plan: PlanAnswer, step: number): boolean {
+  const first = plan.history.firstMs;
+  if (first === null || step >= planMaxStep(plan)) {
+    return false;
+  }
+  const target = planStepDate(answerToday(plan), step + 1);
+  let firstDay: string;
+  try {
+    firstDay = localDayKey(first, plan.time_zone);
+  } catch {
+    firstDay = new Date(first).toISOString().slice(0, 10);
+  }
+  return target !== null && target >= firstDay;
+}
+
+/** The shown day's name: "Nu" for the live plan, "I dag", "I går", else the weekday and date. */
+export function planDayLabel(language: Language, plan: PlanAnswer): string {
+  if (plan.date === null) {
+    return translate(language, "house.now");
+  }
+  const today = answerToday(plan);
+  if (plan.date === today) {
+    return translate(language, "house.picker.today");
+  }
+  if (plan.date === planStepDate(today, 2)) {
+    return translate(language, "house.picker.yesterday");
+  }
+  return dateLabel(language, plan.date);
 }
 
 /** The sections opened or folded on this page, so a choice holds across redraws where nothing can be stored. */
@@ -531,8 +684,8 @@ function chart(input: PlanRenderInput, ctx: FormatContext): SVGSVGElement {
     }
     above.push(up);
     below.push(down);
-    max = Math.max(max, up.reduce((sum, part) => sum + part.kw, 0), hour.net_kw ?? 0, hour.ceiling_kw !== null && hour.ceiling_kw < 30 ? hour.ceiling_kw : 0);
-    min = Math.min(min, -down.reduce((sum, part) => sum + part.kw, 0), hour.net_kw ?? 0);
+    max = Math.max(max, up.reduce((sum, part) => sum + part.kw, 0), hour.net_kw ?? 0, hour.planned_net_kw ?? 0, hour.ceiling_kw !== null && hour.ceiling_kw < 30 ? hour.ceiling_kw : 0);
+    min = Math.min(min, -down.reduce((sum, part) => sum + part.kw, 0), hour.net_kw ?? 0, hour.planned_net_kw ?? 0);
   });
   max = Math.ceil(max * 1.08);
   min = min < 0 ? Math.floor(min * 1.08) : 0;
@@ -554,6 +707,15 @@ function chart(input: PlanRenderInput, ctx: FormatContext): SVGSVGElement {
   const tones = priceTones(plan.hours);
   plan.hours.forEach((hour, index) => {
     const name = clock(ctx, hour.startMs);
+    if (hour.recorded === "missing") {
+      // Nothing recorded: a grey band, never a figure.
+      const band = svg(doc, "rect", { x: x(index) + 1, y: top, width: bar, height: height - bottom - top }, "spotnav-plan-missing");
+      band.dataset["recorded"] = "missing";
+      const title = svg(doc, "title", {});
+      title.textContent = `${name} ${translate(language, "house.plan.past.missing")}`;
+      band.append(title);
+      root.append(band);
+    }
     let acc = 0;
     for (const part of above[index]!) {
       const rect = svg(doc, "rect", { x: x(index) + 1, y: y(acc + part.kw), width: bar, height: Math.max(0, y(acc) - y(acc + part.kw)), fill: LAYER_COLOUR[part.layer] });
@@ -575,6 +737,16 @@ function chart(input: PlanRenderInput, ctx: FormatContext): SVGSVGElement {
       rect.append(title);
       root.append(rect);
       neg -= part.kw;
+    }
+    const planned = hour.planned_net_kw;
+    if (hour.past && planned !== null && hour.net_kw !== null && Math.abs(planned - hour.net_kw) > DIFFERS_KW) {
+      // What the plan counted on at the hour's start, where it turned out otherwise.
+      const outline = svg(doc, "rect", { x: x(index) + 1, y: y(Math.max(planned, 0)), width: bar, height: Math.abs(y(planned) - y(0)) }, "spotnav-plan-planned");
+      outline.dataset["planned"] = "true";
+      const title = svg(doc, "title", {});
+      title.textContent = `${name} ${translate(language, "house.plan.layer.planned")} ${kwText(language, planned)}`;
+      outline.append(title);
+      root.append(outline);
     }
     const tone = tones[index];
     if (tone !== null && tone !== undefined) {
@@ -626,12 +798,43 @@ function chart(input: PlanRenderInput, ctx: FormatContext): SVGSVGElement {
   if (net !== "") {
     root.append(svg(doc, "path", { d: net }, "spotnav-plan-net"));
   }
+  // Today: the hours gone by, then the plan from the running hour, with a line at now.
+  const nowIndex = plan.past ? plan.hours.findIndex((hour) => !hour.past) : -1;
+  if (nowIndex > 0) {
+    root.append(svg(doc, "line", { x1: x(nowIndex), x2: x(nowIndex), y1: top - 2, y2: height - bottom + 4 }, "spotnav-plan-now"));
+    const label = svg(doc, "text", { x: x(nowIndex) + 3, y: top + 8 }, "spotnav-plan-now-label");
+    label.textContent = translate(language, "house.plan.nowLine");
+    root.append(label);
+  }
   plan.hours.forEach((hour, index) => {
     if (hour.net_kw !== null && hour.ceiling_kw !== null && hour.net_kw > hour.ceiling_kw + 0.01) {
       root.append(svg(doc, "circle", { cx: x(index) + step / 2, cy: y(hour.net_kw), r: 3.5 }, "spotnav-plan-over"));
     }
   });
   return root;
+}
+
+/** Planned and measured power differ beyond this (kW), or beyond `DIFFERS_SHARE` of the plan. */
+const DIFFERS_KW = 0.3;
+const DIFFERS_SHARE = 0.2;
+const SAME_ACTION: Record<string, string> = { grid_charge: "charge", sun_charge: "charge", sell: "cover", night: "lower", away: "lower" };
+
+function sameAction(a: string | null, b: string | null): boolean {
+  return (a === null ? null : (SAME_ACTION[a] ?? a)) === (b === null ? null : (SAME_ACTION[b] ?? b));
+}
+
+/** Whether an hour gone by ran otherwise than planned at its start (as the backend's `decision_ledger.agrees`). */
+export function differs(planned: PlanPlanned | null, ran: PlanRan | null): boolean {
+  if (planned === null || ran === null) {
+    return false;
+  }
+  if (!sameAction(planned.what, ran.what)) {
+    return true;
+  }
+  if (planned.kw === null || ran.kw === null) {
+    return false;
+  }
+  return Math.abs(planned.kw - ran.kw) > Math.max(DIFFERS_KW, DIFFERS_SHARE * Math.abs(planned.kw));
 }
 
 function stat(doc: Document, label: string, value: string, note: string, over: boolean | null = null): HTMLElement {
@@ -650,12 +853,15 @@ function summary(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
   const s = plan.summary;
   const row = element(doc, "div", P.stats);
   row.dataset["part"] = "summary";
+  const mixed = plan.past && plan.hours.some((hour) => !hour.past);
   row.append(
     stat(
       doc,
-      translate(language, "house.plan.cost"),
+      translate(language, plan.past ? "house.plan.costPast" : "house.plan.cost"),
       s.cost === null ? "–" : moneyMinorAsMajor(language, s.cost, plan.money),
-      translate(language, "house.plan.costNote", { hours: String(plan.hours.length) }),
+      plan.past
+        ? translate(language, mixed ? "house.plan.costNoteToday" : "house.plan.costNotePast")
+        : translate(language, "house.plan.costNote", { hours: String(plan.hours.length) }),
     ),
   );
   const peakNote =
@@ -702,6 +908,15 @@ function legend(doc: Document, language: Language, plan: PlanAnswer): HTMLElemen
   line.style.height = "3px";
   net.append(line, doc.createTextNode(translate(language, "house.plan.layer.net")));
   box.append(net);
+  if (plan.hours.some((hour) => hour.past && hour.planned_net_kw !== null && hour.net_kw !== null && Math.abs(hour.planned_net_kw - hour.net_kw) > DIFFERS_KW)) {
+    const planned = element(doc, "span");
+    planned.dataset["legend"] = "planned";
+    const outline = element(doc, "i", P.swatch);
+    outline.style.border = "1.5px dashed var(--secondary-text-color)";
+    outline.style.boxSizing = "border-box";
+    planned.append(outline, doc.createTextNode(translate(language, "house.plan.layer.planned")));
+    box.append(planned);
+  }
   return box;
 }
 
@@ -740,6 +955,17 @@ function lanes(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
       }
       track.append(block);
     }
+    // An hour gone by that ran otherwise than planned at its start: the plan as a faint outline.
+    for (let index = 0; index < n && !load.would; index += 1) {
+      if (!differs(load.planned?.[index] ?? null, load.ran?.[index] ?? null)) {
+        continue;
+      }
+      const outline = element(doc, "div", P.block);
+      outline.style.left = `${(index / n) * 100}%`;
+      outline.style.width = `${100 / n}%`;
+      outline.dataset["planned"] = "true";
+      track.append(outline);
+    }
     lane.append(track, element(doc, "p", P.reason, laneReason(language, ctx, load)));
     if (load.does_not_fit !== null) {
       lane.append(doesNotFitNode(input, ctx, load.id, load.does_not_fit));
@@ -749,7 +975,7 @@ function lanes(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
   const first = plan.hours[0]!.startMs;
   const marks = [0, 0.25, 0.5, 0.75].map((share) => clock(ctx, first + Math.round(share * n) * HOUR_MS));
   const foot = element(doc, "div", P.lane);
-  foot.append(element(doc, "span"), element(doc, "p", P.note, `${marks.join(" · ")} → ${translate(language, "house.plan.rolling")}`));
+  foot.append(element(doc, "span"), element(doc, "p", P.note, plan.past ? marks.join(" · ") : `${marks.join(" · ")} → ${translate(language, "house.plan.rolling")}`));
   box.append(foot);
   return box;
 }
@@ -794,17 +1020,92 @@ function doesNotFitNode(input: PlanRenderInput, ctx: FormatContext, chargerId: s
   return box;
 }
 
+/** A load's state in words for a difference ("3,7 kW", "sänkt", "pausad"). */
+function stateWords(language: Language, load: PlanLoad, what: string | null, kw: number | null): string {
+  if ((load.kind === "car" || load.kind === "home_battery") && kw !== null) {
+    return kwText(language, Math.abs(kw));
+  }
+  const word = what === null ? "idle" : (SAME_ACTION[what] ?? what);
+  const key = `house.plan.state.${word}`;
+  return translate(language, known(key) ? key : "house.plan.state.idle");
+}
+
+/** A reason's words, or `null` without one the card knows. */
+function reasonWords(language: Language, reason: string | null): string | null {
+  const key = reason === null ? null : `house.plan.reason.${reason}`;
+  return key !== null && known(key) ? translate(language, key) : null;
+}
+
+interface WordsItem {
+  startMs: number;
+  endMs: number;
+  kind: string;
+  text: string;
+  would: boolean;
+  part: "run" | "differs" | "missing";
+}
+
+/** The hours gone by that ran otherwise than planned, per load, contiguous hours with the same words as one line. */
+function differences(language: Language, plan: PlanAnswer, load: PlanLoad): WordsItem[] {
+  if (load.would || load.planned === null || load.ran === null) {
+    return [];
+  }
+  const out: WordsItem[] = [];
+  plan.hours.forEach((hour, index) => {
+    const planned = load.planned![index] ?? null;
+    const ran = load.ran![index] ?? null;
+    if (planned === null || ran === null || !differs(planned, ran)) {
+      return;
+    }
+    let text = translate(language, "house.plan.past.differs", {
+      name: loadName(language, load),
+      planned: stateWords(language, load, planned.what, planned.kw),
+      ran: stateWords(language, load, ran.what, ran.kw),
+    });
+    const why = reasonWords(language, load.reason?.[index] ?? null);
+    if (why !== null) {
+      text = `${text} – ${why}`;
+    }
+    const last = out.at(-1);
+    if (last !== undefined && last.text === text && last.endMs === hour.startMs) {
+      last.endMs = hour.startMs + HOUR_MS;
+    } else {
+      out.push({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS, kind: load.kind, text, would: false, part: "differs" });
+    }
+  });
+  return out;
+}
+
 function words(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
   const { doc, language, plan } = input;
-  const items = plan.loads.flatMap((load) => load.runs.map((run) => ({ load, run }))).sort((a, b) => a.run.startMs - b.run.startMs);
+  const items: WordsItem[] = plan.loads.flatMap((load) =>
+    load.runs.map((run) => ({ startMs: run.startMs, endMs: run.endMs, kind: load.kind, text: runWords(language, load, run), would: load.would, part: "run" as const })),
+  );
+  for (const load of plan.loads) {
+    items.push(...differences(language, plan, load));
+  }
+  const missingText = translate(language, "house.plan.past.missing");
+  for (const hour of plan.hours) {
+    if (hour.recorded !== "missing") {
+      continue;
+    }
+    const last = items.at(-1);
+    if (last !== undefined && last.part === "missing" && last.endMs === hour.startMs) {
+      last.endMs = hour.startMs + HOUR_MS;
+    } else {
+      items.push({ startMs: hour.startMs, endMs: hour.startMs + HOUR_MS, kind: "site", text: missingText, would: false, part: "missing" });
+    }
+  }
+  items.sort((a, b) => a.startMs - b.startMs);
   const listNode = element(doc, "ul", P.words);
-  for (const { load, run } of items) {
+  for (const entry of items) {
     const item = element(doc, "li");
-    item.dataset["load"] = load.kind;
-    const time = element(doc, "time", undefined, span(ctx, run.startMs, run.endMs));
-    time.setAttribute("datetime", new Date(run.startMs).toISOString());
-    const sentence = element(doc, "span", undefined, runWords(language, load, run));
-    if (load.would) {
+    item.dataset["load"] = entry.kind;
+    item.dataset["part"] = entry.part;
+    const time = element(doc, "time", undefined, span(ctx, entry.startMs, entry.endMs));
+    time.setAttribute("datetime", new Date(entry.startMs).toISOString());
+    const sentence = element(doc, "span", undefined, entry.text);
+    if (entry.would) {
       sentence.append(element(doc, "span", P.would, translate(language, "house.plan.would")));
     }
     item.append(time, sentence);
@@ -813,17 +1114,73 @@ function words(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
   return listNode;
 }
 
+/** The heading's day and its arrows (with `onStep`), and why the tab goes back no further. */
+function nav(input: PlanRenderInput): HTMLElement[] {
+  const { doc, language, plan } = input;
+  const step = input.step ?? 0;
+  const onStep = input.onStep;
+  const row = element(doc, "div", P.nav);
+  row.dataset["part"] = "nav";
+  const back = element(doc, "button", undefined, "‹") as HTMLButtonElement;
+  back.type = "button";
+  back.dataset["step"] = "back";
+  back.setAttribute("aria-label", translate(language, "house.plan.back"));
+  const forward = element(doc, "button", undefined, "›") as HTMLButtonElement;
+  forward.type = "button";
+  forward.dataset["step"] = "forward";
+  forward.setAttribute("aria-label", translate(language, "house.plan.forward"));
+  const canBack = onStep !== undefined && planCanStepBack(plan, step);
+  back.disabled = !canBack;
+  forward.disabled = onStep === undefined || step <= 0;
+  if (onStep !== undefined) {
+    back.addEventListener("click", () => {
+      if (!back.disabled) onStep(step + 1);
+    });
+    forward.addEventListener("click", () => {
+      if (!forward.disabled) onStep(step - 1);
+    });
+  }
+  row.append(back, element(doc, "span", P.day, planDayLabel(language, plan)), forward);
+  const out: HTMLElement[] = [row];
+  if (onStep !== undefined && !canBack && step < planMaxStep(plan)) {
+    const first = plan.history.firstMs;
+    const ctx = context(language, plan);
+    const note = element(
+      doc,
+      "p",
+      P.note,
+      first === null
+        ? translate(language, "house.plan.history.none")
+        : translate(language, "house.plan.history.from", { when: `${dayCue(ctx, first)} ${clock(ctx, first)}` }),
+    );
+    note.dataset["note"] = "history";
+    out.push(note);
+  }
+  return out;
+}
+
 /** The Plan tab's content. */
 export function planBody(input: PlanRenderInput): HTMLElement {
   const { doc, language, plan } = input;
   const ctx = context(language, plan);
   const panel = element(doc, "div", P.panel);
+  if (input.onStep !== undefined) {
+    panel.append(...nav(input));
+  }
+  const mixed = plan.past && plan.hours.some((hour) => !hour.past);
   panel.append(
-    element(doc, "h3", P.heading, translate(language, "house.plan.title", { hours: String(plan.hours.length) })),
-    element(doc, "p", P.lede, translate(language, "house.plan.lede")),
+    element(
+      doc,
+      "h3",
+      P.heading,
+      plan.past
+        ? translate(language, "house.plan.pastTitle", { day: planDayLabel(language, plan) })
+        : translate(language, "house.plan.title", { hours: String(plan.hours.length) }),
+    ),
+    element(doc, "p", P.lede, translate(language, plan.past ? (mixed ? "house.plan.todayLede" : "house.plan.pastLede") : "house.plan.lede")),
     summary(input, ctx),
   );
-  if (plan.hours.every((hour) => hour.price === null)) {
+  if (!plan.past && plan.hours.every((hour) => hour.price === null)) {
     panel.append(element(doc, "p", P.note, translate(language, "house.plan.noPrices")));
   }
   panel.append(element(doc, "h4", P.heading, translate(language, "house.plan.fromGrid")), chart(input, ctx), legend(doc, language, plan));

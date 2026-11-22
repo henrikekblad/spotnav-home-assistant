@@ -13,7 +13,7 @@ Reads (HTTP 200, or 400 with `{"ok": false, "error": <the command's stable code>
 | `get_house_loads` | `spotnav/get_house_loads` | `period?`, `date?`, `kind?` |
 | `get_heat` | `spotnav/get_heat` (as someone who is no administrator: `writable` false, no `choices`) | |
 | `get_heat_history` | `spotnav/get_heat_history` | `period`, `date?` |
-| `get_plan` | `spotnav/get_plan` (the house card's Plan tab, with each car's `does_not_fit`) | |
+| `get_plan` | `spotnav/get_plan` (the house card's Plan tab, with each car's `does_not_fit`) | `date?`, `start?` |
 | `get_site_settings_view` | `spotnav/get_site_settings_view` (`writable` true, `site.active_control.writable` false, as the webhook's dashboard) | |
 | `battery_control` | `spotnav/battery_control` | `changes?` |
 
@@ -143,7 +143,7 @@ async def _heat_history(hass: HomeAssistant, site: ConfigEntry, payload: dict[st
 
 
 async def _plan(hass: HomeAssistant, site: ConfigEntry, payload: dict[str, Any]) -> dict[str, Any]:
-    return await async_plan_answer(hass, site)
+    return await async_plan_answer(hass, site, payload.get("date"), payload.get("start"))
 
 
 def site_settings_view_handler(*, price_writable: bool) -> SiteHandler:

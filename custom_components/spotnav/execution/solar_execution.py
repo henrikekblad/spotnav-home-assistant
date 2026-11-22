@@ -671,21 +671,34 @@ def site_car_w(
         controller = controller_for(hass, charger_entry_id)
         if controller is None:
             continue
-        observation = _build_observation(
-            site,
-            charger_entry_id,
-            now=0.0,
-            effective_phases=effective_phases(hass, charger_entry_id),
-            charger_idle=_charger_idle(controller),
-            forced_one_phase=controller.switched_phases == 1,
-        )
-        drawn = car_draw_w(observation)
-        if drawn is None and idle_unread_as_zero and _evidently_not_drawing(hass, site, charger_entry_id, controller):
-            drawn = 0.0
+        drawn = charger_draw_w(hass, site, charger_entry_id, controller, idle_unread_as_zero=idle_unread_as_zero)
         if drawn is None and not unread_as_zero:
             return None
         car_w += drawn or 0.0
     return car_w
+
+
+def charger_draw_w(
+    hass: HomeAssistant,
+    site: SiteCapacityController,
+    charger_entry_id: str,
+    controller: Any,
+    *,
+    idle_unread_as_zero: bool = False,
+) -> float | None:
+    """What one member charger draws now (W), as `site_car_w` reads it; `None` when it cannot be read."""
+    observation = _build_observation(
+        site,
+        charger_entry_id,
+        now=0.0,
+        effective_phases=effective_phases(hass, charger_entry_id),
+        charger_idle=_charger_idle(controller),
+        forced_one_phase=controller.switched_phases == 1,
+    )
+    drawn = car_draw_w(observation)
+    if drawn is None and idle_unread_as_zero and _evidently_not_drawing(hass, site, charger_entry_id, controller):
+        drawn = 0.0
+    return drawn
 
 
 def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> SiteSurplus | None:
