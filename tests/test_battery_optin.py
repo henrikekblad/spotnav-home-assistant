@@ -30,7 +30,7 @@ SIGEN_KEYS = [
     "plant_independent_phase_power_control_enable", "plant_phase_a_active_power_fixed_target",
     "plant_phase_b_active_power_fixed_target", "plant_phase_c_active_power_fixed_target",
     "plant_active_power_fixed_target", "plant_phase_a_active_power", "plant_phase_b_active_power",
-    "plant_phase_c_active_power",
+    "plant_phase_c_active_power", "plant_grid_sensor_status", "inverter_output_type",
 ]
 
 
