@@ -1184,7 +1184,7 @@ HEAT_PUMPS: tuple[tuple[str, ...], ...] = (
         "A switch entity",
         "Local",
         "Relay: lowers the curve",
-        "A contact on an external hot water input, if the pump has one. Chosen as the hot water entity, SpotNav "
+        "A contact on an external hot water input, if the pump has one. Chosen under **Hot water boost**, SpotNav "
         "pulses it for the hot water button; planned boosts in shadow first. A relay that blocks the compressor "
         "holds the pump's own hot-water runs too: SpotNav keeps its blocks clear of them (in shadow first)",
         "",
