@@ -165,6 +165,7 @@ export const VISUAL_CLASSES = {
   barWide: "spotnav-bar-wide",
   barBusy: "spotnav-bar-busy",
   settingsCheckRow: "spotnav-settings-check-row",
+  settingsInputRow: "spotnav-settings-input-row",
   settingsActions: "spotnav-settings-actions",
   settingsSave: "spotnav-settings-save",
   settingsReload: "spotnav-settings-reload",

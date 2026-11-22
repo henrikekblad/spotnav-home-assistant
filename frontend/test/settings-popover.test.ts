@@ -317,7 +317,31 @@ describe("the popover from the house card", () => {
     value.click();
     await vi.advanceTimersByTimeAsync(0);
     expect(root.querySelector("[data-beta='box']")).not.toBeNull();
+    // The hardware test is its own row and dialog, not part of the beta box.
+    expect(root.querySelector("[data-beta='test']")).toBeNull();
+    root.querySelector<HTMLButtonElement>("[data-beta='close']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    const again = root.querySelector<HTMLElement>("[data-section='support']")!;
+    const test = again.querySelector<HTMLElement>("[data-row='hardware_test']")!;
+    expect(test.hidden).toBe(false);
+    expect(test.querySelector("[data-edit='hardware_test']")?.textContent).toMatch(/^Problem · /);
+    test.querySelector<HTMLButtonElement>("[data-edit='hardware_test']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector("[data-beta='box']")).toBeNull();
     expect(root.querySelectorAll("[data-beta='steps'] li")).toHaveLength(5);
+  });
+
+  it("draws Support as the charger card does: heading icon, out-of-date line, rows, then the buttons", async () => {
+    const { root } = await mount();
+    const popover = await open(root);
+    await vi.advanceTimersByTimeAsync(0);
+    const support = popover.querySelector<HTMLElement>("[data-section='support']")!;
+    expect(support.querySelector("h4 svg")).not.toBeNull();
+    expect(support.querySelector("[data-card-outdated]")).not.toBeNull();
+    const order = [...support.children].map((child) =>
+      (child as HTMLElement).dataset["row"] ?? (child.querySelector("button") !== null && child.tagName === "DIV" ? "buttons" : child.tagName.toLowerCase()),
+    );
+    expect(order).toEqual(["h4", "p", "automations", "beta", "hardware_test", "p", "buttons"]);
   });
 
   it("shows the battery's line, checklist and report, and turns the switch off", async () => {

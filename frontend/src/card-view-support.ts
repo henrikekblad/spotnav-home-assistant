@@ -7,7 +7,8 @@ import { translate } from "./i18n";
 import { onOffEditor, sectionHeading, settingRow, singleEditor, type ChoiceOption } from "./value-editors";
 import { sendDebugEditor } from "./send-debug";
 import { disconnectPhonesEditor } from "./phones";
-import { betaEditor, betaSummary, readBeta, type BetaAnswer } from "./beta";
+import { BetaRows } from "./beta";
+import { cardOutdatedNote, supportButton, supportSection } from "./support-section";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import { element } from "./dom";
 import type { PageHelpers, ViewContext } from "./card-view-context";
@@ -174,24 +175,18 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
   }
 
   /**
-   * Support: "About this card" (the capability list, for everyone) and, for administrators only, the
-   * "Automations" row (SpotNav's blueprints), the button that saves the debug bundle and the one that sends it to
-   * SpotNav's developer (only from its dialog, with the reader's consent).
+   * Support (`support-section.ts`, the same as in the popover): "About this card" (the capability list, for everyone)
+   * and, for administrators only, the "Automations" row (SpotNav's blueprints), the beta tester and hardware test rows,
+   * the button that saves the debug bundle, the one that sends it to SpotNav's developer (only from its dialog, with
+   * the reader's consent) and "Disconnect all phones".
    */
   function supportSectionBody(): HTMLElement {
-    const section = element(doc, "section", C.settingsSection);
-    section.dataset["section"] = "support";
-    section.append(
-      element(doc, "h4", C.settingsSectionHeading, translate(model.language, "settings.section.support")),
-    );
-    const outdatedNote = element(doc, "p", C.muted, translate(model.language, "debug.cardOutdated"));
-    outdatedNote.dataset["cardOutdated"] = "true";
-    outdatedNote.setAttribute("role", "status");
-    cardOutdatedNote = outdatedNote;
-    paintCardOutdated();
-    section.append(outdatedNote);
+    const note = cardOutdatedNote(doc, model.language, cardIsOutdated);
+    outdatedNote = note;
+    const rows: HTMLElement[] = [];
+    const buttons: HTMLElement[] = [];
     if (input.isAdmin) {
-      section.append(
+      rows.push(
         overviewRow(
           "automations",
           translate(model.language, "settings.automations.label"),
@@ -199,91 +194,50 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
           () => openAutomations(),
         ),
       );
-      if (input.onBeta !== undefined) {
-        section.append(betaRow());
+      const call = input.onBeta;
+      if (call !== undefined) {
+        betaRows ??= new BetaRows(call, () => !isDestroyed());
+        rows.push(
+          ...betaRows.rows({
+            doc,
+            language: model.language,
+            idPrefix,
+            row: (key, label, value, onTap) => overviewRow(key, label, value, onTap),
+            open: (title, build) => openValueEditor(title, (handlers) => build(() => handlers.onDone())),
+          }),
+        );
       }
-      section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
     }
-    const actions = element(doc, "div", C.settingsSupportActions);
-    const about = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-    about.type = "button";
+    const about = supportButton(doc, translate(model.language, "settings.about.open"), () => openCapabilities());
     about.dataset["about"] = "open";
-    about.textContent = translate(model.language, "settings.about.open");
-    about.addEventListener("click", () => {
-      openCapabilities();
-    });
-    actions.append(about);
+    buttons.push(about);
     if (input.isAdmin) {
-      const button = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-      button.type = "button";
-      button.dataset["downloadDebug"] = "true";
-      button.addEventListener("click", () => {
+      const download = supportButton(doc, translate(model.language, "debug.download"), () => {
         if (!debugPending) {
           input.onDownloadDebug?.();
         }
       });
-      debugButton = button;
+      download.dataset["downloadDebug"] = "true";
+      debugButton = download;
       paintDebugButton();
-      actions.append(button);
-      const send = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
-      send.type = "button";
+      const send = supportButton(doc, translate(model.language, "sendDebug.open"), () => openSendDebug());
       send.dataset["sendDebug"] = "open";
-      send.textContent = translate(model.language, "sendDebug.open");
-      send.addEventListener("click", () => openSendDebug());
-      actions.append(send);
+      buttons.push(download, send);
       const disconnect = input.onDisconnectPhones;
       if (disconnect !== undefined) {
-        const phones = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`, translate(model.language, "phones.disconnect.open")) as HTMLButtonElement;
-        phones.type = "button";
-        phones.dataset["disconnectPhones"] = "open";
-        phones.addEventListener("click", () =>
-          openValueEditor(translate(model.language, "phones.disconnect.open"), (handlers) =>
-            disconnectPhonesEditor(doc, model.language, disconnect, handlers),
-          ),
+        const label = translate(model.language, "phones.disconnect.open");
+        const phones = supportButton(doc, label, () =>
+          openValueEditor(label, (handlers) => disconnectPhonesEditor(doc, model.language, disconnect, handlers)),
         );
-        actions.append(phones);
+        phones.dataset["disconnectPhones"] = "open";
+        buttons.push(phones);
       }
     }
-    section.append(actions);
-    return section;
+    return supportSection({ doc, language: model.language, note, rows, debugIntro: input.isAdmin, buttons });
   }
 
-  /** The "Betatestare" row's value, read once and then from every answer its dialog reads. */
-  let betaAnswer: BetaAnswer | null = null;
-  let betaRead = false;
-  let betaValue: HTMLElement | null = null;
-
-  function betaRow(): HTMLElement {
-    const row = overviewRow("beta", translate(model.language, "beta.label"), betaSummary(model.language, betaAnswer), () => openBeta());
-    betaValue = row.querySelector<HTMLElement>("[data-edit='beta']");
-    const call = input.onBeta;
-    if (!betaRead && call !== undefined) {
-      betaRead = true;
-      void readBeta(call).then((answer) => showBeta(answer));
-    }
-    return row;
-  }
-
-  function showBeta(answer: BetaAnswer | null): void {
-    if (answer === null || isDestroyed()) {
-      return;
-    }
-    betaAnswer = answer;
-    if (betaValue !== null) {
-      betaValue.textContent = betaSummary(model.language, answer);
-    }
-  }
-
-  /** The beta box and the hardware test, in the value editors' dialog, back to Settings when closed. */
-  function openBeta(): void {
-    const call = input.onBeta;
-    if (call === undefined) {
-      return;
-    }
-    openValueEditor(translate(model.language, "beta.label"), (handlers) =>
-      betaEditor({ doc, language: model.language, idPrefix, call, onAnswer: (answer) => showBeta(answer) }, () => handlers.onDone()),
-    );
-  }
+  /** The "Betatestare" and "Hårdvarutest" rows, read once and then from every answer their dialogs read. */
+  let betaRows: BetaRows | null = null;
 
   /** "Send debug info": its dialog, in the value editors' dialog, back to Settings when closed. Administrators only. */
   function openSendDebug(): void {
@@ -298,12 +252,12 @@ export function createSupportSection(ctx: ViewContext, deps: SupportDeps) {
 
   let debugButton: HTMLButtonElement | null = null;
   let debugPending = false;
-  let cardOutdatedNote: HTMLElement | null = null;
+  let outdatedNote: HTMLElement | null = null;
   let cardIsOutdated = false;
 
   function paintCardOutdated(): void {
-    if (cardOutdatedNote !== null) {
-      cardOutdatedNote.hidden = !cardIsOutdated;
+    if (outdatedNote !== null) {
+      outdatedNote.hidden = !cardIsOutdated;
     }
   }
 
