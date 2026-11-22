@@ -242,6 +242,20 @@ async def test_an_import_export_pair_is_import_minus_export(hass: HomeAssistant)
     assert site.grid_total_reading() == (-2500.0, "fresh")
 
 
+async def test_a_pairs_age_is_its_freshest_half_not_an_export_sitting_at_zero(hass: HomeAssistant, freezer) -> None:
+    """A meter reporting every 10 s whose export half sits at 0 W all night (SN-7PME): the age is the import's."""
+    _c, _s, site, *_ = await direct_solar_setup(hass, source={"power": TOTAL, "power_export": EXPORT_HALF})
+    _set_total(hass, EXPORT_HALF, 0.0)
+    freezer.tick(timedelta(hours=10))
+    _set_total(hass, EXPORT_HALF, 0.0)  # written again, unchanged
+    _set_total(hass, TOTAL, 4474.0)
+    freezer.tick(timedelta(seconds=9))
+
+    snapshot = site.grid_power_snapshot()
+    assert snapshot["value_w"] == 4474.0
+    assert snapshot["age_s"] == pytest.approx(9.0, abs=1.0)
+
+
 @pytest.mark.parametrize("half_state", ["unavailable", None])
 async def test_a_pair_with_a_missing_half_is_missing_never_zero_export(hass: HomeAssistant, half_state) -> None:
     _c, _s, site, *_ = await direct_solar_setup(hass, source={"power": TOTAL, "power_export": EXPORT_HALF})

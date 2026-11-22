@@ -6767,10 +6767,22 @@ class SiteCapacityController:
 
     def grid_power_snapshot(self) -> dict[str, Any]:
         """The total grid power's diagnostics for the site sensor and the diagnostics dump: whether
-        and where it is configured, its value and age, and the export derived from it."""
+        and where it is configured, its value and age, and the export derived from it.
+
+        The age is the freshest of the meter's entities: the total changes whenever either half of an
+        import/export pair does, and the half that sits at 0 W for hours (export at night) says nothing
+        of how old the reading is."""
         source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
         total = self.grid_total_power()
         value_w, state = self.grid_total_reading()
+        age_s = None if total is None else total.age_s
+        if source is not None:
+            ages = [
+                self._power_phase_value(entity_id).age_s for entity_id in (source.power, source.power_export) if entity_id
+            ]
+            known = [age for age in ages if age is not None]
+            if known:
+                age_s = min(known)
         return {
             "configured": source is not None,
             "power_entity_id": None if source is None else source.power,
@@ -6778,7 +6790,7 @@ class SiteCapacityController:
             "inverted": bool(self.config.get(CONF_GRID_POWER_INVERTED, False)),
             "state": state,
             "value_w": value_w,
-            "age_s": None if total is None else total.age_s,
+            "age_s": age_s,
             "export_w": None if value_w is None else max(0.0, -value_w),
             "used_for_surplus": source is not None
             and self.config.get(CONF_MEASUREMENT_MODE) == MEASUREMENT_MODE_DIRECT,
