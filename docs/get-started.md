@@ -73,7 +73,9 @@ Open a dashboard, choose **Add card** and search for **SpotNav**. There are thre
 | **SpotNav house** | The whole house: live flows, the battery plan, earnings and prices. |
 | **SpotNav heating** | The heat pump: the wanted temperature, home or away, the heat plan and hot water. |
 
-If a card is missing from the picker after the first install, reload the browser page (Ctrl+Shift+R).
+If a card is missing from the picker after the first install or an update, reload the browser page
+(Ctrl+Shift+R). In the Home Assistant companion app, reset its frontend cache instead; see
+[Troubleshooting](troubleshooting.md#the-cards).
 
 ## 6. Set your first plan
 

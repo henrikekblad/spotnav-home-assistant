@@ -158,6 +158,21 @@ per-charger solar, hybrid, yield-stepping, battery-probe and resume detail are i
 diagnostics; they change with every meter reading. Both sensors are written only when what they show
 changes.
 
+## The cards
+
+- **The cards show "Configuration error", or SpotNav's cards are missing from the card picker, after an
+  update.** The integration runs, but the page still holds an old copy of the card. SpotNav gives every
+  version of the card a new address, so a reload is normally enough:
+  - **In a browser:** reload the page with Ctrl+Shift+R (Cmd+Shift+R on a Mac).
+  - **In the Home Assistant companion app:** the app keeps its own copy of Home Assistant's pages, which a
+    reload does not clear. Android: **Settings, Companion app, Troubleshooting, Reset frontend cache**.
+    iPhone and iPad: **Settings, Companion app, Debugging, Reset frontend cache**. Then close the app fully
+    and open it again.
+  - **Still broken?** Open Home Assistant in a browser on a computer. If the cards work there, it was only
+    the app. If they are broken in the browser too, press F12, open **Console**, and send a picture of the
+    red lines together with the diagnostics (**Settings, Devices & services, SpotNav**, the menu, **Download
+    diagnostics**). The app has no console of its own.
+
 ## Setting up
 
 - **"No supported charger was found."** The list of devices was empty. Set up the charger's own
