@@ -52,6 +52,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "reference_picture",
         "get_house",
         "get_house_now",
+        "get_plan",
         "get_house_history",
         "get_house_loads",
         "get_heat",
