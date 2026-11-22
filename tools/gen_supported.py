@@ -838,7 +838,11 @@ OVERVIEW: tuple[Overview, ...] = (
         "`solis_modbus`, HACS (Pho3niX90/solis_modbus). Not read: the Solis plugins of `solax_modbus` and the cloud "
         "integration (`solis`)",
         keys=("solis_modbus",),
-        note="The meter may sit on the load or the PV side: check that it measures the main feed.",
+        adapter="solis",
+        control="Not mapped: read only. Storage mode, remote force charge and discharge, time-of-use slots and "
+        "charge currents exist locally",
+        note="The meter may sit on the load or the PV side: check that it measures the main feed. The size is "
+        "learnt; the ratings are estimated from the BMS's charge and discharge limits and its voltage.",
     ),
     Overview(
         "FoxESS (H1, KH, H3, H3-Pro, H3-Smart, AC1, AC3; also 1KOMMA5)",
