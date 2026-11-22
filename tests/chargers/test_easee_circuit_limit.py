@@ -93,3 +93,14 @@ def test_an_app_that_does_not_read_the_circuit_limit_gets_neither_the_line_nor_i
     block = {"tone": "notice", "lines": [charging, line]}
     assert _status_block_for_app(block, set()) == {"tone": "normal", "lines": [charging]}
     assert _status_block_for_app(block, {"circuit_limited"}) == block
+
+
+async def test_a_one_phase_circuit_is_held_by_its_one_phase_not_by_the_unused_ones(hass: HomeAssistant) -> None:
+    """A one-phase install reads 16/0/0: the phases at 0 are not used, so the limit is 16 A, not 0 A."""
+    adapter = _adapter(hass, _easee(phases=(10.0, 0.0, 0.0)))
+    assert adapter.circuit_limit_a() == 10.0
+
+
+async def test_a_circuit_at_0_on_every_phase_is_no_limit_read(hass: HomeAssistant) -> None:
+    adapter = _adapter(hass, _easee(phases=(0.0, 0.0, 0.0)))
+    assert adapter.circuit_limit_a() is None

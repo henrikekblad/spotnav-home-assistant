@@ -607,9 +607,12 @@ class EaseeDynamicLimit(CurrentPath):
         return current_description(self.kind, service=f"{_EASEE_DOMAIN}.set_charger_dynamic_limit")
 
     def circuit_limit_a(self) -> float | None:
-        """The circuit's dynamic limit (A), the lowest of its phases, where its sensor is enabled; `None` otherwise."""
+        """The circuit's dynamic limit (A), the lowest of its phases above 0, where its sensor is enabled; `None`
+        otherwise. A phase at 0 is one the circuit does not use (a one-phase install reads 16/0/0), and a circuit at 0
+        on every phase is read as no limit: it is no reading SpotNav can tell apart from an unset one."""
         found = easee_circuit_limit(self.hass, self.status_entity_id)
-        return None if found is None else min(found[1])
+        used = [] if found is None else [value for value in found[1] if value > 0]
+        return min(used) if used else None
 
     def describe_state(self) -> dict[str, Any]:
         circuit = easee_circuit_limit(self.hass, self.status_entity_id)

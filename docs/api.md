@@ -405,7 +405,7 @@ out unless the request asks for it (`"reads": ["stop_unplug_unseen"]`).
 
 **A charge capped by the Easee circuit.** While an Easee charger charges and the enabled `dynamic_circuit_limit`
 sensor of its circuit (on the circuit's master charger, disabled by default in the Easee integration) reads a limit
-below the current SpotNav set, the line `charger_circuit_limited` (`limit_a`, the lowest phase's limit in A; tone
+below the current SpotNav set, the line `charger_circuit_limited` (`limit_a`, the lowest limit of a phase above 0, in A; tone
 `notice`) says so. SpotNav reads that limit and never writes it. The webhook leaves it out, and works the block's tone
 out again, unless the request asks for it (`"reads": ["circuit_limited"]`).
 
