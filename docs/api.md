@@ -822,7 +822,8 @@ own charger's: a `site_id` or `charger_id` in the body is not read. `api_version
 | Action | Twin | Body | Example (`tests/fixtures/webhook/`) |
 | ------ | ---- | ---- | ------- |
 | `get_house` | `spotnav/get_house` | `date` (`YYYY-MM-DD`, optional: a past day) | `get_house_success.json`, `get_house_no_site.json` |
-| `get_house_now` | `spotnav/get_house_now` | | `get_house_now_success.json` |
+| `get_house_now` | `spotnav/get_plan` | The [house card's](house-card.md#plan) Plan tab, read-only: `{"api_version": 1, "charger_id" or "site_id"}`. Every load the site plans on one rolling time axis from the running hour to the end of the prices held (at most 36 h): per hour the price, the house forecast, the sun, the net from the grid and the ceiling that applies (`import_target`, `power_level`, `power_tariff` or `fuse`); per load (`car`, `home_battery`, `heat`, `heat_zone`, `water_heater`) its kW or level per hour, `state` `live` or `would` (only watched), and its runs in words; the window's cost, highest hour and the month's peak. Shape in `site/plan_view.py`. Refusals as `spotnav/get_house`. |
+| `spotnav/get_house_now` | | `get_house_now_success.json` |
 | `get_house_history` | `spotnav/get_house_history` | `period` (`day`, `month`, `year`), `date` (optional: today) | `get_house_history_success.json`, `get_house_history_invalid_date.json` |
 | `get_house_loads` | `spotnav/get_house_loads` | `period`, `date`, `kind` (`house`, `heat`), all optional | `get_house_loads_success.json` |
 | `get_heat` | `spotnav/get_heat` | | `get_heat_success.json` |
