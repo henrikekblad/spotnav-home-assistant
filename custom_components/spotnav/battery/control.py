@@ -2681,6 +2681,12 @@ class BatteryControl:
         `None` when none is."""
         return optin.describe(self.hass, self.site.config, self.facts.brand)
 
+    def enable_facts(self) -> dict[str, Any] | None:
+        """The disabled entities that hold a fact the battery plan needs and lacks (its size, its floor), for the
+        card's one line (`optin.describe_facts`), shown with control off as on: the plan needs them either way. `None`
+        when none is."""
+        return optin.describe_facts(self.hass, self.site.config, self.facts)
+
     def clear_outside_control(self) -> bool:
         """An administrator's "it was me" for the outside-control verdict (`BatteryShadow.clear_outside_by_person`):
         `False` when none a person may clear stands (none, or an integration's or a planner's)."""
@@ -2694,6 +2700,14 @@ class BatteryControl:
         """Enable the control entities `enable_entities` lists and reload their integration once; only ever called
         on the person's confirm (an administrator, never over the webhook). Answers the entity ids enabled."""
         return await optin.async_enable(self.hass, self.site.config, self.facts.brand)
+
+    async def async_enable_facts(self) -> list[str]:
+        """Enable the fact entities `enable_facts` lists (never a control) and reload their integration once; only
+        ever called on the person's confirm (an administrator, never over the webhook)."""
+        enabled = await optin.async_enable_facts(self.hass, self.site.config, self.facts)
+        if enabled:
+            self.facts = self._read_facts()
+        return enabled
 
     def _line(self, options: gate.Options) -> str:
         """The one line under the switch, as a stable code (the card words it)."""
@@ -2744,6 +2758,7 @@ class BatteryControl:
             "needs": self._needs(),
             "device_id": self._settings_device(),
             "enable_entities": self.enable_entities(),
+            "enable_facts": self.enable_facts(),
             "notes": [dict(note) for note in self.notes],
             "preheat": self.preheat.status(self.facts),
             "trial": None if self.trial is None else self.trial.as_dict(),

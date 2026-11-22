@@ -1,26 +1,35 @@
-"""The brand's control entities that ship disabled, and enabling them on the person's confirm.
+"""The brand's entities that ship disabled, and enabling them on the person's confirm.
 
-Some integrations ship the entities SpotNav's control writes disabled in the entity registry (Sigenergy's `sigen`:
-`disabled_by=integration`). When the person turns "Styr batteriet" on, the card lists the disabled ones and asks; only
-on that confirm does `async_enable` clear `disabled_by` for exactly those entities and reload the integration's config
-entry once (Home Assistant would do it itself 30 s later; the person should not wait for that). The verification then
-runs as usual. Turning control off leaves them enabled. Nothing here runs without the confirm, and never over a webhook.
+Some integrations ship entities SpotNav writes or reads disabled in the entity registry (Sigenergy's `sigen`:
+`disabled_by=integration`; `solax_modbus`'s battery size). When the person turns "Styr batteriet" on, the card lists
+the disabled ones and asks; only on that confirm does `async_enable` clear `disabled_by` for exactly those entities and
+reload the integration's config entry once (Home Assistant would do it itself 30 s later; the person should not wait
+for that). The verification then runs as usual. Turning control off leaves them enabled. Nothing here runs without
+the confirm, and never over a webhook.
 
-`ENABLE_KEYS` is each adapter's list as `(domain, unique-id key)`, the keys `commands.py`'s roles match (a test keeps the
-two together), plus what the per-phase control needs.
+What is listed is the brand's control entities (`ENABLE_KEYS`) and every entity its adapter reads (`read_matches`,
+walked from the adapter itself: its facts, reserves, modes, power per phase and the rest). Before control is on, the
+battery plan still needs the battery's size and floor: when one of those sits in a disabled entity, the status's
+`enable_facts` names just those (`disabled_fact_entities`), and the person's confirm enables only them
+(`async_enable_facts`), never a control.
+
+`ENABLE_KEYS` is each adapter's list of control entities as `(domain, unique-id key)`, the keys `commands.py`'s roles
+match (a test keeps the two together), plus what the per-phase control needs.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_BATTERY_AGGREGATE_POWER_ENTITY
-from .adapters import Match, _goodwe, _key, _tesla
+from .adapters import ADAPTERS, Adapter, Match, _goodwe, _key, _tesla
+from .facts import BatteryFacts
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,49 +136,147 @@ _BUILDERS: Final[Mapping[str, Callable[..., Match]]] = {"goodwe": _goodwe, "tesl
 #: The reasons an entity is disabled that a person's confirm may lift (not the config entry's or Home Assistant's).
 _LIFTABLE: Final = (er.RegistryEntryDisabler.INTEGRATION, er.RegistryEntryDisabler.USER)
 
+#: What a fact the plan needs is (`fact_needs`): the battery's size and its own floor.
+NEED_SIZE: Final = "size"
+NEED_FLOOR: Final = "floor"
 
-def _matches(brand: str) -> list[Match]:
+
+def adapter_of(brand: str | None) -> Adapter | None:
+    """The adapter whose brand is `brand`, `None` for none."""
+    return next((adapter for adapter in ADAPTERS if adapter.brand == brand), None)
+
+
+def _walk(value: Any) -> Iterator[Match]:
+    """Every `Match` in an adapter's value: in a mapping's values, a tuple's items and a dataclass's fields."""
+    if isinstance(value, Match):
+        yield value
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _walk(item)
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            yield from _walk(item)
+    elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+        for item in dataclasses.fields(value):
+            yield from _walk(getattr(value, item.name))
+
+
+def read_matches(adapter: Adapter) -> list[Match]:
+    """Every entity the adapter reads (or names), as its `Match`es in the dataclass's order, without repeats: its facts,
+    modes, grid status, controls, plant maximum, reserves, power per phase, cell temperatures, packs and heater. Taken
+    from the adapter itself, so a new brand or key is never left out (a test walks every adapter). The heater's time
+    slots (`PreheatSpec.slot`, 3 x 30 numbers only ever read in shadow) are keys, not `Match`es, and are not enabled."""
+    found: list[Match] = []
+    for match in _walk(adapter):
+        if match not in found:
+            found.append(match)
+    return found
+
+
+def _control_matches(brand: str) -> list[Match]:
     build = _BUILDERS.get(brand, _key)
     return [build(key, domain) for domain, key in ENABLE_KEYS.get(brand, ())]
 
 
-def disabled_control_entities(
-    hass: HomeAssistant, config: Mapping[str, Any], brand: str | None
-) -> tuple[str | None, list[er.RegistryEntry]]:
-    """The config entry of the site's battery and the brand's control entities in it that are disabled (and may be
-    enabled), in the order of `ENABLE_KEYS`; `(None, [])` when the brand has none, the site has no battery entity or
-    nothing is disabled. Registry reads only."""
-    if brand is None or brand not in ENABLE_KEYS:
-        return None, []
+def _matches(brand: str) -> list[Match]:
+    """The brand's control entities (`ENABLE_KEYS`) first, then every entity its adapter reads."""
+    adapter = adapter_of(brand)
+    found = _control_matches(brand)
+    for match in [] if adapter is None else read_matches(adapter):
+        if match not in found:
+            found.append(match)
+    return found
+
+
+def _scope(hass: HomeAssistant, config: Mapping[str, Any]) -> tuple[er.RegistryEntry, list[er.RegistryEntry]] | None:
+    """The site's battery entity and the entities of its config entry on its platform; `None` without one."""
     registry = er.async_get(hass)
     entity_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
     battery = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
     if battery is None or battery.config_entry_id is None:
-        return None, []
+        return None
     entries = [
         entry
         for entry in er.async_entries_for_config_entry(registry, battery.config_entry_id)
         if entry.platform == battery.platform
     ]
+    return battery, entries
+
+
+def _pick(match: Match, battery: er.RegistryEntry, entries: list[er.RegistryEntry]) -> er.RegistryEntry | None:
+    """The same pick as `facts.find_entity`: the one on the battery's device, else the only one."""
+    candidates = sorted(
+        (entry for entry in entries if match.matches(entry.domain, str(entry.unique_id or ""))),
+        key=lambda entry: entry.entity_id,
+    )
+    own = [entry for entry in candidates if battery.device_id is not None and entry.device_id == battery.device_id]
+    return own[0] if own else (candidates[0] if len(candidates) == 1 else None)
+
+
+def _disabled(
+    battery: er.RegistryEntry, entries: list[er.RegistryEntry], matches: list[Match]
+) -> list[er.RegistryEntry]:
+    """The picked entity of each match that is disabled and may be enabled, in order, each once."""
     found: list[er.RegistryEntry] = []
-    for match in _matches(brand):
-        candidates = sorted(
-            (entry for entry in entries if match.matches(entry.domain, str(entry.unique_id or ""))),
-            key=lambda entry: entry.entity_id,
-        )
-        own = [entry for entry in candidates if battery.device_id is not None and entry.device_id == battery.device_id]
-        # The same pick as `facts.find_entity`: the one on the battery's device, else the only one.
-        chosen = own[0] if own else (candidates[0] if len(candidates) == 1 else None)
-        if chosen is not None and chosen.disabled_by in _LIFTABLE:
+    for match in matches:
+        chosen = _pick(match, battery, entries)
+        if chosen is not None and chosen.disabled_by in _LIFTABLE and chosen not in found:
             found.append(chosen)
-    return battery.config_entry_id, found
+    return found
 
 
-def describe(hass: HomeAssistant, config: Mapping[str, Any], brand: str | None) -> dict[str, Any] | None:
-    """What the card asks about: the integration and the disabled entities, `None` when there are none."""
-    entry_id, entities = disabled_control_entities(hass, config, brand)
-    if entry_id is None or not entities:
-        return None
+def disabled_control_entities(
+    hass: HomeAssistant, config: Mapping[str, Any], brand: str | None
+) -> tuple[str | None, list[er.RegistryEntry]]:
+    """The config entry of the site's battery and the brand's entities in it that are disabled (and may be enabled):
+    the control entities in the order of `ENABLE_KEYS`, then the ones its adapter reads (`read_matches`); `(None, [])`
+    when the brand has neither, the site has no battery entity or nothing is disabled. Registry reads only."""
+    if brand is None or (brand not in ENABLE_KEYS and adapter_of(brand) is None):
+        return None, []
+    scope = _scope(hass, config)
+    if scope is None:
+        return None, []
+    battery, entries = scope
+    return battery.config_entry_id, _disabled(battery, entries, _matches(brand))
+
+
+def disabled_fact_entities(
+    hass: HomeAssistant, config: Mapping[str, Any], facts: BatteryFacts
+) -> tuple[str | None, list[er.RegistryEntry], list[str]]:
+    """Before control is on: the disabled entities that hold a fact the battery plan needs and does not have, and
+    which facts (`NEED_SIZE`, `NEED_FLOOR`). The size when the facts have none and its entity is disabled (or, for a
+    brand that states it in amp-hours, the amp-hours and the voltage are both there and one is disabled); the floor
+    likewise from the reserves. Never a control. `(None, [], [])` when nothing would change. Registry reads only."""
+    adapter = adapter_of(facts.brand)
+    scope = None if adapter is None else _scope(hass, config)
+    if adapter is None or scope is None:
+        return None, [], []
+    battery, entries = scope
+    found: list[er.RegistryEntry] = []
+    needs: list[str] = []
+
+    def add(need: str, matches: list[Match]) -> None:
+        more = [entry for entry in _disabled(battery, entries, matches) if entry not in found]
+        if more:
+            found.extend(more)
+            needs.append(need)
+
+    if facts.capacity_kwh is None:
+        size = adapter.facts.get("capacity")
+        if size is not None and _pick(size, battery, entries) is not None:
+            add(NEED_SIZE, [size])
+        elif all(role in adapter.facts for role in ("capacity_ah", "voltage")):
+            pair = [adapter.facts["capacity_ah"], adapter.facts["voltage"]]
+            if all(_pick(match, battery, entries) is not None for match in pair):
+                add(NEED_SIZE, pair)
+    if facts.reserve_soc_pct is None:
+        add(NEED_FLOOR, [source.match for source in adapter.reserves])
+    if not found:
+        return None, [], []
+    return battery.config_entry_id, found, needs
+
+
+def _block(hass: HomeAssistant, entry_id: str, entities: list[er.RegistryEntry]) -> dict[str, Any]:
     entry = hass.config_entries.async_get_entry(entry_id)
     return {
         "integration": (entry.title if entry is not None and entry.title else entities[0].platform),
@@ -180,15 +287,43 @@ def describe(hass: HomeAssistant, config: Mapping[str, Any], brand: str | None) 
     }
 
 
-async def async_enable(hass: HomeAssistant, config: Mapping[str, Any], brand: str | None) -> list[str]:
-    """Enable exactly the disabled entities `disabled_control_entities` finds, then reload their config entry once
-    (only when something was enabled). Answers the entity ids enabled. The caller has the person's confirm."""
+def describe(hass: HomeAssistant, config: Mapping[str, Any], brand: str | None) -> dict[str, Any] | None:
+    """What the card asks about: the integration and the disabled entities, `None` when there are none."""
     entry_id, entities = disabled_control_entities(hass, config, brand)
+    if entry_id is None or not entities:
+        return None
+    return _block(hass, entry_id, entities)
+
+
+def describe_facts(hass: HomeAssistant, config: Mapping[str, Any], facts: BatteryFacts) -> dict[str, Any] | None:
+    """The card's one line before control is on (`enable_facts`): as `describe`, and `needs` the facts they hold;
+    `None` when nothing the plan needs is disabled."""
+    entry_id, entities, needs = disabled_fact_entities(hass, config, facts)
+    if entry_id is None or not entities:
+        return None
+    return _block(hass, entry_id, entities) | {"needs": needs}
+
+
+async def _async_enable(hass: HomeAssistant, entry_id: str | None, entities: list[er.RegistryEntry]) -> list[str]:
     if entry_id is None or not entities:
         return []
     registry = er.async_get(hass)
     for entity in entities:
         registry.async_update_entity(entity.entity_id, disabled_by=None)
-    _LOGGER.info("SpotNav battery control: enabled %s, reloading the integration", [e.entity_id for e in entities])
+    _LOGGER.info("SpotNav battery: enabled %s, reloading the integration", [e.entity_id for e in entities])
     await hass.config_entries.async_reload(entry_id)
     return [entity.entity_id for entity in entities]
+
+
+async def async_enable(hass: HomeAssistant, config: Mapping[str, Any], brand: str | None) -> list[str]:
+    """Enable exactly the disabled entities `disabled_control_entities` finds, then reload their config entry once
+    (only when something was enabled). Answers the entity ids enabled. The caller has the person's confirm."""
+    entry_id, entities = disabled_control_entities(hass, config, brand)
+    return await _async_enable(hass, entry_id, entities)
+
+
+async def async_enable_facts(hass: HomeAssistant, config: Mapping[str, Any], facts: BatteryFacts) -> list[str]:
+    """Enable exactly the fact entities `disabled_fact_entities` finds (never a control), then reload their config
+    entry once. Answers the entity ids enabled. The caller has the person's confirm."""
+    entry_id, entities, _needs = disabled_fact_entities(hass, config, facts)
+    return await _async_enable(hass, entry_id, entities)

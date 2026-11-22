@@ -21,6 +21,11 @@ lists them: `{integration, entities: [{entity_id, name}]}`, `null` when none is)
 before `changes` (when given) is written. Turning control off leaves them enabled. A failed reload is
 `spotnav_enable_failed`.
 
+`enable_fact_entities: true` (administrators only, never over the webhook) is the person's confirm of the one line
+that a fact the battery plan needs (its size, its floor) sits in a disabled entity (the status's `enable_facts`, the
+same shape plus `needs`: `size`, `floor`; `null` when none is): SpotNav enables only those entities, never a control,
+and reloads their integration once. A failed reload is `spotnav_enable_failed`.
+
 `clear_outside_control: true` (administrators only, never over the webhook) is the person's "Det var jag – rensa":
 the outside-control verdict found by the battery's own settings or behaviour ends now, logged as cleared by a person
 (the diagnostics' `outside_control.history`), and the changes counted so far are forgotten. A verdict from an
@@ -76,6 +81,7 @@ async def async_battery_control_answer(
     admin: bool,
     over_webhook: bool = False,
     enable_entities: bool = False,
+    enable_facts: bool = False,
     clear_outside_control: bool = False,
 ) -> dict[str, Any]:
     """The answer for one site (the WebSocket command and the webhook's `battery_control` alike): its status, after
@@ -91,6 +97,15 @@ async def async_battery_control_answer(
             return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
         if not control.clear_outside_control():
             return _answer(error=ERROR_NOT_CLEARABLE)
+    if enable_facts:
+        # The person's confirm of the fact line: never over the webhook, never without an administrator.
+        if over_webhook or not admin:
+            return _answer(error=ERROR_NOT_PERMITTED_OVER_WEBHOOK if over_webhook else ERROR_NOT_ADMIN)
+        try:
+            await control.async_enable_facts()
+        except Exception:  # noqa: BLE001 - the answer says so
+            _LOGGER.exception("SpotNav battery: enabling the fact entities failed")
+            return _answer(error=ERROR_ENABLE_FAILED)
     if enable_entities:
         # The person's confirm of the opt-in dialog: never over the webhook, never without an administrator.
         if over_webhook or not admin:
@@ -137,6 +152,7 @@ def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
         vol.Optional("charger_id"): object,
         vol.Optional("changes"): object,
         vol.Optional("enable_control_entities"): bool,
+        vol.Optional("enable_fact_entities"): bool,
         vol.Optional("clear_outside_control"): bool,
     }
 )
@@ -155,6 +171,7 @@ async def websocket_battery_control(
         msg.get("changes"),
         admin=is_admin(connection),
         enable_entities=msg.get("enable_control_entities") is True,
+        enable_facts=msg.get("enable_fact_entities") is True,
         clear_outside_control=msg.get("clear_outside_control") is True,
     )
     connection.send_result(msg["id"], answer)
