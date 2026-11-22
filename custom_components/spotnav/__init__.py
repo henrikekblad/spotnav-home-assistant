@@ -164,6 +164,7 @@ from .site.site_capacity_controller import (
     async_wait_for_shutdown,
     SiteCapacityController,
 )
+from .site.decision_recorder import DecisionRecorder
 from .site.site_history import charger_alone_values, SiteHistory
 from .site.phase_peaks import SitePhasePeaks
 from .site.demand_tracker import SiteDemand
@@ -1025,6 +1026,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
+        await DecisionRecorder.async_remove_stored(hass, entry.entry_id)
         await hass.async_add_executor_job(remove_archive, hass.config.config_dir, entry.entry_id)
         await SitePhasePeaks.async_remove_stored(hass, entry.entry_id)
         await SiteDemand.async_remove_stored(hass, entry.entry_id)

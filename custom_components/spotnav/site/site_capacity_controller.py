@@ -75,6 +75,7 @@ from ..const import (
 from ..heat.config import read_config as read_heat_config
 from .house_loads import BELONG_HEAT, stored_belongs
 from .phase_peaks import SAMPLE_S as PHASE_PEAKS_SAMPLE_S, SitePhasePeaks
+from .decision_recorder import DecisionRecorder
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .house_forecast import SiteHouseForecast
@@ -821,6 +822,9 @@ class SiteCapacityController:
         self._decision_log: deque[dict[str, Any]] = deque(maxlen=DECISION_LOG_LENGTH)
         # The last 24 hours, one row a minute (`site/site_history.py`), for the debug bundle only.
         self._history = SiteHistory(hass, entry_id)
+        # Per clock hour what each load's plan said at the hour's start, what ran and why (`site/decision_recorder.py`),
+        # for the Plan tab's past days.
+        self.decision_history = DecisionRecorder(hass, entry_id)
         self._history_cancel: Callable[[], None] | None = None
         # The house's own current per phase, its hourly peaks of the last weeks (`site/phase_peaks.py`), for the home
         # battery's grid charge cap; sampled every `PHASE_PEAKS_SAMPLE_S` from what the site already holds.
@@ -1056,6 +1060,7 @@ class SiteCapacityController:
         # An OCPP charger a hardware test left out of service when Home Assistant stopped: set back to operative.
         await self.charger_test_hold.async_load()
         await self._history.async_load()
+        await self.decision_history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
         )
@@ -1069,6 +1074,7 @@ class SiteCapacityController:
     @callback
     def _async_sample_history(self, _now: datetime) -> None:
         self._history.sample(self)
+        self.decision_history.sample(self)
 
     @callback
     def _async_sample_phase_peaks(self, _now: datetime) -> None:
@@ -1131,6 +1137,7 @@ class SiteCapacityController:
         await self._async_cancel_backfill()
         parts: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
             ("history", self._history.async_close),
+            ("decision history", self.decision_history.async_close),
             ("phase peaks", self.phase_peaks.async_close),
             ("demand", self.demand.async_close),
             ("battery", self.battery_shadow.async_shutdown),
