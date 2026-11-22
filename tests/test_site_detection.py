@@ -1602,6 +1602,22 @@ def test_the_ferroamp_battery_is_discharge_positive_and_is_negated() -> None:
     assert battery.inverted is True and battery.discharge_entity_id is None
 
 
+def test_the_solis_battery_is_its_discharge_positive_power_net_by_the_unique_key_or_the_name() -> None:
+    """`solis_modbus` 4.5.0 names it "Battery Power Net" under the unique key `battery_power_combined`."""
+    base = "solis_modbus_2403123456_solis_modbus_inverter"
+    for object_id, original_name in (("hus_batteri", None), ("solis_s6_eh3p_battery_power_net", "Battery Power Net")):
+        r = Registry()
+        r.device("solis", model="S6-EH3P", manufacturer="Solis", name="Solis Inverter", entry="solis")
+        r.add("solis_modbus", "solis_battery_power", f"{base}_battery_power", device_class="power", unit="W",
+              device="solis", entry="solis", original_name="Battery Power")
+        r.add("solis_modbus", object_id, f"{base}_battery_power_combined", device_class="power", unit="W",
+              device="solis", entry="solis", original_name=original_name)
+
+        [battery] = r.detect().batteries
+
+        assert battery.entity_id == f"sensor.{object_id}" and battery.inverted is True
+
+
 def test_frient_meter_interface_over_zha_gets_its_total_with_the_sign_unverified() -> None:
     candidate = one_meter(frient_emizb_zha())
 

@@ -766,7 +766,9 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("modbus",), _re(r"^sg_battery_power$"), inverted=True),
     BatteryRow(("sungrow",), _re(r"total_field_energy_storage_active_power$")),
     BatteryRow(("sungrow",), _re(r"battery_charge_power$"), discharge_regex=_re(r"battery_discharge_power$")),
-    BatteryRow(("solis_modbus",), _re(r"battery_power_net$"), inverted=True),
+    # Solis Modbus (Pho3niX90 v4.5.0): the derived "Battery Power Net" (unique key `battery_power_combined`) is the
+    # battery power (33149) negated while register 33135 reads 0 (charging): discharge-positive.
+    BatteryRow(("solis_modbus",), _re(r"battery_power_(?:net|combined)$"), inverted=True),
     # The Solinteg plugin of `solax_modbus` (wills106 `4acd644`): `battery_power` (register 30258, W). The
     # plugin's own "Battery Charge Direction" reads "charge" while it is zero or negative and "discharge"
     # while positive, and its Energy dashboard battery power (discharge-positive, SolaX's charge power negated)
