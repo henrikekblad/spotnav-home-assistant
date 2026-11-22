@@ -111,6 +111,49 @@ const closeDialogs = async (tag) => {
 
 // ----------------------------------------------------------------------------------------------- the cards
 
+// The house card's other tabs, one picture each (docs/house-card.md), taken first and with no scene pinned: the plan and
+// the battery's level are the simulation's, so the level measured and the level planned meet at now (a pinned level
+// would jump there until the battery is planned again). Each is today, or the month where a day has too little
+// (the earnings count a day only after its night's review; the month's chart has the house, the heat and the sun).
+const HOUSE_TAB_SHOTS = [
+  ["house-card-plan", "plan"], ["house-card-flow", "flow"], ["house-card-chart", "graph", "Month"],
+  ["house-card-earnings", "earn", "Month"], ["house-card-price", "price"],
+];
+/** Open the Plan tab's folded sections ("Per load", "In words") so that the picture shows them. */
+const unfoldPlan = async (tag) => {
+  await b.eval(`[...${CARD(tag)}.shadowRoot.querySelectorAll(".spotnav-plan-toggle[aria-expanded=false]")].forEach((e) => e.click())`);
+  await sleep(800);
+};
+if (HOUSE_TAB_SHOTS.some(([name]) => wanted(name))) {
+  // The card reads its answer once on opening: wait until the battery plan has priced the hours (a minute or so after
+  // the start), or Price and battery has no chart.
+  for (let i = 0; i < 60; i++) {
+    const house = await api.ws({ type: "spotnav/get_house", api_version: 1, site_id: ids.site }).catch(() => null);
+    if ((house?.hours ?? []).some((hour) => hour.buy != null)) break;
+    await sleep(3000);
+  }
+  await open("v3-house", TAGS.house, 700, 2400);
+  for (const [name, tabName, period] of HOUSE_TAB_SHOTS) {
+    if (!wanted(name)) continue;
+    await tab(TAGS.house, tabName);
+    if (tabName === "plan") await unfoldPlan(TAGS.house);
+    // The period is shared between the tabs: each picture sets its own (Day for the rest).
+    await b.eval(`[...${CARD(TAGS.house)}.shadowRoot.querySelectorAll("button")].find((e) => (e.innerText || "").trim() === "${period ?? "Day"}")?.click()`);
+    await sleep(2500);
+    await shot(name, CARD(TAGS.house));
+  }
+}
+// The Plan tab stepped back to yesterday: planned against what ran, from the decision history seed_house.py gives.
+if (wanted("house-card-plan-past")) {
+  await open("v3-house", TAGS.house, 700, 2400);
+  await tab(TAGS.house, "plan");
+  for (let step = 0; step < 2; step++) {
+    await b.eval(`${CARD(TAGS.house)}.shadowRoot.querySelector("[data-step=back]")?.click()`);
+    await sleep(3000);
+  }
+  await unfoldPlan(TAGS.house);
+  await shot("house-card-plan-past", CARD(TAGS.house));
+}
 if (wanted("house-card-now")) {
   await scene();
   await open("v3-house", TAGS.house, 700);
@@ -120,6 +163,14 @@ if (wanted("heat-card-now")) {
   await scene();
   await open("v3-heat", TAGS.heat, 700);
   await shot("heat-card-now", CARD(TAGS.heat));
+}
+// The heat card's Plan and Use tabs (docs/heat-pumps.md), on today.
+for (const [name, tabName] of [["heat-card-plan", "plan"], ["heat-card-use", "use"]]) {
+  if (!wanted(name)) continue;
+  await scene();
+  await open("v3-heat", TAGS.heat, 700);
+  await tab(TAGS.heat, tabName);
+  await shot(name, CARD(TAGS.heat));
 }
 
 // The three cards as one picture: each is taken alone at its own width, then the three are set side by side on the

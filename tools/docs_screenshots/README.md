@@ -105,9 +105,13 @@ real app pairing).
 The house card, the heat card, the hero picture with the three cards, the settings pictures of the home battery and
 the beta tester box, and the pictures for the banner are taken by a driver of their own, in Home Assistant's light
 theme (`DRIVER=v3shots.mjs tools/docs_screenshots/run.sh [--keep-ha] [shot-name ...]`; the older `shots.mjs` still
-takes the 2.x pictures of the charger flow, in the dark theme). Written: `house-card-now`, `heat-card-now`,
-`heat-card-hot-water`, `settings-home-battery`, `settings-beta`, `readme-hero` and `docs-home` (a copy of it); only
-when named: `social-card` (the house card at twice the pixels, `tools/social/card-light.png`).
+takes the 2.x pictures of the charger flow, in the dark theme). Written: `house-card-now`, one per other tab of the
+house card (`house-card-plan` with **Per load** and **In words** opened, `house-card-flow`, `house-card-chart` and
+`house-card-earnings` on the month, `house-card-price`), `house-card-plan-past` (the Plan tab stepped back to
+yesterday, planned against what ran), `heat-card-now`, `heat-card-plan`, `heat-card-use`, `heat-card-hot-water`,
+`settings-home-battery`, `settings-beta`, `readme-hero` and `docs-home` (a copy of it); only when named: `social-card`
+(the house card at twice the pixels, `tools/social/card-light.png`). The house card's tab pictures are taken first,
+with no scene pinned, so that the battery's measured and planned level meet at now.
 
 `driver/v3setup.mjs` sets the installation up through the config flow API (the app's screenshot tool uses it too):
 the demo integrations, a charger "Garage" with two cars, a site "Home" and the site's heating. What the site finds
@@ -124,8 +128,11 @@ beyond the 2.x demo:
   check writes (a Remote EMS switch, the control mode select and the charge and discharge limits); they move the
   simulated battery, so the check of its control sees a plant that obeys.
 - `seed_house.py` (loaded by `ha_launch.py` with `DOCS_SEED_HOUSE`): the house-load history the forecast needs, the heat
-  store's hot-water runs and five shadow days (the progress line under the heat card's Plan), and a month of reviewed
-  battery days and the battery's day money (the earnings). In memory only, as `seed_sessions.py`.
+  store's hot-water runs and five shadow days (the progress line under the heat card's Plan), a month of reviewed
+  battery days and the battery's day money (the earnings), and the decision history's hours from three days back to
+  the first one recorded (`house-card-plan-past`: the demo house's measured means, the recorded day's prices, the car
+  charging at night and once taking less than planned, the battery and the heat only watched). In memory only, as
+  `seed_sessions.py`, except the decision history, which the site writes to its store with the hours it records.
 
 Time of day: the live figures are pinned, but SpotNav plans from the real clock. The pictures of today's energy want an
 evening or a day (not just after midnight, when today holds no hours yet). **`heat-card-hot-water` needs a boost
