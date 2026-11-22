@@ -88,7 +88,14 @@ from ..execution.controller import (
     CURRENT_RANGE_SOURCE_DEFAULT,
 )
 from ..notifications.targets import available_targets
-from ..setup_checklist import SetupItem, capture_setup, grid_sign_rows, serialize_setup
+from ..setup_checklist import (
+    SetupItem,
+    capture_setup,
+    capture_site_setup,
+    grid_sign_rows,
+    serialize_setup,
+    with_site_rows,
+)
 from ..planning.auto_controller import AutoSnapshot, fiscal_choice_for
 from ..pricing.price_source import effective_settings, wire_revision
 from ..planning.auto_settings import (
@@ -1374,18 +1381,21 @@ def _capture_dashboard(
         plan_notice=_plan_notice(hass, entry_id),
         price_source=capture_price_source(hass, entry_id),
         grid_tariff=grid_tariff,
-        setup=capture_setup(
-            hass,
-            entry_id,
-            settings=settings,
-            has_vehicle=bool(vehicles),
-            has_soc_source=soc is not None,
-            has_site=site is not None,
-            site_solar_capable=site is not None and site.solar_capable,
-            has_solar_forecast=site is not None and bool(site.solar_forecast_selected),
-            phase_switching=capture_phase_switching(hass, entry),
-            demand_needs_grid_power=demand_needs_grid_power(grid_tariff),
-            grid_sign=_grid_sign_rows(hass, entry_id),
+        setup=with_site_rows(
+            capture_setup(
+                hass,
+                entry_id,
+                settings=settings,
+                has_vehicle=bool(vehicles),
+                has_soc_source=soc is not None,
+                has_site=site is not None,
+                site_solar_capable=site is not None and site.solar_capable,
+                has_solar_forecast=site is not None and bool(site.solar_forecast_selected),
+                phase_switching=capture_phase_switching(hass, entry),
+                demand_needs_grid_power=demand_needs_grid_power(grid_tariff),
+                grid_sign=_grid_sign_rows(hass, entry_id),
+            ),
+            _site_setup(hass, entry_id),
         ),
         solar_forecast=(
             None
@@ -1398,6 +1408,12 @@ def _capture_dashboard(
             )
         ),
     )
+
+
+def _site_setup(hass: HomeAssistant, entry_id: str) -> tuple[SetupItem, ...]:
+    """The "Get started" rows of the charger's site (`setup_checklist.capture_site_setup`); none without a site."""
+    site = site_binding(hass, entry_id)
+    return () if site is None else capture_site_setup(hass, site)
 
 
 def _grid_sign_rows(hass: HomeAssistant, entry_id: str) -> tuple[Any, ...]:
