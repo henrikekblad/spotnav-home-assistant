@@ -177,6 +177,7 @@ const WAITING_KEYS: Record<string, TranslationKey> = {
   headroom_too_small: "battery.waiting.headroom",
   stale_data: "battery.waiting.staleData",
   executor_busy: "battery.waiting.busy",
+  start_wait: "battery.waiting.startWait",
 };
 
 const MODE_KEYS: Record<string, TranslationKey> = {
@@ -593,6 +594,7 @@ export class SiteSections {
     changes: Record<string, boolean | string>,
     enableControlEntities = false,
     clearOutsideControl = false,
+    enableFactEntities = false,
   ): Promise<string | null> {
     const hass = this.input.hass();
     const target = this.input.target();
@@ -602,7 +604,7 @@ export class SiteSections {
     }
     try {
       const decoded = decodeBatteryControl(
-        await batteryControl(hass, target, Object.keys(changes).length === 0 ? null : changes, enableControlEntities, clearOutsideControl),
+        await batteryControl(hass, target, Object.keys(changes).length === 0 ? null : changes, enableControlEntities, clearOutsideControl, enableFactEntities),
       );
       if (!decoded.ok) {
         return translate(language, "battery.error.generic");
@@ -842,6 +844,40 @@ export class SiteSections {
     return wrap;
   }
 
+  /** A fact the battery plan needs (its size, its lowest level) in a disabled entity: one line and a button that
+   * turns on just those entities, for an administrator; `null` when none is. */
+  private factsNotice(status: BatteryStatus, admin: boolean): HTMLElement | null {
+    const found = status.enable_facts;
+    if (!admin || found === null || found.entities.length === 0) {
+      return null;
+    }
+    const { doc } = this.input;
+    const language = this.language;
+    const size = found.needs.includes("size");
+    const floor = found.needs.includes("floor");
+    const which = size && floor ? "both" : size ? "size" : "floor";
+    const wrap = element(doc, "div");
+    wrap.dataset["enableFacts"] = "true";
+    const line = element(doc, "p", C.settingRowHelp, translate(language, `battery.enableFacts.${which}`, { integration: found.integration }));
+    line.title = found.entities.map((entity) => entity.entity_id).join(", ");
+    const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.enableFacts.button")) as HTMLButtonElement;
+    button.type = "button";
+    button.dataset["action"] = "enable-battery-facts";
+    button.addEventListener("click", () => {
+      button.disabled = true;
+      void this.writeBattery({}, false, false, true).then((error) => {
+        if (error !== null) {
+          line.textContent = error;
+          button.disabled = false;
+        } else {
+          this.input.repaint();
+        }
+      });
+    });
+    wrap.append(line, button);
+    return wrap;
+  }
+
   /** A cold battery's preheating off or its switch disabled: one line, with the battery's device for an
    * administrator; `null` when none shows. */
   private preheatNotice(status: BatteryStatus, admin: boolean): HTMLElement | null {
@@ -982,6 +1018,10 @@ export class SiteSections {
           : {}),
       }),
     );
+    const facts = this.factsNotice(status, admin);
+    if (facts !== null) {
+      section.append(facts);
+    }
     const needs = this.batteryNeeds(status.needs, status.device_id, admin);
     if (needs !== null) {
       section.append(needs);

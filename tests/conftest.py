@@ -57,6 +57,17 @@ RESOLVED_ZONES = (
 
 
 @pytest.fixture(autouse=True)
+def no_start_wait(request, monkeypatch):
+    """No start-up wait for the battery (`battery/runtime.START_GRACE`): a test's site writes from its first look.
+    `tests/test_battery_start_wait.py` opts back in with its marker."""
+    if request.node.get_closest_marker("start_wait") is not None:
+        return
+    from custom_components.spotnav.battery.runtime import BatteryShadow
+
+    monkeypatch.setattr(BatteryShadow, "start_wait", lambda self: False)
+
+
+@pytest.fixture(autouse=True)
 def no_first_run_defaults(request, monkeypatch):
     """Keep a charger's settings exactly as each test set them up.
 

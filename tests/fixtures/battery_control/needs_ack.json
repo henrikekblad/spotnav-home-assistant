@@ -36,6 +36,7 @@
     "needs": ["ai_takeover_ack"],
     "device_id": null,
     "enable_entities": null,
+    "enable_facts": null,
     "notes": [],
     "preheat": null,
     "trial": null,

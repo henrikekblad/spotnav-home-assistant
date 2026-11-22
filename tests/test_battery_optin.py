@@ -16,6 +16,7 @@ from custom_components.spotnav.api.battery_control import (
     async_battery_control_answer,
 )
 from custom_components.spotnav.battery import optin
+from custom_components.spotnav.battery.adapters import ADAPTERS
 from custom_components.spotnav.battery.commands import CONTROLS
 from custom_components.spotnav.const import CONF_BATTERY_AGGREGATE_POWER_ENTITY
 from custom_components.spotnav.runtime import site_controller_for
@@ -92,7 +93,9 @@ async def test_an_enabled_entity_and_a_brand_without_a_list_are_left_out(hass: H
     _entry, entities = optin.disabled_control_entities(hass, _config(battery), "sigenergy")
     assert found["plant_ess_max_discharging_limit"] not in [entry.entity_id for entry in entities]
     assert len(entities) == len(SIGEN_KEYS) - 1
-    assert optin.disabled_control_entities(hass, _config(battery), "enphase") == (None, [])
+    # A brand whose entities are not in this entry (Enphase's adapter reads, none of it here) finds none.
+    assert optin.disabled_control_entities(hass, _config(battery), "enphase")[1] == []
+    assert optin.disabled_control_entities(hass, _config(battery), "no_such_brand") == (None, [])
     assert optin.disabled_control_entities(hass, _config(battery), None) == (None, [])
     assert optin.disabled_control_entities(hass, {}, "sigenergy") == (None, [])
 
@@ -271,3 +274,159 @@ async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_th
     control._look_id += 1
     assert control._phase_missing_now() == "plant_phase_power"
     assert control.inputs(now, VICTRON_CONTROL.with_phases(True), slot=None).plant_phase_kw is None
+
+
+# The entities the adapters read (`optin.read_matches`) and the plan's facts before control is on (`enable_facts`).
+
+#: The adapter's fields that hold no entity; every other field is walked for `Match`es. A new field must be named in
+#: one of the two, so a new kind of read cannot be left out of what the confirm enables.
+_NO_ENTITY_FIELDS = {"brand", "label", "platforms", "manufacturer", "plant_phase_sign"}
+_ENTITY_FIELDS = {
+    "facts", "modes", "grid_status", "hold", "grid_charge", "plant_max", "reserves", "plant_phase_power",
+    "cell_temperature", "soc_packs", "preheat",
+}
+
+
+def _named_matches(adapter: Any) -> list[Any]:
+    """Every `Match` an adapter carries, field by field as each field's type holds it (independent of the walker)."""
+    found: list[Any] = list(adapter.facts.values())
+    found += [rule.match for rule in adapter.modes]
+    found += [] if adapter.grid_status is None else [adapter.grid_status[0]]
+    found += [spec.match for spec in (adapter.hold, adapter.grid_charge) if spec is not None and spec.match is not None]
+    found += [] if adapter.plant_max is None else [adapter.plant_max]
+    found += [source.match for source in adapter.reserves]
+    found += list(adapter.plant_phase_power or ())
+    found += list(adapter.cell_temperature)
+    for pack in adapter.soc_packs:
+        found += [pack.soc] + ([] if pack.remaining is None else [pack.remaining])
+    heater = adapter.preheat
+    if heater is not None:
+        found += [m for m in (heater.enable, heater.mode, heater.advance, heater.reserved_soc) if m is not None]
+    return found
+
+
+def test_the_adapter_fields_are_all_known() -> None:
+    import dataclasses
+
+    from custom_components.spotnav.battery.adapters import Adapter
+
+    assert {field.name for field in dataclasses.fields(Adapter)} == _NO_ENTITY_FIELDS | _ENTITY_FIELDS
+
+
+@pytest.mark.parametrize("adapter", ADAPTERS, ids=lambda adapter: adapter.brand)
+def test_every_entity_an_adapter_reads_can_be_enabled(adapter: Any) -> None:
+    listed = optin._matches(adapter.brand)
+    for match in _named_matches(adapter):
+        assert match in listed, (adapter.brand, match.pattern.pattern)
+    assert set(optin.read_matches(adapter)) == set(_named_matches(adapter))
+
+
+def _solax(hass: HomeAssistant, *, capacity_disabled: Any = INTEGRATION) -> tuple[str, dict[str, str]]:
+    """A SolaX plant of `solax_modbus` with its level and its size (`battery_install_capacity`, disabled by default)."""
+    owner = MockConfigEntry(domain="solax_modbus", entry_id="SOLAX", title="SolaX")
+    owner.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=owner.entry_id, identifiers={("solax_modbus", "inverter")}, manufacturer="SolaX Power"
+    )
+    registry = er.async_get(hass)
+    battery = registry.async_get_or_create(
+        "sensor", "solax_modbus", "SolaX_battery_power_charge", device_id=device.id, config_entry=owner,
+        suggested_object_id="solax_battery_power",
+    )
+    found: dict[str, str] = {}
+    for domain, key, disabled_by in (
+        ("sensor", "battery_capacity", None),
+        ("sensor", "battery_install_capacity", capacity_disabled),
+        ("select", "remotecontrol_power_control", INTEGRATION),
+    ):
+        entry = registry.async_get_or_create(
+            domain, "solax_modbus", f"SolaX_{key}", device_id=device.id, config_entry=owner,
+            suggested_object_id=f"solax_{key}", disabled_by=disabled_by,
+        )
+        found[key] = entry.entity_id
+    hass.states.async_set(found["battery_capacity"], "55", {"unit_of_measurement": "%"})
+    return battery.entity_id, found
+
+
+async def test_solax_a_disabled_size_is_listed_and_enabled_alone_on_the_confirm(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    battery, found = _solax(hass)
+    site, control = await _site(hass, battery)
+    control.facts = control._read_facts()
+    assert control.facts.brand == "solax" and control.facts.capacity_kwh is None
+    reloads: list[str] = []
+    monkeypatch.setattr(hass.config_entries, "async_reload", lambda entry_id: _reload(reloads, entry_id))
+
+    status = control.status()
+    assert status["enable_facts"] == {
+        "integration": "SolaX",
+        "entities": [{"entity_id": found["battery_install_capacity"], "name": found["battery_install_capacity"]}],
+        "needs": ["size"],
+    }
+    # The opt-in's list asks for the control and the size in one confirm.
+    assert [row["entity_id"] for row in status["enable_entities"]["entities"]] == [
+        found["remotecontrol_power_control"], found["battery_install_capacity"],
+    ]
+    # Never over the webhook, never without an administrator.
+    for forbidden in ({"admin": False, "over_webhook": False}, {"admin": True, "over_webhook": True}):
+        answer = await async_battery_control_answer(hass, site, None, enable_facts=True, **forbidden)
+        assert answer["ok"] is False
+    assert reloads == []
+
+    async def no_executor(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("a blocking call")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(hass, "async_add_executor_job", no_executor)
+        answer = await async_battery_control_answer(hass, site, None, admin=True, enable_facts=True)
+    assert answer["ok"] is True
+    registry = er.async_get(hass)
+    assert registry.async_get(found["battery_install_capacity"]).disabled_by is None
+    # Only the fact: the control stays disabled until the opt-in's confirm.
+    assert registry.async_get(found["remotecontrol_power_control"]).disabled_by is INTEGRATION
+    assert reloads == ["SOLAX"]
+    assert answer["status"]["enable_facts"] is None
+    assert await control.async_enable_facts() == []
+    assert reloads == ["SOLAX"]
+
+
+async def test_nothing_is_listed_when_the_facts_are_enabled(hass: HomeAssistant) -> None:
+    battery, found = _solax(hass, capacity_disabled=None)
+    _site_entry, control = await _site(hass, battery)
+    hass.states.async_set(found["battery_install_capacity"], "10", {"unit_of_measurement": "kWh"})
+    control.facts = control._read_facts()
+    assert control.facts.capacity_kwh == pytest.approx(10.0)
+    assert control.status()["enable_facts"] is None
+
+
+async def test_a_size_read_elsewhere_lists_nothing(hass: HomeAssistant) -> None:
+    from dataclasses import replace
+
+    battery, _found = _solax(hass)
+    _site_entry, control = await _site(hass, battery)
+    facts = replace(control._read_facts(), capacity_kwh=12.0)
+    assert optin.describe_facts(hass, _config(battery), facts) is None
+
+
+async def test_the_size_on_the_batterys_device_is_picked_else_the_only_one(hass: HomeAssistant) -> None:
+    battery, found = _solax(hass)
+    registry = er.async_get(hass)
+    owner = hass.config_entries.async_get_entry("SOLAX")
+    other = dr.async_get(hass).async_get_or_create(
+        config_entry_id="SOLAX", identifiers={("solax_modbus", "other")}, manufacturer="SolaX Power"
+    )
+    second = registry.async_get_or_create(
+        "sensor", "solax_modbus", "Other_battery_install_capacity", device_id=other.id, config_entry=owner,
+        suggested_object_id="other_capacity", disabled_by=INTEGRATION,
+    )
+    _site_entry, control = await _site(hass, battery)
+    facts = control._read_facts()
+    _entry, entities, needs = optin.disabled_fact_entities(hass, _config(battery), facts)
+    assert [entity.entity_id for entity in entities] == [found["battery_install_capacity"]] and needs == ["size"]
+    # Two candidates and none on the battery's device: neither can be told, none is listed.
+    registry.async_update_entity(found["battery_install_capacity"], device_id=other.id)
+    assert optin.disabled_fact_entities(hass, _config(battery), facts)[1] == []
+    registry.async_remove(second.entity_id)
+    _entry, entities, _needs = optin.disabled_fact_entities(hass, _config(battery), facts)
+    assert [entity.entity_id for entity in entities] == [found["battery_install_capacity"]]

@@ -857,6 +857,9 @@ class BatteryControl:
         ):
             self._log([{"at": now.isoformat(), "kind": "trial_ended", "reason": trial.action}])
             self.trial = trial = None
+        if self._start_wait():
+            await self._async_start_wait_look(now, options)
+            return
         # The battery.
         if withdrawn:
             # The person withdrew the acknowledgement after SpotNav took the plant over from AI mode: handed back,
@@ -889,6 +892,26 @@ class BatteryControl:
             await self._async_export_step(now, None, allowed=True)
         else:
             await self._async_export_release(now, "shadow_only" if options.enabled else "control_off")
+        if options.enabled and options.shadow_only:
+            self._shadow_look(now, options)
+        self._note_stopped(now)
+        await self._async_save()
+
+    def _start_wait(self) -> bool:
+        """Whether the start-up wait runs (`runtime.START_GRACE`): right after a start a battery planner may not show
+        its states yet, so neither the write path nor the verification starts; only hand-backs are written. Without
+        the site's battery shadow (never in a running site) there is none to wait for."""
+        battery_shadow = getattr(self.site, "battery_shadow", None)
+        start_wait = getattr(battery_shadow, "start_wait", None)
+        return bool(start_wait()) if callable(start_wait) else False
+
+    async def _async_start_wait_look(self, now: datetime, options: gate.Options) -> None:
+        """A look during the start-up wait: whatever is held is handed back, nothing else is written."""
+        if self.verification is not None and not self.verification.done:
+            self._end_verification(now)
+        await self._async_release(now, "start_wait")
+        await self._async_export_release(now, "start_wait")
+        self.waiting_for = "start_wait" if self.state(options) in ("waiting", "on") else None
         if options.enabled and options.shadow_only:
             self._shadow_look(now, options)
         self._note_stopped(now)
@@ -1433,7 +1456,7 @@ class BatteryControl:
         """Why the battery part of a hardware test cannot start now, `None` when it can: the opt-in, everything the
         person still has to do (`_needs`: an acknowledgement, a control to enable), a known firmware, nothing else
         running on the plant."""
-        if not self._started or self._closed:
+        if not self._started or self._closed or self._start_wait():
             return "starting"
         if control_for(self.facts.brand) is None:
             return "no_battery_control"
@@ -1567,6 +1590,9 @@ class BatteryControl:
                     await self._async_until_handed_back("trial_stopped")
                 await self._async_look(now)
             return {"stopped": trial is not None}
+        if self._start_wait():
+            # The start-up wait (`runtime.START_GRACE`): a planner may not be back yet.
+            raise TrialRefused("starting")
         if not options.enabled:
             raise TrialRefused("not_enabled")
         if options.shadow_only and not force:
@@ -2497,7 +2523,11 @@ class BatteryControl:
         )
 
     def _gated(self, inputs: ExecInputs, allowed: bool) -> tuple[ExecInputs, bool]:
-        """A step the options no longer allow becomes a hand-back."""
+        """A step the options no longer allow, or one during the start-up wait, becomes a hand-back."""
+        if allowed and self._start_wait():
+            return replace(
+                inputs, stopping=inputs.stopping or "start_wait", action=None, rate_kw=0.0, slot_end=None
+            ), False
         if not allowed or self._writes_allowed_now():
             return inputs, allowed
         return replace(
@@ -2681,6 +2711,12 @@ class BatteryControl:
         `None` when none is."""
         return optin.describe(self.hass, self.site.config, self.facts.brand)
 
+    def enable_facts(self) -> dict[str, Any] | None:
+        """The disabled entities that hold a fact the battery plan needs and lacks (its size, its floor), for the
+        card's one line (`optin.describe_facts`), shown with control off as on: the plan needs them either way. `None`
+        when none is."""
+        return optin.describe_facts(self.hass, self.site.config, self.facts)
+
     def clear_outside_control(self) -> bool:
         """An administrator's "it was me" for the outside-control verdict (`BatteryShadow.clear_outside_by_person`):
         `False` when none a person may clear stands (none, or an integration's or a planner's)."""
@@ -2694,6 +2730,14 @@ class BatteryControl:
         """Enable the control entities `enable_entities` lists and reload their integration once; only ever called
         on the person's confirm (an administrator, never over the webhook). Answers the entity ids enabled."""
         return await optin.async_enable(self.hass, self.site.config, self.facts.brand)
+
+    async def async_enable_facts(self) -> list[str]:
+        """Enable the fact entities `enable_facts` lists (never a control) and reload their integration once; only
+        ever called on the person's confirm (an administrator, never over the webhook)."""
+        enabled = await optin.async_enable_facts(self.hass, self.site.config, self.facts)
+        if enabled:
+            self.facts = self._read_facts()
+        return enabled
 
     def _line(self, options: gate.Options) -> str:
         """The one line under the switch, as a stable code (the card words it)."""
@@ -2744,6 +2788,7 @@ class BatteryControl:
             "needs": self._needs(),
             "device_id": self._settings_device(),
             "enable_entities": self.enable_entities(),
+            "enable_facts": self.enable_facts(),
             "notes": [dict(note) for note in self.notes],
             "preheat": self.preheat.status(self.facts),
             "trial": None if self.trial is None else self.trial.as_dict(),

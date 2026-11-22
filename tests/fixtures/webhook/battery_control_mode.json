@@ -8,6 +8,7 @@
     "battery_found": false,
     "device_id": null,
     "enable_entities": null,
+    "enable_facts": null,
     "grid_charge_cap": {
       "cap_conservative_kw": 0.0,
       "cap_kw": 0.0,

@@ -29,9 +29,10 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CoreState, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er, issue_registry as ir
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -66,6 +67,23 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 TICK_S: Final = 10.0
+#: The start-up wait: for this long after Home Assistant has fully started and SpotNav's site is set up (the later of
+#: the two), a planner or an integration that is not there yet does not end a standing outside-control verdict (one
+#: kept from before the restart holds), and SpotNav's write path and its verification do not start (only hand-backs are
+#: written). A battery planner outside Home Assistant's own start publishes its states only once it runs again:
+#: Predbat (AppDaemon or its add-on) was seen five minutes after a restart, and its cycle is five minutes. Ten minutes
+#: is twice what was seen; until then two controllers could otherwise write the same battery. Measured on Home
+#: Assistant's loop clock (`_monotonic`), so a step of the wall clock (NTP) neither ends it early nor stretches it. A
+#: reload of SpotNav's site in a Home Assistant run that has been up longer than this skips it: a planner's states do
+#: not vanish when SpotNav reloads (`_RUN_START_KEY`).
+START_GRACE: Final = timedelta(minutes=10)
+#: `hass.data` key: the loop-clock time the first battery wait of this Home Assistant run began (gone at a restart).
+_RUN_START_KEY: Final = f"{DOMAIN}_battery_run_start"
+
+
+def _monotonic(hass: HomeAssistant) -> float:
+    """Seconds on Home Assistant's loop clock: monotonic, so a wall-clock step moves no wait. Tests replace it."""
+    return hass.loop.time()
 #: The book's section that keeps the outside-control watch.
 SECTION_OUTSIDE: Final = "outside_control"
 #: The book's section that keeps the export-limit rule's shadow (`export_curtail.CurtailShadow`).
@@ -114,9 +132,65 @@ def _step(value: Any) -> float | None:
     return float(value) if math.isfinite(value) and value > 0 else None
 
 
+#: Predbat's read-only switch, as it names it with its default prefix `predbat` (the same prefix its `predbat.*` states
+#: carry, which is how it is found): on, it plans and writes nothing to the inverter. Its Monitor mode is not read:
+#: Predbat may still write in it (the inverter's balancing).
+PREDBAT_READ_ONLY: Final = "switch.predbat_set_read_only"
+#: How long read-only must read `on` without a break before Predbat counts as not controlling. Predbat writes a reset
+#: to the inverter when the switch is changed, turned on included, so controlling counts at once and watch-only only
+#: after this.
+PREDBAT_READ_ONLY_HOLD: Final = timedelta(minutes=10)
+#: `hass.data` key: the read-only switch's `last_changed` and the loop-clock time it was first seen `on` with it.
+_READ_ONLY_SEEN_KEY: Final = f"{DOMAIN}_predbat_read_only_seen"
+
+
+def _predbat_read_only_since(hass: HomeAssistant) -> float | None:
+    """How long (s) Predbat's read-only switch has read `on` without a break, the shorter of its own `last_changed`
+    and the loop clock since SpotNav first saw it so (a wall-clock step cannot shorten it); `None` when it is not
+    `on` (off, unknown, unavailable or missing)."""
+    state = hass.states.get(PREDBAT_READ_ONLY)
+    if state is None or state.state != "on":
+        hass.data.pop(_READ_ONLY_SEEN_KEY, None)
+        return None
+    now = _monotonic(hass)
+    seen = hass.data.get(_READ_ONLY_SEEN_KEY)
+    if not isinstance(seen, tuple) or seen[0] != state.last_changed:
+        seen = (state.last_changed, now)
+        hass.data[_READ_ONLY_SEEN_KEY] = seen
+    wall_s = (dt_util.utcnow() - state.last_changed).total_seconds()
+    return max(0.0, min(wall_s, now - seen[1]))
+
+
+def predbat_watch_only(hass: HomeAssistant) -> bool:
+    """Whether Predbat says itself that it does not control the battery: read-only has read `on` for
+    `PREDBAT_READ_ONLY_HOLD` without a break. Anything else, `off`, `unknown`, `unavailable`, no such entity or `on` for
+    less, is controlling."""
+    since = _predbat_read_only_since(hass)
+    return since is not None and since >= PREDBAT_READ_ONLY_HOLD.total_seconds()
+
+
+def watched_planner(hass: HomeAssistant) -> dict[str, Any] | None:
+    """For the diagnostics: Predbat runs here with its read-only switch on, watched and, once that has held for
+    `PREDBAT_READ_ONLY_HOLD`, not counted as outside control (`watched_not_controlling`; before, `read_only_pending`,
+    still controlling); `None` when Predbat does not run or read-only is not on."""
+    if not hass.states.async_entity_ids("predbat"):
+        return None
+    since = _predbat_read_only_since(hass)
+    if since is None:
+        return None
+    watched = since >= PREDBAT_READ_ONLY_HOLD.total_seconds()
+    return {
+        "reason": "planner:predbat",
+        "read_only": True,
+        "read_only_s": round(since),
+        "state": "watched_not_controlling" if watched else "read_only_pending",
+    }
+
+
 def external_planner(hass: HomeAssistant) -> str | None:
-    """A battery planner that runs here: Predbat (its `predbat.*` states) or EMHASS (its battery forecast)."""
-    if hass.states.async_entity_ids("predbat"):
+    """A battery planner that runs here and controls the battery: Predbat (its `predbat.*` states), unless it says it
+    does not (`predbat_watch_only`: read-only on for `PREDBAT_READ_ONLY_HOLD`), or EMHASS (its battery forecast)."""
+    if hass.states.async_entity_ids("predbat") and not predbat_watch_only(hass):
         return "predbat"
     if hass.states.get("sensor.p_batt_forecast") is not None:
         return "emhass"
@@ -276,6 +350,12 @@ class BatteryShadow:
         #: The sell price now (minor per kWh) and the export control found, as at the last look (shown only).
         self.curtail_sell: float | None = None
         self.curtail_brand: str | None = None
+        #: When the start-up wait began counting (`START_GRACE`), on the loop clock (`_monotonic`): the later of
+        #: SpotNav's start and Home Assistant's fully started; `None` before both.
+        self._wait_from: float | None = None
+        self._unsub_started: Callable[[], None] | None = None
+        #: Whether a planner was last seen watched, not controlling (`watched_planner`), for its log line on a change.
+        self._planner_watched: bool | None = None
 
     @property
     def _hold(self) -> HoldMemory:
@@ -286,9 +366,31 @@ class BatteryShadow:
         path to merge with the plan's slot."""
         return requested_action(self._hold) == ACTION_HOLD
 
+    def start_wait(self) -> bool:
+        """Whether the start-up wait (`START_GRACE`) still runs: before Home Assistant has fully started and SpotNav's
+        site has started, and for `START_GRACE` after the later of the two (on the loop clock)."""
+        return self._wait_from is None or _monotonic(self.hass) - self._wait_from < START_GRACE.total_seconds()
+
+    def _begin_wait(self) -> None:
+        """The wait counts from now; on a reload in a Home Assistant run up longer than `START_GRACE` it is skipped."""
+        now = _monotonic(self.hass)
+        grace = START_GRACE.total_seconds()
+        run_start = self.hass.data.setdefault(_RUN_START_KEY, now)
+        self._wait_from = now - grace if now - run_start >= grace else now
+
+    @callback
+    def _ha_started(self, _hass: HomeAssistant | None = None) -> None:
+        self._unsub_started = None
+        self._begin_wait()
+
     async def async_start(self) -> None:
         """Load the book, restore a hold a restart found (in shadow: log it), then look every `TICK_S`."""
         now = dt_util.now()
+        # The start-up wait counts from now, or from Home Assistant's fully started when that comes later.
+        if self.hass.state is CoreState.running:
+            self._begin_wait()
+        else:
+            self._unsub_started = async_at_started(self.hass, self._ha_started)
         try:
             stored = await self._store.async_load()
         except Exception:  # noqa: BLE001 - a broken store starts an empty book
@@ -326,12 +428,18 @@ class BatteryShadow:
     @callback
     def halt(self) -> None:
         """The site shuts down: no tick and no plan solve from here (the book is saved by `async_shutdown`)."""
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
         self.plan.halt()
 
     async def async_shutdown(self) -> None:
+        if self._unsub_started is not None:
+            self._unsub_started()
+            self._unsub_started = None
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -399,6 +507,16 @@ class BatteryShadow:
             for control in (facts.hold, facts.grid_charge)
             if control is not None and control.entity_id is not None
         }
+        planner = watched_planner(self.hass)
+        watched = planner is not None and planner["state"] == "watched_not_controlling"
+        if watched != self._planner_watched:
+            if watched or self._planner_watched is not None:
+                _LOGGER.info(
+                    "SpotNav battery: Predbat %s",
+                    "has been read-only for ten minutes: watched, not counted as controlling the battery" if watched
+                    else "is no longer read-only: counted as controlling the battery",
+                )
+            self._planner_watched = watched
         events = self.outside.observe(
             Observation(
                 now=inputs.now,
@@ -415,9 +533,17 @@ class BatteryShadow:
                 integrations=frozenset(self.hass.config_entries.async_domains()),
                 planner=external_planner(self.hass),
                 spotnav_acting=self.spotnav_acting(),
+                starting=self.start_wait(),
             )
         )
         for event in events:
+            if event.get("after_start_wait"):
+                _LOGGER.info(
+                    "SpotNav battery: outside control ended after start-up wait (%s did not come back within %d "
+                    "minutes of the start)", event.get("source") or event.get("reason"),
+                    int(START_GRACE.total_seconds() // 60),
+                )
+                continue
             _LOGGER.info(
                 "SpotNav battery: something outside SpotNav %s the battery (%s%s); SpotNav only watches it",
                 "drives" if event["kind"] == "started" else "no longer drives",
@@ -660,7 +786,9 @@ class BatteryShadow:
             "dry_run": self._dry_run_snapshot(),
             # Another system driving the battery (`outside_control.py`): the verdict now, the signals counted, the
             # setting changes within the day and the last occurrences.
-            "outside_control": self.outside.as_dict(),
+            # Predbat with its read-only switch on: watched; once on for `PREDBAT_READ_ONLY_HOLD` not outside control,
+            # so the shadow plan can be compared with it.
+            "outside_control": self.outside.as_dict() | {"watched_planner": watched_planner(self.hass)},
             "log": [entry.as_dict() for entry in self.book.entries],
             "plan": self.plan.snapshot(),
             # No export while the sell price is below zero (`export_curtail.py`), in shadow: the slot now, the export

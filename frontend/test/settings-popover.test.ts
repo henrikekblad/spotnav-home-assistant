@@ -50,6 +50,11 @@ describe("decoding the site's answers", () => {
     const withFound = (value: unknown) => ({ ...enable, status: { ...(enable["status"] as object), enable_entities: value } });
     expect(decodeBatteryControl(withFound({ ...found, surprise: 1 })).ok).toBe(false);
     expect(decodeBatteryControl(withFound({ ...found, entities: [{ entity_id: "number.x" }] })).ok).toBe(false);
+    const withFacts = (value: unknown) => ({ ...enable, status: { ...(enable["status"] as object), enable_facts: value } });
+    expect(decodeBatteryControl(withFacts({ integration: "SolaX", entities: [], needs: ["size"] })).ok).toBe(true);
+    expect(decodeBatteryControl(withFacts({ integration: "SolaX", entities: [], needs: ["size"], surprise: 1 })).ok).toBe(false);
+    const before = decodeBatteryControl(enable);
+    expect(before.ok && before.value.status?.enable_facts).toBeNull();
   });
 
   it("reads the preheating line, refuses an unknown key in it, and reads a Home Assistant before it as none", () => {
@@ -64,6 +69,12 @@ describe("decoding the site's answers", () => {
     expect(old.ok && old.value.status?.preheat).toBeNull();
   });
 });
+
+const SIZE_FACT = {
+  integration: "SolaX",
+  entities: [{ entity_id: "sensor.solax_battery_install_capacity", name: "Battery Install Capacity" }],
+  needs: ["size"],
+};
 
 const PREHEAT = { code: "off", cell_c: 2.4, entity_id: "switch.sigen_plant_ess_preheating_enable", device_id: "0f4c2b7e9a1d4c3e8b6a5f2d1c0e9b8a" };
 
@@ -94,6 +105,9 @@ describe("the battery's words", () => {
     expect(batteryLine("sv", "shadow_only")).toBe("Test: SpotNav styr inget än och loggar bara vad den skulle göra.");
     expect(batteryLine("sv", "waiting:car_charging")).toBe(
       "Väntar på ett lämpligt tillfälle för kontrollen. Den väntar tills bilen slutar ladda.",
+    );
+    expect(batteryLine("sv", "waiting:start_wait")).toBe(
+      "Väntar på ett lämpligt tillfälle för kontrollen. Väntar några minuter efter start innan SpotNav styr batteriet.",
     );
     expect(batteryLine("sv", "failed:hold:ignored")).toBe(
       "Kontrollen misslyckades: ”Hålla” fungerade inte. Slå av och på igen för att kontrollera på nytt.",
@@ -174,6 +188,9 @@ describe("the popover from the house card", () => {
             const changes = message["changes"] as Record<string, boolean> | undefined;
             if (message["clear_outside_control"] === true) {
               battery = { ...battery, status: { ...(battery["status"] as object), needs: [] } };
+            }
+            if (message["enable_fact_entities"] === true) {
+              battery = { ...battery, status: { ...(battery["status"] as object), enable_facts: null } };
             }
             if (message["enable_control_entities"] === true) {
               battery = { ...battery, status: { ...(battery["status"] as object), enable_entities: null } };
@@ -531,7 +548,7 @@ describe("the popover from the house card", () => {
     const popover = await open(root);
     popover.querySelector<HTMLButtonElement>("button[data-edit='battery_control_enabled']")!.click();
     const form = root.querySelector<HTMLFormElement>("form[data-battery-enable]")!;
-    expect(form.textContent).toContain("SpotNav behöver slå på 3 styrentiteter i Sigenergy.");
+    expect(form.textContent).toContain("SpotNav behöver slå på 3 entiteter i Sigenergy.");
     const folded = form.querySelector<HTMLDetailsElement>("details[data-enable-entities]")!;
     expect(folded.open).toBe(false);
     expect([...folded.querySelectorAll("li")].map((item) => (item as HTMLElement).dataset["entityId"])).toEqual([
@@ -561,6 +578,31 @@ describe("the popover from the house card", () => {
     expect(messages.filter((message) => message["enable_control_entities"] !== undefined)).toEqual([
       { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", enable_control_entities: true },
     ]);
+  });
+
+  it("shows a disabled size as one line, and its button turns on just that entity", async () => {
+    const { root, messages } = await mount({ battery: "live.json", status: { enable_facts: SIZE_FACT } });
+    const popover = await open(root);
+    const notice = popover.querySelector<HTMLElement>("[data-section='battery'] [data-enable-facts]")!;
+    expect(notice.textContent).toContain("Batteriets storlek finns i en avstängd sensor i SolaX.");
+    const button = notice.querySelector<HTMLButtonElement>("button[data-action='enable-battery-facts']")!;
+    expect(button.textContent).toBe("Slå på");
+    expect(messages.filter((message) => message["enable_fact_entities"] !== undefined)).toEqual([]);
+    button.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter((message) => message["enable_fact_entities"] !== undefined)).toEqual([
+      { type: "spotnav/battery_control", api_version: 1, site_id: "site_villa", enable_fact_entities: true },
+    ]);
+    expect(root.querySelector("[data-enable-facts]")).toBeNull();
+  });
+
+  it("words the size and the lowest level together", async () => {
+    const both = { ...SIZE_FACT, needs: ["size", "floor"] };
+    const { root } = await mount({ battery: "live.json", status: { enable_facts: both } });
+    const popover = await open(root);
+    expect(popover.querySelector("[data-enable-facts]")!.textContent).toContain(
+      "Batteriets storlek och lägsta nivå finns i avstängda entiteter i SolaX.",
+    );
   });
 
   it("lets an administrator clear an outside-control mark from the battery's own settings: it was them", async () => {
