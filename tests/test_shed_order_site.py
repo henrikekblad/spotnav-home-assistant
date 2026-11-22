@@ -64,6 +64,9 @@ async def test_the_water_heater_pauses_before_the_car_is_cut(hass: HomeAssistant
         snapshot = controller.shed_order.snapshot()
         assert snapshot["steps"][LOAD_WATER_HEATER]["state"] == "paused"
         assert LOAD_HEAT not in snapshot["steps"]
+        # In the site's change log too.
+        log = controller.import_target_snapshot()["log"]
+        assert [entry["load"] for entry in log if entry["action"] == "shed_order_shed"] == [LOAD_WATER_HEATER]
         for hour in world.complete_hours():
             assert world.hour_kw(hour) <= 6.0, f"{hour}: {world.hour_kw(hour):.2f} kW"
 

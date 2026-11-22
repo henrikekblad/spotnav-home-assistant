@@ -331,6 +331,7 @@ class ImportTargetHold:
         counts nothing: the hold goes on as without it."""
         order: ShedOrder = self._site.shed_order
         before = {load: step.live for load, step in order.steps.items()}
+        logged = order.logged
         try:
             if budget is None:
                 order.update(now, None, {})
@@ -343,6 +344,11 @@ class ImportTargetHold:
                 _LOGGER.exception("SpotNav site %s: the shed order failed; every step is put back", self._site.entry_id)
             order.clear(now, "error")
             credit_w = 0.0
+        # Each step taken or put back in the site's change log too (`_log_target`, kept a day across restarts).
+        fresh = min(order.logged - logged, len(order.log))
+        for entry in list(order.log)[len(order.log) - fresh :] if fresh > 0 else []:
+            fields = {key: value for key, value in entry.items() if key not in ("at", "what")}
+            self._site._log_target(None, f"shed_order_{entry['what']}", budget, **fields)
         after = {load: step.live for load, step in order.steps.items()}
         if before != after:
             # A step taken or put back: the loads' controls look at once rather than at their next look.

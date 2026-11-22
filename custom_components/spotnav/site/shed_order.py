@@ -216,6 +216,8 @@ class ShedOrder:
         self.credit_w = 0.0
         self.projection: Projection | None = None
         self.log: deque[dict[str, Any]] = deque(maxlen=LOG_SIZE)
+        #: How many entries were ever logged (the site forwards the new ones to its change log).
+        self.logged = 0
 
     # ---- each pass
 
@@ -397,3 +399,4 @@ class ShedOrder:
 
     def _log(self, now: datetime, load: str, what: str, **extra: Any) -> None:
         self.log.append({"at": now.isoformat(), "load": load, "what": what, **extra})
+        self.logged += 1
