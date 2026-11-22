@@ -18,14 +18,12 @@ import {
   getHouseNow,
   getPeriodHistory,
   getPlan,
-  getSettings,
   releaseImportTarget,
   SpotnavApiError,
+  takeWhatFits,
   UNSUPPORTED_API_VERSION,
-  updateSettings,
 } from "./api";
 import type { DoesNotFitChoiceCode } from "./does-not-fit";
-import { decodeSettingsAnswer, ifNotReadyReplacement } from "./settings";
 import { entityWordsOf } from "./entity-words";
 import { LOADS_STYLES, LoadsPopover, type LoadsKind, type LoadsRequest } from "./house-loads";
 import { decodeHouse, type EnergyFlow, type HouseAnswer } from "./house-model";
@@ -575,9 +573,8 @@ export class SpotnavHouseCard extends HTMLElement {
   }
 
   /**
-   * A car's "does not fit" choice in the Plan tab: "Take what fits" writes the charger's plan `if_not_ready` `hold`
-   * (refused by the backend where this user may not change the plan), "Allow the peak" sets the import target aside
-   * for that charge (`spotnav/release_import_target`, any user). The plan is read again either way; a refusal leaves
+   * A car's "does not fit" choice in the Plan tab, for that charge's departure only (any user): "Take what fits"
+   * (`spotnav/take_what_fits`), "Allow the peak" (`spotnav/release_import_target`). The plan is read again either way; a refusal leaves
    * the line as the next read says.
    */
   private async doesNotFitChoice(chargerId: string, code: DoesNotFitChoiceCode): Promise<void> {
@@ -589,14 +586,7 @@ export class SpotnavHouseCard extends HTMLElement {
       if (code === "accept_peak") {
         await releaseImportTarget(hass, chargerId);
       } else if (code === "takes_what_fits") {
-        const read = decodeSettingsAnswer(await getSettings(hass, chargerId));
-        if (read.ok && read.value.ok && read.value.settings !== null) {
-          const record = read.value.settings;
-          const check = ifNotReadyReplacement(record, "hold");
-          if (check.ok && check.changed) {
-            await updateSettings(hass, chargerId, record.revision, check.body);
-          }
-        }
+        await takeWhatFits(hass, chargerId);
       }
     } catch {
       // Not written: the line stays until the next read says otherwise.

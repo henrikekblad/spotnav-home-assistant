@@ -2,9 +2,10 @@
 // `plans/v3_flexible_loads_design.md`, step 3a; the backend's `site/does_not_fit.py`): one line and the person's
 // choices, in the charger card's status area and in the house card's Plan tab, from the same block.
 //
-// The choices map to what already exists: "Take what fits" is the plan's `if_not_ready` `hold` (a lasting setting),
-// "Later departure" opens the departure's editor, "Allow the peak" sets the import target aside for this charge alone
-// (`spotnav/release_import_target`, until the departure or the unplug). After a choice the line says what was chosen.
+// Each choice is for this departure only; the plan's `if_not_ready` stays the person's lasting default. "Take what
+// fits" is `spotnav/take_what_fits`, "Later departure" opens the departure's editor, "Allow the peak" sets the import
+// target aside for this charge (`spotnav/release_import_target`); both last until the departure or the unplug. After
+// a choice the line says what was chosen.
 
 import { exactKeys, isRecord, list, Malformed, numberOrNull, record, text, textOrNull } from "./decode-primitives";
 import { clock, formatFixed, kwText, kwhText, moneyMinorAsMajor, type FormatContext, type MoneyUnits } from "./format";

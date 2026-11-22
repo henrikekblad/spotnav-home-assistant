@@ -57,6 +57,7 @@ import {
   dismissSetupItem,
   fixOwnMode,
   releaseImportTarget,
+  takeWhatFits,
   suggestImportTarget,
   setEntsoeKey,
   updateVehicle,
@@ -114,7 +115,6 @@ import {
   settingsErrorKey,
   strategyReplacement,
   vehicleReplacement,
-  ifNotReadyReplacement,
   type ReplacementCheck,
   type CurrentRange,
   type DepartureDays,
@@ -2199,6 +2199,24 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** The "does not fit" line's "Take what fits", for this departure only (any user); then the dashboard is read again. */
+  private async takeWhatFits(): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "") {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await takeWhatFits(hass, config.charger);
+    } catch {
+      // Not chosen: the line stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
   /** The import target's suggestion for the editor (administrators only): the answer, or `null` when it cannot be read. */
   private async suggestImportTarget(): Promise<unknown> {
     const hass = this.hassObject;
@@ -3098,7 +3116,7 @@ export class SpotnavCard extends HTMLElement {
           void this.releaseImportTarget();
         },
         onTakeWhatFits: () => {
-          void this.writeFreshSettings((record) => ifNotReadyReplacement(record, "hold"));
+          void this.takeWhatFits();
         },
         onSuggestImportTarget: () => this.suggestImportTarget(),
         onAnswerOnboardPhases: (vehicleId, phases) => {

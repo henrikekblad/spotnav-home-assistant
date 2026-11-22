@@ -302,7 +302,7 @@ export interface CardViewInput {
   onFixOwnMode?: (entity: string, value: string) => void;
   /** An issue's "Release the import target for this charge" (any user): the card sets the import target aside for this charge, then reads again. */
   onReleaseImportTarget?: () => void;
-  /** The "does not fit" line's "Take what fits": the plan's `if_not_ready` written `hold`. */
+  /** The "does not fit" line's "Take what fits", for this departure only (`spotnav/take_what_fits`). */
   onTakeWhatFits?: () => void;
   /** The import target's editor opened (administrators): the suggestion from Home Assistant's statistics, `null` for none. */
   onSuggestImportTarget?: () => Promise<unknown>;
@@ -745,7 +745,7 @@ export function createCardView(input: CardViewInput): CardView {
 
   /**
    * The planned charge does not fit under the ceiling by its departure: the line, and a button per choice still open.
-   * "Take what fits" writes the plan's `if_not_ready` `hold`; "Later departure" opens the departure's editor; "Allow
+   * "Take what fits" holds this departure only (`spotnav/take_what_fits`, any user); "Later departure" opens the departure's editor; "Allow
    * the peak" is the import target's set-aside for this charge, confirmed first as everywhere.
    */
   function doesNotFitNode(line: DoesNotFitLine): HTMLElement {
@@ -755,7 +755,7 @@ export function createCardView(input: CardViewInput): CardView {
     box.append(element(doc, "p", C.suggestionText, line.text));
     const answers = element(doc, "div", C.suggestionAnswers);
     for (const choice of line.choices) {
-      if (choice.code === "takes_what_fits" && (input.onTakeWhatFits === undefined || !mayPlan)) {
+      if (choice.code === "takes_what_fits" && input.onTakeWhatFits === undefined) {
         continue;
       }
       if (choice.code === "accept_peak" && (input.onReleaseImportTarget === undefined || model.releaseConfirm === null)) {

@@ -1,6 +1,6 @@
 // A planned charge that does not fit under the ceiling by its departure (`src/does-not-fit.ts`): the backend's own
 // blocks (`tests/fixtures/does_not_fit/`, `tests/test_does_not_fit.py`) read and worded, the charger card's line and
-// its buttons (each writing the existing setting it maps to), and the Plan tab's car lane.
+// its buttons (each a choice for this departure only, never the lasting `if_not_ready`), and the Plan tab's car lane.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { choiceLabel, decodeDoesNotFit, doesNotFitOrNull, doesNotFitText } from "../src/does-not-fit";
 import { decodePlan, planBody } from "../src/house-plan";
-import { decodeSettingsAnswer, ifNotReadyReplacement } from "../src/settings";
 import { FakeHass, mountCard } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -46,7 +45,8 @@ describe("the backend's does-not-fit blocks", () => {
     expect(hold.choices.map((choice) => choice.code)).toEqual(["later", "accept_peak"]);
     const release = decodeDoesNotFit(fixture("does_not_fit", "release.json"));
     expect(doesNotFitText(SV, release)).toBe("Taket (Effektmål 6,0 kW) är släppt för den här laddningen till 14:30.");
-    expect(release.choices).toEqual([]);
+    expect(release.choices.map((choice) => choice.code)).toEqual(["takes_what_fits"]);
+    expect(choiceLabel(SV, release.choices[0]!, money)).toBe("Ta det som ryms");
   });
 
   it("refuses a block with an unknown key, and the dashboard then shows no line", () => {
@@ -113,16 +113,22 @@ describe("the charger card's does-not-fit line", () => {
     expect(root.textContent).not.toContain("Bilen blir inte klar");
   });
 
-  it("writes the plan's if_not_ready hold for Take what fits", async () => {
+  it("asks for Take what fits for this departure only, never writing the lasting if_not_ready", async () => {
     const { hass, root } = await mounted("ask.json");
     root.querySelector<HTMLButtonElement>("[data-choice='takes_what_fits']")!.click();
     await settle();
-    expect(hass.messages.at(-1)?.["type"]).toBe("spotnav/get_settings");
-    hass.resolveNext(fixture(join("settings", "v1"), "success.json"));
+    expect(hass.messages.at(-1)).toMatchObject({ type: "spotnav/take_what_fits", api_version: 1, charger_id: "entry_a" });
+    expect(hass.messages.some((message) => message["type"] === "spotnav/update_settings")).toBe(false);
+  });
+
+  it("offers Take what fits to a user who is not an administrator", async () => {
+    const hass = new FakeHass();
+    const element = mountCard(CONFIG, hass);
+    element.hass = hass.snapshot("snapshot", "sv");
     await settle();
-    const update = hass.messages.at(-1)!;
-    expect(update["type"]).toBe("spotnav/update_settings");
-    expect((update["settings"] as Record<string, unknown>)["if_not_ready"]).toBe("hold");
+    hass.resolveNext(dashboard("ask.json"));
+    await settle();
+    expect(buttons(shadow(element))).toContain("takes_what_fits");
   });
 
   it("opens the departure's editor for Later departure", async () => {
@@ -146,12 +152,12 @@ describe("the charger card's does-not-fit line", () => {
     expect(sent()).toBe(1);
   });
 
-  it("says the peak accepted with nothing more to choose", async () => {
+  it("says the plan's own release, with Take what fits still offered for this departure", async () => {
     const { root } = await mounted("release.json");
-    expect(root.querySelector("[data-part='does-not-fit']")?.textContent).toBe(
+    expect(root.querySelector("[data-part='does-not-fit'] p")?.textContent).toBe(
       "Taket (Effektmål 6,0 kW) är släppt för den här laddningen till 14:30.",
     );
-    expect(buttons(root)).toEqual([]);
+    expect(buttons(root)).toEqual(["takes_what_fits"]);
   });
 });
 
@@ -188,21 +194,5 @@ describe("the Plan tab's car lane", () => {
     expect(flat.ok && flat.value.loads[0]!.does_not_fit).toBeNull();
     const body = planBody({ doc: document, language: "sv", plan: villa(), width: 600 });
     expect(body.querySelector("[data-part='does-not-fit'] button")).toBeNull();
-  });
-});
-
-describe("Take what fits as a settings write", () => {
-  it("is the plan's if_not_ready hold, refused against a backend without the field", () => {
-    const answer = decodeSettingsAnswer(fixture(join("settings", "v1"), "success.json"));
-    if (!answer.ok || !answer.value.ok || answer.value.settings === null) {
-      throw new Error("the settings do not decode");
-    }
-    const record = answer.value.settings;
-    const check = ifNotReadyReplacement(record, "hold");
-    expect(check.ok && check.body.if_not_ready).toBe("hold");
-    expect(check.ok && check.changed).toBe(true);
-    const older = { ...record };
-    delete older.if_not_ready;
-    expect(ifNotReadyReplacement(older, "hold").ok).toBe(false);
   });
 });

@@ -587,6 +587,18 @@ export async function releaseImportTarget(hass: HomeAssistantLike, chargerId: st
 }
 
 /**
+ * The "does not fit" line's "Take what fits" (any user): this charge's departure is held as `if_not_ready` `hold`
+ * would, for that departure only; the lasting `if_not_ready` is left as it is. Answers `{api_version, ok, error}`.
+ */
+export async function takeWhatFits(hass: HomeAssistantLike, chargerId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/take_what_fits",
+    api_version: RELEASE_IMPORT_TARGET_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
+/**
  * A suggested import target for the charger's site from Home Assistant's statistics (administrators only), the
  * import target's editor's advice; decoded by `target-suggestion.ts`.
  */
