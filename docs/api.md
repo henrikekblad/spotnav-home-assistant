@@ -952,11 +952,18 @@ again at once); 400 `spotnav_invalid_value` (another mode, an unknown key, no ch
 `spotnav_not_permitted_over_webhook` for `battery_control_enabled` ("Styr batteriet") and the other
 `battery_control_*` options, alone or beside a mode, with nothing written; 400 `spotnav_no_site`. A refusal has
 `"status": null`. An app shows the switch read-only (`status.options.battery_control_enabled`, `status.state`).
+`status.options.battery_wear_minor_per_kwh` (additive under version 1) is the site's own wear per kWh each way in the
+area's minor unit, or `null` for the currency's default; a client that does not find the key reads it as `null`. It
+is written over the WebSocket only, by an administrator: `spotnav/battery_control` with
+`{"changes": {"battery_wear_minor_per_kwh": 20}}` takes a finite number from 0 to ten times the currency's default
+(`spotnav_invalid_value` otherwise), and `null` goes back to the default. Over the webhook it is
+`spotnav_not_permitted_over_webhook`.
 
-`status.plan_costs` (additive under version 1) names the battery plan's two fixed figures, read-only, in the
-site's price area money: `{"wear_minor_per_kwh": 15.0, "balanced_margin_minor_per_kwh": 100.0, "major_unit": "kr",
-"minor_unit": "öre"}`: the wear counted per kWh each way, and what a kWh sold must earn at least, net, before
-Balanced sells it. Both are in the minor unit (`minor_unit`; `major_unit` is the unit above it, 100 minor to one major
+`status.plan_costs` (additive under version 1) names the battery plan's two figures in the site's price area money:
+`{"wear_minor_per_kwh": 15.0, "wear_default_minor_per_kwh": 15.0, "balanced_margin_minor_per_kwh": 100.0,
+"major_unit": "kr", "minor_unit": "öre"}`: the wear counted per kWh each way (the site's own when one is set, else the
+currency's default, which `wear_default_minor_per_kwh` names; that key is additive too), and what a kWh sold must earn
+at least, net, before Balanced sells it. Both are in the minor unit (`minor_unit`; `major_unit` is the unit above it, 100 minor to one major
 where the area's money has that). The whole block is `null` while the site has no price area. A client that does not
 find the key shows no line.
 
