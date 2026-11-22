@@ -7,7 +7,8 @@ cars' installed plans (`ChargingPlan`), the battery plan in force (`battery_shad
 (`heat_shadow.plan`), the water heater's windows (`WaterHeaterControl.status`), the zones' lowerings
 (`ZonesControl.lowerings_ahead`), the house forecast with the heat plan's change (`heat_delta`), the prices with
 their fees as the plans read them (`buy_slots`), the import target's hold per hour (`site_hour_caps`), the soft
-ceiling under the demand charge (`demand_ceiling`), the main fuse and the month's measured hours. The one thing read
+ceiling under the demand charge (`demand_ceiling`), the main fuse, the month's measured hours
+and each car's "does not fit" block (`site/does_not_fit.py`, from the import target's status). The one thing read
 is the solar forecast (the integrations' own forecast platform, as the battery plan reads it, then corrected as the
 plan corrects it). Nothing is planned anew and nothing is written. A part that cannot be read is left out, never the
 whole answer.
@@ -34,6 +35,7 @@ from ..pricing.price_source import site_price_source
 from ..runtime import controller_for, site_controller_for
 from ..site.flexible_loads import has_power_tariff
 from ..site.house_forecast import BASIS_GROSS
+from ..site.does_not_fit import site_does_not_fit
 from ..site.import_target import stored_import_target_kw
 from ..site.plan_view import (
     CEILING_IMPORT_TARGET,
@@ -128,6 +130,7 @@ def _cars(hass: HomeAssistant, controller: Any) -> tuple[CarPlan, ...]:
                 windows=tuple(plan_windows(plan, volts)),
                 live=bool(charger.is_commandable or charger.is_switch_only),
                 departure=None if plan is None else aware_instant(plan.departure),
+                does_not_fit=_guarded("does-not-fit", lambda c=charger_entry_id: site_does_not_fit(controller, c), None),
             )
         )
     return tuple(found)
