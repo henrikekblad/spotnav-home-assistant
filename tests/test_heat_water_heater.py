@@ -612,3 +612,17 @@ def test_would_shed_asks_the_rules_and_changes_nothing_kept() -> None:
     before = long_off.kept.as_dict()
     assert long_off.would_shed(NOON, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY) is False
     assert long_off.kept.as_dict() == before
+
+
+def test_no_shed_pause_once_the_last_full_heat_is_sixteen_hours_old_or_unknown() -> None:
+    from custom_components.spotnav.heat.water_heater import SHED_FULL_WITHIN
+
+    cheap = Window(NOON, NOON + 2 * H, WINDOW_CHEAP, "day:x")
+    at = NOON + 10 * MIN
+    fresh = Rules(Kept(last_full=at - SHED_FULL_WITHIN + MIN))
+    assert fresh.want(at, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H).reason == WANT_SHED
+    old = Rules(Kept(last_full=at - SHED_FULL_WITHIN))
+    assert old.want(at, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H).on is True
+    unknown = Rules(Kept(last_full=None))
+    assert unknown.want(at, mode=MODE_TANK, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H).on is True
+    assert not old.would_shed(at, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY)

@@ -30,7 +30,8 @@ is the cheapest block of its span, one without a tight hour where one fits. Away
 
 **The ceiling** (`site/shed_order.py`): the site's shed order may pause a cheap window to the period's end
 (`Rules.want(shed_until=...)`, `ceiling`), after every hard rule above, within the longest off stretch, and counted
-among the day's switchings; never the unmetered night window or a gap filler.
+among the day's switchings; never the unmetered night window or a gap filler, never once the last full heat is
+`SHED_FULL_WITHIN` old or not known.
 """
 
 from __future__ import annotations
@@ -62,6 +63,9 @@ MAX_OFF: Final = timedelta(hours=8)
 MAX_OFF_MARGIN: Final = timedelta(minutes=5)
 MAX_PLANNED_OFF: Final = timedelta(hours=7)
 FORCED_ON: Final = timedelta(hours=1)
+#: The shed order may pause it only while the last full heat is younger than this (`FULL_EVERY` less a heat-up's
+#: allowance), and never while none is known.
+SHED_FULL_WITHIN: Final = timedelta(hours=16)
 SENSOR_LOST_AFTER: Final = timedelta(minutes=10)
 MAX_SWITCHINGS_DAY: Final = 8
 
@@ -504,7 +508,13 @@ class Rules:
             return Want(True, WANT_FORCED, kept.forced_until)
         window = next((item for item in windows if item.covers(now)), None)
         if window is not None:
-            if shed_until is not None and now < shed_until and window.reason == WINDOW_CHEAP:
+            if (
+                shed_until is not None
+                and now < shed_until
+                and window.reason == WINDOW_CHEAP
+                and kept.last_full is not None
+                and now - kept.last_full < SHED_FULL_WITHIN
+            ):
                 if kept.off_since is None and kept.switchings.get(day, 0) + 2 > MAX_SWITCHINGS_DAY:
                     return Want(True, WANT_WRITE_CAP)
                 latest = (kept.off_since or now) + MAX_OFF - MAX_OFF_MARGIN
