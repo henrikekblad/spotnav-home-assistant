@@ -1,10 +1,13 @@
 """An in-memory ring buffer of SpotNav's own log records, for the debug bundle.
 
 A handler on the `custom_components.spotnav` logger tree keeps the last records so a support
-question does not depend on the person having raised the log level beforehand. Attaching it changes
-no level: a record only reaches a handler when its logger is enabled for it, so DEBUG records exist
-only if the person turned DEBUG on. Only SpotNav loggers are ever captured (the handler sits on that
-tree, not on the root), and every buffer is bounded.
+question does not depend on the person having raised the log level beforehand. A record only exists
+when its logger is enabled for it, and Home Assistant's default is WARNING, so the SpotNav logger is
+made to report INFO whatever level it inherits (`_CapturingLogger`); its records then reach Home
+Assistant's own handlers only at the level the person configured (`_Forwarder`), so the HA log looks
+as before. A level the person set on the SpotNav logger is kept: DEBUG or INFO set there is used as
+is. DEBUG records exist only if the person turned DEBUG on. Only SpotNav loggers are ever captured
+(the handlers sit on that tree, not on the root), and every buffer is bounded.
 
 WARNING and above are also kept apart for `WARNINGS_S` (24 hours, at most `MAX_WARNINGS`), and across restarts in a
 small store of their own (`debug_day.DayStore`, written at most every five minutes and at Home Assistant's stop): the
@@ -156,6 +159,78 @@ def _entry(record: logging.LogRecord) -> dict[str, Any]:
     return entry
 
 
+#: The level the SpotNav logger reports at least, so the buffer receives these records.
+CAPTURE_LEVEL: Final = logging.INFO
+_USER_LEVEL: Final = "_spotnav_user_level"
+
+
+class _CapturingLogger(logging.Logger):
+    """The SpotNav logger reports at least `CAPTURE_LEVEL`, worked out on each read.
+
+    `level` is what every child logger reads when it works out its own effective level, so it is a
+    property: the level the person set (`setLevel`, also Home Assistant's `logger` settings) is kept
+    apart and used as is when it is INFO or chattier; otherwise the logger reports INFO, or the
+    chattier level it inherits (a DEBUG default level still gives DEBUG records).
+    """
+
+    @property  # type: ignore[override]
+    def level(self) -> int:
+        own = self.__dict__.get(_USER_LEVEL, logging.NOTSET)
+        if own != logging.NOTSET and own <= CAPTURE_LEVEL:
+            return own
+        inherited = own or (self.parent.getEffectiveLevel() if self.parent is not None else logging.WARNING)
+        return min(CAPTURE_LEVEL, inherited)
+
+    @level.setter
+    def level(self, value: int) -> None:
+        self.__dict__[_USER_LEVEL] = value
+
+
+def _capturing(logger: logging.Logger) -> None:
+    """Make `logger` a `_CapturingLogger`, keeping the level it was set to."""
+    if isinstance(logger, _CapturingLogger):
+        return
+    own = logger.__dict__.pop("level", logging.NOTSET)
+    # A subclass of the logger's own class, so Home Assistant's `HassLogger.setLevel` keeps working.
+    base = type(logger)
+    logger.__class__ = type(f"SpotNavCapturing{base.__name__}", (_CapturingLogger, base), {})
+    logger.__dict__[_USER_LEVEL] = own
+    logger.manager._clear_cache()  # noqa: SLF001 - the cached isEnabledFor answers are stale now
+
+
+def _user_level(name: str) -> int:
+    """The effective level `name` would have without the capture: what Home Assistant's log shows."""
+    logger: logging.Logger | None = logging.getLogger(name)
+    while logger is not None:
+        if isinstance(logger, _CapturingLogger):
+            level = logger.__dict__.get(_USER_LEVEL, logging.NOTSET)
+        else:
+            level = logger.level
+        if level:
+            return level
+        logger = logger.parent
+    return logging.NOTSET
+
+
+class _Forwarder(logging.Handler):
+    """Hands a SpotNav record on to Home Assistant's handlers only at the level the person configured.
+
+    The SpotNav logger does not propagate; this handler stands in for the propagation.
+    """
+
+    def __init__(self, logger: logging.Logger) -> None:
+        super().__init__(level=logging.NOTSET)
+        self._logger = logger
+
+    def handle(self, record: logging.LogRecord) -> bool:  # no lock needed: the parent's handlers take their own
+        if record.levelno >= _user_level(record.name) and (parent := self._logger.parent) is not None:
+            parent.callHandlers(record)
+        return True
+
+    def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - `handle` does the work
+        return
+
+
 def attach_log_buffer() -> SpotNavLogBuffer:
     """Attach a fresh buffer to SpotNav's logger tree, replacing any earlier one, and return it.
 
@@ -163,8 +238,11 @@ def attach_log_buffer() -> SpotNavLogBuffer:
     """
     logger = logging.getLogger(SPOTNAV_LOGGER)
     for handler in list(logger.handlers):
-        if isinstance(handler, SpotNavLogBuffer):
+        if isinstance(handler, (SpotNavLogBuffer, _Forwarder)):
             logger.removeHandler(handler)
+    _capturing(logger)
+    logger.addHandler(_Forwarder(logger))
+    logger.propagate = False
     buffer = SpotNavLogBuffer()
     logger.addHandler(buffer)
     return buffer

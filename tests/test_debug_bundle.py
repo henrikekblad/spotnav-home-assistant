@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -110,18 +111,93 @@ def test_ring_buffer_is_bounded_and_split_by_level() -> None:
     assert debug[-1]["message"] == f"debug {MAX_DEBUG_RECORDS + 19}"
 
 
-def test_ring_buffer_takes_only_spotnav_loggers_and_leaves_levels_alone() -> None:
+def test_ring_buffer_takes_only_spotnav_loggers() -> None:
     buffer = attach_log_buffer()
     spotnav = logging.getLogger(SPOTNAV_LOGGER)
-    level_before = spotnav.level
     try:
         logging.getLogger("some.other.integration").warning("not ours")
         logging.getLogger(f"{SPOTNAV_LOGGER}.execution").error("ours")
         names = [r["logger"] for r in buffer.records()]
-        assert spotnav.level == level_before
     finally:
         spotnav.removeHandler(buffer)
     assert names == [f"{SPOTNAV_LOGGER}.execution"]
+
+
+class _Collect(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.messages: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.messages.append(record.getMessage())
+
+
+@contextmanager
+def _home_assistant_log(root_level: int, spotnav_level: int = logging.NOTSET):
+    """A root handler standing in for Home Assistant's log, at the given levels; restored after."""
+    root, spotnav = logging.getLogger(), logging.getLogger(SPOTNAV_LOGGER)
+    collect = _Collect()
+    root_before = root.level
+    root.addHandler(collect)
+    root.setLevel(root_level)
+    buffer = attach_log_buffer()
+    user_before = spotnav.__dict__.get("_spotnav_user_level", logging.NOTSET)
+    spotnav.setLevel(spotnav_level)
+    try:
+        yield buffer, collect
+    finally:
+        spotnav.setLevel(user_before)
+        spotnav.removeHandler(buffer)
+        root.removeHandler(collect)
+        root.setLevel(root_before)
+
+
+def test_info_is_captured_at_home_assistants_default_level_but_not_logged() -> None:
+    """HA's default WARNING: the bundle still gets SpotNav's INFO lines, HA's log only the warnings."""
+    with _home_assistant_log(logging.WARNING) as (buffer, collect):
+        logger = logging.getLogger(f"{SPOTNAV_LOGGER}.test_capture")
+        logger.info("plan made")
+        logger.debug("detail")
+        logger.warning("charger offline")
+        logging.getLogger("some.other.integration").info("not ours")
+        captured = [r["message"] for r in buffer.records()]
+        debug = buffer.debug_records()
+    assert captured == ["plan made", "charger offline"]
+    assert debug == []
+    assert collect.messages == ["charger offline"]
+
+
+def test_a_debug_level_set_on_spotnav_is_respected() -> None:
+    with _home_assistant_log(logging.WARNING, logging.DEBUG) as (buffer, collect):
+        logger = logging.getLogger(f"{SPOTNAV_LOGGER}.test_capture")
+        logger.debug("detail")
+        logger.info("plan made")
+        debug = [r["message"] for r in buffer.debug_records()]
+    assert debug == ["detail"]
+    assert collect.messages == ["detail", "plan made"]
+
+
+def test_a_debug_default_level_still_gives_spotnav_debug() -> None:
+    with _home_assistant_log(logging.DEBUG) as (buffer, collect):
+        logging.getLogger(f"{SPOTNAV_LOGGER}.test_capture").debug("detail")
+        debug = [r["message"] for r in buffer.debug_records()]
+    assert debug == ["detail"]
+    assert collect.messages == ["detail"]
+
+
+def test_a_warning_level_set_on_one_spotnav_module_still_captures_its_info_elsewhere() -> None:
+    """A module the person quietened stays quiet in HA's log; the others' INFO is captured."""
+    quiet = logging.getLogger(f"{SPOTNAV_LOGGER}.test_quiet")
+    with _home_assistant_log(logging.INFO) as (buffer, collect):
+        quiet.setLevel(logging.ERROR)
+        try:
+            quiet.warning("hidden")
+            logging.getLogger(f"{SPOTNAV_LOGGER}.test_capture").info("shown")
+        finally:
+            quiet.setLevel(logging.NOTSET)
+        captured = [r["message"] for r in buffer.records()]
+    assert captured == ["shown"]
+    assert collect.messages == ["shown"]
 
 
 def test_attaching_again_replaces_the_buffer() -> None:
