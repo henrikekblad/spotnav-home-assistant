@@ -103,19 +103,19 @@ describe("the heat rules", () => {
 describe("the house card's tabs", () => {
   const bare: HouseTabFacts = { battery: null, energy_flow: null, heat: null, saving: null, hours: [] };
 
-  it("keep Now and Energy chart alone on a site with nothing else to show", () => {
-    expect(houseTabs(bare)).toEqual(["now", "graph"]);
+  it("keep Now, Plan and Energy chart alone on a site with nothing else to show", () => {
+    expect(houseTabs(bare)).toEqual(["now", "plan", "graph"]);
   });
 
   it("add each tab where it can fill, by the app's rules", () => {
-    expect(houseTabs({ ...bare, hours: [{ buy: 120, sell: null }] })).toEqual(["now", "graph", "price"]);
-    expect(houseTabs({ ...bare, energy_flow: { nodes: [{ role: "car" }] } })).toEqual(["now", "flow", "graph", "earn"]);
-    expect(houseTabs({ ...bare, energy_flow: { nodes: [{ role: "house" }] } })).toEqual(["now", "flow", "graph"]);
-    expect(houseTabs({ ...bare, heat: { status: "found" } })).toEqual(["now", "graph", "earn"]);
-    expect(houseTabs({ ...bare, heat: { status: "ambiguous" } })).toEqual(["now", "graph"]);
-    expect(houseTabs({ ...bare, saving: {} })).toEqual(["now", "graph", "earn"]);
-    expect(houseTabs({ ...bare, battery: {} })).toEqual(["now", "graph", "earn", "price"]);
-    expect(houseTabs(read("house", "villa_battery_sun.json") as unknown as HouseTabFacts)).toEqual(["now", "flow", "graph", "earn", "price"]);
+    expect(houseTabs({ ...bare, hours: [{ buy: 120, sell: null }] })).toEqual(["now", "plan", "graph", "price"]);
+    expect(houseTabs({ ...bare, energy_flow: { nodes: [{ role: "car" }] } })).toEqual(["now", "plan", "flow", "graph", "earn"]);
+    expect(houseTabs({ ...bare, energy_flow: { nodes: [{ role: "house" }] } })).toEqual(["now", "plan", "flow", "graph"]);
+    expect(houseTabs({ ...bare, heat: { status: "found" } })).toEqual(["now", "plan", "graph", "earn"]);
+    expect(houseTabs({ ...bare, heat: { status: "ambiguous" } })).toEqual(["now", "plan", "graph"]);
+    expect(houseTabs({ ...bare, saving: {} })).toEqual(["now", "plan", "graph", "earn"]);
+    expect(houseTabs({ ...bare, battery: {} })).toEqual(["now", "plan", "graph", "earn", "price"]);
+    expect(houseTabs(read("house", "villa_battery_sun.json") as unknown as HouseTabFacts)).toEqual(["now", "plan", "flow", "graph", "earn", "price"]);
   });
 
   it("show the chosen tab while the site has it, else Now, and a locked one as it is", () => {
