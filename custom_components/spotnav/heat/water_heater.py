@@ -516,6 +516,14 @@ class Rules:
         latest = (kept.off_since or now) + MAX_OFF - MAX_OFF_MARGIN
         return Want(False, WANT_OFF, latest if following is None else min(following, latest))
 
+    def would_shed(self, now: datetime, *, mode: str, windows: Sequence[Window], plan_fresh: bool, day: str) -> bool:
+        """Whether a pause for the ceiling asked for now would be taken (`want` with `shed_until` just ahead): every
+        hard rule, the cheap window, the day's switchings and the longest off stretch. Changes nothing kept."""
+        trial = Rules(Kept.from_dict(self.kept.as_dict()))
+        trial.meter_lost_since, trial.tank_lost_since = self.meter_lost_since, self.tank_lost_since
+        want = trial.want(now, mode=mode, windows=windows, plan_fresh=plan_fresh, day=day, shed_until=now + timedelta(seconds=1))
+        return want.reason == WANT_SHED
+
     def switched(self, now: datetime, on: bool, *, day: str, planned: bool) -> None:
         """A switching of SpotNav's that read back: the off stretch, and the day's planned switchings."""
         kept = self.kept

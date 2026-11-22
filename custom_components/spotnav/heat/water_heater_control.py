@@ -26,8 +26,11 @@ without it.
    prices with their fees and the heat plan's tight hours; a window that has begun is kept as it is). Without prices
    for the running hour the switch is on (`no_plan`).
 7. **The ceiling** (`site/shed_order.py`): where the site's shed order pauses the water heater for the ceiling, a
-   cheap window is paused until the period's end (`ceiling`), after every hard rule. What it could give is offered at
-   each look (`shed_offer`): what it draws, and whether its rules let it be paused (or stay paused) now.
+   cheap window is paused until the period's end (`ceiling`), after every hard rule, and only where the window left
+   after the pause still covers the heater's need (its energy at the element's power, less the time it was seen
+   drawing in it: `_until_max`). What it could give is offered at each look (`shed_offer`): what its trusted meter
+   reads it drawing (never a learnt figure; read again at every ask), whether the rules would take the pause now
+   (`Rules.would_shed`, with the day's switchings and the longest off stretch) or hold it, and the latest it may last.
 """
 
 from __future__ import annotations
@@ -45,7 +48,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
-from ..core.parse import aware_instant, finite_number
+from ..core.parse import aware_instant, finite_number, number_from_state
 from ..const import DOMAIN
 from ..site.shed_order import LOAD_WATER_HEATER, Offer
 from .automations import SteeringAutomation, steering_automations
@@ -164,6 +167,12 @@ class WaterHeaterControl:
         self._timer_cancel: Callable[[], None] | None = None
         #: What a pause for the ceiling would give and whether the rules allow it, as of the last look.
         self.offer: Offer | None = None
+        #: The look's mode and plan freshness (the offer asks the rules as the look would), and the element's time seen
+        #: drawing per window (`_until_max`, memory only: a restart counts it from nothing, which only sheds less).
+        self._look_mode: str | None = None
+        self._look_fresh = False
+        self._drawn_s: dict[str, float] = {}
+        self._drawn_at: datetime | None = None
         control.parts["water_heater"] = self
         shadow.extra_deltas.append(self.forecast_delta)
 
@@ -283,7 +292,7 @@ class WaterHeaterControl:
         if picked is None or picked[1] != KIND_POWER:
             return None, None
         state = self.hass.states.get(picked[0])
-        value = None if state is None or state.state in ("unavailable", "unknown") else finite_number(state.state)
+        value = None if state is None or state.state in ("unavailable", "unknown") else number_from_state(state.state)
         if value is None:
             return picked[0], None
         unit = state.attributes.get("unit_of_measurement")  # type: ignore[union-attr]
@@ -366,6 +375,7 @@ class WaterHeaterControl:
         if self.rules.observe(now, on=read, power_w=power, metered=self.metered, tank_c=tank_c, tank=tank_sensor is not None):
             self._log(now, "full_heat")
         mode = mode_of(self.metered, tank_sensor is not None)
+        self._count_draw(now, read, power)
 
         if enabled and self._was_enabled is False:
             # Turned on again: a failed check, a pause and the give-up are tried afresh.
@@ -393,6 +403,7 @@ class WaterHeaterControl:
         )
         self.rules.kept.windows = windows
         fresh = current in prices
+        self._look_mode, self._look_fresh = mode, fresh
 
         # A write is read back first.
         if self.pending is not None:
@@ -504,8 +515,14 @@ class WaterHeaterControl:
 
         # Seen on while control runs: an off from here on that SpotNav did not write is someone else's.
         self._seen_on = read is True and not self.held_off
+        shed_until = self._shed_until(now)
+        if shed_until is not None:
+            # Only where the window left after the pause still covers the heater's need.
+            latest = self._until_max(now)
+            if latest is None or latest < shed_until:
+                shed_until = None
         want = self.want = self.rules.want(
-            now, mode=mode, windows=windows, plan_fresh=fresh, day=self._day(now), shed_until=self._shed_until(now)
+            now, mode=mode, windows=windows, plan_fresh=fresh, day=self._day(now), shed_until=shed_until
         )
         verifying = self.check is None or self.check.get("entity") != switch
         self.state, self.reason = (STATE_VERIFYING if verifying else STATE_RUNNING), want.reason
@@ -520,16 +537,37 @@ class WaterHeaterControl:
         return None if order is None else order.until(LOAD_WATER_HEATER, now)
 
     def _give_w(self, read: bool | None) -> float:
-        """What a pause gives now (W): the meter's reading where it is trusted, else the learnt element's power while
-        the switch reads on; nothing while it reads off or the power is not known."""
-        if read is not True:
+        """What a pause gives now (W): what a trusted meter reads the element drawing now; nothing while the switch
+        reads off, without a trusted meter or without a reading (never a learnt figure: the hold counts it as freed)."""
+        if read is not True or not self.metered or self.power_sensor is None:
             return 0.0
-        if self.metered and self.power_sensor is not None:
-            state = self.hass.states.get(self.power_sensor)
-            value = None if state is None else finite_number(state.state)
-            if value is not None:
-                return max(0.0, value * 1000.0 if state.attributes.get("unit_of_measurement") == "kW" else value)  # type: ignore[union-attr]
-        return 0.0 if self.kw is None else self.kw * 1000.0
+        state = self.hass.states.get(self.power_sensor)
+        if state is None or state.state in ("unavailable", "unknown"):
+            return 0.0
+        value = number_from_state(state.state)
+        if value is None:
+            return 0.0
+        return max(0.0, value * 1000.0 if state.attributes.get("unit_of_measurement") == "kW" else value)
+
+    def _until_max(self, now: datetime) -> datetime | None:
+        """The latest a pause may last and still leave the cheap window running now the time its remaining need takes
+        (`shed_order.Offer.until_max`): the window's end less its energy at the element's power, less what the element
+        was seen drawing in it. `now` (no pause) where that is not known (no window energy or power learnt yet)."""
+        window = next((item for item in self.rules.kept.windows if item.covers(now)), None)
+        if window is None or window.kwh is None or self.kw is None or self.kw <= 0:
+            return now
+        need_s = max(0.0, window.kwh / self.kw * 3600.0 - self._drawn_s.get(window.key, 0.0))
+        return window.end - timedelta(seconds=need_s)
+
+    def _count_draw(self, now: datetime, read: bool | None, power: float | None) -> None:
+        """The time the element was seen drawing in the window running now (`_until_max`), since the last look."""
+        last, self._drawn_at = self._drawn_at, now
+        window = next((item for item in self.rules.kept.windows if item.covers(now)), None)
+        keys = {item.key for item in self.rules.kept.windows}
+        self._drawn_s = {key: seconds for key, seconds in self._drawn_s.items() if key in keys}
+        if window is None or last is None or read is not True or power is None or power < FULL_DRAW_W:
+            return
+        self._drawn_s[window.key] = self._drawn_s.get(window.key, 0.0) + min(max(0.0, (now - last).total_seconds()), 2 * LOOK_S)
 
     def _offer(self, now: datetime) -> Offer | None:
         """The water heater's offer to the shed order (`shed_order.Offer`), `None` without a switch chosen. Controlled:
@@ -546,22 +584,34 @@ class WaterHeaterControl:
             return Offer(live=False, ready=ready, give_w=give, drawing=read is True)
         reason = None if self.want is None else self.want.reason
         running = self.state == STATE_RUNNING
-        ready = running and reason in (WINDOW_CHEAP, WANT_SHED)
+        if not running:
+            return Offer(live=True, ready=False, give_w=give, drawing=read is True, why=self.reason)
+        held = self.held_off and reason == WANT_SHED
+        # The rules asked as the next look would (the write cap, the longest off stretch, every hard rule).
+        ready = held or (
+            reason == WINDOW_CHEAP
+            and self._look_mode is not None
+            and self.rules.would_shed(
+                now, mode=self._look_mode, windows=self.rules.kept.windows, plan_fresh=self._look_fresh, day=self._day(now)
+            )
+        )
         return Offer(
             live=True,
             ready=ready,
             give_w=give,
             drawing=read is True,
-            why=None if ready else (reason if running else self.reason),
+            why=None if ready else reason,
+            held=held,
+            until_max=self._until_max(now),
         )
 
     def shed_offer(self) -> Offer | None:
-        """The offer as of the last look, with the switch read now (whether it still draws what it would give)."""
+        """The offer as of the last look, with the switch and the meter read now (whether it still draws, and what)."""
         offer = self.offer
         if offer is None or self.entity is None:
             return offer
-        drawing = self._read(self.entity) is True
-        return offer if drawing == offer.drawing else replace(offer, drawing=drawing)
+        read = self._read(self.entity)
+        return replace(offer, drawing=read is True, give_w=self._give_w(read))
 
     # ---- writes
 

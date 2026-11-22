@@ -311,12 +311,31 @@ async def test_a_meter_is_trusted_only_once_it_has_seen_the_element(hass: HomeAs
 
 
 def _in_cheap_window(heater: WaterHeaterControl) -> datetime:
-    window = next(window for window in heater.rules.kept.windows if window.reason == "cheap")
+    """Five minutes into the first cheap window of two hours or more (a pause to the hour's end leaves it time)."""
+    window = next(window for window in heater.rules.kept.windows if window.reason == "cheap" and window.end - window.start >= 2 * H)
     return window.start + 5 * MIN
 
 
-async def _checked(heater: WaterHeaterControl, now: datetime) -> datetime:
-    """The check passed, full heat just seen, the element's power learnt: a look inside a cheap window, on."""
+POWER = "sensor.varmvatten_effekt"
+
+
+def _metered(hass: HomeAssistant, heater: WaterHeaterControl, switch: Relay, draw_w: float = 3000.0) -> None:
+    """A trusted meter on the switch's device: the element draws `draw_w` while the switch is on."""
+    heater.meter_seen = {"entity": HEATER, "sensor": POWER}
+    heater.daily = [1.5] * 5
+
+    def power(_entity: str) -> tuple[str, float]:
+        value = draw_w if switch.state == "on" else 2.0
+        hass.states.async_set(POWER, str(value), {"unit_of_measurement": "W"})
+        return POWER, value
+
+    heater._power = power  # type: ignore[method-assign]  # noqa: SLF001
+
+
+async def _checked(hass: HomeAssistant, heater: WaterHeaterControl, switch: Relay, now: datetime) -> datetime:
+    """The check passed, full heat just seen, a trusted meter showing the element draw: a look inside a cheap window,
+    on."""
+    _metered(hass, heater, switch)
     heater.check = {"entity": HEATER, "result": "passed", "at": now.isoformat()}
     heater.rules.kept.last_full = now
     heater.kw = 3.0
@@ -332,7 +351,7 @@ async def test_the_shed_order_pauses_it_for_the_ceiling_and_puts_it_back(hass: H
 
     site, heater, switch, now = await _site(hass, freezer)
     controller = site_controller_for(hass, site.entry_id)
-    moment = await _checked(heater, now)
+    moment = await _checked(hass, heater, switch, now)
     assert switch.state == "on" and switch.calls == []
     offer = heater.shed_offer()
     assert offer is not None and offer.live and offer.ready and offer.give_w == 3000.0 and offer.drawing
@@ -360,7 +379,7 @@ async def test_a_hard_rule_keeps_it_on_whatever_the_shed_order_asks(hass: HomeAs
 
     site, heater, switch, now = await _site(hass, freezer)
     controller = site_controller_for(hass, site.entry_id)
-    moment = await _checked(heater, now)
+    moment = await _checked(hass, heater, switch, now)
     end = moment.replace(minute=0) + H
     controller.shed_order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, moment, end, 3000.0, end - H)
     # Metered and full heat due (21 hours since the last): held on, and the offer says why.
@@ -378,6 +397,7 @@ async def test_a_watched_water_heater_is_only_offered_as_would(hass: HomeAssista
 
     site, heater, switch, now = await _site(hass, freezer, control=False)
     controller = site_controller_for(hass, site.entry_id)
+    _metered(hass, heater, switch)
     heater.kw = 3.0
     await heater.async_look(now)
     moment = _in_cheap_window(heater)
@@ -388,3 +408,61 @@ async def test_a_watched_water_heater_is_only_offered_as_would(hass: HomeAssista
     controller.shed_order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, False, moment, end, 3000.0, end - H)
     await heater.async_look(moment + MIN)
     assert switch.calls == []
+
+
+async def test_a_learnt_power_is_never_offered_as_freed(hass: HomeAssistant, freezer) -> None:
+    """Without a reading of its trusted meter (lost, or never trusted) the heater gives nothing: nothing is counted for
+    the cars and no step is taken for power that may not be drawn."""
+    _site_, heater, switch, now = await _site(hass, freezer)
+    moment = await _checked(hass, heater, switch, now)
+    assert heater.shed_offer().give_w == 3000.0  # type: ignore[union-attr]
+    hass.states.async_set(POWER, "unavailable")
+    offer = heater.shed_offer()
+    assert offer is not None and offer.give_w == 0.0 and not offer.useful
+    heater.meter_seen = None
+    heater._power = lambda _entity: (None, None)  # type: ignore[method-assign]  # noqa: SLF001
+    await heater.async_look(moment + MIN)
+    assert heater.shed_offer().give_w == 0.0  # type: ignore[union-attr]
+
+
+async def test_the_offer_says_no_where_the_day_s_switchings_are_spent(hass: HomeAssistant, freezer) -> None:
+    _site_, heater, switch, now = await _site(hass, freezer)
+    moment = await _checked(hass, heater, switch, now)
+    heater.rules.kept.switchings[heater._day(moment)] = 7  # noqa: SLF001
+    await heater.async_look(moment + MIN)
+    offer = heater.shed_offer()
+    assert offer is not None and not offer.ready and offer.why == "cheap"
+
+
+async def test_no_pause_where_the_window_left_would_not_cover_the_need(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.site.shed_order import LOAD_WATER_HEATER, Step
+
+    site, heater, switch, now = await _site(hass, freezer)
+    controller = site_controller_for(hass, site.entry_id)
+    moment = await _checked(hass, heater, switch, now)
+    window = next(item for item in heater.rules.kept.windows if item.covers(moment))
+    offer = heater.shed_offer()
+    assert offer is not None and offer.until_max is not None and offer.until_max <= window.end
+    # Asked to pause to after the latest that still covers the need: it stays on.
+    late = offer.until_max + 10 * MIN
+    controller.shed_order.steps[LOAD_WATER_HEATER] = Step(LOAD_WATER_HEATER, True, moment, late, 3000.0, moment.replace(minute=0))
+    await heater.async_look(moment + MIN)
+    assert switch.calls == [] and switch.state == "on"
+    # The element's power not known: the need is not known either, so no pause at all.
+    heater.kw = None
+    assert heater._until_max(moment + 2 * MIN) == moment + 2 * MIN  # noqa: SLF001
+
+
+async def test_the_meter_is_read_from_its_text_state(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Home Assistant keeps a sensor's state as text: the element's power reads from it (in W or kW)."""
+    from custom_components.spotnav.site import heat_zones
+
+    _site_, heater, _switch, _now = await _site(hass, freezer)
+    monkeypatch.setattr(heat_zones, "device_sensors", lambda _hass, _entity: ("device", []))
+    monkeypatch.setattr(heat_zones, "pick_zone_sensor", lambda _sensors: (POWER, "power"))
+    hass.states.async_set(POWER, "2950.5", {"unit_of_measurement": "W"})
+    assert heater._power(HEATER) == (POWER, 2950.5)  # noqa: SLF001
+    hass.states.async_set(POWER, "2.9", {"unit_of_measurement": "kW"})
+    assert heater._power(HEATER) == (POWER, 2900.0)  # noqa: SLF001
+    hass.states.async_set(POWER, "unavailable")
+    assert heater._power(HEATER) == (POWER, None)  # noqa: SLF001

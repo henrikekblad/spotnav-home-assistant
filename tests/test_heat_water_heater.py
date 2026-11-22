@@ -590,3 +590,16 @@ def test_the_shed_order_pauses_only_a_cheap_window_after_every_hard_rule() -> No
     # The day's switchings: an off it could not end with an on leaves it on.
     capped = Rules(Kept(last_full=NOON, switchings={DAY: MAX_SWITCHINGS_DAY - 1}))
     assert capped.want(NOON + 10 * MIN, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY, shed_until=NOON + H).reason == "write_cap"
+
+
+def test_would_shed_asks_the_rules_and_changes_nothing_kept() -> None:
+    cheap = Window(NOON, NOON + 2 * H, WINDOW_CHEAP, "day:x")
+    rules = Rules(Kept(last_full=NOON, off_since=None))
+    assert rules.would_shed(NOON + 10 * MIN, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY) is True
+    rules.kept.switchings[DAY] = MAX_SWITCHINGS_DAY - 1
+    assert rules.would_shed(NOON + 10 * MIN, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY) is False
+    # Off nearly eight hours: the rules turn it on, and asking leaves no forced hour behind.
+    long_off = Rules(Kept(last_full=NOON, off_since=NOON - MAX_OFF))
+    before = long_off.kept.as_dict()
+    assert long_off.would_shed(NOON, mode=MODE_METERED, windows=[cheap], plan_fresh=True, day=DAY) is False
+    assert long_off.kept.as_dict() == before
