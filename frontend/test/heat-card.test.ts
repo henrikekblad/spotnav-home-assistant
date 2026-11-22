@@ -1036,6 +1036,17 @@ describe("the zones and the water heater SpotNav controls", () => {
     expect(now.querySelector("[data-line='waterHeater']")!.textContent).toBe("Varmvattenberedaren av till tis 17 nov. 01:00");
   });
 
+  it("says the water heater is paused and the heat lowered for the ceiling", () => {
+    const value = answer("controlled.json");
+    const paused = { ...value, water_heater: { ...value.water_heater!, reason: "ceiling" } };
+    const section = heatSettingsSection(document, "sv", paused, () => undefined);
+    expect(section.querySelector("[data-help='waterHeater']")!.textContent).toBe("Pausad för taket till tis 17 nov. 01:00.");
+    expect(body(paused).querySelector("[data-line='waterHeater']")!.textContent).toBe("Varmvattenberedaren pausad för taket till tis 17 nov. 01:00");
+    const lowered = { ...value, control: { ...value.control!, state: "running", reason: "ceiling", lowered: true, until: value.water_heater!.until } };
+    expect(controlLine("sv", lowered)).toBe("Styr: sänker värmen för taket till tis 17 nov. 01:00.");
+    expect(controlLine("en", lowered)).toBe("Controlling: lowering the heat for the ceiling until Tue 17 Nov 01:00.");
+  });
+
   it("asks for 60 °C on the water heater's thermostat when it is turned on, and writes the opt-in", async () => {
     const value = answer("controlled.json");
     const write = vi.fn(async () => null);
