@@ -7,6 +7,9 @@ comfort. Pure; the shell (`heat/runtime.py`) reads the day the night after and k
      relay: {hours, value, saved_kwh, measured, coldest_min_c, minutes_below},
      plan: {hours, value, saved_kwh, overlap_hours, coldest_min_c, minutes_below}}
 
+* **SpotNav's plan** counts the hours it lowered for a reason of its own (`plan_lowered_hours`): an hour lowered only
+  because the house was already above its band (`room_warm`) is no saving of SpotNav's, so it is neither in the
+  plan's hours nor in its value.
 * **Money** (`value`, the area's minor unit, positive is saved): per lowered hour the heat taken away at that hour's
   price, less the rebound bought back at the prices of the `AFTER` after the block. The relay's measured blocks
   (`heat/relay_effect.measure_block`) count what the meter showed; an unmeasured block and SpotNav's plan count the
@@ -28,6 +31,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Final
 
 from .relay_effect import AFTER, HOUR, BlockResult, Effect, hour_shares
+from .shadow_rule import ACTION_LOWER, REASON_ROOM_WARM
 
 FIVE_MINUTES: Final = 5
 
@@ -121,6 +125,12 @@ def _value(
             value -= back * sum(prices[hour] * share for hour, share in priced_after) / weight
         saved += taken_total - back
     return value, saved, counted
+
+
+def plan_lowered_hours(kept: Mapping[datetime, tuple[str, str]]) -> list[datetime]:
+    """The kept hours SpotNav's plan lowered for a reason of its own (`{hour start: (action, reason)}`): an hour
+    lowered only because the house was already too warm (`room_warm`) is what the house did by itself, no value."""
+    return [hour for hour, (action, reason) in kept.items() if action == ACTION_LOWER and reason != REASON_ROOM_WARM]
 
 
 def review_day(
