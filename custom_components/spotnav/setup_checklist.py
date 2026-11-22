@@ -36,7 +36,14 @@ A site's own rows (`capture_site_setup`, the shared settings popover's "Get star
 `demand_grid_power` as above, `battery` (a battery is found but SpotNav's battery control is off; dismissible) and
 `heat` (a heat pump is found but no heat settings are made; dismissible) and, for a site without a charger, `app`
 as above (SpotNav 3.0: the app pairs with a home too; a site with a charger gets it through the charger's rows). The
-other charger rows are not among them, and the dashboard's charger rows stay as they are.
+other charger rows are not among them.
+
+The charger card's rows (the dashboard's `setup`, `with_site_rows`) are the charger's own rows and, for a charger in
+a site, the site's rows a charger's own cannot have: `battery` and `heat` (`SITE_ROWS_FOR_CHARGER`). The rows both
+compute (the grid sign rows, `solar_forecast`, `demand_grid_power`) are the charger's, once; `charger` never
+applies to a charger, `app` is the charger's own, and `price` is never one: a charger card that shows prices must
+not ask for a price, and a charger without any price has its own notice. A dismissal holds for the installation, so a "Not
+needed" in either card holds in both.
 
 Prices are not a charger row: the price provider notice (`pricing/providers/notices.py`) already asks for what an
 area without a source of its own needs.
@@ -104,6 +111,23 @@ SITE_SETUP_ITEMS: Final = (
     SETUP_DEMAND_GRID_POWER,
     SETUP_BATTERY,
     SETUP_HEAT,
+    SETUP_APP,
+)
+#: The site's rows the charger card shows too (`with_site_rows`).
+SITE_ROWS_FOR_CHARGER: Final = (SETUP_BATTERY, SETUP_HEAT)
+#: The charger card's rows with the site's, in the order the card lists them.
+CHARGER_CARD_ITEMS: Final = (
+    SETUP_VEHICLE,
+    SETUP_CAR_LEVEL,
+    SETUP_SITE,
+    SETUP_GRID_POWER_SIGN,
+    SETUP_GRID_CURRENT_SIGN,
+    SETUP_SOLAR_FORECAST,
+    SETUP_DEMAND_GRID_POWER,
+    SETUP_BATTERY,
+    SETUP_HEAT,
+    SETUP_PHASE_SWITCHING,
+    SETUP_PHONE,
     SETUP_APP,
 )
 #: The rows a person may answer "Not needed" to.
@@ -314,6 +338,14 @@ def capture_site_setup(hass: HomeAssistant, site: ConfigEntry) -> tuple[SetupIte
         for item in left
         if item not in DISMISSIBLE_ITEMS or not _dismissed(hass, item)
     )
+
+
+def with_site_rows(charger: tuple[SetupItem, ...], site: tuple[SetupItem, ...]) -> tuple[SetupItem, ...]:
+    """The charger card's rows: the charger's own and the site's `SITE_ROWS_FOR_CHARGER` (see the module), each
+    once, in `CHARGER_CARD_ITEMS` order."""
+    own = {item.id for item in charger}
+    rows = list(charger) + [item for item in site if item.id in SITE_ROWS_FOR_CHARGER and item.id not in own]
+    return tuple(sorted(rows, key=lambda item: CHARGER_CARD_ITEMS.index(item.id)))
 
 
 def serialize_setup(items: tuple[SetupItem, ...]) -> dict[str, Any]:

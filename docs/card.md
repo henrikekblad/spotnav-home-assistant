@@ -76,9 +76,17 @@ each with a button to where it is done:
   chosen or the paired SpotNav app has its instant notifications on (opens the phones in Settings → Notifications);
 - **the SpotNav app**, until it has been used with this Home Assistant (opens it on Google Play).
 
-Every row but the car's charge level can be answered **Not needed**; that holds for every charger and every browser. Each row goes by
-itself once the thing is done. The prices are not a row: the Electricity price section already says what an area
-without a source needs.
+A charger in a site also gets two of the site's own rows, as the [house card](house-card.md)'s settings show them:
+a **home battery** that was found while SpotNav's battery control is off (opens the battery section in Settings)
+and a **heat pump** that was found with no heating set up (opens the heat section). A row both lists, such as the
+solar forecast, is shown once.
+
+Every row but the car's charge level can be answered **Not needed**; that holds for every charger, every card and
+every browser. Each row goes by itself once the thing is done. The prices are not a row: the Electricity price
+section already says what an area without a source needs.
+
+For an administrator with rows left, **Settings** starts with the same **Get started** section, with the same
+buttons, as the settings of the house and heat cards.
 
 ## The price graph
 

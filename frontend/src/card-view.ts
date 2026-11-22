@@ -47,7 +47,7 @@ import type { FiscalComponentName, ValueWrite } from "./value-writes";
 import { type CameraPicture, type PictureKind, type ReferenceAnswer } from "./camera-editor";
 import { integrationPath } from "./price-provider";
 import { priceSectionBody as sharedPriceSection, type SectionHost } from "./price-section";
-import { setupLineText, type SetupRowId } from "./setup-checklist";
+import { setupLineText, setupSettingsSection, type SetupRowId } from "./setup-checklist";
 import { type BlueprintUse } from "./automations";
 import { type SendDebug } from "./send-debug";
 import { type BetaCall } from "./beta";
@@ -1668,6 +1668,8 @@ export function createCardView(input: CardViewInput): CardView {
    */
   function overviewSections(): OverviewSection[] {
     return [
+      // "Get started" first, as in the house and heat cards' popover: the charger's rows and its site's.
+      { key: "setup", anyone: false, append: (body) => appendSetup(body) },
       { key: "market", anyone: false, append: (body) => body.append(priceSectionBody()) },
       {
         key: "vehicle",
@@ -1732,6 +1734,44 @@ export function createCardView(input: CardViewInput): CardView {
       { key: "display", anyone: true, append: (body) => body.append(displaySectionBody()) },
       { key: "support", anyone: false, append: (body) => body.append(supportSectionBody()) },
     ];
+  }
+
+  /** Settings' "Get started" (`setup-checklist.setupSettingsSection`), for an administrator with rows left. */
+  function appendSetup(body: HTMLElement): void {
+    if (!input.isAdmin || model.setup.length === 0) {
+      return;
+    }
+    const section = setupSettingsSection(doc, {
+      language: model.language,
+      rows: model.setup,
+      openPlan: () => {
+        settingsOverviewDialog.hide({ restoreFocus: false });
+        input.onOpenSettings("plan");
+      },
+      openSetting: (place, edit) => openSettingAt(place, edit),
+      forecastChoosable: (model.site?.solarForecastChoices.length ?? 0) > 0,
+      navigate: (path) => {
+        settingsOverviewDialog.hide({ restoreFocus: false });
+        navigateTo(doc, path);
+      },
+      openExternal: (url) => {
+        doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+      },
+      // Kept away at once here (the card is drawn again only once Settings closes), the last row with its heading.
+      dismiss: (id: SetupRowId) => {
+        const rows = Array.from(section.querySelectorAll<HTMLElement>("[data-setup]"));
+        rows.find((row) => row.dataset["setup"] === id)?.remove();
+        if (rows.length <= 1) {
+          section.remove();
+        }
+        input.onDismissSetup?.(id);
+      },
+      writeSiteOption: (field, value) => {
+        settingsOverviewDialog.hide({ restoreFocus: false });
+        input.onWriteSiteOption?.(field, value);
+      },
+    });
+    body.append(section);
   }
 
   // The shared battery and heat sections (`settings-popover.ts`), read again each time Settings opens.
@@ -2032,8 +2072,13 @@ export function createCardView(input: CardViewInput): CardView {
     openEntities,
     openSettingsOverview,
     overviewPanel,
+    expandHeat: () => {
+      if (siteSections !== null) {
+        siteSections.heatExpanded = true;
+      }
+    },
   });
-  const { openIssues, confirmRelease, openCapabilities, openAutomations, openPause, openStrategy } = dialogOpeners;
+  const { openIssues, openSettingAt, confirmRelease, openCapabilities, openAutomations, openPause, openStrategy } = dialogOpeners;
 
   const { paintEntities } = createEntityRowsSection(viewContext, settingsPage, {
     writeValue,

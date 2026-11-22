@@ -1,6 +1,7 @@
 // "Get started": what is still left to set up for this charger (the dashboard's `setup` block), shown to an
-// administrator in the card's attention line and the "What needs attention" dialog, and for a site in the shared
-// settings popover (`get_site_settings_view`'s `setup`, with the site's own rows: charger, price, battery, heat). Each row says what is
+// administrator in the card's attention line, the "What needs attention" dialog and at the top of Settings (with the
+// site's battery and heat rows the backend adds), and for a site in the shared settings popover
+// (`get_site_settings_view`'s `setup`, with the site's own rows: charger, price, battery, heat). Each row says what is
 // missing and has one button to the place where it is done; an optional row can also be answered "Not needed",
 // which the integration keeps for the whole installation. The backend decides which rows are left; the words
 // and the places are the card's. A grid sign row (the site's grid reading looks to have its sign the wrong way round)
@@ -9,7 +10,9 @@
 import { numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { addIntegrationPath } from "./price-provider";
 import type { SetupBlock } from "./validate";
+import { sectionHeading } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
+import { element } from "./dom";
 
 /** The rows this card knows, in the order it lists them. */
 export const SETUP_ROWS = [
@@ -159,6 +162,20 @@ export function setupSection(doc: Document, input: SetupSectionInput): HTMLEleme
     section.append(box);
   }
   return section;
+}
+
+/**
+ * Settings' "Get started", drawn the same at the top of the charger card's Settings page and of the house and heat
+ * cards' shared popover: the heading with the setup icon, then the rows (`setupSection`, without its own heading).
+ */
+export function setupSettingsSection(doc: Document, input: Omit<SetupSectionInput, "heading">): HTMLElement {
+  const wrap = element(doc, "section", C.settingsSection);
+  wrap.dataset["section"] = "setup";
+  wrap.append(
+    sectionHeading(doc, "setup", translate(input.language, "setup.heading")),
+    setupSection(doc, { ...input, heading: false }),
+  );
+  return wrap;
 }
 
 function open(input: SetupSectionInput, id: SetupRowId): void {

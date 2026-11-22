@@ -129,7 +129,18 @@ describe("the general Settings popover", () => {
     const sections = Array.from(dialog?.querySelectorAll("[data-section]") ?? []).map((node) =>
       node.getAttribute("data-section"),
     );
-    expect(sections).toEqual(["market", "vehicle", "entities", "site", "notifications", "display", "support"]);
+    // Get started first (its section and the rows' own, as in the popover), while this fixture has rows left.
+    expect(sections).toEqual([
+      "setup",
+      "setup",
+      "market",
+      "vehicle",
+      "entities",
+      "site",
+      "notifications",
+      "display",
+      "support",
+    ]);
     // Every fact shown came from the dashboard already read; the one thing asked of the backend is the
     // entity configuration (administrators only, on its own line in the fake transport).
     expect(hass.messages.length).toBe(before);

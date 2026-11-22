@@ -194,3 +194,77 @@ async def test_the_app_dismisses_over_the_webhook_with_the_commands_answers(
     for item in ("prices", "car_level", None, ["site"], {"id": "vehicle"}):
         assert await _dismiss_over_webhook(client, item) == refused, item
     assert "vehicle" in ids(hass, first)
+
+
+def _battery_found(hass: HomeAssistant, site_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The site's battery facts name a battery (found, SpotNav's control left off)."""
+    from custom_components.spotnav.battery.facts import BatteryFacts
+    from custom_components.spotnav.runtime import site_controller_for
+
+    controller = site_controller_for(hass, site_id)
+    assert controller is not None
+    monkeypatch.setattr(controller.battery_shadow, "facts", BatteryFacts(battery_entity_id="sensor.battery_power"))
+
+
+async def test_the_charger_lists_its_sites_battery_and_heat_rows_once(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.heat import detect
+
+    charger, site = await setup_site_with_charger(hass)
+    assert not {"battery", "heat", "charger"} & set(ids(hass, charger))
+    _battery_found(hass, site.entry_id, monkeypatch)
+    monkeypatch.setattr(detect, "read_heat_pumps", lambda _hass: [object()])
+    found = ids(hass, charger)
+    assert {"id": "battery", "dismissible": True} in items(hass, charger)
+    assert {"id": "heat", "dismissible": True} in items(hass, charger)
+    # No row twice, never the site's "add a charger", and in the card's order: the site's rows before the phone's.
+    assert len(found) == len(set(found)) and "charger" not in found
+    assert found.index("battery") < found.index("heat") < found.index("phone")
+
+
+def test_the_site_rows_join_the_chargers_once_and_in_the_cards_order() -> None:
+    from custom_components.spotnav.setup_checklist import SetupItem, with_site_rows
+
+    charger = (
+        SetupItem("vehicle", True),
+        SetupItem("grid_power_sign", False, "grid_power_inverted", False),
+        SetupItem("solar_forecast", True),
+        SetupItem("app", True),
+    )
+    site = (
+        SetupItem("charger", True),
+        SetupItem("price", False),
+        SetupItem("grid_power_sign", False, "grid_power_inverted", False),
+        SetupItem("solar_forecast", True),
+        SetupItem("demand_grid_power", False),
+        SetupItem("battery", True),
+        SetupItem("heat", True),
+        SetupItem("app", True),
+    )
+    # The site's price is never the charger's: its card shows prices or has its own notice.
+    assert [item.id for item in with_site_rows(charger, site)] == [
+        "vehicle",
+        "grid_power_sign",
+        "solar_forecast",
+        "battery",
+        "heat",
+        "app",
+    ]
+    assert with_site_rows(charger, ()) == charger
+
+
+async def test_a_battery_dismissed_in_either_card_is_gone_from_both(
+    hass: HomeAssistant, hass_ws_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.setup_checklist import capture_site_setup
+
+    charger, site = await setup_site_with_charger(hass)
+    _battery_found(hass, site.entry_id, monkeypatch)
+    assert "battery" in ids(hass, charger)
+    assert "battery" in [item.id for item in capture_site_setup(hass, site)]
+    socket = await admin(hass, hass_ws_client)
+    answer = await ws_call(socket, {"type": "spotnav/dismiss_setup_item", "item": "battery"})
+    assert answer["result"] == {"ok": True}
+    assert "battery" not in ids(hass, charger)
+    assert "battery" not in [item.id for item in capture_site_setup(hass, site)]

@@ -27,7 +27,7 @@ Rows marked **site-wide** apply to every charger and card on the same site.
 
 | Section | What is there | Read more |
 | --- | --- | --- |
-| **Get started** | What is left to set up, one row each. **Not needed** hides a row. | [Get started](get-started.md) |
+| **Get started** | What is left to set up, one row each: the charger's and its site's (home battery, heating). **Not needed** hides a row. | [Get started](get-started.md) |
 | **Electricity price** (site-wide) | Price area, VAT, energy tax, grid fee, the supplier's markup, what a sold kWh earns, the demand charge. | [Prices](prices.md), [The electricity price](price-device.md) |
 | **Car** | The car's charge level sensor, battery size, consumption, onboard charger phases, charge limit. | [Target state of charge](target-soc.md) |
 | **Which car is plugged in?** | Identification: automatic, always ask, or off. Optional camera. | [Which car is plugged in?](vehicle-identification.md) |
