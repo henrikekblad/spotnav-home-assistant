@@ -11,7 +11,11 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
 * Huawei Solar, `huawei_solar` (wlcrs `c754df5`, library huawei-solar 3.1.0): `<serial>_<register name>`.
 * SolarEdge Modbus Multi, `solaredge_modbus_multi` (WillCodeForCats `0ab6569`): `<model>_<serial>[_B<n>]_<key>`;
   the storage controls sit on the inverter, the battery's facts on its own `B<n>` device.
-* SolaX Modbus, `solax_modbus` (wills106 `8a1f3fc`): `<hub name>_<key>`, the SolaX plugin's devices only.
+* SolaX Modbus, `solax_modbus` (wills106 `8a1f3fc`): `<hub name>_<key>`, the SolaX plugin's devices only. The
+  firmware is the computed `software_version` (the raw `firmware_dsp`/`firmware_arm` registers are internal); the
+  same string is the inverter device's `sw_version`, which `facts.py` falls back on (wills106 `4acd644`). The size
+  is `battery_install_capacity` (kWh, GEN3) or `battery_system_installed_capacity` (Wh, GEN4-6, Modbus protocol
+  100 and later); both are disabled by default. `bms_battery_capacity` is not read: on GEN5/6 it is battery 1 only.
 * Three more plugins of `solax_modbus` (wills106 `4acd644`, read 2026-11-18), each its own adapter, told apart by
   the manufacturer the plugin gives the device, and read only here (Solinteg alone has a control, in `commands.py`):
   * Sofar (`plugin_sofar.py`, "Sofar Solar"): the level is `battery_capacity_total` (%, all battery inputs; the
@@ -422,7 +426,9 @@ SOLAX: Final = Adapter(
     manufacturer="solax",
     facts={
         "soc": _key("battery_capacity", reject=r"(?:bms|pm|pm_i\d+)_battery_capacity$"),
-        "capacity": _key("battery_install_capacity"),
+        # GEN3's and GEN4-6's, never both on one inverter.
+        "capacity": Match(("sensor",), re.compile(r"(?:^|_)(?:battery_install_capacity|battery_system_installed_capacity)$")),
+        "firmware": _key("software_version"),
         "charged_total": _key("battery_input_energy_total"),
         "discharged_total": _key("battery_output_energy_total"),
     },

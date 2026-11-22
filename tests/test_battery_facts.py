@@ -14,6 +14,7 @@ import pytest
 
 from custom_components.spotnav.battery.adapters import ADAPTERS, adapter_for
 from custom_components.spotnav.battery.facts import EntityFact, battery_facts, to_kw, to_kwh
+from custom_components.spotnav.battery.gate import firmware_key, firmware_known
 
 BRANDS: dict[str, dict[str, Any]] = json.loads(
     (Path(__file__).parent / "fixtures" / "battery" / "brands.json").read_text(encoding="utf-8")
@@ -188,6 +189,74 @@ def test_solax_under_another_remote_control_is_not_free() -> None:
     facts = _facts("solax", **{"select.solax_remotecontrol_power_control": {"state": "Enabled Power Control"}})
 
     assert facts.management.state == "self_managed"
+
+
+def _solax(*extra: EntityFact, sw_version: str | None = None, without: str = ""):
+    brand = BRANDS["solax"]
+    entities = [*(entity for entity in _entities(brand) if entity.entity_id != without), *extra]
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+    return battery_facts(battery, entities, manufacturer=brand["manufacturer"], sw_version=sw_version)
+
+
+def _solax_entity(key: str, state: str, unit: str | None = None, *, disabled: bool = False) -> EntityFact:
+    return EntityFact(
+        f"sensor.solax_{key}", "solax_modbus", f"SolaX_{key}", device_id="battery", config_entry_id="entry",
+        disabled=disabled, state=state, unit=unit,
+    )
+
+
+def test_solax_without_a_firmware_entity_takes_the_devices_software_version() -> None:
+    """Field report SN-7R5Y: the firmware registers are internal in solax_modbus, the version only on the device."""
+    facts = _solax(sw_version="DSP v3.05 ARM v3.12")
+
+    assert facts.firmware == "DSP v3.05 ARM v3.12" and facts.sources["firmware"] == "device sw_version"
+    key = firmware_key(facts.firmware, facts.integration, "2026.11.04")
+    assert key == "DSP v3.05 ARM v3.12 | solax_modbus 2026.11.04" and firmware_known(key)
+    # The same string after a restart is the same key.
+    assert firmware_key(_solax(sw_version="DSP v3.05 ARM v3.12").firmware, "solax_modbus", "2026.11.04") == key
+
+
+@pytest.mark.parametrize("sw_version", [None, "", "   ", "unknown", "unavailable"])
+def test_no_software_version_on_the_device_leaves_the_firmware_unknown(sw_version: str | None) -> None:
+    facts = _solax(sw_version=sw_version)
+
+    assert facts.firmware is None and "firmware" not in facts.sources
+    assert not firmware_known(firmware_key(facts.firmware, facts.integration, "2026.11.04"))
+
+
+def test_the_firmware_entity_comes_before_the_devices_software_version() -> None:
+    facts = _solax(_solax_entity("software_version", "DSP v3.05 ARM v3.12"), sw_version="something else")
+
+    assert facts.firmware == "DSP v3.05 ARM v3.12" and facts.sources["firmware"] == "sensor.solax_software_version"
+    # An entity that reads nothing is no firmware; the device's version is.
+    blank = _solax(_solax_entity("software_version", "unavailable"), sw_version="DSP v3.05 ARM v3.12")
+    assert blank.firmware == "DSP v3.05 ARM v3.12"
+
+
+def test_every_adapter_falls_back_on_the_devices_software_version() -> None:
+    brand = BRANDS["sofar"]
+    entities = _entities(brand)
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+
+    facts = battery_facts(battery, entities, manufacturer=brand["manufacturer"], sw_version=" V1.2 ")
+
+    assert facts.firmware == "V1.2"
+    # Sigenergy's own firmware entity is still read first.
+    sigen = BRANDS["sigenergy"]
+    entities = _entities(sigen)
+    battery = next(entity for entity in entities if entity.entity_id == sigen["battery"])
+    assert battery_facts(battery, entities, manufacturer="Sigenergy", sw_version="other").firmware == "V100R001C21SPC117"
+
+
+def test_solax_gen4_reads_its_installed_capacity_in_wh() -> None:
+    # A GEN4 inverter has no GEN3 install capacity.
+    gen3 = "sensor.solax_battery_install_capacity"
+    facts = _solax(_solax_entity("battery_system_installed_capacity", "11520", "Wh"), without=gen3)
+
+    assert facts.capacity_kwh == pytest.approx(11.52)
+    assert facts.sources["capacity"] == "sensor.solax_battery_system_installed_capacity"
+    # The BMS' total energy (battery 1 only on GEN5/6) is never the size.
+    assert _solax(without=gen3).capacity_kwh is None
 
 
 def test_victron_without_dynamic_ess_follows_the_ess_mode() -> None:
