@@ -758,3 +758,23 @@ def test_the_ess_controls_are_found_on_another_device_of_the_battery_s_entry_but
     # One on the battery's own device wins over another elsewhere.
     own = replace(other, device_id="battery")
     assert role_reads(VICTRON_CONTROL, [battery, ess, own], battery)["charge_power"].entity_id == own.entity_id
+
+
+def test_a_sale_left_standing_in_the_grid_setpoint_is_told_while_spotnav_holds_no_snapshot_of_it() -> None:
+    """A setpoint far below 0 that SpotNav did not write keeps selling under a hold or a discharge for the house (they
+    do not write it): the checklist says so, and nothing writes it."""
+    plant = Plant()
+    plant.states["grid_setpoint"] = "-2000"
+    idle = Executor(VICTRON_CONTROL)
+    assert idle.told_problems(plant.reads(idle, T0)) == ("grid_setpoint_selling",)
+    # Nothing writes it.
+    _now, results = _run(Executor(VICTRON_CONTROL), plant, T0, 4, "hold")
+    assert all(role != "grid_setpoint" for role, _value in _written(results))
+    # A small bias, or SpotNav's own sale (with a snapshot of the value found), is not.
+    plant = Plant()
+    plant.states["grid_setpoint"] = "-150"
+    assert idle.told_problems(plant.reads(idle, T0)) == ()
+    plant, executor = Plant(), Executor(VICTRON_CONTROL)
+    now, _ = _run(executor, plant, T0, 4, "export_discharge", 6.0)
+    assert float(plant.states["grid_setpoint"]) < -200 and "grid_setpoint" in executor.state.snapshot
+    assert executor.told_problems(plant.reads(executor, now)) == ()

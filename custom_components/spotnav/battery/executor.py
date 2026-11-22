@@ -311,6 +311,8 @@ DAILY_WRITE_CAP: Final = 96
 #: The least time since the last renewal (or change) before a change of action renews the watchdog roles it leaves
 #: as they were (s).
 RENEW_ON_CHANGE_GAP_S: Final = 60.0
+#: The checklist's code for a sale left standing in a setpoint SpotNav holds no snapshot of (`told_problems`).
+SETPOINT_SELLING: Final = "grid_setpoint_selling"
 #: Hand-back reasons for a day's budget that neither block the control nor are logged at every look after.
 _BUDGET_REASONS: Final = ("setpoint_write_cap", "charge_write_budget")
 #: A restore write that does not read back is retried after these delays (s), then given up.
@@ -1583,8 +1585,8 @@ class Executor:
         return None if read is None else read.state
 
     def told_problems(self, reads: Mapping[str, RoleRead]) -> tuple[str, ...]:
-        """The person's own settings that keep an action from ever running (`commands.TOLD_ACTION_REASONS`), for
-        the status."""
+        """The person's own settings that keep an action from ever running (`commands.TOLD_ACTION_REASONS`), and a
+        sale left standing in a setpoint SpotNav holds no snapshot of (`SETPOINT_SELLING`), for the status."""
         found: list[str] = []
         for _act, name, forbidden, why in self.control.action_requires:
             read = reads.get(name)
@@ -1595,6 +1597,19 @@ class Executor:
                 state, forbidden
             ):
                 found.append(why)
+        for role in self.control.roles:
+            # A sale left standing (`Role.restored_below`: Victron's grid setpoint far below 0) that SpotNav holds no
+            # snapshot of: a hold or a discharge for the house does not write it, so it sells on. Told, never written.
+            read = reads.get(role.name)
+            if role.restored_below is None or read is None or not read.found or role.name in self.state.snapshot:
+                continue
+            text = reading(role, read.state)
+            try:
+                value = None if text is None else float(text)
+            except ValueError:
+                value = None
+            if value is not None and math.isfinite(value) and value < role.restored_below[0]:
+                found.append(SETPOINT_SELLING)
         return tuple(found)
 
     def _exit_reason(self, inputs: ExecInputs) -> str | None:

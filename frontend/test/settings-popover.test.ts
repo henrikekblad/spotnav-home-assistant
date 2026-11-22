@@ -126,6 +126,8 @@ describe("the battery's words", () => {
     );
     expect(batteryNeed("sv", "inverter_power_zero")).toContain("\"Max inverter power\" är 0 i Victrons GX");
     expect(batteryNeed("en", "inverter_power_zero")).toContain("SpotNav cannot run a discharge");
+    expect(batteryNeed("en", "grid_setpoint_selling")).toContain("far below 0");
+    expect(batteryNeed("sv", "grid_setpoint_selling")).toContain("långt under 0");
     expect(["obeyed", "aborted:inverter_power_zero"].map(outcomeVerdict)).toEqual(["passed", "pending"]);
     expect(batteryLine("sv", "watching:strategy")).toBe("Styr inget än: godkänn att SpotNav går före batteriets egen strategi.");
     expect(["obeyed", "restored", "ignored", "aborted:no_effect", "aborted:fuse", "not_judgeable:nearly_full"].map(outcomeVerdict)).toEqual([

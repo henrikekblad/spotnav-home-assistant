@@ -234,6 +234,13 @@ async def test_a_victron_max_inverter_power_of_0_is_told_in_the_checklist(hass: 
     hass.states.async_set(found["system_ess_max_inverter_power_limit"], "unknown")
     control._look_id += 1
     assert "inverter_power_zero" not in control.status()["needs"]
+    # A sale left standing in the grid setpoint, which SpotNav holds no snapshot of.
+    hass.states.async_set(found["system_ac_power_set_point"], "-2500")
+    control._look_id += 1
+    assert "grid_setpoint_selling" in control.status()["needs"]
+    hass.states.async_set(found["system_ac_power_set_point"], "-20")
+    control._look_id += 1
+    assert "grid_setpoint_selling" not in control.status()["needs"]
 
 
 async def test_a_victron_plant_is_read_at_its_multis_and_its_phase_caps_count_the_house_at_its_peak(

@@ -1717,6 +1717,7 @@
   "battery.need.strategyAck": "Accepteer dat de opdrachten van SpotNav voorgaan op de strategie die de batterij in haar eigen cloud draait.",
   "battery.need.selfManaged": "De batterij draait op zijn eigen optimalisatie. Zet hem in de app van de batterij op eigen verbruik als SpotNav hem moet aansturen.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" staat op 0 in de Victron GX, dus de batterij ontlaadt nooit en SpotNav kan geen ontlading uitvoeren. Zet hem in de ESS-instellingen van de GX op -1 (geen limiet) of een vermogen als de batterij het huis moet voeden.",
+  "battery.need.gridSetpointSelling": "Het netsetpoint (grid setpoint) van de Victron GX staat ver onder 0, dus de batterij blijft aan het net verkopen, wat SpotNav ook plant. Zet het in de ESS-instellingen terug op een kleine waarde (de standaard van de GX is 50 W) als je dat niet wilt; SpotNav wijzigt het niet.",
   "battery.needs.heading.one": "Nog één ding voordat SpotNav de batterij kan aansturen",
   "battery.needs.heading.other": "Nog {countWord} dingen voordat SpotNav de batterij kan aansturen",
   "battery.need.controlsDisabled.one": "Schakel de uitgeschakelde instelling {names} in op het apparaat van de batterij in Home Assistant.",

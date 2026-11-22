@@ -1717,6 +1717,7 @@
   "battery.need.strategyAck": "Hyväksy, että SpotNavin komennot ohittavat strategian, jota akku ajaa omassa pilvessään.",
   "battery.need.selfManaged": "Akkua ohjaa sen oma optimointi. Vaihda akun sovelluksessa omakäyttötilaan, jos SpotNavin halutaan ohjaavan sitä.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" on Victronin GX:ssä 0, joten akku ei koskaan pura eikä SpotNav voi ajaa purkua. Aseta se GX:n ESS-asetuksissa arvoon -1 (ei rajaa) tai johonkin tehoon, jos akun on katettava talon kulutus.",
+  "battery.need.gridSetpointSelling": "Victron GX:n verkon asetusarvo (grid setpoint) on selvästi alle 0, joten akku myy edelleen verkkoon riippumatta siitä, mitä SpotNav suunnittelee. Palauta se ESS-asetuksissa pieneen arvoon (GX:n oletus on 50 W), jos et halua tätä; SpotNav ei muuta sitä.",
   "battery.needs.heading.one": "Yksi asia jäljellä ennen kuin SpotNav voi ohjata akkua",
   "battery.needs.heading.other": "{countWord} asiaa jäljellä ennen kuin SpotNav voi ohjata akkua",
   "battery.need.controlsDisabled.one": "Ota käyttöön käytöstä poistettu asetus {names} akun laitteessa Home Assistantissa.",

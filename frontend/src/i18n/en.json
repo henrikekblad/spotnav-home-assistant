@@ -1717,6 +1717,7 @@
   "battery.need.strategyAck": "Accept that SpotNav's commands override the strategy the battery runs in its own cloud.",
   "battery.need.selfManaged": "The battery runs its own optimiser. Switch it to self-consumption in the battery's app if SpotNav is to run it.",
   "battery.need.inverterPowerZero": "\"Max inverter power\" is 0 on the Victron GX, so the battery never discharges and SpotNav cannot run a discharge. Set it to -1 (no limit) or a power in the GX's ESS settings if the battery is to cover the house.",
+  "battery.need.gridSetpointSelling": "The Victron GX's grid setpoint is far below 0, so the battery keeps selling to the grid whatever SpotNav plans. Set it back to a small value (the GX's default is 50 W) in its ESS settings if that is not what you want; SpotNav does not change it.",
   "battery.needs.heading.one": "One thing left before SpotNav can control the battery",
   "battery.needs.heading.other": "{countWord} things left before SpotNav can control the battery",
   "battery.need.controlsDisabled.one": "Turn on the disabled setting {names} on the battery's device in Home Assistant.",

@@ -492,6 +492,8 @@ export function batteryNeed(language: Language, need: string): string {
       return translate(language, "battery.need.selfManaged");
     case "inverter_power_zero":
       return translate(language, "battery.need.inverterPowerZero");
+    case "grid_setpoint_selling":
+      return translate(language, "battery.need.gridSetpointSelling");
     default:
       return need;
   }
