@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from custom_components.spotnav.heat.relay_effect import BlockResult, Effect
-from custom_components.spotnav.heat.review import blocks_of, heat_base, review_day
+from custom_components.spotnav.heat.review import blocks_of, heat_base, plan_lowered_hours, review_day
 
 DAY = date(2026, 11, 17)
 MIDNIGHT = datetime(2026, 11, 16, 23, 0, tzinfo=timezone.utc)
@@ -90,3 +90,29 @@ def test_a_plan_alone_on_a_day_the_relay_stayed_open() -> None:
     assert review["plan"]["saved_kwh"] == pytest.approx(0.4)
     assert review["relay"] == {"hours": 0.0, "value": 0.0, "saved_kwh": 0.0, "measured": 0, "coldest_min_c": None, "minutes_below": 0}
     assert review["day"] is None
+
+
+def test_hours_lowered_only_because_the_house_was_already_warm_are_no_plan_value() -> None:
+    """SN-V34E: 18 of 24 hours kept as lowered for `room_warm` counted as SpotNav's saving."""
+    kept = {
+        H[2]: ("lower", "room_warm"),
+        H[3]: ("lower", "room_warm"),
+        H[16]: ("lower", "dear_hour"),
+        H[17]: ("lower", "tight_hour"),
+        H[18]: ("normal", "normal"),
+    }
+    assert plan_lowered_hours(kept) == [H[16], H[17]]
+
+    review = review_day(
+        DAY,
+        HOURS,
+        prices=prices(),
+        heat_kwh={hour: 1.0 for hour in HOURS},
+        relay=[],
+        plan_lowered=plan_lowered_hours(kept),
+        measured=[],
+        effect=Effect(0.4, 0.5, 6),
+        coldest={},
+        low_c=20.5,
+    )
+    assert review["plan"]["hours"] == 2.0

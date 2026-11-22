@@ -49,6 +49,9 @@ SAMPLE_INTERVAL_S: Final = 60
 SAMPLE_COUNT: Final = HISTORY_S // SAMPLE_INTERVAL_S
 #: Plug-ins kept per charger, the current one included.
 SESSIONS_KEPT: Final = 5
+#: A plug-in this soon after the unplug is the same plug-in to the vehicle identification
+#: (`vehicles/identification.UNPLUG_DEBOUNCE_S`).
+REPLUG_S: Final = 120.0
 #: Entries kept per log of one plug-in (the oldest dropped first, and counted). Solar's are kept longest: at a
 #: decision a minute they are five hours of a sunny day. The commands and load balancing's decisions are as frequent
 #: and longer each; the minute rows state the current written and asked for over the whole day, so half do.
@@ -314,6 +317,11 @@ def _count(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
 
+def _moment(value: Any) -> datetime | None:
+    moment = dt_util.parse_datetime(value) if isinstance(value, str) else None
+    return moment if moment is not None and moment.tzinfo is not None else None
+
+
 def _new_session(now: datetime, plugged_in_at: str | None, strategy: str | None) -> dict[str, Any]:
     return {
         "opened_at": now.isoformat(),
@@ -463,11 +471,29 @@ class ChargerDay:
         strategy = self._strategy()
         if strategy is not None and strategy != self._session_strategy(session):
             changed |= self._strategy_changed(session, strategy)
-        vehicle = self._vehicle(session["plugged_in_at"])
-        if session["unplugged_at"] is None and isinstance(vehicle, dict) and vehicle != session["vehicle"]:
-            session["vehicle"] = dict(vehicle)
-            changed = True
+        # The car is decided for the identification's plug-in, which takes in the replugs within its debounce:
+        # every plug-in of that run without a car gets it, also one already unplugged (decided after the unplug);
+        # one still plugged in follows a correction too.
+        run = self._last_run()
+        vehicle = self._vehicle(run[0]["plugged_in_at"])
+        if isinstance(vehicle, dict):
+            for member in run:
+                if vehicle != member["vehicle"] and (member["vehicle"] is None or member["unplugged_at"] is None):
+                    member["vehicle"] = dict(vehicle)
+                    changed = True
         return changed
+
+    def _last_run(self) -> list[dict[str, Any]]:
+        """The last plug-in with those before it that came back within `REPLUG_S` of their unplug, oldest first:
+        what the vehicle identification counts as one plug-in."""
+        run = [self._sessions[-1]]
+        for earlier in reversed(self._sessions[:-1]):
+            unplugged = _moment(earlier["unplugged_at"])
+            plugged = _moment(run[0]["plugged_in_at"])
+            if unplugged is None or plugged is None or (plugged - unplugged).total_seconds() > REPLUG_S:
+                break
+            run.insert(0, earlier)
+        return run
 
     @staticmethod
     def _session_strategy(session: dict[str, Any]) -> str | None:

@@ -21,6 +21,7 @@ from custom_components.spotnav.debug_day import (
     format_row,
     LOG_STORE_KEY,
     parse_row,
+    REPLUG_S,
     row_time,
     rows_from_store,
     SAMPLE_COUNT,
@@ -29,6 +30,7 @@ from custom_components.spotnav.debug_day import (
     SESSIONS_KEPT,
     store_key,
 )
+from custom_components.spotnav.vehicles.identification import UNPLUG_DEBOUNCE_S
 from custom_components.spotnav.log_buffer import attach_log_buffer, MAX_WARNINGS, SPOTNAV_LOGGER
 from custom_components.spotnav.runtime import charger_data
 
@@ -153,6 +155,44 @@ async def test_strategy_changes_and_the_car_are_followed_each_minute(hass: HomeA
     assert [change["strategy"] for change in session["strategy_changes"]] == ["solar"]
     assert session["vehicle"] == {"vehicle_id": "vehicle_a", "method": "answered"}
     assert not day.rows, "no row of its own without a reader of one (a member of a site)"
+
+
+async def test_a_car_decided_after_the_unplug_or_over_a_quick_replug_is_kept(hass: HomeAssistant) -> None:
+    """The identification decides half an hour in and counts a replug within its debounce as the same plug-in
+    (SN-V34E): the car reaches the plug-in it was decided for, also once unplugged, and each quick replug of it."""
+    asked: list[str | None] = []
+    car: dict[str, Any] = {}
+
+    def vehicle(plugged_in_at: str | None) -> dict[str, Any] | None:
+        asked.append(plugged_in_at)
+        return dict(car) or None
+
+    day = ChargerDay(hass, "c1", vehicle=vehicle)
+    await day.async_load()
+    day.note_ownership(_plug("plug_in", "2026-11-21T07:00:00+00:00"))
+    day.note_ownership(_plug("unplug", "2026-11-21T07:20:00+00:00", True))
+    day.minute()
+    car.update(vehicle_id="vehicle_a", method="only_candidate")
+    day.minute()  # decided after the unplug
+    assert day.sessions()[-1]["vehicle"] == {"vehicle_id": "vehicle_a", "method": "only_candidate"}
+
+    car.clear()
+    day.note_ownership(_plug("plug_in", "2026-11-21T09:50:42+00:00"))
+    day.note_ownership(_plug("unplug", "2026-11-21T10:32:13+00:00", True))
+    day.note_ownership(_plug("plug_in", "2026-11-21T10:32:28+00:00"))  # back after 15 s: the same plug-in
+    day.note_ownership(_plug("unplug", "2026-11-21T10:33:23+00:00", True))
+    day.note_ownership(_plug("plug_in", "2026-11-21T10:34:58+00:00"))  # back after 95 s: still the same
+    car.update(vehicle_id="vehicle_b", method="only_candidate")
+    asked.clear()
+    day.minute()
+    assert asked == ["2026-11-21T09:50:42+00:00"]  # asked for the identification's own plug-in
+    sessions = day.sessions()
+    assert [session["vehicle"]["vehicle_id"] for session in sessions[-3:]] == ["vehicle_b"] * 3
+    assert sessions[-4]["vehicle"]["vehicle_id"] == "vehicle_a"  # an earlier plug-in keeps its own car
+
+
+def test_the_replug_window_is_the_identifications_debounce() -> None:
+    assert REPLUG_S == UNPLUG_DEBOUNCE_S
 
 
 # ---------------------------------------------------------------------------------------------- the store

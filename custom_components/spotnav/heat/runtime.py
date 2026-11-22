@@ -84,7 +84,7 @@ from .relay_effect import (
     measure_block,
 )
 from .relay_schedule import expected_closings, too_cold, unknown_closing
-from .review import review_day
+from .review import plan_lowered_hours, review_day
 from .rooms import WINDOW, Indoor, SensorReading, coldest_c, indoor, warm_c, warmest_c
 from .shadow_rule import ACTION_LOWER, REASON_ROOM_WARM, BandHour, RoomWarm, band, day_hours, would_do
 
@@ -882,7 +882,7 @@ class HeatShadow:
                 prices=prices,
                 heat_kwh=heat,
                 relay=relay,
-                plan_lowered=[hour for hour, (action, _reason) in kept.items() if action == ACTION_LOWER],
+                plan_lowered=plan_lowered_hours(kept),
                 measured=[block for block in self.blocks if start <= block.start < end],
                 effect=self.effect,
                 coldest=coldest,

@@ -831,6 +831,7 @@ class SiteCapacityController:
             heat_setting=self._heat_meter_setting,
             heat_zones=self._heat_zones,
             heat_moved=self._heat_moved_meters,
+            outdoor_setting=self._heat_outdoor_sensor,
         )
         # A broken statistic hour of a heat zone stays out of the heat split's learning.
         self.house_forecast.heat.cap_kw = self._main_fuse_kw
@@ -5640,6 +5641,13 @@ class SiteCapacityController:
         raw = None if entry is None else entry.data.get(CONF_HEAT)
         return tuple(zone.entity_id for zone in read_heat_config(raw).zones)
 
+    def _heat_outdoor_sensor(self) -> str | None:
+        """The outdoor sensor chosen in the heat settings (`heat/config.py`; `None`: the house forecast's own), read
+        from the entry: it is written without a reload."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        raw = None if entry is None else entry.data.get(CONF_HEAT)
+        return read_heat_config(raw).outdoor_sensor
+
     def _heat_moved_meters(self) -> tuple[str, ...]:
         """The Energy dashboard devices the household moved to heat in the house pie (`CONF_METER_BELONGS`)."""
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
@@ -6759,10 +6767,22 @@ class SiteCapacityController:
 
     def grid_power_snapshot(self) -> dict[str, Any]:
         """The total grid power's diagnostics for the site sensor and the diagnostics dump: whether
-        and where it is configured, its value and age, and the export derived from it."""
+        and where it is configured, its value and age, and the export derived from it.
+
+        The age is the freshest of the meter's entities: the total changes whenever either half of an
+        import/export pair does, and the half that sits at 0 W for hours (export at night) says nothing
+        of how old the reading is."""
         source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
         total = self.grid_total_power()
         value_w, state = self.grid_total_reading()
+        age_s = None if total is None else total.age_s
+        if source is not None:
+            ages = [
+                self._power_phase_value(entity_id).age_s for entity_id in (source.power, source.power_export) if entity_id
+            ]
+            known = [age for age in ages if age is not None]
+            if known:
+                age_s = min(known)
         return {
             "configured": source is not None,
             "power_entity_id": None if source is None else source.power,
@@ -6770,7 +6790,7 @@ class SiteCapacityController:
             "inverted": bool(self.config.get(CONF_GRID_POWER_INVERTED, False)),
             "state": state,
             "value_w": value_w,
-            "age_s": None if total is None else total.age_s,
+            "age_s": age_s,
             "export_w": None if value_w is None else max(0.0, -value_w),
             "used_for_surplus": source is not None
             and self.config.get(CONF_MEASUREMENT_MODE) == MEASUREMENT_MODE_DIRECT,

@@ -479,11 +479,13 @@ def day_record(
     return record
 
 
-def bundle_days(hass: HomeAssistant, entry: ConfigEntry, controller: Any, now: datetime) -> list[dict[str, Any]]:
+def bundle_days(
+    hass: HomeAssistant, entry: ConfigEntry, controller: Any, now: datetime, *, version: str | None = None
+) -> list[dict[str, Any]]:
     """The last `BUNDLE_DAYS` completed days' records for the debug bundle, newest first (the chargers' plug-ins are
     in the bundle already, so left out)."""
     today = now.astimezone(time_zones.require_zone(controller.demand.tracker.tz)).date()
     return [
-        day_record(hass, entry, controller, today - timedelta(days=back), now, chargers=False)
+        day_record(hass, entry, controller, today - timedelta(days=back), now, chargers=False, version=version)
         for back in range(1, BUNDLE_DAYS + 1)
     ]

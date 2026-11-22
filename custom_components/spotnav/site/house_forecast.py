@@ -33,7 +33,8 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 * **Weather** (no setting): `weather.forecast_home` (the core Met.no default), else the only weather entity, else
   none. Its `temperature` is read on every reading of the site into the running hour (`HourMean.outdoor_c`); its
   hourly forecast is fetched once an hour (`weather.get_forecasts`). Fahrenheit is turned into Celsius.
-* **Outdoor temperature now** (no setting): a heat pump's own outdoor sensor when exactly one is found
+* **Outdoor temperature now**: the heat settings' outdoor sensor (`heat/config.py`) when one is set and reads, else
+  a heat pump's own outdoor sensor when exactly one is found
   (`OUTDOOR_SENSORS`: NIBE's BT1 through `nibe_heatpump` or `myuplink`, MELCloud's outside temperature, matched by
   the integration and the key in the unique id), else the weather entity's. A sensor found by its name or area is not
   counted: too often a sensor in the sun or indoors. Looked for at each refresh; the source is in the diagnostics
@@ -365,11 +366,13 @@ class SiteHouseForecast:
         heat_setting: Callable[[], str | None] = lambda: None,
         heat_zones: Callable[[], Sequence[str]] = lambda: (),
         heat_moved: Callable[[], Sequence[str]] = lambda: (),
+        outdoor_setting: Callable[[], str | None] = lambda: None,
     ) -> None:
         self.hass = hass
         self._demand = demand
         self._flat_kw = flat_kw
         self._has_battery = has_battery
+        self._outdoor_setting = outdoor_setting
         # Only what shows the forecast listens (the site state sensor): a refresh is no new reading, so nothing
         # that decides (a charger's solar evaluation) is woken by it.
         self._listeners: set[Callable[[], None]] = set()
@@ -396,8 +399,13 @@ class SiteHouseForecast:
         self.production_status: str | None = None
         self.weather_entity_id: str | None = None
         self.weather_status: str = WEATHER_NONE
-        #: The heat pump's outdoor sensor when exactly one is found (looked for at each refresh).
+        #: The outdoor sensor read: the heat settings' one while it reads, else the heat pump's when exactly one is
+        #: found (looked for at each refresh).
         self.outdoor_entity_id: str | None = None
+        #: The heat pump's outdoor sensor when exactly one is found, whether the heat settings' one is used or not.
+        self._found_outdoor: str | None = None
+        #: The weather entity the last weather reading came from (the heat settings' one or the found one).
+        self._outdoor_weather: str | None = None
         #: Where the last outdoor reading came from: `OUTDOOR_SENSOR`, `OUTDOOR_WEATHER` or `None` (no reading).
         self.outdoor_source: str | None = None
         self._outdoor_looked = False
@@ -506,27 +514,43 @@ class SiteHouseForecast:
         )
 
     def _look_for_outdoor_sensor(self) -> None:
-        self.outdoor_entity_id = self._outdoor_sensor()
+        self._found_outdoor = self._outdoor_sensor()
+        self.outdoor_entity_id = self._found_outdoor
         self._outdoor_looked = True
 
+    def _reading_c(self, entity_id: str | None) -> float | None:
+        """A temperature sensor's or a weather entity's temperature now (°C), `None` when it does not read."""
+        state = None if entity_id is None else self.hass.states.get(entity_id)
+        if state is None:
+            return None
+        if state.entity_id.startswith("weather."):
+            return to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
+        return to_celsius(state.state, state.attributes.get("unit_of_measurement"))
+
     def outdoor_c(self) -> float | None:
-        """The outdoor temperature now (°C): the heat pump's outdoor sensor when one was found and reads, else the
-        weather entity's; `None` without either."""
+        """The outdoor temperature now (°C): the heat settings' outdoor sensor (or weather entity) when one is set and
+        reads, else the heat pump's outdoor sensor when one was found and reads, else the weather entity's; `None`
+        without any."""
         if not self._outdoor_looked:
             self._look_for_outdoor_sensor()
-        if self.outdoor_entity_id is not None:
-            state = self.hass.states.get(self.outdoor_entity_id)
-            celsius = None if state is None else to_celsius(state.state, state.attributes.get("unit_of_measurement"))
-            if celsius is not None:
+        try:
+            setting = self._outdoor_setting()
+        except Exception:  # noqa: BLE001 - a setting that cannot be read is no setting
+            setting = None
+        self.outdoor_entity_id = self._found_outdoor
+        for entity_id in (setting, self._found_outdoor, self._weather_entity()):
+            celsius = self._reading_c(entity_id)
+            if celsius is None:
+                continue
+            if entity_id.startswith("weather."):
+                self._outdoor_weather = entity_id
+                self.outdoor_source = OUTDOOR_WEATHER
+            else:
+                self.outdoor_entity_id = entity_id
                 self.outdoor_source = OUTDOOR_SENSOR
-                return celsius
-        entity_id = self._weather_entity()
-        state = None if entity_id is None else self.hass.states.get(entity_id)
-        celsius = None
-        if state is not None:
-            celsius = to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
-        self.outdoor_source = None if celsius is None else OUTDOOR_WEATHER
-        return celsius
+            return celsius
+        self.outdoor_source = None
+        return None
 
     def history_marker(self) -> str | None:
         """Where the outdoor temperature now is read from, as a source marker (`sensor:<id>`, `weather:<id>`), as of
@@ -534,7 +558,7 @@ class SiteHouseForecast:
         if self.outdoor_source == OUTDOOR_SENSOR:
             return source_marker(SOURCE_SENSOR, self.outdoor_entity_id)
         if self.outdoor_source == OUTDOOR_WEATHER:
-            return source_marker(SOURCE_WEATHER, self._weather_entity())
+            return source_marker(SOURCE_WEATHER, self._outdoor_weather or self._weather_entity())
         return None
 
     def forecast_marker(self) -> str | None:
