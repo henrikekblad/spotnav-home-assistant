@@ -230,7 +230,11 @@ class PlanSlot:
     `house_kw` is the house's mean load without the car, `car_kw` the car's planned charge (a fixed load: the
     battery plan never moves it), `solar_kw` the mean production. `buy` is the import price with every fee SpotNav
     adds, `sell` what an exported kWh earns. `import_cap_kw` (the fuse less its margin, or the import target) and
-    `export_cap_kw` bound the grid; `None` is no bound.
+    `export_cap_kw` bound the grid; `None` is no bound. `grid_charge_cap_kw` is the most the battery may be charged
+    from the grid (the HA-down cap control obeys, `gate.grid_charge_cap_kw`), as the battery's total charge power as
+    control commands it (the sun's surplus included): a cap not above the surplus leaves the surplus alone, which is a
+    hold. The sun's own charge is never held back. `None` is no bound (the plant's own import limit guards the fuse),
+    0 no grid charge.
 
     `soft_cap_kw` and `peak_price` are the hour's soft ceiling under a demand charge (`planning/demand_cost.py`): a
     day's highest import above `soft_cap_kw` costs `peak_price` (minor per kW above it) on top of the energy, once a
@@ -247,6 +251,7 @@ class PlanSlot:
     car_kw: float = 0.0
     import_cap_kw: float | None = None
     export_cap_kw: float | None = None
+    grid_charge_cap_kw: float | None = None
     soft_cap_kw: float | None = None
     peak_price: float = 0.0
     peak_day: date | None = None
@@ -270,7 +275,7 @@ class PlanSlot:
                 raise PlanInputError("invalid_slot", f"{name} at {self.start.isoformat()} is not a number")
         if self.house_kw < 0 or self.solar_kw < 0 or self.car_kw < 0:
             raise PlanInputError("invalid_slot", f"a negative load or production at {self.start.isoformat()}")
-        for name in ("import_cap_kw", "export_cap_kw", "soft_cap_kw"):
+        for name in ("import_cap_kw", "export_cap_kw", "soft_cap_kw", "grid_charge_cap_kw"):
             cap = getattr(self, name)
             if cap is not None and (not _finite(cap) or cap < 0):
                 raise PlanInputError("invalid_slot", f"{name} at {self.start.isoformat()} must be zero or more")

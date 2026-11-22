@@ -591,3 +591,33 @@ def test_growatt_has_no_counters_its_charge_counter_is_only_from_the_grid() -> N
     adapter = adapter_for("solax_modbus", "Growatt New Energy")
     assert adapter is not None and "charged_total" not in adapter.facts
     assert _facts("growatt").charged_total_kwh is None
+
+
+def test_solax_rated_power_is_the_bms_currents_times_the_battery_voltage() -> None:
+    facts = _solax(
+        _solax_entity("bms_charge_max_current", "25", "A"),
+        _solax_entity("bms_discharge_max_current", "30", "A"),
+        _solax_entity("battery_voltage_charge", "200", "V"),
+    )
+
+    assert facts.rated_charge_kw == pytest.approx(5.0) and facts.rated_discharge_kw == pytest.approx(6.0)
+    assert facts.sources["rated_charge"] == "sensor.solax_bms_charge_max_current x sensor.solax_battery_voltage_charge"
+    assert facts.estimates == ("rated_from_current",)
+    # GEN5/6 name the voltage for battery 1; the person's own setting number is not the BMS' limit and is not read.
+    gen5 = _solax(
+        _solax_entity("bms_charge_max_current", "25", "A"),
+        _solax_entity("battery_1_voltage_charge", "200", "V"),
+        EntityFact("number.solax_battery_charge_max_current", "solax_modbus", "SolaX_battery_charge_max_current",
+                   device_id="battery", config_entry_id="entry", state="20", unit="A"),
+    )
+    assert gen5.rated_charge_kw == pytest.approx(5.0) and gen5.rated_discharge_kw is None
+
+
+def test_solax_without_the_bms_currents_or_with_them_disabled_reads_no_rated_power() -> None:
+    assert _solax().rated_charge_kw is None
+    disabled = _solax(
+        _solax_entity("bms_charge_max_current", "25", "A", disabled=True),
+        _solax_entity("bms_discharge_max_current", "30", "A", disabled=True),
+        _solax_entity("battery_voltage_charge", "200", "V"),
+    )
+    assert disabled.rated_charge_kw is None and disabled.rated_discharge_kw is None

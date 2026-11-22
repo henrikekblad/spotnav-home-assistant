@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HOUSE_CARD_ELEMENT, SpotnavHouseCard } from "../src/house-card";
 import { decodeHouse } from "../src/house-model";
-import { decodePlan, planBody, planCanStepBack, planStepDate, priceTones, resetPlanSections, runWords, type PlanAnswer } from "../src/house-plan";
+import { decodePlan, laneReason, planBody, planCanStepBack, planStepDate, priceTones, resetPlanSections, runWords, type PlanAnswer } from "../src/house-plan";
 import { HOUSE_TABS } from "../src/house-tabs";
 import { houseBody } from "../src/house-view";
 import { LANGUAGES, translate } from "../src/i18n";
@@ -139,6 +139,33 @@ describe("the Plan tab", () => {
         }
       }
       expect(translate(language, "house.tab.plan").length, language).toBeGreaterThan(0);
+    }
+  });
+
+  it("says the power and the minutes a battery action really ran, in every language", () => {
+    const battery = plan().loads.find((load) => load.kind === "home_battery")!;
+    const run = { ...battery.runs[0]!, what: "grid_charge", reason: null, kw: 3.3, activeMin: 75 };
+    expect(runWords("sv", battery, run)).toBe("Nätladdning av husbatteriet, 3,3 kW i 1 h 15 min");
+    expect(runWords("en", battery, run)).toBe("Grid charging of the home battery, 3.3 kW for 1 h 15 min");
+    // Ran every quarter: today's form.
+    expect(runWords("en", battery, { ...run, activeMin: null })).toBe("Grid charging of the home battery, 3.3 kW");
+    for (const language of LANGUAGES) {
+      for (const what of ["grid_charge", "charge", "cover", "sell"]) {
+        const words = runWords(language, battery, { ...run, what, kw: what === "cover" ? -3.3 : 3.3, activeMin: 45 });
+        expect(words, `${language} ${what}`).not.toMatch(/house\.plan\./);
+        expect(words, `${language} ${what}`).toContain("45 min");
+      }
+    }
+  });
+
+  it("says on the battery's lane when the fuse's cap held grid charging back, in every language", () => {
+    const battery = plan().loads.find((load) => load.kind === "home_battery")!;
+    const ctx = { language: "en", timeZone: "Europe/Stockholm", clock24: true } as never;
+    const held = { ...battery, summary: { ...battery.summary, grid_charge_held_kwh: 3.2 } };
+    expect(laneReason("en", ctx, battery)).not.toContain("fuse");
+    expect(laneReason("en", ctx, held)).toContain("the fuse does not allow it yet");
+    for (const language of LANGUAGES) {
+      expect(translate(language, "house.plan.lane.batteryHeld").length, language).toBeGreaterThan(0);
     }
   });
 

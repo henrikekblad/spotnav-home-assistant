@@ -136,7 +136,13 @@ def action_power(
     if action == ACTION_DISCHARGE_HOUSE:
         return -min(deficit, discharge_lim)
     if action == ACTION_GRID_CHARGE:
-        return min(charge_lim, max(charge_kw, surplus))
+        want = max(charge_kw, surplus)
+        # What control would run: it commands the battery at most the cap in all (`gate.restricted`), the sun's
+        # surplus included. Under the cap the charge is the cap; where the cap is not above the surplus it is the
+        # surplus alone, a hold, and the search drops the duplicate. The sun's own charge is never held back.
+        if slot.grid_charge_cap_kw is not None:
+            want = max(surplus, min(want, slot.grid_charge_cap_kw))
+        return min(charge_lim, want)
     if action == ACTION_EXPORT_DISCHARGE:
         return -min(discharge_lim, abs(charge_kw)) if charge_kw else -discharge_lim
     if action == ACTION_SHAVE:
@@ -246,6 +252,18 @@ def _apply(
     # What the battery itself sold: its discharge beyond the site's own deficit.
     sold = max(0.0, min(-power, -grid)) * hours
     return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle)
+
+
+def _kept_action(slot: PlanSlot, action: str, power: float) -> str:
+    """The action a kept first slot runs: a grid charge the slot's grid charge cap leaves nothing of (its power is the
+    sun's surplus alone) is a hold, as control would run it."""
+    if (
+        action == ACTION_GRID_CHARGE
+        and slot.grid_charge_cap_kw is not None
+        and power <= max(0.0, -slot.net_kw) + _SAME_KW
+    ):
+        return ACTION_HOLD
+    return action
 
 
 def run_slot(
@@ -419,6 +437,7 @@ def _forward(
         if index == 0 and first is not None:
             action, charge_kw = first
             power = action_power(slot, battery, soc, action, charge_kw)
+            action = _kept_action(slot, action, power)
             outcome = _apply(slot, battery, soc, action, power, request.cycle_cost, request.export_hurdle)
         else:
             reserve = None if reserves is None else reserves[index]
@@ -663,6 +682,7 @@ def _plan_peaks(
             if index == 0 and first is not None:
                 action, charge_kw = first
                 power = action_power(slot, battery, soc, action, charge_kw)
+                action = _kept_action(slot, action, power)
                 outcome = _apply(slot, battery, soc, action, power, request.cycle_cost, request.export_hurdle)
                 charge, _new = _raise(slot, peak, outcome.grid_kw)
                 outcome = outcome._replace(peak=charge)

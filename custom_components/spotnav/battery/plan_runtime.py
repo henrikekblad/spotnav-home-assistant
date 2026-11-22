@@ -101,6 +101,7 @@ from .preheat import derate_shadow, request_key, shadow_request
 from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_value_next_day, facit_day
 from .plan import plan_mode, self_consumption
 from .plan_model import (
+    ACTION_GRID_CHARGE,
     DEFAULT_CYCLE_COST,
     DEFAULT_MODE,
     DEFAULT_SELL_MARGIN,
@@ -176,6 +177,12 @@ FACIT_RETRY_S: Final = 3600.0
 MODES_BUDGET_S: Final = 5.0
 # The clock the modes budget is read from: wall-clock in production, replaced by tests so they do not depend on load.
 budget_clock = time.monotonic
+#: A grid charge the cap held back from the plan counts as held back from this many kWh.
+HELD_BACK_MIN_KWH: Final = 0.2
+#: The cap a plan is planned under changes the plan only in steps of this many kW (it follows the chargers' currents).
+GRID_CAP_STEP_KW: Final = 0.5
+#: A rise of the cap plans again only this long (s) after the last change of its key.
+GRID_CAP_RISE_S: Final = 900.0
 #: The old hidden hook for a credit per exported kWh (minor units), once read from the site's entry under this key.
 #: What a sold kWh earns beyond spot is now the electricity price's own figure (`sell_adjustment`, set in the card);
 #: a value still under this key is moved there once (`migrate_sell_credit`) and the key removed.
@@ -430,6 +437,8 @@ class Solved(NamedTuple):
     defensive: Any = None
     demand_slots: tuple[PlanSlot, ...] = ()
     demand: Any = None
+    #: The grid charge the cap held back from the plan in force: `(kWh, first start)`; `None` when it held none back.
+    grid_held: tuple[float, datetime] | None = None
 
 
 def _solve_demand(
@@ -451,6 +460,7 @@ def _solve_demand(
     ceilings: dict[datetime, tuple[float, float, date | None]] | None,
     started: float,
     peak_now: float | None = None,
+    grid_charge_cap_kw: float | None = None,
 ) -> Solved:
     """[solved] with the demand variant (see the module) where it would plan anything the plan in force does not and
     the CPU budget allows; skipped and named otherwise."""
@@ -460,7 +470,8 @@ def _solve_demand(
         return solved._replace(skipped=(*solved.skipped, VARIANT_DEMAND))
     planned_house = demand_house(house, solved.house_band, ceilings or {}, tz)
     slots, _more = build_slots(
-        now, prices, planned_house, solar_wh, car_windows, cap_kw, tz, hour_caps=hour_caps, ceilings=ceilings
+        now, prices, planned_house, solar_wh, car_windows, cap_kw, tz, hour_caps=hour_caps, ceilings=ceilings,
+        grid_charge_cap_kw=grid_charge_cap_kw,
     )
     if not slots:
         return solved
@@ -499,6 +510,7 @@ def _solve(
     hour_caps: dict[datetime, float] | None = None,
     ceilings: dict[datetime, tuple[float, float, date | None]] | None = None,
     peak_now: float | None = None,
+    grid_charge_cap_kw: float | None = None,
 ) -> Solved:
     """The executor's part: the slots, and each mode's plan, the site's [mode] first; then, from the logged
     [misses] (house, sun, holidays), the error bands and the defensive variant; then the demand variant from
@@ -507,12 +519,50 @@ def _solve(
     started = budget_clock()
     solved = _solve_modes(
         now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear, keeps, misses,
-        sell_margin, started,
+        sell_margin, started, grid_charge_cap_kw,
     )
-    return _solve_demand(
+    solved = _solve_demand(
         solved, now, tz, prices, house, solar_wh, car_windows, cap_kw, params, soc_pct, mode, wear,
-        keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started, peak_now,
+        keeps.get(VARIANT_DEMAND), sell_margin, hour_caps, ceilings, started, peak_now, grid_charge_cap_kw,
     )
+    # Last, so the what-if never takes the demand variant's share of the CPU budget.
+    held = _grid_held(solved, params, soc_pct, mode, wear, keeps.get(mode), sell_margin, grid_charge_cap_kw, started)
+    return solved if held is None else solved._replace(grid_held=held)
+
+
+def _grid_charge_kwh(decisions: Sequence[Any]) -> float:
+    """The energy (kWh) a plan charges in its grid-charge slots, the sun's part of it included (the same measure for
+    the capped and the uncapped plan, so their difference is what the cap held back)."""
+    return sum(max(0.0, d.battery_kw) * (d.end - d.start).total_seconds() / 3600.0 for d in decisions
+               if d.action == ACTION_GRID_CHARGE)
+
+
+def _grid_held(
+    solved: Solved, params: BatteryParams, soc_pct: float, mode: str, wear: float, keep: tuple[str, float] | None,
+    sell_margin: float, grid_charge_cap_kw: float | None, started: float,
+) -> tuple[float, datetime] | None:
+    """What the grid charge cap held back from the plan in force: the plan again on the same slots without the cap
+    (only where a cap is below the battery's rated charge, and the CPU budget allows), and the grid charge it has that
+    the capped plan has not, `(kWh, the first slot's start)`. `None` when the cap held nothing back."""
+    plan = solved.plans.get(mode)
+    if (
+        grid_charge_cap_kw is None or plan is None or grid_charge_cap_kw >= params.max_charge_kw
+        or budget_clock() - started > MODES_BUDGET_S or not MODE_DEFS[mode].plans
+    ):
+        return None
+    free = tuple(replace(slot, grid_charge_cap_kw=None) for slot in solved.slots)
+    request = PlanRequest(slots=free, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
+    baseline = self_consumption(request)
+    without = plan_mode(
+        request, MODE_DEFS[mode], wear, sell_margin=sell_margin, keep=keep,
+        keep_min_gain=keep_min_gain(baseline.cost, sum(slot.hours for slot in free)), baseline=baseline,
+    )
+    extra = _grid_charge_kwh(without.plan.decisions) - _grid_charge_kwh(plan.plan.decisions)
+    if extra < HELD_BACK_MIN_KWH:
+        return None
+    first = next((d.start for d, c in zip(without.plan.decisions, plan.plan.decisions)
+                  if d.action == ACTION_GRID_CHARGE and d.battery_kw > c.battery_kw + 0.05), solved.slots[0].start)
+    return extra, first
 
 
 def _solve_modes(
@@ -532,11 +582,14 @@ def _solve_modes(
     | None,
     sell_margin: float,
     started: float,
+    grid_charge_cap_kw: float | None = None,
 ) -> Solved:
     """The modes and the defensive variant (see `_solve`)."""
     if not house:
         raise _NoPlan(NO_HOUSE_FORECAST)
-    slots, estimates = build_slots(now, prices, house, solar_wh, car_windows, cap_kw, tz)
+    slots, estimates = build_slots(
+        now, prices, house, solar_wh, car_windows, cap_kw, tz, grid_charge_cap_kw=grid_charge_cap_kw
+    )
     if not slots:
         raise _NoPlan(NO_HOUSE_FORECAST if prices else NO_PRICES)
     request = PlanRequest(slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
@@ -562,7 +615,10 @@ def _solve_modes(
         return Solved(plans, tuple(skipped), slots, estimates, house_band, sun_band)
     if budget_clock() - started > MODES_BUDGET_S:
         return Solved(plans, (*skipped, VARIANT_DEFENSIVE), slots, estimates, house_band, sun_band, inputs)
-    guarded, _more = build_slots(now, prices, inputs.house_by_hour, inputs.solar_wh_by_hour, car_windows, cap_kw, tz)
+    guarded, _more = build_slots(
+        now, prices, inputs.house_by_hour, inputs.solar_wh_by_hour, car_windows, cap_kw, tz,
+        grid_charge_cap_kw=grid_charge_cap_kw,
+    )
     if not guarded:
         return Solved(plans, tuple(skipped), slots, estimates, house_band, sun_band, inputs)
     request = PlanRequest(slots=guarded, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
@@ -675,6 +731,10 @@ class BatteryPlanShadow:
         self._sell_prices: list[PriceSlot] = []
         self._sell_quarter: datetime | None = None
         self._cap_kw: float | None = None
+        #: The grid charge cap the plan in force was planned under (`_grid_cap`): `{cap_kw, rule, held_kwh, held_from}`.
+        self.grid_cap: dict[str, Any] | None = None
+        #: The cap key the trigger last used and when it changed (`_grid_cap_key`).
+        self._cap_seen: tuple[float | None, datetime] | None = None
         self._facts = BatteryFacts()
         self._quarter: datetime | None = None
         self._checked_at: datetime | None = None
@@ -1174,6 +1234,46 @@ class BatteryPlanShadow:
     def _cap(self) -> float | None:
         return site_import_cap_kw(self.hass, self.site)
 
+    def _grid_cap(self, now: datetime) -> tuple[float | None, str]:
+        """The most the plan may grid charge (kW) and the rule it rests on: what control obeys now
+        (`BatteryControl.plan_grid_charge_cap`, the gate's own cap, computed once and shared). `(None, "import_limit")`
+        is no cap of this kind (the plant's own import limit guards the fuse); a control that is not there, or whose
+        cap is not a number, is 0: no grid charge is planned on a cap nobody knows."""
+        control = getattr(self.site, "battery_control", None)
+        if control is None:
+            return 0.0, "unknown"
+        try:
+            cap, rule = control.plan_grid_charge_cap(now)
+        except Exception:  # noqa: BLE001 - an unknown cap allows no grid charge
+            _LOGGER.debug("grid_cap: ignored failure (no grid charge is planned)", exc_info=True)
+            return 0.0, "error"
+        if cap is None:
+            return (None, rule) if rule == "import_limit" else (0.0, "unknown")
+        if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not math.isfinite(cap) or cap < 0:
+            return 0.0, "unknown"
+        return float(cap), rule
+
+    def _grid_cap_key(self, now: datetime) -> float | None:
+        """The grid charge cap as the plan's trigger sees it, in steps (`GRID_CAP_STEP_KW`). A cap that falls, or that
+        reaches 0 or goes from no cap to a number, makes a new plan at once (the plan in force charges more than control now allows); a
+        rise only counts after `GRID_CAP_RISE_S`, so the load-balancing steps of a charging car do not plan again
+        every minute (the plan is on the safe side meanwhile)."""
+        cap = self._grid_cap(now)[0]
+        key = None if cap is None else math.floor(cap / GRID_CAP_STEP_KW) * GRID_CAP_STEP_KW
+        seen = self._cap_seen
+        if seen is None:
+            self._cap_seen = (key, now)
+            return key
+        before, since = seen
+        if key == before:
+            return key
+        low, high = (math.inf if before is None else before), (math.inf if key is None else key)
+        # Tightening is at once: a fall, to 0, or from no cap to a number. Loosening waits like any rise.
+        if high < low or (now - since).total_seconds() >= GRID_CAP_RISE_S:
+            self._cap_seen = (key, now)
+            return key
+        return before
+
     def _keys(self, now: datetime, facts: BatteryFacts) -> dict[str, Any]:
         windows = self._car_windows()
         return {
@@ -1189,6 +1289,7 @@ class BatteryPlanShadow:
                 facts.round_trip_efficiency,
                 tuple(windows),
                 self._cap(),
+                self._grid_cap_key(now),
                 self._site_mode(),
             ),
         }
@@ -1255,6 +1356,7 @@ class BatteryPlanShadow:
         area_id, prices = self._read_prices(now)
         self._prices = prices
         cap = self._cap_kw = self._cap()
+        grid_cap, grid_rule = self._grid_cap(now)
 
         entries = list(self.site.config.get(CONF_SOLAR_FORECAST_ENTRIES) or [])
         solar = None
@@ -1304,6 +1406,7 @@ class BatteryPlanShadow:
             partial(
                 _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses,
                 sell_margin=self._sell_margin(), hour_caps=hour_caps, ceilings=ceilings, peak_now=peak_now,
+                grid_charge_cap_kw=grid_cap,
             )
         )
         if self._closed:
@@ -1334,6 +1437,13 @@ class BatteryPlanShadow:
         if solved.defensive is not None:
             self.mode_plans[VARIANT_DEFENSIVE] = planned_slots(solved.defensive.plan.decisions)
             self.defensive_view = plan_view(solved.defensive, solved.defensive_slots)
+        held = solved.grid_held
+        self.grid_cap = {
+            "cap_kw": None if grid_cap is None else round(grid_cap, 2),
+            "rule": grid_rule,
+            "held_kwh": None if held is None else round(held[0], 2),
+            "held_from": None if held is None else held[1].isoformat(),
+        }
         self._keep_demand(solved, needed(ceilings, hour_caps, cap))
         self.modes_skipped = skipped
         self.status, self.reason, self.made_at = STATUS_PLANNED, None, now
@@ -1352,6 +1462,7 @@ class BatteryPlanShadow:
             },
             "price_area": area_id,
             "import_cap_kw": None if cap is None else round(cap, 3),
+            "grid_charge_cap": self.grid_cap,
             "house": house_source,
             "gross_hours": site_house.history.gross_in_window(now),
             "house_rows": rows_basis,

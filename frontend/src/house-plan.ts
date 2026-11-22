@@ -30,7 +30,7 @@ const LOAD_KEYS = ["id", "kind", "name", "state", "in_house", "kw", "level", "ru
 const PLANNED_KEYS = ["what", "kw", "reason"] as const;
 const RAN_KEYS = ["what", "kw"] as const;
 const HISTORY_KEYS = ["days", "first"] as const;
-const RUN_KEYS = ["start", "end", "what", "reason", "kw", "kwh"] as const;
+const RUN_KEYS = ["start", "end", "what", "reason", "kw", "kwh", "active_min"] as const;
 const MONEY_KEYS = ["currency", "major_unit", "minor_unit"] as const;
 
 export type PlanLoadKind = "car" | "home_battery" | "heat" | "heat_zone" | "water_heater";
@@ -64,6 +64,8 @@ export interface PlanRun {
   reason: string | null;
   kw: number | null;
   kwh: number | null;
+  /** Minutes the action ran in total where it ran only some of the run's hours (`kw` is then its power while it ran). */
+  activeMin: number | null;
 }
 
 /** A load's plan for an hour gone by, as it stood at the hour's start. */
@@ -193,6 +195,7 @@ function decodeRun(raw: unknown): PlanRun {
     reason: textOrNull(source.reason),
     kw: numberOrNull(source.kw),
     kwh: numberOrNull(source.kwh),
+    activeMin: numberOrNull(source.active_min),
   };
 }
 
@@ -573,6 +576,14 @@ function span(ctx: FormatContext, startMs: number, endMs: number): string {
   return `${hourLabel(ctx, startMs)}–${hourLabel(ctx, endMs)}`;
 }
 
+/** Minutes as "1 h 15 min", "45 min", "2 h". */
+function durationText(minutes: number): string {
+  const whole = Math.max(1, Math.round(minutes));
+  const hours = Math.floor(whole / 60);
+  const rest = whole % 60;
+  return [hours > 0 ? `${hours} h` : "", rest > 0 ? `${rest} min` : ""].filter(Boolean).join(" ");
+}
+
 /** One run in words ("Bilen laddar 14,8 kWh, 3,7 kW"). */
 export function runWords(language: Language, load: PlanLoad, run: PlanRun): string {
   const params: Record<string, string> = {
@@ -580,7 +591,13 @@ export function runWords(language: Language, load: PlanLoad, run: PlanRun): stri
     kw: run.kw === null ? "" : kwText(language, Math.abs(run.kw)),
     kwh: run.kwh === null ? "" : kwhText(language, run.kwh),
   };
-  const key = `house.plan.run.${load.kind}.${run.what}`;
+  const base = `house.plan.run.${load.kind}.${run.what}`;
+  let key = base;
+  if (run.activeMin !== null && run.kw !== null && known(`${base}_part`)) {
+    // Ran only some of the hours: the power it ran at and for how long in all, not an average over the idle ones.
+    key = `${base}_part`;
+    params.duration = durationText(run.activeMin);
+  }
   let words = translate(language, known(key) ? key : "house.plan.run.other", params);
   const why = run.reason === null ? null : `house.plan.reason.${run.reason}`;
   if (why !== null && known(why)) {
@@ -607,6 +624,9 @@ export function laneReason(language: Language, ctx: FormatContext, load: PlanLoa
     }
     if (num("charge_kwh") - num("grid_charge_kwh") > 0.05) {
       parts.push(translate(language, "house.plan.lane.batteryCharge", { kwh: kwhText(language, num("charge_kwh") - num("grid_charge_kwh")) }));
+    }
+    if (num("grid_charge_held_kwh") > 0) {
+      parts.push(translate(language, "house.plan.lane.batteryHeld"));
     }
     line = parts.join(" · ");
   } else if (load.kind === "heat") {

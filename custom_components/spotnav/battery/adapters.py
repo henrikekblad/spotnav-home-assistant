@@ -429,6 +429,16 @@ SOLAX: Final = Adapter(
         # GEN3's and GEN4-6's, never both on one inverter.
         "capacity": Match(("sensor",), re.compile(r"(?:^|_)(?:battery_install_capacity|battery_system_installed_capacity)$")),
         "firmware": _key("software_version"),
+        # The BMS' allowed charge and discharge currents (`plugin_solax.py`, input registers 0x24/0x25, A, disabled by
+        # default) times the battery voltage (input register 0x14, `battery_voltage_charge`, GEN5/6 `battery_1_...`).
+        # GEN5/6 name them for battery 1 only, so a two-battery plant reads low: a floor, never above what it can do.
+        # (The holding registers of the same 0x24/0x25 are the person's own "Battery Charge Max Current" settings, the
+        # numbers `battery_charge_max_current`; they are not read: they default to 20 A and say nothing of the BMS.)
+        "charge_current": _key("bms_charge_max_current"),
+        "discharge_current": _key("bms_discharge_max_current"),
+        "voltage": Match(
+            ("sensor",), re.compile(r"(?:^|_)battery_(?:1_)?voltage_charge$"), re.compile(r"(?:^|_)(?:bms|pm)_")
+        ),
         "charged_total": _key("battery_input_energy_total"),
         "discharged_total": _key("battery_output_energy_total"),
     },

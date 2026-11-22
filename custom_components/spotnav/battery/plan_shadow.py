@@ -155,6 +155,7 @@ REASON_IDLE: Final = "idle"
 REASON_SELL_SUN: Final = "sell_sun_keep_room"
 REASON_EXPORT_DEAR: Final = "export_dear"
 REASON_OVER_CAP: Final = "over_cap"
+REASON_GRID_CHARGE_CAPPED: Final = "grid_charge_capped"
 REASON_CURTAILED: Final = "curtailed"
 REASON_AT_FLOOR: Final = "at_floor"
 REASON_AT_CEILING: Final = "at_ceiling"
@@ -171,6 +172,7 @@ REASON_CODES: Final = (
     REASON_SELL_SUN,
     REASON_EXPORT_DEAR,
     REASON_OVER_CAP,
+    REASON_GRID_CHARGE_CAPPED,
     REASON_CURTAILED,
     REASON_AT_FLOOR,
     REASON_AT_CEILING,
@@ -287,6 +289,7 @@ def build_slots(
     *,
     hour_caps: Mapping[datetime, float] | None = None,
     ceilings: Mapping[datetime, tuple[float, float] | tuple[float, float, date | None]] | None = None,
+    grid_charge_cap_kw: float | None = None,
 ) -> tuple[tuple[PlanSlot, ...], tuple[str, ...]]:
     """The plan's slots from now (see the module) and what was assumed. `house_by_hour` is keyed by the local hour's
     start (UTC), `solar_wh_by_hour` by the UTC hour's start; an hour the solar forecast does not hold has no sun.
@@ -295,7 +298,10 @@ def build_slots(
     target and the power level hold that hour (`plan_runtime.site_hour_caps`). `ceilings` gives an hour its soft
     ceiling under the demand charge: `(S_h kW, λ_h minor per kW[, the day its peak counts toward])`, the ceiling never
     above the hour's hard cap (`PlanSlot.soft_cap_kw`, `peak_price`, `peak_day`: the hour's local day where the
-    ceiling does not say). Without either, the slots are exactly those of the scalar cap."""
+    ceiling does not say). Without either, the slots are exactly those of the scalar cap.
+
+    `grid_charge_cap_kw`: the most a grid charge may be planned at, every slot (the HA-down cap control obeys, shared
+    through `BatteryControl.plan_grid_charge_cap`); `None` is no bound."""
     estimates: list[str] = []
     if solar_wh_by_hour is None:
         estimates.append(EST_NO_SOLAR)
@@ -341,6 +347,7 @@ def build_slots(
                 solar_kw=max(0.0, float(wh) / 1000.0) if _finite(wh) else 0.0,
                 car_kw=car_kw_in(start, price.end, car_windows),
                 import_cap_kw=slot_cap,
+                grid_charge_cap_kw=grid_charge_cap_kw,
                 soft_cap_kw=soft_kw,
                 peak_price=peak_price,
                 peak_day=peak_day,
@@ -520,6 +527,15 @@ def explain(plan: BatteryPlan, slots: Sequence[PlanSlot]) -> list[list[dict[str,
             reasons.append(_reason(REASON_IDLE))
         if decision.over_cap:
             reasons.append(_reason(REASON_OVER_CAP, cap_kw=float(slot.import_cap_kw or 0.0)))
+        if (
+            decision.action == ACTION_GRID_CHARGE
+            and slot.grid_charge_cap_kw is not None
+            and slot.grid_charge_cap_kw > max(0.0, -slot.net_kw) + IDLE_KW / 10
+            and decision.battery_kw >= slot.grid_charge_cap_kw - IDLE_KW / 10
+            and slot.grid_charge_cap_kw < battery.max_charge_kw - IDLE_KW / 10
+        ):
+            # Charged as much from the grid as the fuse allows (what control would run), not as much as it wanted.
+            reasons.append(_reason(REASON_GRID_CHARGE_CAPPED, cap_kw=slot.grid_charge_cap_kw))
         if decision.curtailed_kwh > 0:
             reasons.append(_reason(REASON_CURTAILED, kwh=decision.curtailed_kwh))
         if decision.soc_end_pct <= battery.min_soc_pct + 0.1:

@@ -357,6 +357,10 @@ def _accept_applies(control: BrandControl | None) -> bool:
     itself charge from the grid there (`hold_charges_without`) stays under the HA-down cap with it."""
     return control is not None and not (control.slow or control.fixed_charge)
 
+#: The plan's cap rule where control runs no grid charge at all (`BatteryControl.plan_grid_charge_cap`): a cap of 0.
+RULE_NO_GRID_CHARGE: Final = "no_grid_charge"
+
+
 class BatteryControl:
     """One site's battery and export-limit write path (see the module)."""
 
@@ -2004,14 +2008,9 @@ class BatteryControl:
         except Exception:  # noqa: BLE001 - the status must never fail on it
             _LOGGER.debug("cap_status: ignored failure (the status must never fail on it)", exc_info=True)
             cap, failed = None, True
-        usable = learned is not None and learned.phase_peaks() is not None
         return {
             "cap_kw": None if cap is None else round(cap, 2),
-            "rule": "error" if failed else "import_limit" if cap is None else "accepted" if (
-                options.accept_ha_down and _accept_applies(control_for(self.facts.brand))
-            ) else (
-                "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
-            ),
+            "rule": self._cap_rule(options, cap, failed, learned),
             "main_fuse_a": self._main_fuse_a(),
             "cap_conservative_kw": None if without is None else round(without, 2),
             "cap_learned_kw": None if done is None else round(done, 2),
@@ -2019,6 +2018,41 @@ class BatteryControl:
             "import_limit": import_limit,
             "ha_down": self._ha_down_status(now, options),
         }
+
+    def _cap_rule(self, options: gate.Options, cap: float | None, failed: bool, learned: Any) -> str:
+        """Which rule a grid charge cap rests on (`_cap_status`'s `rule`)."""
+        if failed:
+            return "error"
+        if cap is None:
+            return "import_limit"
+        if options.accept_ha_down and _accept_applies(control_for(self.facts.brand)):
+            return "accepted"
+        usable = learned is not None and learned.phase_peaks() is not None
+        return "conservative" if not usable else "learned" if learned is not None and learned.ready else "learning"
+
+    def plan_grid_charge_cap(self, now: datetime) -> tuple[float | None, str]:
+        """The grid charge cap the battery plan plans under, `(cap_kw, rule)`: the one control obeys right now
+        (`_charge_limits`, per phase where it runs; read as the executor is, never changing it), so the plan and the
+        command can never disagree. `cap_kw` `None` with the rule `import_limit` is no cap of this kind (the plant's
+        own import limit guards the fuse); a cap that cannot be worked out is 0 with the rule `error`, never no cap."""
+        try:
+            options = self.options()
+            executor = self.executor
+            phased = executor is not None and executor.control.phased
+            cap, caps = self._charge_limits(now, options, phased=phased)
+            rule = self._cap_rule(options, cap, False, self._learned(now))
+            # Where control runs no grid charge at all, the plan plans none: as `_control_slot` and `gate.restricted`.
+            if caps is None and gate.charge_by_phases(self.report()):
+                return 0.0, RULE_NO_GRID_CHARGE  # the charge was shown only per phase: the balanced one is never run
+            fixed = self._fixed_charge_kw()
+            if fixed is not None and (not math.isfinite(fixed) or (cap is not None and fixed > cap)):
+                return 0.0, RULE_NO_GRID_CHARGE  # a plant that charges at its own rate: as planned or not at all
+            if cap is not None and cap < gate.MIN_RATE_KW:
+                return 0.0, RULE_NO_GRID_CHARGE  # under the least rate control commands it does self-consumption
+            return cap, rule
+        except Exception:  # noqa: BLE001 - an unknown cap allows no grid charge
+            _LOGGER.debug("plan_grid_charge_cap: ignored failure (no grid charge is planned)", exc_info=True)
+            return 0.0, "error"
 
     def _ha_down_status(self, now: datetime, options: gate.Options) -> dict[str, Any]:
         """Whether accepting the HA-down risk (`battery_control_accept_ha_down`) would change anything here, for the

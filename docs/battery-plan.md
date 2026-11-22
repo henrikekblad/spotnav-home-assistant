@@ -37,7 +37,7 @@ brand's integration offers:
 | Victron (GX, the HACS Victron MQTT) | Runs when the battery's BMS reports its limits | The size is the BMS's installed Ah times the system voltage, the ratings its allowed charge and discharge current times the voltage; the plan says it is an estimate. A battery without a CAN-bus BMS (lead-acid, a plain shunt) gives no ratings and so no plan. |
 | Victron (community Modbus integration) | Runs when the BMS reports its limits | The size is the Dynamic ESS "battery capacity" where it is filled in, else the capacity register times the voltage. |
 | GoodWe | Runs once the size is learnt | The integration reads the level and the BMS's current limits but not the battery's size; SpotNav learns it (below). |
-| SolaX Modbus | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). The size is the integration's *Battery Install Capacity* (GEN3) or *Battery System Installed Capacity* (GEN4 to GEN6), both disabled in Home Assistant by default: enable the one your inverter has, or the size is learnt. |
+| SolaX Modbus | Runs once the size is read or learnt | Level is read. The ratings are the BMS's allowed charge and discharge current (*Battery Charge Max Current*, *Battery Discharge Max Current* sensors, disabled in Home Assistant by default) times the battery voltage (an estimate), else they are learnt (below); GEN5 and GEN6 name them for battery 1 only. The size is the integration's *Battery Install Capacity* (GEN3) or *Battery System Installed Capacity* (GEN4 to GEN6), both disabled in Home Assistant by default: enable the one your inverter has, or the size is learnt. |
 | Enphase | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
 | Sofar (the Sofar plugin of SolaX Modbus) | Runs once the size and the ratings are learnt | Only the level is read, for all battery inputs together. Read from the integration's source, not yet tested on a battery. |
 | Growatt (the Growatt plugin of SolaX Modbus) | Runs once the size and the ratings are learnt | Only the level is read: the SPH and SPA storage inverters and the TL-XH, TL3-XH and WIT hybrids. The off-grid SPF is not read. Not yet tested on a battery. |
@@ -45,6 +45,8 @@ brand's integration offers:
 | Solinteg (the Solinteg plugin of SolaX Modbus; also M-TEC Energy Butler and Wattsonic) | Runs when the battery's BMS reports its limits | The size is read where the inverter's firmware states it (V27.52.3.0 and later), else learnt. The ratings are the BMS's allowed charge and discharge current times the battery voltage; the plan says it is an estimate. Not yet tested on a battery. |
 
 A battery from any other brand has no adapter in SpotNav yet and gets no plan: the integrations above are the whole list. Where the integration also gives the plant's maximum output (Sigenergy does), the plan uses the lower of the battery's rating and that maximum.
+
+**To teach SpotNav a rating that is learnt, let the battery charge or discharge at full power for 30 minutes once** (a forced charge or discharge from your inverter's own app will do); until then the plan assumes only what it has seen the battery do, which can be well under what it can.
 
 **A size or rating the integration does not give is learnt, not asked for.** From the quarter hours SpotNav already measures, a steady charge or discharge that moves the level 20 points or more gives one estimate of the usable size (the energy that went through the cells, with the round trip counted, over the level change); the median of at least three agreeing runs is taken. The rated power is the highest power two quarter hours in a row held, so it is a floor: the battery may manage more than it has been asked for. Both are marked as estimates in the card and in the diagnostics (`learned`), never replace a value the integration reads, and the plan starts once they are known. There is no setting for either.
 
@@ -55,6 +57,7 @@ It also reads:
 * the solar forecast as SpotNav corrects it, once the correction has learnt, else the raw forecast,
 * the charging plans already made for your cars, as a fixed load,
 * the import limit (the main fuse less its margin, or the import target where you set one).
+* the most the battery may charge from the grid: the same fuse cap SpotNav's battery control obeys (0 until it has learnt your house's peaks, on a small fuse). The plan grid charges no more than that; the sun's charge is never held back, and the Plan tab says when the fuse held charging back. It is today's cap applied to the whole horizon, so a plan made before the cap rose is on the safe side and heals at the next plan.
 
 The battery's lowest level is the reserve its integration reports where SpotNav can read one; otherwise 10 % is assumed.
 SpotNav reads a reserve only where it knows the integration's entity for it: SolaX has none mapped, and Huawei's needs the
