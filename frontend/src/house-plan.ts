@@ -696,8 +696,9 @@ function lanes(input: PlanRenderInput, ctx: FormatContext): HTMLElement {
 }
 
 /**
- * A car's "does not fit" line under its lane, with "Take what fits" and "Allow the peak" (asked again before it is
- * sent: it may cost the month's peak).
+ * A car's "does not fit" line under its lane, with "Take what fits", "Later departure (14:00)" where a later hour fits
+ * (without one the departure's editor is the charger card's) and "Allow the peak" (asked again before it is sent: it
+ * may cost the month's peak).
  */
 function doesNotFitNode(input: PlanRenderInput, ctx: FormatContext, chargerId: string, block: DoesNotFit): HTMLElement {
   const { doc, language, plan } = input;
@@ -710,7 +711,7 @@ function doesNotFitNode(input: PlanRenderInput, ctx: FormatContext, chargerId: s
   }
   const row = element(doc, "div", P.fitChoices);
   for (const choice of block.choices) {
-    if (choice.code === "later") {
+    if (choice.code === "later" && choice.departureMs === null) {
       continue;
     }
     const button = element(doc, "button", undefined, choiceLabel(ctx, choice, plan.money));

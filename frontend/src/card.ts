@@ -58,6 +58,7 @@ import {
   fixOwnMode,
   releaseImportTarget,
   takeWhatFits,
+  laterDeparture,
   suggestImportTarget,
   setEntsoeKey,
   updateVehicle,
@@ -2217,6 +2218,24 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** The "does not fit" line's "Later departure (14:00)", for this departure only (any user); then the dashboard is read again. */
+  private async laterDeparture(): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "") {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await laterDeparture(hass, config.charger);
+    } catch {
+      // Not moved: the line stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
   /** The import target's suggestion for the editor (administrators only): the answer, or `null` when it cannot be read. */
   private async suggestImportTarget(): Promise<unknown> {
     const hass = this.hassObject;
@@ -3117,6 +3136,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onTakeWhatFits: () => {
           void this.takeWhatFits();
+        },
+        onLaterDeparture: () => {
+          void this.laterDeparture();
         },
         onSuggestImportTarget: () => this.suggestImportTarget(),
         onAnswerOnboardPhases: (vehicleId, phases) => {

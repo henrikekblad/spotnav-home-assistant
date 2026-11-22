@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Cargar lo que cabe",
   "doesNotFit.choice.takesWhatFitsKwh": "Cargar lo que cabe (≈ {kwh})",
   "doesNotFit.choice.later": "Salida más tarde",
+  "doesNotFit.choice.laterAt": "Salida más tarde ({time})",
   "doesNotFit.choice.acceptPeak": "Permitir el pico",
   "doesNotFit.choice.acceptPeakKw": "Permitir el pico (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Permitir el pico (≈ {kw} kW, ≈ {cost})",

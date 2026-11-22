@@ -304,6 +304,8 @@ export interface CardViewInput {
   onReleaseImportTarget?: () => void;
   /** The "does not fit" line's "Take what fits", for this departure only (`spotnav/take_what_fits`). */
   onTakeWhatFits?: () => void;
+  /** The "does not fit" line's "Later departure (14:00)", for this departure only (`spotnav/later_departure`). */
+  onLaterDeparture?: () => void;
   /** The import target's editor opened (administrators): the suggestion from Home Assistant's statistics, `null` for none. */
   onSuggestImportTarget?: () => Promise<unknown>;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
@@ -745,7 +747,8 @@ export function createCardView(input: CardViewInput): CardView {
 
   /**
    * The planned charge does not fit under the ceiling by its departure: the line, and a button per choice still open.
-   * "Take what fits" holds this departure only (`spotnav/take_what_fits`, any user); "Later departure" opens the departure's editor; "Allow
+   * "Take what fits" holds this departure only (`spotnav/take_what_fits`, any user); "Later departure (14:00)" moves this departure
+   * there (`spotnav/later_departure`, any user), and without a time opens the departure's editor; "Allow
    * the peak" is the import target's set-aside for this charge, confirmed first as everywhere.
    */
   function doesNotFitNode(line: DoesNotFitLine): HTMLElement {
@@ -758,6 +761,9 @@ export function createCardView(input: CardViewInput): CardView {
       if (choice.code === "takes_what_fits" && input.onTakeWhatFits === undefined) {
         continue;
       }
+      if (choice.moves && input.onLaterDeparture === undefined) {
+        continue;
+      }
       if (choice.code === "accept_peak" && (input.onReleaseImportTarget === undefined || model.releaseConfirm === null)) {
         continue;
       }
@@ -768,6 +774,9 @@ export function createCardView(input: CardViewInput): CardView {
         if (choice.code === "takes_what_fits") {
           button.disabled = true;
           input.onTakeWhatFits?.();
+        } else if (choice.moves) {
+          button.disabled = true;
+          input.onLaterDeparture?.();
         } else if (choice.code === "later") {
           input.onOpenSettings("deadline");
         } else {

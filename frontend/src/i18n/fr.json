@@ -2218,6 +2218,7 @@
   "doesNotFit.choice.takesWhatFits": "Prendre ce qui tient",
   "doesNotFit.choice.takesWhatFitsKwh": "Prendre ce qui tient (≈ {kwh})",
   "doesNotFit.choice.later": "Départ plus tard",
+  "doesNotFit.choice.laterAt": "Départ plus tard ({time})",
   "doesNotFit.choice.acceptPeak": "Autoriser la pointe",
   "doesNotFit.choice.acceptPeakKw": "Autoriser la pointe (≈ {kw} kW)",
   "doesNotFit.choice.acceptPeakCost": "Autoriser la pointe (≈ {kw} kW, ≈ {cost})",

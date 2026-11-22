@@ -3,9 +3,10 @@
 // choices, in the charger card's status area and in the house card's Plan tab, from the same block.
 //
 // Each choice is for this departure only; the plan's `if_not_ready` stays the person's lasting default. "Take what
-// fits" is `spotnav/take_what_fits`, "Later departure" opens the departure's editor, "Allow the peak" sets the import
-// target aside for this charge (`spotnav/release_import_target`); both last until the departure or the unplug. After
-// a choice the line says what was chosen.
+// fits" is `spotnav/take_what_fits`; "Later departure (14:00)" moves this departure to the earliest whole hour where it
+// all fits under the same ceiling (`spotnav/later_departure`), and without such an hour opens the departure's editor;
+// "Allow the peak" sets the import target aside for this charge (`spotnav/release_import_target`); each lasts until the
+// departure or the unplug. After a choice the line says what was chosen.
 
 import { exactKeys, isRecord, list, Malformed, numberOrNull, record, text, textOrNull } from "./decode-primitives";
 import { clock, formatFixed, kwText, kwhText, moneyMinorAsMajor, type FormatContext, type MoneyUnits } from "./format";
@@ -17,7 +18,7 @@ export type DoesNotFitCeiling = "import_target" | "power_level";
 const CEILINGS: readonly DoesNotFitCeiling[] = ["import_target", "power_level"];
 
 const BLOCK_KEYS = ["departure", "short_kwh", "deliverable_kwh", "ceiling", "ceiling_kw", "set_kw", "chosen", "choices"] as const;
-const CHOICE_KEYS = ["code", "kwh", "peak_kw", "cost"] as const;
+const CHOICE_KEYS = ["code", "kwh", "peak_kw", "cost", "departure"] as const;
 
 export interface DoesNotFitChoice {
   code: DoesNotFitChoiceCode;
@@ -25,6 +26,8 @@ export interface DoesNotFitChoice {
   peak_kw: number | null;
   /** What the peak adds to the month's demand charge, in the minor unit; `null` without one. */
   cost: number | null;
+  /** "Later departure": the later departure it moves to (epoch ms); `null` where none fits (the editor is the way). */
+  departureMs: number | null;
 }
 
 export interface DoesNotFit {
@@ -72,11 +75,17 @@ export function decodeDoesNotFit(raw: unknown): DoesNotFit {
     choices: list(source.choices).map((entry) => {
       const item = record(entry);
       exactKeys(item, CHOICE_KEYS);
+      const later = textOrNull(item.departure);
+      const laterMs = later === null ? null : Date.parse(later);
+      if (laterMs !== null && !Number.isFinite(laterMs)) {
+        throw new Malformed();
+      }
       return {
         code: oneOf(item.code, CHOICE_CODES),
         kwh: numberOrNull(item.kwh),
         peak_kw: numberOrNull(item.peak_kw),
         cost: numberOrNull(item.cost),
+        departureMs: laterMs,
       };
     }),
   };
@@ -138,7 +147,7 @@ export function doesNotFitText(format: FormatContext, block: DoesNotFit): string
   });
 }
 
-/** A choice's button label ("Ta det som ryms (≈ 12 kWh)", "Tillåt toppen (≈ 12 kW, ≈ 105 kr)"). */
+/** A choice's button label ("Ta det som ryms (≈ 12 kWh)", "Senare avresa (14:00)", "Tillåt toppen (≈ 12 kW, ≈ 105 kr)"). */
 export function choiceLabel(format: FormatContext, choice: DoesNotFitChoice, money: MoneyUnits | null): string {
   const language = format.language;
   if (choice.code === "takes_what_fits") {
@@ -147,7 +156,9 @@ export function choiceLabel(format: FormatContext, choice: DoesNotFitChoice, mon
       : translate(language, "doesNotFit.choice.takesWhatFitsKwh", { kwh: kwhText(language, choice.kwh) });
   }
   if (choice.code === "later") {
-    return translate(language, "doesNotFit.choice.later");
+    return choice.departureMs === null
+      ? translate(language, "doesNotFit.choice.later")
+      : translate(language, "doesNotFit.choice.laterAt", { time: clock(format, choice.departureMs) });
   }
   if (choice.peak_kw === null) {
     return translate(language, "doesNotFit.choice.acceptPeak");
