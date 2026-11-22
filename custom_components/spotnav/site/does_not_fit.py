@@ -1,6 +1,8 @@
 """A car's charge that does not fit under the ceiling by its departure, and the person's choices (plan
 `plans/v3_flexible_loads_design.md`, step 3a): one block per car, in the charger's dashboard (`does_not_fit`) and in
-the Plan tab's car lane (`spotnav/get_plan`, the load's `does_not_fit`). Words are the card's; these are figures.
+the Plan tab's car lane (`spotnav/get_plan`, the load's `does_not_fit`), and where the plan asks, on the phones
+(`ChargerNotifier.does_not_fit`, step 3b: once per departure, in the daytime). Words are the card's and the
+notice's; these are figures.
 
     {departure, short_kwh, deliverable_kwh, ceiling, ceiling_kw, chosen,
      choices: [{code, kwh, peak_kw, cost}]}

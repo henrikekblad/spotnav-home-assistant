@@ -368,13 +368,15 @@ def _plan(now: datetime, departure: datetime, windows: list[tuple[datetime, date
 
 
 async def _tight_night(hass: HomeAssistant, monkeypatch, frozen, name: str, choice: str = "ask") -> _World:
-    """The car held at 7 A with 16.5 kWh to deliver in 90 minutes: the target makes it miss its departure."""
+    """The car held at 7 A with 16.5 kWh to deliver in 90 minutes: the target makes it miss its departure. In
+    Stockholm, at 13:00 local: daytime, when a "does not fit" notice is told."""
     from dataclasses import replace as replace_settings
 
     from custom_components.spotnav.runtime import domain_data
 
     from .test_notifications import _choose
 
+    await hass.config.async_set_time_zone("Europe/Stockholm")
     world = await _world(hass, monkeypatch, frozen, name)
     charger = world.halo.charger.entry_id
     await domain_data(hass).auto_store.async_update(
@@ -409,13 +411,17 @@ async def test_ask_holds_the_target_and_tells_once_with_a_button(hass: HomeAssis
         assert status is not None and status.at_risk is not None and status.at_risk.missing_kwh > 5
         told = _told(world)
         assert len(told) == 1, "told once, not on every recompute"
-        assert "6.0 kW" in told[0]["message"] and "kWh short" in told[0]["message"]
+        assert told[0]["message"].startswith("Does not fit under the ceiling: ") and "by 14:30" in told[0]["message"]
         actions = told[0]["data"]["actions"]
         stamp = int(world.departure.timestamp())
-        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{stamp}", "title": "Release the import target for this charge"}]
+        assert [action["action"] for action in actions] == [
+            f"SPOTNAV_TAKE_WHAT_FITS_{charger}_{stamp}",
+            f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{stamp}",
+        ]
+        assert actions[0]["title"].startswith("Take what fits (≈ ") and actions[1]["title"].startswith("Allow the peak")
         assert told[0]["data"]["tag"] == f"spotnav_{charger}_plan_at_risk"
-        # The phone's button sets the target aside until the departure.
-        hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]["action"]})
+        # The phone's "Allow the peak" sets the target aside until the departure.
+        hass.bus.async_fire("mobile_app_notification_action", {"action": actions[1]["action"]})
         await hass.async_block_till_done()
         await world.run(3)
         assert world.car_a == 16.0
@@ -426,28 +432,42 @@ async def test_ask_holds_the_target_and_tells_once_with_a_button(hass: HomeAssis
         assert any(call.data.get("message") == "clear_notification" for call in world.calls)
 
 
-async def test_the_shortfall_is_told_again_only_when_it_grows_clearly(hass: HomeAssistant, monkeypatch) -> None:
-    from custom_components.spotnav.site.site_capacity_controller import TargetRisk
-
+async def test_the_notice_is_told_once_per_departure_even_as_it_grows(hass: HomeAssistant, monkeypatch) -> None:
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _tight_night(hass, monkeypatch, frozen, "grows")
         await world.run(2)
         from custom_components.spotnav.runtime import charger_data
 
         notifier = charger_data(hass, world.halo.charger.entry_id).notifier
-        departure = world.departure.isoformat()
+        departure = world.departure.astimezone(timezone.utc).isoformat()
         assert len(_told(world)) == 1
-        notifier.import_target_risk(TargetRisk(departure=departure, missing_kwh=9.0, target_kw=6.0))
-        notifier.import_target_risk(TargetRisk(departure=departure, missing_kwh=9.4, target_kw=6.0))
-        await hass.async_block_till_done()
-        assert len(_told(world)) == 1, "a few hundred watt-hours more is no news"
         notifier._last_sent.clear()  # noqa: SLF001
-        notifier.import_target_risk(TargetRisk(departure=departure, missing_kwh=20.0, target_kw=6.0))
+        notifier.does_not_fit(_block(departure, short=20.0))
         await hass.async_block_till_done()
-        assert len(_told(world)) == 2, "a shortfall that grew clearly is told again"
-        notifier.import_target_risk(None)
+        assert len(_told(world)) == 1, "never again for the same departure"
+        notifier.does_not_fit(None)
         await hass.async_block_till_done()
-        assert world.calls[-1].data["message"] == "clear_notification", "taken off once it can be met again"
+        assert world.calls[-1].data["message"] == "clear_notification", "taken off once it fits again"
+        notifier.does_not_fit(_block(departure))
+        await hass.async_block_till_done()
+        assert len(_told(world)) == 1, "nor when it comes back"
+
+
+def _block(departure: str, *, short: float = 4.0, fits: float | None = 12.0) -> dict:
+    """A "does not fit" block where the plan asks (`site/does_not_fit.py`)."""
+    return {
+        "departure": departure,
+        "short_kwh": short,
+        "deliverable_kwh": fits,
+        "ceiling": "import_target",
+        "ceiling_kw": 6.0,
+        "chosen": None,
+        "choices": [
+            {"code": "takes_what_fits", "kwh": fits, "peak_kw": None, "cost": None},
+            {"code": "later", "kwh": None, "peak_kw": None, "cost": None},
+            {"code": "accept_peak", "kwh": None, "peak_kw": 12.0, "cost": 10500.0},
+        ],
+    }
 
 
 async def test_release_lets_the_departure_win_by_itself(hass: HomeAssistant, monkeypatch) -> None:
@@ -1735,7 +1755,7 @@ async def test_a_plan_at_risk_held_back_behind_the_targets_notice_is_told_once_t
         monkeypatch.setattr(notifier._tracker, "observe", lambda facts: [])  # noqa: SLF001
         notifier._at_risk_now = True  # noqa: SLF001
         notifier._last_sent.clear()  # noqa: SLF001
-        notifier.import_target_risk(None)
+        notifier.does_not_fit(None)
         await hass.async_block_till_done()
         messages = [call.data.get("message") for call in world.calls]
         # The target's notice comes down, and the plan's own is told in its place.
@@ -1746,10 +1766,10 @@ async def test_a_shortfall_never_told_to_a_phone_does_not_hold_the_plans_notice_
     hass: HomeAssistant, monkeypatch
 ) -> None:
     from custom_components.spotnav.runtime import charger_data
-    from custom_components.spotnav.site.site_capacity_controller import TargetRisk
 
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        await hass.config.async_set_time_zone("Europe/Stockholm")
         world = await _world(hass, monkeypatch, frozen, "untold")
         notifier = charger_data(hass, world.halo.charger.entry_id).notifier
-        notifier.import_target_risk(TargetRisk(departure=(_HOUR + timedelta(hours=8)).isoformat(), missing_kwh=4.0, target_kw=6.0))
-        assert notifier._target_told is None  # noqa: SLF001 - no phone chosen: nothing told
+        notifier.does_not_fit(_block((_HOUR + timedelta(hours=8)).isoformat()))
+        assert notifier._fit_told is None and not notifier._fit_holds_back()  # noqa: SLF001 - no phone: nothing told
