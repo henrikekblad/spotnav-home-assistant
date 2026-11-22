@@ -20,7 +20,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CHARGING_STATE
+from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CHARGER_CURRENT_ENTITIES, CONF_CHARGING_STATE
 from custom_components.spotnav.execution.controller import (
     ChargingController,
     OWED_GIVE_UP_S,
@@ -278,6 +278,96 @@ async def test_a_charger_that_reads_finished_after_our_stop_is_started_at_the_ne
     await hass.async_block_till_done()
     await _walk(hass, freezer, 31 * 60)
     assert commands.count("resume") == 2, commands
+
+
+def _followed_starts(hass: HomeAssistant) -> list[str]:
+    """Switch and select calls that the entity follows, as the charger's integration would: `on`/`off` and options."""
+    calls: list[str] = []
+
+    async def switch(call: ServiceCall) -> None:
+        on = call.service == "turn_on"
+        calls.append("start" if on else "stop")
+        for entity_id in call.data["entity_id"] if isinstance(call.data["entity_id"], list) else [call.data["entity_id"]]:
+            hass.states.async_set(entity_id, "on" if on else "off")
+
+    async def select(call: ServiceCall) -> None:
+        option = call.data["option"]
+        calls.append("start" if option.lower() == "charge" else "stop")
+        for entity_id in call.data["entity_id"] if isinstance(call.data["entity_id"], list) else [call.data["entity_id"]]:
+            hass.states.async_set(entity_id, option)
+
+    hass.services.async_register("switch", "turn_on", switch)
+    hass.services.async_register("switch", "turn_off", switch)
+    hass.services.async_register("select", "select_option", select)
+    return calls
+
+
+async def _shaped_with_config(hass: HomeAssistant, platform: str) -> tuple[ChargingController, dict[str, Any]]:
+    ids = register_shape(hass, SHAPES[platform])
+    config = detected_config(detect_charger(hass, ids["device_id"]))
+    controller = ChargingController(hass, f"entry_{platform}", config)
+    _CONTROLLERS.append(controller)
+    await controller.async_initialize()
+    return controller, config
+
+
+def _set_currents(hass: HomeAssistant, config: dict[str, Any], amps: float) -> None:
+    for entity_id in config.get(CONF_CHARGER_CURRENT_ENTITIES) or []:
+        hass.states.async_set(entity_id, str(amps), {"unit_of_measurement": "A"})
+
+
+async def test_our_stop_read_as_finished_after_a_restart_is_not_the_car(hass: HomeAssistant, freezer: Any) -> None:
+    """A window's end stopped a Zaptec; Home Assistant restarted before it read `connected_finished`. That is
+    SpotNav's own stop (kept across the restart), so the next window starts the charge."""
+    controller, config = await _shaped_with_config(hass, "zaptec")
+    status = controller.adapter.status_entity_id
+    calls = _followed_starts(hass)
+    hass.states.async_set(status, "connected_requesting")
+    _set_currents(hass, config, 0)
+    await install_schedule(controller, _windows((0, 30), (60, 90)))
+    await _after(hass, freezer, 31)
+    hass.states.async_set(status, "connected_charging")
+    _set_currents(hass, config, 10)
+    await _walk(hass, freezer, 30 * 60 + 30)
+    assert calls[-1] == "stop", "the first window's end"
+    hass.states.async_set(status, "connected_requesting")
+    _set_currents(hass, config, 0)
+
+    await controller.async_shutdown()
+    _CONTROLLERS.remove(controller)
+    restarted = ChargingController(hass, "entry_zaptec", config)
+    _CONTROLLERS.append(restarted)
+    await restarted.async_initialize()
+    assert restarted.plan is not None
+    await _after(hass, freezer, 400)  # read long after any stop of the restart's own
+    hass.states.async_set(status, "connected_finished")
+    await hass.async_block_till_done()
+    starts = calls.count("start")
+    await _walk(hass, freezer, 25 * 60, step=60)
+    assert calls.count("start") == starts + 1, calls
+
+
+async def test_our_stop_landing_late_as_finished_is_not_the_car(hass: HomeAssistant, freezer: Any) -> None:
+    """A go-e reads `Complete` 400 s after SpotNav's window-end stop (a slow cloud): the next window starts it."""
+    controller, config = await _shaped_with_config(hass, "goecharger_api2")
+    status = controller.adapter.status_entity_id
+    calls = _followed_starts(hass)
+    hass.states.async_set(status, "Wait car")
+    _set_currents(hass, config, 0)
+    await install_schedule(controller, _windows((0, 30), (60, 90)))
+    await _after(hass, freezer, 31)
+    hass.states.async_set(status, "Charging")
+    _set_currents(hass, config, 10)
+    await _walk(hass, freezer, 30 * 60 + 30)
+    assert calls[-1] == "stop", "the first window's end"
+    hass.states.async_set(status, "Wait car")
+    _set_currents(hass, config, 0)
+    await _after(hass, freezer, 400)
+    hass.states.async_set(status, "Complete")
+    await hass.async_block_till_done()
+    starts = calls.count("start")
+    await _walk(hass, freezer, 31 * 60, step=60)
+    assert calls.count("start") == starts + 1, calls
 
 
 async def test_a_new_plan_does_not_pause_an_empty_charger(hass: HomeAssistant, freezer: Any) -> None:

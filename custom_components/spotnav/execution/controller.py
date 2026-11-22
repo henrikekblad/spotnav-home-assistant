@@ -1736,20 +1736,23 @@ class ChargingController:
         return self._charge_clock_s
 
     def _observe_finished(self) -> None:
-        """Whether the car finished the charge itself: the charger turning to `FINISHED` while no stop of ours settles.
-        Kept while it says so, also through a stop of ours sent later (a window's end: an Easee stays `completed`)."""
+        """Whether the car finished the charge itself: the charger turning to `FINISHED` while the charger's stopped
+        state is not SpotNav's own (`_own_stop`, kept across a restart; a stop on a slow cloud may land long after it was
+        sent) and no stop of ours is on its way or just went out. Kept while it says so, also through a stop of ours
+        sent later (a window's end: an Easee stays `completed`)."""
         if self.adapter.connection()[0] != CONNECTION_FINISHED:
             self._finished_by_car = None
         elif self._finished_by_car is None:
             since = self._stop_settle_since
-            ours = self._stop_in_flight or (
-                since is not None and 0 <= (dt_util.utcnow() - since).total_seconds() < FINISHED_AFTER_STOP_S
+            ours = (
+                self._stop_in_flight
+                or self._own_stop
+                or (since is not None and 0 <= (dt_util.utcnow() - since).total_seconds() < FINISHED_AFTER_STOP_S)
             )
             self._finished_by_car = not ours
 
     def _car_finished(self) -> bool:
-        """The charger says the car finished and no stop of SpotNav's made it so (`_observe_finished`; since a restart,
-        the restored `_own_stop` says)."""
+        """The charger says the car finished and no stop of SpotNav's made it so (`_observe_finished`)."""
         if self.adapter.connection()[0] != CONNECTION_FINISHED:
             return False
         return self._finished_by_car if self._finished_by_car is not None else not self._own_stop
