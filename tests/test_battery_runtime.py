@@ -17,7 +17,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.spotnav.battery.hold import ARM_S, HoldMemory
 from custom_components.spotnav.battery.monitor import GRACE_S, READING_GAP_S
-from custom_components.spotnav.battery.runtime import BatteryShadow
+from custom_components.spotnav.battery.runtime import BatteryShadow, read_battery_facts
+from custom_components.spotnav.const import CONF_BATTERY_AGGREGATE_POWER_ENTITY
 from custom_components.spotnav.battery.shadow import MIN_DIVERGENCE_S, PART_EXPORT_CURTAIL, PART_HOLD_FOR_CAR, ShadowEntry
 from custom_components.spotnav.debug_bundle import async_build_debug_bundle
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
@@ -321,3 +322,39 @@ async def test_a_left_over_outside_control_notice_is_deleted_at_start(hass: Home
     assert await hass.config_entries.async_reload(site.entry_id)
     await hass.async_block_till_done()
     assert _issue(hass, site.entry_id) is None
+
+
+@pytest.mark.parametrize(("on_pack", "sw_version", "expected"), [
+    (False, "DSP v3.05 ARM v3.12", "DSP v3.05 ARM v3.12"),
+    (True, "DSP v3.05 ARM v3.12", "DSP v3.05 ARM v3.12"),
+    (False, None, None),
+])
+async def test_a_solax_battery_takes_its_firmware_from_the_inverter_device(
+    hass: HomeAssistant, on_pack: bool, sw_version: str | None, expected: str | None
+) -> None:
+    """solax_modbus keeps its firmware registers internal: the version is only the inverter device's `sw_version`.
+    A battery entity on a pack device (no version of its own) takes the inverter's it sits under."""
+    owner = MockConfigEntry(domain="solax_modbus", entry_id="SOLAX")
+    owner.add_to_hass(hass)
+    devices = dr.async_get(hass)
+    inverter = devices.async_get_or_create(
+        config_entry_id=owner.entry_id, identifiers={("solax_modbus", "SolaX", "inverter")}, name="SolaX",
+        manufacturer="SolaX Power", sw_version=sw_version,
+    )
+    device = inverter
+    if on_pack:
+        device = devices.async_get_or_create(
+            config_entry_id=owner.entry_id, identifiers={("solax_modbus", "SolaX", "battery_1_1")},
+            name="SolaX Battery 1/1", manufacturer="SolaX Power", via_device_id=inverter.id,
+        )
+        assert device.via_device_id == inverter.id
+    registry = er.async_get(hass)
+    entry = registry.async_get_or_create(
+        "sensor", "solax_modbus", "SolaX_battery_power_charge", device_id=device.id, config_entry=owner,
+        suggested_object_id="solax_battery_power_charge",
+    )
+    hass.states.async_set(entry.entity_id, "-1243", {"unit_of_measurement": "W"})
+
+    facts = read_battery_facts(hass, {CONF_BATTERY_AGGREGATE_POWER_ENTITY: entry.entity_id}, -1.2)
+
+    assert facts.brand == "solax" and facts.firmware == expected
