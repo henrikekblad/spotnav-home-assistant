@@ -56,8 +56,9 @@ export interface DialogOptions {
   /**
    * Fired just before the dialog closes because the reader dismissed it (Escape, backdrop, close
    * button), never for a caller's own `hide()`; lets a sub-dialog return to the page it came from.
+   * Answering `true` keeps the dialog open: the caller has shown that page in it itself.
    */
-  onDismiss?: () => void;
+  onDismiss?: () => boolean | void;
 }
 
 function ownerDocumentOf(owner: ShadowRoot | HTMLElement): Document {
@@ -222,8 +223,8 @@ export function createDialog(options: DialogOptions): DialogHandle {
   }
 
   function dismiss(): void {
-    if (open && !destroyed) {
-      onDismiss?.();
+    if (open && !destroyed && onDismiss?.() === true) {
+      return;
     }
     hide();
   }

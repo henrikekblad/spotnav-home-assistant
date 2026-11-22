@@ -31,6 +31,8 @@ export interface DialogOpenersDeps {
   overviewPanel: () => HTMLElement;
   /** Show the shared heat section in full even when nothing is found ("Heat · nothing found" opened). */
   expandHeat: () => void;
+  /** The info dialog is opened from Settings (or not): leaving it by the cross, Escape or the backdrop goes back. */
+  setCapabilityFromSettings: (fromSettings: boolean) => void;
 }
 
 export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPageState, deps: DialogOpenersDeps) {
@@ -42,7 +44,7 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
   const strategyDialog = dialogs.strategy;
   const vehicleDialog = dialogs.vehicle;
   const settingsOverviewDialog = dialogs.settingsOverview;
-  const { mayPlan, setTimer, plannerButton, strategyButton, hideForChildDialog, openEntities, openSettingsOverview, overviewPanel, expandHeat } =
+  const { mayPlan, setTimer, plannerButton, strategyButton, hideForChildDialog, openEntities, openSettingsOverview, overviewPanel, expandHeat, setCapabilityFromSettings } =
     deps;
 
   function openIssues(opener: HTMLElement | null): void {
@@ -175,6 +177,7 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
       return;
     }
     issuesDialog.hide({ restoreFocus: false });
+    setCapabilityFromSettings(settingsOverviewDialog.isOpen());
     settingsOverviewDialog.hide({ restoreFocus: false });
     capabilityDialog.show({
       title: translate(model.language, "cap.title"),
@@ -189,6 +192,7 @@ export function createDialogOpeners(ctx: ViewContext, settingsPage: SettingsPage
       return;
     }
     issuesDialog.hide({ restoreFocus: false });
+    setCapabilityFromSettings(settingsOverviewDialog.isOpen());
     settingsOverviewDialog.hide({ restoreFocus: false });
     const list = automationsBody(doc, model.language, (path) => {
       capabilityDialog.hide({ restoreFocus: false });

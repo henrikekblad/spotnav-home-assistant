@@ -117,6 +117,7 @@ export const VISUAL_CLASSES = {
   entityChecks: "spotnav-entity-checks",
   entityAutomatic: "spotnav-entity-automatic",
   entityDialog: "spotnav-entity-dialog",
+  settingsWide: "spotnav-settings-wide",
   planDialog: "spotnav-plan-dialog",
   actionIcon: "spotnav-action-icon",
   summaryExtremes: "spotnav-summary-extremes",

@@ -299,6 +299,24 @@ describe("the popover from the house card", () => {
     ]);
   });
 
+  it("goes back to the page from an editor by the cross, and closes from the page itself", async () => {
+    const { root } = await mount();
+    await open(root);
+    root.querySelector<HTMLButtonElement>("[data-section='support'] [data-disconnect-phones='open']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector("[data-value-editor='disconnect-phones']")).not.toBeNull();
+    root.querySelector<HTMLButtonElement>(".spotnav-dialog-close")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector("[data-value-editor='disconnect-phones']")).toBeNull();
+    expect(root.querySelector("[data-popover='site']")).not.toBeNull();
+    root.querySelector<HTMLButtonElement>(".spotnav-dialog-close")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    const overlay = root.querySelector<HTMLElement>("[data-popover='site']")!.closest<HTMLElement>(".spotnav-dialog-overlay")!;
+    expect(overlay.hidden).toBe(true);
+    // Settings is the wide dialog on a wide screen.
+    expect(overlay.classList.contains("spotnav-settings-wide")).toBe(true);
+  });
+
   it("offers Disconnect all phones to no household member", async () => {
     const { root } = await mount({ admin: false });
     expect(root.querySelector("[data-disconnect-phones='open']")).toBeNull();

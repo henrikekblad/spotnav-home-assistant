@@ -526,7 +526,16 @@ export function createCardView(input: CardViewInput): CardView {
     labels,
     background: () => card,
     onClose: notifyDialogsChanged,
+    // Opened from Settings (About this card, Automations): the cross, Escape or the backdrop go back there.
+    onDismiss: () => {
+      if (capabilityFromSettings) {
+        capabilityFromSettings = false;
+        leaveSettingsChild(capabilityDialog);
+      }
+    },
   });
+  /** Whether the info dialog was opened from Settings (`setCapabilityFromSettings`), so leaving it goes back. */
+  let capabilityFromSettings = false;
   const pauseDialog: DialogHandle = createDialog({
     owner: input.mount,
     idPrefix: `${idPrefix}-pause`,
@@ -601,6 +610,9 @@ export function createCardView(input: CardViewInput): CardView {
   });
   /** How the open value editor is left by Escape, the backdrop or the cross, when it is not as Cancel. */
   let valueLeave: (() => void) | null = null;
+  for (const wide of [settingsOverviewDialog, valueDialog, marketDialog]) {
+    wide.element.classList.add(C.settingsWide);
+  }
 
   /**
    * The one way out of a dialog opened from the Settings page (Cancel, close, Escape, backdrop).
@@ -2076,6 +2088,9 @@ export function createCardView(input: CardViewInput): CardView {
       if (siteSections !== null) {
         siteSections.heatExpanded = true;
       }
+    },
+    setCapabilityFromSettings: (fromSettings) => {
+      capabilityFromSettings = fromSettings;
     },
   });
   const { openIssues, openSettingAt, confirmRelease, openCapabilities, openAutomations, openPause, openStrategy } = dialogOpeners;

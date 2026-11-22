@@ -479,6 +479,10 @@ export const POPOVER_STYLES = `\
   .${VISUAL_CLASSES.settingsField} > .${VISUAL_CLASSES.settingsError} {
     font-size: 0.85rem;
   }
+  /* Settings and its editors: wider on a wide screen, so a long value stays on its row's line. */
+  .${VISUAL_CLASSES.settingsWide} .${VISUAL_CLASSES.dialog} {
+    max-width: 560px;
+  }
   .${VISUAL_CLASSES.entityDialog} .${VISUAL_CLASSES.dialog} {
     max-width: 680px;
   }
