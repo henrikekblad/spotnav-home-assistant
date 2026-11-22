@@ -1106,7 +1106,7 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     block = control.status()["grid_charge_cap"]["import_limit"]
     # Held per phase (`commands.ImportLimitPhases`): never while the owner's on-site test is not recorded.
     # The per-phase rule counts the site's own safety margin (1 A by default): 3 x 19 A x 231 V.
-    unrecorded = {"max_kw": 13.16, "holds": False, "why": "not_field_tested", "entity_id": None}
+    unrecorded = {"max_kw": 13.16, "holds": False, "why": "not_field_tested", "entity_id": None, "set_kw": None}
     assert block == {"value_kw": None, "max_kw": 4.47, "suggested_kw": 4.4, "holds": False, "why": "sources_unknown",
                      "per_phase": unrecorded}
     await _looks(control, dt_util.now(), 1)
@@ -1130,7 +1130,7 @@ async def test_the_status_suggests_an_import_limit_that_covers_the_worst_phase_a
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 6.0)
     cap = control.status()["grid_charge_cap"]
     assert cap["import_limit"] == {"value_kw": 4.4, "max_kw": 1.7, "suggested_kw": 4.4, "holds": False, "why": None,
-                                   "per_phase": {"max_kw": 13.16, "holds": False, "why": "not_field_tested", "entity_id": None}}
+                                   "per_phase": {"max_kw": 13.16, "holds": False, "why": "not_field_tested", "entity_id": None, "set_kw": None}}
     assert cap["rule"] == "conservative"
     # Not shown to act on site: read and suggested, never in force.
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
@@ -2395,3 +2395,75 @@ async def test_the_tap_refuses_where_the_per_phase_hold_is_no_way(
     hass.states.async_set(IMPORT_LIMIT, "13800", {"unit_of_measurement": "W"})
     assert await control.async_set_import_limit() == "unit_unknown"
     assert written == []
+
+
+async def test_the_person_s_word_is_asked_last_so_a_closed_way_is_not_shown_as_one_tap(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    """Not said to act and an Output Type the hold does not act with: the refusal names the Output Type, not the
+    person's word, so the card offers no tap that cannot work (and the HA-down acceptance is offered instead)."""
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    _per_phase_plant(hass, output_type="l1_l2_l3")
+    _import_limit(hass, "13.8")
+    _options(hass, site, import_limit_acts=False)
+    assert control._import_limit_phase_refusal() == "output_type_not_supported"
+    cap = control.status()["grid_charge_cap"]
+    assert cap["import_limit"]["per_phase"]["why"] == "output_type_not_supported"
+    assert cap["ha_down"]["offered"] is True
+    _per_phase_plant(hass)
+    assert control._import_limit_phase_refusal() == "not_said_to_act"
+    assert control.status()["grid_charge_cap"]["import_limit"]["per_phase"]["set_kw"] == 13.1
+
+
+@pytest.mark.parametrize(("start", "set_kw"), [("13.8", 13.1), ("13.15", None), ("4294967.295", 13.1), ("unknown", 13.1)])
+async def test_the_card_s_figure_is_what_the_tap_writes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], start: str, set_kw: float | None
+) -> None:
+    """A limit that already guards (13.15 kW under 3 x 19 A x 231 V = 13.17) is left as it is, though above the
+    rounded 13.1; "no limit" and an unread one are lowered."""
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    _import_limit(hass, start)
+    written = _number_service(hass)
+    assert control.status()["grid_charge_cap"]["import_limit"]["per_phase"]["set_kw"] == set_kw
+    assert await control.async_set_import_limit() is None
+    assert written == ([] if set_kw is None else [set_kw])
+
+
+async def test_the_tap_writes_nothing_while_control_is_off_and_fails_closed(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    _import_limit(hass, "13.8")
+    written = _number_service(hass)
+    _options(hass, site, enabled=False)
+    assert await control.async_set_import_limit() == "not_enabled"
+    _options(hass, site, enabled=True)
+    hass.states.async_set(IMPORT_LIMIT, "13.8", {"unit_of_measurement": "kW", "max": 10})
+    assert await control.async_set_import_limit() == "out_of_range"
+    assert written == [] and control.options().import_limit_acts is False
+
+    async def refuse(call) -> None:
+        raise HomeAssistantError("refused")
+
+    hass.services.async_register("number", "set_value", refuse)
+    hass.states.async_set(IMPORT_LIMIT, "13.8", {"unit_of_measurement": "kW"})
+    assert await control.async_set_import_limit() == "write_failed"
+    assert control.options().import_limit_acts is False
+
+
+async def test_the_tap_is_an_administrator_s_and_never_over_the_webhook(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.api.battery_control import async_battery_control_answer
+
+    site, control = await _tap_site(hass, monkeypatch, hass_storage, 1.0)
+    _import_limit(hass, "13.8")
+    written = _number_service(hass)
+    answer = await async_battery_control_answer(hass, site, None, admin=False, set_import_limit=True)
+    assert answer["error"] == "spotnav_not_admin"
+    answer = await async_battery_control_answer(hass, site, None, admin=True, over_webhook=True, set_import_limit=True)
+    assert answer["error"] == "spotnav_not_permitted_over_webhook"
+    assert written == []
+    answer = await async_battery_control_answer(hass, site, None, admin=True, set_import_limit=True)
+    assert answer["ok"] is True and written == [13.1]
+    assert answer["status"]["options"]["battery_control_import_limit_acts"] is True

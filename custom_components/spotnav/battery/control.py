@@ -1792,7 +1792,7 @@ class BatteryControl:
 
     def _import_limit_kw(self, control: BrandControl | None) -> float | None:
         """What the plant's own grid import limit reads now (kW), `None` when the brand has none, it is disabled or
-        it was never set. Only read: SpotNav never writes it."""
+        it was never set. Written only by an administrator's tap (`async_set_import_limit`), lowered, never raised."""
         if control is None:
             return None
         return _float(read_plant_entity(self.hass, self.site.config, control.import_limit))
@@ -1861,23 +1861,21 @@ class BatteryControl:
     def _import_limit_phase_refusal(self, *, assume_acts: bool = False) -> str | None:
         """Why the plant's own import limit cannot be taken as held **per phase** now (`commands.ImportLimitPhases`),
         as a stable code; `None` when it can. Fails closed: anything unread refuses. `not_supported` (the recipe states
-        no such hold), `not_field_tested` (the owner's on-site test is not recorded in the recipe), `not_said_to_act`
-        (the site's own `battery_control_import_limit_acts` is off: the recipe's fact is one plant's test, so each site
-        still says that its plant's limit acts, as for the total rule; no setting of its own), every reason of the
+        no such hold), `not_field_tested` (the owner's on-site test is not recorded in the recipe), every reason of the
         total rule (`_import_limit_refusal`: a plant not three-phase, another inverter's sun, the sources unread, a
         charger run through the plant), `output_type_unread` (the plant's Output Type reads nothing: the brand's
         default is not taken for it), `output_type_not_supported` (it reads other than the one the switch acts with,
         `ImportLimitPhases.output_type`: Sigenergy's L1/L2/L3/N, not L1/L2/L3), `phase_control_off` (the switch
         that shares the plant's power per phase reads anything but on, or nothing) and `grid_sensor_offline` (the
-        plant's grid sensor, which the limit regulates on, reads anything but connected, or nothing)."""
+        plant's grid sensor, which the limit regulates on, reads anything but connected, or nothing), and last
+        `not_said_to_act` (the site's own `battery_control_import_limit_acts` is off: the recipe's fact is one plant's
+        test, so each site still says that its plant's limit acts; `assume_acts` leaves it out)."""
         control = control_for(self.facts.brand)
         spec = None if control is None else control.import_limit_phases
         if control is None or spec is None or control.import_limit is None:
             return "not_supported"
         if not spec.field_tested:
             return "not_field_tested"
-        if not assume_acts and not self.options().import_limit_acts:
-            return "not_said_to_act"
         refusal = self._import_limit_refusal()
         if refusal is not None:
             return refusal
@@ -1890,6 +1888,9 @@ class BatteryControl:
             return "phase_control_off"
         if read_plant_entity(self.hass, self.site.config, spec.grid_sensor) != spec.sensor_online:
             return "grid_sensor_offline"
+        # Last, so a step the site still needs (or a reason that rules the hold out) is named before the person's word.
+        if not assume_acts and not self.options().import_limit_acts:
+            return "not_said_to_act"
         return None
 
     def _phase_path_open(self) -> bool:
@@ -1914,16 +1915,38 @@ class BatteryControl:
         target = math.floor(most * 10.0 + 1e-9) / 10.0
         return target if target >= gate.MIN_RATE_KW else None
 
+    def import_limit_write_kw(self) -> float | None:
+        """What the administrator's tap would write to the plant's import limit now: `import_limit_target_kw` when the
+        limit reads more than keeps every phase under the fuse (`gate.import_limit_phase_max_kw`, unrounded) or reads
+        nothing, `None` when it already guards (only saying it acts is left), no value guards or the per-phase hold is
+        no way here (`_phase_path_open`). The card shows this
+        figure, so what it says is what is written."""
+        control = control_for(self.facts.brand)
+        if control is None or control.import_limit is None or not self._phase_path_open():
+            return None
+        target = self.import_limit_target_kw()
+        most = gate.import_limit_phase_max_kw(
+            self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config),
+            margin_a=self._site_margin_a(), cars_a=0.0,
+        )
+        current = self._import_limit_kw(control)
+        if target is None or most is None or (current is not None and 0.0 <= current <= most + 1e-6):
+            return None
+        return target
+
     async def async_set_import_limit(self) -> str | None:
         """The administrator's one tap on the per-phase import-limit line: lower the plant's own grid import limit to
-        `import_limit_target_kw` when it reads more or nothing (never raised: a lower limit only makes the plant more
+        `import_limit_target_kw` when it reads more than guards or nothing (`import_limit_write_kw`; never raised: a lower limit only makes the plant more
         careful), read it back, and only then say that it acts (`battery_control_import_limit_acts`). A limit already
-        at or under the target is left as it is. Answers a refusal code, `None` when done: `not_supported` (no
+        at or under the target is left as it is. Answers a refusal code, `None` when done: `not_enabled` (battery
+        control is off: nothing is written to the plant), `not_supported` (no
         field-tested per-phase hold here), the site's own refusals of the rule (`_import_limit_refusal`,
         `output_type_not_supported`), `no_value` (no value guards the fuse), `entity_missing` (the limit's entity is
         not there or disabled), `unit_unknown` (it is not in kW), `out_of_range` (the target is outside the entity's
         own range), `write_failed` (the integration refused) and `not_read_back` (it did not read the target back
         within `IMPORT_LIMIT_READ_BACK_S`). Every write is logged."""
+        if not self.options().enabled:
+            return "not_enabled"  # nothing is written to the plant while battery control is off
         control = control_for(self.facts.brand)
         refusal = self._import_limit_phase_refusal(assume_acts=True)
         if control is None or control.import_limit is None or refusal not in PHASE_PATH_STEPS:
@@ -1932,7 +1955,7 @@ class BatteryControl:
         if target is None:
             return "no_value"
         current = self._import_limit_kw(control)
-        if current is None or current > target + 1e-6:
+        if self.import_limit_write_kw() is not None:
             entity_id = plant_entity_id(self.hass, self.site.config, control.import_limit)
             state = None if entity_id is None else self.hass.states.get(entity_id)
             if entity_id is None or state is None:
@@ -1961,6 +1984,9 @@ class BatteryControl:
             self._log([{"at": now.isoformat(), "kind": "import_limit_set",
                         "reason": f"{current}->{target} read {read}"}])
             _LOGGER.info("SpotNav battery: the plant's import limit set from %s to %s kW (reads %s)", current, target, read)
+            if read is not None and current is not None and read > current + 1e-6:
+                _LOGGER.warning("SpotNav battery: the plant's import limit reads %s kW after setting %s, more than before (%s)",
+                                read, target, current)
             if read is None or read > target + 1e-6:
                 return "not_read_back"
         if not self.options().import_limit_acts:
@@ -1998,10 +2024,11 @@ class BatteryControl:
         """The plant's own grid import limit against what keeps the worst phase under the fuse
         (`gate.import_limit_max_kw`), for the status: `value_kw` (what it reads), `max_kw` (the most that guards the
         fuse with the chargers' last currents as they are now), `suggested_kw` (the same with no car charging, rounded
-        down to 0.1 kW: what the person may set; SpotNav never writes it), `holds` (shown to act and at most
+        down to 0.1 kW: what the person may set by the total rule), `holds` (shown to act and at most
         `max_kw`: the rule in force) and `why` (why the site's sources refuse the rule whatever the limit reads,
         `_import_limit_refusal`). For a brand whose limit can be held per phase (`commands.ImportLimitPhases`) also
-        `per_phase`: `max_kw` (`gate.import_limit_phase_max_kw`, `None` where no value guards), `holds`, `why`
+        `per_phase`: `max_kw` (`gate.import_limit_phase_max_kw`, `None` where no value guards), `set_kw` (what the
+        administrator's tap writes, `import_limit_write_kw`; `None` when the limit already guards), `holds`, `why`
         (`_import_limit_phase_refusal`) and `entity_id` (the plant's entity a refusal names: the Output Type, the
         phase switch or the grid sensor status, disabled or not; `None` for any other); `holds` above is then true when either rule is in force. `None` for a brand
         without such a limit."""
@@ -2044,6 +2071,8 @@ class BatteryControl:
                  "grid_sensor_offline": spec.grid_sensor}.get(phase_refusal or "")
         block["per_phase"] = {
             "max_kw": None if phase_most is None else round(phase_most, 2), "holds": phase_holds, "why": phase_refusal,
+            # What the administrator's tap sets the limit to (`import_limit_target_kw`), the card's figure too.
+            "set_kw": self.import_limit_write_kw(),
             "entity_id": None if match is None else plant_entity_id(self.hass, self.site.config, match),
         }
         return block
