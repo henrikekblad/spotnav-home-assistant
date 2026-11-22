@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.api import house as house_api
 from custom_components.spotnav.api.battery_control import websocket_battery_control
@@ -494,3 +496,110 @@ async def test_polling_house_now_reads_the_recorder_at_most_once_per_five_minute
     per_call_ms = (time.process_time() - started) * 1000 / 200
     print(f"get_house_now: {per_call_ms:.3f} ms per call, {len(response.body)} bytes")
     assert len(reads) == 2 and per_call_ms < 20 and len(response.body) < 2048
+
+
+# -- a charge that does not fit under the import target: the plan's car lane, the dashboard and the two choices
+
+
+def _id_pins(world: Any) -> dict[str, str]:
+    return {world.halo.charger.entry_id: "<charger_id>", world.halo.controller.entry_id: "<site_id>"}
+
+
+async def test_the_does_not_fit_block_and_its_choices_are_the_apps(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_client_no_auth
+) -> None:
+    """The tight night of `tests/test_import_target_hold.py`, with prices held to the end of tomorrow so a later
+    departure is proposed: the block in the plan's car lane and in the dashboard (for an app that reads it) is the
+    card's, and "Take what fits" and "Later departure" are the app's to press."""
+    from freezegun import freeze_time
+
+    from custom_components.spotnav.site.does_not_fit import BLOCK_KEYS, CHOICE_KEYS
+
+    from .test_import_target_hold import _HOUR, _tight_night
+    from .test_later_departure import _prices_held, _replans
+
+    _prices_held(monkeypatch)
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "whdnf")
+        charger = world.halo.charger.entry_id
+        hook = world.halo.charger.data["webhook_id"]
+        replans = _replans(monkeypatch, hass, charger)
+        await world.run(2)
+        client = await hass_client_no_auth()
+        pins = _id_pins(world)
+
+        expected = await result(hass, websocket_get_plan, charger_id=charger)
+        status, plan = await post(client, hook, {"action": "get_plan"})
+        assert status == 200 and plan == {**expected, "ok": True, "action": "get_plan"}
+        (car,) = [load for load in plan["loads"] if load["kind"] == "car"]
+        block = car["does_not_fit"]
+        assert block is not None and tuple(sorted(block)) == tuple(sorted(BLOCK_KEYS))
+        assert block["chosen"] is None and block["set_kw"] == 6.0 and block["ceiling"] == "import_target"
+        assert [choice["code"] for choice in block["choices"]] == ["takes_what_fits", "later", "accept_peak"]
+        assert all(tuple(sorted(choice)) == tuple(sorted(CHOICE_KEYS)) for choice in block["choices"])
+        later = block["choices"][1]["departure"]
+        assert later is not None
+        _pinned("get_plan_does_not_fit.json", _pin(plan, pins))
+
+        # The dashboard carries the same block for an app that reads it, and none for one released before it.
+        status, dashboard = await post(client, hook, {"action": "dashboard", "api_version": 1, "reads": ["does_not_fit"]})
+        assert status == 200 and dashboard["does_not_fit"] == block
+        _pinned("dashboard_does_not_fit.json", _pin(dashboard, pins))
+        status, older = await post(client, hook, {"action": "dashboard", "api_version": 1})
+        assert status == 200 and "does_not_fit" not in older
+
+        # "Take what fits": held for this departure; the block says it chosen.
+        status, body = await post(client, hook, {"action": "take_what_fits", "api_version": 2})
+        assert (status, body["error"]) == (400, "spotnav_unsupported_api_version")
+        _pinned("take_what_fits_unsupported_version.json", body)
+        status, body = await post(client, hook, {"action": "take_what_fits"})
+        assert (status, body) == (200, {"api_version": 1, "ok": True, "error": None, "action": "take_what_fits"})
+        _pinned("take_what_fits_success.json", body)
+        await world.run(2)
+        status, plan = await post(client, hook, {"action": "get_plan"})
+        (car,) = [load for load in plan["loads"] if load["kind"] == "car"]
+        assert car["does_not_fit"]["chosen"] == "takes_what_fits"
+        assert [choice["code"] for choice in car["does_not_fit"]["choices"]] == ["later", "accept_peak"]
+        _pinned("get_plan_takes_what_fits.json", _pin(plan, pins))
+
+        # "Later departure": this departure moved to the hour the block proposed, the plan made again for it.
+        status, body = await post(client, hook, {"action": "later_departure"})
+        assert (status, body) == (200, {"api_version": 1, "ok": True, "error": None, "action": "later_departure"})
+        _pinned("later_departure_success.json", body)
+        await hass.async_block_till_done()
+        assert replans == ["recalculate"]
+        moved = world.halo.controller.later_departure_for(charger)
+        assert moved is not None and moved[1].isoformat() == dt_util.parse_datetime(later).astimezone(moved[1].tzinfo).isoformat()
+
+
+async def test_the_does_not_fit_choices_are_refused_with_the_commands_codes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_client_no_auth
+) -> None:
+    from freezegun import freeze_time
+
+    from .test_import_target_hold import _HOUR, _tight_night
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        # No prices held past the departure: nothing later is proposed, nor moved to.
+        world = await _tight_night(hass, monkeypatch, frozen, "whdnfno")
+        hook = world.halo.charger.data["webhook_id"]
+        await world.run(2)
+        client = await hass_client_no_auth()
+        status, plan = await post(client, hook, {"action": "get_plan"})
+        (car,) = [load for load in plan["loads"] if load["kind"] == "car"]
+        assert car["does_not_fit"]["choices"][1] == {
+            "code": "later", "kwh": None, "peak_kw": None, "cost": None, "departure": None
+        }
+        status, body = await post(client, hook, {"action": "later_departure"})
+        assert (status, body) == (
+            400, {"api_version": 1, "ok": False, "error": "spotnav_no_later_departure", "action": "later_departure"}
+        )
+        _pinned("later_departure_no_later_departure.json", body)
+        # No departure ahead: neither choice has one to act on.
+        world.halo.cc.plan = None
+        for action in ("take_what_fits", "later_departure"):
+            status, body = await post(client, hook, {"action": action})
+            assert (status, body) == (
+                400, {"api_version": 1, "ok": False, "error": "spotnav_no_departure", "action": action}
+            ), action
+            _pinned(f"{action}_no_departure.json", body)

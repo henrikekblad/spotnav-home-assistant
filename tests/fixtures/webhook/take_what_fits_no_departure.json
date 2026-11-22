@@ -1,0 +1,6 @@
+{
+  "action": "take_what_fits",
+  "api_version": 1,
+  "error": "spotnav_no_departure",
+  "ok": false
+}
