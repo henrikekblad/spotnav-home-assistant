@@ -177,6 +177,9 @@ APP_READS_DEPARTURE_CALENDAR: Final = "departure_calendar"
 #: The sun for the price chart (`api/sun.py`): the dashboard's `sun` block is left out for an app that does not read
 #: `APP_READS_SUN`.
 APP_READS_SUN: Final = "sun"
+#: A planned charge that does not fit under the ceiling by its departure (`site/does_not_fit.py`): the dashboard's
+#: `does_not_fit` block is left out for an app that does not read `APP_READS_DOES_NOT_FIT`.
+APP_READS_DOES_NOT_FIT: Final = "does_not_fit"
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
@@ -187,6 +190,7 @@ APP_DASHBOARD_BLOCK_READS: Final = {
     "guest": APP_READS_GUEST,
     "departure_calendar": APP_READS_DEPARTURE_CALENDAR,
     "sun": APP_READS_SUN,
+    "does_not_fit": APP_READS_DOES_NOT_FIT,
 }
 #: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
 #: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
